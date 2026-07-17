@@ -275,12 +275,12 @@ def test_plain_parent_only_and_child_sql() -> None:
         columns=["Active"],
         where=None,
     )
-    parent = step._plain_parent_only_sql(idx)
+    parent = step._plain_parent_only_sql(idx, "Voter")
     assert (
         'CREATE INDEX IF NOT EXISTS "Voter_Active_idx" ON ONLY public."Voter" USING btree ("Active")'
         in parent
     )
-    child_name, child_sql = step._plain_child_sql(idx, "CA")
+    child_name, child_sql = step._plain_child_sql(idx, "Voter", "CA")
     assert child_name == "Voter_Active_idx_CA"
     assert (
         'CREATE INDEX IF NOT EXISTS "Voter_Active_idx_CA" ON public."Voter_CA" USING btree ("Active")'
@@ -327,8 +327,101 @@ def test_partition_sizes_maps_state_to_bytes(monkeypatch: pytest.MonkeyPatch) ->
     conn = FakeConn()
     conn.queue_result([("Voter_CA", 4_000_000), ("Voter_TX", 3_000_000)])  # one fetchall result set
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    sizes = step._partition_sizes(_CFG, "20260709", forward=None)
+    sizes = step._partition_sizes(_CFG, "20260709", "Voter", forward=None)
     assert sizes == {"CA": 4_000_000, "TX": 3_000_000}
+
+
+def test_plain_parent_only_sql_parametrizes_table() -> None:
+    # A different partitioned table must rewrite ON ONLY against ITS name, not a hardcoded "Voter".
+    idx = step.IndexDef(
+        table="DistrictVoter",
+        name="dv_idx",
+        sql='CREATE INDEX "dv_idx" ON public."DistrictVoter" USING btree ("district_id");',
+        unique=False,
+        columns=["district_id"],
+        where=None,
+    )
+    out = step._plain_parent_only_sql(idx, "DistrictVoter")
+    assert 'ON ONLY public."DistrictVoter"' in out
+
+
+def test_plain_child_sql_parametrizes_table() -> None:
+    idx = step.IndexDef(
+        table="DistrictVoter",
+        name="dv_idx",
+        sql='CREATE INDEX "dv_idx" ON public."DistrictVoter" USING btree ("district_id");',
+        unique=False,
+        columns=["district_id"],
+        where=None,
+    )
+    child_name, child_sql = step._plain_child_sql(idx, "DistrictVoter", "TX")
+    assert child_name == "dv_idx_TX"
+    assert 'ON public."DistrictVoter_TX"' in child_sql
+    assert "ON ONLY" not in child_sql
+
+
+def test_partition_sizes_uses_table_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The catalog query must LIKE '<table>\_%' and strip the '<table>_' prefix, not "Voter_".
+    conn = FakeConn()
+    conn.queue_result([("DistrictVoter_TX", 9_000_000), ("DistrictVoter_CA", 8_000_000)])
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    sizes = step._partition_sizes(_CFG, "20260709", "DistrictVoter", forward=None)
+    assert sizes == {"TX": 9_000_000, "CA": 8_000_000}
+    assert any(r"LIKE 'DistrictVoter\_%'" in s for s in executed_sql(conn))
+
+
+def test_analyze_parametrizes_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    step._analyze(_CFG, "20260709", "District", forward=None)
+    assert any('ANALYZE public."District"' in s for s in executed_sql(conn))
+
+
+def test_create_index_flat_no_state() -> None:
+    # A flat (non-partitioned) table's unique index builds on its real columns with NO "State".
+    conn = FakeConn()
+    idx = step.IndexDef(
+        table="District", name="District_u_key", sql="(unused)", unique=True, columns=["id"], where=None
+    )
+    step._create_index(conn, idx, partition_key=None)  # ty: ignore[invalid-argument-type]
+    sql = " ".join(executed_sql(conn))
+    assert 'CREATE UNIQUE INDEX IF NOT EXISTS "District_u_key" ON public."District" ("id")' in sql
+    assert '"State"' not in sql
+
+
+def test_create_index_partitioned_appends_partition_key() -> None:
+    # A partitioned table's unique gets the partition key appended (the composite-uniqueness rule).
+    conn = FakeConn()
+    idx = step.IndexDef(
+        table="DistrictVoter",
+        name="dv_u_key",
+        sql="(unused)",
+        unique=True,
+        columns=["district_id", "voter_id"],
+        where=None,
+    )
+    # DistrictVoter's partition column is the serving "State" (its mart `state` is renamed).
+    step._create_index(conn, idx, partition_key="State")  # ty: ignore[invalid-argument-type]
+    sql = " ".join(executed_sql(conn))
+    assert '("district_id", "voter_id", "State")' in sql
+
+
+def test_create_plain_flat_builds_directly() -> None:
+    # A flat table's plain index is built DIRECTLY on the table: no ON ONLY, no child/attach.
+    conn = FakeConn()
+    idx = step.IndexDef(
+        table="District",
+        name="District_name_idx",
+        sql='CREATE INDEX "District_name_idx" ON public."District" USING btree ("name");',
+        unique=False,
+        columns=["name"],
+        where=None,
+    )
+    step._create_plain_flat(conn, idx)  # ty: ignore[invalid-argument-type]
+    sql = executed_sql(conn)
+    assert any('CREATE INDEX IF NOT EXISTS "District_name_idx" ON public."District"' in s for s in sql)
+    assert not any("ON ONLY" in s for s in sql)
+    assert not any("ATTACH PARTITION" in s for s in sql)
 
 
 def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -342,6 +435,9 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     monkeypatch.setattr(step, "STATES", ("CA", "TX"))
+    # Restrict the per-table loop to Voter so this test's Voter-only assertions hold regardless of
+    # the other table specs (is_partitioned/partition_column still resolve via schema_spec, unaffected).
+    monkeypatch.setattr(step, "TABLE_SPECS", {"Voter": step.TABLE_SPECS["Voter"]})
     # Already at the index class: _ensure_instance_class is a no-op describe, no real RDS calls.
     monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
 
@@ -381,6 +477,83 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     assert {i.index_name for i in manifest.indexes} == {"Voter_LALVOTERID_key", "Voter_Active_idx"}
 
 
+def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The full loop over TABLE_SPECS: partitioned tables (Voter, DistrictVoter) get State appended
+    # to PK/unique and the parent-only+child+attach machinery; flat tables (District, DistrictStats)
+    # get a State-free PK and plain indexes built directly on the table. ANALYZE every table.
+    captured: dict = {}
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
+    monkeypatch.setattr(step, "STATES", ("CA", "TX"))
+    monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
+    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd, **_k: [])
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+
+    pks = {
+        "Voter": step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id"]),
+        "District": step.PrimaryKey(table="District", constraint="District_pkey", columns=["id"]),
+        "DistrictStats": step.PrimaryKey(
+            table="DistrictStats", constraint="DistrictStats_pkey", columns=["district_id"]
+        ),
+        # DistrictVoter's seed PK carries no State; because it is partitioned, run() must append it.
+        "DistrictVoter": step.PrimaryKey(
+            table="DistrictVoter", constraint="DistrictVoter_pkey", columns=["district_id", "voter_id"]
+        ),
+    }
+    idxs = {
+        "Voter": _IDXS,  # a unique (LALVOTERID) + a plain (Active)
+        "District": [
+            step.IndexDef(
+                table="District",
+                name="District_name_idx",
+                sql='CREATE INDEX "District_name_idx" ON public."District" USING btree ("name");',
+                unique=False,
+                columns=["name"],
+                where=None,
+            )
+        ],
+        "DistrictStats": [],
+        "DistrictVoter": [],
+    }
+    monkeypatch.setattr(step, "primary_key_for", lambda t: pks[t])
+    monkeypatch.setattr(step, "indexes_for", lambda t: idxs[t])
+
+    manifest = step.run(_CFG, "20260609", parallelism=1)
+    sql = executed_sql(conn)
+
+    # Partitioned PKs get "State" appended; flat PKs do NOT.
+    voter_pk = [s for s in sql if 'ADD CONSTRAINT "Voter_pkey"' in s]
+    assert voter_pk and 'PRIMARY KEY ("id", "State")' in voter_pk[0]
+    # DistrictVoter is partitioned on the serving "State" (spec-driven), so run() appends "State".
+    dv_pk = [s for s in sql if 'ADD CONSTRAINT "DistrictVoter_pkey"' in s]
+    assert dv_pk and 'PRIMARY KEY ("district_id", "voter_id", "State")' in dv_pk[0]
+    district_pk = [s for s in sql if 'ADD CONSTRAINT "District_pkey"' in s]
+    assert district_pk and 'PRIMARY KEY ("id")' in district_pk[0] and '"State"' not in district_pk[0]
+    ds_pk = [s for s in sql if 'ADD CONSTRAINT "DistrictStats_pkey"' in s]
+    assert ds_pk and 'PRIMARY KEY ("district_id")' in ds_pk[0] and '"State"' not in ds_pk[0]
+
+    # Flat table's plain index built DIRECTLY on the table (no ON ONLY / no per-state child).
+    assert any('CREATE INDEX IF NOT EXISTS "District_name_idx" ON public."District"' in s for s in sql)
+    assert not any("District_name_idx" in s and "ON ONLY" in s for s in sql)
+    assert not any("District_name_idx_CA" in s for s in sql)
+
+    # ANALYZE every table, in TABLE_SPECS order (Voter first).
+    assert manifest.analyzed_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert set(manifest.constraints_added) == {
+        "Voter_pkey",
+        "District_pkey",
+        "DistrictStats_pkey",
+        "DistrictVoter_pkey",
+    }
+    # Manifest: State appended only for a partitioned table's unique index.
+    by_name = {i.index_name: i for i in manifest.indexes}
+    assert by_name["Voter_LALVOTERID_key"].columns == ["LALVOTERID", "State"]
+    assert by_name["District_name_idx"].columns == ["name"]  # flat plain: unchanged
+    assert manifest.status == "complete"
+
+
 def _counting_connect(conn: object) -> tuple[object, dict[str, int]]:
     """A `connect_new` replacement that always yields `conn`, counting how many times it's called.
 
@@ -412,6 +585,9 @@ def _pool_test_setup(monkeypatch: pytest.MonkeyPatch, connect: object) -> None:
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
     monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
+    # Restrict the per-table loop to Voter so the connect-count/pk-call assertions below (which
+    # account for exactly the Voter PK + _partition_sizes + _analyze connects) stay exact.
+    monkeypatch.setattr(step, "TABLE_SPECS", {"Voter": step.TABLE_SPECS["Voter"]})
 
 
 def test_run_absorbs_transient_connection_drop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -506,7 +682,7 @@ def test_run_absorbs_transient_drop_under_multithread_requeue_contention(
     lock = Lock()
     drop_fired = {"done": False}
 
-    def _flaky_create_index(conn: object, idx: step.IndexDef) -> None:
+    def _flaky_create_index(conn: object, idx: step.IndexDef, *, partition_key: str | None) -> None:
         with lock:
             attempts[idx.name] += 1
             should_drop = idx.name == dropped_name and not drop_fired["done"]
@@ -537,7 +713,7 @@ def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) ->
         columns=["LALVOTERID"],
         where='"x" IS NOT NULL',
     )
-    step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
+    step._create_index(conn, idx, partition_key="State")  # ty: ignore[invalid-argument-type]
     sql = " ".join(executed_sql(conn))
     assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
     assert '("LALVOTERID", "State")' in sql
@@ -557,7 +733,7 @@ def test_create_index_unique_functional_raises() -> None:
         where=None,
     )
     with pytest.raises(RuntimeError, match="expression column"):
-        step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
+        step._create_index(conn, idx, partition_key="State")  # ty: ignore[invalid-argument-type]
 
 
 def test_create_index_unique_empty_columns_raises() -> None:
@@ -568,7 +744,7 @@ def test_create_index_unique_empty_columns_raises() -> None:
         table="Voter", name="Voter_LALVOTERID_key", sql="(unused)", unique=True, columns=[], where=None
     )
     with pytest.raises(RuntimeError, match="no parsed columns"):
-        step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
+        step._create_index(conn, idx, partition_key="State")  # ty: ignore[invalid-argument-type]
 
 
 def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:

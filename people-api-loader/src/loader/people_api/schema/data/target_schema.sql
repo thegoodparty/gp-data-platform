@@ -354,3 +354,28 @@ CREATE TABLE public."Voter" (
     "updated_at" TIMESTAMPTZ,
     "Mailing_HHGender_Description" TEXT
 );
+
+CREATE TABLE public."District" (
+    "id" UUID,
+    "created_at" TIMESTAMPTZ,
+    "updated_at" TIMESTAMPTZ,
+    "type" TEXT,
+    "name" TEXT,
+    "state" TEXT
+);
+
+CREATE TABLE public."DistrictStats" (
+    "district_id" TEXT,
+    "updated_at" TIMESTAMPTZ,
+    "total_constituents" INTEGER,
+    "total_constituents_with_cell_phone" INTEGER,
+    "buckets" jsonb
+);
+
+CREATE TABLE public."DistrictVoter" (
+    "voter_id" UUID,
+    "district_id" UUID,
+    "State" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_at" TIMESTAMPTZ
+);

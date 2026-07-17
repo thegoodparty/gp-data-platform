@@ -1,9 +1,11 @@
-"""Step 3 — create the Voter table on the new cluster (ClickUp DATA-1910).
+"""Step 3 — create all four serving tables on the new cluster (ClickUp DATA-2100).
 
-Applies a partitioned `CREATE TABLE public."Voter"` (LIST partitioned by
-"State") extracted from the committed, generated `target_schema.sql` (from `loader
-emit-ddl`; tables only — indexes/PK are deferred to build-indexes), after installing
-the aws_s3/aws_commons extensions. One child partition per USState is created.
+Applies `CREATE TABLE` DDL for Voter, DistrictVoter, District, and DistrictStats,
+extracted from the committed, generated `target_schema.sql` (from `loader emit-ddl`;
+tables only — indexes/PK are deferred to build-indexes), after installing the
+aws_s3/aws_commons extensions. Voter and DistrictVoter are LIST-partitioned by
+"State" (one child partition per USState); District and DistrictStats are plain
+flat tables.
 """
 
 from __future__ import annotations
@@ -21,16 +23,17 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
+from loader.people_api.schema.schema_spec import TABLE_SPECS, is_partitioned, partition_column
 from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.states import STATES
 from loader.people_api.schema.table_ddl import extract_create_tables
 
 log = get_logger(__name__)
 
-_TARGET_TABLE = "Voter"
 
-
-def build_partitioned_ddl(create_sql: str, table: str, states: Sequence[str]) -> tuple[str, list[str]]:
+def build_partitioned_ddl(
+    create_sql: str, table: str, partition_col: str, states: Sequence[str]
+) -> tuple[str, list[str]]:
     """Turn a plain CREATE TABLE into a LIST-partitioned parent + per-state children.
 
     Returns (parent_ddl, [child_ddl, ...]). Both parent and children use
@@ -39,16 +42,21 @@ def build_partitioned_ddl(create_sql: str, table: str, states: Sequence[str]) ->
     parent = create_sql.rstrip()
     if not parent.endswith(");"):
         raise RuntimeError("unexpected CREATE TABLE shape; cannot add PARTITION BY")
-    parent = parent[:-1].rstrip() + ' PARTITION BY LIST ("State");'
-    parent = parent.replace(
-        f'CREATE TABLE public."{table}"', f'CREATE TABLE IF NOT EXISTS public."{table}"', 1
-    )
+    parent = parent[:-1].rstrip() + f' PARTITION BY LIST ("{partition_col}");'
+    parent = _flat_ddl(parent, table)  # reuse the CREATE TABLE -> CREATE TABLE IF NOT EXISTS rewrite
     children = [
         f'CREATE TABLE IF NOT EXISTS public."{table}_{s}" PARTITION OF public."{table}" '
         f"FOR VALUES IN ('{s}');"
         for s in states
     ]
     return parent, children
+
+
+def _flat_ddl(create_sql: str, table: str) -> str:
+    """Plain retry-safe CREATE for a non-partitioned table."""
+    return create_sql.replace(
+        f'CREATE TABLE public."{table}"', f'CREATE TABLE IF NOT EXISTS public."{table}"', 1
+    )
 
 
 def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
@@ -67,16 +75,28 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
 
     schema_sql = load_target_schema(cfg, run_date)
     tables = extract_create_tables(schema_sql)
-    if _TARGET_TABLE not in tables:
-        raise RuntimeError(
-            f'target_schema.sql has no CREATE TABLE public."{_TARGET_TABLE}" (found: {sorted(tables)})'
-        )
-    create_sql = tables[_TARGET_TABLE]
 
-    # Build the partitioned parent DDL and per-state child partitions.
-    parent, child_stmts = build_partitioned_ddl(create_sql, _TARGET_TABLE, STATES)
-    full_ddl = "\n".join([parent, *child_stmts])
+    stmts: list[str] = []
+    tables_created: list[str] = []
+    for pg_table in TABLE_SPECS:  # dict preserves insertion order (Voter first) -> stable
+        if pg_table not in tables:
+            raise RuntimeError(
+                f'target_schema.sql has no CREATE TABLE public."{pg_table}" (found: {sorted(tables)})'
+            )
+        create_sql = tables[pg_table]
+        if is_partitioned(pg_table):
+            col = partition_column(pg_table)
+            assert col is not None  # is_partitioned guarantees it
+            parent, child_stmts = build_partitioned_ddl(create_sql, pg_table, col, STATES)
+            stmts.append(parent)
+            stmts.extend(child_stmts)
+            tables_created.append(pg_table)
+            tables_created.extend(f"{pg_table}_{s}" for s in STATES)
+        else:
+            stmts.append(_flat_ddl(create_sql, pg_table))
+            tables_created.append(pg_table)
 
+    full_ddl = "\n".join(stmts)
     ddl_uri = put_artifact(cfg, run_date, "schema/target_schema.sql", full_ddl)
     log.info("schema.ddl_emitted", uri=ddl_uri, bytes=len(full_ddl))
 
@@ -88,14 +108,11 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
             # build_indexes re-issues the gin_trgm_ops name indexes from the seed
             # (omni ENG-10684 — CRM typeahead substring search).
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-        with conn.cursor() as cur:
-            cur.execute(parent)  # ty: ignore[no-matching-overload]
-        for child_stmt in child_stmts:
+        for stmt in stmts:
             with conn.cursor() as cur:
-                cur.execute(child_stmt)  # ty: ignore[no-matching-overload]
+                cur.execute(stmt)  # ty: ignore[no-matching-overload]
         log.info("schema.ddl_applied")
 
-    tables_created = [_TARGET_TABLE] + [f"Voter_{s}" for s in STATES]
     manifest = SchemaManifest(
         run_date=run_date,
         status="complete",

@@ -4,26 +4,19 @@ from __future__ import annotations
 
 from loader.people_api.schema import _serving_seed as seed
 from loader.people_api.schema import _serving_seed_extra as seed_extra
+from loader.people_api.schema import schema_spec as ss
 from loader.people_api.schema.index_specs import IndexDef
-from loader.people_api.schema.schema_spec import TABLE_SPECS, indexes_for, primary_key_for
 
 
-def test_spec_is_voter_only_with_overrides_partition_and_prisma_column() -> None:
-    # Scope is Voter-only: the District family is built by the dbt write path and
-    # DistrictStats isn't a serving table.
-    assert set(TABLE_SPECS) == {"Voter"}
-    voter = TABLE_SPECS["Voter"]
-    assert voter.partition_by == "State"
-    assert voter.type_overrides["id"] == "UUID"
-    # The one serving column the mart omits is declared as a Prisma-layer extra.
-    assert ("Mailing_HHGender_Description", "TEXT", True) in voter.extra_columns
+def test_all_four_tables_specced() -> None:
+    assert set(ss.TABLE_SPECS) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
 
 
 def test_lookup_helpers_filter_by_table() -> None:
     # Works whether the committed seed is the empty placeholder or populated.
-    assert isinstance(indexes_for("Voter"), list)
-    assert all(i.table == "Voter" for i in indexes_for("Voter"))
-    pk = primary_key_for("Voter")
+    assert isinstance(ss.indexes_for("Voter"), list)
+    assert all(i.table == "Voter" for i in ss.indexes_for("Voter"))
+    pk = ss.primary_key_for("Voter")
     assert pk is None or pk.table == "Voter"
 
 
@@ -34,7 +27,7 @@ def test_hand_added_extras_merge_and_survive_regeneration() -> None:
     # them, or _serving_seed_extra.py becomes dead code whose edits are
     # silently ignored.
     generated_names = {i.name for i in seed.INDEXES}
-    idxs = indexes_for("Voter")
+    idxs = ss.indexes_for("Voter")
     names = [i.name for i in idxs]
     for expected in (
         "Voter_firstname_lower_trgm_idx",
@@ -73,8 +66,66 @@ def test_extras_merge_and_name_collision_suppression(monkeypatch) -> None:
     )
     monkeypatch.setattr(seed_extra, "EXTRA_INDEXES", [novel, colliding])
 
-    idxs = indexes_for("Voter")
+    idxs = ss.indexes_for("Voter")
     assert any(i.name == "Voter_extra_only_idx" for i in idxs)
     winner = next(i for i in idxs if i.name == generated_name)
     assert winner.sql != colliding.sql
     assert [i.name for i in idxs].count(generated_name) == 1
+
+
+def test_partition_flags() -> None:
+    assert ss.is_partitioned("Voter") is True
+    assert ss.is_partitioned("DistrictVoter") is True
+    assert ss.is_partitioned("District") is False
+    assert ss.is_partitioned("DistrictStats") is False
+    # Both partitioned tables use the serving "State" column (DistrictVoter's mart `state` is
+    # renamed to "State" via mart_column_map — see test_districtvoter_spec).
+    assert ss.partition_column("Voter") == "State"
+    assert ss.partition_column("DistrictVoter") == "State"
+    assert ss.partition_column("District") is None
+
+
+def test_districtvoter_spec() -> None:
+    # The DistrictVoter mart is denormalized; mart_column_map projects it to the 5-column Prisma
+    # serving shape and renames mart `state` -> serving "State".
+    spec = ss.TABLE_SPECS["DistrictVoter"]
+    assert spec.partition_by == "State"
+    assert spec.mart_column_map == {
+        "district_id": "district_id",
+        "voter_id": "voter_id",
+        "created_at": "created_at",
+        "updated_at": "updated_at",
+        "state": "State",
+    }
+    assert spec.type_overrides == {
+        "district_id": "UUID",
+        "voter_id": "UUID",
+        "created_at": "TIMESTAMPTZ",
+        "updated_at": "TIMESTAMPTZ",
+        "state": "TEXT",
+    }
+    # The other tables' marts already match serving -> no column map.
+    assert ss.TABLE_SPECS["Voter"].mart_column_map == {}
+    assert ss.TABLE_SPECS["District"].mart_column_map == {}
+    assert ss.TABLE_SPECS["DistrictStats"].mart_column_map == {}
+
+
+def test_districtstats_spec() -> None:
+    spec = ss.TABLE_SPECS["DistrictStats"]
+    assert spec.partition_by is None
+    assert spec.type_overrides.get("buckets") == "jsonb"
+    # not a serving table -> PK carried on the spec, not the seed
+    assert spec.primary_key is not None
+    assert spec.primary_key.columns == ["district_id"]
+
+
+def test_primary_key_for_spec_fallback() -> None:
+    # DistrictStats is absent from _serving_seed; the spec PK is returned.
+    pk = ss.primary_key_for("DistrictStats")
+    assert pk is not None and pk.columns == ["district_id"]
+
+
+def test_primary_key_for_seed_wins_when_present() -> None:
+    # District IS in the seed; spec carries no PK, seed value is used.
+    pk = ss.primary_key_for("District")
+    assert pk is not None and pk.columns == ["id"]

@@ -22,6 +22,8 @@ CI runs `uv run ruff check`, `uv run ruff format --check`, `uv run ty check`, an
 
 Each step is one module under `src/loader/people_api/steps/` (`inspect_prod`, `unload`, `provision`, `create_schema`, `copy_s3`, `build_indexes`, `resize`, `validate`, `teardown`), invoked as `loader <step> --date <ds_nodash>`. State flows between steps through S3 manifests, not in-process handoff, so each step is independently runnable and re-entrant for a given run date (a step short-circuits if its manifest already exists). The DAG at `gp-data-platform/airflow/astro/dags/load_people_api.py` sequences them, one BashOperator per step.
 
+The loader now builds four tables into each fresh cluster: `Voter` and `DistrictVoter` are partitioned by State (LIST with per-state children), while `District` and `DistrictStats` are flat. All steps iterate over the table specs generically, so one CLI run loads the full serving table set.
+
 Each step's CLI entry point is typed against its real return type, so `ty` enforces the contract between the step and the CLI. See `steps/validate.py` for the pattern.
 
 ## Never
