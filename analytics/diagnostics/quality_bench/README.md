@@ -25,11 +25,13 @@ dropped.
 
 ## Invocation
 
-Every CLI in this directory (`floor_gen.py`, `prep_arms.py`, `run_matrix.py`,
-`grade.py`) bootstraps `sys.path` itself when imported as `__main__` (see the
-`try/except ImportError` at the top of each module), so
-`uv run python diagnostics/quality_bench/<tool>.py ...` works directly from
-`analytics/` — no `PYTHONPATH` fiddling or `-m` invocation needed.
+Three CLIs in this directory (`prep_arms.py`, `run_matrix.py`, `grade.py`)
+bootstrap `sys.path` via a `try/except ImportError` block at the module top
+to import from the quality_bench package. `floor_gen.py` is different: it
+imports nothing from quality_bench; instead, it bootstraps `sys.path` inside
+its `__main__` block to import `databricks_conn` from `analytics/lib`. In all
+cases, `uv run python diagnostics/quality_bench/<tool>.py ...` works directly
+from `analytics/` — no `PYTHONPATH` fiddling or `-m` invocation needed.
 
 ## Run a batch
 
@@ -95,14 +97,14 @@ framework quality. Run it with a cheap model and only 2 arms:
 
 **Rep-threshold note:** verdict rule 1 (`rule1_trustworthy`) requires passing
 ≥2/3 reps, and cell consistency (`grading.cell_consistency`) needs ≥2 parsed
-reps to say anything about spread. With `--reps 1` the smoke can never satisfy
-either — that's expected, not a bug. The smoke's actual success criterion is:
+reps to say anything about spread. With `--reps 1` the verdict fields render
+as False / inf / None depending on the field — none of them are meaningful
+verdicts. That is expected, not a bug. The smoke's actual success criterion is:
 
 - both runs (`bare`, `full`) have `ok=true` in `state.json`,
 - `results/smoke/scores.csv` has 2 rows, both `numbers_pass=True`,
-- `results/smoke/report.md` renders with the verdict/cell fields present
-  (values will show `None`/inconclusive because of the single rep — that's
-  correct, not a failure).
+- `results/smoke/report.md` renders with score/state rows present (the verdict
+  and consistency fields are noise at reps=1; ignore them).
 
 Debug notes: if a run fails, read the copied transcript in `results/smoke/`;
 if the transcript is missing, check the munge in `transcript_path` against the
