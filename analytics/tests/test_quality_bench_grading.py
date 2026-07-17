@@ -191,3 +191,12 @@ def test_cell_consistency_handles_unparsed_reps():
     cell = grading.cell_consistency([block(9880), None, block(9881)], key)
     assert cell["n_reps"] == 3
     assert cell["n_parsed"] == 2
+
+
+def test_cell_consistency_sparse_number_reports_inf_spread():
+    key = make_key(
+        numbers=[NumberSpec("total_users_jan", 9880.0, 0.5), NumberSpec("activated_jan", 100.0, 0.5)]
+    )
+    cell = grading.cell_consistency([block(9880), block(9881)], key)  # activated_jan absent from all reps
+    assert cell["consistent"] is False
+    assert cell["max_spread_pct"] == float("inf")

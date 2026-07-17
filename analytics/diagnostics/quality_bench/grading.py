@@ -121,11 +121,12 @@ def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
         seen = {_resolutions(b).get(fork) for b in parsed}
         agreement[fork] = len(seen) == 1 and None not in seen
     numbers_ok = all(spreads.get(n, float("inf")) <= t for n, t in tol.items()) if parsed else False
+    max_spread = max(spreads.get(n.name, float("inf")) for n in key.numbers) if parsed else float("inf")
     return {
         "n_reps": len(blocks),
         "n_parsed": len(parsed),
         "number_spread_pct": spreads,
-        "max_spread_pct": max(spreads.values(), default=float("inf") if not parsed else 0.0),
+        "max_spread_pct": max_spread,
         "resolution_agreement": agreement,
         "consistent": bool(parsed) and numbers_ok and all(agreement.values()),
     }
