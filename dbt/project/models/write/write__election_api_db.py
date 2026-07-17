@@ -881,9 +881,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # Heal person links: the candidacy upsert only touches rows the incremental
-    # filter selects, and its guarded join can only link people already in
-    # "Person". Backfill any candidacy whose person has since arrived.
+    # Heal person links: the guarded join can only link people already in
+    # "Person" when a candidacy row is upserted, so rows loaded before their
+    # person existed (or no longer in the current mart window) keep a null
+    # person_id. Backfill any candidacy whose person has since arrived.
     _execute_sql_query(
         f"""
         UPDATE {db_schema}."Candidacy" AS c
@@ -902,21 +903,28 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Drop OfficeHolder terms no longer in the mart (superseded or re-minted
     # ids). Safe because OfficeHolder is never incremental-filtered, so its
-    # staging table holds the complete mart, and nothing references it.
-    _execute_sql_query(
-        f"""
-        DELETE FROM {db_schema}."OfficeHolder" AS oh
-        WHERE NOT EXISTS (
-            SELECT 1 FROM {staging_schema}."OfficeHolder" AS stg
-            WHERE stg.id::uuid = oh.id
+    # staging table holds the complete mart, and nothing references it. The
+    # count floor keeps an empty or collapsed mart from wiping the table.
+    if table_load_counts["OfficeHolder"] > 100_000:
+        _execute_sql_query(
+            f"""
+            DELETE FROM {db_schema}."OfficeHolder" AS oh
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {staging_schema}."OfficeHolder" AS stg
+                WHERE stg.id::uuid = oh.id
+            )
+            """,
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
         )
-        """,
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
+    else:
+        logging.warning(
+            "Skipping stale OfficeHolder delete: staged only %d rows",
+            table_load_counts["OfficeHolder"],
+        )
 
     data = []
     for table_name, count in table_load_counts.items():

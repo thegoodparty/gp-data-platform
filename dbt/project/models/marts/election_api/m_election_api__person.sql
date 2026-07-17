@@ -11,7 +11,7 @@
 -- people keep all BR fields null.
 with
     public_people as (
-        select *
+        select *, try_cast(br_person_id as int) as br_person_id_int
         from {{ ref("people") }}
         where
             (is_candidate or is_elected_official)
@@ -106,7 +106,7 @@ with
 
 select
     people.gp_person_id as id,
-    cast(people.br_person_id as int) as br_person_id,
+    people.br_person_id_int as br_person_id,
     {{ slugify("concat_ws('-', people.first_name, people.last_name)") }} as slug,
     people.first_name,
     coalesce(br_person.middle_name, office_holder.middle_name) as middle_name,
@@ -129,7 +129,7 @@ select
     br_person.experiences,
     people.state
 from public_people as people
-left join br_person on cast(people.br_person_id as int) = br_person.database_id
+left join br_person on people.br_person_id_int = br_person.database_id
 left join
     office_holder_person as office_holder
-    on cast(people.br_person_id as int) = office_holder.br_candidate_id
+    on people.br_person_id_int = office_holder.br_candidate_id

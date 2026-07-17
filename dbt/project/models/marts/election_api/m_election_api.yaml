@@ -756,7 +756,8 @@ models:
       int__ballotready_person, which is fetched candidacy-first, so elected
       officials with no BR candidacy carry only the fallback fields from the
       office_holders_v3 feed (a known follow-up). Delivered to Postgres by
-      write__election_api_db (full re-upsert each run).
+      write__election_api_db (full re-upsert each run; stale ids are not
+      deleted — an accepted gap until delivery moves to the Airflow swap).
     columns:
       - name: id
         description: "Canonical person UUID (gp_person_id). Primary key."
