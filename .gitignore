@@ -66,6 +66,10 @@ analytics/ad_hoc/
 # itself. See the win-analytics-process skill's references/calibration.md for the convention.
 analytics/runbook/CALIBRATION_*.md
 
+# Quality bench results — benchmark ephemera, never tracked.
+analytics/diagnostics/quality_bench/results/*
+!analytics/diagnostics/quality_bench/results/.gitkeep
+
 # Per-ticket working notes (plans, prompts, validation outputs) — personal
 # local scratch, never tracked.
 .tickets/
