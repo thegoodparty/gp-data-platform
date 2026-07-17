@@ -41,3 +41,8 @@ def test_parse_judge_output():
 def test_parse_judge_output_rejects_missing_dimension():
     bad = JUDGE_OUTPUT.replace("caveat_quality: 1\n    ", "")
     assert judge.parse_judge_output(bad) is None
+
+
+def test_parse_judge_output_rejects_non_dict_judge():
+    assert judge.parse_judge_output("```yaml\njudge: unclear\n```") is None
+    assert judge.parse_judge_output("```yaml\njudge: null\n```") is None

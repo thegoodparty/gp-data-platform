@@ -62,12 +62,13 @@ def build_judge_prompt(key: Key, answer_text: str, run_context: str = "") -> str
 
 
 def parse_judge_output(text: str) -> dict | None:
+    """Parse the judge's fenced YAML output. Extracts the last `judge:` block; echoed fences could shadow the real verdict."""
     for match in reversed(YAML_FENCE.findall(text)):
         try:
             parsed = yaml.safe_load(match)
         except yaml.YAMLError:
             continue
-        if not (isinstance(parsed, dict) and "judge" in parsed):
+        if not (isinstance(parsed, dict) and "judge" in parsed and isinstance(parsed.get("judge"), dict)):
             continue
         j = parsed["judge"]
         scores = j.get("scores", {})
