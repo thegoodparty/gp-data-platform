@@ -8,8 +8,9 @@ with
 
     positions as (select id, br_database_id from {{ ref("m_election_api__position") }}),
 
-    -- Term fields the civics mart doesn't carry; staging is unique per
-    -- br_office_holder_id.
+    -- Term fields the civics mart doesn't carry; staging carries one row per
+    -- br_office_holder_id (unique-tested), and the qualify guards the join
+    -- against fan-out if the feed ever re-delivers a term.
     office_holder_source as (
         select
             br_office_holder_id,
@@ -22,6 +23,11 @@ with
             nullif(mtfcc, '') as mtfcc,
             case when size(party_names) > 0 then party_names end as party_names
         from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
+        qualify
+            row_number() over (
+                partition by br_office_holder_id order by office_holder_updated_at desc
+            )
+            = 1
     ),
 
     -- Earliest upcoming election on the same BR position: "next election" for

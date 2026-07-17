@@ -748,7 +748,7 @@ models:
 
   - name: m_election_api__person
     description: >
-      Person spine for public /people profiles (election-api "Person" table).
+      Person records for public /people profiles (election-api "Person" table).
       One row per canonical person (id = gp_person_id, the same id space
       Candidacy.gp_candidate_id publishes), scoped to people with a candidacy
       or office term and at least one name part. BallotReady-rich fields

@@ -57,6 +57,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: br_office_holder_id
+        description: >
+          BallotReady office-holder (term) id. One row per term; downstream
+          term-grain joins (e.g. m_election_api__office_holder) rely on this.
+        data_tests:
+          - unique
       - name: br_position_tier
         description: >
           BallotReady's research-tier classification (integer 1-5) for the

@@ -1,4 +1,4 @@
--- Person spine for public /people profiles (election-api "Person" table).
+-- Person records for public /people profiles (election-api "Person" table).
 -- Grain: one row per canonical person (id = gp_person_id), scoped to people
 -- with a candidacy or office term and a name part (slug is NOT NULL in the
 -- API). BR-rich fields fall back to the office feed: int__ballotready_person
