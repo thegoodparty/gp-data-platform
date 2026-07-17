@@ -1,5 +1,3 @@
-{{ config(materialized="view") }}
-
 /*
     mart_analytics.prospects
 
