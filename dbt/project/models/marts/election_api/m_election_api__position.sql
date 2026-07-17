@@ -2,6 +2,7 @@
     config(
         materialized="incremental",
         unique_key="id",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
 }}
@@ -171,8 +172,14 @@ select
     all_positions.created_at,
     all_positions.updated_at,
     icp.icp_office_win as is_win_icp,
-    icp.icp_office_serve as is_serve_icp
+    icp.icp_office_serve as is_serve_icp,
+    -- Free-text BR compensation (ranges/notes); shown in About Office for
+    -- sitting officials with no active candidacy.
+    api_position.salary
 from all_positions
 left join
     {{ ref("int__icp_offices") }} as icp
     on all_positions.br_database_id = icp.br_database_position_id
+left join
+    {{ ref("stg_airbyte_source__ballotready_api_position") }} as api_position
+    on all_positions.br_database_id = api_position.database_id

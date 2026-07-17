@@ -65,7 +65,17 @@ models:
         +tags: ["mart", "analytics"]
       sales_reverse_etl:
         +schema: mart_sales_reverse_etl
-        +materialized: view
+        # Table, not view: these are heavy multi-join feeds with several tests
+        # each. As views, every test (and the reverse-ETL read) re-executes the
+        # full query; materializing once per build makes tests hit stored data.
+        +materialized: table
+        # These feeds emit the HubSpot import contract, whose column names have
+        # spaces ("First Name"). Delta tables reject those unless column mapping
+        # is on; enabling it keeps the contract names while allowing a table.
+        # Mode alone lets Databricks auto-upgrade the table protocol (avoids
+        # pinning reader/writer versions that could clash with liquid clustering).
+        +tblproperties:
+          delta.columnMapping.mode: "name"
         +tags: ["mart", "sales_reverse_etl"]
       mban2026:
         +schema: mart_mban2026
