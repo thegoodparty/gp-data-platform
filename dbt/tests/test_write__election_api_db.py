@@ -116,6 +116,27 @@ def test_incremental_filter_table_set_is_pinned():
     assert set(EXPECTED_INCREMENTAL_TABLES) == set(EXPECTED_LOAD_TABLES) - EXPECTED_NON_INCREMENTAL_TABLES
 
 
+def test_stale_officeholder_delete_guard_is_pinned():
+    """The stale-OfficeHolder delete is gated on a row-count floor so a
+    collapsed mart cannot wipe the table. Pin the guard's shape and
+    threshold so they cannot regress silently."""
+    guards = [
+        node
+        for node in ast.walk(_writer_tree())
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Subscript)
+        and isinstance(node.test.left.slice, ast.Constant)
+        and node.test.left.slice.value == "OfficeHolder"
+    ]
+    assert len(guards) == 1, "expected exactly one OfficeHolder row-count guard"
+    guard = guards[0]
+    assert isinstance(guard.test.ops[0], ast.Gt)
+    assert isinstance(guard.test.comparators[0], ast.Constant)
+    assert guard.test.comparators[0].value == 100_000
+    assert guard.orelse, "the guard must warn when it skips the delete"
+
+
 def test_projected_turnout_is_absent():
     """Projected_Turnout must never reappear in this writer: the upsert path
     cannot delete superseded rows, which is why its delivery moved to the

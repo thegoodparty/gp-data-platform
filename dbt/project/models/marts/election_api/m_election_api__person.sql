@@ -75,13 +75,16 @@ with
             nullif(middle_name, '') as middle_name,
             nullif(nickname, '') as nickname,
             nullif(suffix, '') as suffix,
-            website_url,
-            linkedin_url,
-            facebook_url,
-            twitter_url,
-            get(
-                filter(urls, x -> x.type = 'instagram' and x.url is not null), 0
-            ).url as instagram_url
+            nullif(website_url, '') as website_url,
+            nullif(linkedin_url, '') as linkedin_url,
+            nullif(facebook_url, '') as facebook_url,
+            nullif(twitter_url, '') as twitter_url,
+            nullif(
+                get(
+                    filter(urls, x -> x.type = 'instagram' and x.url is not null), 0
+                ).url,
+                ''
+            ) as instagram_url
         from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
         where br_candidate_id is not null
         qualify
