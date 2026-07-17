@@ -58,14 +58,22 @@ def _write_settings(arm_dir: Path) -> None:
 def _worktree(repo_root: Path, dest: Path, ref: str) -> None:
     if dest.exists():
         subprocess.run(["git", "worktree", "remove", "--force", str(dest)], cwd=repo_root, check=False)
+        if dest.exists():
+            # Leftover non-worktree dir (e.g. from a crashed prior run): the remove
+            # above only succeeds for registered worktrees, so clear it by hand and
+            # let git forget any stale registration before re-adding.
+            shutil.rmtree(dest, ignore_errors=True)
+            subprocess.run(["git", "worktree", "prune"], cwd=repo_root, check=False)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    proc = subprocess.run(
         ["git", "worktree", "add", "--force", str(dest), ref],
         cwd=repo_root,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git worktree add failed for {dest}: {proc.stderr.strip()}")
 
 
 def prep_arm(

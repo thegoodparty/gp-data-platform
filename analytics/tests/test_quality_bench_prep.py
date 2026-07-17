@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,8 @@ def test_knowledge_arm_prunes_process_skill_and_agents(fake_repo, tmp_path):
     assert not (arm / ".claude" / "agents").exists()
     assert (arm / ".claude" / "skills" / "win-analytics-knowledge").exists()
     assert (arm / ".claude" / "skills" / "serve-analytics-knowledge").exists()
+    settings = json.loads((arm / ".claude" / "settings.local.json").read_text())
+    assert settings["permissions"]["allow"]
 
 
 def test_bare_arm_is_scratch_with_floor_and_env(fake_repo, tmp_path):
@@ -62,8 +65,37 @@ def test_bare_arm_is_scratch_with_floor_and_env(fake_repo, tmp_path):
     assert "env" in claude_md
     assert (arm / "env" / "databricks_conn.py").exists()
     assert (arm / "env" / "pyproject.toml").exists()
+    settings = json.loads((arm / ".claude" / "settings.local.json").read_text())
+    assert settings["permissions"]["allow"]
 
 
 def test_unknown_arm_raises(fake_repo, tmp_path):
     with pytest.raises(ValueError):
         prep_arms.prep_arm("mystery", fake_repo, tmp_path / "arms", FLOOR, sync=False)
+
+
+def test_full_arm_survives_leftover_non_worktree_dir(fake_repo, tmp_path):
+    arms_root = tmp_path / "arms"
+    dest = arms_root / "full"
+    dest.mkdir(parents=True)
+    (dest / "leftover.txt").write_text("stale content from a crashed prior run")
+
+    arm = prep_arms.prep_arm("full", fake_repo, arms_root, FLOOR, sync=False)
+
+    assert arm == dest
+    assert not (dest / "leftover.txt").exists()
+    assert not (arm / "analytics" / "diagnostics" / "quality_bench").exists()
+    assert (arm / ".claude" / "skills" / "analytics-process").exists()
+
+
+def test_cli_help_works_under_bare_python():
+    analytics_root = Path(__file__).parent.parent
+    proc = subprocess.run(
+        [sys.executable, "diagnostics/quality_bench/prep_arms.py", "--help"],
+        cwd=analytics_root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "--arms-root" in proc.stdout
