@@ -32,6 +32,7 @@ import psycopg
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema import _serving_seed_extra
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
@@ -54,10 +55,34 @@ _DDL = (
 )
 _STATES = ["TX", "CA"]
 
+# A partitioned Voter carrying the "FirstName"/"LastName" columns the CRM name-search extras
+# index. Separate from _DDL (which omits them) so the extras test can drive the real committed
+# EXTRA_INDEXES SQL through the partitioned build path against a table that actually has the
+# indexed columns.
+_DDL_NAMES = (
+    'CREATE TABLE public."Voter" (\n'
+    '    "id" uuid NOT NULL,\n'
+    '    "State" text NOT NULL,\n'
+    '    "FirstName" text,\n'
+    '    "LastName" text\n'
+    ");"
+)
+
 
 def _exec(cur: psycopg.Cursor, sql: str, params: object = None) -> None:
     """Execute dynamic SQL (test drives raw strings; same ignore the prod code uses)."""
     cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
+
+
+def _explain(cur: psycopg.Cursor, sql: str) -> str:
+    """Return the full EXPLAIN plan text for a query (all rows joined)."""
+    cur.execute("EXPLAIN " + sql)  # ty: ignore[no-matching-overload]
+    return "\n".join(row[0] for row in cur.fetchall())
+
+
+def _extra_index(name: str) -> IndexDef:
+    """The committed hand-added index by name — tests exercise the real SQL, not a fake."""
+    return next(i for i in _serving_seed_extra.EXTRA_INDEXES if i.name == name)
 
 
 def _scalar(cur: psycopg.Cursor, sql: str) -> object:
@@ -214,3 +239,80 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
         nostate_ti = inspect_prod._inspect_table(cur, "NoStateTbl")
     assert nostate_ti.total_row_count == 2
     assert nostate_ti.per_state_row_counts == {}
+
+
+def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg.Connection) -> None:
+    """The CRM name-search extras — a GIN trigram index and a lower() b-tree expression index —
+    build through the real partitioned parent-only + per-partition child + ATTACH path, and the
+    planner actually chooses them for the lower("FirstName") query shapes people-api emits.
+
+    This is the DB-semantic coverage the FakeConn unit tests structurally cannot give: the
+    build path is a string rewrite of the seed SQL (build_indexes._plain_parent_only_sql /
+    _plain_child_sql), and only a real Postgres proves that (a) pg_trgm + gin_trgm_ops is
+    installed and valid, (b) an expression/GIN index attaches to a partitioned parent, and
+    (c) — the whole point of the indexes — the stored expression matches a lower("FirstName")
+    predicate so the index is chosen instead of being silently bypassed for a seq scan.
+    """
+    create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')  # idempotent vs a reused DB
+        _exec(cur, "CREATE EXTENSION IF NOT EXISTS pg_trgm")  # what build_indexes installs
+        _exec(cur, parent)
+        for child in children:
+            _exec(cur, child)
+        insert = 'INSERT INTO public."Voter" ("id", "State", "FirstName", "LastName") VALUES (%s, %s, %s, %s)'
+        # A few rows per partition so the planner has real relations (and matching rows) to scan.
+        for first, last, state in [
+            ("John", "Adams", "TX"),
+            ("Johnny", "Baker", "TX"),
+            ("Jane", "Cohen", "TX"),
+            ("Bob", "Diaz", "CA"),
+            ("Bobby", "Ericsson", "CA"),
+        ]:
+            _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
+        _exec(cur, 'ANALYZE public."Voter"')
+
+    trgm = _extra_index("Voter_firstname_lower_trgm_idx")  # GIN trigram (the riskiest new DDL)
+    btree = _extra_index("Voter_firstname_lower_idx")  # lower() b-tree expression index
+
+    # Build each extra exactly as build_indexes.run does for a partitioned plain index:
+    # the empty parent (ON ONLY), then a child per state, each attached to the parent index.
+    for idx in (trgm, btree):
+        build_indexes._create_plain_parent_only(pg_conn, idx)
+        for state in _STATES:
+            build_indexes._build_and_attach_child(pg_conn, (idx, state))
+
+    with pg_conn.cursor() as cur:
+        for idx in (trgm, btree):
+            # Postgres only flips a partitioned index's indisvalid to true once a matching child
+            # is attached for EVERY partition, so this asserts all attaches actually ran.
+            valid = _scalar(
+                cur,
+                "SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            assert valid is True, f"{idx.name}: parent index not valid (a child attach is missing)"
+            attached = _scalar(
+                cur,
+                "SELECT count(*) FROM pg_inherits ih JOIN pg_class c ON c.oid = ih.inhparent "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            want = len(_STATES)
+            assert attached == want, f"{idx.name}: {attached} children attached, want {want}"
+
+    # The point of the indexes: the planner must USE them for the lower("FirstName") predicates
+    # people-api emits. Forcing seqscan off makes the plan reveal whether the index is even usable
+    # for the query shape — an expression mismatch would leave only a seq scan available.
+    with pg_conn.cursor() as cur:
+        _exec(cur, "SET enable_seqscan = off")
+        try:
+            # trigram substring search (CRM typeahead) -> GIN trgm index
+            trgm_plan = _explain(cur, 'SELECT id FROM public."Voter" WHERE lower("FirstName") LIKE \'%oh%\'')
+            assert "Voter_firstname_lower_trgm_idx" in trgm_plan, trgm_plan
+            # exact-match lookup -> lower() b-tree expression index (name is a strict prefix of the
+            # trgm name minus "_trgm", so this substring can only match the b-tree index/children)
+            btree_plan = _explain(cur, 'SELECT id FROM public."Voter" WHERE lower("FirstName") = \'john\'')
+            assert "Voter_firstname_lower_idx" in btree_plan, btree_plan
+        finally:
+            _exec(cur, "SET enable_seqscan = on")
