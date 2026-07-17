@@ -17,11 +17,24 @@ WRITER_PATH = Path(__file__).parent.parent / "project" / "models" / "write" / "w
 # The writer's full table set, in FK-dependency order (parents before
 # children); Projected_Turnout is intentionally absent — it is delivered by
 # the sync_election_api Airflow DAG's atomic table swap (DATA-2015).
-EXPECTED_LOAD_TABLES = ["Place", "District", "Position", "Race", "Candidacy", "Issue", "Stance"]
+EXPECTED_LOAD_TABLES = [
+    "Place",
+    "District",
+    "Position",
+    "Person",
+    "Race",
+    "Candidacy",
+    "OfficeHolder",
+    "Issue",
+    "Stance",
+]
 
 # The incremental max-updated_at filter covers every load table except
-# Position, whose Postgres table has no updated_at column.
+# Position (its Postgres table has no updated_at column) and Person /
+# OfficeHolder (their marts carry no source updated_at; they are fully
+# re-upserted every run, which the stale-OfficeHolder delete relies on).
 EXPECTED_INCREMENTAL_TABLES = ["Candidacy", "Issue", "Place", "Race", "Stance", "District"]
+EXPECTED_NON_INCREMENTAL_TABLES = {"Position", "Person", "OfficeHolder"}
 
 
 def _writer_tree() -> ast.Module:
@@ -76,7 +89,7 @@ def test_every_zip_is_strict():
 
 
 def test_load_loop_table_set_is_pinned():
-    """The load loop writes exactly the seven tables, in FK-dependency
+    """The load loop writes exactly the nine tables, in FK-dependency
     order, with each table's DataFrame and upsert query aligned by name."""
     call = _zip_by_first_list(_writer_tree(), EXPECTED_LOAD_TABLES)
     assert len(call.args) == 3, "load loop zips (tables, dataframes, upsert queries)"
@@ -102,7 +115,7 @@ def test_incremental_filter_table_set_is_pinned():
     dfs = _name_list(call.args[1])
     assert dfs is not None
     assert dfs == [f"{t.lower()}_df" for t in EXPECTED_INCREMENTAL_TABLES]
-    assert set(EXPECTED_INCREMENTAL_TABLES) == set(EXPECTED_LOAD_TABLES) - {"Position"}
+    assert set(EXPECTED_INCREMENTAL_TABLES) == set(EXPECTED_LOAD_TABLES) - EXPECTED_NON_INCREMENTAL_TABLES
 
 
 def test_projected_turnout_is_absent():

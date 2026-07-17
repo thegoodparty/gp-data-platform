@@ -2,6 +2,7 @@
     config(
         materialized="incremental",
         unique_key="id",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
 }}
@@ -171,8 +172,16 @@ select
     all_positions.created_at,
     all_positions.updated_at,
     icp.icp_office_win as is_win_icp,
-    icp.icp_office_serve as is_serve_icp
+    icp.icp_office_serve as is_serve_icp,
+    -- Office compensation (free text: BR values include ranges/notes). Powers
+    -- the profile About Office salary row for sitting officials with no
+    -- active candidacy. Needs a one-time --full-refresh to backfill existing
+    -- rows (append_new_columns adds the column as null on incremental runs).
+    api_position.salary
 from all_positions
 left join
     {{ ref("int__icp_offices") }} as icp
     on all_positions.br_database_id = icp.br_database_position_id
+left join
+    {{ ref("stg_airbyte_source__ballotready_api_position") }} as api_position
+    on all_positions.br_database_id = api_position.database_id
