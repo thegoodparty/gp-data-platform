@@ -755,9 +755,8 @@ models:
       (bio, headshot, links, degrees, experiences) come from
       int__ballotready_person, which is fetched candidacy-first, so elected
       officials with no BR candidacy carry only the fallback fields from the
-      office_holders_v3 feed (a known follow-up). Delivered to Postgres by
-      write__election_api_db (full re-upsert each run; stale ids are not
-      deleted — an accepted gap until delivery moves to the Airflow swap).
+      office_holders_v3 feed (a known follow-up). Stale ids are not deleted
+      from the API (accepted gap).
     columns:
       - name: id
         description: "Canonical person UUID (gp_person_id). Primary key."
@@ -780,8 +779,7 @@ models:
       table). One row per BallotReady office-holder term (id =
       gp_elected_official_term_id). Inner-joins m_election_api__person because
       person_id is a required FK in the API; vacancies and no-name people drop
-      here rather than failing the load. Delivered to Postgres by
-      write__election_api_db (full re-upsert each run, stale terms deleted).
+      here rather than failing the load.
     columns:
       - name: id
         description: "Term-grain canonical UUID (gp_elected_official_term_id). Primary key."
@@ -798,9 +796,6 @@ models:
                 to: ref('m_election_api__person')
                 field: id
       - name: position_id
-        description: "Election API position UUID. Nullable FK to m_election_api__position."
-        tests:
-          - relationships:
-              arguments:
-                to: ref('m_election_api__position')
-                field: id
+        description: >
+          Election API position UUID. Nullable FK to m_election_api__position
+          (selected off the joined position mart, so referential by construction).

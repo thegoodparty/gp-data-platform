@@ -30,9 +30,7 @@ EXPECTED_LOAD_TABLES = [
 ]
 
 # The incremental max-updated_at filter covers every load table except
-# Position (its Postgres table has no updated_at column) and Person /
-# OfficeHolder (their marts carry no source updated_at; they are fully
-# re-upserted every run, which the stale-OfficeHolder delete relies on).
+# Position, Person, and OfficeHolder, which have no updated_at to filter on.
 EXPECTED_INCREMENTAL_TABLES = ["Candidacy", "Issue", "Place", "Race", "Stance", "District"]
 EXPECTED_NON_INCREMENTAL_TABLES = {"Position", "Person", "OfficeHolder"}
 

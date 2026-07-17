@@ -41,33 +41,32 @@ CANDIDACY_UPSERT_QUERY = """
         person_id
     )
     SELECT
-        stg.id::uuid,
-        stg.created_at,
-        stg.updated_at,
-        stg.br_database_id,
-        stg.slug,
-        stg.first_name,
-        stg.last_name,
-        stg.party,
-        stg.place_name,
-        stg.state,
-        stg.image,
-        stg.about,
-        stg.urls,
-        stg.election_frequency,
-        stg.salary,
-        stg.normalized_position_name,
-        stg.position_name,
-        stg.position_description,
-        stg.gp_candidate_id::uuid,
-        stg.email,
-        stg.website_url,
-        stg.is_incumbent,
-        stg.race_id::uuid,
-        person.id
-    FROM {staging_schema}."Candidacy" AS stg
-    LEFT JOIN {db_schema}."Person" AS person
-        ON person.id = stg.gp_candidate_id::uuid
+        id::uuid,
+        created_at,
+        updated_at,
+        br_database_id,
+        slug,
+        first_name,
+        last_name,
+        party,
+        place_name,
+        state,
+        image,
+        about,
+        urls,
+        election_frequency,
+        salary,
+        normalized_position_name,
+        position_name,
+        position_description,
+        gp_candidate_id::uuid,
+        email,
+        website_url,
+        is_incumbent,
+        race_id::uuid,
+        -- guarded PK lookup: null when the person is not (yet) synced
+        (SELECT p.id FROM {db_schema}."Person" AS p WHERE p.id = gp_candidate_id::uuid)
+    FROM {staging_schema}."Candidacy"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
@@ -164,8 +163,6 @@ POSITION_UPSERT_QUERY = """
         is_serve_icp = EXCLUDED.is_serve_icp,
         salary = EXCLUDED.salary
 """
-# Person/OfficeHolder marts carry no source timestamps, so the upserts stamp
-# now() and preserve created_at on conflict.
 PERSON_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Person" (
         id,
@@ -881,17 +878,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # Heal person links: the guarded join can only link people already in
-    # "Person" when a candidacy row is upserted, so rows loaded before their
-    # person existed (or no longer in the current mart window) keep a null
-    # person_id. Backfill any candidacy whose person has since arrived.
+    # The guarded lookup can only link people already present at upsert time;
+    # backfill any candidacy whose person has since arrived.
     _execute_sql_query(
         f"""
         UPDATE {db_schema}."Candidacy" AS c
         SET person_id = c.gp_candidate_id::uuid
         FROM {db_schema}."Person" AS p
         WHERE c.person_id IS NULL
-          AND c.gp_candidate_id IS NOT NULL
           AND p.id = c.gp_candidate_id::uuid
         """,
         db_host,
@@ -901,10 +895,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # Drop OfficeHolder terms no longer in the mart (superseded or re-minted
-    # ids). Safe because OfficeHolder is never incremental-filtered, so its
-    # staging table holds the complete mart, and nothing references it. The
-    # count floor keeps an empty or collapsed mart from wiping the table.
+    # Drop OfficeHolder rows no longer in staging (never incremental-filtered,
+    # so staging holds the complete mart; nothing references OfficeHolder).
+    # The count floor keeps a collapsed mart from wiping the table.
     if table_load_counts["OfficeHolder"] > 100_000:
         _execute_sql_query(
             f"""

@@ -1,14 +1,10 @@
 -- Person spine for public /people profiles (election-api "Person" table).
--- Grain: one row per canonical person (id = gp_person_id, the id space
--- Candidacy.gp_candidate_id already publishes). Scoped to people with a
--- candidacy or office term and at least one name part (slug is NOT NULL in
--- the API). BallotReady-rich fields come from int__ballotready_person via the
--- unambiguous br_person_id, falling back to the office_holders_v3 feed:
--- int__ballotready_person is fetched candidacy-first, so elected officials
--- with no BR candidacy are absent from it, while the office feed carries
--- their name parts and links. bio/headshot/degrees/experiences exist only on
--- the API person object and stay null for them (known follow-up). GP-native
--- people keep all BR fields null.
+-- Grain: one row per canonical person (id = gp_person_id), scoped to people
+-- with a candidacy or office term and a name part (slug is NOT NULL in the
+-- API). BR-rich fields fall back to the office feed: int__ballotready_person
+-- is candidacy-first, so elected officials with no BR candidacy are absent
+-- from it, and their bio/headshot/degrees/experiences stay null (known
+-- follow-up).
 with
     public_people as (
         select *, try_cast(br_person_id as int) as br_person_id_int
@@ -53,10 +49,7 @@ with
                         transform(
                             degrees,
                             d -> struct(
-                                d.degree as degree,
-                                d.major as major,
-                                d.school as school,
-                                d.gradyear as `gradYear`
+                                d.degree, d.major, d.school, d.gradyear as `gradYear`
                             )
                         )
                     )
@@ -67,13 +60,7 @@ with
                     to_json(
                         transform(
                             experiences,
-                            e -> struct(
-                                e.title as title,
-                                e.organization as organization,
-                                e.start as start,
-                                e.end as end,
-                                e.type as type
-                            )
+                            e -> struct(e.title, e.organization, e.start, e.end, e.type)
                         )
                     )
             end as experiences

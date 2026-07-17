@@ -4,10 +4,6 @@
 -- inner-joins m_election_api__person: vacancies and no-name people drop here
 -- rather than failing the FK at load time.
 with
-    terms as (
-        select * from {{ ref("elected_official_terms") }} where gp_person_id is not null
-    ),
-
     persons as (select id from {{ ref("m_election_api__person") }}),
 
     positions as (select id, br_database_id from {{ ref("m_election_api__position") }}),
@@ -81,7 +77,7 @@ select
     office_holder_source.mtfcc,
     terms.gp_person_id as person_id,
     positions.id as position_id
-from terms
+from {{ ref("elected_official_terms") }} as terms
 inner join persons on terms.gp_person_id = persons.id
 left join
     office_holder_source
