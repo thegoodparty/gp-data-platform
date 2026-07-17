@@ -107,6 +107,41 @@ def q_consumer(grain_expr, since, wh):
     )
 
 
+def q_principal(grain_expr, since, wh):
+    # who ran it: user email or service-principal application id (mapped to name below)
+    return (
+        f"select {grain_expr.format(c='start_time')} period, "
+        f"coalesce(executed_by,'(unknown)') principal, "
+        f"round(sum(execution_duration_ms)/3600000,2) exec_hr "
+        f"from system.query.history where compute.warehouse_id='{wh}' "
+        f"and start_time>='{since}' group by 1,2"
+    )
+
+
+def sp_names(profile):
+    """Map service-principal applicationId -> displayName (best effort)."""
+    try:
+        p = subprocess.run(
+            ["databricks", "service-principals", "list", "-o", "json", "-p", profile],
+            capture_output=True,
+            text=True,
+        )
+        arr = json.loads(p.stdout)
+        return {sp.get("applicationId"): sp.get("displayName") for sp in arr if sp.get("applicationId")}
+    except Exception:
+        return {}
+
+
+def label_principal(principal, spmap):
+    if principal in spmap:
+        return f"SP: {spmap[principal]}"
+    if "@" in (principal or ""):
+        return principal  # human user email
+    if principal in ("(unknown)", ""):
+        return "(unknown)"
+    return f"SP: {principal[:8]}…"  # unmapped service principal id
+
+
 def q_topnodes(since, wh, dbt_app):
     node = 'regexp_extract(statement_text, \'"node_id": ?"([^"]+)"\', 1)'
     return (
@@ -133,6 +168,7 @@ def q_freq_windows(since, wh, dbt_app):
 
 def collect(profile, warehouse, since, dbt_app):
     data = {"grains": {}}
+    spmap = sp_names(profile)
     for gname, gexpr in (("month", M), ("week", W)):
         prod = run_sql(profile, warehouse, q_product(gexpr, since))
         whusd = dict(
@@ -140,6 +176,7 @@ def collect(profile, warehouse, since, dbt_app):
         )
         ntype = run_sql(profile, warehouse, q_nodetype(gexpr, since, warehouse, dbt_app))
         cons = run_sql(profile, warehouse, q_consumer(gexpr, since, warehouse))
+        princ = run_sql(profile, warehouse, q_principal(gexpr, since, warehouse))
         # total WH exec-hr per period (all consumers) for prorating
         tot_hr = defaultdict(float)
         for period, consumer, hr in cons:
@@ -149,6 +186,10 @@ def collect(profile, warehouse, since, dbt_app):
             t = tot_hr.get(period, 0)
             return round(whusd.get(period, 0) * (float(hr or 0) / t), 2) if t else 0.0
 
+        # principals share a period's queries across many rows -> aggregate by label
+        pagg = defaultdict(float)
+        for period, principal, hr in princ:
+            pagg[(period, label_principal(principal, spmap))] += float(hr or 0)
         data["grains"][gname] = {
             "product": [{"period": r[0], "k": r[1], "usd": float(r[2])} for r in prod],
             "nodetype": [
@@ -163,6 +204,10 @@ def collect(profile, warehouse, since, dbt_app):
             ],
             "consumer": [
                 {"period": r[0], "k": r[1], "hr": float(r[2] or 0), "usd": prorate(r[0], r[2])} for r in cons
+            ],
+            "principal": [
+                {"period": p, "k": k, "hr": round(hr, 2), "usd": prorate(p, hr)}
+                for (p, k), hr in pagg.items()
             ],
         }
     data["topnodes"] = [
