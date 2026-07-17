@@ -21,6 +21,18 @@ The DAG is a thin sequencer. All parallelism lives inside the loader; each Airfl
 independently runnable and re-entrant for a given run date: a step short-circuits if its manifest
 already exists.
 
+## Serving schema (`public`, not the Prisma `green` schema)
+
+The loader builds every table into the `public` schema — the data-platform serving replica — not the
+Prisma `green` OLTP schema. The people-api Prisma models declare all four tables `@@schema("green")`,
+and prod's `green.District` carries a `@@unique([type, name, state])` that the loader does **not**
+reproduce. `extract-serving-structure` and every step scope to `nspname='public'`, so
+`_serving_seed.py` mirrors the `public` replica (verified byte-identical to prod on 2026-07-16, so it
+is not a wrong-schema bug — Voter has always been served the same way). Whether the `public` District
+replica should gain that composite unique / DistrictVoter's secondary indexes is a DATA-1855 cutover
+decision — it only matters if the serving read path does `ON CONFLICT (type, name, state)` upserts —
+not part of this loader.
+
 ## Step sequence
 
 ```
@@ -164,6 +176,12 @@ come from SSM SecureStrings, never an env-var password.
   dag_id to the new train-deployment loader, and the partitioned schema diverges from the current
   single-column Prisma model (the dbt write models' `ON CONFLICT` must move to
   `("LALVOTERID", "State")` at cutover, not before).
+- [ ] Regenerate `_serving_seed.py` against current prod at cutover (verified byte-identical today, so
+  a no-op unless prod drifts — e.g. the DATA-1855 work adding District structure to `public`). Run
+  `extract-serving-structure` where the loader has prod access: the airflow SP on the worker
+  (SSM-allowed + bastion), or a local engineer on VPN via a direct DSN (the `EngineerAccess` SSO
+  identity is explicitly denied the SSM connection-string param). Then `ruff format` the file and
+  `git diff` — an empty diff means no drift.
 
 ## References
 
