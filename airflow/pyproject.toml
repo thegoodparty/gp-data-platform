@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Airflow DAGs for GoodParty.org (deployed via Astro Runtime)"
 requires-python = ">=3.14"
 dependencies = [
-    "apache-airflow==3.2.2",
+    "apache-airflow==3.3.0",
     "duckdb>=1.5.4,<2.0.0",
     "pendulum>=3.1.0,<4.0.0",
     "tabulate>=0.10.0,<0.11.0",
