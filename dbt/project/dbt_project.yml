@@ -65,7 +65,10 @@ models:
         +tags: ["mart", "analytics"]
       sales_reverse_etl:
         +schema: mart_sales_reverse_etl
-        +materialized: view
+        # Table, not view: these are heavy multi-join feeds with several tests
+        # each. As views, every test (and the reverse-ETL read) re-executes the
+        # full query; materializing once per build makes tests hit stored data.
+        +materialized: table
         +tags: ["mart", "sales_reverse_etl"]
       mban2026:
         +schema: mart_mban2026
