@@ -35,8 +35,18 @@ _OPTS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODI
 _DISTRICT_DDL = 'CREATE TABLE public."District" (\n    id text NOT NULL,\n    "Name" text NOT NULL\n);'
 _DISTRICT_COLS = '"id", "Name"'
 
+# Minimal DistrictVoter DDL (the second partitioned table), for --state guard tests.
+_DISTRICTVOTER_DDL = (
+    'CREATE TABLE public."DistrictVoter" (\n'
+    "    district_id uuid NOT NULL,\n"
+    "    voter_id uuid NOT NULL,\n"
+    '    "State" text NOT NULL\n'
+    ");"
+)
+
 # Combined DDL feeding load_target_schema() when a run() test loads more than one table.
 _DDL_MULTI = _DDL + "\n" + _DISTRICT_DDL
+_DDL_MULTI_DV = _DDL + "\n" + _DISTRICTVOTER_DDL
 
 
 def _unload(files, counts):
@@ -415,6 +425,55 @@ def test_full_run_raises_and_writes_no_manifest_when_incomplete(monkeypatch: pyt
     with pytest.raises(RuntimeError, match="copy incomplete"):
         step.run(_CFG, "20260609")
     assert "m" not in wrote  # no manifest persisted on incomplete full run
+
+
+def test_state_filter_skips_partitioned_table_with_no_rows_for_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A partitioned table (DistrictVoter) can legitimately have zero rows for the requested state
+    # (no district assignments there). It then has no loadable files, but since no rows are expected
+    # the --state retry must SKIP it — not raise and abort the whole retry (which includes Voter).
+    calls: list[tuple[str, str]] = []
+
+    def _lu(**kw):
+        calls.append((kw["table"], kw["state"]))
+        return _passthrough_load_unit(**kw)
+
+    voter_files = [SimpleNamespace(state="TX", s3_key="voter/state=TX/part-0.csv", size_bytes=10)]
+    unload = _unload_multi(
+        ("Voter", voter_files, {"TX": 100}),
+        ("DistrictVoter", [], {"TX": 0}),  # no files, zero rows expected for TX
+    )
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL_MULTI_DV)
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "_load_unit", _lu)
+
+    manifest = step.run(_CFG, "20260609", state_filter="TX")
+
+    assert calls == [("Voter", "TX")]  # DistrictVoter skipped, not raised
+    assert manifest.status == "complete"  # only expected unit (Voter/TX) covered
+
+
+def test_state_filter_raises_when_expected_rows_but_no_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The guard still fires when rows ARE expected for the requested state but no loadable files
+    # exist — that's a genuine unload gap, not an empty partition.
+    voter_files = [SimpleNamespace(state="TX", s3_key="voter/state=TX/part-0.csv", size_bytes=10)]
+    unload = _unload_multi(
+        ("Voter", voter_files, {"TX": 100}),
+        ("DistrictVoter", [], {"TX": 500}),  # 500 rows expected for TX but no files -> gap
+    )
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL_MULTI_DV)
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "_load_unit", _passthrough_load_unit)
+
+    with pytest.raises(RuntimeError, match="no loadable"):
+        step.run(_CFG, "20260609", state_filter="TX")
 
 
 def test_state_filter_partial_writes_no_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

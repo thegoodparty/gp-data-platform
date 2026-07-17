@@ -320,12 +320,20 @@ def run(
 
         if is_partitioned(table):
             if state_filter:
-                if state_filter not in files_by_state:
+                if state_filter in files_by_state:
+                    units_to_load = [state_filter]
+                elif unload_table.row_counts.get(state_filter, 0) > 0:
+                    # Rows were expected for this state but no loadable files exist -> a real unload
+                    # gap; fail the retry rather than silently skip it.
                     raise RuntimeError(
                         f"--state {state_filter!r} requested but the unload manifest has no loadable "
                         f'files for table "{table}" (all zero-size or absent).'
                     )
-                units_to_load = [state_filter]
+                else:
+                    # No rows expected for this state (e.g. DistrictVoter for a state with no district
+                    # assignments): nothing to load, so skip rather than aborting the whole --state
+                    # retry. Consistent with `expected_units` below, which already excludes 0-row states.
+                    units_to_load = []
             else:
                 units_to_load = sorted(files_by_state.keys())
         else:
