@@ -56,6 +56,13 @@ def transcript_path(arm_dir: Path, session_id: str) -> Path:
 
 def launch_run(spec: RunSpec, model: str, timeout_s: int, batch_dir: Path, runner=subprocess.run) -> dict:
     batch_dir.mkdir(parents=True, exist_ok=True)
+    out: dict = {
+        "run_id": spec.run_id,
+        "ok": False,
+        "session_id": None,
+        "answer_file": None,
+        "transcript_file": None,
+    }
     cmd = [
         "claude",
         "-p",
@@ -67,14 +74,11 @@ def launch_run(spec: RunSpec, model: str, timeout_s: int, batch_dir: Path, runne
         "--permission-mode",
         "acceptEdits",
     ]
-    proc = runner(cmd, cwd=spec.arm_dir, capture_output=True, text=True, timeout=timeout_s)
-    out: dict = {
-        "run_id": spec.run_id,
-        "ok": False,
-        "session_id": None,
-        "answer_file": None,
-        "transcript_file": None,
-    }
+    try:
+        proc = runner(cmd, cwd=spec.arm_dir, capture_output=True, text=True, timeout=timeout_s)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+        return out
     if proc.returncode != 0:
         out["error"] = (proc.stderr or proc.stdout or "")[-2000:]
         return out
@@ -131,7 +135,12 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         futures = {pool.submit(launch_run, r, args.model, args.timeout, batch_dir): r for r in todo}
         for fut in as_completed(futures):
-            result = fut.result()
+            try:
+                result = fut.result()
+            except Exception as e:
+                run_id = futures[fut].run_id
+                print(f"{run_id}: CRASHED {e}")
+                result = {"run_id": run_id, "ok": False, "error": str(e)}
             state["runs"][result["run_id"]] = result
             state_file.write_text(json.dumps(state, indent=2))
             print(f"{result['run_id']}: {'ok' if result['ok'] else 'FAILED'}")

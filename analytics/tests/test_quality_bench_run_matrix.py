@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 from quality_bench import run_matrix
@@ -48,3 +49,80 @@ def test_launch_run_parses_cli_json(tmp_path: Path):
     assert out["session_id"] == "sess1"
     assert (tmp_path / "batch" / "q01__bare__r1.answer.md").read_text() == "answer"
     assert (tmp_path / "batch" / "q01__bare__r1.transcript.jsonl").exists()
+
+
+def test_launch_run_timeout_expired(tmp_path: Path):
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", tmp_path)
+
+    def fake_runner_timeout(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
+
+    out = run_matrix.launch_run(
+        spec,
+        "claude-fable-5",
+        1,
+        batch_dir=tmp_path / "batch",
+        runner=fake_runner_timeout,
+    )
+    assert out["ok"] is False
+    assert "TimeoutExpired" in out["error"]
+    assert out["run_id"] == "q01__bare__r1"
+
+
+def test_launch_run_nonzero_returncode_with_stderr(tmp_path: Path):
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", tmp_path)
+
+    class FakeFailed:
+        returncode = 1
+        stdout = ""
+        stderr = "Command failed: invalid syntax"
+
+    out = run_matrix.launch_run(
+        spec,
+        "claude-fable-5",
+        60,
+        batch_dir=tmp_path / "batch",
+        runner=lambda *a, **k: FakeFailed(),
+    )
+    assert out["ok"] is False
+    assert "invalid syntax" in out["error"]
+
+
+def test_launch_run_unparseable_json(tmp_path: Path):
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", tmp_path)
+
+    class FakeBadJson:
+        returncode = 0
+        stdout = "not valid json at all"
+        stderr = ""
+
+    out = run_matrix.launch_run(
+        spec,
+        "claude-fable-5",
+        60,
+        batch_dir=tmp_path / "batch",
+        runner=lambda *a, **k: FakeBadJson(),
+    )
+    assert out["ok"] is False
+    assert "unparseable" in out["error"]
+
+
+def test_launch_run_success_no_transcript(tmp_path: Path):
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", tmp_path)
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = json.dumps({"session_id": "sess1", "result": "answer"})
+        stderr = ""
+
+    out = run_matrix.launch_run(
+        spec,
+        "claude-fable-5",
+        60,
+        batch_dir=tmp_path / "batch",
+        runner=lambda *a, **k: FakeCompleted(),
+    )
+    assert out["ok"] is True
+    assert out["session_id"] == "sess1"
+    assert (tmp_path / "batch" / "q01__bare__r1.answer.md").exists()
+    assert out["transcript_file"] is None
