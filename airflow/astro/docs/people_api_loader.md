@@ -5,8 +5,9 @@ on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks. The lo
 four tables: `Voter` and `DistrictVoter` (partitioned by State), and `District` and
 `DistrictStats` (flat).
 
-Ticket: DATA-1913 (DAG orchestration), epic DATA-1640 (People API data-loading revamp). This
-document reflects the implementation on branch `feat/DATA-1913-loader-dag` / PR #536.
+Tickets: DATA-1913 (DAG orchestration) and DATA-2100 (District family), epic DATA-1640 (People API
+data-loading revamp). Latest work is on the active feature branch (currently
+`feat/DATA-2100-district-family` / PR #607); this doc is updated there and merges to `main`.
 
 ## What it does
 
@@ -128,6 +129,34 @@ so the failed run's cluster and loaded data survive for resume/forensics and sta
 serverless). Limit: it fires on an organic failure or a task marked failed, but not if the whole DAG
 run is hard-deleted — that still needs a manual `loader teardown`/`scale-down`.
 
+## Validation
+
+The `validate` step runs a battery of gates against the freshly loaded cluster and fails the step —
+blocking cutover — if any gate fails (each check is a named `ValidationCheck` with a `passed` flag
+and details, persisted in the step manifest). Gates run per table (`Voter`, `DistrictVoter`,
+`District`, `DistrictStats`) except where noted:
+
+- **`row_counts_match_databricks:<table>`** — new-cluster row count matches the Databricks mart
+  source (per state for the partitioned tables).
+- **`prod_row_counts_within_tolerance:<table>`** — new-cluster count is within ±10% of the current
+  prod baseline (per state; falls back to a whole-table total when prod has no per-state breakdown,
+  so a wildly different count still fails closed; a 0-row or absent baseline skips rather than
+  failing a legitimate new table).
+- **`schema_diff_clean:<table>`** — columns match prod + the committed target schema (intended
+  divergences, e.g. a fresh cluster's partition column, are allowed).
+- **`index_constraint_diff_clean:<table>`** — the index/constraint set matches prod by name.
+- **`indexes_valid:<table>`** — every index is VALID, catching a partitioned parent whose child
+  indexes did not all attach (present by name but unusable).
+- **`districtstats_buckets_shape`** (DistrictStats) — the `buckets` jsonb survived the mart→camelCase
+  rename: a non-null sample carries the expected top-level keys.
+- **`sample_queries_pass`**, **`index_usage`**, **`l2Type_coverage`** (Voter) — representative
+  queries run; point-lookups are served via an index (EXPLAIN shows an index-scan node); the L2
+  `l2Type` columns are all present.
+
+Environmental gates that cannot run (e.g. `org_districts` unreachable for `l2Type_coverage`, or an
+empty prod baseline) skip *visibly* rather than fail closed, so a transient dependency can't wedge
+the pipeline. A check that raises unexpectedly still leaves a `failed` manifest behind for a retry.
+
 ## Configuration
 
 Set on the Astro deployment as **Environment Variables** (the CLI reads `LOADER_*` / `DATABRICKS_*`
@@ -169,9 +198,9 @@ come from SSM SecureStrings, never an env-var password.
 
 ## Before merge
 
-- [ ] Repin the loader install in `astro/requirements.txt` from `@feat/DATA-1913-loader-dag` to the
-  squash-merge SHA (or a tag). It intentionally tracks the branch during review so pushes deploy;
-  freeze it only at merge.
+- [ ] Repin the loader install in `astro/requirements.txt` from the active feature branch to `@main`
+  (or the merge-commit SHA / a tag). It tracks the current branch during review so pushes deploy to
+  astro-dev; freeze it only at merge. (Done for PR #607 — pinned to `@main`.)
 - [ ] Gate the merge on cutover readiness (DATA-1855). Merging swaps the canonical `load_people_api`
   dag_id to the new train-deployment loader, and the partitioned schema diverges from the current
   single-column Prisma model (the dbt write models' `ON CONFLICT` must move to
