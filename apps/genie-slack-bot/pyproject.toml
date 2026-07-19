@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "Slack bot for Databricks Genie (civics)"
 requires-python = ">=3.14"
 dependencies = [
-    "slack-bolt>=1.29.0,<2.0.0",
+    "slack-bolt>=1.30.0,<2.0.0",
     "slack-sdk>=3.43.0,<4.0.0",
-    "databricks-sdk>=0.120.0,<1.0.0",
+    "databricks-sdk>=0.121.0,<1.0.0",
 ]
 
 [dependency-groups]
