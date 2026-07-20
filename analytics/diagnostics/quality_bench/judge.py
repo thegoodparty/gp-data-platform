@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 import yaml
+
 from quality_bench.bank import Key
 from quality_bench.grading import YAML_FENCE
 
