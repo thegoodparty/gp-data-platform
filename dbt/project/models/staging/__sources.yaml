@@ -1255,6 +1255,8 @@ sources:
         description: Segment user profiles with traits and properties
       - name: voter_outreach_10dlc_compliance_completed
         description: Segment event fired when 10DLC compliance is completed
+      - name: voter_outreach_10dlc_compliance_pin_submitted
+        description: Segment event fired when a user submits their 10DLC compliance PIN
 
   - name: segment_storage_source_web_app
     database: segment_storage
@@ -1262,6 +1264,8 @@ sources:
     description: Event data from Segment's web app source synced to dedicated catalog
 
     tables:
+      - name: _10_dlc_compliance_pin_verification_completed
+        description: Segment web app event - 10 dlc compliance pin verification completed
       - name: _10_dlc_compliance_registration_submitted
         description: Segment web app event -  10 dlc compliance registration submitted
       - name: account_password_reset_completed

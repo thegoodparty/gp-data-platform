@@ -98,7 +98,7 @@ def get_import_errors():
     Generate a tuple for import errors in the dag bag, and include DAGs without errors.
     """
     with suppress_logging("airflow"):
-        dag_bag = DagBag(include_examples=False)
+        dag_bag = DagBag()
 
         def strip_path_prefix(path):
             return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))

@@ -57,6 +57,16 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: br_office_holder_id
+        description: >
+          BallotReady office-holder (term) id. One row per term; downstream
+          term-grain consumers dedupe on it, so a duplicate is an anomaly
+          worth surfacing but not worth halting the pipeline over.
+        data_tests:
+          - not_null
+          - unique:
+              config:
+                severity: warn
       - name: br_position_tier
         description: >
           BallotReady's research-tier classification (integer 1-5) for the

@@ -1,6 +1,6 @@
 # Airflow (Astro)
 
-Apache Airflow DAGs managed via [Astronomer](https://www.astronomer.io/). This project uses [Astro Runtime 3.1](https://docs.astronomer.io/astro/runtime-release-notes) (based on Airflow 3.x).
+Apache Airflow DAGs managed via [Astronomer](https://www.astronomer.io/). This project uses [Astro Runtime 3.3](https://docs.astronomer.io/astro/runtime-release-notes) (based on Airflow 3.x).
 
 ## Project Structure
 

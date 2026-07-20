@@ -25,7 +25,7 @@ def get_import_errors():
     Generate a tuple for import errors in the dag bag
     """
     with suppress_logging("airflow"):
-        dag_bag = DagBag(include_examples=False)
+        dag_bag = DagBag()
 
         def strip_path_prefix(path):
             return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))
@@ -39,7 +39,7 @@ def get_dags():
     Generate a tuple of dag_id, <DAG objects> in the DagBag
     """
     with suppress_logging("airflow"):
-        dag_bag = DagBag(include_examples=False)
+        dag_bag = DagBag()
 
     def strip_path_prefix(path):
         return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))
@@ -59,7 +59,7 @@ _ALL_DAGS = get_dags()
 _LOADER_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_people_api.py")
 with suppress_logging("airflow"):
     # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
-    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE, include_examples=False).dags.get("load_people_api")
+    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
 
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])

@@ -125,7 +125,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     create_sql = extract_create_tables(_DDL)["Voter"]
 
     # 1. create-schema: partitioned parent + per-state children apply, and partitions attach.
-    parent, children = build_partitioned_ddl(create_sql, "Voter", _STATES)
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
     with pg_conn.cursor() as cur:
         _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')  # idempotent vs a reused DB
         _exec(cur, parent)
@@ -166,6 +166,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
             columns=["LALVOTERID"],
             where=None,
         ),
+        partition_key="State",  # Voter is partitioned -> unique is (LALVOTERID, State)
     )
     with pg_conn.cursor() as cur:
         pk = _scalar(
@@ -189,12 +190,12 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     # 4. advisory lock: the exact SQL the loader runs must resolve to a valid overload.
     #    Without the ::int4 cast this raises UndefinedFunction against real PG.
     with pg_conn.cursor() as cur:
-        copy_s3._acquire_state_lock(cur, "TX")
+        copy_s3._acquire_unit_lock(cur, "Voter", "TX")
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
     fc = fake_connect(pg_conn)
     monkeypatch.setattr(validate, "connect_new", fc)
-    counts = validate._new_voter_counts_by_state(_CFG, "20260609")
+    counts = validate._new_counts_by_state(_CFG, "20260609", "Voter")
     assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)
     assert validate._compare_counts("prod_row_counts", counts, {"TX": 5, "CA": 4}).passed is True
 

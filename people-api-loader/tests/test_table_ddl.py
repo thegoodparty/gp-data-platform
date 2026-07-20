@@ -58,3 +58,10 @@ def test_extract_column_types_from_generated_ddl() -> None:
         "Estimated_Income": "NUMERIC(12,2)",
         "State": "TEXT",
     }
+
+
+def test_extract_column_types_captures_lowercase_type() -> None:
+    # A type_override can emit a lowercase PG type (DistrictStats' buckets -> jsonb). It must still
+    # be captured; a uppercase-only pattern would silently drop it (and thus its FORCE_NULL handling).
+    ddl = 'CREATE TABLE public."DistrictStats" (\n    "district_id" TEXT NOT NULL,\n    "buckets" jsonb\n);'
+    assert extract_column_types(ddl) == {"district_id": "TEXT", "buckets": "jsonb"}

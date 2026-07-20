@@ -45,13 +45,15 @@ with
     -- past elections fall well outside this mart's date window (a 2-month
     -- grace period at the oldest), so win_number is null for every row this
     -- mart emits, and consumers fall back
-    -- to a computed estimate. Aggregate with any non-null value; downstream Race
+    -- to a computed estimate. Aggregate with any valid value; downstream Race
     -- rows that share a gp_election_id (i.e. multiple BR race stages for the
-    -- same election cycle) will all carry the same values.
+    -- same election cycle) will all carry the same values. Drop non-positive
+    -- win_number sentinels (e.g. -1) an archive candidacy can attach to an
+    -- in-window race after id re-keying; a sub-1 "votes to win" is never real.
     civics_race_attrs as (
         select
             gp_election_id,
-            max(win_number) as win_number,
+            max(case when win_number >= 1 then win_number end) as win_number,
             bool_or(is_partisan) as is_partisan,
             max(office_type) as office_type,
             max(official_office_name) as official_office_name,
@@ -110,10 +112,23 @@ select
     -- always extends the place slug election-api actually serves. The
     -- '-ccd' strip on the position part preserves the previous derivation,
     -- which stripped it from the whole concatenated slug.
-    concat(
-        tbl_place.slug,
+    -- Fall back to position_names when normalized_position_name is absent, and
+    -- use concat_ws so a fully missing position (both null) degrades to just the
+    -- place slug instead of nulling the whole value (concat returns null on any
+    -- null arg). position_names is an array; element_at(.., 1) is its first
+    -- entry (Databricks is 1-indexed).
+    concat_ws(
         '/',
-        replace({{ slugify("tbl_race.normalized_position_name") }}, '-ccd', '')
+        tbl_place.slug,
+        replace(
+            {{
+                slugify(
+                    "coalesce(tbl_race.normalized_position_name, element_at(tbl_race.position_names, 1))"
+                )
+            }},
+            '-ccd',
+            ''
+        )
     ) as slug,
     tbl_race.position_names,
     tbl_position.id as position_id,
