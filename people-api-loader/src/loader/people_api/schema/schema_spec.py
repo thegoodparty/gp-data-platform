@@ -117,10 +117,8 @@ def primary_key_for(table: str) -> PrimaryKey | None:
 
 
 def indexes_for(table: str) -> list[IndexDef]:
-    # extract-serving-structure regenerates the seed wholesale, so hand-added
-    # entries live in _serving_seed_extra and merge here — regeneration cannot
-    # silently drop them. If a future extraction starts returning one of them
-    # (same name), the generated entry wins.
+    # Hand-added entries live in _serving_seed_extra so wholesale seed regeneration can't drop
+    # them; they merge here, and a generated entry wins any name collision.
     generated = [i for i in seed.INDEXES if i.table == table]
     names = {i.name for i in generated}
     extras = [i for i in seed_extra.EXTRA_INDEXES if i.table == table and i.name not in names]

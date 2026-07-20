@@ -241,8 +241,7 @@ def _name_search_sql(pattern: str) -> str:
     lower() LIKE on both name columns, with LIKE metacharacters escaped via ESCAPE '\\'. The
     caller passes a fully-formed pattern ('%tok%' for substring, 'tok%' for anchored prefix)."""
     esc = "ESCAPE '\\'"
-    # SELECT * (not a single indexed column): production selects the full voter row, so there is
-    # no covering-index-only shortcut — the planner must locate rows via a name index and heap-fetch.
+    # SELECT * (like production) so no covering index-only scan hides which name index is used.
     return (
         'SELECT * FROM public."Voter" v WHERE '
         f"(lower(v.\"FirstName\") LIKE '{pattern}' {esc} OR lower(v.\"LastName\") LIKE '{pattern}' {esc})"
