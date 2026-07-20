@@ -261,10 +261,11 @@ def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg
     the point of the indexes — the stored expression matches people-api's lower(col) LIKE predicate
     so the query is index-served instead of silently falling back to a seq scan.
 
-    Locale note: a plain lower() b-tree cannot serve LIKE-'prefix%' outside a C-locale DB, so in a
-    normal (en_US.UTF-8) cluster the trigram GIN carries BOTH the substring and the prefix paths;
-    the lower() b-trees only serve equality/ordering there. This test asserts the substring path is
-    on the trigram GIN specifically, and the prefix path is index-served either way (no seq scan).
+    Locale note: a plain lower() b-tree cannot serve LIKE-'prefix%' outside a C-locale DB, and the
+    serving cluster is en_US.UTF-8 — so the seed's lower() b-trees carry the text_pattern_ops
+    opclass, which makes the anchored-prefix path (lower(col) LIKE 'tok%') use the b-tree here. The
+    trigram GIN serves the substring path (lower(col) LIKE '%tok%'), which no b-tree can. This test
+    asserts each path lands on the index type intended for it.
     """
     create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
     parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
@@ -325,10 +326,13 @@ def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg
             sub_plan = _explain(cur, _name_search_sql("%oh%"))
             assert "Voter_firstname_lower_trgm_idx" in sub_plan, sub_plan
             assert "Voter_lastname_lower_trgm_idx" in sub_plan, sub_plan
-            # anchored prefix: must be index-served (no seq scan). In this en_US.UTF-8 cluster that
-            # is the trigram GIN, not the plain lower() b-tree (which can't serve LIKE-prefix here).
+            # anchored prefix: the text_pattern_ops lower() b-trees serve lower(col) LIKE 'tok%'
+            # (a default-opclass b-tree could NOT in this en_US.UTF-8 cluster). Both name b-trees
+            # appear via the BitmapOr across the FirstName/LastName OR; no seq scan. This proves the
+            # text_pattern_ops opclass survived the seed -> partitioned build path end to end.
             pre_plan = _explain(cur, _name_search_sql("jo%"))
             assert "Seq Scan" not in pre_plan, pre_plan
-            assert "trgm_idx" in pre_plan or "lower_idx" in pre_plan, pre_plan
+            assert "Voter_firstname_lower_idx" in pre_plan, pre_plan
+            assert "Voter_lastname_lower_idx" in pre_plan, pre_plan
         finally:
             _exec(cur, "SET enable_seqscan = on")
