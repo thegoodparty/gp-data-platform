@@ -53,6 +53,17 @@ def test_rule2_fails_when_bare_matches_on_traps():
     assert v["rule2_earns_overhead"] is False
 
 
+def test_rule1_fails_on_judge_only_severity1():
+    """judge_severity1_found=True must trip rule 1 even when the deterministic
+    severity1_tripped column is clean on every row."""
+    rows = rows_for(QIDS, "full", True)  # all deterministic checks pass
+    rows[0]["judge_severity1_found"] = True  # judge flags one rep
+    df = pd.DataFrame(rows + rows_for(QIDS, "bare", False))
+    v = grade.evaluate_verdicts(df, cells(["full", "bare"]), QUESTIONS)
+    assert v["rule1_trustworthy"] is False
+    assert "severity1=1" in v["rule1_detail"]
+
+
 def test_rule2_inapplicable_without_trap_questions():
     """No trap questions in the batch -> rule 2 is None (inapplicable), not a
     failed 0 > 0 comparison."""
