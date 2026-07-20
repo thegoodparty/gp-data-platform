@@ -136,6 +136,22 @@ def evaluate_verdicts(df: pd.DataFrame, cells: dict, questions: list[Question], 
     }
 
 
+def adherence_lines(df: pd.DataFrame) -> list[str]:
+    """Per question x arm: how many reps consulted mandatory sources and surfaced
+    required assumptions. Reported next to the verdicts but never gated into them
+    (design §8 rules are numbers/severity-1/consistency only): it shows whether a
+    passing number was derived independently vs. via the expected sources."""
+    if df.empty:
+        return []
+    lines = ["", "## Adherence (sources / assumptions; reported, not verdict-gated)", ""]
+    for (qid, arm), g in df.groupby(["question_id", "arm"]):
+        lines.append(
+            f"- {qid} x {arm}: sources {int(g.sources_pass.sum())}/{len(g)}, "
+            f"assumptions {int(g.assumptions_pass.sum())}/{len(g)}"
+        )
+    return lines
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch", required=True)
@@ -210,6 +226,7 @@ def main() -> None:
             f"- {qid} x {arm}: consistent={c['consistent']} "
             f"max_spread={c['max_spread_pct']:.2f}% parsed {c['n_parsed']}/{c['n_reps']}"
         )
+    lines += adherence_lines(df)
     (batch_dir / "report.md").write_text("\n".join(lines))
     print("\n".join(lines))
 

@@ -14,6 +14,7 @@ def rows_for(question_ids, arm, passes: bool, sev1: bool = False, reps=(1, 2, 3)
             "numbers_pass": passes,
             "sources_pass": True,
             "severity1_tripped": sev1,
+            "assumptions_pass": True,
             "judge_severity1_found": False,
         }
         for q in question_ids
@@ -103,6 +104,15 @@ def test_question_passes_uses_threshold():
     df = pd.DataFrame(rows)
     assert grade._question_passes(df, "full", "q01", grade.rep_threshold(6)) is False
     assert grade._question_passes(df, "full", "q01", grade.rep_threshold(3)) is True
+
+
+def test_adherence_lines_report_per_cell_rates():
+    rows = rows_for(["q01"], "full", True)
+    for r in rows[1:]:
+        r["sources_pass"] = False  # 2 of 3 reps skipped the mandatory source
+    lines = grade.adherence_lines(pd.DataFrame(rows))
+    assert any("q01 x full: sources 1/3, assumptions 3/3" in line for line in lines)
+    assert grade.adherence_lines(grade.scores_frame([])) == []
 
 
 def test_scores_frame_empty_keeps_columns():
