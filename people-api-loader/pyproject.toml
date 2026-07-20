@@ -23,7 +23,7 @@ dev = [
     "ruff>=0.15.22",
     "ty==0.0.60",
     "pre-commit>=4.0",
-    "moto[rds,ec2]>=5.0",
+    "moto[rds,ec2]>=5.2.2",
 ]
 
 [project.scripts]
