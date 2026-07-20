@@ -248,8 +248,8 @@ def _name_search_sql(pattern: str) -> str:
     )
 
 
-def test_data_2155_name_search_indexes(pg_conn: psycopg.Connection) -> None:
-    """DATA-2155: the committed name-search extras build through the real partitioned parent-only +
+def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> None:
+    """The committed name-search extras build through the real partitioned parent-only +
     per-partition child + ATTACH path, and the planner serves people-api's lower(col) LIKE
     predicates on public."Voter" — DB semantics the FakeConn unit tests can't reach. Substring rides
     the trigram GIN; anchored-prefix rides the text_pattern_ops b-trees (a default-opclass b-tree

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from loader.people_api.schema.index_specs import IndexDef
 
-# DATA-2155 / omni ENG-10684: people-api name-search indexes, carried here because prisma
-# migrations don't run on loader-built clusters. lower() expressions must match people-api's
-# emitted SQL exactly or the planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%'
+# people-api name-search indexes, carried here because prisma migrations don't run on
+# loader-built clusters. lower() expressions must match people-api's emitted SQL exactly or the
+# planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%'
 # uses them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
 # from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves the
 # substring path no b-tree can. pg_trgm is installed by create_schema and build_indexes (each step

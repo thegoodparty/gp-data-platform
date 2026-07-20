@@ -105,7 +105,7 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE")
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_commons")
             # Trusted extension (no superuser on RDS); backs the gin_trgm_ops name indexes
-            # build_indexes re-issues from the seed (DATA-2155).
+            # build_indexes re-issues from the seed.
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         for stmt in stmts:
             with conn.cursor() as cur:
