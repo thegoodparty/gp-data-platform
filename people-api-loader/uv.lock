@@ -474,7 +474,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.43.51" },
     { name = "databricks-sdk", specifier = ">=0.121.0" },
-    { name = "moto", extras = ["rds", "ec2"], marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "moto", extras = ["rds", "ec2"], marker = "extra == 'dev'", specifier = ">=5.2.2" },
     { name = "paramiko", specifier = ">=3.4.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
