@@ -32,6 +32,7 @@ import psycopg
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema import _serving_seed_extra
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
@@ -54,10 +55,29 @@ _DDL = (
 )
 _STATES = ["TX", "CA"]
 
+# A partitioned Voter carrying the "FirstName"/"LastName" columns the CRM name-search extras
+# index. Separate from _DDL (which omits them) so the extras test can drive the real committed
+# EXTRA_INDEXES SQL through the partitioned build path against a table that actually has the
+# indexed columns.
+_DDL_NAMES = (
+    'CREATE TABLE public."Voter" (\n'
+    '    "id" uuid NOT NULL,\n'
+    '    "State" text NOT NULL,\n'
+    '    "FirstName" text,\n'
+    '    "LastName" text\n'
+    ");"
+)
+
 
 def _exec(cur: psycopg.Cursor, sql: str, params: object = None) -> None:
     """Execute dynamic SQL (test drives raw strings; same ignore the prod code uses)."""
     cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
+
+
+def _explain(cur: psycopg.Cursor, sql: str) -> str:
+    """Return the full EXPLAIN plan text for a query (all rows joined)."""
+    cur.execute("EXPLAIN " + sql)  # ty: ignore[no-matching-overload]
+    return "\n".join(row[0] for row in cur.fetchall())
 
 
 def _scalar(cur: psycopg.Cursor, sql: str) -> object:
@@ -214,3 +234,96 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
         nostate_ti = inspect_prod._inspect_table(cur, "NoStateTbl")
     assert nostate_ti.total_row_count == 2
     assert nostate_ti.per_state_row_counts == {}
+
+
+def _name_search_sql(pattern: str) -> str:
+    """people-api's exact name-search predicate shape (buildVoterWhereSql.utils.ts): an OR of
+    lower() LIKE on both name columns, with LIKE metacharacters escaped via ESCAPE '\\'. The
+    caller passes a fully-formed pattern ('%tok%' for substring, 'tok%' for anchored prefix)."""
+    esc = "ESCAPE '\\'"
+    # SELECT * (like production) so no covering index-only scan hides which name index is used.
+    return (
+        'SELECT * FROM public."Voter" v WHERE '
+        f"(lower(v.\"FirstName\") LIKE '{pattern}' {esc} OR lower(v.\"LastName\") LIKE '{pattern}' {esc})"
+    )
+
+
+def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> None:
+    """The committed name-search extras build through the real partitioned parent-only +
+    per-partition child + ATTACH path, and the planner serves people-api's lower(col) LIKE
+    predicates on public."Voter" — DB semantics the FakeConn unit tests can't reach. Substring rides
+    the trigram GIN; anchored-prefix rides the lower() b-trees, which must carry text_pattern_ops
+    (asserted from the catalog, not inferred from the plan, since a default-opclass b-tree happens
+    to serve LIKE-prefix under a C collation) so prefix search works on a non-C collation like prod.
+    """
+    create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')
+        _exec(cur, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        _exec(cur, parent)
+        for child in children:
+            _exec(cur, child)
+        insert = 'INSERT INTO public."Voter" ("id", "State", "FirstName", "LastName") VALUES (%s, %s, %s, %s)'
+        # 300 varied rows so the planner prefers a selective name index over scanning a tiny
+        # relation, keeping the plan assertions stable; names include "ohn"/"jo" matches.
+        names = ["John", "Johnny", "Jane", "Bob", "Bobby", "Smith", "Jones", "Adams", "Cohen", "Baker"]
+        for i in range(300):
+            state = _STATES[i % len(_STATES)]
+            first, last = names[i % len(names)], names[(i * 3) % len(names)]
+            _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
+        _exec(cur, 'ANALYZE public."Voter"')
+
+    # Build every committed extra (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree) via the
+    # exact partitioned path build_indexes.run uses: parent ON ONLY, then a child per state attached.
+    extras = [i for i in _serving_seed_extra.EXTRA_INDEXES if i.table == "Voter"]
+    assert len(extras) == 5
+    for idx in extras:
+        build_indexes._create_plain_parent_only(pg_conn, idx)
+        for state in _STATES:
+            build_indexes._build_and_attach_child(pg_conn, (idx, state))
+
+    with pg_conn.cursor() as cur:
+        for idx in extras:
+            # indisvalid flips true only once a child is attached for EVERY partition -> attaches ran.
+            valid = _scalar(
+                cur,
+                "SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            assert valid is True, f"{idx.name}: parent index not valid (a child attach is missing)"
+            attached = _scalar(
+                cur,
+                "SELECT count(*) FROM pg_inherits ih JOIN pg_class c ON c.oid = ih.inhparent "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            want = len(_STATES)
+            assert attached == want, f"{idx.name}: {attached} children attached, want {want}"
+
+        # The lower() b-trees must carry text_pattern_ops or they can't serve LIKE-prefix on a
+        # non-C collation. Assert the opclass straight from the catalog so it holds regardless of
+        # the test cluster's locale (a plan-based check would pass tautologically under C).
+        for name in ("Voter_firstname_lower_idx", "Voter_lastname_lower_idx"):
+            opclass = _scalar(
+                cur,
+                "SELECT o.opcname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"JOIN pg_opclass o ON o.oid = i.indclass[0] WHERE c.relname = '{name}'",
+            )
+            assert opclass == "text_pattern_ops", f"{name}: opclass is {opclass}, want text_pattern_ops"
+
+    # seqscan off makes the plan reveal whether the predicate is index-servable at all; a mismatched
+    # index expression would leave only a (now-penalized) seq scan.
+    with pg_conn.cursor() as cur:
+        _exec(cur, "SET enable_seqscan = off")
+        try:
+            # substring: only the trigram GIN can serve lower(col) LIKE '%tok%' (>=3 chars so a real
+            # trigram is extracted), so both trgm indexes appear via the BitmapOr across the name OR.
+            sub_plan = _explain(cur, _name_search_sql("%ohn%"))
+            assert "Voter_firstname_lower_trgm_idx" in sub_plan, sub_plan
+            assert "Voter_lastname_lower_trgm_idx" in sub_plan, sub_plan
+            # anchored prefix: the whole OR is index-served (no seq scan). Which index the planner
+            # picks is cost-dependent; the opclass that makes the b-tree eligible is asserted above.
+            pre_plan = _explain(cur, _name_search_sql("jo%"))
+            assert "Seq Scan" not in pre_plan, pre_plan
+        finally:
+            _exec(cur, "SET enable_seqscan = on")

@@ -446,6 +446,8 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     manifest = step.run(_CFG, "20260609", parallelism=1)
     sql = executed_sql(conn)
 
+    # Self-sufficient re-runnability: pg_trgm installed here, not just in create_schema
+    assert any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in s for s in sql)
     # PK must include "State"
     assert any("ADD CONSTRAINT" in s and 'PRIMARY KEY ("id", "State")' in s for s in sql)
     # Unique index stays a parent-level build, with "State" appended
@@ -607,8 +609,9 @@ def test_run_absorbs_transient_connection_drop(monkeypatch: pytest.MonkeyPatch) 
 
     assert manifest.status == "complete"
     assert pk_calls["n"] == 2  # failed once, requeued, retried, and succeeded
-    # PK stage reconnects once (2 connects) + unconditional _partition_sizes (1) + _analyze (1).
-    assert connect_calls["n"] == 4
+    # pg_trgm install (1) + PK stage reconnecting once (2) + unconditional
+    # _partition_sizes (1) + _analyze (1).
+    assert connect_calls["n"] == 5
 
 
 def test_run_fails_fast_on_non_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -624,7 +627,8 @@ def test_run_fails_fast_on_non_connection_error(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(RuntimeError, match="bad ddl"):
         step.run(_CFG, "20260609", parallelism=1)
 
-    assert connect_calls["n"] == 1  # no reconnect attempted
+    # pg_trgm install (1) + the failing pool connect (1); no reconnect attempted.
+    assert connect_calls["n"] == 2
 
 
 def test_run_propagates_after_exhausting_reconnects(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -641,8 +645,9 @@ def test_run_propagates_after_exhausting_reconnects(monkeypatch: pytest.MonkeyPa
     with pytest.raises(psycopg.OperationalError):
         step.run(_CFG, "20260609", parallelism=1)
 
-    # initial attempt + _WORKER_MAX_RECONNECTS reconnects, then gives up -- bounded, not infinite.
-    assert connect_calls["n"] == step._WORKER_MAX_RECONNECTS + 1
+    # pg_trgm install (1) + initial attempt + _WORKER_MAX_RECONNECTS reconnects, then gives up --
+    # bounded, not infinite.
+    assert connect_calls["n"] == step._WORKER_MAX_RECONNECTS + 2
 
 
 def test_run_absorbs_transient_drop_under_multithread_requeue_contention(

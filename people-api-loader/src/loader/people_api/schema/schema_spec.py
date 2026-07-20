@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loader.people_api.schema import _serving_seed as seed
+from loader.people_api.schema import _serving_seed_extra as seed_extra
 from loader.people_api.schema.index_specs import ForeignKey, IndexDef, PrimaryKey
 
 
@@ -116,7 +117,12 @@ def primary_key_for(table: str) -> PrimaryKey | None:
 
 
 def indexes_for(table: str) -> list[IndexDef]:
-    return [i for i in seed.INDEXES if i.table == table]
+    # Hand-added entries live in _serving_seed_extra so wholesale seed regeneration can't drop
+    # them; they merge here, and a generated entry wins any name collision.
+    generated = [i for i in seed.INDEXES if i.table == table]
+    names = {i.name for i in generated}
+    extras = [i for i in seed_extra.EXTRA_INDEXES if i.table == table and i.name not in names]
+    return generated + extras
 
 
 def foreign_keys_for(table: str) -> list[ForeignKey]:

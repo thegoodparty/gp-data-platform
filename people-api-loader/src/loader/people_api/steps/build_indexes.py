@@ -445,6 +445,12 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     # One bastion tunnel for the WHOLE step (all tables); every connection below multiplexes through
     # it (see _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
     with open_new_tunnel(cfg, run_date) as fwd:
+        # pg_trgm backs the gin_trgm_ops entries. Installed here too (not just create_schema) so
+        # build_indexes is self-sufficient on re-run; inside the tunnel because, unlike
+        # create_schema, it reaches the cluster through the bastion.
+        with connect_new(cfg, run_date, forward=fwd) as conn, conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
         for table in TABLE_SPECS:  # dict preserves insertion order (Voter first) -> stable
             partitioned = is_partitioned(table)
             pcol = partition_column(table)  # the LIST-partition column ("State") or None (flat)
