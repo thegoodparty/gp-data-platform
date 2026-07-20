@@ -80,11 +80,6 @@ def _explain(cur: psycopg.Cursor, sql: str) -> str:
     return "\n".join(row[0] for row in cur.fetchall())
 
 
-def _extra_index(name: str) -> IndexDef:
-    """The committed hand-added index by name — tests exercise the real SQL, not a fake."""
-    return next(i for i in _serving_seed_extra.EXTRA_INDEXES if i.name == name)
-
-
 def _scalar(cur: psycopg.Cursor, sql: str) -> object:
     """Run a single-value query and return the first column of the one row."""
     cur.execute(sql)  # ty: ignore[no-matching-overload]
@@ -241,17 +236,35 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     assert nostate_ti.per_state_row_counts == {}
 
 
-def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg.Connection) -> None:
-    """The CRM name-search extras — a GIN trigram index and a lower() b-tree expression index —
-    build through the real partitioned parent-only + per-partition child + ATTACH path, and the
-    planner actually chooses them for the lower("FirstName") query shapes people-api emits.
+def _name_search_sql(pattern: str) -> str:
+    """people-api's exact name-search predicate shape (buildVoterWhereSql.utils.ts): an OR of
+    lower() LIKE on both name columns, with LIKE metacharacters escaped via ESCAPE '\\'. The
+    caller passes a fully-formed pattern ('%tok%' for substring, 'tok%' for anchored prefix)."""
+    esc = "ESCAPE '\\'"
+    # SELECT * (not a single indexed column): production selects the full voter row, so there is
+    # no covering-index-only shortcut — the planner must locate rows via a name index and heap-fetch.
+    return (
+        'SELECT * FROM public."Voter" v WHERE '
+        f"(lower(v.\"FirstName\") LIKE '{pattern}' {esc} OR lower(v.\"LastName\") LIKE '{pattern}' {esc})"
+    )
 
-    This is the DB-semantic coverage the FakeConn unit tests structurally cannot give: the
-    build path is a string rewrite of the seed SQL (build_indexes._plain_parent_only_sql /
-    _plain_child_sql), and only a real Postgres proves that (a) pg_trgm + gin_trgm_ops is
-    installed and valid, (b) an expression/GIN index attaches to a partitioned parent, and
-    (c) — the whole point of the indexes — the stored expression matches a lower("FirstName")
-    predicate so the index is chosen instead of being silently bypassed for a seq scan.
+
+def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg.Connection) -> None:
+    """Every committed name-search extra builds through the real partitioned parent-only +
+    per-partition child + ATTACH path, and the trigram GIN indexes serve people-api's actual
+    name-search predicates on public."Voter" (the schema the loader targets).
+
+    This is the DB-semantic coverage the FakeConn unit tests structurally cannot give: the build
+    path is a string rewrite of the seed SQL (build_indexes._plain_parent_only_sql /
+    _plain_child_sql), and only a real Postgres proves that (a) pg_trgm + gin_trgm_ops is installed
+    and valid, (b) a GIN/expression/multicolumn index attaches to a partitioned parent, and (c) —
+    the point of the indexes — the stored expression matches people-api's lower(col) LIKE predicate
+    so the query is index-served instead of silently falling back to a seq scan.
+
+    Locale note: a plain lower() b-tree cannot serve LIKE-'prefix%' outside a C-locale DB, so in a
+    normal (en_US.UTF-8) cluster the trigram GIN carries BOTH the substring and the prefix paths;
+    the lower() b-trees only serve equality/ordering there. This test asserts the substring path is
+    on the trigram GIN specifically, and the prefix path is index-served either way (no seq scan).
     """
     create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
     parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
@@ -262,29 +275,29 @@ def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg
         for child in children:
             _exec(cur, child)
         insert = 'INSERT INTO public."Voter" ("id", "State", "FirstName", "LastName") VALUES (%s, %s, %s, %s)'
-        # A few rows per partition so the planner has real relations (and matching rows) to scan.
-        for first, last, state in [
-            ("John", "Adams", "TX"),
-            ("Johnny", "Baker", "TX"),
-            ("Jane", "Cohen", "TX"),
-            ("Bob", "Diaz", "CA"),
-            ("Bobby", "Ericsson", "CA"),
-        ]:
+        # Enough varied rows per partition that the planner clearly prefers a selective name index
+        # over scanning a tiny table/index — so the plan assertions below are stable, not artifacts
+        # of a 5-row relation. Names include "oh"/"jo" matches so the predicates are non-empty.
+        names = ["John", "Johnny", "Jane", "Bob", "Bobby", "Smith", "Jones", "Adams", "Cohen", "Baker"]
+        for i in range(300):
+            state = _STATES[i % len(_STATES)]
+            first, last = names[i % len(names)], names[(i * 3) % len(names)]
             _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
         _exec(cur, 'ANALYZE public."Voter"')
 
-    trgm = _extra_index("Voter_firstname_lower_trgm_idx")  # GIN trigram (the riskiest new DDL)
-    btree = _extra_index("Voter_firstname_lower_idx")  # lower() b-tree expression index
-
-    # Build each extra exactly as build_indexes.run does for a partitioned plain index:
-    # the empty parent (ON ONLY), then a child per state, each attached to the parent index.
-    for idx in (trgm, btree):
+    # Drive ALL committed extras (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree) through
+    # the exact path build_indexes.run uses for a partitioned plain index: the empty parent
+    # (ON ONLY), then a child per state, each attached to the parent index. Building every one
+    # proves each real committed SQL string rewrites and attaches correctly.
+    extras = [i for i in _serving_seed_extra.EXTRA_INDEXES if i.table == "Voter"]
+    assert len(extras) == 5  # guard: all five reach the build path
+    for idx in extras:
         build_indexes._create_plain_parent_only(pg_conn, idx)
         for state in _STATES:
             build_indexes._build_and_attach_child(pg_conn, (idx, state))
 
     with pg_conn.cursor() as cur:
-        for idx in (trgm, btree):
+        for idx in extras:
             # Postgres only flips a partitioned index's indisvalid to true once a matching child
             # is attached for EVERY partition, so this asserts all attaches actually ran.
             valid = _scalar(
@@ -301,18 +314,21 @@ def test_extra_name_search_indexes_build_and_are_planner_usable(pg_conn: psycopg
             want = len(_STATES)
             assert attached == want, f"{idx.name}: {attached} children attached, want {want}"
 
-    # The point of the indexes: the planner must USE them for the lower("FirstName") predicates
-    # people-api emits. Forcing seqscan off makes the plan reveal whether the index is even usable
-    # for the query shape — an expression mismatch would leave only a seq scan available.
+    # The point of the indexes: the planner must index-serve people-api's real name-search
+    # predicates. Forcing seqscan off makes the plan reveal whether an index is even usable for
+    # the query shape — a mismatched index expression would leave only a seq scan available.
     with pg_conn.cursor() as cur:
         _exec(cur, "SET enable_seqscan = off")
         try:
-            # trigram substring search (CRM typeahead) -> GIN trgm index
-            trgm_plan = _explain(cur, 'SELECT id FROM public."Voter" WHERE lower("FirstName") LIKE \'%oh%\'')
-            assert "Voter_firstname_lower_trgm_idx" in trgm_plan, trgm_plan
-            # exact-match lookup -> lower() b-tree expression index (name is a strict prefix of the
-            # trgm name minus "_trgm", so this substring can only match the b-tree index/children)
-            btree_plan = _explain(cur, 'SELECT id FROM public."Voter" WHERE lower("FirstName") = \'john\'')
-            assert "Voter_firstname_lower_idx" in btree_plan, btree_plan
+            # substring (CRM typeahead): only the trigram GIN can serve lower(col) LIKE '%tok%',
+            # so both name trigram indexes must appear (BitmapOr across the FirstName/LastName OR).
+            sub_plan = _explain(cur, _name_search_sql("%oh%"))
+            assert "Voter_firstname_lower_trgm_idx" in sub_plan, sub_plan
+            assert "Voter_lastname_lower_trgm_idx" in sub_plan, sub_plan
+            # anchored prefix: must be index-served (no seq scan). In this en_US.UTF-8 cluster that
+            # is the trigram GIN, not the plain lower() b-tree (which can't serve LIKE-prefix here).
+            pre_plan = _explain(cur, _name_search_sql("jo%"))
+            assert "Seq Scan" not in pre_plan, pre_plan
+            assert "trgm_idx" in pre_plan or "lower_idx" in pre_plan, pre_plan
         finally:
             _exec(cur, "SET enable_seqscan = on")
