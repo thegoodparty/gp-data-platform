@@ -1,3 +1,6 @@
+import json
+import subprocess
+
 from quality_bench import judge
 from quality_bench.bank import Key, NumberSpec
 
@@ -46,3 +49,21 @@ def test_parse_judge_output_rejects_missing_dimension():
 def test_parse_judge_output_rejects_non_dict_judge():
     assert judge.parse_judge_output("```yaml\njudge: unclear\n```") is None
     assert judge.parse_judge_output("```yaml\njudge: null\n```") is None
+
+
+def test_judge_answer_contains_timeout():
+    """A hung judge call returns None instead of raising into grade.py and
+    aborting the batch."""
+
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+    assert judge.judge_answer(KEY, "answer", "m", runner=hang) is None
+
+
+def test_judge_answer_null_result_returns_none():
+    class Proc:
+        returncode = 0
+        stdout = json.dumps({"result": None})
+
+    assert judge.judge_answer(KEY, "answer", "m", runner=lambda cmd, **kw: Proc()) is None

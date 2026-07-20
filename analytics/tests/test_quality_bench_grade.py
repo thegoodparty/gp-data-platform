@@ -53,6 +53,16 @@ def test_rule2_fails_when_bare_matches_on_traps():
     assert v["rule2_earns_overhead"] is False
 
 
+def test_rule2_inapplicable_without_trap_questions():
+    """No trap questions in the batch -> rule 2 is None (inapplicable), not a
+    failed 0 > 0 comparison."""
+    no_trap = [q for q in QUESTIONS if q.trap == "none"][:1]
+    qid = no_trap[0].id
+    df = pd.DataFrame(rows_for([qid], "full", True) + rows_for([qid], "bare", True))
+    v = grade.evaluate_verdicts(df, {(qid, a): {"consistent": True} for a in ("full", "bare")}, no_trap)
+    assert v["rule2_earns_overhead"] is None
+
+
 def test_rule3_flags_bloat_when_knowledge_matches_full():
     df = pd.DataFrame(rows_for(QIDS, "full", True) + rows_for(QIDS, "knowledge", True))
     v = grade.evaluate_verdicts(df, cells(["full", "knowledge"]), QUESTIONS)

@@ -82,18 +82,23 @@ def judge_answer(
     key: Key, answer_text: str, model: str, timeout_s: int = 600, runner=subprocess.run
 ) -> dict | None:
     prompt = build_judge_prompt(key, answer_text)
-    with tempfile.TemporaryDirectory() as scratch:
-        proc = runner(
-            ["claude", "-p", prompt, "--output-format", "json", "--model", model, "--tools", ""],
-            cwd=scratch,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
+    try:
+        with tempfile.TemporaryDirectory() as scratch:
+            proc = runner(
+                ["claude", "-p", prompt, "--output-format", "json", "--model", model, "--tools", ""],
+                cwd=scratch,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+    except (subprocess.TimeoutExpired, OSError):
+        # One hung/failed judge call must not abort the whole grading batch;
+        # grade.py records None as "judge FAILED" and keeps deterministic grades.
+        return None
     if proc.returncode != 0:
         return None
     try:
-        result = json.loads(proc.stdout).get("result", "")
+        result = json.loads(proc.stdout).get("result") or ""
     except json.JSONDecodeError:
         return None
     return parse_judge_output(result)

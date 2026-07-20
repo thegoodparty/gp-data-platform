@@ -118,7 +118,9 @@ def evaluate_verdicts(df: pd.DataFrame, cells: dict, questions: list[Question], 
     rule1 = bool(qids) and full_pass >= math.ceil(len(qids) * 7 / 8) and sev1_count == 0 and full_cells_ok
 
     rule2 = None
-    if "bare" in set(df.arm):
+    # No trap questions in the batch -> rule 2 is inapplicable (None), the same
+    # as when the bare arm is absent — not a failed verdict on two zero counts.
+    if "bare" in set(df.arm) and trap_qids:
         rule2 = _pass_count(df, "full", trap_qids, threshold) > _pass_count(df, "bare", trap_qids, threshold)
 
     rule3 = None
