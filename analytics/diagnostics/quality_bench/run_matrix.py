@@ -25,6 +25,14 @@ except ImportError:  # bare `python run_matrix.py`: diagnostics/ isn't on sys.pa
     from quality_bench.bank import ARMS, Question, load_manifest
 
 
+def save_state(state_file: Path, state: dict) -> None:
+    """Atomic write via temp file + rename: a Ctrl-C mid-write must not corrupt
+    state.json, or every later resume dies on JSONDecodeError."""
+    tmp = state_file.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(state_file)
+
+
 @dataclass(frozen=True)
 class RunSpec:
     question_id: str
@@ -172,7 +180,7 @@ def main() -> None:
                 print(f"{run_id}: CRASHED {e}")
                 result = {"run_id": run_id, "ok": False, "error": str(e)}
             state["runs"][result["run_id"]] = result
-            state_file.write_text(json.dumps(state, indent=2))
+            save_state(state_file, state)
             print(f"{result['run_id']}: {'ok' if result['ok'] else 'FAILED'}")
 
 

@@ -47,7 +47,11 @@ def check_numbers(block: dict | None, key: Key) -> list[CheckResult]:
         except (TypeError, ValueError):
             out.append(CheckResult(spec.name, "number", False, f"non-numeric: {got[spec.name]!r}"))
             continue
-        diff_pct = abs(value - spec.value) / abs(spec.value) * 100 if spec.value else float("inf")
+        if spec.value:
+            diff_pct = abs(value - spec.value) / abs(spec.value) * 100
+        else:
+            # Zero key: exact zero passes; anything else has no meaningful pct diff.
+            diff_pct = 0.0 if value == 0.0 else float("inf")
         passed = diff_pct <= spec.tolerance_pct
         out.append(
             CheckResult(
@@ -75,6 +79,15 @@ def check_severity1(answer_text: str, key: Key) -> list[CheckResult]:
     return out
 
 
+def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
+    """Each required_assumptions fork must be surfaced in the answer's assumptions ledger."""
+    ledger = _resolutions(block) if block else {}
+    return [
+        CheckResult(fork, "assumption", fork in ledger, "fork surfaced in assumptions ledger")
+        for fork in key.required_assumptions
+    ]
+
+
 def _resolutions(block: dict) -> dict[str, str]:
     out = {}
     for a in block.get("results", {}).get("assumptions", []) or []:
@@ -95,7 +108,11 @@ def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
                 vals.append(float(v))
         if len(vals) >= 2:
             mean = sum(vals) / len(vals)
-            spreads[name] = (max(vals) - min(vals)) / abs(mean) * 100 if mean else float("inf")
+            if mean:
+                spreads[name] = (max(vals) - min(vals)) / abs(mean) * 100
+            else:
+                # Zero mean: identical reps (all zero) are perfectly consistent.
+                spreads[name] = 0.0 if max(vals) == min(vals) else float("inf")
     forks = set(key.required_resolutions)
     agreement = {}
     for fork in forks:

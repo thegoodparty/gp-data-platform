@@ -104,6 +104,34 @@ results:
     assert "inf" in results[0].detail
 
 
+def test_check_numbers_zero_key_zero_answer_passes():
+    """An exact 0 against a 0 key is correct, not an inf diff."""
+    key = make_key(numbers=[NumberSpec("x", 0.0, 0.5)])
+    block = {"results": {"numbers": {"x": 0}}}
+    results = grading.check_numbers(block, key)
+    assert results[0].passed is True
+
+
+def test_cell_consistency_all_zero_reps_consistent():
+    """Identical all-zero reps agree perfectly; zero mean must not read as inf spread."""
+    key = make_key(numbers=[NumberSpec("x", 0.0, 0.5)])
+    cell = grading.cell_consistency([{"results": {"numbers": {"x": 0}}}] * 3, key)
+    assert cell["max_spread_pct"] == 0.0
+    assert cell["consistent"] is True
+
+
+def test_check_assumptions_fork_presence():
+    key = make_key(required_assumptions=["denominator", "population"])
+    block = grading.parse_results_block(ANSWER)  # ledger surfaces denominator only
+    by_fork = {c.check_id: c.passed for c in grading.check_assumptions(block, key)}
+    assert by_fork == {"denominator": True, "population": False}
+
+
+def test_check_assumptions_unparsed_block_fails():
+    key = make_key(required_assumptions=["denominator"])
+    assert grading.check_assumptions(None, key)[0].passed is False
+
+
 def test_check_sources_pass_and_fail():
     key = make_key(
         mandatory_sources=[

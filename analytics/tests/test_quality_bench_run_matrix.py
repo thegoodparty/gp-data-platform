@@ -10,6 +10,14 @@ def q(qid="q01") -> Question:
     return Question(qid, "win", "none", "calibration", f"{qid}.md", f"{qid}_key.yaml")
 
 
+def test_save_state_atomic(tmp_path: Path):
+    state_file = tmp_path / "state.json"
+    state = {"runs": {"q01__full__r1": {"ok": True}}}
+    run_matrix.save_state(state_file, state)
+    assert json.loads(state_file.read_text()) == state
+    assert not (tmp_path / "state.tmp").exists()  # temp file renamed, not left behind
+
+
 def test_build_runs_matrix(tmp_path: Path):
     (tmp_path / "q01.md").write_text("What is the monthly funnel?")
     arm_dirs = {"full": tmp_path / "full", "bare": tmp_path / "bare"}

@@ -18,7 +18,9 @@ Fields (see bank.py for the authoritative loader):
   Check ids are index-based (`severity1_0`, `severity1_1`, ...), so reordering
   the patterns shifts the ids reported for a given tripwire.
 - `required_assumptions`: fork names that must appear in the answer's
-  assumptions ledger.
+  assumptions ledger. Checked deterministically per run and reported as the
+  `assumptions_pass` column in scores.csv; like `sources_pass`, it is
+  reported but not gated into the pre-registered verdict rules.
 - `intent_card`: 3-4 lines of asker intent (purpose, audience, fork answers).
   Unused in pass 1; pre-authored ground truth for the framing bench (design §12).
   Jot it during the gold-run key review while context is fresh.

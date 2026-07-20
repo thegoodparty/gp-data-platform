@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -43,6 +44,7 @@ def grade_run(run_state: dict, key: Key) -> dict:
         # missing/empty transcript isn't mistaken for a genuine adherence miss.
         sources = [dataclasses.replace(c, detail="transcript missing") for c in sources]
     sev1 = grading.check_severity1(answer, key)
+    assumptions = grading.check_assumptions(block, key)
     return {
         "run_id": run_id,
         "question_id": question_id,
@@ -53,41 +55,77 @@ def grade_run(run_state: dict, key: Key) -> dict:
         "numbers_pass": all(c.passed for c in numbers),
         "sources_pass": all(c.passed for c in sources),
         "severity1_tripped": any(not c.passed for c in sev1),
+        "assumptions_pass": all(c.passed for c in assumptions),
         "_block": block,
     }
 
 
-def _question_passes(df: pd.DataFrame, arm: str, qid: str) -> bool:
+BASE_COLUMNS = [
+    "run_id",
+    "question_id",
+    "arm",
+    "rep",
+    "results_block_ok",
+    "transcript_ok",
+    "numbers_pass",
+    "sources_pass",
+    "severity1_tripped",
+    "assumptions_pass",
+]
+
+
+def scores_frame(rows: list[dict]) -> pd.DataFrame:
+    """Rows -> sorted scores frame. An all-failed batch has no rows; keep the
+    base columns so downstream verdict code (df.arm etc.) still works."""
+    if not rows:
+        return pd.DataFrame(columns=BASE_COLUMNS)
+    return pd.DataFrame(rows).sort_values("run_id")
+
+
+def rep_threshold(reps: int) -> int:
+    """Design §8: a question passes when >= 2/3 of its reps pass (2 of 3 at the
+    default rep count). Scale with the batch's actual rep count."""
+    return max(1, math.ceil(reps * 2 / 3))
+
+
+def _question_passes(df: pd.DataFrame, arm: str, qid: str, threshold: int) -> bool:
     reps = df[(df.arm == arm) & (df.question_id == qid)]
-    return int(reps.numbers_pass.sum()) >= 2
+    return int(reps.numbers_pass.sum()) >= threshold
 
 
-def _pass_count(df: pd.DataFrame, arm: str, qids: list[str]) -> int:
+def _pass_count(df: pd.DataFrame, arm: str, qids: list[str], threshold: int) -> int:
     return sum(
-        _question_passes(df, arm, q) for q in qids if not df[(df.arm == arm) & (df.question_id == q)].empty
+        _question_passes(df, arm, q, threshold)
+        for q in qids
+        if not df[(df.arm == arm) & (df.question_id == q)].empty
     )
 
 
-def evaluate_verdicts(df: pd.DataFrame, cells: dict, questions: list[Question]) -> dict:
+def evaluate_verdicts(df: pd.DataFrame, cells: dict, questions: list[Question], threshold: int = 2) -> dict:
     qids = [q.id for q in questions]
     trap_qids = [q.id for q in questions if q.trap != "none"]
-    full_pass = _pass_count(df, "full", qids)
+    full_pass = _pass_count(df, "full", qids, threshold)
     full_runs = df[df.arm == "full"]
     sev1_count = int(full_runs.severity1_tripped.sum()) + int(
         full_runs.get("judge_severity1_found", pd.Series(dtype=bool)).fillna(False).sum()
     )
-    full_cells_ok = all(c["consistent"] for (q, a), c in cells.items() if a == "full")
-    rule1 = full_pass >= len(qids) - 1 and sev1_count == 0 and full_cells_ok
+    full_cells = [c for (q, a), c in cells.items() if a == "full"]
+    # bool(full_cells) keeps rule 1 non-vacuous: a batch where the full arm
+    # produced no graded cells must not pass on all([]) == True.
+    full_cells_ok = bool(full_cells) and all(c["consistent"] for c in full_cells)
+    # ceil(7/8 * N) generalizes the pre-registered ">= 7 of 8" proportionally,
+    # so a small denominator (e.g. a 1-question smoke batch) gets no free slack.
+    rule1 = bool(qids) and full_pass >= math.ceil(len(qids) * 7 / 8) and sev1_count == 0 and full_cells_ok
 
     rule2 = None
     if "bare" in set(df.arm):
-        rule2 = _pass_count(df, "full", trap_qids) > _pass_count(df, "bare", trap_qids)
+        rule2 = _pass_count(df, "full", trap_qids, threshold) > _pass_count(df, "bare", trap_qids, threshold)
 
     rule3 = None
     if "knowledge" in set(df.arm):
         k_cells = sum(c["consistent"] for (q, a), c in cells.items() if a == "knowledge")
         f_cells = sum(c["consistent"] for (q, a), c in cells.items() if a == "full")
-        rule3 = _pass_count(df, "knowledge", qids) >= full_pass and k_cells >= f_cells
+        rule3 = _pass_count(df, "knowledge", qids, threshold) >= full_pass and k_cells >= f_cells
 
     return {
         "rule1_trustworthy": rule1,
@@ -131,7 +169,7 @@ def main() -> None:
                 print(f"{run_id}: judge FAILED")
         rows.append(row)
 
-    df = pd.DataFrame(rows).sort_values("run_id")
+    df = scores_frame(rows)
     df.to_csv(batch_dir / "scores.csv", index=False)
 
     # Coverage denominator = every question with ANY recorded run, not only the
@@ -140,7 +178,10 @@ def main() -> None:
     qids_in_state = {rid.split("__")[0] for rid in state["runs"]}
     denom_questions = [q for q in questions if q.id in qids_in_state]
     cells = {ck: grading.cell_consistency(bs, keys[ck[0]]) for ck, bs in blocks.items()}
-    verdicts = evaluate_verdicts(df, cells, denom_questions)
+    # Rep count comes from the recorded run ids, so a resumed or non-default
+    # --reps batch grades against its own size, not a hardcoded 3.
+    reps_recorded = max((int(rid.split("__")[2].lstrip("r")) for rid in state["runs"]), default=0)
+    verdicts = evaluate_verdicts(df, cells, denom_questions, threshold=rep_threshold(reps_recorded))
 
     graded = len(rows)
     recorded = len(state["runs"])

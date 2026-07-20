@@ -3,7 +3,7 @@ from quality_bench import grade
 from quality_bench.bank import Question
 
 
-def rows_for(question_ids, arm, passes: bool, sev1: bool = False):
+def rows_for(question_ids, arm, passes: bool, sev1: bool = False, reps=(1, 2, 3)):
     return [
         {
             "run_id": f"{q}__{arm}__r{r}",
@@ -17,7 +17,7 @@ def rows_for(question_ids, arm, passes: bool, sev1: bool = False):
             "judge_severity1_found": False,
         }
         for q in question_ids
-        for r in (1, 2, 3)
+        for r in reps
     ]
 
 
@@ -72,3 +72,44 @@ def test_question_with_zero_ok_runs_still_counts_in_denominator():
     v6 = grade.evaluate_verdicts(df_6, cells(["full"]), QUESTIONS)
     assert v6["rule1_trustworthy"] is False
     assert "6/8" in v6["rule1_detail"]
+
+
+def test_rule1_not_vacuous_without_full_arm_cells():
+    """A batch where only the bare arm produced graded runs (e.g. every full run
+    failed) must not report trustworthy on empty full-arm evidence."""
+    df = pd.DataFrame(rows_for(["q01"], "bare", True))
+    v = grade.evaluate_verdicts(df, {("q01", "bare"): {"consistent": True}}, QUESTIONS[:1])
+    assert v["rule1_trustworthy"] is False
+
+
+def test_rule1_small_denominator_gets_no_free_slack():
+    """With a 1-question batch, the proportional 7/8 bar rounds up to 1: the
+    question must actually pass, not ride the old '>= N-1' slack."""
+    df = pd.DataFrame(rows_for(["q01"], "full", False))
+    v = grade.evaluate_verdicts(df, {("q01", "full"): {"consistent": True}}, QUESTIONS[:1])
+    assert v["rule1_trustworthy"] is False
+
+
+def test_rep_threshold_scales_with_reps():
+    assert grade.rep_threshold(3) == 2
+    assert grade.rep_threshold(6) == 4
+    assert grade.rep_threshold(2) == 2
+    assert grade.rep_threshold(1) == 1
+
+
+def test_question_passes_uses_threshold():
+    # 3 of 6 reps pass = 50%, below the 2/3 bar at reps=6.
+    rows = rows_for(["q01"], "full", True) + rows_for(["q01"], "full", False, reps=(4, 5, 6))
+    df = pd.DataFrame(rows)
+    assert grade._question_passes(df, "full", "q01", grade.rep_threshold(6)) is False
+    assert grade._question_passes(df, "full", "q01", grade.rep_threshold(3)) is True
+
+
+def test_scores_frame_empty_keeps_columns():
+    """An all-failed batch grades zero rows; the frame must keep its columns so
+    the report/verdict path still runs instead of crashing on sort_values."""
+    df = grade.scores_frame([])
+    assert df.empty
+    assert list(df.columns) == grade.BASE_COLUMNS
+    v = grade.evaluate_verdicts(df, {}, QUESTIONS[:1])
+    assert v["rule1_trustworthy"] is False
