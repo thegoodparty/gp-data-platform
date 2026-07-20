@@ -252,8 +252,9 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
     """The committed name-search extras build through the real partitioned parent-only +
     per-partition child + ATTACH path, and the planner serves people-api's lower(col) LIKE
     predicates on public."Voter" — DB semantics the FakeConn unit tests can't reach. Substring rides
-    the trigram GIN; anchored-prefix rides the text_pattern_ops b-trees (a default-opclass b-tree
-    can't serve LIKE-prefix on this en_US.UTF-8 cluster).
+    the trigram GIN; anchored-prefix rides the lower() b-trees, which must carry text_pattern_ops
+    (asserted from the catalog, not inferred from the plan, since a default-opclass b-tree happens
+    to serve LIKE-prefix under a C collation) so prefix search works on a non-C collation like prod.
     """
     create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
     parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
@@ -299,21 +300,30 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
             want = len(_STATES)
             assert attached == want, f"{idx.name}: {attached} children attached, want {want}"
 
-    # seqscan off makes the plan reveal whether an index is usable for each query shape; a
-    # mismatched index expression would leave only a (now-penalized) seq scan.
+        # The lower() b-trees must carry text_pattern_ops or they can't serve LIKE-prefix on a
+        # non-C collation. Assert the opclass straight from the catalog so it holds regardless of
+        # the test cluster's locale (a plan-based check would pass tautologically under C).
+        for name in ("Voter_firstname_lower_idx", "Voter_lastname_lower_idx"):
+            opclass = _scalar(
+                cur,
+                "SELECT o.opcname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"JOIN pg_opclass o ON o.oid = i.indclass[0] WHERE c.relname = '{name}'",
+            )
+            assert opclass == "text_pattern_ops", f"{name}: opclass is {opclass}, want text_pattern_ops"
+
+    # seqscan off makes the plan reveal whether the predicate is index-servable at all; a mismatched
+    # index expression would leave only a (now-penalized) seq scan.
     with pg_conn.cursor() as cur:
         _exec(cur, "SET enable_seqscan = off")
         try:
             # substring: only the trigram GIN can serve lower(col) LIKE '%tok%' (>=3 chars so a real
-            # trigram is extracted). Both trgm indexes appear via the BitmapOr across the name OR.
+            # trigram is extracted), so both trgm indexes appear via the BitmapOr across the name OR.
             sub_plan = _explain(cur, _name_search_sql("%ohn%"))
             assert "Voter_firstname_lower_trgm_idx" in sub_plan, sub_plan
             assert "Voter_lastname_lower_trgm_idx" in sub_plan, sub_plan
-            # anchored prefix: the text_pattern_ops b-trees serve lower(col) LIKE 'tok%', which a
-            # default-opclass b-tree could not here -> proves the opclass survived the build path.
+            # anchored prefix: the whole OR is index-served (no seq scan). Which index the planner
+            # picks is cost-dependent; the opclass that makes the b-tree eligible is asserted above.
             pre_plan = _explain(cur, _name_search_sql("jo%"))
             assert "Seq Scan" not in pre_plan, pre_plan
-            assert "Voter_firstname_lower_idx" in pre_plan, pre_plan
-            assert "Voter_lastname_lower_idx" in pre_plan, pre_plan
         finally:
             _exec(cur, "SET enable_seqscan = on")
