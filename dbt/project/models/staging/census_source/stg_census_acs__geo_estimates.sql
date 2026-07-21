@@ -356,52 +356,14 @@ with
         where {{ census_acs_retained_geo_rows() }}
     ),
 
-    -- Every table publishes the same geography set, but the spine is the union
-    -- of all twelve key sets so a single-file publication gap can never drop a
-    -- geography row silently; the retained-key alignment test pins exact
-    -- equality of the sets.
-    all_keys as (
-        select summary_level, geoid
-        from b01001
-        union
-        select summary_level, geoid
-        from b03002
-        union
-        select summary_level, geoid
-        from b15002
-        union
-        select summary_level, geoid
-        from b19025
-        union
-        select summary_level, geoid
-        from b23025
-        union
-        select summary_level, geoid
-        from b25003
-        union
-        select summary_level, geoid
-        from b25008
-        union
-        select summary_level, geoid
-        from b28002
-        union
-        select summary_level, geoid
-        from c17002
-        union
-        select summary_level, geoid
-        from b19013
-        union
-        select summary_level, geoid
-        from b25077
-        union
-        select summary_level, geoid
-        from b19001
-    ),
-
+    -- b01001 keys are THE canonical spine: the retained-key alignment test
+    -- pins the other strict tables' key sets identical to b01001's and b19025
+    -- a subset of it, so the eleven left joins below can never invent or drop
+    -- a geography row.
     final as (
         select
-            all_keys.summary_level,
-            all_keys.geoid,
+            b01001.summary_level,
+            b01001.geoid,
             b01001.total_population,
             b01001.total_population_moe,
             b01001.population_under_18,
@@ -486,8 +448,7 @@ with
             b19001.households_income_150k_to_200k_moe,
             b19001.households_income_200k_plus,
             b19001.households_income_200k_plus_moe
-        from all_keys
-        left join b01001 using (summary_level, geoid)
+        from b01001
         left join b03002 using (summary_level, geoid)
         left join b15002 using (summary_level, geoid)
         left join b19025 using (summary_level, geoid)
