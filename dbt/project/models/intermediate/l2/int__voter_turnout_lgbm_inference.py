@@ -454,7 +454,7 @@ def _build_district_projection_sql(interval_params):
     pred_rate = ballots_projected / district_voters, and apply
 
         bound_rate  = clip(pred_rate + q * w(pred_rate), 0, 1)
-        bound_votes = round(bound_rate * district_voters)
+        bound_votes = greatest(round(bound_rate * district_voters), 3)
 
     with q = q25 for the lower bound and q = q95 for the upper, and w() a per-model
     residual-spread scaler:
@@ -495,8 +495,12 @@ def _build_district_projection_sql(interval_params):
             "(CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate) "
             "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
         )
-        lower_expr = f"ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) * a.district_voters)"
-        upper_expr = f"ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) * a.district_voters)"
+        # Floor each bound at 3 ballots, matching the point-estimate floor (DATA-2015 /
+        # PR #598: GREATEST(ROUND(...), 3)). All three of point/lower/upper are floored the
+        # same way so the lower <= point <= upper ordering is preserved (GREATEST is
+        # monotonic); flooring only the point could leave upper < point for a tiny district.
+        lower_expr = f"GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) * a.district_voters), 3)"
+        upper_expr = f"GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) * a.district_voters), 3)"
     else:
         params_cte = ""
         join_sql = ""
@@ -536,7 +540,7 @@ def _build_district_projection_sql(interval_params):
             a.state,
             a.district_type,
             a.district_name,
-            ROUND(a.projected_raw)  AS ballots_projected,
+            GREATEST(ROUND(a.projected_raw), 3)  AS ballots_projected,
             {lower_expr}  AS ballots_projected_lower,
             {upper_expr}  AS ballots_projected_upper,
             a.model_version,

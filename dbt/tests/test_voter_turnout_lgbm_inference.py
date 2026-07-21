@@ -316,8 +316,8 @@ def test_projection_sql_carries_model_slug_and_district_voters():
     assert "SUM(p.n_voters)" in sql
     assert "AS district_voters" in sql
     assert "m.district_type, m.district_name, p.model_slug, p.model_family" in sql
-    # ballots_projected value is unchanged (round of the p_hat-weighted sum).
-    assert "ROUND(a.projected_raw)" in sql
+    # ballots_projected = round of the p_hat-weighted sum, floored at 3 (DATA-2015 / #598).
+    assert "GREATEST(ROUND(a.projected_raw), 3)" in sql
     assert "AS ballots_projected" in sql
 
 
@@ -334,6 +334,21 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
     assert "* a.district_voters" in sql
     assert "ip.bias" not in sql
     assert "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug" in sql
+    # both bounds are floored at 3 (matching the point-estimate floor), preserving
+    # lower <= point <= upper. Two bound columns each end with "* a.district_voters), 3)".
+    assert sql.count("* a.district_voters), 3)") == 2
+
+
+def test_projection_sql_floors_point_and_both_bounds_at_3():
+    sql = _build_district_projection_sql(_INTERVAL_PARAMS)
+    # point + lower + upper all wrapped in GREATEST(..., 3) so tiny districts never report
+    # below 3 and the ordering invariant survives the floor.
+    assert "GREATEST(ROUND(a.projected_raw), 3)" in sql
+    assert sql.count("), 3)") >= 3  # point + lower + upper
+    # the no-params branch must NOT floor NULL bounds into 3.
+    null_sql = _build_district_projection_sql({})
+    assert "GREATEST(CAST(NULL" not in null_sql
+    assert "GREATEST(ROUND(a.projected_raw), 3)" in null_sql  # point still floored
 
 
 def test_projection_sql_embeds_lower_upper_params_per_slug():
