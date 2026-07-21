@@ -34,7 +34,7 @@ with
                 select
                     '{{ t }}',
                     '{{ t | replace("acs5y2024_", "") }}_m{{ "%03d" | format(i) }}'
-            {% endfor %} {{ "union all" if not loop.last }}
+                {% endfor %} {{ "union all" if not loop.last }}
         {% endfor %}
     ),
 
