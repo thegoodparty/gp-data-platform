@@ -1,6 +1,6 @@
 snapshots:
   - name: snapshot__int__l2_nationwide_uniform
-    relation: ref('int__l2_nationwide_uniform')
+    relation: ref('int__l2_nationwide_uniform_w_haystaq')
     description: >
       "Snapshot of the int__l2_nationwide_uniform table. Use `check_cols` strategy since in the source data there is no `updated_at`. The relevant `loaded_at` column is updated for each new dataset"
     config:
@@ -802,3 +802,4 @@ snapshots:
         - PRI_BLT_2002
         - PRI_BLT_2001
         - PRI_BLT_2000
+        - hf_most_important_policy_item
