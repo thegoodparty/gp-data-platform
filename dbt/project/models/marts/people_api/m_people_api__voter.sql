@@ -423,6 +423,7 @@ with
             `Water_Replacement_SubDistrict`,
             `Water_SubDistrict`,
             `Weed_District`,
+            `hf_most_important_policy_item`,
             dbt_valid_from
         from {{ ref("snapshot__int__l2_nationwide_uniform") }}
         where
@@ -809,6 +810,7 @@ with
             tbl_updated.`Water_Replacement_SubDistrict`,
             tbl_updated.`Water_SubDistrict`,
             tbl_updated.`Weed_District`,
+            tbl_updated.`hf_most_important_policy_item`,
             {% if is_incremental() %}
                 -- For incremental runs, preserve existing created_at for existing
                 -- records,
