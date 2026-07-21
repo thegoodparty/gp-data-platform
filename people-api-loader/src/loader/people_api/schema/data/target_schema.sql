@@ -350,6 +350,7 @@ CREATE TABLE public."Voter" (
     "Water_Replacement_SubDistrict" TEXT,
     "Water_SubDistrict" TEXT,
     "Weed_District" TEXT,
+    "hf_most_important_policy_item" TEXT,
     "created_at" TIMESTAMPTZ,
     "updated_at" TIMESTAMPTZ,
     "Mailing_HHGender_Description" TEXT
