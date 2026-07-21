@@ -1683,3 +1683,114 @@ sources:
           Second of the two files of the 2020 census block population extract. Columns
           are typed; GEOCODE is stored as a number, which drops leading zeros, so always
           zero-pad to the 15-character block GEOID on read.
+
+  - name: census_acs
+    schema: sandbox
+    description: >
+      Census Bureau ACS 2020-2024 5-year table-based Summary File, loaded one time
+      from the public bulk directory
+      (https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/,
+      files acsdt5y2024-<table>.dat) by dbt/scripts/load_acs_summary_file.py on
+      2026-07-20 (see the committed manifest beside the script for hashes and row
+      counts). Tables are raw all-string: GEO_ID plus interleaved estimate/margin
+      columns (<TABLE>_E###/<TABLE>_M###) for every published summary level and
+      geographic component. Values still carry the raw negative jam-code sentinels
+      (insufficient sample, not applicable, not computable, controlled-to-total,
+      and the median-specific codes); they are mapped once, in staging. This is a
+      one-time load for the 2020-2024 vintage, not a refreshing feed: re-run the
+      documented loader for a future vintage, which verifies sha256 and row counts
+      against the manifest before replacing anything. Dollar-denominated tables are
+      2024 inflation-adjusted dollars.
+    tables:
+      - name: acs5y2024_b01001
+        description: >
+          Sex by age (B01001), universe total population. 49 estimate columns and
+          their margins. Feeds total population and the under-18 / 65-plus
+          bracket combinations.
+      - name: acs5y2024_b03002
+        description: >
+          Hispanic or Latino origin by race (B03002), universe total population.
+          Feeds the non-Hispanic race shares and the Hispanic-or-Latino share.
+      - name: acs5y2024_b15002
+        description: >
+          Sex by educational attainment for the population 25 years and over
+          (B15002). Chosen over the collapsed single-sex-axis education table
+          because this one is in the Census variance-replicate program, keeping
+          exact margins reachable later; identical derived estimates from more
+          bracket components.
+      - name: acs5y2024_b19001
+        description: >
+          Household income brackets in the past 12 months (B19001), universe
+          households, 2024 inflation-adjusted dollars. Staged for future
+          bracket-interpolated medians and possible income-band shares; not
+          shipped to any mart yet.
+      - name: acs5y2024_b19013
+        description: >
+          Median household income (B19013), 2024 inflation-adjusted dollars.
+          Staged for published-geography surfaces only: medians are not additive
+          and are never allocated to districts.
+      - name: acs5y2024_b19025
+        description: >
+          Aggregate household income (B19025), universe households, 2024
+          inflation-adjusted dollars. An additive dollar total: the safe
+          allocation primitive behind mean household income.
+      - name: acs5y2024_b23025
+        description: >
+          Employment status for the population 16 years and over (B23025).
+          Feeds civilian labor force and unemployed counts.
+      - name: acs5y2024_b25003
+        description: >
+          Housing tenure (B25003), universe occupied housing units (households).
+          Feeds households and owner-occupied households.
+      - name: acs5y2024_b25008
+        description: >
+          Total population in occupied housing units by tenure (B25008). Feeds
+          the average-household-size numerator.
+      - name: acs5y2024_b25077
+        description: >
+          Median home value of owner-occupied housing units (B25077). Staged for
+          published-geography surfaces only; never allocated.
+      - name: acs5y2024_b28002
+        description: >
+          Presence and types of internet subscriptions in household (B28002),
+          universe households. Feeds the broadband-subscription share (note:
+          subscription, not availability).
+      - name: acs5y2024_c17002
+        description: >
+          Ratio of income to poverty level in the past 12 months (C17002),
+          universe population for whom poverty status is determined (excludes
+          institutionalized group quarters, military quarters, and college
+          dormitories). Feeds the below-poverty share.
+      - name: census_ct_block_to_planning_region_2022
+        description: >
+          State-republished (CTData) copy of the Census 2022 Connecticut
+          county-equivalent-change block-level equivalency mapping. Not a
+          Census-hosted file: the Census publishes the change but no block-level
+          relationship file at a stable public URL, so the state data
+          collaborative's republication is loaded instead (URL and hash pinned
+          in the loader manifest; loaded 2026-07-20 by the same loader), and
+          its CONTENT is verified against the decennial block staging and the
+          published code structure by singular tests. One row per 2020 Connecticut
+          census block: block_fips_2020 carries the legacy-county block geoid,
+          block_fips_2022 the planning-region-coded geoid whose first 12
+          characters are the recoded block group. Contract: unique on
+          block_fips_2020; each block maps to exactly one planning-region block
+          group (many-to-one, never one-to-many). The republication omits
+          unpopulated water-only blocks, so the contract tests bind populated
+          geographies bidirectionally and separately prove that any block group
+          the mapping cannot reach carries no ACS population or households. The
+          2020-2024 ACS codes all CT geography under planning regions, so this
+          mapping (never string surgery on geoid suffixes) is what joins
+          legacy-coded decennial blocks to ACS block groups downstream.
+        columns:
+          - name: block_fips_2020
+            description: 2020 census block geoid under legacy CT county codes (15 characters).
+            data_tests:
+              - not_null
+              - unique
+          - name: block_fips_2022
+            description: >
+              The same block re-coded under 2022 planning-region county codes
+              (15 characters); first 12 characters are the ACS-era block group.
+            data_tests:
+              - not_null
