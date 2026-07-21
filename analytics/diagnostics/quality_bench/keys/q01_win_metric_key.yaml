@@ -1,0 +1,92 @@
+id: q01_win_metric
+as_of: "2026-07-21"
+
+# Gold run 2026-07-21 (supervised). Source: mart_analytics.users_win_base
+# (user grain, is_win_user), anchor = registered_at (DB registration),
+# window [2026-01-01, 2026-07-01) half-open on timestamp_ntz, excluding
+# is_demo_only users and GoodParty-internal accounts (email domain
+# @goodparty.org; domain-anchored and bare ILIKE forms matched identical
+# sets at pin time, 114 accounts).
+#
+# Reconciliation at pin time (headline + internal + demo_only = base_all;
+# base_all independently matched by distinct users_win_candidacy users under
+# is_latest_version AND NOT is_demo — note that cross-check equals
+# base_all MINUS demo_only in general; demo_only was 0 in-window):
+#   month    headline  internal  demo_only  base_all
+#   2026-01      1993         8          0      2001
+#   2026-02      1018         7          0      1025
+#   2026-03       584         7          0       591
+#   2026-04       229        14          0       243
+#   2026-05       280        32          0       312
+#   2026-06       356        46          0       402
+#
+# Tolerances are a drift budget for the current-state is_win_user flag
+# (replication at pin time was exact; drift is two-sided but dominated
+# upward by late Win-conversion of recent registrants, so recent months get
+# wider bands; schema supports symmetric pct only). Jan-Mar registrants had
+# >= 4.5 months of linkage time at pin; April widened for its small base;
+# May-Jun widened for 3-11 weeks linkage time and the largest internal-
+# account shares. A no-internal-exclusion run passes Jan-Mar numerically
+# (+0.4/0.7/1.2%) but fails Apr-Jun (+6.1/11.4/12.9%) and trips
+# required_resolutions plus the question text, which names the exclusion.
+numbers:
+  - name: new_win_users_2026_01
+    value: 1993
+    tolerance_pct: 1.0
+  - name: new_win_users_2026_02
+    value: 1018
+    tolerance_pct: 1.0
+  - name: new_win_users_2026_03
+    value: 584
+    tolerance_pct: 1.0
+  - name: new_win_users_2026_04
+    value: 229
+    tolerance_pct: 2.0
+  - name: new_win_users_2026_05
+    value: 280
+    tolerance_pct: 3.0
+  - name: new_win_users_2026_06
+    value: 356
+    tolerance_pct: 3.0
+
+required_resolutions:
+  account_created: db_registration (registered_at / gp_api user.created_at; NOT onboarding-gated)
+  population: win_users_mart (users_win_base is_win_user; distinct users_win_candidacy users equivalent)
+  internal_accounts: exclude_goodparty_org_email_domain
+  demo_accounts: exclude_demo_only_users
+  month_bucketing: half_open_calendar_months_on_registered_at
+
+mandatory_sources:
+  - id: win_user_mart
+    pattern: 'users_win_(base|candidacy)'
+    description: consulted a governed Win user mart rather than raw gp_api tables alone
+  - id: registration_anchor
+    pattern: '(registered_at|user_created_at|user\.created_at)'
+    description: anchored counts on account-creation timestamp, not a funnel event
+  - id: internal_exclusion
+    pattern: '(?i)goodparty\.org'
+    description: evidence the GoodParty-internal account exclusion was applied
+
+# Confidently-wrong claims observed/anticipated during the gold run:
+# gating the count on the stored onboarding flags, which are new-flow-blind
+# post-2026-05-07 (any such filter is wrong by construction), and reading a
+# creation timestamp column that does not exist on users_win_base.
+severity1_patterns:
+  - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
+  - 'users_win_base\.user_created_at'
+
+required_assumptions:
+  - account_created_definition
+  - internal_accounts_exclusion
+  - demo_accounts_exclusion
+  - boundary_semantics
+  - win_user_current_state_flag
+
+intent_card: |
+  Purpose: calibration-split census metric — any competent full-context run
+  should pass; grades definitional discipline, not discovery.
+  Audience: data team benchmark graders (DATA-2144 harness).
+  Fork answers (asker): account created = DB registration (registered_at),
+  not onboarding-gated; internal accounts excluded via @goodparty.org email
+  domain; demo-only users excluded; months half-open [start, next-start) on
+  timestamp_ntz registered_at; Win user = current-state is_win_user.
