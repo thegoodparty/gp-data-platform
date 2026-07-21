@@ -6,6 +6,10 @@ tables only — indexes/PK are deferred to build-indexes), after installing the
 aws_s3/aws_commons extensions. Voter and DistrictVoter are LIST-partitioned by
 "State" (one child partition per USState); District and DistrictStats are plain
 flat tables.
+
+Also creates a `green` compatibility schema with a pass-through view over each
+public table, so people-api (which references `green.<table>`) works unchanged
+against the loader-built public serving tables.
 """
 
 from __future__ import annotations
@@ -50,6 +54,18 @@ def build_partitioned_ddl(
         for s in states
     ]
     return parent, children
+
+
+def build_green_view_ddl(tables: Sequence[str]) -> list[str]:
+    """Create the `green` compatibility schema and a pass-through view over each public table.
+
+    people-api references `green.<table>`; these views expose the loader-built `public`
+    tables unchanged (SELECT * expands to the built columns at view-creation time), so the
+    consumer needs no schema change to read the public serving tables.
+    """
+    stmts = ["CREATE SCHEMA IF NOT EXISTS green;"]
+    stmts += [f'CREATE OR REPLACE VIEW green."{t}" AS SELECT * FROM public."{t}";' for t in tables]
+    return stmts
 
 
 def _flat_ddl(create_sql: str, table: str) -> str:
@@ -111,6 +127,11 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
             with conn.cursor() as cur:
                 cur.execute(stmt)  # ty: ignore[no-matching-overload]
         log.info("schema.ddl_applied")
+
+        for stmt in build_green_view_ddl(list(TABLE_SPECS)):
+            with conn.cursor() as cur:
+                cur.execute(stmt)  # ty: ignore[no-matching-overload]
+        log.info("schema.green_views_created", tables=len(TABLE_SPECS))
 
     manifest = SchemaManifest(
         run_date=run_date,

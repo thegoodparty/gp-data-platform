@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema.schema_spec import TABLE_SPECS
 from loader.people_api.schema.states import STATES
 from loader.people_api.steps import create_schema as step
 from tests._fakes import FakeConn, executed_sql, fake_connect
@@ -47,6 +48,10 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\')' in s
         for s in sql
     )
+    # green compatibility views are created by run() over each public serving table
+    assert any("CREATE SCHEMA IF NOT EXISTS green;" in s for s in sql)
+    for t in ("Voter", "DistrictVoter", "District", "DistrictStats"):
+        assert any(f'CREATE OR REPLACE VIEW green."{t}" AS SELECT * FROM public."{t}";' in s for s in sql)
     # indexes are NOT applied by create-schema
     assert not any("CREATE INDEX" in s for s in sql)
     assert manifest.status == "complete"
@@ -117,6 +122,19 @@ def test_build_partitioned_ddl_shape() -> None:
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\');',
         'CREATE TABLE IF NOT EXISTS public."Voter_CA" PARTITION OF public."Voter" FOR VALUES IN (\'CA\');',
     ]
+
+
+def test_build_green_view_ddl_shape() -> None:
+    assert step.build_green_view_ddl(["Voter", "District"]) == [
+        "CREATE SCHEMA IF NOT EXISTS green;",
+        'CREATE OR REPLACE VIEW green."Voter" AS SELECT * FROM public."Voter";',
+        'CREATE OR REPLACE VIEW green."District" AS SELECT * FROM public."District";',
+    ]
+
+
+def test_build_green_view_ddl_covers_all_tables() -> None:
+    stmts = step.build_green_view_ddl(list(TABLE_SPECS))
+    assert len(stmts) == 1 + len(TABLE_SPECS)
 
 
 def test_build_partitioned_ddl_parametrizes_table_and_column() -> None:

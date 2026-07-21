@@ -36,7 +36,7 @@ from loader.people_api.schema import _serving_seed_extra
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
-from loader.people_api.steps.create_schema import build_partitioned_ddl
+from loader.people_api.steps.create_schema import build_green_view_ddl, build_partitioned_ddl
 from tests._fakes import fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
@@ -235,6 +235,30 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
         nostate_ti = inspect_prod._inspect_table(cur, "NoStateTbl")
     assert nostate_ti.total_row_count == 2
     assert nostate_ti.per_state_row_counts == {}
+
+
+def test_green_views_pass_through_public_table(pg_conn: psycopg.Connection) -> None:
+    """The `green` compatibility views expose a public table unchanged: same rows,
+    real Postgres view catalog entry (not a table)."""
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP VIEW IF EXISTS green."T"')
+        _exec(cur, 'DROP TABLE IF EXISTS public."T" CASCADE')
+        _exec(cur, 'CREATE TABLE public."T" (id int NOT NULL, label text)')
+        _exec(cur, "INSERT INTO public.\"T\" (id, label) VALUES (1, 'a'), (2, 'b')")
+
+        for stmt in build_green_view_ddl(["T"]):
+            _exec(cur, stmt)
+
+        relkind = _scalar(
+            cur,
+            "SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'green' AND c.relname = 'T'",
+        )
+        assert relkind == "v"  # a view, not a table
+
+        _exec(cur, 'SELECT id, label FROM green."T" ORDER BY id')
+        rows = cur.fetchall()
+        assert rows == [(1, "a"), (2, "b")]
 
 
 def _name_search_sql(pattern: str) -> str:
