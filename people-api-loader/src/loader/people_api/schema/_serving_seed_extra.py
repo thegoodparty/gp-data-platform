@@ -58,4 +58,16 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=['lower("LastName")'],
         where=None,
     ),
+    # Geospatial lookups on the residence coordinates. GiST is the standard PostGIS point index:
+    # fast to build in bulk and fast to probe (unlike BRIN, which needs spatially-sorted data). The
+    # "geom" column it indexes is created by build_indexes (postgis + the generated column) before
+    # this builds. pg_trgm and postgis are installed by create_schema and build_indexes.
+    IndexDef(
+        table="Voter",
+        name="Voter_geom_idx",
+        sql='CREATE INDEX "Voter_geom_idx" ON public."Voter" USING gist ("geom");',
+        unique=False,
+        columns=["geom"],
+        where=None,
+    ),
 ]
