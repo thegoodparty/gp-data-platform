@@ -1,5 +1,11 @@
 """One-time, manifest-verified loader for the Census ACS 2020-2024 5-year table-based Summary File.
 
+This loader is deliberately specific to the 2020-2024 vintage (the 2024
+summary-file release): the URL template, table names, manifest, dbt source,
+staging model, and anchor tests all encode it together. A future vintage is a
+reviewed change to all of those, not a flag; the loader refuses any manifest
+whose recorded vintage is not the pinned one.
+
 Downloads the locked table inventory (plus the Connecticut block-to-planning-region
 crosswalk) from the public bulk directories, verifies every file's sha256 and data
 row count against the committed manifest BEFORE touching any warehouse table, then
@@ -11,19 +17,14 @@ CSV's "block number" header is renamed block_number in the CTAS select list
 because Delta rejects spaces in column names, and its UTF-8 BOM is stripped before
 hashing so the manifest hash covers exactly the bytes read_files parses.
 
-Refresh story: this is a one-time documented load for the 2020-2024 vintage, not a
-recurring job. For a future vintage, bootstrap with --year <YYYY> --write-manifest
---verify-only, review and commit the regenerated manifest beside this script, then
-run the load. Adding a table to ACS_TABLES and re-running with --tables <table>
-(bootstrap first, then load) is an idempotent, additive re-run.
-
 Publication semantics: a first load issues plain CREATE TABLE, so the warehouse
-itself enforces fail-if-exists even against a race the preflight cannot see.
---allow-replace permits a re-run: the preflight records every existing target's
-current Delta version, and immediately before each replacement that version is
-re-checked -- any drift (a concurrent writer) aborts with nothing mutated. Default
-downloads live in a temporary directory that is cleaned up on exit; pass
---download-dir to keep them.
+itself enforces fail-if-exists. --allow-replace permits an explicit re-run over
+existing targets: the preflight records every existing target's current Delta
+version as the concrete rollback target, then tables are replaced one at a time.
+These are one-time, operator-owned sandbox tables; the safeguards here are
+operational (verify-first ordering, truthful reporting, documented rollback),
+not concurrency control. Default downloads live in a temporary directory that
+is cleaned up on exit; pass --download-dir to keep them.
 
 Failure handling: publication proceeds one table at a time (upload with re-hash,
 create, immediate count check) and stops at the first problem. Bookkeeping is
@@ -43,14 +44,14 @@ stored by this script; keep it that way.
 
 Usage (from the dbt/ directory):
     uv run python scripts/load_acs_summary_file.py --write-manifest --verify-only
-        # bootstrap or new vintage: record facts; NEVER writes to the warehouse
+        # bootstrap: record download facts; NEVER writes to the warehouse
     uv run python scripts/load_acs_summary_file.py
         # first load: verify every download against the COMMITTED manifest,
         # then publish one table at a time with plain CREATE TABLE
     uv run python scripts/load_acs_summary_file.py --verify-only
         # re-verify downloads against the committed manifest; no warehouse writes
     uv run python scripts/load_acs_summary_file.py --tables b19001 --allow-replace
-        # subset re-run over existing tables (version-checked replacement)
+        # subset re-run over existing tables (explicit replacement)
 """
 
 from __future__ import annotations
@@ -87,6 +88,11 @@ def _ipv4_first_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     return _SYSTEM_GETADDRINFO(host, port, family, type, proto, flags)
 
 
+# The pinned vintage. Everything downstream (table names, dbt source, staging
+# model, anchor constants) encodes 2020-2024; a new vintage is a reviewed
+# change to all of them together, never a runtime flag.
+VINTAGE = "2020-2024 ACS 5-year"
+
 ACS_TABLES = (
     "b01001",
     "b03002",
@@ -102,8 +108,8 @@ ACS_TABLES = (
     "c17002",
 )
 ACS_URL_TEMPLATE = (
-    "https://www2.census.gov/programs-surveys/acs/summary_file/{year}"
-    "/table-based-SF/data/5YRData/acsdt5y{year}-{table}.dat"
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2024"
+    "/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"
 )
 CT_CROSSWALK_URL = (
     "https://raw.githubusercontent.com/CT-Data-Collaborative/2022-block-crosswalk"
@@ -144,9 +150,8 @@ class PublishOutcome:
     whose create statement succeeded but whose count check failed or could not
     complete: the table WAS changed and must be inspected before it is trusted.
     `failed` names a table where nothing was mutated (upload or re-hash error,
-    pre-replacement version drift, or a terminal FAILED statement). `unknown`
-    names a table whose create statement outcome itself is unknown (contact
-    lost mid-flight)."""
+    or a terminal FAILED statement). `unknown` names a table whose create
+    statement outcome itself is unknown (contact lost mid-flight)."""
 
     verified: tuple[str, ...]
     failed: str | None = None
@@ -160,12 +165,12 @@ class PublishOutcome:
         return self.failed is None and self.unknown is None and self.mutated_unverified is None
 
 
-def acs_url(year: int, table: str) -> str:
-    return ACS_URL_TEMPLATE.format(year=year, table=table)
+def acs_url(table: str) -> str:
+    return ACS_URL_TEMPLATE.format(table=table)
 
 
-def acs_filename(year: int, table: str) -> str:
-    return f"acsdt5y{year}-{table}.dat"
+def acs_filename(table: str) -> str:
+    return f"acsdt5y2024-{table}.dat"
 
 
 def sha256_of(path: Path) -> str:
@@ -209,9 +214,9 @@ def stream_download(url: str, dest: Path, strip_bom: bool = False) -> FileFacts:
     )
 
 
-def build_manifest(facts: list[FileFacts], vintage: str, retrieved_on: str) -> dict:
+def build_manifest(facts: list[FileFacts], retrieved_on: str) -> dict:
     return {
-        "vintage": vintage,
+        "vintage": VINTAGE,
         "retrieved_on": retrieved_on,
         "generated_by": "dbt/scripts/load_acs_summary_file.py --write-manifest --verify-only",
         "files": {f.filename: {k: v for k, v in asdict(f).items() if k != "filename"} for f in facts},
@@ -219,8 +224,12 @@ def build_manifest(facts: list[FileFacts], vintage: str, retrieved_on: str) -> d
 
 
 def verify_against_manifest(manifest: dict, facts: list[FileFacts]) -> list[str]:
-    """Return human-readable mismatch strings; empty list means verified."""
+    """Return human-readable mismatch strings; empty list means verified. The
+    manifest must carry the pinned vintage: this loader publishes only the
+    2020-2024 extract, so a foreign or mixed manifest is rejected outright."""
     problems: list[str] = []
+    if manifest.get("vintage") != VINTAGE:
+        problems.append(f"manifest vintage {manifest.get('vintage')!r} is not the pinned {VINTAGE!r}")
     files = manifest.get("files", {})
     for f in facts:
         expected = files.get(f.filename)
@@ -255,7 +264,7 @@ def create_acs_table_sql(
     catalog: str, schema: str, table: str, volume: str, filename: str, replace: bool = False
 ) -> str:
     # plain CREATE TABLE by default so the warehouse itself enforces
-    # fail-if-exists; OR REPLACE only for a version-checked --allow-replace run
+    # fail-if-exists; OR REPLACE only for an explicit --allow-replace run
     verb = "create or replace table" if replace else "create table"
     path = f"/Volumes/{catalog}/{schema}/{volume}/{filename}"
     return (
@@ -346,8 +355,7 @@ def preflight_existing_targets(
 ) -> dict[str, int]:
     """Return {table: current Delta version} for publish targets that already
     exist. Default load mode refuses to touch them; --allow-replace records
-    these versions first as the concrete RESTORE targets and re-checks them
-    immediately before each replacement."""
+    these versions first as the concrete RESTORE targets for rollback."""
     names = ", ".join(f"'{t}'" for t in tables)
     rows = run_sql(
         f"select table_name from {catalog}.information_schema.tables"
@@ -376,35 +384,23 @@ def publish_tables(
     upload: Callable[[FileFacts], None],
     replace_versions: dict[str, int] | None = None,
 ) -> PublishOutcome:
-    """Publish one table at a time: upload its file, CREATE it (for a table in
-    replace_versions: re-check its Delta version, then CREATE OR REPLACE), then
-    count-verify immediately. Stops at the first problem so tables that
-    verification has not cleared are never touched. Bookkeeping is truthful
-    about mutation: a table counts as mutated the moment its create statement
-    succeeds, so a count-check problem reports MUTATED BUT UNVERIFIED rather
-    than pretending nothing happened; a post-submission communication problem
-    during the create itself is an UNKNOWN outcome, never a plain failure."""
+    """Publish one table at a time: upload its file, CREATE it (CREATE OR
+    REPLACE for a table in replace_versions), then count-verify immediately.
+    Stops at the first problem so tables that verification has not cleared are
+    never touched. Bookkeeping is truthful about mutation: a table counts as
+    mutated the moment its create statement succeeds, so a count-check problem
+    reports MUTATED BUT UNVERIFIED rather than pretending nothing happened; a
+    post-submission communication problem during the create itself is an
+    UNKNOWN outcome, never a plain failure."""
     replace_versions = replace_versions or {}
     verified: list[str] = []
     order = [targets[f.filename] for f in facts]
     for i, f in enumerate(facts):
         table = targets[f.filename]
         remaining = tuple(order[i + 1 :])
-        # phase 1, pre-mutation: upload; version re-check for replacements
+        # phase 1, pre-mutation: upload (with the caller's re-hash guard)
         try:
             upload(f)
-            if table in replace_versions:
-                current = int(run_sql(f"describe history {catalog}.{schema}.{table} limit 1")[0][0])
-                if current != replace_versions[table]:
-                    return PublishOutcome(
-                        verified=tuple(verified),
-                        failed=table,
-                        reason=(
-                            f"Delta version drifted from {replace_versions[table]} to {current}"
-                            " since preflight (concurrent writer?); nothing was mutated"
-                        ),
-                        remaining=remaining,
-                    )
         except Exception as exc:
             return PublishOutcome(
                 verified=tuple(verified),
@@ -460,7 +456,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--year", type=int, default=2024, help="final year of the 5-year vintage")
     parser.add_argument("--profile", default="dbc-3d8ca484-79f3")
     parser.add_argument("--warehouse-id", default="18583d8b081c6486")
     parser.add_argument("--catalog", default="goodparty_data_catalog")
@@ -470,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--write-manifest",
         action="store_true",
-        help="bootstrap/new vintage: record download facts; NEVER writes to the warehouse",
+        help="bootstrap: record download facts; NEVER writes to the warehouse",
     )
     parser.add_argument("--verify-only", action="store_true", help="download and verify; no warehouse writes")
     parser.add_argument(
@@ -504,10 +499,10 @@ def _run(args: argparse.Namespace, download_dir: Path) -> int:
     tables = [t for t in ACS_TABLES if not subset or t in subset]
     include_crosswalk = not subset or "crosswalk" in subset
 
-    print(f"downloading {len(tables)} ACS file(s) + crosswalk={include_crosswalk} -> {download_dir}")
+    print(f"downloading {len(tables)} {VINTAGE} file(s) + crosswalk={include_crosswalk} -> {download_dir}")
 
     plan: list[tuple[str, str, bool, str]] = [
-        (acs_url(args.year, t), acs_filename(args.year, t), False, f"acs5y{args.year}_{t}") for t in tables
+        (acs_url(t), acs_filename(t), False, f"acs5y2024_{t}") for t in tables
     ]
     if include_crosswalk:
         plan.append((CT_CROSSWALK_URL, CT_CROSSWALK_FILENAME, True, CT_CROSSWALK_TABLE))
@@ -528,9 +523,17 @@ def _run(args: argparse.Namespace, download_dir: Path) -> int:
     action = decide_action(args.write_manifest, args.verify_only, manifest_exists, problems)
 
     if action == "write_manifest":
-        manifest = build_manifest(facts, f"{args.year - 4}-{args.year} ACS 5-year", date.today().isoformat())
-        if manifest_exists:  # additive subset re-run keeps other entries
-            merged = dict(json.loads(args.manifest.read_text())["files"])
+        manifest = build_manifest(facts, date.today().isoformat())
+        if manifest_exists:  # additive subset re-run keeps other entries, same vintage only
+            existing_manifest = json.loads(args.manifest.read_text())
+            if existing_manifest.get("vintage") != VINTAGE:
+                print(
+                    f"FATAL: existing manifest vintage {existing_manifest.get('vintage')!r} is not"
+                    f" the pinned {VINTAGE!r}; refusing to merge",
+                    file=sys.stderr,
+                )
+                return 2
+            merged = dict(existing_manifest["files"])
             merged.update(manifest["files"])
             manifest["files"] = dict(sorted(merged.items()))
         args.manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

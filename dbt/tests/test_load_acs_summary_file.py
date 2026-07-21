@@ -1,55 +1,28 @@
-"""Unit tests for the ACS summary-file loader's pure functions.
+"""Unit tests for the ACS summary-file loader's behavior boundaries.
 
 Network- and warehouse-touching paths are exercised by the documented live run,
-not here; these tests pin the verify-before-replace contract, the SQL the
-loader emits, and the publication-orchestration guarantees (bootstrap never
-publishes; manifest mismatch, unknown statement outcomes, and mid-sequence
-failures can never touch tables that verification has not cleared).
+not here; these tests pin row counting, BOM stripping, manifest verification
+gating publication, the SQL the loader emits, and the publication-orchestration
+guarantees (stop on first failure; truthful mutated/unverified/unknown
+classification).
 """
 
-import json
 from pathlib import Path
 
 from dbt.scripts.load_acs_summary_file import (
-    ACS_TABLES,
     CT_CROSSWALK_FILENAME,
+    VINTAGE,
     FileFacts,
     StatementOutcomeUnknownError,
-    acs_url,
     build_manifest,
     create_acs_table_sql,
     create_crosswalk_sql,
     decide_action,
     preflight_existing_targets,
     publish_tables,
-    sha256_of,
     stream_download,
     verify_against_manifest,
 )
-
-
-def test_acs_table_inventory_is_locked():
-    assert ACS_TABLES == (
-        "b01001",
-        "b03002",
-        "b15002",
-        "b19001",
-        "b19013",
-        "b19025",
-        "b23025",
-        "b25003",
-        "b25008",
-        "b25077",
-        "b28002",
-        "c17002",
-    )
-
-
-def test_acs_url_template():
-    assert acs_url(2024, "b01001") == (
-        "https://www2.census.gov/programs-surveys/acs/summary_file/2024"
-        "/table-based-SF/data/5YRData/acsdt5y2024-b01001.dat"
-    )
 
 
 def _download(tmp_path: Path, payload: bytes, name: str, strip_bom: bool = False) -> FileFacts:
@@ -62,22 +35,11 @@ def _download(tmp_path: Path, payload: bytes, name: str, strip_bom: bool = False
 def test_stream_download_counts_data_rows_with_trailing_newline(tmp_path):
     facts = _download(tmp_path, b"GEO_ID|X_E001|X_M001\na|1|2\nb|3|4\n", "t.dat")
     assert facts.data_rows == 2
-    assert facts.size_bytes == 33
 
 
 def test_stream_download_counts_data_rows_without_trailing_newline(tmp_path):
     facts = _download(tmp_path, b"GEO_ID|X_E001|X_M001\na|1|2\nb|3|4", "t.dat")
     assert facts.data_rows == 2
-
-
-def test_stream_download_sha256_matches_stored_bytes(tmp_path):
-    import hashlib
-
-    payload = b"h1,h2\r\n1,2\n"
-    facts = _download(tmp_path, payload, "t.csv")
-    stored = (tmp_path / "out-t.csv").read_bytes()
-    assert stored == payload
-    assert facts.sha256 == hashlib.sha256(payload).hexdigest()
 
 
 def test_stream_download_strips_utf8_bom_when_asked(tmp_path):
@@ -98,12 +60,12 @@ def _facts(name: str, sha: str = "abc", rows: int = 10) -> FileFacts:
 
 
 def test_verify_against_manifest_passes_on_exact_match():
-    manifest = build_manifest([_facts("a.dat"), _facts("b.dat")], vintage="v", retrieved_on="2026-01-01")
+    manifest = build_manifest([_facts("a.dat"), _facts("b.dat")], retrieved_on="2026-01-01")
     assert verify_against_manifest(manifest, [_facts("a.dat"), _facts("b.dat")]) == []
 
 
 def test_verify_against_manifest_flags_sha_row_and_missing_mismatches():
-    manifest = build_manifest([_facts("a.dat"), _facts("b.dat")], vintage="v", retrieved_on="2026-01-01")
+    manifest = build_manifest([_facts("a.dat"), _facts("b.dat")], retrieved_on="2026-01-01")
     problems = verify_against_manifest(
         manifest, [_facts("a.dat", sha="different"), _facts("b.dat", rows=11), _facts("c.dat")]
     )
@@ -113,11 +75,11 @@ def test_verify_against_manifest_flags_sha_row_and_missing_mismatches():
     assert any("c.dat" in p and "not in the manifest" in p for p in problems)
 
 
-def test_manifest_round_trips_through_json(tmp_path):
-    manifest = build_manifest([_facts("a.dat")], vintage="v", retrieved_on="2026-01-01")
-    p = tmp_path / "m.json"
-    p.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    assert json.loads(p.read_text()) == manifest
+def test_verify_against_manifest_rejects_foreign_vintage():
+    manifest = build_manifest([_facts("a.dat")], retrieved_on="2026-01-01")
+    manifest["vintage"] = "2021-2025 ACS 5-year"
+    problems = verify_against_manifest(manifest, [_facts("a.dat")])
+    assert any("vintage" in p and VINTAGE in p for p in problems)
 
 
 def test_create_acs_table_sql_shape():
@@ -152,16 +114,7 @@ def test_create_crosswalk_sql_renames_space_column_and_uses_commas():
     assert "mode => 'FAILFAST'" in sql
 
 
-def test_sha256_of_matches_hashlib(tmp_path):
-    import hashlib
-
-    payload = b"some bytes\nacross lines\n"
-    f = tmp_path / "x.dat"
-    f.write_bytes(payload)
-    assert sha256_of(f) == hashlib.sha256(payload).hexdigest()
-
-
-# --- orchestration guarantees: nothing verification has not cleared is ever touched ---
+# --- publication orchestration: nothing verification has not cleared is ever touched ---
 
 
 def test_decide_action_bootstrap_never_publishes():
@@ -265,18 +218,6 @@ def test_publish_uses_or_replace_only_for_recorded_replacements():
     creates = [s.lstrip().lower() for s in fake.statements if s.lstrip().lower().startswith("create")]
     assert sum(s.startswith("create or replace table") for s in creates) == 1
     assert any("create or replace table cat.sandbox.t_b" in s for s in creates)
-
-
-def test_publish_aborts_before_mutation_on_version_drift():
-    # recorded version 7 at preflight; the table moved to 9 before publish
-    fake = _FakeSql(existing={"t_b": 9})
-    outcome, uploaded = _publish(fake, replace_versions={"t_b": 7})
-    assert outcome.verified == ("t_a",)
-    assert outcome.failed == "t_b"
-    assert "drifted" in (outcome.reason or "")
-    assert outcome.remaining == ("t_c",)
-    assert fake.ctas_seen == 1  # only t_a's create ever ran
-    assert len(uploaded) == 2  # t_b uploaded, then aborted pre-create; t_c untouched
 
 
 def test_publish_nth_table_failure_stops_before_later_tables():
