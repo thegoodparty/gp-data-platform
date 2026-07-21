@@ -803,3 +803,5 @@ snapshots:
         - PRI_BLT_2001
         - PRI_BLT_2000
         - hf_most_important_policy_item
+        - haystaq_flags_loaded_at
+        - haystaq_scores_loaded_at
