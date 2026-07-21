@@ -1,19 +1,19 @@
 {{ config(severity="error") }}
 
--- Drop-prevention direction, deliberately: every staged Connecticut ACS block
+-- Drop-prevention direction: every POPULATED staged Connecticut ACS block
 -- group must receive at least one 2020 block through the crosswalk, otherwise
--- that block group's ACS mass silently vanishes from the downstream remap
--- (the reverse direction can read 100 percent while mass drops). Error
--- severity with an explicit allowlist: the ACS publishes one more CT block
--- group than a pure relabel of 2020 blocks can reach, so AT MOST that one
--- known group may be allowlisted here (geoid recorded with its ACS population
--- in the PR validation evidence). Any other uncovered block group -- now or in
--- any future rebuild -- fails this test loudly.
-{% set allowlisted_uncovered_block_groups = [] %}
-
+-- its ACS mass would silently vanish from the downstream remap (the reverse
+-- direction can read complete while mass drops). The mapping's republisher
+-- omits unpopulated water-only geography, so the gate is restricted to
+-- geographies carrying any ACS mass at all: an uncovered block group FAILS
+-- unless it has zero population and zero households -- self-verifying from
+-- staged values, with no pinned geoid list to go stale, and nothing a
+-- weighting step could ever draw mass from is exempt. Nulls count as
+-- populated so a suppressed value can never slip through the exemption.
+-- Failure rows carry population and households for instant diagnosis.
 with
     staged_ct_block_groups as (
-        select geoid, total_population
+        select geoid, total_population, households
         from {{ ref("stg_census_acs__geo_estimates") }}
         where summary_level = '150' and left(geoid, 2) = '09'
     ),
@@ -25,7 +25,7 @@ with
         from {{ source("census_acs", "census_ct_block_to_planning_region_2022") }}
     )
 
-select geoid as uncovered_ct_block_group, total_population
+select geoid as uncovered_ct_block_group, total_population, households
 from staged_ct_block_groups
 where
     geoid not in (
@@ -33,10 +33,4 @@ where
         from crosswalk_target_block_groups
         where block_group_geoid is not null
     )
-    {% if allowlisted_uncovered_block_groups %}
-        and geoid not in (
-            {% for g in allowlisted_uncovered_block_groups %}
-                '{{ g }}'{{ ", " if not loop.last }}
-            {% endfor %}
-        )
-    {% endif %}
+    and not (coalesce(total_population, -1) = 0 and coalesce(households, -1) = 0)

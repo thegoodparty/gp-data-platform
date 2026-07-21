@@ -180,7 +180,11 @@ models:
           ACS source cell(s): B19025_E001. Universe: Households. Aggregate (summed) household
           income: an additive dollar total, the safe allocation primitive behind mean income.
           2024 inflation-adjusted dollars. Null when the Census suppressed or could not compute
-          the value (jam codes).
+          the value (jam codes), and also null where the source publishes no aggregate-income
+          row at all for a small geography (row omission rather than a jam code; the Census API
+          returns null for the same places). Same suppression semantics either way: a
+          mean-income consumer must sum this column and its households denominator over the same
+          rows (pairwise-complete), never mix bases.
       - name: aggregate_household_income_moe
         description: >
           90 percent margin of error for aggregate_household_income. 0 means the estimate is

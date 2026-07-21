@@ -6,11 +6,14 @@
 -- the decennial block staging (bidirectional key equality -- equal counts
 -- alone could hide different block sets) and the published code structure of
 -- both geographies (legacy county codes on the 2020 side, planning-region
--- codes on the 2022 side, 15-digit keys throughout). The 2022 target side
--- must land entirely inside the staged ACS block-group universe, and the
--- distinct-target count must match the published planning-region block-group
--- census: 2,717, or 2,716 for a pure relabel, which cannot reach the one
--- recoded-only group.
+-- codes on the 2022 side, 15-digit keys throughout). The republisher omits
+-- unpopulated water-only blocks, so the decennial-side bind applies to
+-- POPULATED blocks: every decennial CT block carrying population must appear
+-- in the crosswalk (nothing a weighting step could draw mass from may be
+-- missing), while the crosswalk side stays strict in full. The 2022 target
+-- side must land entirely inside the staged ACS block-group universe; the
+-- coverage test separately proves every populated staged block group is
+-- reachable.
 with
     crosswalk as (
         -- RAW values, deliberately unnormalized: a malformed key (e.g. a
@@ -21,7 +24,7 @@ with
     ),
 
     decennial_ct as (
-        select block_geoid
+        select block_geoid, population
         from {{ ref("stg_census__block_population") }}
         where state_fips = '09'
     ),
@@ -52,12 +55,13 @@ with
             decennial_ct on crosswalk.block_fips_2020 = decennial_ct.block_geoid
     ),
 
-    decennial_block_missing_from_crosswalk as (
+    populated_decennial_block_missing_from_crosswalk as (
         select
-            'decennial_block_missing_from_crosswalk' as violation,
+            'populated_decennial_block_missing_from_crosswalk' as violation,
             decennial_ct.block_geoid as detail
         from decennial_ct
         left anti join crosswalk on decennial_ct.block_geoid = crosswalk.block_fips_2020
+        where decennial_ct.population > 0
     ),
 
     crosswalk_targets as (
@@ -72,14 +76,6 @@ with
         left anti join
             staged_ct_block_groups
             on crosswalk_targets.block_group_geoid = staged_ct_block_groups.geoid
-    ),
-
-    target_count_unexpected as (
-        select
-            'distinct_target_count_not_2716_or_2717' as violation,
-            cast(count(distinct block_group_geoid) as string) as detail
-        from crosswalk_targets
-        having count(distinct block_group_geoid) not in (2716, 2717)
     )
 
 select *
@@ -89,10 +85,7 @@ select *
 from crosswalk_block_missing_from_decennial
 union all
 select *
-from decennial_block_missing_from_crosswalk
+from populated_decennial_block_missing_from_crosswalk
 union all
 select *
 from target_not_in_staged_acs
-union all
-select *
-from target_count_unexpected

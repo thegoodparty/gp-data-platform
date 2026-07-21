@@ -1775,10 +1775,13 @@ sources:
           block_fips_2022 the planning-region-coded geoid whose first 12
           characters are the recoded block group. Contract: unique on
           block_fips_2020; each block maps to exactly one planning-region block
-          group (many-to-one, never one-to-many). The 2020-2024 ACS codes all CT
-          geography under planning regions, so this mapping (never string
-          surgery on geoid suffixes) is what joins legacy-coded decennial blocks
-          to ACS block groups downstream.
+          group (many-to-one, never one-to-many). The republication omits
+          unpopulated water-only blocks, so the contract tests bind populated
+          geographies bidirectionally and separately prove that any block group
+          the mapping cannot reach carries no ACS population or households. The
+          2020-2024 ACS codes all CT geography under planning regions, so this
+          mapping (never string surgery on geoid suffixes) is what joins
+          legacy-coded decennial blocks to ACS block groups downstream.
         columns:
           - name: block_fips_2020
             description: 2020 census block geoid under legacy CT county codes (15 characters).
