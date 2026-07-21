@@ -83,6 +83,42 @@ PERFORMANCE_PERCENTAGE_COLUMNS = [
     "Voters_VotingPerformanceMinorElection",
 ]
 
+# Identifier/code columns that L2 types inconsistently across states (INT in most,
+# STRING in the states where a non-numeric value showed up). These are codes, not
+# quantities: ZIPs, precincts, district codes, and voter IDs. Cast every state to
+# STRING before the union so the reconciliation never coerces a state's STRING
+# value into INT (which fails under ANSI on a value like the ZIP '8731-') and so
+# leading zeros are preserved (e.g. a New Jersey ZIP 08731 is not stored as 8731).
+IDENTIFIER_STRING_COLUMNS = [
+    "Residence_Addresses_Zip",
+    "Precinct",
+    "State_House_District",
+    "State_Legislative_District",
+    "State_Senate_District",
+    "US_Congressional_District",
+    "2001_State_House_District",
+    "2001_State_Legislative_District",
+    "2001_State_Senate_District",
+    "2001_US_Congressional_District",
+    "2010_State_House_District",
+    "2010_State_Legislative_District",
+    "2010_State_Senate_District",
+    "2010_US_Congressional_District",
+    "ConsumerData_CSA_Code",
+    "Voters_CountyVoterID",
+    "Voters_StateVoterID",
+]
+
+
+def cast_identifier_columns_to_string(df: DataFrame) -> DataFrame:
+    """Cast identifier/code columns to STRING when present, so unioning states with
+    mixed source types produces a consistent STRING column instead of a failing or
+    lossy INT cast. Guarded on presence to respect unionByName(allowMissingColumns)."""
+    for column in IDENTIFIER_STRING_COLUMNS:
+        if column in df.columns:
+            df = df.withColumn(column, col(column).cast(StringType()))
+    return df
+
 
 def model(dbt, session: SparkSession) -> DataFrame:
     """
@@ -522,60 +558,68 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
         wy_df = wy_df.filter(col("loaded_at") > max_loaded_at)
 
+    # Normalize identifier/code columns to STRING on each state before unioning so
+    # the union never has to reconcile a STRING value into an INT column.
+    state_dfs = [
+        al_df,
+        ak_df,
+        az_df,
+        ar_df,
+        ca_df,
+        co_df,
+        ct_df,
+        de_df,
+        dc_df,
+        fl_df,
+        ga_df,
+        hi_df,
+        id_df,
+        il_df,
+        in_df,
+        ia_df,
+        ks_df,
+        ky_df,
+        la_df,
+        me_df,
+        md_df,
+        ma_df,
+        mi_df,
+        mn_df,
+        ms_df,
+        mo_df,
+        mt_df,
+        ne_df,
+        nv_df,
+        nh_df,
+        nj_df,
+        nm_df,
+        ny_df,
+        nc_df,
+        nd_df,
+        oh_df,
+        ok_df,
+        or_df,
+        pa_df,
+        ri_df,
+        sc_df,
+        sd_df,
+        tn_df,
+        tx_df,
+        ut_df,
+        vt_df,
+        va_df,
+        wa_df,
+        wv_df,
+        wi_df,
+        wy_df,
+    ]
+    state_dfs = [cast_identifier_columns_to_string(state_df) for state_df in state_dfs]
+
     # Use unionByName with allowMissingColumns=True to handle schema drift
     # when L2 delivers state updates with new columns in a staggered fashion
-    df = (
-        al_df.unionByName(ak_df, allowMissingColumns=True)
-        .unionByName(az_df, allowMissingColumns=True)
-        .unionByName(ar_df, allowMissingColumns=True)
-        .unionByName(ca_df, allowMissingColumns=True)
-        .unionByName(co_df, allowMissingColumns=True)
-        .unionByName(ct_df, allowMissingColumns=True)
-        .unionByName(de_df, allowMissingColumns=True)
-        .unionByName(dc_df, allowMissingColumns=True)
-        .unionByName(fl_df, allowMissingColumns=True)
-        .unionByName(ga_df, allowMissingColumns=True)
-        .unionByName(hi_df, allowMissingColumns=True)
-        .unionByName(id_df, allowMissingColumns=True)
-        .unionByName(il_df, allowMissingColumns=True)
-        .unionByName(in_df, allowMissingColumns=True)
-        .unionByName(ia_df, allowMissingColumns=True)
-        .unionByName(ks_df, allowMissingColumns=True)
-        .unionByName(ky_df, allowMissingColumns=True)
-        .unionByName(la_df, allowMissingColumns=True)
-        .unionByName(me_df, allowMissingColumns=True)
-        .unionByName(md_df, allowMissingColumns=True)
-        .unionByName(ma_df, allowMissingColumns=True)
-        .unionByName(mi_df, allowMissingColumns=True)
-        .unionByName(mn_df, allowMissingColumns=True)
-        .unionByName(ms_df, allowMissingColumns=True)
-        .unionByName(mo_df, allowMissingColumns=True)
-        .unionByName(mt_df, allowMissingColumns=True)
-        .unionByName(ne_df, allowMissingColumns=True)
-        .unionByName(nv_df, allowMissingColumns=True)
-        .unionByName(nh_df, allowMissingColumns=True)
-        .unionByName(nj_df, allowMissingColumns=True)
-        .unionByName(nm_df, allowMissingColumns=True)
-        .unionByName(ny_df, allowMissingColumns=True)
-        .unionByName(nc_df, allowMissingColumns=True)
-        .unionByName(nd_df, allowMissingColumns=True)
-        .unionByName(oh_df, allowMissingColumns=True)
-        .unionByName(ok_df, allowMissingColumns=True)
-        .unionByName(or_df, allowMissingColumns=True)
-        .unionByName(pa_df, allowMissingColumns=True)
-        .unionByName(ri_df, allowMissingColumns=True)
-        .unionByName(sc_df, allowMissingColumns=True)
-        .unionByName(sd_df, allowMissingColumns=True)
-        .unionByName(tn_df, allowMissingColumns=True)
-        .unionByName(tx_df, allowMissingColumns=True)
-        .unionByName(ut_df, allowMissingColumns=True)
-        .unionByName(vt_df, allowMissingColumns=True)
-        .unionByName(va_df, allowMissingColumns=True)
-        .unionByName(wa_df, allowMissingColumns=True)
-        .unionByName(wv_df, allowMissingColumns=True)
-        .unionByName(wi_df, allowMissingColumns=True)
-        .unionByName(wy_df, allowMissingColumns=True)
-    )
+    df = state_dfs[0]
+    for state_df in state_dfs[1:]:
+        df = df.unionByName(state_df, allowMissingColumns=True)
 
     # clean up columns with percentages
     for column in PERFORMANCE_PERCENTAGE_COLUMNS:
