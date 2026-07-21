@@ -256,3 +256,37 @@ def test_publish_count_mismatch_stops_and_says_table_was_replaced():
     assert outcome.failed == "t_b"
     assert "was replaced" in (outcome.reason or "")
     assert outcome.remaining == ("t_c",)
+
+
+def test_ipv4_first_getaddrinfo_prefers_a_records(monkeypatch):
+    import socket as socket_module
+
+    import dbt.scripts.load_acs_summary_file as loader
+
+    calls: list[int] = []
+
+    def fake(host, port, family=0, *args, **kwargs):
+        calls.append(family)
+        return [("v4-result",)] if family == socket_module.AF_INET else [("unspec-result",)]
+
+    monkeypatch.setattr(loader, "_SYSTEM_GETADDRINFO", fake)
+    assert loader._ipv4_first_getaddrinfo("h", 443) == [("v4-result",)]
+    assert calls == [socket_module.AF_INET]
+
+
+def test_ipv4_first_getaddrinfo_falls_back_to_system_default(monkeypatch):
+    import socket as socket_module
+
+    import dbt.scripts.load_acs_summary_file as loader
+
+    calls: list[int] = []
+
+    def fake(host, port, family=0, *args, **kwargs):
+        calls.append(family)
+        if family == socket_module.AF_INET:
+            raise socket_module.gaierror("no A records")
+        return [("unspec-result",)]
+
+    monkeypatch.setattr(loader, "_SYSTEM_GETADDRINFO", fake)
+    assert loader._ipv4_first_getaddrinfo("h", 443) == [("unspec-result",)]
+    assert calls == [socket_module.AF_INET, 0]

@@ -54,6 +54,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,23 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
+
+_SYSTEM_GETADDRINFO = socket.getaddrinfo
+
+
+def _ipv4_first_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Prefer IPv4 for downloads: the Census bulk host publishes AAAA records
+    whose route is unreachable from some networks, and an unspecified-family
+    lookup can come back IPv6-only there, leaving urllib nothing usable. Ask
+    for A records first; fall back to the system default so IPv6-only
+    environments still work."""
+    if family == 0:
+        try:
+            return _SYSTEM_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
+        except socket.gaierror:
+            pass
+    return _SYSTEM_GETADDRINFO(host, port, family, type, proto, flags)
+
 
 ACS_TABLES = (
     "b01001",
@@ -399,6 +417,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--download-dir", type=Path, default=None)
     args = parser.parse_args(argv)
+
+    # process-local; subprocesses (the databricks CLI) are unaffected
+    socket.getaddrinfo = _ipv4_first_getaddrinfo
 
     subset = {t.strip().lower() for t in args.tables.split(",") if t.strip()}
     unknown_tokens = subset - set(ACS_TABLES) - {"crosswalk"}
