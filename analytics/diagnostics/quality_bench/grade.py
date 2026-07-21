@@ -165,7 +165,7 @@ def main() -> None:
     batch_dir = here / "results" / args.batch
     state = json.loads((batch_dir / "state.json").read_text())
     questions = load_manifest(here / "questions" / "manifest.yaml")
-    keys = {q.id: load_key(here / "keys" / q.key_file) for q in questions}
+    keys = {q.id: load_key(here / "keys" / q.key_file, expected_id=q.id) for q in questions}
 
     rows, blocks = [], {}
     judge_eligible = judge_ok = 0

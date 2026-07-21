@@ -75,3 +75,37 @@ def test_load_key_requires_numbers(tmp_path: Path):
     p.write_text("id: q01\nas_of: '2026-07-20'\nnumbers: []\n")
     with pytest.raises(ValueError, match="numbers"):
         bank.load_key(p)
+
+
+def test_load_manifest_rejects_path_traversal_id(tmp_path: Path):
+    """Ids become runs/<run_id> paths that get rmtree'd; '../..' must not load."""
+    p = tmp_path / "manifest.yaml"
+    p.write_text(MANIFEST.replace("id: q01", "id: ../../unrelated"))
+    with pytest.raises(ValueError, match="question id"):
+        bank.load_manifest(p)
+
+
+def test_load_manifest_rejects_duplicate_ids(tmp_path: Path):
+    p = tmp_path / "manifest.yaml"
+    p.write_text(MANIFEST + MANIFEST.replace("questions:\n", ""))
+    with pytest.raises(ValueError, match="duplicate"):
+        bank.load_manifest(p)
+
+
+def test_load_manifest_rejects_escaping_file_refs(tmp_path: Path):
+    p = tmp_path / "manifest.yaml"
+    p.write_text(MANIFEST.replace("key_file: q01_key.yaml", "key_file: ../../etc/passwd"))
+    with pytest.raises(ValueError, match="key_file"):
+        bank.load_manifest(p)
+    p.write_text(MANIFEST.replace("prompt_file: q01.md", "prompt_file: /abs/q01.md"))
+    with pytest.raises(ValueError, match="prompt_file"):
+        bank.load_manifest(p)
+
+
+def test_load_key_checks_expected_id(tmp_path: Path):
+    """A key file pointing at the wrong question must fail loudly, not grade it."""
+    p = tmp_path / "q01_key.yaml"
+    p.write_text(KEY)
+    assert bank.load_key(p, expected_id="q01").id == "q01"
+    with pytest.raises(ValueError, match="key id"):
+        bank.load_key(p, expected_id="q02")

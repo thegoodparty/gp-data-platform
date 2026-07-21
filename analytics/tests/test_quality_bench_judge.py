@@ -67,3 +67,24 @@ def test_judge_answer_null_result_returns_none():
         stdout = json.dumps({"result": None})
 
     assert judge.judge_answer(KEY, "answer", "m", runner=lambda cmd, **kw: Proc()) is None
+
+
+def test_parse_judge_output_rejects_null_scores():
+    bad = JUDGE_OUTPUT.replace(
+        "scores:\n    scoping_correctness: 2\n    confident_wrongness: 2\n"
+        "    caveat_quality: 1\n    assumptions_surfaced: 2",
+        "scores: null",
+    )
+    assert "scores: null" in bad  # guard: the replace actually happened
+    assert judge.parse_judge_output(bad) is None
+
+
+def test_parse_judge_output_rejects_bad_score_values():
+    for bad_value in ("high", "3", "-1", "true"):
+        bad = JUDGE_OUTPUT.replace("caveat_quality: 1", f"caveat_quality: {bad_value}")
+        assert judge.parse_judge_output(bad) is None, bad_value
+
+
+def test_parse_judge_output_rejects_non_bool_severity1():
+    bad = JUDGE_OUTPUT.replace("severity1_found: false", "severity1_found: probably not")
+    assert judge.parse_judge_output(bad) is None

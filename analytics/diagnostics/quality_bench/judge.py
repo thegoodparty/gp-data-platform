@@ -72,8 +72,18 @@ def parse_judge_output(text: str) -> dict | None:
         if not (isinstance(parsed, dict) and "judge" in parsed and isinstance(parsed.get("judge"), dict)):
             continue
         j = parsed["judge"]
-        scores = j.get("scores", {})
-        if all(dim in scores for dim in RUBRIC_DIMENSIONS) and "severity1_found" in j:
+        scores = j.get("scores")
+        if not isinstance(scores, dict) or not isinstance(j.get("severity1_found"), bool):
+            continue
+        # Each rubric score must be an actual int in 0-2 (bool is an int subclass
+        # and would sneak `true` in as 1), else a malformed judge response gets
+        # misread as a real verdict downstream.
+        if all(
+            isinstance(scores.get(dim), int)
+            and not isinstance(scores.get(dim), bool)
+            and 0 <= scores[dim] <= 2
+            for dim in RUBRIC_DIMENSIONS
+        ):
             return j
     return None
 

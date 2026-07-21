@@ -80,19 +80,24 @@ def check_severity1(answer_text: str, key: Key) -> list[CheckResult]:
 
 
 def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
-    """Each required_assumptions fork must be surfaced in the answer's assumptions ledger."""
+    """Each required_assumptions fork must be surfaced in the answer's assumptions
+    ledger with a non-empty resolution: a bare fork entry says nothing about how
+    the fork was actually resolved."""
     ledger = _resolutions(block) if block else {}
-    return [
-        CheckResult(fork, "assumption", fork in ledger, "fork surfaced in assumptions ledger")
-        for fork in key.required_assumptions
-    ]
+    out = []
+    for fork in key.required_assumptions:
+        resolution = ledger.get(fork, "").strip()
+        detail = f"resolved as {resolution!r}" if resolution else "fork missing or resolution empty"
+        out.append(CheckResult(fork, "assumption", bool(resolution), detail))
+    return out
 
 
 def _resolutions(block: dict) -> dict[str, str]:
     out = {}
     for a in block.get("results", {}).get("assumptions", []) or []:
         if isinstance(a, dict) and "fork" in a:
-            out[str(a["fork"])] = str(a.get("resolution", ""))
+            # `or ""` maps a YAML-null resolution to empty, not the string "None".
+            out[str(a["fork"])] = str(a.get("resolution") or "")
     return out
 
 

@@ -132,6 +132,22 @@ def test_check_assumptions_unparsed_block_fails():
     assert grading.check_assumptions(None, key)[0].passed is False
 
 
+def test_check_assumptions_empty_resolution_fails():
+    """A fork listed with an empty or null resolution is not a resolved fork."""
+    key = make_key(required_assumptions=["denominator"])
+    for resolution in ("''", "null", '"  "'):
+        answer = f"""```yaml
+results:
+  numbers:
+    total_users_jan: 9885
+  assumptions:
+    - fork: denominator
+      resolution: {resolution}
+```"""
+        block = grading.parse_results_block(answer)
+        assert grading.check_assumptions(block, key)[0].passed is False, resolution
+
+
 def test_check_sources_pass_and_fail():
     key = make_key(
         mandatory_sources=[
