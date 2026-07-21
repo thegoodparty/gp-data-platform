@@ -55,16 +55,17 @@ _DDL = (
 )
 _STATES = ["TX", "CA"]
 
-# A partitioned Voter carrying the "FirstName"/"LastName" columns the CRM name-search extras
-# index. Separate from _DDL (which omits them) so the extras test can drive the real committed
-# EXTRA_INDEXES SQL through the partitioned build path against a table that actually has the
-# indexed columns.
+# A partitioned Voter carrying the columns referenced by Voter EXTRA_INDEXES (name-search
+# plus plain-btree columns). Separate from _DDL (which omits them) so the extras test can drive
+# the real committed EXTRA_INDEXES SQL through the partitioned build path against a table that
+# actually has the indexed columns.
 _DDL_NAMES = (
     'CREATE TABLE public."Voter" (\n'
     '    "id" uuid NOT NULL,\n'
     '    "State" text NOT NULL,\n'
     '    "FirstName" text,\n'
-    '    "LastName" text\n'
+    '    "LastName" text,\n'
+    '    "hf_most_important_policy_item" text\n'
     ");"
 )
 
@@ -274,10 +275,11 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
             _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
         _exec(cur, 'ANALYZE public."Voter"')
 
-    # Build every committed extra (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree) via the
-    # exact partitioned path build_indexes.run uses: parent ON ONLY, then a child per state attached.
+    # Build every committed extra (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree, 1 plain
+    # b-tree) via the exact partitioned path build_indexes.run uses: parent ON ONLY, then a child
+    # per state attached.
     extras = [i for i in _serving_seed_extra.EXTRA_INDEXES if i.table == "Voter"]
-    assert len(extras) == 5
+    assert len(extras) == 6
     for idx in extras:
         build_indexes._create_plain_parent_only(pg_conn, idx)
         for state in _STATES:
