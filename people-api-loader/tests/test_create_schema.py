@@ -48,6 +48,10 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\')' in s
         for s in sql
     )
+    # green compatibility views are created by run() over each public serving table
+    assert any("CREATE SCHEMA IF NOT EXISTS green;" in s for s in sql)
+    for t in ("Voter", "DistrictVoter", "District", "DistrictStats"):
+        assert any(f'CREATE OR REPLACE VIEW green."{t}" AS SELECT * FROM public."{t}";' in s for s in sql)
     # indexes are NOT applied by create-schema
     assert not any("CREATE INDEX" in s for s in sql)
     assert manifest.status == "complete"
