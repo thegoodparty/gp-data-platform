@@ -58,4 +58,12 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=['lower("LastName")'],
         where=None,
     ),
+    IndexDef(
+        table="Voter",
+        name="Voter_hf_most_important_policy_item_idx",
+        sql='CREATE INDEX "Voter_hf_most_important_policy_item_idx" ON public."Voter" USING btree ("hf_most_important_policy_item");',
+        unique=False,
+        columns=["hf_most_important_policy_item"],
+        where=None,
+    ),
 ]
