@@ -93,6 +93,8 @@ def _apply_session(cur: psycopg.Cursor) -> None:
 # STORED means the one ALTER populates it (no separate UPDATE pass); its GiST index lives in
 # _serving_seed_extra and builds through the normal per-partition machinery. ST_MakePoint takes
 # (x=lon, y=lat); both it and ST_SetSRID are IMMUTABLE, as a generated expression requires.
+# "geom" is registered in schema_spec.LOADER_ADDED_COLUMNS so validate's schema-diff allows it
+# (prod has no such column) instead of failing handoff.
 _GEOM_TABLE = "Voter"
 _ADD_GEOM_COLUMN_SQL = (
     f'ALTER TABLE public."{_GEOM_TABLE}" ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326) '

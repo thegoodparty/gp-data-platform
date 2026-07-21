@@ -508,6 +508,15 @@ def test_geom_index_is_gist_on_the_geom_column() -> None:
     assert geom and "USING gist" in geom[0].sql and geom[0].columns == ["geom"]
 
 
+def test_geom_column_registered_for_validate_schema_diff() -> None:
+    # The column build_indexes creates must be registered in LOADER_ADDED_COLUMNS, or validate's
+    # schema-diff would flag it as drift and block every handoff (prod has no "geom").
+    from loader.people_api.schema.schema_spec import LOADER_ADDED_COLUMNS
+
+    assert 'ADD COLUMN IF NOT EXISTS "geom"' in step._ADD_GEOM_COLUMN_SQL
+    assert "geom" in LOADER_ADDED_COLUMNS[step._GEOM_TABLE]
+
+
 def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     # The full loop over TABLE_SPECS: partitioned tables (Voter, DistrictVoter) get State appended
     # to PK/unique and the parent-only+child+attach machinery; flat tables (District, DistrictStats)

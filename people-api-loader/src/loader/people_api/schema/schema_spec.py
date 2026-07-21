@@ -101,6 +101,12 @@ TABLE_SPECS: dict[str, TableSpec] = {
 }
 
 
+# Loader-added Postgres columns absent from the prod serving schema — an intended divergence, like
+# the partition column. build_indexes creates them post-load (it owns the DDL); validate's
+# schema-diff allows them so the extra column doesn't read as drift. Keyed by serving table.
+LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom"}}
+
+
 def is_partitioned(table: str) -> bool:
     return TABLE_SPECS[table].partition_by is not None
 
