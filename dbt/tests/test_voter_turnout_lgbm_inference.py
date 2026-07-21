@@ -274,8 +274,8 @@ def test_read_interval_params_tag_returns_parsed_dict():
 def test_read_interval_params_tag_scaler_default_and_validation():
     base = '{"q25":-0.04,"q75":0.03,"q841":0.06,"q95":0.14%s}'
     assert _read_interval_params_tag({"prediction_interval_params": base % ""}, "m")["scaler"] == "binom"
-    got = _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"headroom"'}, "m")
-    assert got["scaler"] == "headroom"
+    got = _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"taper_top"'}, "m")
+    assert got["scaler"] == "taper_top"
     with pytest.raises(ValueError):  # unknown scaler is rejected, not silently used
         _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"bogus"'}, "m")
 
@@ -304,7 +304,7 @@ _INTERVAL_PARAMS = {
         "q75": 0.03098,
         "q841": 0.05765,
         "q95": 0.14162,
-        "scaler": "headroom",
+        "scaler": "taper_top",
     },
 }
 
@@ -326,8 +326,8 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
     assert "AS ballots_projected_lower" in sql
     assert "AS ballots_projected_upper" in sql
     # bound formula: pred_rate + q * w(p), clipped to [0,1], * district_voters, no bias.
-    # w(p) is a per-model CASE: 'headroom' = sqrt(1-p), else binom sqrt(p*(1-p)).
-    assert "CASE WHEN ip.scaler = 'headroom' THEN SQRT(1 - a.pred_rate)" in sql
+    # w(p) is a per-model CASE: 'taper_top' = sqrt(1-p), else binom sqrt(p*(1-p)).
+    assert "CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate)" in sql
     assert "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END" in sql
     assert "ip.q_lower *" in sql
     assert "ip.q_upper *" in sql
@@ -340,7 +340,7 @@ def test_projection_sql_embeds_lower_upper_params_per_slug():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
     # VALUES rows carry (slug, q25 as lower, q95 as upper, scaler) — NOT q75/q841, no bias.
     assert "'midterm', -0.01444, 0.06949, 'binom'" in sql
-    assert "'off_year_local_lag2', -0.04362, 0.14162, 'headroom'" in sql
+    assert "'off_year_local_lag2', -0.04362, 0.14162, 'taper_top'" in sql
     assert "AS t(model_slug, q_lower, q_upper, scaler)" in sql
     # q75 / q841 are stored in the tag but must not leak into the two-bound SQL.
     assert "0.01107" not in sql

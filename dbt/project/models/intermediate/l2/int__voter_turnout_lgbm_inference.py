@@ -458,9 +458,9 @@ def _build_district_projection_sql(interval_params):
 
     with q = q25 for the lower bound and q = q95 for the upper, and w() a per-model
     residual-spread scaler:
-      - 'binom'    -> sqrt(p*(1-p)): tapers to 0 at both 0% and 100% turnout.
-      - 'headroom' -> sqrt(1-p): tapers only near 100%, staying wide at low turnout.
-    The low-turnout local models (off_year_local_lag2, even_year_local) use 'headroom':
+      - 'binom'     -> sqrt(p*(1-p)): tapers to 0 at both 0% and 100% turnout.
+      - 'taper_top' -> sqrt(1-p): tapers only near 100%, staying wide at low turnout.
+    The low-turnout local models (off_year_local_lag2, even_year_local) use 'taper_top':
     the binom shape collapses the band to ~0 at low turnout while the model's real error
     there stays large and positive (small low-turnout jurisdictions surprise upward), so
     binom badly under-covered the p95 upper bound (see the training runbook). 'headroom'
@@ -489,10 +489,10 @@ def _build_district_projection_sql(interval_params):
         ),
         """
         join_sql = "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug"
-        # Per-model residual-spread scaler w(pred_rate): 'headroom' = sqrt(1-p) for the
+        # Per-model residual-spread scaler w(pred_rate): 'taper_top' = sqrt(1-p) for the
         # low-turnout local models, 'binom' = sqrt(p*(1-p)) otherwise.
         w_expr = (
-            "(CASE WHEN ip.scaler = 'headroom' THEN SQRT(1 - a.pred_rate) "
+            "(CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate) "
             "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
         )
         lower_expr = f"ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) * a.district_voters)"
@@ -685,12 +685,12 @@ def _read_interval_params_tag(model_version_tags, registered_model_name):
         )
     # Residual-spread scaler travels with the params so the shape stays locked to the fit.
     # Default 'binom' (sqrt(p*(1-p))) when absent; the low-turnout local models set
-    # 'headroom' (sqrt(1-p)). Reject unknown values rather than silently mis-shape the band.
+    # 'taper_top' (sqrt(1-p)). Reject unknown values rather than silently mis-shape the band.
     scaler = params.setdefault("scaler", "binom")
-    if scaler not in ("binom", "headroom"):
+    if scaler not in ("binom", "taper_top"):
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} has unknown scaler "
-            f"{scaler!r} (expected 'binom' or 'headroom')."
+            f"{scaler!r} (expected 'binom' or 'taper_top')."
         )
     return params
 
