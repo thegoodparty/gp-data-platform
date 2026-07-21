@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from quality_bench import run_matrix
 from quality_bench.bank import Question
 
@@ -28,9 +29,50 @@ def test_build_runs_matrix(tmp_path: Path):
 
 
 def test_transcript_path_munges_cwd(tmp_path: Path):
-    p = run_matrix.transcript_path(Path("/Users/t/.cache/gp_quality_bench/arms/full"), "abc123")
+    p = run_matrix.transcript_path(tmp_path, Path("/Users/t/.cache/gp_quality_bench/arms/full"), "abc123")
     assert p.name == "abc123.jsonl"
     assert "-Users-t--cache-gp-quality-bench-arms-full" in str(p.parent)
+    assert str(p).startswith(str(tmp_path))  # rooted in the ephemeral HOME, not ~
+
+
+def test_run_env_allowlists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DATABRICKS_API_KEY", "db-key")
+    monkeypatch.setenv("SOME_UNRELATED_TOKEN", "secret")
+    src = tmp_path / "srchome"
+    (src / ".claude").mkdir(parents=True)
+    (src / ".claude" / ".credentials.json").write_text("{}")
+    home = tmp_path / "home"
+    env = run_matrix.run_env(home, source_home=src)
+    assert env["HOME"] == str(home)
+    assert env["DATABRICKS_API_KEY"] == "db-key"
+    assert "SOME_UNRELATED_TOKEN" not in env
+    assert (home / ".claude" / ".credentials.json").exists()
+    assert json.loads((home / ".claude.json").read_text())["hasCompletedOnboarding"] is True
+
+
+def test_resume_guard_blocks_changed_inputs():
+    fp = {"inputs_sha256": "aaa", "model": "m", "harness_git_sha": "sha1"}
+    state: dict = {"runs": {}}
+    run_matrix.resume_guard(state, fp)
+    assert state["fingerprint"] == fp
+    # Unrelated commit (sha changes, inputs same): resumes, keeps original provenance.
+    run_matrix.resume_guard(state, {**fp, "harness_git_sha": "sha2"})
+    assert state["fingerprint"]["harness_git_sha"] == "sha1"
+    with pytest.raises(SystemExit, match="model"):
+        run_matrix.resume_guard(state, {**fp, "model": "other-model"})
+    with pytest.raises(SystemExit, match="inputs_sha256"):
+        run_matrix.resume_guard(state, {**fp, "inputs_sha256": "bbb"})
+
+
+def test_bench_fingerprint_tracks_question_edits(tmp_path: Path):
+    (tmp_path / "questions").mkdir()
+    (tmp_path / "questions" / "q01.md").write_text("v1")
+    (tmp_path / "floor.md").write_text("floor")
+    a = run_matrix.bench_fingerprint(tmp_path, "m")
+    (tmp_path / "questions" / "q01.md").write_text("v2")
+    b = run_matrix.bench_fingerprint(tmp_path, "m")
+    assert a["inputs_sha256"] != b["inputs_sha256"]
+    assert run_matrix.bench_fingerprint(tmp_path, "other")["model"] == "other"
 
 
 def make_arm_dir(tmp_path: Path) -> Path:
@@ -44,15 +86,8 @@ def make_arm_dir(tmp_path: Path) -> Path:
 def test_launch_run_parses_cli_json(tmp_path: Path):
     arm_dir = make_arm_dir(tmp_path)
     spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", arm_dir)
-    # The run happens in a per-run copy at runs/<run_id>; the transcript is keyed
-    # off that copy's path, so the fixture must live there.
-    run_dir = arm_dir.parent / "runs" / spec.run_id
-    transcript_dir = run_matrix.transcript_path(run_dir, "sess1").parent
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    (transcript_dir / "sess1.jsonl").write_text(
-        json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "answer"}]}})
-    )
-
+    # Per-run copy lives at runs/<batch>/<run_id>, ephemeral HOME beside it.
+    run_dir = arm_dir.parent / "runs" / "batch" / spec.run_id
     calls: dict = {}
 
     class FakeCompleted:
@@ -62,6 +97,13 @@ def test_launch_run_parses_cli_json(tmp_path: Path):
 
     def fake_runner(*a, **k):
         calls.update(k)
+        # The real CLI writes the transcript under $HOME during the run.
+        home = Path(k["env"]["HOME"])
+        t = run_matrix.transcript_path(home, k["cwd"], "sess1")
+        t.parent.mkdir(parents=True, exist_ok=True)
+        t.write_text(
+            json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "answer"}]}})
+        )
         return FakeCompleted()
 
     out = run_matrix.launch_run(
@@ -73,11 +115,13 @@ def test_launch_run_parses_cli_json(tmp_path: Path):
     )
     assert out["ok"] is True
     assert out["session_id"] == "sess1"
-    # Ran in the per-run copy, not the shared arm dir.
+    # Ran in the per-run copy, not the shared arm dir, with an ephemeral HOME.
     assert calls["cwd"] == run_dir
-    assert "runs" in run_dir.parts and spec.run_id in run_dir.parts
-    # Run dir cleaned up by default; shared arm dir untouched.
+    assert calls["env"]["HOME"] == str(run_dir.parent / f"{spec.run_id}.home")
+    assert calls["env"]["HOME"] != str(Path.home())
+    # Run dir and ephemeral HOME cleaned up by default; shared arm dir untouched.
     assert not run_dir.exists()
+    assert not (run_dir.parent / f"{spec.run_id}.home").exists()
     assert arm_dir.exists()
     assert "run_dir" not in out
     assert (tmp_path / "batch" / "q01__bare__r1.answer.md").read_text() == "answer"
@@ -87,7 +131,7 @@ def test_launch_run_parses_cli_json(tmp_path: Path):
 def test_launch_run_keep_run_dir(tmp_path: Path):
     arm_dir = make_arm_dir(tmp_path)
     spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", arm_dir)
-    run_dir = arm_dir.parent / "runs" / spec.run_id
+    run_dir = arm_dir.parent / "runs" / "batch" / spec.run_id
 
     class FakeCompleted:
         returncode = 0
