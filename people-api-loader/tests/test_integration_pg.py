@@ -55,16 +55,17 @@ _DDL = (
 )
 _STATES = ["TX", "CA"]
 
-# A partitioned Voter carrying the "FirstName"/"LastName" columns the CRM name-search extras
-# index. Separate from _DDL (which omits them) so the extras test can drive the real committed
-# EXTRA_INDEXES SQL through the partitioned build path against a table that actually has the
-# indexed columns.
+# A partitioned Voter carrying the columns referenced by Voter EXTRA_INDEXES (name-search
+# plus plain-btree columns). Separate from _DDL (which omits them) so the extras test can drive
+# the real committed EXTRA_INDEXES SQL through the partitioned build path against a table that
+# actually has the indexed columns.
 _DDL_NAMES = (
     'CREATE TABLE public."Voter" (\n'
     '    "id" uuid NOT NULL,\n'
     '    "State" text NOT NULL,\n'
     '    "FirstName" text,\n'
-    '    "LastName" text\n'
+    '    "LastName" text,\n'
+    '    "hf_most_important_policy_item" text\n'
     ");"
 )
 
