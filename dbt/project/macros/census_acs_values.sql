@@ -1,6 +1,30 @@
 -- ACS summary-file value handling, used by census_acs staging and its
 -- source-contract tests.
 --
+-- Pinned sentinel authority (the design contract's six-code jam table, from
+-- the summary-file handbook and annotation documentation):
+--
+-- | code       | applies to      | meaning                                          |
+-- staging maps to |
+-- |------------|-----------------|--------------------------------------------------|-----------------|
+-- | -999999999 | estimate or MOE | insufficient sample to display                   |
+-- null            |
+-- | -888888888 | estimate or MOE | not applicable                                   |
+-- null            |
+-- | -666666666 | estimate        | could not be computed (incl. open-ended medians) |
+-- null            |
+-- | -555555555 | MOE only        | estimate is CONTROLLED to an official total      |
+-- 0               |
+-- | -333333333 | MOE only        | median in an open-ended interval; no MOE         |
+-- null            |
+-- | -222222222 | MOE only        | insufficient observations for an MOE             |
+-- null            |
+--
+-- The margin macro maps exactly the five documented MOE codes and nothing
+-- else, deliberately: an undocumented margin sentinel must fail the raw-margin
+-- integrity test loudly rather than be silently absorbed by a speculative
+-- mapping.
+--
 -- Jam codes are large negative sentinels the Census publishes in place of real
 -- values. Exact-equality mapping, per the summary-file handbook: estimates
 -- -999999999 / -888888888 / -666666666 -> null; margins -555555555 -> 0 (the

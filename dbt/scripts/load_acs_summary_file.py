@@ -3,13 +3,13 @@
 Downloads the locked table inventory (plus the Connecticut block-to-planning-region
 crosswalk) from the public bulk directories, verifies every file's sha256 and data
 row count against the committed manifest BEFORE touching any warehouse table, then
-uploads the raw files to a Unity Catalog volume and CREATE OR REPLACEs one
-all-string table per file via read_files. Casting, renaming, and jam-code handling
-happen downstream in dbt staging, per repo convention. One deliberate load-time
-exception: the crosswalk CSV's "block number" header is renamed block_number in the
-CTAS select list because Delta rejects spaces in column names, and its UTF-8 BOM is
-stripped before hashing so the manifest hash covers exactly the bytes read_files
-parses.
+uploads the raw files to a Unity Catalog volume (re-hashing each file at upload
+time against the verified manifest hash) and creates one all-string table per file
+via read_files. Casting, renaming, and jam-code handling happen downstream in dbt
+staging, per repo convention. One deliberate load-time exception: the crosswalk
+CSV's "block number" header is renamed block_number in the CTAS select list
+because Delta rejects spaces in column names, and its UTF-8 BOM is stripped before
+hashing so the manifest hash covers exactly the bytes read_files parses.
 
 Refresh story: this is a one-time documented load for the 2020-2024 vintage, not a
 recurring job. For a future vintage, bootstrap with --year <YYYY> --write-manifest
@@ -17,19 +17,24 @@ recurring job. For a future vintage, bootstrap with --year <YYYY> --write-manife
 run the load. Adding a table to ACS_TABLES and re-running with --tables <table>
 (bootstrap first, then load) is an idempotent, additive re-run.
 
-Failure handling: publication replaces ONE table at a time and count-verifies it
-immediately; the first failure stops the run and reports which tables were
-replaced and verified, which one failed or has an unknown outcome (client lost
-contact after submission: the server-side statement may still complete, so wait
-for it to reach a terminal state and re-check the table before re-running), and
-which were never attempted. Rollback for any replaced table is Delta time travel:
-RESTORE TABLE <catalog>.<schema>.<table> TO VERSION AS OF <version>
-(find the prior version with DESCRIBE HISTORY). Publication preflights all
-target names first: the default load mode FAILS if any target already exists;
---allow-replace permits a re-run and records every existing table's current
-Delta version up front as the concrete RESTORE target. These are new sandbox
-tables with no consumers, so verify-first ordering plus the documented restore
-path is the deliberate, proportionate publication story.
+Publication semantics: a first load issues plain CREATE TABLE, so the warehouse
+itself enforces fail-if-exists even against a race the preflight cannot see.
+--allow-replace permits a re-run: the preflight records every existing target's
+current Delta version, and immediately before each replacement that version is
+re-checked -- any drift (a concurrent writer) aborts with nothing mutated. Default
+downloads live in a temporary directory that is cleaned up on exit; pass
+--download-dir to keep them.
+
+Failure handling: publication proceeds one table at a time (upload with re-hash,
+create, immediate count check) and stops at the first problem. Bookkeeping is
+truthful about mutation: a table counts as mutated the moment its CREATE
+statement succeeds, so a count-check problem reports it as MUTATED BUT
+UNVERIFIED rather than pretending nothing happened, and recovery guidance
+distinguishes a table this run CREATED (drop it once inspected) from one it
+REPLACED (RESTORE TABLE ... TO VERSION AS OF the recorded pre-replacement
+version). A communication problem after a statement was submitted is an UNKNOWN
+outcome, never a plain failure: wait for the statement to reach a terminal state
+and re-check the table before re-running.
 
 Credentials: the bulk download path needs none (public HTTPS). Databricks access
 uses the CLI OAuth profile; the script strips DATABRICKS_TOKEN from subprocess
@@ -40,12 +45,12 @@ Usage (from the dbt/ directory):
     uv run python scripts/load_acs_summary_file.py --write-manifest --verify-only
         # bootstrap or new vintage: record facts; NEVER writes to the warehouse
     uv run python scripts/load_acs_summary_file.py
-        # load: verify every download against the COMMITTED manifest, then
-        # publish tables one at a time (upload, replace, count-verify)
+        # first load: verify every download against the COMMITTED manifest,
+        # then publish one table at a time with plain CREATE TABLE
     uv run python scripts/load_acs_summary_file.py --verify-only
         # re-verify downloads against the committed manifest; no warehouse writes
-    uv run python scripts/load_acs_summary_file.py --tables b19001
-        # subset re-run (same verify-before-replace rules)
+    uv run python scripts/load_acs_summary_file.py --tables b19001 --allow-replace
+        # subset re-run over existing tables (version-checked replacement)
 """
 
 from __future__ import annotations
@@ -134,18 +139,25 @@ class StatementOutcomeUnknownError(RuntimeError):
 
 @dataclass(frozen=True)
 class PublishOutcome:
-    """Publication report: what was replaced and count-verified, what failed or
-    has an unknown outcome, and what was never attempted."""
+    """Publication report, truthful about mutation. `verified` tables were
+    created/replaced AND count-verified. `mutated_unverified` names a table
+    whose create statement succeeded but whose count check failed or could not
+    complete: the table WAS changed and must be inspected before it is trusted.
+    `failed` names a table where nothing was mutated (upload or re-hash error,
+    pre-replacement version drift, or a terminal FAILED statement). `unknown`
+    names a table whose create statement outcome itself is unknown (contact
+    lost mid-flight)."""
 
-    replaced: tuple[str, ...]
+    verified: tuple[str, ...]
     failed: str | None = None
-    reason: str | None = None
+    mutated_unverified: str | None = None
     unknown: str | None = None
+    reason: str | None = None
     remaining: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
-        return self.failed is None and self.unknown is None
+        return self.failed is None and self.unknown is None and self.mutated_unverified is None
 
 
 def acs_url(year: int, table: str) -> str:
@@ -154,6 +166,14 @@ def acs_url(year: int, table: str) -> str:
 
 def acs_filename(year: int, table: str) -> str:
     return f"acsdt5y{year}-{table}.dat"
+
+
+def sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def stream_download(url: str, dest: Path, strip_bom: bool = False) -> FileFacts:
@@ -231,10 +251,15 @@ def decide_action(write_manifest: bool, verify_only: bool, manifest_exists: bool
     return "publish"
 
 
-def create_acs_table_sql(catalog: str, schema: str, table: str, volume: str, filename: str) -> str:
+def create_acs_table_sql(
+    catalog: str, schema: str, table: str, volume: str, filename: str, replace: bool = False
+) -> str:
+    # plain CREATE TABLE by default so the warehouse itself enforces
+    # fail-if-exists; OR REPLACE only for a version-checked --allow-replace run
+    verb = "create or replace table" if replace else "create table"
     path = f"/Volumes/{catalog}/{schema}/{volume}/{filename}"
     return (
-        f"create or replace table {catalog}.{schema}.{table}"
+        f"{verb} {catalog}.{schema}.{table}"
         f" comment 'Raw all-string load of {filename} from the Census ACS table-based 5-year"
         f" summary file; loaded by dbt/scripts/load_acs_summary_file.py; casting and jam-code"
         f" handling happen in dbt staging.'"
@@ -244,13 +269,16 @@ def create_acs_table_sql(catalog: str, schema: str, table: str, volume: str, fil
     )
 
 
-def create_crosswalk_sql(catalog: str, schema: str, table: str, volume: str, filename: str) -> str:
+def create_crosswalk_sql(
+    catalog: str, schema: str, table: str, volume: str, filename: str, replace: bool = False
+) -> str:
     # Same all-string pattern as the ACS tables, with one load-time exception:
     # the source header's "block number" column is renamed because Delta
     # rejects spaces in column names.
+    verb = "create or replace table" if replace else "create table"
     path = f"/Volumes/{catalog}/{schema}/{volume}/{filename}"
     return (
-        f"create or replace table {catalog}.{schema}.{table}"
+        f"{verb} {catalog}.{schema}.{table}"
         f" comment 'State-republished (CTData) copy of the Census 2022 Connecticut"
         f" county-equivalent-change block-level equivalency mapping (2020 block to"
         f" planning-region-coded block); one row per 2020 CT block; loaded by"
@@ -318,7 +346,8 @@ def preflight_existing_targets(
 ) -> dict[str, int]:
     """Return {table: current Delta version} for publish targets that already
     exist. Default load mode refuses to touch them; --allow-replace records
-    these versions first as the concrete RESTORE targets."""
+    these versions first as the concrete RESTORE targets and re-checks them
+    immediately before each replacement."""
     names = ", ".join(f"'{t}'" for t in tables)
     rows = run_sql(
         f"select table_name from {catalog}.information_schema.tables"
@@ -345,49 +374,86 @@ def publish_tables(
     volume: str,
     run_sql: Callable[[str], list[list[str]]],
     upload: Callable[[FileFacts], None],
+    replace_versions: dict[str, int] | None = None,
 ) -> PublishOutcome:
-    """Publish one table at a time: upload its file, CREATE OR REPLACE, then
-    count-verify immediately. Stops at the first failure so tables that
-    verification has not cleared are never touched. Any post-submission
-    communication problem is an UNKNOWN outcome (the server-side statement may
-    still complete), never a plain failure."""
-    replaced: list[str] = []
+    """Publish one table at a time: upload its file, CREATE it (for a table in
+    replace_versions: re-check its Delta version, then CREATE OR REPLACE), then
+    count-verify immediately. Stops at the first problem so tables that
+    verification has not cleared are never touched. Bookkeeping is truthful
+    about mutation: a table counts as mutated the moment its create statement
+    succeeds, so a count-check problem reports MUTATED BUT UNVERIFIED rather
+    than pretending nothing happened; a post-submission communication problem
+    during the create itself is an UNKNOWN outcome, never a plain failure."""
+    replace_versions = replace_versions or {}
+    verified: list[str] = []
     order = [targets[f.filename] for f in facts]
     for i, f in enumerate(facts):
         table = targets[f.filename]
         remaining = tuple(order[i + 1 :])
-        sql = (
-            create_crosswalk_sql(catalog, schema, table, volume, f.filename)
-            if table == CT_CROSSWALK_TABLE
-            else create_acs_table_sql(catalog, schema, table, volume, f.filename)
-        )
+        # phase 1, pre-mutation: upload; version re-check for replacements
         try:
             upload(f)
+            if table in replace_versions:
+                current = int(run_sql(f"describe history {catalog}.{schema}.{table} limit 1")[0][0])
+                if current != replace_versions[table]:
+                    return PublishOutcome(
+                        verified=tuple(verified),
+                        failed=table,
+                        reason=(
+                            f"Delta version drifted from {replace_versions[table]} to {current}"
+                            " since preflight (concurrent writer?); nothing was mutated"
+                        ),
+                        remaining=remaining,
+                    )
+        except Exception as exc:
+            return PublishOutcome(
+                verified=tuple(verified),
+                failed=table,
+                reason=f"failed before any mutation: {exc}",
+                remaining=remaining,
+            )
+        # phase 2: the mutation
+        replace = table in replace_versions
+        sql = (
+            create_crosswalk_sql(catalog, schema, table, volume, f.filename, replace=replace)
+            if table == CT_CROSSWALK_TABLE
+            else create_acs_table_sql(catalog, schema, table, volume, f.filename, replace=replace)
+        )
+        try:
             run_sql(sql)
-            rows = int(run_sql(f"select count(*) from {catalog}.{schema}.{table}")[0][0])
         except StatementOutcomeUnknownError as exc:
             return PublishOutcome(
-                replaced=tuple(replaced), unknown=table, reason=str(exc), remaining=remaining
+                verified=tuple(verified), unknown=table, reason=str(exc), remaining=remaining
             )
         except Exception as exc:
             return PublishOutcome(
-                replaced=tuple(replaced),
+                verified=tuple(verified),
                 failed=table,
-                reason=f"replacement failed before verification: {exc}",
+                reason=f"create statement failed; nothing was mutated: {exc}",
+                remaining=remaining,
+            )
+        # phase 3, verification: the table IS mutated from here on
+        try:
+            rows = int(run_sql(f"select count(*) from {catalog}.{schema}.{table}")[0][0])
+        except Exception as exc:
+            return PublishOutcome(
+                verified=tuple(verified),
+                mutated_unverified=table,
+                reason=f"the table was mutated but its count check did not complete: {exc}",
                 remaining=remaining,
             )
         if rows != f.data_rows:
             return PublishOutcome(
-                replaced=tuple(replaced),
-                failed=table,
+                verified=tuple(verified),
+                mutated_unverified=table,
                 reason=(
-                    f"staged {rows:,} rows vs downloaded {f.data_rows:,}: "
-                    "the table was replaced with unverified data"
+                    f"the table was mutated but is unverified: staged {rows:,} rows"
+                    f" vs downloaded {f.data_rows:,}"
                 ),
                 remaining=remaining,
             )
-        replaced.append(table)
-    return PublishOutcome(replaced=tuple(replaced))
+        verified.append(table)
+    return PublishOutcome(verified=tuple(verified))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -421,15 +487,23 @@ def main(argv: list[str] | None = None) -> int:
     # process-local; subprocesses (the databricks CLI) are unaffected
     socket.getaddrinfo = _ipv4_first_getaddrinfo
 
+    if args.download_dir:
+        args.download_dir.mkdir(parents=True, exist_ok=True)
+        return _run(args, args.download_dir)
+    # default downloads are cleaned up on exit; pass --download-dir to keep them
+    with tempfile.TemporaryDirectory(prefix="acs_summary_file_") as tmp:
+        return _run(args, Path(tmp))
+
+
+def _run(args: argparse.Namespace, download_dir: Path) -> int:
     subset = {t.strip().lower() for t in args.tables.split(",") if t.strip()}
     unknown_tokens = subset - set(ACS_TABLES) - {"crosswalk"}
     if unknown_tokens:
-        parser.error(f"unknown --tables entries: {sorted(unknown_tokens)}")
+        print(f"FATAL: unknown --tables entries: {sorted(unknown_tokens)}", file=sys.stderr)
+        return 2
     tables = [t for t in ACS_TABLES if not subset or t in subset]
     include_crosswalk = not subset or "crosswalk" in subset
 
-    download_dir = args.download_dir or Path(tempfile.mkdtemp(prefix="acs_summary_file_"))
-    download_dir.mkdir(parents=True, exist_ok=True)
     print(f"downloading {len(tables)} ACS file(s) + crosswalk={include_crosswalk} -> {download_dir}")
 
     plan: list[tuple[str, str, bool, str]] = [
@@ -482,6 +556,18 @@ def main(argv: list[str] | None = None) -> int:
     def run_sql(statement: str) -> list[list[str]]:
         return execute_sql(statement, args.warehouse_id, args.profile)
 
+    def upload_after_rehash(ff: FileFacts) -> None:
+        # bind the uploaded bytes to the verification: the manifest-verified
+        # hash must still describe the on-disk file at the moment of upload
+        local = download_dir / ff.filename
+        digest = sha256_of(local)
+        if digest != ff.sha256:
+            raise RuntimeError(
+                f"{ff.filename}: on-disk bytes changed since verification"
+                f" (sha256 {digest[:12]}... != verified {ff.sha256[:12]}...)"
+            )
+        upload_file(local, args.catalog, args.schema, args.volume, args.profile)
+
     fq_volume = f"{args.catalog}.{args.schema}.{args.volume}"
     run_sql(
         f"create volume if not exists {fq_volume}"
@@ -514,17 +600,22 @@ def main(argv: list[str] | None = None) -> int:
         args.schema,
         args.volume,
         run_sql=run_sql,
-        upload=lambda ff: upload_file(
-            download_dir / ff.filename, args.catalog, args.schema, args.volume, args.profile
-        ),
+        upload=upload_after_rehash,
+        replace_versions=existing,
     )
-    for table in outcome.replaced:
-        print(f"  {args.catalog}.{args.schema}.{table}: replaced and count-verified")
+    for table in outcome.verified:
+        mode = "replaced" if table in existing else "created"
+        print(f"  {args.catalog}.{args.schema}.{table}: {mode} and count-verified")
     if not outcome.ok:
         print("FATAL: publication stopped early", file=sys.stderr)
-        print(f"  replaced and verified: {list(outcome.replaced) or 'none'}", file=sys.stderr)
+        print(f"  mutated and verified: {list(outcome.verified) or 'none'}", file=sys.stderr)
         if outcome.failed:
-            print(f"  failed: {outcome.failed} ({outcome.reason})", file=sys.stderr)
+            print(f"  failed with nothing mutated: {outcome.failed} ({outcome.reason})", file=sys.stderr)
+        if outcome.mutated_unverified:
+            print(
+                f"  MUTATED BUT UNVERIFIED: {outcome.mutated_unverified} ({outcome.reason})",
+                file=sys.stderr,
+            )
         if outcome.unknown:
             print(
                 f"  unknown outcome: {outcome.unknown} ({outcome.reason}); the server-side statement"
@@ -533,14 +624,22 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
         print(f"  never attempted: {list(outcome.remaining) or 'none'}", file=sys.stderr)
-        print(
-            "  rollback for any replaced table: RESTORE TABLE"
-            f" {args.catalog}.{args.schema}.<table> TO VERSION AS OF <prior version>"
-            " (find it with DESCRIBE HISTORY)",
-            file=sys.stderr,
-        )
+        for table in [t for t in (outcome.mutated_unverified, outcome.unknown) if t]:
+            fq_table = f"{args.catalog}.{args.schema}.{table}"
+            if table in existing:
+                print(
+                    f"  recovery for {fq_table} (was REPLACED): RESTORE TABLE {fq_table}"
+                    f" TO VERSION AS OF {existing[table]}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"  recovery for {fq_table} (was CREATED by this run): inspect it, then"
+                    " DROP TABLE it if it should not exist",
+                    file=sys.stderr,
+                )
         return 4 if outcome.unknown else 3
-    print("load complete: all tables replaced and count-verified against the committed manifest")
+    print("load complete: all tables published and count-verified against the committed manifest")
     return 0
 
 

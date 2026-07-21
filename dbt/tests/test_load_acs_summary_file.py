@@ -22,6 +22,7 @@ from dbt.scripts.load_acs_summary_file import (
     decide_action,
     preflight_existing_targets,
     publish_tables,
+    sha256_of,
     stream_download,
     verify_against_manifest,
 )
@@ -123,7 +124,8 @@ def test_create_acs_table_sql_shape():
     sql = create_acs_table_sql(
         "cat", "sandbox", "acs5y2024_b01001", "census_acs_raw", "acsdt5y2024-b01001.dat"
     )
-    assert "create or replace table cat.sandbox.acs5y2024_b01001" in sql.lower()
+    assert sql.lower().startswith("create table cat.sandbox.acs5y2024_b01001")
+    assert "or replace" not in sql.lower()  # first loads let the warehouse enforce fail-if-exists
     assert "'/Volumes/cat/sandbox/census_acs_raw/acsdt5y2024-b01001.dat'" in sql
     assert "sep => '|'" in sql
     assert "header => true" in sql
@@ -132,14 +134,31 @@ def test_create_acs_table_sql_shape():
     assert "except (_rescued_data)" in sql.lower()
 
 
+def test_create_table_sql_replace_mode_uses_or_replace():
+    acs = create_acs_table_sql("cat", "sandbox", "t", "v", "f.dat", replace=True)
+    crosswalk = create_crosswalk_sql("cat", "sandbox", "x", "v", "x.csv", replace=True)
+    assert acs.lower().startswith("create or replace table cat.sandbox.t")
+    assert crosswalk.lower().startswith("create or replace table cat.sandbox.x")
+
+
 def test_create_crosswalk_sql_renames_space_column_and_uses_commas():
     sql = create_crosswalk_sql(
         "cat", "sandbox", "census_ct_block_to_planning_region_2022", "census_acs_raw", CT_CROSSWALK_FILENAME
     )
+    assert sql.lower().startswith("create table cat.sandbox.census_ct_block_to_planning_region_2022")
     assert "sep => ','" in sql
     assert "except (`block number`, _rescued_data)" in sql.lower()
     assert "`block number` as block_number" in sql.lower()
     assert "mode => 'FAILFAST'" in sql
+
+
+def test_sha256_of_matches_hashlib(tmp_path):
+    import hashlib
+
+    payload = b"some bytes\nacross lines\n"
+    f = tmp_path / "x.dat"
+    f.write_bytes(payload)
+    assert sha256_of(f) == hashlib.sha256(payload).hexdigest()
 
 
 # --- orchestration guarantees: nothing verification has not cleared is ever touched ---
@@ -169,31 +188,35 @@ def test_decide_action_publishes_only_after_clean_verification():
 
 
 class _FakeSql:
-    """Stands in for execute_sql: counts CTAS statements, can fail, lose
-    contact, return a wrong staged count for a named table, or report
-    pre-existing targets to the preflight."""
+    """Stands in for execute_sql: records statements, counts creates, and can
+    fail, lose contact (during create or count), return a wrong staged count,
+    or report pre-existing targets with a current Delta version."""
 
     def __init__(
         self,
         fail_on: int | None = None,
         unknown_on: int | None = None,
         bad_count_for: str | None = None,
+        unknown_on_count_for: str | None = None,
         existing: dict[str, int] | None = None,
     ):
         self.fail_on = fail_on
         self.unknown_on = unknown_on
         self.bad_count_for = bad_count_for
+        self.unknown_on_count_for = unknown_on_count_for
         self.existing = existing or {}
         self.ctas_seen = 0
+        self.statements: list[str] = []
 
     def __call__(self, sql: str) -> list[list[str]]:
+        self.statements.append(sql)
         lowered = sql.lstrip().lower()
         if "information_schema.tables" in lowered:
             return [[t] for t in sorted(self.existing)]
         if lowered.startswith("describe history"):
             table = sql.rsplit(".", 1)[-1].split()[0]
             return [[str(self.existing[table]), "irrelevant"]]
-        if lowered.startswith("create or replace table"):
+        if lowered.startswith(("create table", "create or replace table")):
             self.ctas_seen += 1
             if self.ctas_seen == self.fail_on:
                 raise RuntimeError("boom")
@@ -201,6 +224,8 @@ class _FakeSql:
                 raise StatementOutcomeUnknownError("stmt-1", "lost contact after submission was attempted")
             return []
         table = sql.rsplit(".", 1)[-1]  # "select count(*) from cat.sandbox.<table>"
+        if table == self.unknown_on_count_for:
+            raise StatementOutcomeUnknownError("stmt-2", "lost contact during count verification")
         return [["7" if table == self.bad_count_for else "10"]]
 
 
@@ -213,35 +238,61 @@ def test_preflight_is_empty_when_no_targets_exist():
     assert preflight_existing_targets(["t_a", "t_b"], "cat", "sandbox", _FakeSql()) == {}
 
 
-def _publish(fake: _FakeSql):
+def _publish(fake: _FakeSql, replace_versions: dict[str, int] | None = None):
     facts = [_facts("a.dat"), _facts("b.dat"), _facts("c.dat")]
     targets = {"a.dat": "t_a", "b.dat": "t_b", "c.dat": "t_c"}
     uploaded: list[FileFacts] = []
-    outcome = publish_tables(facts, targets, "cat", "sandbox", "vol", fake, uploaded.append)
+    outcome = publish_tables(
+        facts, targets, "cat", "sandbox", "vol", fake, uploaded.append, replace_versions=replace_versions
+    )
     return outcome, uploaded
 
 
-def test_publish_happy_path_replaces_and_verifies_all():
-    outcome, uploaded = _publish(_FakeSql())
-    assert outcome.replaced == ("t_a", "t_b", "t_c")
+def test_publish_happy_path_creates_and_verifies_all():
+    fake = _FakeSql()
+    outcome, uploaded = _publish(fake)
+    assert outcome.verified == ("t_a", "t_b", "t_c")
     assert outcome.ok
     assert len(uploaded) == 3
+    creates = [s for s in fake.statements if s.lstrip().lower().startswith("create")]
+    assert all(not s.lstrip().lower().startswith("create or replace") for s in creates)
+
+
+def test_publish_uses_or_replace_only_for_recorded_replacements():
+    fake = _FakeSql(existing={"t_b": 7})
+    outcome, _ = _publish(fake, replace_versions={"t_b": 7})
+    assert outcome.ok
+    creates = [s.lstrip().lower() for s in fake.statements if s.lstrip().lower().startswith("create")]
+    assert sum(s.startswith("create or replace table") for s in creates) == 1
+    assert any("create or replace table cat.sandbox.t_b" in s for s in creates)
+
+
+def test_publish_aborts_before_mutation_on_version_drift():
+    # recorded version 7 at preflight; the table moved to 9 before publish
+    fake = _FakeSql(existing={"t_b": 9})
+    outcome, uploaded = _publish(fake, replace_versions={"t_b": 7})
+    assert outcome.verified == ("t_a",)
+    assert outcome.failed == "t_b"
+    assert "drifted" in (outcome.reason or "")
+    assert outcome.remaining == ("t_c",)
+    assert fake.ctas_seen == 1  # only t_a's create ever ran
+    assert len(uploaded) == 2  # t_b uploaded, then aborted pre-create; t_c untouched
 
 
 def test_publish_nth_table_failure_stops_before_later_tables():
     fake = _FakeSql(fail_on=2)
     outcome, uploaded = _publish(fake)
-    assert outcome.replaced == ("t_a",)
+    assert outcome.verified == ("t_a",)
     assert outcome.failed == "t_b"
     assert outcome.remaining == ("t_c",)
-    assert fake.ctas_seen == 2  # t_c's replacement was never attempted
+    assert fake.ctas_seen == 2  # t_c's create was never attempted
     assert len(uploaded) == 2  # and its file was never uploaded
 
 
 def test_publish_post_submission_loss_is_unknown_not_failed_and_stops():
     fake = _FakeSql(unknown_on=1)
     outcome, uploaded = _publish(fake)
-    assert outcome.replaced == ()
+    assert outcome.verified == ()
     assert outcome.unknown == "t_a"
     assert outcome.failed is None
     assert outcome.remaining == ("t_b", "t_c")
@@ -249,12 +300,25 @@ def test_publish_post_submission_loss_is_unknown_not_failed_and_stops():
     assert len(uploaded) == 1
 
 
-def test_publish_count_mismatch_stops_and_says_table_was_replaced():
+def test_publish_count_mismatch_reports_mutated_but_unverified():
     fake = _FakeSql(bad_count_for="t_b")
     outcome, _ = _publish(fake)
-    assert outcome.replaced == ("t_a",)
-    assert outcome.failed == "t_b"
-    assert "was replaced" in (outcome.reason or "")
+    assert outcome.verified == ("t_a",)
+    assert outcome.mutated_unverified == "t_b"
+    assert outcome.failed is None
+    assert "mutated but is unverified" in (outcome.reason or "")
+    assert outcome.remaining == ("t_c",)
+
+
+def test_publish_unknown_during_count_verification_is_mutated_but_unverified():
+    # the create succeeded, so the mutation is certain even though the count
+    # check lost contact: never classify this as if nothing happened
+    fake = _FakeSql(unknown_on_count_for="t_b")
+    outcome, _ = _publish(fake)
+    assert outcome.verified == ("t_a",)
+    assert outcome.mutated_unverified == "t_b"
+    assert outcome.unknown is None
+    assert "count check did not complete" in (outcome.reason or "")
     assert outcome.remaining == ("t_c",)
 
 

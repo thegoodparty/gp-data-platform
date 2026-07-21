@@ -3,7 +3,13 @@
 -- Every staged estimate and margin pair must equal an independent
 -- recomputation from the raw tables at two fixed rows: the national row and
 -- state 06. Estimates compare null-safe and exact; margins compare within
--- 1e-6 (two floating-point paths). One-sided nulls are mismatches.
+-- 1e-6 (two floating-point paths). One-sided nulls are mismatches. The
+-- fixture-count guard at the bottom makes vacuous passes impossible: if
+-- EITHER fixture row goes missing anywhere upstream (staged, or any of the
+-- twelve raw tables feeding the inner joins), the compared set shrinks and
+-- this test fails loudly instead of comparing nothing. To see which column
+-- mismatched on a failure, run the compiled compared select without the
+-- final where.
 {% set clean_estimate = (
     "case when cast({c} as bigint) in (-999999999, -888888888, -666666666)"
     " then null else cast({c} as bigint) end"
@@ -386,7 +392,7 @@ with
         inner join recomputed using (summary_level, geoid)
     )
 
-select *
+select 'mapping_mismatch' as violation, concat(summary_level, ':', geoid) as detail
 from compared
 where
     not (
@@ -394,3 +400,13 @@ where
             {{ col }}_matches and {{ col }}_moe_matches {{ "and" if not loop.last }}
         {% endfor %}
     )
+
+union all
+
+select
+    'fixture_rows_missing' as violation,
+    concat(
+        'expected 2 fixture rows in the compared set, found ', cast(count(*) as string)
+    ) as detail
+from compared
+having count(*) != 2
