@@ -10,6 +10,13 @@
 -- like the decennial test; do not copy this pattern to refreshing sources.
 -- households_income_universe must also equal households: two tables publishing
 -- the same universe.
+--
+-- The owner-occupied and bracket-composition pins (retrieved 2026-07-21; the
+-- composition constants are sums of the PUBLISHED component cells,
+-- cross-checked equal to the staged national row before pinning) exist to pin
+-- exact cell wiring: an adjacent-cell swap in the tenure pull or a wrong cell
+-- in a bracket membership would survive every bound and semantic invariant,
+-- but cannot reproduce these national values.
 with
     staged as (
         select
@@ -30,6 +37,21 @@ with
                 case when summary_level = '010' then households_income_universe end
             ) as us_households_income_universe,
             max(
+                case when summary_level = '010' then owner_occupied_households end
+            ) as us_owner_occupied_households,
+            max(
+                case when summary_level = '010' then population_under_18 end
+            ) as us_population_under_18,
+            max(
+                case when summary_level = '010' then population_65_plus end
+            ) as us_population_65_plus,
+            max(
+                case when summary_level = '010' then population_hs_or_higher end
+            ) as us_population_hs_or_higher,
+            max(
+                case when summary_level = '010' then population_bachelors_or_higher end
+            ) as us_population_bachelors_or_higher,
+            max(
                 case
                     when summary_level = '040' and geoid = '06' then total_population
                 end
@@ -46,4 +68,9 @@ where
     or us_median_household_income is distinct from 80734
     or us_median_home_value is distinct from 332700
     or us_households_income_universe is distinct from us_households
+    or us_owner_occupied_households is distinct from 84210142
+    or us_population_under_18 is distinct from 73517834
+    or us_population_65_plus is distinct from 57633628
+    or us_population_hs_or_higher is distinct from 206814893
+    or us_population_bachelors_or_higher is distinct from 82363216
     or ca_total_population is distinct from 39287377
