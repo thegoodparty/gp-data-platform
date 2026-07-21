@@ -447,21 +447,31 @@ def _build_district_projection_sql(interval_params):
     """Pure: final district-level projection SQL, including p25 (lower) / p95 (upper)
     prediction-interval bounds.
 
-    interval_params maps model_slug -> {q25, q95, ...}. Bounds are the
+    interval_params maps model_slug -> {q25, q95, scaler, ...}. Bounds are the
     variance-stabilised residual model fit per slug in the turnout_prediction_intervals
     notebook (raw-standardized residual quantiles, no constant bias term). For each
     district we take the model's implied predicted rate,
     pred_rate = ballots_projected / district_voters, and apply
 
-        bound_rate  = clip(pred_rate + q * sqrt(pred_rate*(1-pred_rate)), 0, 1)
+        bound_rate  = clip(pred_rate + q * w(pred_rate), 0, 1)
         bound_votes = round(bound_rate * district_voters)
 
-    with q = q25 for the lower bound and q = q95 for the upper. q25 < 0 < q95 for every
-    model, so the point (q=0) always lies within [lower, upper] and both bounds collapse
-    toward the point as pred_rate -> 0/1. The residual model was fit on eligible-weighted
-    rates; inference uses the registered-voter denominator (district_voters =
-    SUM(n_voters), no eligibility gate) on the deliberate assumption that today's L2 is
-    the eligible-if-held-today universe (research decision).
+    with q = q25 for the lower bound and q = q95 for the upper, and w() a per-model
+    residual-spread scaler:
+      - 'binom'    -> sqrt(p*(1-p)): tapers to 0 at both 0% and 100% turnout.
+      - 'headroom' -> sqrt(1-p): tapers only near 100%, staying wide at low turnout.
+    The low-turnout local models (off_year_local_lag2, even_year_local) use 'headroom':
+    the binom shape collapses the band to ~0 at low turnout while the model's real error
+    there stays large and positive (small low-turnout jurisdictions surprise upward), so
+    binom badly under-covered the p95 upper bound (see the training runbook). 'headroom'
+    keeps the low-turnout band wide enough to cover that upside; the other three models
+    stay on 'binom'.
+
+    q25 < 0 < q95 for every model, so the point (q=0) always lies within [lower, upper].
+    The residual model was fit on eligible-weighted rates; inference uses the
+    registered-voter denominator (district_voters = SUM(n_voters), no eligibility gate) on
+    the deliberate assumption that today's L2 is the eligible-if-held-today universe
+    (research decision).
 
     A LEFT JOIN to the params means a slug with no params yields NULL bounds rather than
     dropping the ballots_projected row. Model routing guarantees (election_year,
@@ -469,23 +479,24 @@ def _build_district_projection_sql(interval_params):
     change ballots_projected or the natural-key grain."""
     if interval_params:
         values = ",\n                ".join(
-            f"('{slug}', {p['q25']!r}, {p['q95']!r})" for slug, p in sorted(interval_params.items())
+            f"('{slug}', {p['q25']!r}, {p['q95']!r}, '{p['scaler']}')"
+            for slug, p in sorted(interval_params.items())
         )
         params_cte = f"""_interval_params AS (
             SELECT * FROM (VALUES
                 {values}
-            ) AS t(model_slug, q_lower, q_upper)
+            ) AS t(model_slug, q_lower, q_upper, scaler)
         ),
         """
         join_sql = "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug"
-        lower_expr = (
-            "ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * "
-            "SQRT(a.pred_rate * (1 - a.pred_rate)), 0), 1) * a.district_voters)"
+        # Per-model residual-spread scaler w(pred_rate): 'headroom' = sqrt(1-p) for the
+        # low-turnout local models, 'binom' = sqrt(p*(1-p)) otherwise.
+        w_expr = (
+            "(CASE WHEN ip.scaler = 'headroom' THEN SQRT(1 - a.pred_rate) "
+            "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
         )
-        upper_expr = (
-            "ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * "
-            "SQRT(a.pred_rate * (1 - a.pred_rate)), 0), 1) * a.district_voters)"
-        )
+        lower_expr = f"ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) * a.district_voters)"
+        upper_expr = f"ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) * a.district_voters)"
     else:
         params_cte = ""
         join_sql = ""
@@ -671,6 +682,15 @@ def _read_interval_params_tag(model_version_tags, registered_model_name):
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} is missing keys "
             f"{sorted(missing)}: {params}"
+        )
+    # Residual-spread scaler travels with the params so the shape stays locked to the fit.
+    # Default 'binom' (sqrt(p*(1-p))) when absent; the low-turnout local models set
+    # 'headroom' (sqrt(1-p)). Reject unknown values rather than silently mis-shape the band.
+    scaler = params.setdefault("scaler", "binom")
+    if scaler not in ("binom", "headroom"):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} has unknown scaler "
+            f"{scaler!r} (expected 'binom' or 'headroom')."
         )
     return params
 

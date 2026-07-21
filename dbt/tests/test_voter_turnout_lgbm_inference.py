@@ -268,6 +268,16 @@ def test_read_interval_params_tag_returns_parsed_dict():
     params = _read_interval_params_tag(tags, "some.model.name")
     assert params["q25"] == -0.0144
     assert params["q95"] == 0.0695
+    assert params["scaler"] == "binom"  # default when the tag omits it
+
+
+def test_read_interval_params_tag_scaler_default_and_validation():
+    base = '{"q25":-0.04,"q75":0.03,"q841":0.06,"q95":0.14%s}'
+    assert _read_interval_params_tag({"prediction_interval_params": base % ""}, "m")["scaler"] == "binom"
+    got = _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"headroom"'}, "m")
+    assert got["scaler"] == "headroom"
+    with pytest.raises(ValueError):  # unknown scaler is rejected, not silently used
+        _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"bogus"'}, "m")
 
 
 @pytest.mark.parametrize(
@@ -288,8 +298,14 @@ def test_read_interval_params_tag_raises_when_missing_malformed_or_incomplete(ta
 
 
 _INTERVAL_PARAMS = {
-    "midterm": {"q25": -0.01444, "q75": 0.01107, "q841": 0.02357, "q95": 0.06949},
-    "even_year_primary": {"q25": -0.0138, "q75": 0.02892, "q841": 0.05517, "q95": 0.15031},
+    "midterm": {"q25": -0.01444, "q75": 0.01107, "q841": 0.02357, "q95": 0.06949, "scaler": "binom"},
+    "off_year_local_lag2": {
+        "q25": -0.04362,
+        "q75": 0.03098,
+        "q841": 0.05765,
+        "q95": 0.14162,
+        "scaler": "headroom",
+    },
 }
 
 
@@ -309,10 +325,12 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
     assert "AS ballots_projected_lower" in sql
     assert "AS ballots_projected_upper" in sql
-    # bound formula: pred_rate + q * sqrt(p*(1-p)), clipped to [0,1], * district_voters.
-    # No constant bias term (raw-standardized residual quantiles).
-    assert "ip.q_lower * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
-    assert "ip.q_upper * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
+    # bound formula: pred_rate + q * w(p), clipped to [0,1], * district_voters, no bias.
+    # w(p) is a per-model CASE: 'headroom' = sqrt(1-p), else binom sqrt(p*(1-p)).
+    assert "CASE WHEN ip.scaler = 'headroom' THEN SQRT(1 - a.pred_rate)" in sql
+    assert "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END" in sql
+    assert "ip.q_lower *" in sql
+    assert "ip.q_upper *" in sql
     assert "* a.district_voters" in sql
     assert "ip.bias" not in sql
     assert "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug" in sql
@@ -320,13 +338,13 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
 
 def test_projection_sql_embeds_lower_upper_params_per_slug():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
-    # VALUES rows carry (slug, q25 as lower, q95 as upper) — NOT q75/q841, and no bias.
-    assert "'midterm', -0.01444, 0.06949" in sql
-    assert "'even_year_primary', -0.0138, 0.15031" in sql
-    assert "AS t(model_slug, q_lower, q_upper)" in sql
+    # VALUES rows carry (slug, q25 as lower, q95 as upper, scaler) — NOT q75/q841, no bias.
+    assert "'midterm', -0.01444, 0.06949, 'binom'" in sql
+    assert "'off_year_local_lag2', -0.04362, 0.14162, 'headroom'" in sql
+    assert "AS t(model_slug, q_lower, q_upper, scaler)" in sql
     # q75 / q841 are stored in the tag but must not leak into the two-bound SQL.
     assert "0.01107" not in sql
-    assert "0.05517" not in sql
+    assert "0.05765" not in sql
 
 
 def test_projection_sql_without_params_emits_null_bounds():
