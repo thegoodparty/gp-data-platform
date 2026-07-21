@@ -38,9 +38,11 @@ outcome, never a plain failure: wait for the statement to reach a terminal state
 and re-check the table before re-running.
 
 Credentials: the bulk download path needs none (public HTTPS). Databricks access
-uses the CLI OAuth profile; the script strips DATABRICKS_TOKEN from subprocess
-environments so the profile always wins. No Census API key is used, logged, or
-stored by this script; keep it that way.
+uses the CLI OAuth profile; the script strips every credential-bearing
+environment variable (personal access token, OAuth M2M client id/secret, Azure
+service-principal variants including the ARM_* aliases, basic auth, Google
+credentials) from subprocess environments so the profile always wins. No Census
+API key is used, logged, or stored by this script; keep it that way.
 
 Usage (from the dbt/ directory):
     uv run python scripts/load_acs_summary_file.py --write-manifest --verify-only
@@ -298,9 +300,33 @@ def create_crosswalk_sql(
     )
 
 
+# Environment variables that would override the OAuth profile's IDENTITY: the
+# CLI's unified auth resolution puts environment credentials above profile
+# config, so a stray personal access token or service-principal credential
+# (Databricks OAuth M2M, Azure SP incl. the ARM_* aliases, basic auth, Google)
+# in the operator's environment would silently authenticate as someone else
+# despite -p. Config-only variables (host, tenant id, account id) cannot
+# authenticate by themselves and are deliberately left alone: a mismatch there
+# fails loudly rather than switching identity.
+CREDENTIAL_ENV_VARS = (
+    "DATABRICKS_TOKEN",
+    "DATABRICKS_CLIENT_ID",
+    "DATABRICKS_CLIENT_SECRET",
+    "DATABRICKS_AZURE_CLIENT_ID",
+    "DATABRICKS_AZURE_CLIENT_SECRET",
+    "ARM_CLIENT_ID",
+    "ARM_CLIENT_SECRET",
+    "DATABRICKS_USERNAME",
+    "DATABRICKS_PASSWORD",
+    "DATABRICKS_GOOGLE_CREDENTIALS",
+    "DATABRICKS_GOOGLE_SERVICE_ACCOUNT",
+)
+
+
 def _clean_env() -> dict[str, str]:
     env = dict(os.environ)
-    env.pop("DATABRICKS_TOKEN", None)
+    for key in CREDENTIAL_ENV_VARS:
+        env.pop(key, None)
     return env
 
 

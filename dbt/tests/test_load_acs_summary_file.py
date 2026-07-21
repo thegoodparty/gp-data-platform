@@ -10,10 +10,12 @@ classification).
 from pathlib import Path
 
 from dbt.scripts.load_acs_summary_file import (
+    CREDENTIAL_ENV_VARS,
     CT_CROSSWALK_FILENAME,
     VINTAGE,
     FileFacts,
     StatementOutcomeUnknownError,
+    _clean_env,
     build_manifest,
     create_acs_table_sql,
     create_crosswalk_sql,
@@ -112,6 +114,21 @@ def test_create_crosswalk_sql_renames_space_column_and_uses_commas():
     assert "except (`block number`, _rescued_data)" in sql.lower()
     assert "`block number` as block_number" in sql.lower()
     assert "mode => 'FAILFAST'" in sql
+
+
+def test_clean_env_strips_every_credential_override(monkeypatch):
+    # the CLI's unified auth puts env credentials above profile config, so any
+    # of these in the operator's environment would silently authenticate as a
+    # different identity despite -p; config-only variables stay
+    for key in CREDENTIAL_ENV_VARS:
+        monkeypatch.setenv(key, "would-override-the-profile")
+    monkeypatch.setenv("DATABRICKS_HOST", "https://example.test")
+    cleaned = _clean_env()
+    assert not (set(CREDENTIAL_ENV_VARS) & set(cleaned))
+    assert {"DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"} <= set(CREDENTIAL_ENV_VARS)
+    assert {"DATABRICKS_AZURE_CLIENT_ID", "DATABRICKS_AZURE_CLIENT_SECRET"} <= set(CREDENTIAL_ENV_VARS)
+    assert cleaned["DATABRICKS_HOST"] == "https://example.test"
+    assert "PATH" in cleaned
 
 
 # --- publication orchestration: nothing verification has not cleared is ever touched ---
