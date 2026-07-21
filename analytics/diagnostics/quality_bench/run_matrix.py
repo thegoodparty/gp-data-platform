@@ -9,6 +9,7 @@ resume instead of repeat; resume refuses when the batch inputs have changed.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import hashlib
 import json
@@ -110,6 +111,24 @@ def _uv_cache_dir() -> str:
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
+@functools.cache
+def _keychain_credentials() -> str:
+    """macOS: the CLI's OAuth token lives in the login keychain, which is found
+    via HOME (~/Library/Keychains), so an ephemeral HOME cannot see it. Export
+    it once per process and seed it file-based into each run HOME."""
+    try:
+        proc = subprocess.run(
+            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def run_env(home: Path, source_home: Path | None = None) -> dict[str, str]:
     """Allowlisted environment with an ephemeral HOME. The run cannot see the
     operator's ~/.claude (session history, memory, other projects) or any env
@@ -126,13 +145,26 @@ def run_env(home: Path, source_home: Path | None = None) -> dict[str, str]:
     cache = os.environ.get("UV_CACHE_DIR") or _uv_cache_dir()
     if cache:
         env["UV_CACHE_DIR"] = cache
+    (home / ".claude").mkdir(parents=True, exist_ok=True)
     creds = source_home / ".claude" / ".credentials.json"
     if creds.exists():
-        (home / ".claude").mkdir(parents=True, exist_ok=True)
         shutil.copy(creds, home / ".claude" / ".credentials.json")
-    # Minimal CLI config so the fresh HOME does not look like a first install.
+    elif blob := _keychain_credentials():
+        dest = home / ".claude" / ".credentials.json"
+        dest.write_text(blob)
+        dest.chmod(0o600)
+    # Minimal CLI config: onboarding done, plus the login identity. The CLI
+    # reads login STATE from .claude.json (oauthAccount) while the token itself
+    # lives in the file-based credentials above or the macOS keychain (which is
+    # HOME-independent); without this stanza a fresh HOME is "Not logged in".
+    seed: dict = {"hasCompletedOnboarding": True}
+    src_cfg = source_home / ".claude.json"
+    if src_cfg.exists():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            real = json.loads(src_cfg.read_text())
+            seed.update({k: real[k] for k in ("oauthAccount", "userID") if k in real})
     home.mkdir(parents=True, exist_ok=True)
-    (home / ".claude.json").write_text(json.dumps({"hasCompletedOnboarding": True}))
+    (home / ".claude.json").write_text(json.dumps(seed))
     return env
 
 

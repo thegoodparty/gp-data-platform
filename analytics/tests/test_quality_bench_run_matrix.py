@@ -41,13 +41,33 @@ def test_run_env_allowlists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     src = tmp_path / "srchome"
     (src / ".claude").mkdir(parents=True)
     (src / ".claude" / ".credentials.json").write_text("{}")
+    (src / ".claude.json").write_text(
+        json.dumps({"oauthAccount": {"emailAddress": "t@x"}, "numStartups": 99, "machineID": "m"})
+    )
     home = tmp_path / "home"
     env = run_matrix.run_env(home, source_home=src)
     assert env["HOME"] == str(home)
     assert env["DATABRICKS_API_KEY"] == "db-key"
     assert "SOME_UNRELATED_TOKEN" not in env
     assert (home / ".claude" / ".credentials.json").exists()
-    assert json.loads((home / ".claude.json").read_text())["hasCompletedOnboarding"] is True
+    seeded = json.loads((home / ".claude.json").read_text())
+    assert seeded["hasCompletedOnboarding"] is True
+    # Login identity carried over; everything else from the real config is not.
+    assert seeded["oauthAccount"] == {"emailAddress": "t@x"}
+    assert "numStartups" not in seeded and "machineID" not in seeded
+
+
+def test_run_env_keychain_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """No file-based credentials (macOS keychain auth): the exported blob is
+    seeded into the ephemeral HOME with owner-only permissions."""
+    monkeypatch.setattr(run_matrix, "_keychain_credentials", lambda: '{"tok":1}')
+    src = tmp_path / "srchome"
+    src.mkdir()
+    home = tmp_path / "home"
+    run_matrix.run_env(home, source_home=src)
+    dest = home / ".claude" / ".credentials.json"
+    assert dest.read_text() == '{"tok":1}'
+    assert oct(dest.stat().st_mode & 0o777) == "0o600"
 
 
 def test_resume_guard_blocks_changed_inputs():
