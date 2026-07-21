@@ -57,6 +57,46 @@ def test_run_env_allowlists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert "numStartups" not in seeded and "machineID" not in seeded
 
 
+def test_run_env_pins_claude_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A host CLAUDE_CONFIG_DIR must never leak in: it would point the run at
+    operator state and move the transcript away from transcript_path."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/host/claude-config")
+    monkeypatch.setenv("CLAUDE_CODE_TMPDIR", "/host/tmp")
+    src = tmp_path / "srchome"
+    src.mkdir()
+    home = tmp_path / "home"
+    env = run_matrix.run_env(home, source_home=src)
+    assert env["CLAUDE_CONFIG_DIR"] == str(home / ".claude")
+    assert env["CLAUDE_CODE_TMPDIR"] == str(home / "tmp")
+    # Config seed present at both HOME-derived and CLAUDE_CONFIG_DIR locations.
+    assert (home / ".claude.json").exists()
+    assert (home / ".claude" / ".claude.json").exists()
+
+
+def test_run_env_seeds_databricks_profile(tmp_path: Path):
+    src = tmp_path / "srchome"
+    (src / ".databricks").mkdir(parents=True)
+    (src / ".databrickscfg").write_text("[DEFAULT]\nhost = h\n")
+    (src / ".databricks" / "token-cache.json").write_text("{}")
+    home = tmp_path / "home"
+    run_matrix.run_env(home, source_home=src)
+    assert (home / ".databrickscfg").exists()
+    assert (home / ".databricks" / "token-cache.json").exists()
+
+
+def test_scrub_auth_removes_all_credentials(tmp_path: Path):
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".claude" / ".credentials.json").write_text("{}")
+    (home / ".databricks").mkdir()
+    (home / ".databrickscfg").write_text("x")
+    run_matrix.scrub_auth(home)
+    assert not (home / ".claude" / ".credentials.json").exists()
+    assert not (home / ".databrickscfg").exists()
+    assert not (home / ".databricks").exists()
+    assert home.exists()  # only auth material goes, the HOME itself stays
+
+
 def test_run_env_keychain_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """No file-based credentials (macOS keychain auth): the exported blob is
     seeded into the ephemeral HOME with owner-only permissions."""
@@ -169,6 +209,13 @@ def test_launch_run_keep_run_dir(tmp_path: Path):
     assert out["ok"] is True
     assert run_dir.exists()
     assert out["run_dir"] == str(run_dir)
+    # Debug retention keeps the HOME for transcript inspection but must never
+    # keep auth material on disk.
+    home = Path(out["home_dir"])
+    assert home.exists()
+    assert not (home / ".claude" / ".credentials.json").exists()
+    assert not (home / ".databrickscfg").exists()
+    assert not (home / ".databricks").exists()
 
 
 def test_launch_run_timeout_expired(tmp_path: Path):

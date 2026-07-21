@@ -45,6 +45,7 @@ def grade_run(run_state: dict, key: Key) -> dict:
         sources = [dataclasses.replace(c, detail="transcript missing") for c in sources]
     sev1 = grading.check_severity1(answer, key)
     assumptions = grading.check_assumptions(block, key)
+    resolutions = grading.check_resolutions(block, key)
     return {
         "run_id": run_id,
         "question_id": question_id,
@@ -56,6 +57,7 @@ def grade_run(run_state: dict, key: Key) -> dict:
         "sources_pass": all(c.passed for c in sources),
         "severity1_tripped": any(not c.passed for c in sev1),
         "assumptions_pass": all(c.passed for c in assumptions),
+        "resolutions_match": all(c.passed for c in resolutions),
         "_block": block,
     }
 
@@ -71,6 +73,7 @@ BASE_COLUMNS = [
     "sources_pass",
     "severity1_tripped",
     "assumptions_pass",
+    "resolutions_match",
 ]
 
 
@@ -139,17 +142,19 @@ def evaluate_verdicts(df: pd.DataFrame, cells: dict, questions: list[Question], 
 
 
 def adherence_lines(df: pd.DataFrame) -> list[str]:
-    """Per question x arm: how many reps consulted mandatory sources and surfaced
-    required assumptions. Reported next to the verdicts but never gated into them
-    (design §8 rules are numbers/severity-1/consistency only): it shows whether a
-    passing number was derived independently vs. via the expected sources."""
+    """Per question x arm: how many reps consulted mandatory sources, surfaced
+    required assumptions, and resolved forks matching the key. Reported next to
+    the verdicts but never gated into them (design §8 rules are
+    numbers/severity-1/consistency only): it shows whether a passing number was
+    derived independently vs. via the expected sources and resolutions."""
     if df.empty:
         return []
-    lines = ["", "## Adherence (sources / assumptions; reported, not verdict-gated)", ""]
+    lines = ["", "## Adherence (sources / assumptions / resolutions; reported, not verdict-gated)", ""]
     for (qid, arm), g in df.groupby(["question_id", "arm"]):
         lines.append(
             f"- {qid} x {arm}: sources {int(g.sources_pass.sum())}/{len(g)}, "
-            f"assumptions {int(g.assumptions_pass.sum())}/{len(g)}"
+            f"assumptions {int(g.assumptions_pass.sum())}/{len(g)}, "
+            f"resolutions {int(g.resolutions_match.sum())}/{len(g)}"
         )
     return lines
 

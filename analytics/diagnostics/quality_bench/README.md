@@ -25,7 +25,35 @@ the two failure modes the unit tests can't:
    confirm the transcript shows the `Skill`/`Agent` tools firing rather than a
    permission denial. Headless `claude -p` only allows what
    `.claude/settings.local.json` lists, so if either is denied, add it to
-   `SETTINGS_JSON` in `prep_arms.py` and re-prep the arms.
+   `SETTINGS_JSON` in `prep_arms.py` and re-prep the arms. While reading that
+   transcript, also check that the knowledge skills' dead relative links (into
+   skill folders prep deletes) do not visibly derail the run.
+
+## No-decision gates
+
+**The current harness must not produce decision-bearing verdicts.** Calibration
+batches and probes are fine; acting on a rule 1/2/3 verdict (pruning context,
+declaring the framework trustworthy or not) is not, until every gate below is
+closed:
+
+1. Both pre-first-batch probes above have passed.
+2. Isolation is a permission boundary, not a filesystem one — runs execute as
+   the operator's user and could in principle read the original checkout
+   (answer keys) or sibling runs. Gate: container-grade isolation
+   (ClickUp 86ajmyk2q), or per-batch transcript spot-checks for out-of-arm
+   reads accepted in writing for that batch.
+3. Arms are not one-factor treatments — floor inventory leaks table
+   descriptions to the bare arm; knowledge arm carries dead links; full vs
+   bare differs in repo access, not just the framework. Gate: DATA-2164
+   (additive arm construction + leakage test), or the verdict writeup carries
+   these as explicit alternative explanations.
+4. No evidence artifacts or execution metadata — source checks are transcript
+   greps, judge output is not persisted with provenance, and rule 3 overhead
+   claims have no token/cost data behind them. Gate: ClickUp 86ajmykh4.
+5. Protocol items (randomized/paired schedule, rule 2 effect size, rule 3
+   non-inferiority margin, holdout enforcement, frozen snapshot) are
+   unimplemented — verdicts are pre-registered directionally but not yet
+   defensible as an experiment. Gate: ClickUp 86ajmykh4.
 
 ## Arm ref
 

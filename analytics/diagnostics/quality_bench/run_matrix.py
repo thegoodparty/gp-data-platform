@@ -101,8 +101,11 @@ def build_runs(
     return runs
 
 
-ENV_PASS = ("PATH", "TERM", "LANG", "LC_ALL", "TMPDIR")
-ENV_PASS_PREFIXES = ("DATABRICKS_", "ANTHROPIC_", "CLAUDE_")
+# Exact names plus two auth/provider prefixes. Deliberately NOT "CLAUDE_":
+# that prefix includes CLAUDE_CONFIG_DIR and friends, which would point the run
+# at operator state and move the transcript out from under transcript_path.
+ENV_PASS = ("PATH", "TERM", "LANG", "LC_ALL", "TMPDIR", "CLAUDE_CODE_OAUTH_TOKEN")
+ENV_PASS_PREFIXES = ("DATABRICKS_", "ANTHROPIC_")
 
 
 @functools.cache
@@ -140,6 +143,10 @@ def run_env(home: Path, source_home: Path | None = None) -> dict[str, str]:
     for k, v in os.environ.items():
         if k in ENV_PASS or k.startswith(ENV_PASS_PREFIXES):
             env[k] = v
+    # Pin all Claude state into the per-run HOME regardless of host settings.
+    (home / "tmp").mkdir(parents=True, exist_ok=True)
+    env["CLAUDE_CONFIG_DIR"] = str(home / ".claude")
+    env["CLAUDE_CODE_TMPDIR"] = str(home / "tmp")
     # uv keys its cache off HOME by default; point the run at the real cache so
     # it does not re-download every dependency into the ephemeral HOME.
     cache = os.environ.get("UV_CACHE_DIR") or _uv_cache_dir()
@@ -164,8 +171,29 @@ def run_env(home: Path, source_home: Path | None = None) -> dict[str, str]:
             real = json.loads(src_cfg.read_text())
             seed.update({k: real[k] for k in ("oauthAccount", "userID") if k in real})
     home.mkdir(parents=True, exist_ok=True)
+    # Both config locations: ~/.claude.json (HOME-derived) and
+    # $CLAUDE_CONFIG_DIR/.claude.json (we pin CLAUDE_CONFIG_DIR above).
     (home / ".claude.json").write_text(json.dumps(seed))
+    (home / ".claude" / ".claude.json").write_text(json.dumps(seed))
+    # Databricks profile auth (the repo helper's documented fallback) also
+    # lives under HOME: seed the profile file and U2M token cache so
+    # profile-based operators are not broken by the ephemeral HOME.
+    dbx_cfg = source_home / ".databrickscfg"
+    if dbx_cfg.exists():
+        shutil.copy(dbx_cfg, home / ".databrickscfg")
+    dbx_cache = source_home / ".databricks"
+    if dbx_cache.is_dir():
+        shutil.copytree(dbx_cache, home / ".databricks", dirs_exist_ok=True)
     return env
+
+
+def scrub_auth(home: Path) -> None:
+    """Remove every credential seeded into an ephemeral HOME. Called on all exit
+    paths — including --keep-run-dirs debug retention, which keeps the HOME for
+    transcript debugging but must never keep auth material on disk."""
+    (home / ".claude" / ".credentials.json").unlink(missing_ok=True)
+    (home / ".databrickscfg").unlink(missing_ok=True)
+    shutil.rmtree(home / ".databricks", ignore_errors=True)
 
 
 def transcript_path(home: Path, cwd: Path, session_id: str) -> Path:
@@ -241,6 +269,7 @@ def launch_run(
             out["transcript_file"] = str(dst)
         return out
     finally:
+        scrub_auth(home)
         if keep_run_dir:
             out["run_dir"] = str(run_dir)
             out["home_dir"] = str(home)

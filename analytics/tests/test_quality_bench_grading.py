@@ -179,6 +179,24 @@ def block(total: float, resolution: str = "cumulative") -> dict:
     }
 
 
+def test_check_resolutions_consistently_wrong_is_reported():
+    """Sanjay's repro: three reps all resolving the fork the same WRONG way agree
+    perfectly (cell consistent) — the wrongness must surface in the reported
+    resolutions_match check, run by run."""
+    key = make_key(required_resolutions={"denominator": "cumulative_registered"})
+    wrong = block(9880, "monthly_active")
+    assert grading.check_resolutions(wrong, key)[0].passed is False
+    cell = grading.cell_consistency([wrong, wrong, wrong], key)
+    assert cell["consistent"] is True  # agreement is correctness-blind by design
+
+
+def test_check_resolutions_normalized_match():
+    key = make_key(required_resolutions={"denominator": "cumulative_registered"})
+    paraphrased = block(9880, "Cumulative (registered)")  # punctuation/case differ
+    assert grading.check_resolutions(paraphrased, key)[0].passed is True
+    assert grading.check_resolutions(None, key)[0].passed is False
+
+
 def test_cell_consistency_tight_cell():
     key = make_key(required_resolutions={"denominator": "cumulative"})
     cell = grading.cell_consistency([block(9880), block(9885), block(9878)], key)

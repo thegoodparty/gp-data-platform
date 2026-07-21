@@ -92,6 +92,29 @@ def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
     return out
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def check_resolutions(block: dict | None, key: Key) -> list[CheckResult]:
+    """Compare each resolved fork against the key's expected value (normalized
+    containment either way — models phrase resolutions freely). Reported as the
+    resolutions_match column, NOT gated into the verdict rules: cross-rep
+    agreement (cell_consistency) is deliberately correctness-blind, and the
+    deterministic instrument for a wrong resolution is the numbers themselves —
+    key tolerances must be tight enough that the wrong fork's number fails."""
+    ledger = _resolutions(block) if block else {}
+    out = []
+    for fork, expected in key.required_resolutions.items():
+        got = _norm(ledger.get(fork, ""))
+        want = _norm(expected)
+        matched = bool(got) and (want in got or got in want)
+        out.append(
+            CheckResult(fork, "resolution", matched, f"resolved {ledger.get(fork, '')!r}, key {expected!r}")
+        )
+    return out
+
+
 def _resolutions(block: dict) -> dict[str, str]:
     out = {}
     for a in block.get("results", {}).get("assumptions", []) or []:

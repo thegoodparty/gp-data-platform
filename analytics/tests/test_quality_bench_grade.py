@@ -15,6 +15,7 @@ def rows_for(question_ids, arm, passes: bool, sev1: bool = False, reps=(1, 2, 3)
             "sources_pass": True,
             "severity1_tripped": sev1,
             "assumptions_pass": True,
+            "resolutions_match": True,
             "judge_severity1_found": False,
         }
         for q in question_ids
@@ -132,7 +133,7 @@ def test_adherence_lines_report_per_cell_rates():
     for r in rows[1:]:
         r["sources_pass"] = False  # 2 of 3 reps skipped the mandatory source
     lines = grade.adherence_lines(pd.DataFrame(rows))
-    assert any("q01 x full: sources 1/3, assumptions 3/3" in line for line in lines)
+    assert any("q01 x full: sources 1/3, assumptions 3/3, resolutions 3/3" in line for line in lines)
     assert grade.adherence_lines(grade.scores_frame([])) == []
 
 
