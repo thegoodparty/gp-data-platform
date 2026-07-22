@@ -102,11 +102,13 @@ with
     ),
 
     -- Same zip->office linkage as above, but built from the override seed for
-    -- positions absent from the LLM snapshot (the match-driven path keys off
-    -- the snapshot, so they would otherwise get zero zip rows). Scoped to
-    -- snapshot-absent overrides, so existing overrides are untouched and the
-    -- unique key cannot collide. Reads the unfiltered zip->district source so a
-    -- new override backfills without a full refresh.
+    -- positions the LLM path can't place: those absent from the snapshot and
+    -- those present but unmatched (is_matched = false, which carry a
+    -- 'NOT_MATCHED' l2_district and so join to no zip district). Both would
+    -- otherwise get zero zip rows. Scoped to exclude only genuinely matched
+    -- positions, so LLM-matched rows are untouched and the unique key cannot
+    -- collide. Reads the unfiltered zip->district source so a new override
+    -- backfills without a full refresh.
     override_zip_to_br_office as (
         select
             tbl_zip.zip_code,
@@ -124,7 +126,7 @@ with
             tbl_override.l2_district_name,
             tbl_override.l2_district_type,
             true as is_matched,
-            'l2_br_match_overrides seed (no LLM match row)' as llm_reason,
+            'l2_br_match_overrides seed (no LLM match)' as llm_reason,
             null as confidence,
             null as embeddings,
             null as top_embedding_score
@@ -149,7 +151,7 @@ with
             tbl_override.br_database_id not in (
                 select br_database_id
                 from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-                where br_database_id is not null
+                where br_database_id is not null and is_matched
             )
         qualify
             row_number() over (
