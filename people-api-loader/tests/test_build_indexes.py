@@ -477,6 +477,30 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     assert {i.index_name for i in manifest.indexes} == {"Voter_LALVOTERID_key", "Voter_Active_idx"}
 
 
+def test_run_adds_postgis_and_geometry_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    # After load, build_indexes installs postgis and adds the STORED generated point column to Voter
+    # (before its GiST index builds). The column is derived from the residence lon/lat.
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
+    monkeypatch.setattr(step, "primary_key_for", lambda t: _PK)
+    monkeypatch.setattr(step, "indexes_for", lambda t: _IDXS)
+    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd, **_k: [])
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "STATES", ("CA", "TX"))
+    monkeypatch.setattr(step, "TABLE_SPECS", {"Voter": step.TABLE_SPECS["Voter"]})
+    monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
+
+    step.run(_CFG, "20260609", parallelism=1)
+    sql = executed_sql(conn)
+    assert any("CREATE EXTENSION IF NOT EXISTS postgis" in s for s in sql)
+    assert any(
+        'ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326)' in s and "ST_MakePoint" in s and "STORED" in s
+        for s in sql
+    )
+
+
 def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     # The full loop over TABLE_SPECS: partitioned tables (Voter, DistrictVoter) get State appended
     # to PK/unique and the parent-only+child+attach machinery; flat tables (District, DistrictStats)

@@ -89,6 +89,20 @@ def _apply_session(cur: psycopg.Cursor) -> None:
         cur.execute(stmt)  # ty: ignore[no-matching-overload]
 
 
+# STORED generated GEOMETRY(POINT, 4326) column on Voter, derived from the residence lon/lat.
+# STORED means the one ALTER populates it (no separate UPDATE pass); its GiST index lives in
+# _serving_seed_extra and builds through the normal per-partition machinery. ST_MakePoint takes
+# (x=lon, y=lat); both it and ST_SetSRID are IMMUTABLE, as a generated expression requires.
+# "geom" is registered in schema_spec.LOADER_ADDED_COLUMNS so validate's schema-diff allows it
+# (prod has no such column) instead of failing handoff.
+_GEOM_TABLE = "Voter"
+_ADD_GEOM_COLUMN_SQL = (
+    f'ALTER TABLE public."{_GEOM_TABLE}" ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326) '
+    'GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint("Residence_Addresses_Longitude", '
+    '"Residence_Addresses_Latitude"), 4326)) STORED'
+)
+
+
 def _rewrite_index_sql(sql: str) -> str:
     """Inject IF NOT EXISTS so reruns are idempotent."""
     if "IF NOT EXISTS" in sql.upper():
@@ -445,11 +459,17 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     # One bastion tunnel for the WHOLE step (all tables); every connection below multiplexes through
     # it (see _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
     with open_new_tunnel(cfg, run_date) as fwd:
-        # pg_trgm backs the gin_trgm_ops entries. Installed here too (not just create_schema) so
-        # build_indexes is self-sufficient on re-run; inside the tunnel because, unlike
-        # create_schema, it reaches the cluster through the bastion.
+        # pg_trgm backs the gin_trgm_ops entries; postgis backs the GEOMETRY column + its GiST
+        # index. Installed here too (not just create_schema) so build_indexes is self-sufficient on
+        # re-run; inside the tunnel because, unlike create_schema, it reaches the cluster through the
+        # bastion. The STORED generated point column is added now (before its GiST index in the loop
+        # below); the ALTER rewrites each Voter partition once to populate it — statement_timeout=0.
         with connect_new(cfg, run_date, forward=fwd) as conn, conn.cursor() as cur:
+            _apply_session(cur)
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            cur.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+            if _GEOM_TABLE in TABLE_SPECS:
+                cur.execute(_ADD_GEOM_COLUMN_SQL)
 
         for table in TABLE_SPECS:  # dict preserves insertion order (Voter first) -> stable
             partitioned = is_partitioned(table)

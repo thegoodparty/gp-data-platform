@@ -11,8 +11,10 @@ Runs, PER TABLE in the unload manifest (Voter, District, DistrictStats, District
    absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" — see
    schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped
    instead — there's no magnitude baseline to sanity-check.
-3. schema_diff_clean — new columns equal prod columns. Skipped (not failed) when prod has no
-   such table at all (same DistrictStats case: nothing to diff against).
+3. schema_diff_clean — new columns equal prod columns, modulo the partition column and any
+   loader-added columns (schema_spec.LOADER_ADDED_COLUMNS, e.g. Voter."geom"), which are intended
+   divergences. Skipped (not failed) when prod has no such table at all (same DistrictStats case:
+   nothing to diff against).
 4. index_constraint_diff_clean — every prod index present on new (trivially passes when prod has
    no indexes for an absent table).
 
@@ -42,7 +44,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.schema_spec import is_partitioned, partition_column
+from loader.people_api.schema.schema_spec import LOADER_ADDED_COLUMNS, is_partitioned, partition_column
 from loader.people_api.schema.unload_sql import BUCKETS_OUTPUT_KEYS
 
 log = get_logger(__name__)
@@ -286,6 +288,9 @@ def _check_schema_diff(
     # any OTHER column difference still fails.
     pcol = partition_column(table) if is_partitioned(table) else None
     allowed_extra = {pcol} if pcol and pcol not in prod_cols else set()
+    # Loader-added columns (e.g. Voter."geom") are an intended divergence from prod, like the
+    # partition column — allow them so they don't read as drift and block handoff.
+    allowed_extra |= LOADER_ADDED_COLUMNS.get(table, set()) - prod_cols
     unexpected_extra = extra_in_new - allowed_extra
     return ValidationCheck(
         name=name,
@@ -295,7 +300,7 @@ def _check_schema_diff(
             "new_cols": len(new_cols),
             "missing_from_new": sorted(missing_from_new)[:20],
             "extra_in_new": sorted(extra_in_new)[:20],
-            "allowed_partition_extra": sorted(allowed_extra),
+            "allowed_extra": sorted(allowed_extra),
         },
     )
 

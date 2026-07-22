@@ -382,7 +382,20 @@ def test_check_schema_diff_partition_col_extra_allowed(monkeypatch: pytest.Monke
     check = step._check_schema_diff(_CFG, "20260609", "DistrictVoter")
     assert check.passed is True
     assert check.details["extra_in_new"] == ["State"]
-    assert check.details["allowed_partition_extra"] == ["State"]
+    assert check.details["allowed_extra"] == ["State"]
+
+
+def test_check_schema_diff_loader_added_geom_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # build_indexes adds Voter."geom" (a loader-added column absent from prod). It's an intended
+    # divergence registered in schema_spec.LOADER_ADDED_COLUMNS, so it must NOT read as drift.
+    prod = [("col_a",), ("col_b",)]
+    new = [*prod, ("geom",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert check.details["extra_in_new"] == ["geom"]
+    assert "geom" in check.details["allowed_extra"]
 
 
 def test_check_schema_diff_non_partition_extra_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
