@@ -145,3 +145,18 @@ def test_scores_frame_empty_keeps_columns():
     assert list(df.columns) == grade.BASE_COLUMNS
     v = grade.evaluate_verdicts(df, {}, QUESTIONS[:1])
     assert v["rule1_trustworthy"] is False
+
+
+def test_load_keys_for_batch_skips_unauthored_keys(tmp_path):
+    """Keys are authored one gold run at a time, so the manifest registers key
+    files that do not exist yet; grading a batch that never ran those questions
+    must not touch their missing key files (PR #660)."""
+    (tmp_path / "q01_key.yaml").write_text(
+        'id: q01\nas_of: "2026-07-21"\n' "numbers:\n  - name: n\n    value: 1\n    tolerance_pct: 1.0\n"
+    )
+    questions = [
+        Question("q01", "win", "none", "calibration", "q01.md", "q01_key.yaml"),
+        Question("q03", "win", "point_in_time", "holdout", "q03.md", "q03_key.yaml"),
+    ]
+    keys = grade.load_keys_for_batch(tmp_path, questions, {"q01"})
+    assert set(keys) == {"q01"}

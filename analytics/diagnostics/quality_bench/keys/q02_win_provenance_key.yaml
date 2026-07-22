@@ -32,7 +32,10 @@ as_of: "2026-07-21"
 # fails ONLY June (96 vs 292, -67%) — the provenance trap discriminates in
 # June alone, so June's band must stay tight. An internal-included run
 # reports 317/150/240/327 (+2.3/+8.7/+8.1/+12.0%) and fails Apr-Jun
-# numerically. Calendar-day windowing (DATE <= created_date+14) differs by
+# numerically, trips required_resolutions, and contradicts the question
+# text, which names the exclusion (mirrors q01; added in PR #660 review so
+# the provenance trap is not confounded by an undisclosed population
+# filter). Calendar-day windowing (DATE <= created_date+14) differs by
 # +1 completer in April only (138 -> 139, +0.72%), absorbed by April's band.
 #
 # Tolerances are a drift budget mirroring q01's rationale: late Win-
@@ -106,13 +109,13 @@ mandatory_sources:
 
 # Confidently-wrong claims identified during the gold run: gating or counting
 # on the stored new-flow-blind onboarding flags (wrong by construction after
-# 2026-05-07), and the doc-trusting single-event June answer (96 internal-
-# excluded / 109 internal-included), whose rate reads ~27% (or 0% via stored
-# flags) against a true 82%.
+# 2026-05-07). The doc-trusting single-event June answers (count 96/109,
+# rate ~27%; 0% via stored flags) are deliberately NOT tripwired: a correct
+# answer legitimately names those counterfactuals in prose (PR #660 review),
+# and a run that reports them is already failed deterministically by June's
+# tolerance band — that band is the guard, per the key-review criterion.
 severity1_patterns:
   - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
-  - '(?i)onboarded_2026_06\D{0,30}\b(96|109)\b'
-  - '(?i)onboarding_rate_2026_06\D{0,30}\b(0(\.0+)?|2[67](\.\d+)?)\s*%'
 
 required_assumptions:
   - completion_metric_definition

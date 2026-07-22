@@ -27,6 +27,18 @@ except ImportError:  # bare `python grade.py`: diagnostics/ isn't on sys.path ye
     from quality_bench.bank import Key, Question, load_key, load_manifest
 
 
+def load_keys_for_batch(keys_dir: Path, questions: list[Question], qids_in_batch: set[str]) -> dict[str, Key]:
+    """Load only the keys for questions actually present in the batch.
+
+    Keys are authored one gold run at a time, so the manifest may register
+    key files that do not exist yet; a batch that never ran those questions
+    must still grade (PR #660 review).
+    """
+    return {
+        q.id: load_key(keys_dir / q.key_file, expected_id=q.id) for q in questions if q.id in qids_in_batch
+    }
+
+
 def grade_run(run_state: dict, key: Key) -> dict:
     run_id = run_state["run_id"]
     # question_id/arm/rep are recovered by splitting run_id on "__". bank.load_manifest
@@ -170,7 +182,8 @@ def main() -> None:
     batch_dir = here / "results" / args.batch
     state = json.loads((batch_dir / "state.json").read_text())
     questions = load_manifest(here / "questions" / "manifest.yaml")
-    keys = {q.id: load_key(here / "keys" / q.key_file, expected_id=q.id) for q in questions}
+    qids_in_state = {rid.split("__")[0] for rid in state["runs"]}
+    keys = load_keys_for_batch(here / "keys", questions, qids_in_state)
 
     rows, blocks = [], {}
     judge_eligible = judge_ok = 0
@@ -198,7 +211,6 @@ def main() -> None:
     # Coverage denominator = every question with ANY recorded run, not only the
     # ok ones. A question whose runs all failed must still count against rule 1,
     # otherwise a silent drop would inflate the pass rate.
-    qids_in_state = {rid.split("__")[0] for rid in state["runs"]}
     denom_questions = [q for q in questions if q.id in qids_in_state]
     cells = {ck: grading.cell_consistency(bs, keys[ck[0]]) for ck, bs in blocks.items()}
     # Rep count comes from the recorded run ids, so a resumed or non-default
