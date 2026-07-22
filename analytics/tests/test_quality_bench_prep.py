@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -206,3 +207,68 @@ def test_cli_help_works_under_bare_python():
     )
     assert proc.returncode == 0, proc.stderr
     assert "--arms-root" in proc.stdout
+
+
+def _run_prep_cli(
+    fake_repo: Path, tmp_path: Path, canaries_yaml: str, arms_subdir: str = "arms"
+) -> subprocess.CompletedProcess:
+    """Run the prep CLI as a real subprocess against the fake repo, by copying
+    the harness modules in. The CLI resolves repo_root from its own file
+    location (`here.parents[2]`), so the harness must live at
+    <repo>/analytics/diagnostics/quality_bench for that resolution to land on
+    fake_repo instead of the real one."""
+    dest = fake_repo / "analytics" / "diagnostics" / "quality_bench"
+    dest.mkdir(parents=True, exist_ok=True)
+    real_qb = Path(prep_arms.__file__).parent
+    for name in ("prep_arms.py", "integrity.py", "bank.py", "__init__.py"):
+        shutil.copy(real_qb / name, dest / name)
+    (dest / "floor.md").write_text("# floor\nlib {{LIB_PATH}} proj {{UV_PROJECT}}\n")
+    (dest / "canaries.yaml").write_text(canaries_yaml)
+    return subprocess.run(
+        [sys.executable, str(dest / "prep_arms.py"), "--arms-root", str(tmp_path / arms_subdir), "--no-sync"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def test_cli_passes_integrity_on_clean_repo(fake_repo, tmp_path):
+    canaries_yaml = (
+        'canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
+    )
+    proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)
+    assert proc.returncode == 0, proc.stderr
+    assert "integrity ok" in proc.stdout
+
+
+def test_cli_fails_when_treatment_canary_leaks_into_floor(fake_repo, tmp_path):
+    """A clean run passes first; then floor.md is poisoned in place (the
+    harness dir left behind by the clean run) and the CLI is rerun directly,
+    to confirm the pre-prep floor-leakage gate fires on its own, not just as
+    a side effect of a fresh copy."""
+    canaries_yaml = (
+        'canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
+    )
+    proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml, arms_subdir="arms")
+    assert proc.returncode == 0, proc.stderr
+
+    dest = fake_repo / "analytics" / "diagnostics" / "quality_bench"
+    (dest / "floor.md").write_text("# floor with pm prose leaked in\n")
+    proc = subprocess.run(
+        [sys.executable, str(dest / "prep_arms.py"), "--arms-root", str(tmp_path / "arms2"), "--no-sync"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode != 0
+    assert "canary leaked" in proc.stderr
+
+
+def test_cli_fails_on_stale_canary(fake_repo, tmp_path):
+    canaries_yaml = (
+        "canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, "
+        'phrase: "not actually in the file"}\n'
+    )
+    proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)
+    assert proc.returncode != 0
+    assert "stale canary" in proc.stderr
