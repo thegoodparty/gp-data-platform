@@ -40,8 +40,9 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 
 The standard "Win users with an election on or after date D" population. Resolve it one way:
 take per-user `MAX(election_date)` over `is_latest_version AND NOT is_demo` candidacies,
-**bounded to `[2020-01-01, 2050-01-01]`** (drops corrupt far-future dates — see
-[gotchas.md](gotchas.md)), and keep users whose bounded max is `>= D`. Use `election_date`
+**bounded to `[2020-01-01, 2050-01-01]`** (drops corrupt far-future dates — apply the same
+bound to any per-stage date column you aggregate; see [gotchas.md](gotchas.md)), and keep
+users whose bounded max is `>= D`. Use `election_date`
 (the most-populated per-stage field, ~41.5k of 59.8k users), not `users_win_base.election_date`
 (the leaky coalesce). Users with no in-range `election_date` (~29%) are excluded by construction;
 note that exclusion in the brief. This is the open-ended definition (any live/upcoming election,
