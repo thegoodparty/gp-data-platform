@@ -106,10 +106,22 @@ mandatory_sources:
     pattern: "is_activated|Voter Outreach - Campaign Completed"
     description: Activation via the canonical flag or its underlying event
       (verified equivalent as of 2026-07-22).
+  # LIMITATION (verified 2026-07-22): for this Jan-May window the era fork is
+  # numerically invisible — the era-1 event alone reproduces every month
+  # including May (222 = 222; zero in-window completions were V2-only, even
+  # though late-May 14d windows cross the 2026-06-08 V2 start). This check is
+  # therefore string-presence evidence that the run CONSULTED the era
+  # landscape, not proof it used the union, and a disclaimer mention passes
+  # it. Deliberately NO severity1 tripwire for that rationalization:
+  # "V2 contributes nothing in-window" is factually correct prose a good run
+  # may write (q02 precedent — tripwires firing on correct prose were
+  # dropped). The era fork is truly discriminated by q02 (June window,
+  # 96 vs 292); q04's discriminating traps are the denominator and the
+  # dashboard union, guarded by the numbers.
   - id: era_resolved_pledge
     pattern: "Onboarding V2 - Pledge Completed"
-    description: Evidence the run resolved pledge completion per era (the V2
-      event is required for late-May signups whose window crosses 2026-06-08).
+    description: Evidence the run consulted the era-resolved pledge landscape
+      (consultation check only — see limitation comment above).
   - id: dashboard_supersession
     pattern: "Dashboard - Campaign Plan Viewed"
     description: Evidence the run noticed the dashboard surface migration

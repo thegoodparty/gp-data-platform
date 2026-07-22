@@ -16,7 +16,7 @@ live in the owning doc, not here, so this stays small enough to load on every re
 
 | Concept | Governed definition (one line) | Source (`table.column` / event) | Owns detail | Ratified |
 |---|---|---|---|---|
-| **Active Candidates (OKR)** | Viewed the candidate dashboard in the trailing 30 days | `users_win_base.is_active_candidate_30d` | [engagement.md](engagement.md) | pending |
+| **Active Candidates (OKR)** | Viewed the candidate dashboard in the trailing 30 days | ⚠ `users_win_base.is_active_candidate_30d` reads FALSE for all users (dead legacy anchor event, capped 2026-06-13; fix ticketed DATA-2173) — recompute from the 2-event dashboard-view union ([engagement.md](engagement.md)) | [engagement.md](engagement.md) | pending |
 | **Activated Candidates (OKR)** | Has sent ≥1 voter outreach campaign | `users_win_base.is_activated` | [engagement.md](engagement.md) | pending |
 | **Onboarded (canonical cohort)** | Viewed the candidate dashboard within 14 days of account creation; recomputed from the 2-event dashboard-view union (`Dashboard - Candidate Dashboard Viewed` ∪ `Dashboard - Campaign Plan Viewed` — the legacy event died in-data 2026-06-13; era-resolved across the onboarding rebuilds and the 2026-05/06 dashboard-surface migration) | recomputed from the dashboard-view union vs `users_win_candidacy.user_created_at` | [engagement.md](engagement.md) | pending |
 | **Onboarding completed (pledge)** | Fired any era-resolved pledge-completion event (`Onboarding - Candidate Pledge Completed` / `Onboarding - Pledge Completed` / `Onboarding V2 - Pledge Completed`) within 14 days of account creation (strict funnel completion) | recomputed from the era-resolved pledge union | [engagement.md](engagement.md) | pending |
