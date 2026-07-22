@@ -1,0 +1,31 @@
+# Distinctive verbatim phrases from treatment content, used by integrity.py
+# leakage scans. Grader-side; never shipped into an arm. See integrity.py
+# for the model and tests/test_quality_bench_integrity.py for freshness.
+canaries:
+  - layer: knowledge
+    source: .claude/skills/win-analytics-knowledge/SKILL.md
+    phrase: "narrow it to the **one** governed definition"
+  - layer: knowledge
+    source: .claude/skills/win-analytics-knowledge/references/gotchas.md
+    phrase: "Closed-cohort retention declines by construction"
+  - layer: knowledge
+    source: .claude/skills/serve-analytics-knowledge/references/sources.md
+    phrase: "broad-engagement working set built by"
+  - layer: knowledge
+    source: analytics/lib/win_analysis.py
+    phrase: 'an event is "Win" when its taxonomy'
+  - layer: knowledge
+    source: analytics/lib/serve_analysis.py
+    phrase: "Implements the **broad Serve engagement** definition"
+  - layer: process
+    source: .claude/skills/analytics-process/SKILL.md
+    phrase: "route the executed analysis through the two adversarial reviewer agents"
+  - layer: process
+    source: .claude/agents/product-data-scientist.md
+    phrase: "from a methodological-rigor perspective"
+  - layer: process
+    source: .claude/agents/product-manager.md
+    phrase: "from a usefulness and clarity perspective"
+  - layer: knowledge
+    source: .claude/skills/serve-analytics-knowledge/SKILL.md
+    phrase: "Serve's analysis defaults (resolved scoping, default cohorts, the working-set builder, reviewer doc pointers)"
