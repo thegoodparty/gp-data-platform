@@ -362,7 +362,7 @@ CREATE TABLE public."District" (
     "updated_at" TIMESTAMPTZ,
     "type" TEXT,
     "name" TEXT,
-    "state" "USState"
+    "state" TEXT
 );
 
 CREATE TABLE public."DistrictStats" (

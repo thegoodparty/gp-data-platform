@@ -61,8 +61,10 @@ TABLE_SPECS: dict[str, TableSpec] = {
         pg_table="District",
         partition_by=None,
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
-        # state: the serving public."USState" enum, like Voter/DistrictVoter.
-        type_overrides={"id": "UUID", "state": '"USState"'},
+        # state: stays TEXT (no override), unlike Voter/DistrictVoter. District includes one
+        # country-scope row (type=Country, state="US") that the 51-value USState enum (50 states +
+        # DC) cannot hold, so this column can't be coerced to the enum on COPY like the others.
+        type_overrides={"id": "UUID"},
     ),
     "DistrictStats": TableSpec(
         pg_table="DistrictStats",
