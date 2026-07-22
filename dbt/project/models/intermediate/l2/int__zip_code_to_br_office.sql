@@ -45,6 +45,31 @@ with
             and tbl_zip.zip_code >= zip_range.zip_code_range[0]
             and tbl_zip.zip_code <= zip_range.zip_code_range[1]
     ),
+    -- (br_database_id, district) pairs the LLM confidently placed.
+    llm_matched_districts as (
+        select
+            br_database_id,
+            lower(l2_district_type) as l2_district_type,
+            lower(l2_district_name) as l2_district_name
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        where br_database_id is not null and is_matched
+    ),
+    -- Override rows the LLM did not already place at the same district: the
+    -- backfills (LLM absent or NOT_MATCHED) and the curated corrections (LLM
+    -- matched a different district). These are the rows the override path
+    -- emits and the rows the LLM path must yield. Overrides that agree with
+    -- the LLM are absent here and stay on the LLM path. Flat anti-join, shared
+    -- by both paths below (and mirrored in the coverage test).
+    active_overrides as (
+        select tbl_override.*
+        from {{ ref("l2_br_match_overrides") }} as tbl_override
+        left join
+            llm_matched_districts as llm
+            on llm.br_database_id = tbl_override.br_database_id
+            and llm.l2_district_type = lower(tbl_override.l2_district_type)
+            and llm.l2_district_name = lower(tbl_override.l2_district_name)
+        where llm.br_database_id is null
+    ),
     zip_code_to_br_office as (
         select
             tbl_zip.zip_code,
@@ -87,10 +112,22 @@ with
         -- judicial retention seats). Non-'State' district types are unaffected;
         -- curated statewide exceptions flow through override_zip_to_br_office.
         where
-            tbl_zip.district_type <> 'State'
-            or (
-                tbl_br_position.mtfcc = 'G4000'
-                and not coalesce(tbl_br_position.is_retention, false)
+            (
+                tbl_zip.district_type <> 'State'
+                or (
+                    tbl_br_position.mtfcc = 'G4000'
+                    and not coalesce(tbl_br_position.is_retention, false)
+                )
+            )
+            -- Yield positions an active override redirects; the override path
+            -- re-emits them under the correct district. Without this a
+            -- mismatched position (e.g. a ward seat the LLM matched to the
+            -- whole city) would carry both districts and violate
+            -- one-district-type-per-br.
+            and tbl_match.br_database_id not in (
+                select br_database_id
+                from active_overrides
+                where br_database_id is not null
             )
         qualify
             row_number() over (
@@ -101,12 +138,10 @@ with
             = 1
     ),
 
-    -- Same zip->office linkage as above, but built from the override seed for
-    -- positions absent from the LLM snapshot (the match-driven path keys off
-    -- the snapshot, so they would otherwise get zero zip rows). Scoped to
-    -- snapshot-absent overrides, so existing overrides are untouched and the
-    -- unique key cannot collide. Reads the unfiltered zip->district source so a
-    -- new override backfills without a full refresh.
+    -- Same zip->office linkage as above, but built from active_overrides (the
+    -- override rows the LLM did not already place at the same district). Reads
+    -- the unfiltered zip->district source so a new override backfills without a
+    -- full refresh.
     override_zip_to_br_office as (
         select
             tbl_zip.zip_code,
@@ -124,7 +159,7 @@ with
             tbl_override.l2_district_name,
             tbl_override.l2_district_type,
             true as is_matched,
-            'l2_br_match_overrides seed (no LLM match row)' as llm_reason,
+            'l2_br_match_overrides seed' as llm_reason,
             null as confidence,
             null as embeddings,
             null as top_embedding_score
@@ -135,7 +170,7 @@ with
             and tbl_zip.zip_code >= zip_range.zip_code_range[0]
             and tbl_zip.zip_code <= zip_range.zip_code_range[1]
         inner join
-            {{ ref("l2_br_match_overrides") }} as tbl_override
+            active_overrides as tbl_override
             on lower(tbl_zip.district_name) = lower(tbl_override.l2_district_name)
             and lower(tbl_zip.district_type) = lower(tbl_override.l2_district_type)
             and lower(tbl_zip.state_postal_code) = lower(tbl_override.state)
@@ -145,12 +180,6 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_br_race
             on tbl_br_position.database_id = tbl_br_race.position.databaseid
-        where
-            tbl_override.br_database_id not in (
-                select br_database_id
-                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-                where br_database_id is not null
-            )
         qualify
             row_number() over (
                 partition by
