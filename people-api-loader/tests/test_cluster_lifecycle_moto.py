@@ -8,8 +8,9 @@ behind moto's RDS) and manifest S3 IO are patched.
 
 moto limitations worked around: it doesn't model the aurora-iopt1 storage type, so
 provision's _STORAGE_TYPE is overridden to a moto-supported value (the real value lives in
-the constant), and it doesn't model the provisioned->serverless instance-state transition,
-so resize's reboot-ordering is covered by static review + the unit test, not here.
+the constant), and it doesn't model the real Aurora class-change reboot sequencing (the
+stale-'available' race `wait_instance_class_applied` rides through), so resize's
+reboot-ordering is covered by static review + the unit test, not here.
 """
 
 from __future__ import annotations
@@ -107,7 +108,7 @@ def test_resize_applies_lockdown(monkeypatch: pytest.MonkeyPatch) -> None:
 
     manifest = resize_step.run(cfg, _DATE)
 
-    assert manifest.final_instance_class == "db.serverless"
+    assert manifest.final_instance_class == cfg.serve_instance_class
     cluster = rds.describe_db_clusters(DBClusterIdentifier=cfg.new_cluster_id(_DATE))["DBClusters"][0]
     assert cluster["BackupRetentionPeriod"] == 14
     assert cluster["DeletionProtection"] is True

@@ -13,8 +13,8 @@ data-loading revamp). Latest work is on the active feature branch (currently
 
 The loader is a Python CLI (`people-api-loader/`, `loader <step> --date <ds_nodash>`) that follows a
 train-deployment model: every refresh provisions a brand new Aurora cluster, loads and indexes it,
-resizes it to Serverless v2, and (at cutover) swaps it in as the serving database. The existing
-serving cluster is never mutated in place.
+resizes it to its serving instance class, and (at cutover) swaps it in as the serving database. The
+existing serving cluster is never mutated in place.
 
 The DAG is a thin sequencer. All parallelism lives inside the loader; each Airflow task is a single
 `BashOperator` invocation of one CLI subcommand. State flows between steps through S3 manifests
@@ -50,7 +50,7 @@ inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> c
 | `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
 | `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
 | `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. See below. |
-| `resize` | Flip the writer to Serverless v2 with the prod ACU range, swap in the serve parameter group, bump backup retention, enable deletion protection. |
+| `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. |
 | `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Failure halts the DAG. |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`resize`. On any post-provision failure it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
@@ -72,9 +72,11 @@ I/O/WAL-bound. So the loader uses two instance classes and scales between them:
 - `load_instance_class` = `db.r8g.16xlarge` (64 vCPU): the box `provision` creates; carries
   provision, create_schema, copy.
 - `index_instance_class` = `db.r8g.48xlarge` (192 vCPU): `build_indexes` scales the writer up to
-  this at its start (`_ensure_instance_class`), then `resize` flips down to Serverless v2.
+  this at its start (`_ensure_instance_class`), then `resize` flips down to `serve_instance_class`
+  (prod default `db.r6g.4xlarge`; dev `db.t4g.medium`) — a provisioned class, not Serverless v2.
 
-Overridable via `LOADER_LOAD_INSTANCE_CLASS` / `LOADER_INDEX_INSTANCE_CLASS`.
+Overridable via `LOADER_LOAD_INSTANCE_CLASS` / `LOADER_INDEX_INSTANCE_CLASS` /
+`LOADER_SERVE_INSTANCE_CLASS`.
 
 **Cost logic.** Index building is CPU-bound and embarrassingly parallel, so its cost in
 instance-hours is roughly flat across instance sizes for the parallel bulk (a smaller box just takes
@@ -112,21 +114,24 @@ writer. `_ensure_instance_class` waits for the class change to fully apply (poll
 class equals the target, status is available, and no class change is pending) before building,
 because Aurora reports `available` for a few seconds after the modify before it actually reboots.
 That poll and the tolerate-in-progress-fault retry are shared helpers in `core/aws.py`
-(`wait_instance_class_applied`, `retry_after_settle`), reused by `resize`'s Serverless v2 flip (which
-had the same stale-available reboot race) and by the on-failure scale-down. Airflow retries also
-cover a mid-build drop since every step is idempotent for its date.
+(`wait_instance_class_applied`, `retry_after_settle`), reused by `resize`'s provisioned serve-class
+flip (which has the same stale-available reboot race) and by the on-failure scale-down's Serverless
+v2 flip. Airflow retries also cover a mid-build drop since every step is idempotent for its date.
 
 ## Failure cost guard
 
-`resize` (which flips the writer to Serverless v2) is downstream of `build_indexes`, so a run that
-fails or is aborted mid-build never reaches it and would otherwise strand its scaled-up writer at
-full provisioned cost. The `scale_down_on_failure` task (`trigger_rule=one_failed`, upstreams
+`resize` (which flips the writer down to the serving instance class) is downstream of
+`build_indexes`, so a run that fails or is aborted mid-build never reaches it and would otherwise
+strand its scaled-up writer at full index-class cost. The `scale_down_on_failure` task
+(`trigger_rule=one_failed`, upstreams
 `provision`/`create_schema`/`copy`/`build_indexes`/`resize`) runs `loader scale-down`, which flips
-the writer to `db.serverless` to stop that cost. It deliberately skips the serve lockdown that
-`resize` applies (no serve parameter group, backup-retention bump, deletion protection, or reboot),
-so the failed run's cluster and loaded data survive for resume/forensics and stay easy to
-`teardown`. It is skipped on a fully successful run (where `resize` already made the writer
-serverless). Limit: it fires on an organic failure or a task marked failed, but not if the whole DAG
+the writer to `db.serverless` to stop that cost — Serverless v2 (min ACU) is the cheapest holding
+state for a cluster kept only for resume/forensics, distinct from the provisioned class the healthy
+path serves from. It deliberately skips the serve lockdown that `resize` applies (no serve parameter
+group, backup-retention bump, deletion protection, or reboot), so the failed run's cluster and
+loaded data survive for resume/forensics and stay easy to `teardown`. It is skipped on a fully
+successful run (where `resize` already sized the writer to the serving class). Limit: it fires on an
+organic failure or a task marked failed, but not if the whole DAG
 run is hard-deleted — that still needs a manual `loader teardown`/`scale-down`.
 
 ## Validation
@@ -193,8 +198,9 @@ come from SSM SecureStrings, never an env-var password.
   (`https://<deployment>.pm.astronomer.run/<ns>/api/v2/dags/load_people_api/dagRuns/<run>/...`) with
   a short-TTL `astro deployment token create` bearer works when the web session JWT expires. The API
   `duration` field is stale for running tasks; read log timestamps.
-- **Teardown.** `resize` leaves a Serverless v2 cluster; teardown is not in this DAG. Clean up
-  abandoned run clusters (`gp-people-db-<date>-<env>`) to avoid idle cost.
+- **Teardown.** `resize` leaves a provisioned serving cluster (prod `db.r6g.4xlarge`, dev
+  `db.t4g.medium`); teardown is not in this DAG. Clean up abandoned run clusters
+  (`gp-people-db-<date>-<env>`) to avoid idle cost.
 
 ## Before merge
 

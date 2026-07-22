@@ -241,12 +241,16 @@ class _FakeFlipWaiter:
 
 
 class _FakeFlipRds:
-    """Minimal RDS double for flip_writer_to_serverless: records calls, can raise once per op."""
+    """Minimal RDS double for flip_writer_to_serverless/flip_writer_to_provisioned: records
+    calls, can raise once per op."""
 
-    def __init__(self, raise_on: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, raise_on: dict[str, str] | None = None, *, describe_sequence: list[dict] | None = None
+    ) -> None:
         self.calls: list[tuple[str, dict]] = []
         self._raise_on = raise_on or {}
         self._raised: set[str] = set()
+        self._describe_sequence = describe_sequence or _SETTLED_SERVERLESS
         self._describe_calls = 0
 
     def _maybe_raise(self, op: str) -> None:
@@ -265,9 +269,9 @@ class _FakeFlipRds:
 
     def describe_db_instances(self, **kw: object) -> dict:
         self.calls.append(("describe_instance", kw))
-        idx = min(self._describe_calls, len(_SETTLED_SERVERLESS) - 1)
+        idx = min(self._describe_calls, len(self._describe_sequence) - 1)
         self._describe_calls += 1
-        return {"DBInstances": [_SETTLED_SERVERLESS[idx]]}
+        return {"DBInstances": [self._describe_sequence[idx]]}
 
     def get_waiter(self, name: str) -> _FakeFlipWaiter:
         return _FakeFlipWaiter()
@@ -320,3 +324,48 @@ def test_flip_writer_to_serverless_retries_after_transient_faults(monkeypatch: p
     ops = [c[0] for c in rds_client.calls]
     assert ops.count("modify_cluster") == 2
     assert ops.count("modify_instance") == 2
+
+
+_SETTLED_PROVISIONED = [
+    {"DBInstanceClass": "db.r6g.4xlarge", "DBInstanceStatus": "available", "PendingModifiedValues": {}}
+]
+
+
+def test_flip_writer_to_provisioned_issues_instance_only_conversion() -> None:
+    rds_client = _FakeFlipRds(describe_sequence=_SETTLED_PROVISIONED)
+
+    aws.flip_writer_to_provisioned(
+        rds_client,  # ty: ignore[invalid-argument-type]
+        "cluster-1",
+        "writer-1",
+        instance_class="db.r6g.4xlarge",
+    )
+
+    ops = [c[0] for c in rds_client.calls]
+    # No cluster-level call at all: a provisioned class needs no ServerlessV2ScalingConfiguration.
+    assert "modify_cluster" not in ops
+    by = dict(rds_client.calls)
+    assert by["modify_instance"] == {
+        "DBInstanceIdentifier": "writer-1",
+        "DBInstanceClass": "db.r6g.4xlarge",
+        "ApplyImmediately": True,
+    }
+
+
+def test_flip_writer_to_provisioned_retries_after_transient_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(aws.time, "sleep", lambda *a, **k: None)
+    rds_client = _FakeFlipRds(
+        raise_on={"modify_instance": "InvalidDBInstanceStateFault"},
+        describe_sequence=_SETTLED_PROVISIONED,
+    )
+
+    aws.flip_writer_to_provisioned(
+        rds_client,  # ty: ignore[invalid-argument-type]
+        "cluster-1",
+        "writer-1",
+        instance_class="db.r6g.4xlarge",
+    )  # must not raise — the fault is tolerated (settle, then re-issue)
+
+    ops = [c[0] for c in rds_client.calls]
+    assert ops.count("modify_instance") == 2
+    assert "modify_cluster" not in ops

@@ -40,6 +40,6 @@ def run(cfg: LoaderConfig, run_date: str) -> None:
 
     log.info("scale_down.start", instance=instance_id, from_class=current)
     flip_writer_to_serverless(
-        rds_client, cluster_id, instance_id, min_acu=cfg.serve_min_acu, max_acu=cfg.serve_max_acu
+        rds_client, cluster_id, instance_id, min_acu=cfg.scale_down_min_acu, max_acu=cfg.scale_down_max_acu
     )
     log.info("scale_down.applied", instance=instance_id, instance_class=_SERVERLESS_CLASS)
