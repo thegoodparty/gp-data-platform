@@ -65,9 +65,11 @@ def relative_md_targets(text: str):
 def check_links(arm_dir: Path) -> list[str]:
     """Every relative markdown link inside the arm must resolve inside it."""
     failures = []
+    arm_root = arm_dir.resolve()
     for md in sorted(arm_dir.rglob("*.md")):
         for target in relative_md_targets(md.read_text(errors="ignore")):
-            if not (md.parent / target).resolve().is_file():
+            resolved = (md.parent / target).resolve()
+            if not (resolved.is_file() and resolved.is_relative_to(arm_root)):
                 failures.append(f"dead link: {md.relative_to(arm_dir)} -> {target}")
     return failures
 

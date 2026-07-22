@@ -85,6 +85,16 @@ def test_check_links_ignores_external_and_fragment_links(tmp_path):
     assert integrity.check_links(arm) == []
 
 
+def test_check_links_flags_link_escaping_arm_to_sibling(tmp_path):
+    arm = tmp_path / "arm"
+    arm.mkdir()
+    (tmp_path / "outside.md").write_text("sibling arm content")
+    (arm / "escape.md").write_text("see [out](../outside.md)")
+    failures = integrity.check_links(arm)
+    assert len(failures) == 1
+    assert "outside.md" in failures[0]
+
+
 def test_check_arm_leakage_scans_all_files(tmp_path):
     canaries = integrity.load_canaries(_write_canaries(tmp_path))
     arm = tmp_path / "arm"
