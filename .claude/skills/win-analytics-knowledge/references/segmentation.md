@@ -24,7 +24,7 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 | `campaign_state` | ~99% populated. |
 | `campaign_party` | ~95% populated. |
 | `election_date`, `primary_election_date`, `general_election_date`, runoff dates | Per-stage dates. Preserve cycle separation — do NOT use `users_win_base.election_date` for outcome analyses (it's a `coalesce(next, last)` that leaks). |
-| `is_pro` | Boolean. Campaign-grain Pro flag at mart-materialization time. Pro upgrade TIMING comes from Amplitude (`int__amplitude_user_milestones.pro_upgrade_completed_at`). |
+| `is_pro` | Boolean. Campaign-grain Pro flag at mart-materialization time — as-of-today, so it misses Pros who churned (Nov-2025 bucket: 752 Pro-at-election vs 421 Pro-today). **Point-in-time Pro tenure comes from Stripe**: `dbt.stg_airbyte_source__stripe_api_subscriptions` + `_customers` joined on `LOWER(email)` (livemode, exclude `incomplete_expired`; count an open-ended interval only while `status='active'`). The Amplitude milestone (`int__amplitude_user_milestones.pro_upgrade_completed_at`, 2025-05-29+) covers only ~30% of current Pros; HubSpot company pro dates are near-empty. ⚠ data-state (2026-07-22): ~55% of current Pros have no timing evidence in any source, so pair any point-in-time Pro count with the as-of-today flag as a reference column. Worked recipe: `analytics/projects/win_topline_reporting/topline_report.py`. |
 | `is_verified`, `is_demo`, `is_pledged`, `is_latest_version` | Quality / state flags. Default to `is_latest_version AND NOT is_demo`. |
 | `icp_office_win`, `icp_office_serve`, `icp_win_supersize` | ICP flags. **Use as slicing dimensions, NOT filters** (per DATA-1935 resolved scope). |
 | `is_judicial`, `is_appointed` | Non-traditional office flags. Often correlated with NULL ICP / NULL `election_level`. |
@@ -40,8 +40,9 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 
 The standard "Win users with an election on or after date D" population. Resolve it one way:
 take per-user `MAX(election_date)` over `is_latest_version AND NOT is_demo` candidacies,
-**bounded to `[2020-01-01, 2050-01-01]`** (drops corrupt far-future dates — see
-[gotchas.md](gotchas.md)), and keep users whose bounded max is `>= D`. Use `election_date`
+**bounded to `[2020-01-01, 2050-01-01]`** (drops corrupt far-future dates — apply the same
+bound to any per-stage date column you aggregate; see [gotchas.md](gotchas.md)), and keep
+users whose bounded max is `>= D`. Use `election_date`
 (the most-populated per-stage field, ~41.5k of 59.8k users), not `users_win_base.election_date`
 (the leaky coalesce). Users with no in-range `election_date` (~29%) are excluded by construction;
 note that exclusion in the brief. This is the open-ended definition (any live/upcoming election,
