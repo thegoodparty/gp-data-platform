@@ -35,7 +35,7 @@ from loader.people_api.schema.table_ddl import extract_create_tables
 
 log = get_logger(__name__)
 
-# public."USState" labels, DC LAST, matching swain-db's public.USState order exactly.
+# public."USState" labels, DC LAST, matching the serving cluster's public.USState order exactly.
 _USSTATE_LABELS = (
     "AL",
     "AK",

@@ -52,7 +52,7 @@ TABLE_SPECS: dict[str, TableSpec] = {
     "Voter": TableSpec(
         pg_table="Voter",
         partition_by="State",
-        # State: the serving public."USState" enum (matches swain-db); the mart emits it as text
+        # State: the serving public."USState" enum (matches the serving cluster); the mart emits it as text
         # and Postgres coerces text -> enum on COPY.
         type_overrides={"id": "UUID", "State": '"USState"'},
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
