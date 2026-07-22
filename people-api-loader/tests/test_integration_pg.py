@@ -36,7 +36,11 @@ from loader.people_api.schema import _serving_seed_extra
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
-from loader.people_api.steps.create_schema import build_green_view_ddl, build_partitioned_ddl
+from loader.people_api.steps.create_schema import (
+    build_green_view_ddl,
+    build_partitioned_ddl,
+    build_usstate_enum_ddl,
+)
 from tests._fakes import fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
@@ -54,6 +58,10 @@ _DDL = (
     ");"
 )
 _STATES = ["TX", "CA"]
+
+# A minimal Voter shape with "State" typed against the public."USState" enum (rather than text),
+# for the enum-specific partitioning/domain test below.
+_DDL_ENUM_STATE = 'CREATE TABLE public."Voter" (\n    "id" uuid NOT NULL,\n    "State" "USState" NOT NULL\n);'
 
 # A partitioned Voter carrying the columns referenced by Voter EXTRA_INDEXES (name-search
 # plus plain-btree columns). Separate from _DDL (which omits them) so the extras test can drive
@@ -353,3 +361,45 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
             assert "Seq Scan" not in pre_plan, pre_plan
         finally:
             _exec(cur, "SET enable_seqscan = on")
+
+
+def test_state_column_is_a_real_usstate_enum(pg_conn: psycopg.Connection) -> None:
+    """ "State" is typed against public."USState" (not text): the column's catalog type is the
+    enum, partition routing on it still works, and an out-of-domain label is rejected by the
+    enum itself — proving it's a real enum, not text riding on the partition CHECK."""
+    with pg_conn.cursor() as cur:
+        _exec(cur, build_usstate_enum_ddl())  # guarded CREATE TYPE; safe if already present
+
+    create_sql = extract_create_tables(_DDL_ENUM_STATE)["Voter"]
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", ["TX"])
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')
+        _exec(cur, parent)
+        for child in children:
+            _exec(cur, child)
+
+    # (a) the column's real catalog type is public."USState", not text.
+    with pg_conn.cursor() as cur:
+        udt_schema = _scalar(
+            cur,
+            "SELECT udt_schema FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='Voter' AND column_name='State'",
+        )
+        udt_name = _scalar(
+            cur,
+            "SELECT udt_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='Voter' AND column_name='State'",
+        )
+    assert (udt_schema, udt_name) == ("public", "USState")
+
+    # (b) a row with State='TX' routes to the TX child partition.
+    column_list = ", ".join(f'"{c}"' for c in extract_column_names(create_sql))
+    insert = f'INSERT INTO public."Voter" ({column_list}) VALUES (%s, %s)'
+    with pg_conn.cursor() as cur:
+        _exec(cur, insert, (str(uuid.uuid4()), "TX"))
+        assert _scalar(cur, 'SELECT count(*) FROM ONLY public."Voter_TX"') == 1
+
+    # (c) an out-of-domain label ('ZZ') is rejected by the enum type itself (invalid input for
+    # the enum), not merely by the partition's implicit CHECK.
+    with pg_conn.cursor() as cur, pytest.raises(psycopg.errors.InvalidTextRepresentation):
+        _exec(cur, insert, (str(uuid.uuid4()), "ZZ"))
