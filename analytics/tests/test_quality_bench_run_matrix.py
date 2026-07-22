@@ -309,6 +309,21 @@ def test_bench_fingerprint_tracks_arm_manifests(tmp_path: Path):
     assert "arms_sha256" in run_matrix.bench_fingerprint(tmp_path, "m")
 
 
+def test_resume_guard_refuses_legacy_batch_without_arms_hash():
+    """A batch created before this change stored a fingerprint with no
+    arms_sha256 key at all. Resuming it under the new code (which always
+    emits arms_sha256, "{}" when there are no arm_dirs) must still refuse:
+    absent-vs-present is itself a change in what was gated, not a no-op. This
+    pins that refusal so a future revert to fingerprint[k] (which would raise
+    KeyError instead) or a gating regression (dropping arms_sha256 from the
+    tuple, or comparing .get(k) to .get(k) with a default that treats absent
+    as equal to "{}") gets caught here."""
+    state: dict = {"fingerprint": {"inputs_sha256": "aaa", "model": "m", "harness_git_sha": "sha1"}}
+    new_fp = {"inputs_sha256": "aaa", "model": "m", "arms_sha256": "{}", "harness_git_sha": "sha1"}
+    with pytest.raises(SystemExit):
+        run_matrix.resume_guard(state, new_fp)
+
+
 def test_resume_guard_blocks_changed_arms(tmp_path: Path):
     fp = {"inputs_sha256": "aaa", "model": "m", "arms_sha256": "x", "harness_git_sha": "sha1"}
     state: dict = {}
