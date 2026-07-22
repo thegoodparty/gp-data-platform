@@ -1,0 +1,134 @@
+id: q02_win_provenance
+as_of: "2026-07-21"
+
+# Gold run 2026-07-21 (supervised). Population identical to the q01 key's
+# headline: distinct users_win_candidacy users (is_latest_version AND NOT
+# is_demo; equivalent to users_win_base at this grain), cohort month =
+# half-open calendar month on user_created_at (timestamp_ntz), excluding
+# GoodParty-internal accounts (email domain @goodparty.org) — denominators
+# 584 / 229 / 280 / 356, matching q01 exactly.
+#
+# "Completed onboarding" = strict pledge completion, era-resolved across
+# THREE instrumented event generations (omni provenance CSV + health log;
+# call sites for the era-1/2 events removed 2026-06-09, PRs #920/#1790;
+# Onboarding V2 generation instrumented 2026-06-08):
+#   era 1+2 (through 2026-06-10 in-data): 'Onboarding - Candidate Pledge
+#     Completed' (since 2025-09-17) and era-2 alias 'Onboarding - Pledge
+#     Completed' (2026-05-07+, co-fires with the former);
+#   era 3 (2026-06-08+): 'Onboarding V2 - Pledge Completed'.
+# Completion = ANY of the three within [user_created_at, +14 days), half-open
+# on timestamps. Legacy 'onboarding_complete' (retired 2026-05-05) verified a
+# strict subset of the union in every month — adds zero completers.
+#
+# Reconciliation at pin time (internal-excluded headline; wrong-fork
+# counterfactuals under the SAME population unless noted):
+#   month    n    completed  rate%   v1_only  legacy_only  stored_hcof  stored_is_onboarded
+#   2026-03  584     310     53.08      310       305          306           315
+#   2026-04  229     138     60.26      138       133          133            80
+#   2026-05  280     222     79.29      222        40           40             0
+#   2026-06  356     292     82.02       96         0            0             0
+# v1_only = trusting 'Onboarding - Candidate Pledge Completed' alone (the
+# stale "version-agnostic both eras" doc line): matches the key in Mar-May,
+# fails ONLY June (96 vs 292, -67%) — the provenance trap discriminates in
+# June alone, so June's band must stay tight. An internal-included run
+# reports 317/150/240/327 (+2.3/+8.7/+8.1/+12.0%) and fails Apr-Jun
+# numerically, trips required_resolutions, and contradicts the question
+# text, which names the exclusion (mirrors q01; added in PR #660 review so
+# the provenance trap is not confounded by an undisclosed population
+# filter). Calendar-day windowing (DATE <= created_date+14) differs by
+# +1 completer in April only (138 -> 139, +0.72%), absorbed by April's band.
+#
+# Tolerances are a drift budget mirroring q01's rationale: late Win-
+# conversion adds users to past cohort months in users_win_candidacy, and
+# denominators drift more than numerators (late-linked users rarely carry
+# historical pledge events), so rates drift slightly down; recent months get
+# wider bands (Mar had >=4.5 months linkage at pin). Replication at pin time
+# was exact. Bands chosen so every counterfactual row above fails while the
+# calendar-day variant passes.
+#
+# Repro context: numerator from goodparty_data_catalog.dbt.
+# stg_airbyte_source__amplitude_api_events (numeric-user_id hygiene filter;
+# 26 excluded pledge rows all had NULL user_id — zero users dropped),
+# MAX(event_time) = 2026-07-21 19:54 UTC at pin; all 14d windows closed
+# 2026-07-14 (no censoring). Clock alignment between product-DB
+# user_created_at (TIMESTAMP_NTZ) and Amplitude event_time rests on the
+# observed zero pre-creation pledge completions (indirect but adequate for
+# a descriptive key).
+numbers:
+  - name: onboarded_2026_03
+    value: 310
+    tolerance_pct: 1.0
+  - name: onboarded_2026_04
+    value: 138
+    tolerance_pct: 2.0
+  - name: onboarded_2026_05
+    value: 222
+    tolerance_pct: 3.0
+  - name: onboarded_2026_06
+    value: 292
+    tolerance_pct: 3.0
+  - name: onboarding_rate_2026_03
+    value: 53.08
+    tolerance_pct: 1.0
+  - name: onboarding_rate_2026_04
+    value: 60.26
+    tolerance_pct: 2.0
+  - name: onboarding_rate_2026_05
+    value: 79.29
+    tolerance_pct: 3.0
+  - name: onboarding_rate_2026_06
+    value: 82.02
+    tolerance_pct: 3.0
+
+required_resolutions:
+  completion_metric: strict_pledge_completion_era_resolved_union (NOT stored is_onboarded / has_completed_onboarding_flow flags, NOT dashboard-view Onboarded, NOT any single event name across the whole window)
+  onboarding_event_eras: era1_2_candidate_pledge_completed_through_2026_06_10__era3_onboarding_v2_pledge_completed_from_2026_06_08
+  account_created: db_registration (users_win_candidacy.user_created_at; NOT a funnel entry event — every Amplitude entry event changed across the rebuilds)
+  population: win_users_mart (distinct users_win_candidacy users, is_latest_version AND NOT is_demo; users_win_base equivalent)
+  internal_accounts: exclude_goodparty_org_email_domain
+  demo_accounts: exclude_demo_only_users
+  completion_window: half_open_14_day_timestamp_window_from_user_created_at
+  month_bucketing: half_open_calendar_months_on_user_created_at
+
+mandatory_sources:
+  - id: win_user_mart
+    pattern: 'users_win_(base|candidacy)'
+    description: consulted a governed Win user mart rather than raw gp_api tables alone
+  - id: creation_anchor
+    pattern: '(user_created_at|registered_at|user\.created_at)'
+    description: anchored the 14-day window on account-creation timestamp, not a funnel event
+  - id: era12_completion_event
+    pattern: 'Onboarding - Candidate Pledge Completed'
+    description: found the era-1/2 strict completion event
+  - id: era3_completion_event
+    pattern: 'Onboarding V2 - Pledge Completed'
+    description: found the V2-generation completion event that carries June (the provenance trap)
+  - id: internal_exclusion
+    pattern: '(?i)goodparty\.org'
+    description: evidence the GoodParty-internal account exclusion was applied
+
+# Confidently-wrong claims identified during the gold run: gating or counting
+# on the stored new-flow-blind onboarding flags (wrong by construction after
+# 2026-05-07). The doc-trusting single-event June answers (count 96/109,
+# rate ~27%; 0% via stored flags) are deliberately NOT tripwired: a correct
+# answer legitimately names those counterfactuals in prose (PR #660 review),
+# and a run that reports them is already failed deterministically by June's
+# tolerance band — that band is the guard, per the key-review criterion.
+severity1_patterns:
+  - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
+
+required_assumptions:
+  - completion_metric_definition
+  - onboarding_event_era_resolution
+  - internal_accounts_exclusion
+  - demo_accounts_exclusion
+  - boundary_semantics
+
+intent_card: |
+  Purpose: provenance trap — "completed onboarding" spans three instrumented
+  event generations in the window; grades whether a run resolves event eras
+  from code-truth provenance instead of trusting one event name or stored flags.
+  Audience: data team benchmark graders (DATA-2144 harness).
+  Fork answers (asker): completion = strict pledge, era-resolved 3-event union;
+  population = same "new accounts" as q01 (db registration; internal + demo
+  excluded); window = half-open 14 days on user_created_at timestamps.
