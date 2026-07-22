@@ -64,7 +64,7 @@ Two things to know:
 For when an event was added or retired in code, its current lifecycle status, or what
 superseded it, use the **omni event-lifecycle assets** (provenance CSV, event-health log,
 gp-meta metadata). They are cross-product and live with the process skill:
-[event-lifecycle-assets.md](../../analytics-process/references/event-lifecycle-assets.md)
+`event-lifecycle-assets.md` in the analytics-process skill (when installed)
 owns the full description — what each asset answers, freshness contracts, and the
 stay-in-omni design constraint. They are the tool that dated the two Serve event
 generations above.

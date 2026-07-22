@@ -54,3 +54,23 @@ def test_relative_markdown_links_resolve():
             if not resolved.is_file():
                 broken.append(f"{doc.relative_to(REPO_ROOT)} -> {target}")
     assert not broken, "broken relative links:\n" + "\n".join(broken)
+
+
+KNOWLEDGE_SKILL_DIRS = [
+    REPO_ROOT / ".claude" / "skills" / "win-analytics-knowledge",
+    REPO_ROOT / ".claude" / "skills" / "serve-analytics-knowledge",
+]
+
+
+def test_knowledge_skills_are_self_contained():
+    """DATA-2164: the knowledge skills ship into bench arms without the
+    process or data-matching skills present, so their relative links must not
+    escape their own skill directory. Cross-skill pointers are plain text."""
+    escapes = []
+    for skill_dir in KNOWLEDGE_SKILL_DIRS:
+        for md in sorted(skill_dir.rglob("*.md")):
+            for target in _relative_md_targets(md.read_text()):
+                resolved = (md.parent / target).resolve()
+                if not resolved.is_relative_to(skill_dir.resolve()):
+                    escapes.append(f"{md.relative_to(REPO_ROOT)} -> {target}")
+    assert not escapes, "cross-skill links break arm self-containment:\n" + "\n".join(escapes)

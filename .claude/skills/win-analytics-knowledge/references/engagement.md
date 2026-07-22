@@ -16,7 +16,7 @@ stream they're computed from.
 - IF the analysis spans the **2026-05-07 onboarding cutover or the 2026-06-08 Onboarding V2 rebuild** → resolve events per era (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`, and do NOT treat any single completion event as version-agnostic.
 - IF a dashboard-view metric touches **2026-05 or later** → use the 2-event dashboard union; the legacy event died 2026-06-13 (see Dashboard surface migration).
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
-- IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see [event-lifecycle-assets.md](../../analytics-process/references/event-lifecycle-assets.md) (process skill; cross-product). The catalog's `first_seen_date` is data-observed, not code-truth.
+- IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see `event-lifecycle-assets.md` in the analytics-process skill (cross-product; when installed). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
 - IF the question is about self-reported win/loss from the Did-You-Win modal → that's an outcome; see [outcomes.md](outcomes.md).
 

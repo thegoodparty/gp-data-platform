@@ -1,7 +1,7 @@
 # Serve methodology defaults
 
 Part of the **serve-analytics-knowledge** skill. The Serve-product defaults consumed by the
-process skill's [methodology.md](../../analytics-process/references/methodology.md): that doc
+analytics-process skill's `methodology.md` (when installed): that doc
 owns the product-agnostic discipline (scoping checklist, folder patterns, binning,
 verification protocol); this one owns what is true *for Serve* — the resolved scoping
 decisions, the default cohorts, and the working-set builder.
