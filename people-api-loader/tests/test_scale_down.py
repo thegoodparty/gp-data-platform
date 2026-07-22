@@ -15,8 +15,8 @@ from loader.people_api.steps import scale_down as step
 _CFG = cast(
     LoaderConfig,
     SimpleNamespace(
-        serve_min_acu=0.5,
-        serve_max_acu=128.0,
+        scale_down_min_acu=0.5,
+        scale_down_max_acu=128.0,
         new_cluster_id=lambda rd: f"gp-people-db-{rd}",
         new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-writer",
     ),

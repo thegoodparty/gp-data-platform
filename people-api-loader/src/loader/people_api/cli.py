@@ -165,7 +165,7 @@ def build_indexes(
 
 @app.command()
 def resize(run_date: RunDateArg) -> None:
-    """Step 6 — swap writer to db.serverless + serve-tuned params."""
+    """Step 6 — swap writer to the serving instance class + serve-tuned params."""
     from loader.people_api.steps import resize as step
 
     cfg = _setup(run_date)

@@ -52,13 +52,18 @@ TABLE_SPECS: dict[str, TableSpec] = {
     "Voter": TableSpec(
         pg_table="Voter",
         partition_by="State",
-        type_overrides={"id": "UUID"},
+        # State: the serving public."USState" enum (matches the serving cluster); the mart emits it as text
+        # and Postgres coerces text -> enum on COPY.
+        type_overrides={"id": "UUID", "State": '"USState"'},
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
     "District": TableSpec(
         pg_table="District",
         partition_by=None,
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
+        # state: stays TEXT (no override), unlike Voter/DistrictVoter. District includes one
+        # country-scope row (type=Country, state="US") that the 51-value USState enum (50 states +
+        # DC) cannot hold, so this column can't be coerced to the enum on COPY like the others.
         type_overrides={"id": "UUID"},
     ),
     "DistrictStats": TableSpec(
@@ -88,7 +93,8 @@ TABLE_SPECS: dict[str, TableSpec] = {
             "voter_id": "UUID",
             "created_at": "TIMESTAMPTZ",
             "updated_at": "TIMESTAMPTZ",
-            "state": "TEXT",
+            # the serving public."USState" enum, matching Voter/District.
+            "state": '"USState"',
         },
         mart_column_map={
             "district_id": "district_id",

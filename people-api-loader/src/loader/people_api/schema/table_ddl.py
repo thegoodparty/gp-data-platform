@@ -40,9 +40,11 @@ _COLUMN_LINE_RE = re.compile(r'^\s*(?:"(?P<quoted>[^"]+)"|(?P<bare>[a-z_][a-zA-Z
 # type_override). Constraint lines and bare columns are not matched.
 # The type class is case-insensitive (a type_override such as buckets->jsonb emits lowercase) and
 # includes a comma so a precision/scale type (NUMERIC(12,2)) is captured whole; the non-greedy `*?`
-# + anchored tail still stops at the line-terminating comma, not the inner one.
+# + anchored tail still stops at the line-terminating comma, not the inner one. The type group also
+# accepts a quoted identifier (e.g. "USState", a Postgres enum) so a quoted enum column doesn't
+# silently drop out of extract_column_types (which would break its FORCE_NULL handling).
 _COLUMN_TYPE_RE = re.compile(
-    r'^\s*"(?P<name>[^"]+)"\s+(?P<type>[A-Za-z][A-Za-z0-9 (),]*?)(?:\s+NOT NULL)?,?\s*$'
+    r'^\s*"(?P<name>[^"]+)"\s+(?P<type>"[^"]+"|[A-Za-z][A-Za-z0-9 (),]*?)(?:\s+NOT NULL)?,?\s*$'
 )
 
 

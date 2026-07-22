@@ -149,8 +149,6 @@ class IndexManifest(ManifestBase):
 class ResizeManifest(ManifestBase):
     step: Literal["resize"] = "resize"
     final_instance_class: str
-    min_acu: float
-    max_acu: float
     backup_retention_days: int
     deletion_protection: bool
 

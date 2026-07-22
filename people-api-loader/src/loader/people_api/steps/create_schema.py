@@ -3,9 +3,14 @@
 Applies `CREATE TABLE` DDL for Voter, DistrictVoter, District, and DistrictStats,
 extracted from the committed, generated `target_schema.sql` (from `loader emit-ddl`;
 tables only — indexes/PK are deferred to build-indexes), after installing the
-aws_s3/aws_commons extensions. Voter and DistrictVoter are LIST-partitioned by
-"State" (one child partition per USState); District and DistrictStats are plain
-flat tables.
+aws_s3/aws_commons extensions and the public."USState" enum (Voter/DistrictVoter/
+District's State columns are typed against it). Voter and DistrictVoter are
+LIST-partitioned by "State" (one child partition per USState); District and
+DistrictStats are plain flat tables.
+
+Also creates a `green` compatibility schema with a pass-through view over each
+public table, so people-api (which references `green.<table>`) works unchanged
+against the loader-built public serving tables.
 """
 
 from __future__ import annotations
@@ -30,6 +35,70 @@ from loader.people_api.schema.table_ddl import extract_create_tables
 
 log = get_logger(__name__)
 
+# public."USState" labels, DC LAST, matching the serving cluster's public.USState order exactly.
+_USSTATE_LABELS = (
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
+    "DC",
+)
+
+
+def build_usstate_enum_ddl() -> str:
+    """Guarded CREATE TYPE for public."USState" (Postgres has no CREATE TYPE IF NOT EXISTS)."""
+    labels = ", ".join(f"'{s}'" for s in _USSTATE_LABELS)
+    return (
+        'DO $$ BEGIN CREATE TYPE public."USState" AS ENUM (' + labels + "); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+    )
+
 
 def build_partitioned_ddl(
     create_sql: str, table: str, partition_col: str, states: Sequence[str]
@@ -50,6 +119,18 @@ def build_partitioned_ddl(
         for s in states
     ]
     return parent, children
+
+
+def build_green_view_ddl(tables: Sequence[str]) -> list[str]:
+    """Create the `green` compatibility schema and a pass-through view over each public table.
+
+    people-api references `green.<table>`; these views expose the loader-built `public`
+    tables unchanged (SELECT * expands to the built columns at view-creation time), so the
+    consumer needs no schema change to read the public serving tables.
+    """
+    stmts = ["CREATE SCHEMA IF NOT EXISTS green;"]
+    stmts += [f'CREATE OR REPLACE VIEW green."{t}" AS SELECT * FROM public."{t}";' for t in tables]
+    return stmts
 
 
 def _flat_ddl(create_sql: str, table: str) -> str:
@@ -107,10 +188,17 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
             # Trusted extension (no superuser on RDS); backs the gin_trgm_ops name indexes
             # build_indexes re-issues from the seed.
             cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        with conn.cursor() as cur:
+            cur.execute(build_usstate_enum_ddl())  # ty: ignore[no-matching-overload]
         for stmt in stmts:
             with conn.cursor() as cur:
                 cur.execute(stmt)  # ty: ignore[no-matching-overload]
         log.info("schema.ddl_applied")
+
+        for stmt in build_green_view_ddl(list(TABLE_SPECS)):
+            with conn.cursor() as cur:
+                cur.execute(stmt)  # ty: ignore[no-matching-overload]
+        log.info("schema.green_views_created", tables=len(TABLE_SPECS))
 
     manifest = SchemaManifest(
         run_date=run_date,

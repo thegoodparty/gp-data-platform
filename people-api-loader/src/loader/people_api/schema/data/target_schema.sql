@@ -1,7 +1,7 @@
 CREATE TABLE public."Voter" (
     "id" UUID,
     "LALVOTERID" TEXT,
-    "State" TEXT,
+    "State" "USState",
     "AbsenteeTypes_Description" TEXT,
     "Active" TEXT,
     "Age" TEXT,
@@ -350,6 +350,7 @@ CREATE TABLE public."Voter" (
     "Water_Replacement_SubDistrict" TEXT,
     "Water_SubDistrict" TEXT,
     "Weed_District" TEXT,
+    "hf_most_important_policy_item" TEXT,
     "created_at" TIMESTAMPTZ,
     "updated_at" TIMESTAMPTZ,
     "Mailing_HHGender_Description" TEXT
@@ -375,7 +376,7 @@ CREATE TABLE public."DistrictStats" (
 CREATE TABLE public."DistrictVoter" (
     "voter_id" UUID,
     "district_id" UUID,
-    "State" TEXT,
+    "State" "USState",
     "created_at" TIMESTAMPTZ,
     "updated_at" TIMESTAMPTZ
 );

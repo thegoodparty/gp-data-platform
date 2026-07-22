@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema.schema_spec import TABLE_SPECS
 from loader.people_api.schema.states import STATES
 from loader.people_api.steps import create_schema as step
 from tests._fakes import FakeConn, executed_sql, fake_connect
@@ -47,6 +48,10 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\')' in s
         for s in sql
     )
+    # green compatibility views are created by run() over each public serving table
+    assert any("CREATE SCHEMA IF NOT EXISTS green;" in s for s in sql)
+    for t in ("Voter", "DistrictVoter", "District", "DistrictStats"):
+        assert any(f'CREATE OR REPLACE VIEW green."{t}" AS SELECT * FROM public."{t}";' in s for s in sql)
     # indexes are NOT applied by create-schema
     assert not any("CREATE INDEX" in s for s in sql)
     assert manifest.status == "complete"
@@ -117,6 +122,109 @@ def test_build_partitioned_ddl_shape() -> None:
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\');',
         'CREATE TABLE IF NOT EXISTS public."Voter_CA" PARTITION OF public."Voter" FOR VALUES IN (\'CA\');',
     ]
+
+
+def test_build_green_view_ddl_shape() -> None:
+    assert step.build_green_view_ddl(["Voter", "District"]) == [
+        "CREATE SCHEMA IF NOT EXISTS green;",
+        'CREATE OR REPLACE VIEW green."Voter" AS SELECT * FROM public."Voter";',
+        'CREATE OR REPLACE VIEW green."District" AS SELECT * FROM public."District";',
+    ]
+
+
+def test_build_green_view_ddl_covers_all_tables() -> None:
+    stmts = step.build_green_view_ddl(list(TABLE_SPECS))
+    assert len(stmts) == 1 + len(TABLE_SPECS)
+
+
+# public."USState" labels, DC LAST, matching the serving cluster's public.USState order exactly (mirrors
+# the private _USSTATE_LABELS in create_schema.py so a drift there is caught here too).
+_USSTATE_LABELS = (
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
+    "DC",
+)
+
+
+def test_build_usstate_enum_ddl_shape() -> None:
+    ddl = step.build_usstate_enum_ddl()
+    assert 'CREATE TYPE public."USState" AS ENUM' in ddl
+    assert "EXCEPTION WHEN duplicate_object THEN NULL" in ddl
+    assert len(_USSTATE_LABELS) == 51
+    for label in _USSTATE_LABELS:
+        assert f"'{label}'" in ddl
+    assert ddl.count("'") == 2 * len(_USSTATE_LABELS)  # exactly 51 quoted labels, no duplicates
+    # DC is last among the labels (matches the serving cluster's public.USState order).
+    label_positions = [ddl.index(f"'{s}'") for s in _USSTATE_LABELS]
+    assert label_positions == sorted(label_positions)
+    assert _USSTATE_LABELS[-1] == "DC"
+
+
+def test_usstate_type_created_before_voter_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn()
+    _patch(monkeypatch, conn)
+    step.run(_CFG, "20260609")
+    sql = executed_sql(conn)
+    enum_idx = next(i for i, s in enumerate(sql) if 'CREATE TYPE public."USState"' in s)
+    voter_idx = next(i for i, s in enumerate(sql) if 'CREATE TABLE IF NOT EXISTS public."Voter" (' in s)
+    assert enum_idx < voter_idx
+
+
+def test_states_and_usstate_labels_agree_as_a_set() -> None:
+    # STATES (partition keys) and _USSTATE_LABELS (enum labels) are separately ordered
+    # lists; guard that they cover the same 51 codes so adding a code to one but not the
+    # other surfaces here rather than at loader run time.
+    from loader.people_api.schema.states import STATES
+
+    assert set(STATES) == set(step._USSTATE_LABELS)
 
 
 def test_build_partitioned_ddl_parametrizes_table_and_column() -> None:

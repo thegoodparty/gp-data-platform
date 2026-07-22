@@ -7,6 +7,7 @@ Part of the **win-analytics-knowledge** skill. Where Win-product data lives and 
 - **Business context:** Win analyses draw on six overlapping data domains (product DB, analytics mart, civics mart, Amplitude events, HubSpot surveys, L2 voter data).
 - **Entity grain:** varies by domain (see table). The primary working grain is one row per `campaign_version_id`.
 - **Standard hygiene filter:** on `users_win_candidacy`, `is_latest_version AND NOT is_demo`.
+- **Internal accounts:** no governed filter exists. The agreed proxy is `email ILIKE '%@goodparty.org'` (user grain). Exclude for external-facing user counts and name the exclusion as an assumption. Verified 2026-07-21 (2026 H1): domain-anchored and bare-substring forms matched identical sets; residual QA-pattern emails among remaining users ≤2/month.
 
 ## Routing triggers
 

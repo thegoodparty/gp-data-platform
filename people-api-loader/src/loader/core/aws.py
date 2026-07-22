@@ -135,6 +135,35 @@ def flip_writer_to_serverless(
     wait_instance_class_applied(rds_client, instance_id, _SERVERLESS_CLASS)
 
 
+def flip_writer_to_provisioned(
+    rds_client: BaseClient, cluster_id: str, instance_id: str, *, instance_class: str
+) -> None:
+    """Flip the writer instance to a provisioned `instance_class`, tolerating in-progress
+    modifies and waiting until the class change actually applies. Callers layer any extra
+    lockdown (serve param group, backup, deletion protection, reboot) on top; this is only the
+    class conversion.
+
+    Generic RDS helper: no people-api knowledge (the class and ids are passed in, not read off a
+    consumer's config). Unlike `flip_writer_to_serverless`, a provisioned class needs no
+    cluster-level `ServerlessV2ScalingConfiguration` — only the instance-level modify. `cluster_id`
+    is accepted for call-site symmetry with `flip_writer_to_serverless`; it is not used to
+    reconfigure the cluster here.
+    """
+    instance_waiter = rds_client.get_waiter("db_instance_available")
+
+    def _wait_instance() -> None:
+        instance_waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+
+    retry_after_settle(
+        lambda: rds_client.modify_db_instance(
+            DBInstanceIdentifier=instance_id, DBInstanceClass=instance_class, ApplyImmediately=True
+        ),
+        fault_code="InvalidDBInstanceStateFault",
+        settle=_wait_instance,
+    )
+    wait_instance_class_applied(rds_client, instance_id, target=instance_class)
+
+
 @cache
 def _session(
     profile: str | None,

@@ -1,0 +1,536 @@
+version: 2
+
+models:
+  - name: stg_census_acs__geo_estimates
+    description: >
+      ACS 2020-2024 5-year estimates and 90 percent margins of error at the retained summary
+      levels: block group (150) and state (040) feed the district demographic layer; county
+      (050), place (160), national (010), and school districts (950/960/970) are published
+      validation surfaces and inputs to later place-page work. One row per (summary_level,
+      geoid), parsed from the summary file GEO_ID keeping only complete-geography (component
+      0000) rows. Counts-first contract: every column is a raw count, an additive dollar
+      aggregate, or a never-allocated published median, with its margin twin; shares and rates
+      are derived downstream from allocated primitives, never here. Jam-code sentinels are
+      mapped so null means suppressed or not computable and a margin of exactly 0 means the
+      estimate is controlled to an official total (a guard test proves the raw files publish no
+      literal zero margin on retained rows, and the raw tables keep the original sentinels, so
+      per-cell controlled flags stay re-derivable if a consumer ever needs component
+      provenance). Bracket combinations use plain root-sum-of-squares margins (conservative;
+      reads large for rare-subgroup combinations by construction). Margins assume independence
+      and must not be summed or differenced across rows or across the race/ethnicity columns
+      (they share one population). Dollar values are 2024 inflation-adjusted dollars. One-time
+      load; see the census_acs source for provenance and the refresh story.
+    columns:
+      - name: summary_level
+        description: >
+          Census summary level of the row: 150 block group, 040 state, 050 county, 160 place,
+          010 national, 950/960/970 elementary/secondary/unified school district.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["150", "040", "050", "160", "010", "950", "960", "970"]
+      - name: geoid
+        description: >
+          FIPS-based geographic id parsed from GEO_ID (the part after 'US'): 12 characters for
+          block groups (state+county+tract+block group), 2 state, 5 county, 7 place and school
+          districts, empty string for the national row. Connecticut rows carry planning-region
+          county codes (the 2022 county-equivalent change), not legacy counties.
+        data_tests:
+          - not_null
+      - name: total_population
+        description: >
+          ACS source cell(s): B01001_E001. Universe: Total population. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: total_population_moe
+        description: >
+          90 percent margin of error for total_population. 0 means the estimate is controlled to
+          an official total (no sampling error); null means the margin was not published or not
+          computable.
+      - name: population_under_18
+        description: >
+          ACS source cell(s): B01001 E003-E006 + E027-E030 (under 18 years). Universe: Total
+          population. Combined from the component brackets; null if any component is suppressed.
+          Null when the Census suppressed or could not compute the value (jam codes).
+      - name: population_under_18_moe
+        description: >
+          90 percent margin of error for population_under_18. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable. Combined by plain root sum of squares, which overstates for
+          combinations of many or rare cells.
+      - name: population_65_plus
+        description: >
+          ACS source cell(s): B01001 E020-E025 + E044-E049 (65 years and over). Universe: Total
+          population. Combined from the component brackets; null if any component is suppressed.
+          Null when the Census suppressed or could not compute the value (jam codes).
+      - name: population_65_plus_moe
+        description: >
+          90 percent margin of error for population_65_plus. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable. Combined by plain root sum of squares, which overstates for
+          combinations of many or rare cells.
+      - name: population_race_universe
+        description: >
+          ACS source cell(s): B03002_E001. Universe: Total population. Denominator for the race
+          and ethnicity columns; equals total population by construction. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_race_universe_moe
+        description: >
+          90 percent margin of error for population_race_universe. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: population_white_nh
+        description: >
+          ACS source cell(s): B03002_E003 (not Hispanic or Latino, white alone). Universe: Total
+          population. Null when the Census suppressed or could not compute the value (jam
+          codes).
+      - name: population_white_nh_moe
+        description: >
+          90 percent margin of error for population_white_nh. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: population_black_nh
+        description: >
+          ACS source cell(s): B03002_E004 (not Hispanic or Latino, Black or African American
+          alone). Universe: Total population. Null when the Census suppressed or could not
+          compute the value (jam codes).
+      - name: population_black_nh_moe
+        description: >
+          90 percent margin of error for population_black_nh. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: population_native_american_nh
+        description: >
+          ACS source cell(s): B03002_E005 (not Hispanic or Latino, American Indian and Alaska
+          Native alone). Universe: Total population. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: population_native_american_nh_moe
+        description: >
+          90 percent margin of error for population_native_american_nh. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: population_asian_nh
+        description: >
+          ACS source cell(s): B03002_E006 (not Hispanic or Latino, Asian alone). Universe: Total
+          population. Null when the Census suppressed or could not compute the value (jam
+          codes).
+      - name: population_asian_nh_moe
+        description: >
+          90 percent margin of error for population_asian_nh. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: population_other_nh
+        description: >
+          ACS source cell(s): B03002 E007+E008+E009 (not Hispanic or Latino: Native Hawaiian and
+          Other Pacific Islander alone, some other race alone, and two or more races). Universe:
+          Total population. Combined from the component brackets; null if any component is
+          suppressed. Null when the Census suppressed or could not compute the value (jam
+          codes).
+      - name: population_other_nh_moe
+        description: >
+          90 percent margin of error for population_other_nh. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable. Combined by plain root sum of squares, which overstates for
+          combinations of many or rare cells.
+      - name: population_hispanic
+        description: >
+          ACS source cell(s): B03002_E012 (Hispanic or Latino, any race). Universe: Total
+          population. Null when the Census suppressed or could not compute the value (jam
+          codes).
+      - name: population_hispanic_moe
+        description: >
+          90 percent margin of error for population_hispanic. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: population_25_plus
+        description: >
+          ACS source cell(s): B15002_E001. Universe: Population 25 years and over. Null when the
+          Census suppressed or could not compute the value (jam codes).
+      - name: population_25_plus_moe
+        description: >
+          90 percent margin of error for population_25_plus. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: population_hs_or_higher
+        description: >
+          ACS source cell(s): B15002 male E011-E018 + female E028-E035 (high school graduate,
+          including equivalency, or higher). Universe: Population 25 years and over. Combined
+          from the component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_hs_or_higher_moe
+        description: >
+          90 percent margin of error for population_hs_or_higher. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which overstates
+          for combinations of many or rare cells.
+      - name: population_bachelors_or_higher
+        description: >
+          ACS source cell(s): B15002 male E015-E018 + female E032-E035 (bachelor's degree or
+          higher). Universe: Population 25 years and over. Combined from the component brackets;
+          null if any component is suppressed. Null when the Census suppressed or could not
+          compute the value (jam codes).
+      - name: population_bachelors_or_higher_moe
+        description: >
+          90 percent margin of error for population_bachelors_or_higher. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which overstates
+          for combinations of many or rare cells.
+      - name: aggregate_household_income
+        description: >
+          ACS source cell(s): B19025_E001. Universe: Households. Aggregate (summed) household
+          income: an additive dollar total, the safe allocation primitive behind mean income.
+          2024 inflation-adjusted dollars. Null when the Census suppressed or could not compute
+          the value (jam codes), and also null where the source publishes no aggregate-income
+          row at all for a small geography (row omission rather than a jam code; the Census API
+          returns null for the same places). Same suppression semantics either way: a
+          mean-income consumer must sum this column and its households denominator over the same
+          rows (pairwise-complete), never mix bases.
+      - name: aggregate_household_income_moe
+        description: >
+          90 percent margin of error for aggregate_household_income. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: civilian_labor_force
+        description: >
+          ACS source cell(s): B23025_E003. Universe: Population 16 years and over. Null when the
+          Census suppressed or could not compute the value (jam codes).
+      - name: civilian_labor_force_moe
+        description: >
+          90 percent margin of error for civilian_labor_force. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: unemployed_population
+        description: >
+          ACS source cell(s): B23025_E005. Universe: Population 16 years and over. Null when the
+          Census suppressed or could not compute the value (jam codes).
+      - name: unemployed_population_moe
+        description: >
+          90 percent margin of error for unemployed_population. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households
+        description: >
+          ACS source cell(s): B25003_E001. Universe: Occupied housing units. Occupied housing
+          units, the household count and the denominator for tenure, mean income, and household
+          size. Null when the Census suppressed or could not compute the value (jam codes).
+      - name: households_moe
+        description: >
+          90 percent margin of error for households. 0 means the estimate is controlled to an
+          official total (no sampling error); null means the margin was not published or not
+          computable.
+      - name: owner_occupied_households
+        description: >
+          ACS source cell(s): B25003_E002. Universe: Occupied housing units. Null when the
+          Census suppressed or could not compute the value (jam codes).
+      - name: owner_occupied_households_moe
+        description: >
+          90 percent margin of error for owner_occupied_households. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: population_in_households
+        description: >
+          ACS source cell(s): B25008_E001. Universe: Total population in occupied housing units.
+          Null when the Census suppressed or could not compute the value (jam codes).
+      - name: population_in_households_moe
+        description: >
+          90 percent margin of error for population_in_households. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_broadband_universe
+        description: >
+          ACS source cell(s): B28002_E001. Universe: Households. Denominator for the
+          broadband-subscription share; equals households by construction. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: households_broadband_universe_moe
+        description: >
+          90 percent margin of error for households_broadband_universe. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_with_broadband
+        description: >
+          ACS source cell(s): B28002_E004 (broadband of any type; a subscription measure, not
+          availability). Universe: Households. Null when the Census suppressed or could not
+          compute the value (jam codes).
+      - name: households_with_broadband_moe
+        description: >
+          90 percent margin of error for households_with_broadband. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: population_poverty_universe
+        description: >
+          ACS source cell(s): C17002_E001. Universe: Population for whom poverty status is
+          determined (excludes institutionalized group quarters, military quarters, and college
+          dormitories). Null when the Census suppressed or could not compute the value (jam
+          codes).
+      - name: population_poverty_universe_moe
+        description: >
+          90 percent margin of error for population_poverty_universe. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: population_below_poverty
+        description: >
+          ACS source cell(s): C17002 E002+E003 (income-to-poverty ratio below 1.00). Universe:
+          Population for whom poverty status is determined (excludes institutionalized group
+          quarters, military quarters, and college dormitories). Combined from the component
+          brackets; null if any component is suppressed. Null when the Census suppressed or
+          could not compute the value (jam codes).
+      - name: population_below_poverty_moe
+        description: >
+          90 percent margin of error for population_below_poverty. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which overstates
+          for combinations of many or rare cells.
+      - name: median_household_income
+        description: >
+          ACS source cell(s): B19013_E001. Universe: Households. Published medians are staged
+          for published-geography rows only and are never allocated or aggregated; they are not
+          additive. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: median_household_income_moe
+        description: >
+          90 percent margin of error for median_household_income. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: median_home_value
+        description: >
+          ACS source cell(s): B25077_E001. Universe: Owner-occupied housing units. Published
+          medians are staged for published-geography rows only and are never allocated or
+          aggregated; they are not additive. 2024 inflation-adjusted dollars. Null when the
+          Census suppressed or could not compute the value (jam codes).
+      - name: median_home_value_moe
+        description: >
+          90 percent margin of error for median_home_value. 0 means the estimate is controlled
+          to an official total (no sampling error); null means the margin was not published or
+          not computable.
+      - name: households_income_universe
+        description: >
+          ACS source cell(s): B19001_E001. Universe: Households. Denominator for the income
+          brackets; equals households by construction. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_universe_moe
+        description: >
+          90 percent margin of error for households_income_universe. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_under_10k
+        description: >
+          ACS source cell(s): B19001_E002 (household income less than $10,000). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_under_10k_moe
+        description: >
+          90 percent margin of error for households_income_under_10k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_10k_to_15k
+        description: >
+          ACS source cell(s): B19001_E003 (household income $10,000 to $14,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_10k_to_15k_moe
+        description: >
+          90 percent margin of error for households_income_10k_to_15k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_15k_to_20k
+        description: >
+          ACS source cell(s): B19001_E004 (household income $15,000 to $19,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_15k_to_20k_moe
+        description: >
+          90 percent margin of error for households_income_15k_to_20k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_20k_to_25k
+        description: >
+          ACS source cell(s): B19001_E005 (household income $20,000 to $24,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_20k_to_25k_moe
+        description: >
+          90 percent margin of error for households_income_20k_to_25k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_25k_to_30k
+        description: >
+          ACS source cell(s): B19001_E006 (household income $25,000 to $29,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_25k_to_30k_moe
+        description: >
+          90 percent margin of error for households_income_25k_to_30k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_30k_to_35k
+        description: >
+          ACS source cell(s): B19001_E007 (household income $30,000 to $34,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_30k_to_35k_moe
+        description: >
+          90 percent margin of error for households_income_30k_to_35k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_35k_to_40k
+        description: >
+          ACS source cell(s): B19001_E008 (household income $35,000 to $39,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_35k_to_40k_moe
+        description: >
+          90 percent margin of error for households_income_35k_to_40k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_40k_to_45k
+        description: >
+          ACS source cell(s): B19001_E009 (household income $40,000 to $44,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_40k_to_45k_moe
+        description: >
+          90 percent margin of error for households_income_40k_to_45k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_45k_to_50k
+        description: >
+          ACS source cell(s): B19001_E010 (household income $45,000 to $49,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_45k_to_50k_moe
+        description: >
+          90 percent margin of error for households_income_45k_to_50k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_50k_to_60k
+        description: >
+          ACS source cell(s): B19001_E011 (household income $50,000 to $59,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_50k_to_60k_moe
+        description: >
+          90 percent margin of error for households_income_50k_to_60k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_60k_to_75k
+        description: >
+          ACS source cell(s): B19001_E012 (household income $60,000 to $74,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_60k_to_75k_moe
+        description: >
+          90 percent margin of error for households_income_60k_to_75k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_75k_to_100k
+        description: >
+          ACS source cell(s): B19001_E013 (household income $75,000 to $99,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_75k_to_100k_moe
+        description: >
+          90 percent margin of error for households_income_75k_to_100k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_100k_to_125k
+        description: >
+          ACS source cell(s): B19001_E014 (household income $100,000 to $124,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_100k_to_125k_moe
+        description: >
+          90 percent margin of error for households_income_100k_to_125k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_125k_to_150k
+        description: >
+          ACS source cell(s): B19001_E015 (household income $125,000 to $149,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_125k_to_150k_moe
+        description: >
+          90 percent margin of error for households_income_125k_to_150k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_150k_to_200k
+        description: >
+          ACS source cell(s): B19001_E016 (household income $150,000 to $199,999). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_150k_to_200k_moe
+        description: >
+          90 percent margin of error for households_income_150k_to_200k. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+      - name: households_income_200k_plus
+        description: >
+          ACS source cell(s): B19001_E017 (household income $200,000 or more). Universe:
+          Households. 2024 inflation-adjusted dollars. Null when the Census suppressed or could
+          not compute the value (jam codes).
+      - name: households_income_200k_plus_moe
+        description: >
+          90 percent margin of error for households_income_200k_plus. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - summary_level
+              - geoid
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              length(geoid) = case summary_level when '150' then 12 when '040' then 2 when '050'
+              then 5 when '160' then 7 when '010' then 0 else 7 end
+      # Any unmapped jam sentinel would surface as a large negative value: these
+      # two range walls make that impossible to miss. Aggregate household income
+      # is excluded from the estimate wall because an additive dollar aggregate
+      # can be legitimately negative in rare small geographies.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              total_population_moe >= 0 and population_under_18_moe >= 0 and
+              population_65_plus_moe >= 0 and population_race_universe_moe >= 0 and
+              population_white_nh_moe >= 0 and population_black_nh_moe >= 0 and
+              population_native_american_nh_moe >= 0 and population_asian_nh_moe >= 0 and
+              population_other_nh_moe >= 0 and population_hispanic_moe >= 0 and
+              population_25_plus_moe >= 0 and population_hs_or_higher_moe >= 0 and
+              population_bachelors_or_higher_moe >= 0 and aggregate_household_income_moe >= 0
+              and civilian_labor_force_moe >= 0 and unemployed_population_moe >= 0 and
+              households_moe >= 0 and owner_occupied_households_moe >= 0 and
+              population_in_households_moe >= 0 and households_broadband_universe_moe >= 0 and
+              households_with_broadband_moe >= 0 and population_poverty_universe_moe >= 0 and
+              population_below_poverty_moe >= 0 and median_household_income_moe >= 0 and
+              median_home_value_moe >= 0 and households_income_universe_moe >= 0 and
+              households_income_under_10k_moe >= 0 and households_income_10k_to_15k_moe >= 0 and
+              households_income_15k_to_20k_moe >= 0 and households_income_20k_to_25k_moe >= 0
+              and households_income_25k_to_30k_moe >= 0 and households_income_30k_to_35k_moe >=
+              0 and households_income_35k_to_40k_moe >= 0 and households_income_40k_to_45k_moe
+              >= 0 and households_income_45k_to_50k_moe >= 0 and
+              households_income_50k_to_60k_moe >= 0 and households_income_60k_to_75k_moe >= 0
+              and households_income_75k_to_100k_moe >= 0 and households_income_100k_to_125k_moe
+              >= 0 and households_income_125k_to_150k_moe >= 0 and
+              households_income_150k_to_200k_moe >= 0 and households_income_200k_plus_moe >= 0
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              total_population >= 0 and population_under_18 >= 0 and population_65_plus >= 0 and
+              population_race_universe >= 0 and population_white_nh >= 0 and population_black_nh
+              >= 0 and population_native_american_nh >= 0 and population_asian_nh >= 0 and
+              population_other_nh >= 0 and population_hispanic >= 0 and population_25_plus >= 0
+              and population_hs_or_higher >= 0 and population_bachelors_or_higher >= 0 and
+              civilian_labor_force >= 0 and unemployed_population >= 0 and households >= 0 and
+              owner_occupied_households >= 0 and population_in_households >= 0 and
+              households_broadband_universe >= 0 and households_with_broadband >= 0 and
+              population_poverty_universe >= 0 and population_below_poverty >= 0 and
+              median_household_income >= 0 and median_home_value >= 0 and
+              households_income_universe >= 0 and households_income_under_10k >= 0 and
+              households_income_10k_to_15k >= 0 and households_income_15k_to_20k >= 0 and
+              households_income_20k_to_25k >= 0 and households_income_25k_to_30k >= 0 and
+              households_income_30k_to_35k >= 0 and households_income_35k_to_40k >= 0 and
+              households_income_40k_to_45k >= 0 and households_income_45k_to_50k >= 0 and
+              households_income_50k_to_60k >= 0 and households_income_60k_to_75k >= 0 and
+              households_income_75k_to_100k >= 0 and households_income_100k_to_125k >= 0 and
+              households_income_125k_to_150k >= 0 and households_income_150k_to_200k >= 0 and
+              households_income_200k_plus >= 0

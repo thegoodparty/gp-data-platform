@@ -43,7 +43,7 @@ Use `users_win_candidacy` if you only need outcomes + segmentation that's alread
 **Win user → engagement (Amplitude weekly):**
 ```
 users_win_candidacy.user_id = int__amplitude_win_activity.user_id  (both BIGINT)
--- A weekly variant (int__amplitude_win_activity_weekly) now exists in prod `dbt` (as of 2026-06-01; coverage week_start_date 2025-06-23+). Same 2 recurrent events as the monthly model (dashboard_views, campaigns_sent). Still verify the live catalog before relying on it.
+-- Weekly variant: int__amplitude_win_activity_weekly (same join key). Coverage and caveats owned by engagement.md (modeling layers).
 ```
 
 **Win user → lifecycle milestones:**
