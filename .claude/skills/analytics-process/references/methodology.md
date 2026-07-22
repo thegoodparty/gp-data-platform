@@ -3,7 +3,7 @@
 Part of the **analytics-process** skill. Scoping + verifying an analysis. This doc owns
 the product-agnostic discipline; the *product's* defaults — resolved scoping decisions,
 default cohorts, and the working-set builder — live in the product knowledge skill's
-`methodology_defaults.md` (Win: [methodology_defaults.md](../../win-analytics-knowledge/references/methodology_defaults.md)).
+`methodology_defaults.md` (Win: [methodology_defaults.md](../../win-analytics-knowledge/references/methodology_defaults.md); Serve: [methodology_defaults.md](../../serve-analytics-knowledge/references/methodology_defaults.md)).
 Load both: the checklist below tells you *what to settle*; the defaults doc tells you the
 product's settled answers.
 
@@ -132,4 +132,4 @@ Product-specific source pointers (contributing project scouts, authoritative dbt
 - [pipeline.md](pipeline.md) — the pipeline topology and stage handoffs.
 - [brief-schema.md](brief-schema.md) — the framing→execution brief contract.
 - [calibration.md](calibration.md) — the closing calibration step.
-- Knowledge skill (`.claude/skills/win-analytics-knowledge/references/`) — the data facts these methods operate on.
+- Product knowledge skills (`win-analytics-knowledge`, `serve-analytics-knowledge`) — the data facts these methods operate on.

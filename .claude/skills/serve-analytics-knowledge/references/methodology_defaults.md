@@ -26,9 +26,9 @@ An event counts as broad Serve engagement when **all** of these hold:
 
 1. The user is in the canonical population (`is_serve_user`).
 2. `event_time >= eo_activated_at` (time-scope; see above).
-3. The event is **in-session** (`session_id != -1`). Server-emitted dispatches
-   (`Agenda Created`, `Dispatch Skipped`, …) are 100% out-of-session and are the product
-   acting, not the user — see [gotchas.md](gotchas.md).
+3. The event is **in-session** (`session_id != -1`) — server-emitted dispatches are the
+   product acting, not the user; the event list lives in [sources.md](sources.md) § The
+   Serve event landscape.
 4. The event is on a Serve surface, meaning any of:
    - taxonomy `family = 'serve'` — covers both the 2025 generation (Serve Onboarding,
      Polls, Payment) and the 2026 generation (Briefing Assistant, Org Switcher, Community
@@ -39,7 +39,8 @@ An event counts as broad Serve engagement when **all** of these hold:
      `/dashboard/community%`, `/serve%`, `/polls%`.
 5. Standard hygiene: event-level email not `@goodparty.org`, and the event's
    `(user_id, session_id)` is not impersonation-tainted (the session contains **any event**
-   carrying path `/impersonate` or `/admin%` — not just a `Viewed`; see
+   carrying path `/impersonate` or `/admin%` — not just a `Viewed`, since clicks and
+   autotrack events carry the path property too; symptom and detection history in
    [gotchas.md](gotchas.md)).
 
 The committed predicate is `serve_engagement_predicate()` /

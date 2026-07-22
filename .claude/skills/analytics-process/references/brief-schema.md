@@ -128,7 +128,7 @@ execution_notes:
 
 When the owner wants to modify the question after a brief exists, decide which path applies:
 
-- **Amend (no new framer round).** The change is an additional stratification or slice on the *same* population, metric, and comparison — e.g. "also cut by ICP vs not." Append the new dimension to the brief's `cohorts` section and re-slice. If the working set was built via `analytics/lib` carrying the standard dimensions from the **win-analytics-knowledge** skill's [segmentation.md](../../win-analytics-knowledge/references/segmentation.md), this is a zero-query pandas `groupby` (see [methodology.md](methodology.md)). Note the amendment in the brief so it stays the source of truth.
+- **Amend (no new framer round).** The change is an additional stratification or slice on the *same* population, metric, and comparison — e.g. "also cut by ICP vs not." Append the new dimension to the brief's `cohorts` section and re-slice. If the working set was built via `analytics/lib` carrying the standard dimensions from the product knowledge skill's `segmentation.md`, this is a zero-query pandas `groupby` (see [methodology.md](methodology.md)). Note the amendment in the brief so it stays the source of truth.
 - **Re-frame (new framing round + brief revision).** The change touches **population, eligibility, target metric, or comparison** — e.g. "filter to ICP only" (not slice), switch the outcome variable, or change the cohort window. These are exactly what framing owns, so re-run [framing.md](framing.md) for a revised brief.
 
 Decision rule: if population/eligibility/target/comparison are unchanged and you're only adding a breakdown, it's an amend. Otherwise re-frame. (Example: ICP vs not = amend; ICP-only = re-frame.)
