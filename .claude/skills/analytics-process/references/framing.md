@@ -52,8 +52,8 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 
 **Feasibility:**
 - Does the data actually exist at the grain needed? **Verify by query, not by reading the runbook.** See "Pre-brief verification checklist" below.
-- Does the modeled metric measure what the decision needs, or does it measure something narrower (e.g., the Win activity intermediates aggregate only a handful of event types)? Check the source SQL's `WHERE event_type IN (...)`; the universe-vs-modeled breakdown is in the win-analytics-knowledge skill's `engagement.md`.
-- Are there team-canonical metrics for this concept already defined? If so, default to them rather than inventing a new one. Resolve the concept through the win-analytics-knowledge skill, whose `canonical_metrics.md` is the governed registry.
+- Does the modeled metric measure what the decision needs, or does it measure something narrower (e.g., the Win activity intermediates aggregate only a handful of event types)? Check the source SQL's `WHERE event_type IN (...)`; the product knowledge skill documents the universe-vs-modeled landscape (Win: `engagement.md`; Serve: `sources.md`).
+- Are there team-canonical metrics for this concept already defined? If so, default to them rather than inventing a new one. Resolve the concept through the product's knowledge skill, whose `canonical_metrics.md` is the governed registry.
 - Is the sample size plausibly large enough at the *intended cohort filter* (not at the registered-user grain)?
 - Are the cohort cuts populated enough to be informative?
 
@@ -68,12 +68,12 @@ Before producing the final brief, verify the following against the actual codeba
 **Metric semantics.** Before locking in any engagement or activity metric:
 1. List the *exact event types* the source aggregates (read the model SQL — `WHERE event_type IN (...)`).
 2. State them in plain language in the brief's `source_model` field.
-3. Cross-check against the cohort's event-family distribution from `stg_airbyte_source__amplitude_api_events`. The event taxonomy lives in the win-analytics-knowledge skill's `engagement.md`.
+3. Cross-check against the cohort's event-family distribution from `stg_airbyte_source__amplitude_api_events`. The event taxonomy lives in the product knowledge skill (Win: `engagement.md`; Serve: `sources.md`).
 4. If the modeled aggregation covers a narrow slice of the event universe and the decision needs broader engagement, name the gap and either pick a broader metric or document the narrowness in `known_concerns`.
 
 **Version continuity across product changes.** If the analysis window spans a known product/flow change (e.g. the onboarding-flow rebuild), don't assume funnel events are stable. Check the **first-seen/last-seen** dates of the entry and terminal events across the change, not just existence — events get renamed or retired. The tools for this check are the **omni event-lifecycle assets** (code-truth instrumented/retired dates, current lifecycle status, supersession lineage) — see [event-lifecycle-assets.md](event-lifecycle-assets.md); data-observed first-seen dates conflate non-existence with low volume. Pick a *version-agnostic* event for any cross-era metric, anchor top-of-funnel on a product-DB fact (account creation) when entry events change, and flag milestone flags that may be blind to the new version. The specific cutover dates, retired events, and new-flow-blind flags are in the win-analytics-knowledge skill's `engagement.md` ("Onboarding flow versions"), with the worked example.
 
-**Canonical metric enumeration.** Before defining a *new* engagement metric, list the team's existing canonical metrics from the win-analytics-knowledge skill's `canonical_metrics.md`. Explain why a new one is needed instead of using or extending these.
+**Canonical metric enumeration.** Before defining a *new* engagement metric, list the team's existing canonical metrics from the product knowledge skill's `canonical_metrics.md`. Explain why a new one is needed instead of using or extending these.
 
 **Concerns with executable tests.** For each item you place in `known_concerns`, ask: is there a 1-query sanity check that would test this? If yes, translate it into a numbered `execution_notes` step — the executor reads `execution_notes` as mandatory and `known_concerns` as informational, so actionable checks belong in the former.
 
