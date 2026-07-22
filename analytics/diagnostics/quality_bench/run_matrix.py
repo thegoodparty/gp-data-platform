@@ -38,13 +38,15 @@ def save_state(state_file: Path, state: dict) -> None:
     tmp.replace(state_file)
 
 
-def bench_fingerprint(here: Path, model: str) -> dict:
-    """Hash the inputs that shape run answers: question prompts, the floor, and
-    the model. Keys are deliberately exempt (grader-side, applied uniformly at
-    grade time, so a key edit cannot mix run provenance); binding arm content
-    and prep config is the fuller BatchConfig follow-up. The harness git sha is
-    recorded for provenance but not gated, so an unrelated commit does not force
-    a full re-run."""
+def bench_fingerprint(here: Path, model: str, arm_dirs: dict[str, Path] | None = None) -> dict:
+    """Hash the inputs that shape run answers: question prompts, the floor, the
+    model, and each arm's manifest. Keys are deliberately exempt (grader-side,
+    applied uniformly at grade time, so a key edit cannot mix run provenance).
+    Arm content is now part of run provenance via the per-arm manifest.json
+    (file hashes + layer attribution, DATA-2164): changed arm content blocks
+    resume same as changed questions or model. The harness git sha is recorded
+    for provenance but not gated, so an unrelated commit does not force a full
+    re-run."""
     h = hashlib.sha256()
     for p in [*sorted((here / "questions").glob("*")), here / "floor.md"]:
         if p.is_file():
@@ -53,9 +55,14 @@ def bench_fingerprint(here: Path, model: str) -> dict:
     git = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"], cwd=here, capture_output=True, text=True, check=False
     )
+    arms = {}
+    for arm, d in sorted((arm_dirs or {}).items()):
+        m = d / "manifest.json"
+        arms[arm] = hashlib.sha256(m.read_bytes()).hexdigest() if m.exists() else "missing"
     return {
         "inputs_sha256": h.hexdigest(),
         "model": model,
+        "arms_sha256": json.dumps(arms, sort_keys=True),
         "harness_git_sha": git.stdout.strip() if git.returncode == 0 else "unknown",
     }
 
@@ -68,7 +75,7 @@ def resume_guard(state: dict, fingerprint: dict) -> None:
     if old is None:
         state["fingerprint"] = fingerprint
         return
-    changed = [k for k in ("inputs_sha256", "model") if old.get(k) != fingerprint[k]]
+    changed = [k for k in ("inputs_sha256", "model", "arms_sha256") if old.get(k) != fingerprint.get(k)]
     if changed:
         raise SystemExit(
             f"refusing to resume: {', '.join(changed)} changed since this batch was created; "
@@ -302,16 +309,18 @@ def main() -> None:
     batch_dir.mkdir(parents=True, exist_ok=True)
     state_file = batch_dir / "state.json"
     state = json.loads(state_file.read_text()) if state_file.exists() else {"runs": {}}
-    resume_guard(state, bench_fingerprint(here, args.model))
+
+    arm_dirs = {arm: args.arms_root / arm for arm in args.arms}
+    for d in arm_dirs.values():
+        if not d.exists():
+            raise SystemExit(f"arm dir missing: {d} — run prep_arms.py first")
+
+    resume_guard(state, bench_fingerprint(here, args.model, arm_dirs))
     save_state(state_file, state)
 
     questions = load_manifest(here / "questions" / "manifest.yaml")
     if args.questions:
         questions = [q for q in questions if q.id in set(args.questions)]
-    arm_dirs = {arm: args.arms_root / arm for arm in args.arms}
-    for d in arm_dirs.values():
-        if not d.exists():
-            raise SystemExit(f"arm dir missing: {d} — run prep_arms.py first")
 
     runs = build_runs(questions, arm_dirs, args.reps, here / "questions")
     todo = [r for r in runs if not state["runs"].get(r.run_id, {}).get("ok")]

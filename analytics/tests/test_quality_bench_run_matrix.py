@@ -293,3 +293,25 @@ def test_launch_run_success_no_transcript(tmp_path: Path):
     assert out["session_id"] == "sess1"
     assert (tmp_path / "batch" / "q01__bare__r1.answer.md").exists()
     assert out["transcript_file"] is None
+
+
+def test_bench_fingerprint_tracks_arm_manifests(tmp_path: Path):
+    (tmp_path / "questions").mkdir()
+    (tmp_path / "floor.md").write_text("floor")
+    arm = tmp_path / "arms" / "bare"
+    arm.mkdir(parents=True)
+    (arm / "manifest.json").write_text('{"files": {"a": 1}}')
+    a = run_matrix.bench_fingerprint(tmp_path, "m", {"bare": arm})
+    (arm / "manifest.json").write_text('{"files": {"a": 2}}')
+    b = run_matrix.bench_fingerprint(tmp_path, "m", {"bare": arm})
+    assert a["arms_sha256"] != b["arms_sha256"]
+    # no arm_dirs -> still produces the key (empty), keeping old call sites valid
+    assert "arms_sha256" in run_matrix.bench_fingerprint(tmp_path, "m")
+
+
+def test_resume_guard_blocks_changed_arms(tmp_path: Path):
+    fp = {"inputs_sha256": "aaa", "model": "m", "arms_sha256": "x", "harness_git_sha": "sha1"}
+    state: dict = {}
+    run_matrix.resume_guard(state, fp)
+    with pytest.raises(SystemExit):
+        run_matrix.resume_guard(state, {**fp, "arms_sha256": "y"})
