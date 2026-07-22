@@ -44,4 +44,6 @@ inner join
     on lower(a.state) = z.state
     and lower(a.l2_district_type) = z.district_type
     and lower(a.l2_district_name) = z.district_name
-where a.br_database_id not in (select br_database_id from covered)
+where
+    a.br_database_id
+    not in (select br_database_id from covered where br_database_id is not null)
