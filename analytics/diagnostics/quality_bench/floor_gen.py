@@ -1,8 +1,10 @@
 # analytics/diagnostics/quality_bench/floor_gen.py
-"""Assemble the common floor (design §6): static plumbing text + a mechanically
-generated table inventory. The inventory is deliberately mechanical (names +
-warehouse comments), never curated skill prose — the bare arm must know WHAT
-exists, not what anything means."""
+"""Assemble the common floor: static plumbing text + a mechanically generated
+table inventory. DATA-2164: the inventory carries identifiers and neutral
+type/size metadata ONLY (no warehouse comments — dbt model descriptions are
+curated prose, i.e. treatment content). The bare arm must know WHAT exists,
+never what anything means; column-level detail is available to every arm via
+live DESCRIBE / information_schema queries."""
 
 from __future__ import annotations
 
@@ -12,11 +14,17 @@ from pathlib import Path
 import pandas as pd
 
 INVENTORY_SQL = """
-select table_name, comment
-from goodparty_data_catalog.information_schema.tables
-where table_schema = 'dbt'
-  and not endswith(table_name, '__dbt_tmp')
-order by table_name
+select
+  t.table_name,
+  t.table_type,
+  count(c.column_name) as n_columns
+from goodparty_data_catalog.information_schema.tables t
+left join goodparty_data_catalog.information_schema.columns c
+  on c.table_schema = t.table_schema and c.table_name = t.table_name
+where t.table_schema = 'dbt'
+  and not endswith(t.table_name, '__dbt_tmp')
+group by t.table_name, t.table_type
+order by t.table_name
 """
 
 RunQuery = Callable[[str], pd.DataFrame]
@@ -24,23 +32,9 @@ RunQuery = Callable[[str], pd.DataFrame]
 
 def build_inventory_md(run_query: RunQuery) -> str:
     df = run_query(INVENTORY_SQL)
-    lines = ["| table | description |", "|---|---|"]
+    lines = ["| table | type | columns |", "|---|---|---|"]
     for _, row in df.iterrows():
-        if isinstance(row["comment"], str) and row["comment"]:
-            # Collapse whitespace runs (incl. newlines) to single spaces and escape pipes
-            comment = " ".join(str(row["comment"]).split()).replace("|", "\\|")
-            # Mechanical truncation: the floor states WHAT exists, not what it
-            # means — keep only the first sentence and cap length so richer
-            # curated prose (a treatment) never leaks in via a comment.
-            first_sentence = comment.split(". ")[0]
-            cut = first_sentence != comment
-            if len(first_sentence) > 150:
-                first_sentence = first_sentence[:150]
-                cut = True
-            comment = first_sentence + ("…" if cut else "")
-        else:
-            comment = "(no description)"
-        lines.append(f"| {row['table_name']} | {comment} |")
+        lines.append(f"| {row['table_name']} | {row['table_type']} | {int(row['n_columns'])} |")
     return "\n".join(lines)
 
 

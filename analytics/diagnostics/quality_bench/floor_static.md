@@ -18,9 +18,21 @@ Run Python via: `uv run --project {{UV_PROJECT}} python <script.py>`
 The warehouse catalog is `goodparty_data_catalog`; analytics marts live in the
 `dbt` schema (query as `goodparty_data_catalog.dbt.<table>`).
 
-## Table inventory (mechanically generated)
+## Table inventory (mechanically generated: names and neutral metadata only)
+
+Column names/types for any table: `DESCRIBE goodparty_data_catalog.dbt.<table>`
+or query `goodparty_data_catalog.information_schema.columns`.
 
 {{TABLE_INVENTORY}}
+
+## Shared operational facts
+
+Deliberately shared with every arm (plumbing, not analytical knowledge):
+
+- Analytics marts live in the `dbt` schema. The `dbt_staging` schema is
+  retired; staging models are `dbt.stg_*`.
+- Naming prefixes follow standard dbt convention: `stg_` staging, `int__`
+  intermediate; other tables are marts.
 
 ## Output contract (required)
 
