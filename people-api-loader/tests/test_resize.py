@@ -1,4 +1,4 @@
-"""resize: flip to serverless v2 + serve params + lock-down, write manifest."""
+"""resize: flip writer to the provisioned serving class + serve params + lock-down, write manifest."""
 
 from __future__ import annotations
 
@@ -12,11 +12,15 @@ from loader.core import aws
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import resize as step
 
+# Deliberately distinct from both DEFAULT_SERVE_INSTANCE_CLASS ("db.r6g.4xlarge") and the dev
+# override ("db.t4g.medium") so these tests catch resize reading a hardcoded default instead of
+# cfg.serve_instance_class.
+_TEST_SERVE_CLASS = "db.r6g.2xlarge"
+
 _CFG = cast(
     LoaderConfig,
     SimpleNamespace(
-        serve_min_acu=0.5,
-        serve_max_acu=128.0,
+        serve_instance_class=_TEST_SERVE_CLASS,
         new_cluster_id=lambda rd: f"gp-people-db-{rd}",
         new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-writer",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
@@ -29,8 +33,8 @@ class _FakeWaiter:
         return None
 
 
-_SETTLED_SERVERLESS = [
-    {"DBInstanceClass": "db.serverless", "DBInstanceStatus": "available", "PendingModifiedValues": {}}
+_SETTLED_PROVISIONED = [
+    {"DBInstanceClass": _TEST_SERVE_CLASS, "DBInstanceStatus": "available", "PendingModifiedValues": {}}
 ]
 
 
@@ -46,10 +50,11 @@ class FakeRds:
         self._raise_on = raise_on or {}  # op -> ClientError code to raise after recording
         self._persistent = persistent  # raise every time (bad state) vs once (in-progress)
         self._raised: set[str] = set()
-        # The serverless-flip wait (loader.core.aws.wait_instance_class_applied) polls
-        # describe_db_instances; defaults to already-settled db.serverless so it terminates on
-        # the first poll. Held on the last item once exhausted (mirrors a real poll settling).
-        self._describe_sequence = describe_sequence or _SETTLED_SERVERLESS
+        # The class-change wait (loader.core.aws.wait_instance_class_applied) polls
+        # describe_db_instances; defaults to already-settled at the target class so it
+        # terminates on the first poll. Held on the last item once exhausted (mirrors a real
+        # poll settling).
+        self._describe_sequence = describe_sequence or _SETTLED_PROVISIONED
         self._describe_calls = 0
 
     def _maybe_raise(self, op: str) -> None:
@@ -79,7 +84,7 @@ class FakeRds:
         return _FakeWaiter()
 
 
-def test_resize_applies_serverless_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resize_applies_provisioned_class_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
     rds_client = FakeRds()
     captured: dict = {}
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
@@ -89,21 +94,23 @@ def test_resize_applies_serverless_and_writes_manifest(monkeypatch: pytest.Monke
     manifest = step.run(_CFG, "20260616")
 
     assert manifest.status == "complete"
-    assert manifest.final_instance_class == "db.serverless"
-    assert (manifest.min_acu, manifest.max_acu) == (0.5, 128.0)
+    assert manifest.final_instance_class == _TEST_SERVE_CLASS
     assert manifest.backup_retention_days == 14 and manifest.deletion_protection is True
-    # Two modify_db_cluster calls: resize's own lockdown (param group/backup/deletion
-    # protection), and the shared flip_writer_to_serverless conversion (ServerlessV2Scaling).
+    assert not hasattr(manifest, "min_acu")
+    assert not hasattr(manifest, "max_acu")
+    # Exactly one modify_db_cluster call: resize's own lockdown (param group/backup/deletion
+    # protection). flip_writer_to_provisioned only touches the instance — no
+    # ServerlessV2ScalingConfiguration / cluster-level call for a provisioned class.
     cluster_calls = [kw for op, kw in rds_client.calls if op == "modify_cluster"]
-    assert len(cluster_calls) == 2
-    lockdown = next(c for c in cluster_calls if "DBClusterParameterGroupName" in c)
-    conversion = next(c for c in cluster_calls if "ServerlessV2ScalingConfiguration" in c)
+    assert len(cluster_calls) == 1
+    lockdown = cluster_calls[0]
     assert lockdown["DBClusterParameterGroupName"] == "gp-people-db-20260616-serve"
     assert lockdown["BackupRetentionPeriod"] == 14
     assert lockdown["DeletionProtection"] is True
-    assert conversion["ServerlessV2ScalingConfiguration"] == {"MinCapacity": 0.5, "MaxCapacity": 128.0}
+    assert all("ServerlessV2ScalingConfiguration" not in kw for _op, kw in rds_client.calls)
     by = dict(rds_client.calls)
-    assert by["modify_instance"]["DBInstanceClass"] == "db.serverless"
+    assert by["modify_instance"]["DBInstanceClass"] == _TEST_SERVE_CLASS
+    assert by["modify_instance"]["ApplyImmediately"] is True
 
 
 def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,11 +130,11 @@ def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert manifest.status == "complete"
     ops = [c[0] for c in rds_client.calls]
-    # the lockdown modify_cluster hit the fault once (raise + re-issue = 2 calls); the
-    # conversion's own modify_cluster (ServerlessV2Scaling) then succeeds straight away (the fake
-    # raises "modify_cluster" only once, regardless of call site) = 3 total. modify_instance
-    # (from the conversion) hit its own fault once (raise + re-issue = 2), then reboot.
-    assert ops.count("modify_cluster") == 3
+    # The lockdown modify_cluster hit the fault once (raise + re-issue = 2 calls); there is no
+    # separate conversion-level modify_cluster for a provisioned class (flip_writer_to_provisioned
+    # only touches the instance), so 2 total. modify_instance (the class-change conversion) hit
+    # its own fault once (raise + re-issue = 2), then reboot.
+    assert ops.count("modify_cluster") == 2
     assert ops.count("modify_instance") == 2
     assert "reboot" in ops
 
@@ -145,17 +152,17 @@ def test_resize_reboot_waits_for_class_applied_not_just_available(monkeypatch: p
             {
                 "DBInstanceClass": "db.r8g.16xlarge",
                 "DBInstanceStatus": "available",
-                "PendingModifiedValues": {"DBInstanceClass": "db.serverless"},
+                "PendingModifiedValues": {"DBInstanceClass": _TEST_SERVE_CLASS},
             },
             # now actually modifying
             {
                 "DBInstanceClass": "db.r8g.16xlarge",
                 "DBInstanceStatus": "modifying",
-                "PendingModifiedValues": {"DBInstanceClass": "db.serverless"},
+                "PendingModifiedValues": {"DBInstanceClass": _TEST_SERVE_CLASS},
             },
             # settled on the target class
             {
-                "DBInstanceClass": "db.serverless",
+                "DBInstanceClass": _TEST_SERVE_CLASS,
                 "DBInstanceStatus": "available",
                 "PendingModifiedValues": {},
             },
@@ -168,7 +175,7 @@ def test_resize_reboot_waits_for_class_applied_not_just_available(monkeypatch: p
     manifest = step.run(_CFG, "20260616")
 
     assert manifest.status == "complete"
-    assert manifest.final_instance_class == "db.serverless"
+    assert manifest.final_instance_class == _TEST_SERVE_CLASS
     ops = [c[0] for c in rds_client.calls]
     reboot_idx = ops.index("reboot")
     # at least 3 describes happened before reboot (rode through stale-available + modifying)
@@ -190,55 +197,27 @@ def test_resize_propagates_persistent_modify_fault(monkeypatch: pytest.MonkeyPat
     assert "m" not in wrote  # no complete manifest written
 
 
-class _ClusterSettleWaiter(_FakeWaiter):
-    """Cluster waiter stub that flips the fake cluster back to 'available' and records the wait,
-    so tests can assert *when* it happened relative to modify_db_cluster calls."""
+def test_resize_waits_for_cluster_settle_before_instance_class_modify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # resize's lockdown modify_db_cluster leaves the cluster 'modifying'. Assert resize's
+    # explicit cluster-settle wait happens strictly between that lockdown modify_db_cluster and
+    # the writer's class-change modify_db_instance — i.e. resize waits proactively before
+    # touching the instance, rather than relying on a fault-triggered retry.
+    class _ClusterSettleWaiter(_FakeWaiter):
+        def __init__(self, rds_client: FakeRds) -> None:
+            self._rds = rds_client
 
-    def __init__(self, rds_client: _StrictSettleFakeRds) -> None:
-        self._rds = rds_client
+        def wait(self, **kwargs: object) -> None:
+            self._rds.calls.append(("wait_cluster", dict(kwargs)))
 
-    def wait(self, **kwargs: object) -> None:
-        self._rds.calls.append(("wait_cluster", dict(kwargs)))
-        self._rds.cluster_modifying = False
+    class _WaitTrackingFakeRds(FakeRds):
+        def get_waiter(self, name: str) -> _FakeWaiter:
+            if name == "db_cluster_available":
+                return _ClusterSettleWaiter(self)
+            return _FakeWaiter()
 
-
-class _StrictSettleFakeRds(FakeRds):
-    """Models the real AWS behavior the sequencing bug depends on: a modify_db_cluster call that
-    lands while the cluster is still 'modifying' from a prior modify_db_cluster raises
-    InvalidDBClusterStateFault. Unlike the base FakeRds (which raises a fixed number of times
-    regardless of cluster state), this fake tracks actual cluster state, so it only faults if a
-    second modify_db_cluster is issued WITHOUT an intervening cluster-settle wait -- exactly the
-    gap this task fixes.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.cluster_modifying = False
-
-    def modify_db_cluster(self, **kw: Any) -> None:
-        self.calls.append(("modify_cluster", kw))
-        if self.cluster_modifying:
-            raise ClientError(
-                {"Error": {"Code": "InvalidDBClusterStateFault", "Message": "still modifying"}},
-                "ModifyDBCluster",
-            )
-        self.cluster_modifying = True
-
-    def get_waiter(self, name: str) -> _FakeWaiter:
-        if name == "db_cluster_available":
-            return _ClusterSettleWaiter(self)
-        return _FakeWaiter()
-
-
-def test_resize_waits_for_cluster_settle_before_conversion_modify(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Models the sequencing bug: resize's lockdown modify_db_cluster leaves the cluster
-    # 'modifying'; flip_writer_to_serverless's own modify_db_cluster (ServerlessV2Scaling) would
-    # fault with InvalidDBClusterStateFault if issued before the cluster settles back to
-    # 'available'. retry_after_settle inside the helper WOULD absorb that fault (wait + retry
-    # once), but that turns a rare diagnostic warning into routine per-run noise. Assert resize's
-    # explicit cluster-settle wait keeps the conversion's modify a single-shot call (no fault, no
-    # retry) on the normal run.
-    rds_client = _StrictSettleFakeRds()
+    rds_client = _WaitTrackingFakeRds()
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
@@ -247,15 +226,10 @@ def test_resize_waits_for_cluster_settle_before_conversion_modify(monkeypatch: p
 
     assert manifest.status == "complete"
     ops = [op for op, _ in rds_client.calls]
-    cluster_modify_idxs = [i for i, op in enumerate(ops) if op == "modify_cluster"]
-    # Exactly two modify_db_cluster calls total (lockdown + conversion): if the explicit wait
-    # were missing, the conversion's modify would fault and retry_after_settle would re-issue it,
-    # producing a THIRD modify_cluster call.
-    assert len(cluster_modify_idxs) == 2
-    # An explicit cluster-settle wait happened strictly between the lockdown modify and the
-    # conversion modify -- i.e. resize waited proactively, rather than relying on the helper's
-    # fault-triggered retry.
-    assert "wait_cluster" in ops[cluster_modify_idxs[0] + 1 : cluster_modify_idxs[1]]
+    modify_cluster_idx = ops.index("modify_cluster")
+    modify_instance_idx = ops.index("modify_instance")
+    assert modify_cluster_idx < modify_instance_idx
+    assert "wait_cluster" in ops[modify_cluster_idx + 1 : modify_instance_idx]
 
 
 def test_resize_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

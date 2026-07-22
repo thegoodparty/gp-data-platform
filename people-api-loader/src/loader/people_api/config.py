@@ -62,18 +62,26 @@ DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
-# Load-phase instance sizing. Prod serving is serverless; load uses provisioned (see the
-# loader DAG spec, airflow/astro/docs/people_api_loader.md). We use TWO classes:
-# provision/create_schema/copy run on the smaller `load_instance_class` (copy is I/O/WAL-bound,
-# not CPU-bound), and build_indexes scales the writer UP to `index_instance_class` (build_indexes
-# is cleanly CPU-bound and scales with vCPU — see steps/build_indexes.py). resize then flips
-# the writer to serverless. Override per-env with LOADER_LOAD_INSTANCE_CLASS /
-# LOADER_INDEX_INSTANCE_CLASS; keep _DEFAULT_BUILDERS in build_indexes.py in step with the
-# index box's vCPU.
+# Load-phase instance sizing. Prod serving is a provisioned instance (see the loader DAG
+# spec, airflow/astro/docs/people_api_loader.md). We use THREE classes: provision/
+# create_schema/copy run on the smaller `load_instance_class` (copy is I/O/WAL-bound, not
+# CPU-bound), build_indexes scales the writer UP to `index_instance_class` (build_indexes
+# is cleanly CPU-bound and scales with vCPU — see steps/build_indexes.py), and resize then
+# flips the writer DOWN to `serve_instance_class` — the class the API actually reads from
+# (prod default db.r6g.4xlarge). Override per-env with LOADER_LOAD_INSTANCE_CLASS /
+# LOADER_INDEX_INSTANCE_CLASS / LOADER_SERVE_INSTANCE_CLASS (e.g. dev sets
+# LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium); keep _DEFAULT_BUILDERS in build_indexes.py in
+# step with the index box's vCPU.
+#
+# scale_down's failure-cost guard is unrelated to serving: on a post-provision failure it
+# flips the writer to Serverless v2 (db.serverless) purely to stop the provisioned-instance
+# cost while keeping the cluster + loaded data around for resume/forensics — see
+# `scale_down_min_acu` / `scale_down_max_acu` below and steps/scale_down.py.
 DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.16xlarge"
 DEFAULT_INDEX_INSTANCE_CLASS = "db.r8g.48xlarge"
-DEFAULT_SERVE_MIN_ACU = 0.5
-DEFAULT_SERVE_MAX_ACU = 128.0
+DEFAULT_SERVE_INSTANCE_CLASS = "db.r6g.4xlarge"
+DEFAULT_SCALE_DOWN_MIN_ACU = 0.5
+DEFAULT_SCALE_DOWN_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
 
 # Env-var name reserved for the master password. MUST NEVER be set — included
@@ -138,8 +146,10 @@ class LoaderConfig(BaseLoaderConfig):
     engine_version: str
     load_instance_class: str
     index_instance_class: str
-    serve_min_acu: float
-    serve_max_acu: float
+    serve_instance_class: str
+    # Failure-cost guard only (steps/scale_down.py) — NOT the serving class, see comment above.
+    scale_down_min_acu: float
+    scale_down_max_acu: float
 
     # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
     mart_fqns: dict[str, str]
@@ -216,8 +226,9 @@ class LoaderConfig(BaseLoaderConfig):
             engine_version=_env("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=_env("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             index_instance_class=_env("LOADER_INDEX_INSTANCE_CLASS", DEFAULT_INDEX_INSTANCE_CLASS),
-            serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
-            serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
+            serve_instance_class=_env("LOADER_SERVE_INSTANCE_CLASS", DEFAULT_SERVE_INSTANCE_CLASS),
+            scale_down_min_acu=float(os.environ.get("LOADER_SCALE_DOWN_MIN_ACU", DEFAULT_SCALE_DOWN_MIN_ACU)),
+            scale_down_max_acu=float(os.environ.get("LOADER_SCALE_DOWN_MAX_ACU", DEFAULT_SCALE_DOWN_MAX_ACU)),
             mart_fqns=mart_fqns,
             _tags=tags,
         )
