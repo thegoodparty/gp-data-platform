@@ -1,0 +1,156 @@
+id: q04_win_denominator
+as_of: "2026-07-22"
+numbers:
+  # Tolerances (re-baseline convention): all milestone windows closed by
+  # 2026-06-14 and Amplitude staging is stable for closed periods, so observed
+  # drift is limited to late mart edits (user deletion, demo/latest-version
+  # reclassification) — historically <1% on closed months; 2% absorbs it while
+  # still failing every wrong-fork value (cumulative denominator is ~15-30x,
+  # stored-flag onboarding reads May at ~0, single-event dashboard reads May
+  # at 157 = -30%).
+  - name: total_users_2026_01
+    value: 1993
+    tolerance_pct: 2.0
+  - name: total_users_2026_02
+    value: 1018
+    tolerance_pct: 2.0
+  - name: total_users_2026_03
+    value: 584
+    tolerance_pct: 2.0
+  - name: total_users_2026_04
+    value: 229
+    tolerance_pct: 2.0
+  - name: total_users_2026_05
+    value: 280
+    tolerance_pct: 2.0
+  # Activated: ever as of the pinned 2026-07-22 pull (required resolution).
+  # The metric is monotonic if the pin is ignored — a later "as of my pull"
+  # run overshoots, and the gap grows with time. 5% absorbs residual mart
+  # drift at the pin while failing both the no-pin read (grows) and a
+  # 14d-window read (~59% of activators land later; Jan would read ~26 vs 64).
+  - name: activated_2026_01
+    value: 64
+    tolerance_pct: 5.0
+  - name: activated_2026_02
+    value: 72
+    tolerance_pct: 5.0
+  - name: activated_2026_03
+    value: 45
+    tolerance_pct: 5.0
+  - name: activated_2026_04
+    value: 23
+    tolerance_pct: 5.0
+  - name: activated_2026_05
+    value: 10
+    tolerance_pct: 5.0
+  # Viewed dashboard: union of 'Dashboard - Candidate Dashboard Viewed' and
+  # 'Dashboard - Campaign Plan Viewed' within 14d of signup. Jan-Apr are
+  # identical under union and legacy-event-only readings; May diverges
+  # (union 225 vs legacy-only 157) because the dashboard surface migrated at
+  # the 2026-05 era-2 rollout. 2% fails the 157 near-miss by a wide margin.
+  - name: viewed_dashboard_2026_01
+    value: 659
+    tolerance_pct: 2.0
+  - name: viewed_dashboard_2026_02
+    value: 489
+    tolerance_pct: 2.0
+  - name: viewed_dashboard_2026_03
+    value: 330
+    tolerance_pct: 2.0
+  - name: viewed_dashboard_2026_04
+    value: 153
+    tolerance_pct: 2.0
+  - name: viewed_dashboard_2026_05
+    value: 225
+    tolerance_pct: 2.0
+  # Onboarded: era-resolved 3-event pledge union within 14d of signup.
+  # May tolerance is deliberately tighter than drift comfort (1% = ±2 users):
+  # the dashboard-union value for May is 225, only +1.35% away, so a run that
+  # confuses "completed onboarding" with the canonical Onboarded (dashboard)
+  # cohort would pass at 2%. The known name collision is the fork this
+  # question exists to catch.
+  - name: onboarded_2026_01
+    value: 637
+    tolerance_pct: 2.0
+  - name: onboarded_2026_02
+    value: 457
+    tolerance_pct: 2.0
+  - name: onboarded_2026_03
+    value: 310
+    tolerance_pct: 2.0
+  - name: onboarded_2026_04
+    value: 138
+    tolerance_pct: 2.0
+  - name: onboarded_2026_05
+    value: 222
+    tolerance_pct: 1.0
+required_resolutions:
+  denominator: monthly_new_signup_cohort_latest_version_non_demo
+  internal_accounts: excluded_via_goodparty_org_email_proxy
+  activated: outreach_campaign_ever_as_of_2026_07_22
+  milestone_window: within_14d_of_account_creation_half_open
+  viewed_dashboard: union_candidate_dashboard_and_campaign_plan_viewed
+  completed_onboarding: era_resolved_pledge_union_not_canonical_onboarded_cohort
+  boundary_semantics: half_open_month_buckets_on_timestamp_created_at
+mandatory_sources:
+  - id: population_table
+    pattern: "users_win_candidacy"
+    description: Population + signup anchor must come from the candidacy mart
+      (latest-version, non-demo), not users_win_base registration or Amplitude
+      registration events.
+  - id: raw_event_stream
+    pattern: "stg_airbyte_source__amplitude_api_events"
+    description: Milestones must be recomputed from the raw stream — the
+      stored onboarding flags are new-flow-blind.
+  - id: activation_source
+    pattern: "is_activated|Voter Outreach - Campaign Completed"
+    description: Activation via the canonical flag or its underlying event
+      (verified equivalent as of 2026-07-22).
+  # LIMITATION (verified 2026-07-22): for this Jan-May window the era fork is
+  # numerically invisible — the era-1 event alone reproduces every month
+  # including May (222 = 222; zero in-window completions were V2-only, even
+  # though late-May 14d windows cross the 2026-06-08 V2 start). This check is
+  # therefore string-presence evidence that the run CONSULTED the era
+  # landscape, not proof it used the union, and a disclaimer mention passes
+  # it. Deliberately NO severity1 tripwire for that rationalization:
+  # "V2 contributes nothing in-window" is factually correct prose a good run
+  # may write (q02 precedent — tripwires firing on correct prose were
+  # dropped). The era fork is truly discriminated by q02 (June window,
+  # 96 vs 292); q04's discriminating traps are the denominator and the
+  # dashboard union, guarded by the numbers.
+  - id: era_resolved_pledge
+    pattern: "Onboarding V2 - Pledge Completed"
+    description: Evidence the run consulted the era-resolved pledge landscape
+      (consultation check only — see limitation comment above).
+  - id: dashboard_supersession
+    pattern: "Dashboard - Campaign Plan Viewed"
+    description: Evidence the run noticed the dashboard surface migration
+      (legacy event alone undercounts May by 30%).
+severity1_patterns:
+  # Stored-flag onboarding read: any 1-2 digit onboarded count for May
+  # (true value 222; stored flags read ~0, single era-1 event reads low).
+  - "onboarded_2026_05\\D{0,15}\\b\\d{1,2}\\b"
+  # The known single-event near-miss for May dashboard views, stated as the
+  # answer value.
+  - "viewed_dashboard_2026_05\\D{0,15}\\b157\\b"
+  # Reading the fake completion collapse as a real product finding.
+  - "(onboarding|completion)[^.]{0,80}(collaps|dropped to (near[- ])?zero)"
+required_assumptions:
+  - denominator
+  - internal_accounts
+  - activated
+  - milestone_window
+  - viewed_dashboard
+  - completed_onboarding
+intent_card: |
+  Purpose: tests denominator discipline (monthly signup cohort, not cumulative
+  base or actives) and version-safe milestone definitions across the 2026
+  onboarding rebuilds.
+  Audience: growth/product team monthly funnel read; numbers land in
+  leadership reporting, so hygiene (demo/internal/latest-version) is
+  non-negotiable.
+  Forks: total = that month's new signups, hygiened; activated = >=1 outreach
+  campaign ever as of 2026-07-22 (pinned); viewed dashboard =
+  candidate-dashboard OR campaign-plan view within 14d of signup (half-open);
+  completed onboarding = 3-event pledge union within 14d — NOT the canonical
+  "Onboarded" dashboard cohort, and never the stored flags.
