@@ -196,7 +196,7 @@ def test_one_factor_contrast_pinned_by_hashes(fake_repo, tmp_path):
         assert full_files[rel]["layer"] == "knowledge"
 
 
-def test_cli_help_works_under_bare_python():
+def test_cli_help_works_via_path_shim():
     analytics_root = Path(__file__).parent.parent
     proc = subprocess.run(
         [sys.executable, "diagnostics/quality_bench/prep_arms.py", "--help"],

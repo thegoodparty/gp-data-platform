@@ -19,6 +19,10 @@ import yaml
 
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
+# deps come from PyPI, not treatment layers; keep in step with
+# prep_arms.build_manifest's skip set
+SKIP_DIRS = {".venv", "__pycache__"}
+
 
 @dataclass(frozen=True)
 class Canary:
@@ -67,6 +71,8 @@ def check_links(arm_dir: Path) -> list[str]:
     failures = []
     arm_root = arm_dir.resolve()
     for md in sorted(arm_dir.rglob("*.md")):
+        if SKIP_DIRS & set(md.relative_to(arm_dir).parts):
+            continue
         for target in relative_md_targets(md.read_text(errors="ignore")):
             resolved = (md.parent / target).resolve()
             if not (resolved.is_file() and resolved.is_relative_to(arm_root)):
@@ -77,6 +83,8 @@ def check_links(arm_dir: Path) -> list[str]:
 def check_arm_leakage(arm_dir: Path, allowed_layers: set[str], canaries: list[Canary]) -> list[str]:
     failures = []
     for f in sorted(p for p in arm_dir.rglob("*") if p.is_file()):
+        if SKIP_DIRS & set(f.relative_to(arm_dir).parts):
+            continue
         hits = check_text_leakage(f.read_text(errors="ignore"), allowed_layers, canaries)
         failures.extend(f"{f.relative_to(arm_dir)}: {h}" for h in hits)
     return failures

@@ -103,3 +103,18 @@ def test_check_arm_leakage_scans_all_files(tmp_path):
     hits = integrity.check_arm_leakage(arm, set(), canaries)
     assert len(hits) == 1 and "notes.py" in hits[0]
     assert integrity.check_arm_leakage(arm, {"knowledge"}, canaries) == []
+
+
+def test_check_links_skips_venv(tmp_path):
+    arm = tmp_path / "arm"
+    (arm / ".venv" / "lib" / "pkg").mkdir(parents=True)
+    (arm / ".venv" / "lib" / "pkg" / "README.md").write_text("see [CHANGELOG](CHANGELOG.md)")
+    assert integrity.check_links(arm) == []
+
+
+def test_check_arm_leakage_skips_venv(tmp_path):
+    canaries = integrity.load_canaries(_write_canaries(tmp_path))
+    arm = tmp_path / "arm"
+    (arm / ".venv" / "pkg").mkdir(parents=True)
+    (arm / ".venv" / "pkg" / "notes.txt").write_text("the moon is made of governed cheese")
+    assert integrity.check_arm_leakage(arm, set(), canaries) == []

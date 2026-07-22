@@ -58,3 +58,5 @@ def test_real_floor_static_has_allowlist_section():
     text = (STATIC_DIR / "floor_static.md").read_text()
     assert "## Shared operational facts" in text
     assert "{{TABLE_INVENTORY}}" in text
+    assert "{{LIB_PATH}}" in text
+    assert "{{UV_PROJECT}}" in text
