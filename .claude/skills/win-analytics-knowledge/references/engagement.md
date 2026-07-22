@@ -13,7 +13,7 @@ stream they're computed from.
 ## Routing triggers
 
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
-- IF the analysis spans the **2026-05-07 onboarding cutover** → use version-agnostic anchors (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`.
+- IF the analysis spans the **2026-05-07 onboarding cutover or the 2026-06-08 Onboarding V2 rebuild** → resolve events per era (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`, and do NOT treat any single completion event as version-agnostic.
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
 - IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see [event-lifecycle-assets.md](../../analytics-process/references/event-lifecycle-assets.md) (process skill; cross-product). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
@@ -32,15 +32,15 @@ caveats and deprecations the one-line registry definitions don't carry.
 - **`has_completed_onboarding_flow`** (`onboarding_completed_at IS NOT NULL`, event `onboarding_complete`) and **`is_onboarded`** (US user, dashboard viewed within 14d of *Amplitude registration*) are both **⚠ NEW-FLOW-BLIND** across the 2026-05-07 cutover. Deprecated as cohort filters — use the canonical **Onboarded** metric instead.
 - **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses.
 - **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff (`first_campaign_sent_at <= election_date`, or `<= month-end`) for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). **Activation lands late:** ~59% of ever-activated users send their first campaign >14 days after signup (verified 2026-06-11, 705/1,201), so activation cannot share the 14-day-of-signup window used for the dashboard-view / pledge milestones — anchor it point-in-time to the period end instead. Do not conflate with the colloquial "activated."
-- **Onboarding completed (pledge)** is version-agnostic across both eras but first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
+- **Onboarding completed (pledge)** is an era-resolved union (see Onboarding flow versions) — no single pledge event spans all three eras. The union's oldest member is first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
 
 ### Terminology
 
 Two distinct onboarding concepts — keep them named separately so they stop drifting across analyses:
 - **"onboarding dashboard viewed"** (canonical **Onboarded**) = viewed the candidate dashboard within 14 days of account creation (the broad cohort filter).
-- **"onboarding completed (pledge)"** = fired `Onboarding - Candidate Pledge Completed` within 14 days (the strict funnel metric).
+- **"onboarding completed (pledge)"** = fired any era-resolved pledge-completion event (union: `Onboarding - Candidate Pledge Completed`, `Onboarding - Pledge Completed`, `Onboarding V2 - Pledge Completed`) within 14 days (the strict funnel metric).
 
-Both are recomputed from durable, version-agnostic events, not the stored `is_onboarded` / `has_completed_onboarding_flow` flags (new-flow-blind across the cutover; see Onboarding flow versions below).
+Both are recomputed from durable raw events (era-resolved where needed), not the stored `is_onboarded` / `has_completed_onboarding_flow` flags (new-flow-blind across the cutover; see Onboarding flow versions below).
 
 ### Point-in-time caveat for retrospective cohorts
 
@@ -88,17 +88,19 @@ Newer families:
 - `Dashboard - Campaign Plan Viewed` (since 2026-04-09)
 - `Briefings - *` (since 2026-04-10)
 
-### Onboarding flow versions (2026-05-07 cutover)
+### Onboarding flow versions (three eras: 2026-05-07 cutover, 2026-06-08 V2 rebuild)
 
-The Win onboarding flow was rebuilt in a clean same-night switch ~**2026-05-07 01:54 UTC** (no overlap / holdback observed in-data; DATA-1947). Event names changed across the cutover, so any onboarding analysis spanning it must use **version-agnostic** anchors:
+The Win onboarding flow was rebuilt **twice**: a clean same-night switch ~**2026-05-07 01:54 UTC** (no overlap / holdback observed in-data; DATA-1947), then the **Onboarding V2 rebuild** instrumented **2026-06-08** (era-2 call sites removed 2026-06-09, omni PRs #920/#1790; era-2 events last fired in-data 2026-06-10, so eras 2/3 overlap 06-08→06-10 — count distinct users across the union). No completion event spans all three eras; resolve per era via the omni event-lifecycle assets:
 
-| Role | Old flow (pre) | New flow (post) | Version-agnostic (both eras) |
+| Role | Era 1 (→2026-05-07) | Era 2 (2026-05-07→2026-06-10) | Era 3 (2026-06-08→) |
 |---|---|---|---|
-| Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` (post only) | **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed |
-| Completion / bottom | `onboarding_complete`, `Onboarding - Complete Step: Click Go to Dashboard` (died at cutover) | per-step `*Completed` events (pledge is the final step) | **`Onboarding - Candidate Pledge Completed`** (final step, both eras) |
-| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | No single version-agnostic event — use old-flow `Invalid Party` (pre-cutover) and new-flow `Onboarding - Party Selection Completed` (post-cutover) separately. `Onboarding - Candidate Affiliation Completed` has not been verified in-data (DATA-1947). |
+| Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` | `Onboarding V2 - Welcome Viewed`/`Completed` (per provenance; not re-verified in-data) |
+| Completion / bottom | **`Onboarding - Candidate Pledge Completed`** (since 2025-09); legacy `onboarding_complete` is a strict subset (retired 2026-05-05) | **`Onboarding - Candidate Pledge Completed`**, co-firing with era-2 alias `Onboarding - Pledge Completed` | **`Onboarding V2 - Pledge Completed`** |
+| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | `Onboarding V2 - Party Designation Completed`/`Blocked` (per provenance). `Onboarding - Candidate Affiliation Completed` has not been verified in-data (DATA-1947). |
 
-**`onboarding_complete` / `has_completed_onboarding_flow` / `is_onboarded` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-cutover user — so using them across the cutover fakes a completion collapse to zero. (`is_onboarded` is anchored on `Onboarding - Registration Completed`, which died ~2026-04-20, so it reads 0.0% for 2026-05/06 registrants vs ~54% recomputed; prod-flag fix ticketed.) Recompute via the canonical **Onboarded** metric (broad cohort) or **`Onboarding - Candidate Pledge Completed`** (strict completion) instead — see Canonical engagement metrics above. The party gate is *not* gate-equivalent across the cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
+Cross-era anchors: top-of-funnel = **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed at each rebuild; strict completion = the **3-event pledge union** in the completion row. Verified 2026-07-21 (q02 gold run): trusting `Onboarding - Candidate Pledge Completed` alone reads June-2026 14-day completions at 96 vs 292 true (−67%).
+
+**`onboarding_complete` / `has_completed_onboarding_flow` / `is_onboarded` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-2026-05-07 user — so using them across the cutover fakes a completion collapse to zero. (`is_onboarded` is anchored on `Onboarding - Registration Completed`, which died ~2026-04-20, so it reads 0.0% for 2026-05/06 registrants vs ~54% recomputed; prod-flag fix ticketed.) Recompute via the canonical **Onboarded** metric (broad cohort) or the era-resolved pledge union (strict completion) instead — see Canonical engagement metrics above. The party gate is *not* gate-equivalent across the 2026-05-07 cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
 
 ### Channel / UTM (acquisition source)
 
