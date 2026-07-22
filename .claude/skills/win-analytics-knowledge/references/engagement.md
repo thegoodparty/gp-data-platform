@@ -45,7 +45,7 @@ Both are recomputed from durable raw events (era-resolved where needed), not the
 
 ### Point-in-time caveat for retrospective cohorts
 
-`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today.)
+`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today. ⚠ Those 21% figures are **scoped-cohort rates** (activation among onboarded-type cohorts runs ~17-21%), not all-accounts rates, which run ~5% on election-date-bucketed populations (2026-07-22). Name the denominator when citing either, or the two reads look contradictory — this caused a reviewer blocker in the win_topline_reporting run.)
 
 ### "Any evidence" vs "engaged beyond account creation"
 
