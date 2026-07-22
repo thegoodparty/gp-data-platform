@@ -1,7 +1,7 @@
 CREATE TABLE public."Voter" (
     "id" UUID,
     "LALVOTERID" TEXT,
-    "State" TEXT,
+    "State" "USState",
     "AbsenteeTypes_Description" TEXT,
     "Active" TEXT,
     "Age" TEXT,
@@ -362,7 +362,7 @@ CREATE TABLE public."District" (
     "updated_at" TIMESTAMPTZ,
     "type" TEXT,
     "name" TEXT,
-    "state" TEXT
+    "state" "USState"
 );
 
 CREATE TABLE public."DistrictStats" (
@@ -376,7 +376,7 @@ CREATE TABLE public."DistrictStats" (
 CREATE TABLE public."DistrictVoter" (
     "voter_id" UUID,
     "district_id" UUID,
-    "State" TEXT,
+    "State" "USState",
     "created_at" TIMESTAMPTZ,
     "updated_at" TIMESTAMPTZ
 );

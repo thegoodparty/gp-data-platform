@@ -43,7 +43,7 @@ def test_render_districtvoter_projects_and_renames_to_serving_shape() -> None:
         'CREATE TABLE public."DistrictVoter" (\n'
         '    "voter_id" UUID NOT NULL,\n'
         '    "district_id" UUID NOT NULL,\n'
-        '    "State" TEXT NOT NULL,\n'
+        '    "State" "USState" NOT NULL,\n'
         '    "created_at" TIMESTAMPTZ NOT NULL,\n'
         '    "updated_at" TIMESTAMPTZ NOT NULL\n'
         ");"

@@ -60,6 +60,21 @@ def test_extract_column_types_from_generated_ddl() -> None:
     }
 
 
+def test_extract_column_types_captures_quoted_enum_type() -> None:
+    # State/state is typed against the public."USState" enum: a quoted type identifier. The
+    # unquoted-only pattern would silently drop this column (and thus its FORCE_NULL handling).
+    ddl = (
+        'CREATE TABLE public."Voter" (\n'
+        '    "id" UUID NOT NULL,\n'
+        '    "State" "USState",\n'
+        '    "LALVOTERID" TEXT\n'
+        ");"
+    )
+    types = extract_column_types(ddl)
+    assert types["State"] == '"USState"'
+    assert types == {"id": "UUID", "State": '"USState"', "LALVOTERID": "TEXT"}
+
+
 def test_extract_column_types_captures_lowercase_type() -> None:
     # A type_override can emit a lowercase PG type (DistrictStats' buckets -> jsonb). It must still
     # be captured; a uppercase-only pattern would silently drop it (and thus its FORCE_NULL handling).

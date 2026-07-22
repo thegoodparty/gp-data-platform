@@ -102,7 +102,7 @@ def test_districtvoter_spec() -> None:
         "voter_id": "UUID",
         "created_at": "TIMESTAMPTZ",
         "updated_at": "TIMESTAMPTZ",
-        "state": "TEXT",
+        "state": '"USState"',
     }
     # The other tables' marts already match serving -> no column map.
     assert ss.TABLE_SPECS["Voter"].mart_column_map == {}
