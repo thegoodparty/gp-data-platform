@@ -49,8 +49,21 @@ at **framing approval** (what was settled), the **results checkpoint** (the user
 **review** (how many reviewers, verdicts in one clause), and the **calibration close** (ledger
 read-back done, or nothing appended).
 
+**Banner placement.** Banners and receipts render reliably only when they lead a turn's
+*final* message — a banner buried between tool calls, or ahead of an in-turn question dialog,
+may never be seen by the user (observed 2026-07-21). Put the current banner at the head of the
+message that ends the turn.
+
 **Success test:** a first-time reader of the transcript alone can say which step each message
 belongs to and name the gates that cleared.
+
+## Optional brief-review pause (supervised runs)
+
+For supervised or gold-run sessions, write the brief to its file and end the turn for explicit
+approval of the brief itself before execution begins — a cheap second gate that gives the human
+a reviewable artifact rather than an inline YAML that scrolls past. Standard runs keep the
+single framing-approval gate; this pause is opt-in, requested by the human or triggered by a
+supervised-run context.
 
 ## Reviewer dispatch template
 
