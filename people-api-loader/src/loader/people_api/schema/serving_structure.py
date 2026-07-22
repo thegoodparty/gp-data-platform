@@ -79,7 +79,7 @@ def extract_indexes(cur: Any, tables: list[str]) -> list[IndexDef]:
         JOIN pg_class c ON c.oid = i.indexrelid
         JOIN pg_class t ON t.oid = i.indrelid
         JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE n.nspname = 'public' AND t.relname = ANY(%s) AND NOT i.indisprimary
+        WHERE n.nspname = current_schema() AND t.relname = ANY(%s) AND NOT i.indisprimary
         ORDER BY t.relname, c.relname
         """,
         (tables,),

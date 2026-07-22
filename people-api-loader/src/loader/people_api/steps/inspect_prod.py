@@ -44,7 +44,7 @@ _OPTIONAL_TABLES: tuple[str, ...] = ("DistrictVoter", "District", "DistrictStats
 def _has_column(cur: psycopg.Cursor, table: str, column: str) -> bool:
     cur.execute(
         "SELECT 1 FROM information_schema.columns "
-        "WHERE table_schema='public' AND table_name=%s AND column_name=%s",
+        "WHERE table_schema = current_schema() AND table_name=%s AND column_name=%s",
         (table, column),
     )
     return cur.fetchone() is not None
@@ -81,12 +81,12 @@ def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
         else None
     )
     if pcol is None or not _has_column(cur, table, pcol):
-        cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
+        cur.execute(f'SELECT count(*) FROM "{table}"')  # ty: ignore[no-matching-overload]
         return TableInspection(table=table, total_row_count=_scalar_int(cur))
 
     has_updated = _has_column(cur, table, "updated_at")
     cols = "count(*), max(updated_at)" if has_updated else "count(*)"
-    sql = f'SELECT "{pcol}", {cols} FROM public."{table}" GROUP BY "{pcol}"'
+    sql = f'SELECT "{pcol}", {cols} FROM "{table}" GROUP BY "{pcol}"'
     cur.execute(sql)  # ty: ignore[no-matching-overload]
 
     total = 0

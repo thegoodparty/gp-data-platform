@@ -140,3 +140,60 @@ def test_statement_timeout_skipped_when_zero(monkeypatch: pytest.MonkeyPatch) ->
     with db.connect_prod(cfg):
         pass
     assert conn.executed == []  # 0 disables the timeout (no SET issued)
+
+
+# --- _conninfo_from_ssm: translate a Prisma-style `?schema=` param to libpq `search_path` ---
+
+
+def test_conninfo_from_ssm_translates_schema_param_to_search_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        db,
+        "get_ssm_parameter",
+        lambda cfg, name, **k: "postgresql://u:p@host:5432/db?schema=green",
+    )
+    cfg = cast(LoaderConfig, SimpleNamespace())
+    conninfo = db._conninfo_from_ssm(cfg, "some-param")
+    parts = conninfo_to_dict(conninfo)
+    assert "schema" not in conninfo
+    assert parts["options"] == "-c search_path=green"
+    assert parts["host"] == "host"
+    assert parts["dbname"] == "db"
+    assert parts["keepalives"] == "1"  # keepalives still baked in
+
+
+def test_conninfo_from_ssm_passthrough_url_without_schema_param(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(db, "get_ssm_parameter", lambda cfg, name, **k: "postgresql://u:p@host:5432/db")
+    cfg = cast(LoaderConfig, SimpleNamespace())
+    conninfo = db._conninfo_from_ssm(cfg, "some-param")
+    parts = conninfo_to_dict(conninfo)
+    assert "options" not in parts  # no schema param -> conninfo unchanged (no options added)
+    assert parts["host"] == "host"
+    assert parts["keepalives"] == "1"
+
+
+def test_conninfo_from_ssm_passthrough_libpq_keyword_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        db, "get_ssm_parameter", lambda cfg, name, **k: "host=rds.internal dbname=d user=u port=5432"
+    )
+    cfg = cast(LoaderConfig, SimpleNamespace())
+    conninfo = db._conninfo_from_ssm(cfg, "some-param")
+    parts = conninfo_to_dict(conninfo)
+    assert "options" not in parts
+    assert parts["host"] == "rds.internal"
+    assert parts["keepalives"] == "1"
+
+
+@pytest.mark.parametrize("bad_schema", ["green; drop table x", "green\\", "green -c foo", "green bar"])
+def test_conninfo_from_ssm_rejects_unsafe_schema_value(
+    monkeypatch: pytest.MonkeyPatch, bad_schema: str
+) -> None:
+    from urllib.parse import quote
+
+    monkeypatch.setattr(
+        db,
+        "get_ssm_parameter",
+        lambda cfg, name, **k: f"postgresql://u:p@host:5432/db?schema={quote(bad_schema)}",
+    )
+    cfg = cast(LoaderConfig, SimpleNamespace())
+    with pytest.raises(ValueError, match="schema"):
+        db._conninfo_from_ssm(cfg, "some-param")

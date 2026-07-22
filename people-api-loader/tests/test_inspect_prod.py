@@ -34,6 +34,11 @@ def test_inspect_table_with_state_and_snapshot() -> None:
     sqls = executed_sql(conn)
     assert sum('GROUP BY "State"' in s for s in sqls) == 1
     assert not any(s.startswith("SELECT count(*)") for s in sqls)
+    # The table is unqualified (no "public." prefix) so it resolves through the connection's
+    # search_path, and the column probe reads current_schema() rather than a hardcoded 'public'.
+    assert any('FROM "Voter" GROUP BY "State"' in s for s in sqls)
+    assert not any("public." in s for s in sqls)
+    assert sum("current_schema()" in s for s in sqls) == 2  # "State" probe + "updated_at" probe
 
 
 def test_inspect_table_total_includes_null_state_rows() -> None:
@@ -58,6 +63,8 @@ def test_inspect_table_flat_table_is_total_only() -> None:
     assert ti.total_row_count == 7
     assert ti.per_state_row_counts == {}
     assert ti.per_state_snapshot_dates == {}
+    # Unqualified table name (no "public." prefix) — resolves through the connection's search_path.
+    assert executed_sql(conn) == ['SELECT count(*) FROM "District"']
 
 
 def test_inspect_table_partitioned_but_serving_column_absent_falls_back_to_count() -> None:
@@ -117,6 +124,17 @@ def test_run_optional_table_failure_is_skipped(monkeypatch: pytest.MonkeyPatch) 
     manifest = step.run(_CFG, "20260609")
     assert manifest.status == "complete"
     assert {t.table for t in manifest.tables} == {"Voter", "DistrictVoter", "District"}
+
+
+def test_has_column_queries_current_schema_not_hardcoded_public() -> None:
+    # The baseline must read whatever schema the connection's search_path resolves to (e.g.
+    # green on swain-db), not a hardcoded 'public' — see the module docstring.
+    conn = FakeConn().queue_result((1,))
+    assert step._has_column(conn.cursor(), "Voter", "State") is True  # ty: ignore[invalid-argument-type]
+    sql, params = conn.executed[0]
+    assert "current_schema()" in sql
+    assert "public" not in sql
+    assert params == ("Voter", "State")
 
 
 def test_index_drift_reports_both_directions() -> None:
