@@ -1,0 +1,206 @@
+brief_id: win-topline-election-buckets
+created: 2026-07-22
+author: framing routine (refined with tristan)
+amended: |
+  2026-07-22, after the two-reviewer pass (owner-approved fix sets): anchored
+  activation column added; Pro evidence layer split (stripe/fallback) added;
+  y2026 bucket split into held/upcoming at run date; past_due excluded from
+  open-ended Stripe intervals; Pro x activation cross-tab added; universe
+  statement and footnotes embedded in the CSV; deterministic dedup tiebreak.
+  Owner reconfirmed the dated-outside-buckets drop at its true magnitude
+  (15,824, mostly pre-2025 cycles, incl. ~290 current Pros) - the framing-time
+  ~3.8k sizing had only covered the 2025-26 gap windows.
+
+decision:
+  what_action: |
+    Report top-line Win adoption figures (accounts created/registered, activated,
+    Pro) to the organization, per general-election-date bucket. Recurring
+    reporting input, not a one-off exploration.
+  who_acts: |
+    Tristan / data team, reporting to org leadership.
+
+question:
+  one_sentence: |
+    How many Win accounts were created (= registered), how many activated, and
+    how many were Pro at their election, for the summer-2025, November-2025,
+    and 2026 general-election cohorts?
+  type: descriptive
+  underlying_hypothesis: |
+    N/A - census-style reporting; no hypothesis under test.
+
+population:
+  included: |
+    All Win users in mart_analytics.users_win_candidacy with
+    is_latest_version AND NOT is_demo. User grain (distinct user_id); a user
+    with multiple latest-version candidacies is assigned once, via the
+    candidacy with the most recent campaign_created_at.
+  excluded: |
+    Demo accounts (is_demo); non-latest campaign versions; internal accounts
+    via the agreed proxy user_email ILIKE '%@goodparty.org' (named as an
+    assumption in the deliverable). Candidacies whose bucket date falls outside
+    all three buckets (pre-2025-05-08, 2025-09-02..2025-10-31, December 2025)
+    are dropped per owner decision, with the dropped count footnoted.
+  source_model: |
+    mart_analytics.users_win_candidacy (population, is_pro, election dates,
+    email); mart_analytics.users_win_base (is_activated: sent >=1 voter
+    outreach campaign - governed OKR definition);
+    dbt.stg_airbyte_source__stripe_api_subscriptions + _customers (Pro tenure
+    intervals, joined by lowercased email, livemode only, status !=
+    incomplete_expired); dbt.int__amplitude_user_milestones
+    .pro_upgrade_completed_at (secondary Pro-upgrade timing evidence).
+
+data_provenance:
+  schema_status: prod
+  coverage_start: |
+    Verified by query 2026-07-22: general_election_date populated from
+    2025-01 onward at material volume (Nov 2025 = 12,764 candidacies;
+    Nov 2026 = 8,844). Stripe livemode subscriptions from 2024-06-23.
+    Amplitude pro_upgrade_completed_at from 2025-05-29 (instrumentation start).
+  coverage_end: |
+    general_election_date through 2026-12; Stripe subscription starts through
+    2026-07-21 (live sync).
+  post_merge_swap: |
+    N/A - all sources in prod.
+
+eligibility:
+  tenure_requirement: |
+    None - census counts; no minimum observability window.
+  reference_event: |
+    Bucket date = COALESCE(general_election_date, election_date), bounded to
+    [2020-01-01, 2050-01-01] to drop corrupt far-future dates.
+  rationale: |
+    general_election_date is the requested bucketing key; election_date
+    fallback rescues part of the 11,772 era accounts with NULL
+    general_election_date (owner-approved). Fallback usage count reported.
+
+target:
+  definition: |
+    Per bucket, distinct-user counts:
+    (1) accounts_created - all users in population ("registered" is the same
+        number per owner decision; single column).
+    (2) activated_lifetime - users_win_base.is_activated (as of run date);
+        plus activated_at_election - first_campaign_sent_at <= D (anchored;
+        added by 2026-07-22 amendment).
+    (3) pro_at_election - evidence-only point-in-time Pro at
+        D = LEAST(bucket_date, run date), layered: users with Stripe history
+        judged by an interval covering D (open-ended intervals count only
+        while status='active'); users without Stripe fall back to any upgrade
+        signal (Amplitude milestone, HubSpot pro_upgrade_date) on or before D.
+        The fallback layer is churn-blind (overcount channel); the
+        pro_at_stripe / pro_at_fallback split columns expose it.
+    (4) pro_today - users_win_candidacy.is_pro reference column, so the
+        ~716 current-Pro users with no timing evidence stay visible.
+    (5) Pro x activation cross-tab (at-election semantics) for held buckets.
+    The y2026 bucket is reported as two rows, elections already held vs
+    upcoming at run date.
+  censoring: |
+    Future elections (most of the 2026 bucket): D collapses to the run date,
+    so pro_at_election reads "Pro as of today" there; noted in deliverable.
+  absorbing_states: |
+    N/A - no terminal states; churned-Pro users are exactly what
+    pro_at_election recovers (776 not-Pro-today users had an active Stripe
+    subscription on their election date).
+
+comparison:
+  type: descriptive_cut
+  comparison_group: |
+    N/A - buckets are reporting columns, not treatment/control.
+  notes: |
+    Buckets differ structurally (past vs future elections; office-type mix);
+    the deliverable should discourage reading them as a like-for-like funnel.
+
+observation_window:
+  start: |
+    Buckets (on bucket date): summer_2025 = 2025-05-08..2025-09-01;
+    november_2025 = 2025-11-01..2025-11-30; y2026 = 2026-01-01..2026-12-31.
+  end: |
+    no_election_date bucket: both date fields NULL AND user_created_at >=
+    2025-05-08 (era accounts only, so ancient dateless accounts don't swamp
+    the column) - executor decision to be confirmed at results checkpoint.
+  anchored_to: |
+    The candidacy's general election date (election_date fallback), not the
+    account-creation date.
+  boundary_semantics: |
+    All bucket comparisons are DATE-to-DATE (both election-date columns are
+    DATE-typed); every bucket boundary is inclusive on both ends.
+    Pro-at-election: Stripe interval covers D iff
+    date(from_unixtime(start_date)) <= D AND (ended_at IS NULL OR
+    date(from_unixtime(ended_at)) >= D); upgrade signals compare
+    date(signal_ts) <= D. user_created_at (TIMESTAMP_NTZ) >= '2025-05-08'
+    reads as midnight - acceptable since the boundary is a bucket-start date.
+
+cohorts:
+  - dimension: election_bucket
+    values: |
+      summer_2025, november_2025, y2026, no_election_date (dated-outside
+      dropped and footnoted).
+
+sample_size:
+  expected_n_total: |
+    ~28k bucketed users: Nov 2025 ~12.7k, 2026 ~10.3k, summer 2025 ~3-5k
+    (candidacy-grain sizing 2026-07-22), no_election_date up to ~11.7k before
+    the fallback rescue.
+  expected_n_per_cohort: |
+    See above; all buckets >> N=30.
+  power_concern: |
+    None - census reporting, no inference.
+
+falsification:
+  what_would_change_belief: |
+    N/A - descriptive reporting. Internal consistency is the check: bucket
+    totals + dropped counts must reconcile to the era population.
+
+known_concerns:
+  - |
+    Buckets are non-exhaustive by owner decision: dated candidacies outside
+    the three windows are dropped. Framing-time sizing (~3.8k) covered only
+    the 2025-26 gap windows; the executed drop at user grain is 15,824
+    (mostly pre-2025 election cycles, incl. ~290 current Pros), reconfirmed
+    by the owner 2026-07-22. The CSV footer carries the universe statement;
+    column sums are NOT org totals.
+  - |
+    is_activated is lifetime-as-of-today; the anchored activated_at_election
+    column (2026-07-22 amendment) makes the effect directly visible per run
+    (immaterial at current volumes: Nov 2025 689 vs 689). The 21.2% figure in
+    the knowledge skill's point-in-time caveat is a scoped-cohort rate
+    (activation among onboarded users, ~17-21% on this population), NOT
+    comparable to all-accounts rates (~5%); do not cite the two together.
+    Re-runs restate history slightly (as-of flags, bucket migration for
+    multi-candidacy users, held/upcoming migration as elections pass).
+  - |
+    pro_at_election is evidence-only and undercounts: 716 of 1,301 current-Pro
+    users (55%) have no timing signal in Stripe/Amplitude/HubSpot; pro_today
+    reference column keeps them visible.
+  - |
+    Stripe join is by lowercased email; product-vs-Stripe email mismatches
+    lose evidence. HubSpot pro dates near-empty (23 users) - included but
+    immaterial.
+  - |
+    election_date fallback can bucket a candidacy by a primary-stage date;
+    fallback usage reported per bucket.
+  - |
+    Account creation, activation, and Pro are product-DB/billing facts, stable
+    across the 2026-05-07 onboarding cutover and 2026-06-08 V2 rebuild; no
+    event-era resolution needed for these metrics.
+
+execution_notes:
+  preferred_format: |
+    Both - executed notebook for this reporting round plus the parameterized
+    script (topline_report.py) for recurring re-runs.
+  output_location: |
+    analytics/projects/win_topline_reporting/ (new project directory,
+    owner-confirmed 2026-07-22).
+  reruns: |
+    Recurring org reporting. Parameterize bucket definitions and the era
+    floor at the top of the script.
+  sanity_checks:
+    - |
+      1. Report users with >1 latest-version candidacy (dedup magnitude).
+    - |
+      2. Report election_date-fallback usage per bucket.
+    - |
+      3. Report the dropped dated-outside-buckets user count (footnote).
+    - |
+      4. Report pro_at_election evidence-layer overlap (Stripe vs Amplitude).
+    - |
+      5. Reconcile: bucket totals + dropped = era population total.
