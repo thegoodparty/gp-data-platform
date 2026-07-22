@@ -66,3 +66,30 @@ def test_real_canaries_are_fresh():
     layers = {c.layer for c in canaries}
     assert layers == {"knowledge", "process"}
     assert integrity.check_canary_staleness(canaries, REPO_ROOT) == []
+
+
+def test_check_links_flags_dead_relative_md_link(tmp_path):
+    arm = tmp_path / "arm"
+    (arm / "docs").mkdir(parents=True)
+    (arm / "docs" / "a.md").write_text("see [b](b.md) and [gone](../missing/c.md)")
+    (arm / "docs" / "b.md").write_text("fine")
+    failures = integrity.check_links(arm)
+    assert len(failures) == 1
+    assert "missing/c.md" in failures[0]
+
+
+def test_check_links_ignores_external_and_fragment_links(tmp_path):
+    arm = tmp_path / "arm"
+    arm.mkdir()
+    (arm / "a.md").write_text("[x](https://example.com/p.md) [y](#anchor) [z](mailto:a@b.md)")
+    assert integrity.check_links(arm) == []
+
+
+def test_check_arm_leakage_scans_all_files(tmp_path):
+    canaries = integrity.load_canaries(_write_canaries(tmp_path))
+    arm = tmp_path / "arm"
+    (arm / "analytics" / "lib").mkdir(parents=True)
+    (arm / "analytics" / "lib" / "notes.py").write_text("# the moon is made of governed cheese")
+    hits = integrity.check_arm_leakage(arm, set(), canaries)
+    assert len(hits) == 1 and "notes.py" in hits[0]
+    assert integrity.check_arm_leakage(arm, {"knowledge"}, canaries) == []

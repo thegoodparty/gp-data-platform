@@ -49,3 +49,32 @@ def check_text_leakage(text: str, allowed_layers: set[str], canaries: list[Canar
         for c in canaries
         if c.layer not in allowed_layers and c.phrase in text
     ]
+
+
+def relative_md_targets(text: str):
+    """Yield relative .md link targets, skipping external URLs and fragments.
+    Shared with tests/test_skill_doc_links.py (same semantics)."""
+    for match in LINK_RE.finditer(text):
+        target = match.group(1).split("#", 1)[0].strip()
+        if not target or target.startswith(("http://", "https://", "mailto:", "/")):
+            continue
+        if target.endswith(".md"):
+            yield target
+
+
+def check_links(arm_dir: Path) -> list[str]:
+    """Every relative markdown link inside the arm must resolve inside it."""
+    failures = []
+    for md in sorted(arm_dir.rglob("*.md")):
+        for target in relative_md_targets(md.read_text(errors="ignore")):
+            if not (md.parent / target).resolve().is_file():
+                failures.append(f"dead link: {md.relative_to(arm_dir)} -> {target}")
+    return failures
+
+
+def check_arm_leakage(arm_dir: Path, allowed_layers: set[str], canaries: list[Canary]) -> list[str]:
+    failures = []
+    for f in sorted(p for p in arm_dir.rglob("*") if p.is_file()):
+        hits = check_text_leakage(f.read_text(errors="ignore"), allowed_layers, canaries)
+        failures.extend(f"{f.relative_to(arm_dir)}: {h}" for h in hits)
+    return failures
