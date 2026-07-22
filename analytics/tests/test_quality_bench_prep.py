@@ -167,6 +167,34 @@ def test_missing_layer_path_at_ref_raises(fake_repo, tmp_path):
         prep_arms.prep_arm("full", fake_repo, tmp_path / "arms", FLOOR, sync=False)
 
 
+def test_one_factor_contrast_pinned_by_hashes(fake_repo, tmp_path):
+    """The one-factor guarantee at the content level: substrate must be
+    byte-identical (same hash) across all three arms, and every file the
+    knowledge layer contributes to the knowledge arm must show up in the
+    full arm with the same hash and layer label — full only ever adds on
+    top of knowledge, never replaces it."""
+    manifests = {a: _manifest(_prep(a, fake_repo, tmp_path)) for a in ("bare", "knowledge", "full")}
+
+    substrate_by_arm = {
+        arm: {rel: f["sha256"] for rel, f in m["files"].items() if f["layer"] == "substrate"}
+        for arm, m in manifests.items()
+    }
+    rels = set(substrate_by_arm["bare"])
+    assert rels and rels == set(substrate_by_arm["knowledge"]) == set(substrate_by_arm["full"])
+    for rel in rels:
+        hashes = {substrate_by_arm[a][rel] for a in ("bare", "knowledge", "full")}
+        assert len(hashes) == 1, f"{rel} substrate hash diverges across arms: {hashes}"
+
+    knowledge_files = manifests["knowledge"]["files"]
+    full_files = manifests["full"]["files"]
+    knowledge_layer_rels = [rel for rel, f in knowledge_files.items() if f["layer"] == "knowledge"]
+    assert knowledge_layer_rels
+    for rel in knowledge_layer_rels:
+        assert rel in full_files
+        assert full_files[rel]["sha256"] == knowledge_files[rel]["sha256"]
+        assert full_files[rel]["layer"] == "knowledge"
+
+
 def test_cli_help_works_under_bare_python():
     analytics_root = Path(__file__).parent.parent
     proc = subprocess.run(
