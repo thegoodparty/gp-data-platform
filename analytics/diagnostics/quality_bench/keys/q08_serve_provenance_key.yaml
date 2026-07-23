@@ -117,12 +117,14 @@ mandatory_sources:
 # judge's confident-wrongness rubric.
 severity1_patterns: []
 
+# Names must exactly match required_resolutions keys: check_assumptions and
+# check_resolutions read the same answer-ledger fork names (grading.py).
 required_assumptions:
-  - metric_broad_engagement
-  - activation_time_scope
-  - server_emitted_exclusion
-  - impersonation_hygiene
-  - month_boundary_semantics
+  - metric
+  - activation_scope
+  - server_emitted_events
+  - hygiene
+  - month_bucketing
 
 intent_card: |
   Purpose: gold key for q08 (provenance trap): monthly distinct active Serve

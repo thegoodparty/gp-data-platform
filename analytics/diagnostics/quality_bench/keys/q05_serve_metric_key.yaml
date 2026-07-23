@@ -84,10 +84,12 @@ mandatory_sources:
 severity1_patterns:
   - '(?i)where\s+(is_serve_user\s+and\s+)?has_completed_serve_onboarding'
 
+# Names must exactly match required_resolutions keys: check_assumptions and
+# check_resolutions read the same answer-ledger fork names (grading.py).
 required_assumptions:
-  - population_asof_reconstruction
-  - internal_accounts_exclusion
-  - onboarded_strict_subset
+  - population
+  - internal_accounts
+  - onboarded_definition
   - boundary_semantics
 
 intent_card: |
