@@ -373,6 +373,12 @@ def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
 
 def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDERS) -> IndexManifest:
     bind(run_date=run_date, step="indexes")
+    # Guard: parallelism < 1 (a bad LOADER_INDEX_PARALLELISM or an explicit --parallelism 0) would
+    # spawn zero builder threads via `range(min(parallelism, len(items)))`, silently skip every
+    # index, and still write a "complete" manifest (specs come from the catalog read, not build
+    # results) — leaving an index-less cluster that a re-run then short-circuits past. Clamp to at
+    # least one worker so a misconfig can never produce that.
+    parallelism = max(1, parallelism)
     existing = read_manifest(cfg, run_date, "indexes", IndexManifest)
     if existing and existing.status == "complete":
         log.info(
