@@ -310,6 +310,8 @@ class FakePostgres:
             if missing_ok:
                 return
             raise FakePostgresError(f'relation "{schema}"."{table}" does not exist')
+        # DROP TABLE rejects inbound dependents (as Postgres does) and takes
+        # the table's indexes, constraints, and FK bookkeeping with it.
         dependents = [
             key
             for key, ref in self.fk_refs.items()
@@ -447,8 +449,16 @@ def _stage_ddl(spec):
     ]
 
 
+def _seed_fk_parents(pg):
+    """Referenced parents for the PT stage DDL's FK; the fake validates
+    REFERENCES targets exist (as Postgres does). Seeded bare (no indexes)
+    so the PT tests' exact-equality index assertions stay intact."""
+    pg.seed_table("public", "District")
+
+
 def _seed_live(pg, spec):
     """The live table as the election-api Prisma migration creates it."""
+    _seed_fk_parents(pg)
     pg.seed_table(
         spec.target_schema,
         spec.target_table,
@@ -614,6 +624,7 @@ def test_first_swap_without_live_target():
     """Cold start: no live table yet — the swap takes the rename-old-skipping
     branch, and the pre-drop of a nonexistent `_old` is a no-op."""
     pg = FakePostgres()
+    _seed_fk_parents(pg)
     pg.seed_table(SPEC.staging_schema, SPEC.new_table)
     conn = pg.connect()
     apply_ddl(conn, _stage_ddl(SPEC))
