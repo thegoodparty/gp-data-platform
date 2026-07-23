@@ -62,7 +62,9 @@ def test_real_canaries_are_fresh():
     source file, so the leakage scan is actually scanning for live treatment
     content. A reworded skill must break this test, forcing a canary refresh."""
     canaries = integrity.load_canaries(QB_DIR / "canaries.yaml")
-    assert len(canaries) >= 8
+    # Exact count: a floor would let a deleted canary pass silently (staleness
+    # only checks entries that remain). Adding a canary means bumping this.
+    assert len(canaries) == 9
     layers = {c.layer for c in canaries}
     assert layers == {"knowledge", "process"}
     assert integrity.check_canary_staleness(canaries, REPO_ROOT) == []
