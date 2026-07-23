@@ -81,12 +81,15 @@ SETTINGS_JSON = {
     }
 }
 
+# Keep version pins in step with analytics/pyproject.toml: the arms run the
+# exported analysis libs (win/serve_analysis), which are developed and tested
+# against the analytics env's resolution — notably pandas <3.
 ARM_PYPROJECT = """\
 [project]
 name = "bench-env"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = ["pandas>=2.3.1", "databricks-sql-connector>=3", "databricks-sdk>=0.20"]
+dependencies = ["pandas>=2.3.1,<3.0.0", "databricks-sql-connector>=3", "databricks-sdk>=0.20"]
 
 [tool.uv]
 package = false
@@ -121,7 +124,23 @@ def _export_paths(repo_root: Path, dest: Path, ref: str, paths: list[str]) -> li
     with tarfile.open(fileobj=io.BytesIO(proc.stdout)) as tar:
         names = [m.name for m in tar.getmembers() if m.isfile()]
         tar.extractall(dest, filter="data")
+    _verify_export_coverage(paths, names, ref)
     return names
+
+
+def _verify_export_coverage(paths: list[str], names: list[str], ref: str) -> None:
+    """Every requested path must have contributed at least one extracted file.
+
+    git archive hard-fails on a fully-unmatched pathspec, but this invariant
+    is git-version behavior, not ours — encode it locally so arm construction
+    never depends on it. A path is covered when the archive contains the path
+    itself (a file) or something under it (a directory)."""
+    uncovered = [p for p in paths if not any(n == p or n.startswith(p + "/") for n in names)]
+    if uncovered:
+        raise RuntimeError(
+            f"git archive at {ref} produced no files for {uncovered}; "
+            "renamed or emptied layer paths must fail prep, not thin the arm"
+        )
 
 
 def build_substrate(repo_root: Path, dest: Path, floor_text: str, ref: str) -> None:
@@ -159,10 +178,14 @@ def prep_arm(
     for layer in ARM_LAYERS[arm]:
         for extracted in _export_paths(repo_root, dest, ref, LAYERS[layer]):
             layer_of[extracted] = layer
-    manifest = build_manifest(arm, ref, dest, layer_of)
-    (dest / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    # Sync before the manifest so uv.lock (dependency resolution) is part of
+    # run provenance: a re-prep that resolves different deps changes the
+    # manifest, and run_matrix's arms_sha256 gate then refuses to mix it into
+    # an existing batch. The .venv itself stays excluded (build artifacts).
     if sync:
         subprocess.run(["uv", "sync"], cwd=dest / "analytics", check=True)
+    manifest = build_manifest(arm, ref, dest, layer_of)
+    (dest / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
     return dest
 
 

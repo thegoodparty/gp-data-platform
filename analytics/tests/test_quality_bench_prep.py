@@ -272,3 +272,41 @@ def test_cli_fails_on_stale_canary(fake_repo, tmp_path):
     proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)
     assert proc.returncode != 0
     assert "stale canary" in proc.stderr
+
+
+def test_verify_export_coverage_passes_for_dir_and_file():
+    prep_arms._verify_export_coverage(
+        [".claude/skills/win-analytics-knowledge", "analytics/lib/databricks_conn.py"],
+        [".claude/skills/win-analytics-knowledge/SKILL.md", "analytics/lib/databricks_conn.py"],
+        "main",
+    )
+
+
+def test_verify_export_coverage_raises_on_uncovered_path():
+    """A prefix-overlapping sibling must not mask a missing path: files under
+    win-analytics-knowledge do not cover a pathspec named win."""
+    with pytest.raises(RuntimeError, match="no files for"):
+        prep_arms._verify_export_coverage(
+            [".claude/skills/win"],
+            [".claude/skills/win-analytics-knowledge/SKILL.md"],
+            "main",
+        )
+
+
+def test_manifest_includes_dependency_resolution_when_synced(fake_repo, tmp_path, monkeypatch):
+    """uv.lock is run provenance: sync happens before the manifest, so a
+    re-prep that resolves different deps changes arms_sha256 and blocks
+    resuming an existing batch with mixed dependency provenance."""
+    real_run = prep_arms.subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "uv":
+            (kwargs["cwd"] / "uv.lock").write_text("resolution v1")
+            return subprocess.CompletedProcess(cmd, 0)
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(prep_arms.subprocess, "run", fake_run)
+    arm = prep_arms.prep_arm("bare", fake_repo, tmp_path / "arms", FLOOR, sync=True)
+    manifest = _manifest(arm)
+    assert "analytics/uv.lock" in manifest["files"]
+    assert manifest["files"]["analytics/uv.lock"]["layer"] == "substrate"
