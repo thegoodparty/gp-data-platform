@@ -1,0 +1,104 @@
+id: q03_win_pit
+as_of: "2026-07-23"
+numbers:
+  # Active Candidates (OKR), recomputed point-in-time: distinct Win users
+  # (users_win_candidacy, is_latest_version AND NOT is_demo) with >=1
+  # dashboard-view union event in the trailing 30 days of each as-of date.
+  #
+  # Three dates escalate across the dashboard-view event lifecycle:
+  #   Mar-31 — legacy era (successor absent before 2026-04-09); tests PIT anchoring.
+  #   May-31 — union load-bearing mid-migration (legacy-only undercounts -13.5%).
+  #   Jul-15 — window [2026-06-15, 2026-07-16) FULLY post the 2026-06-13 legacy
+  #            death; the union is the ONLY source. Legacy-only, the dead
+  #            is_active_candidate_30d flag, and the milestone
+  #            last_dashboard_viewed_at (caps 2026-06-13) all collapse to 0.
+  #
+  # Tolerance (re-baseline convention): 1% across all three. Mar/May sit fully
+  # inside live event coverage, so re-run drift is limited to late mart edits to
+  # the registry (user deletion, demo/latest-version reclassification) —
+  # historically <1% on closed periods. 1% ADMITS the users_win_base anchor
+  # (Mar 1016 / May 648 / Jul 536, the governed flag's home table, +0-0.3%)
+  # while FAILING every wrong fork: the un-anchored any-uid read
+  # (1062 = +4.7% Mar, 655 = +1.4% May; the May value caps tolerance below 2%),
+  # the legacy-only / milestone read (May 559 = -13.5%; Jul 0), and the dead
+  # stored flag (0 at all three). Jul-15 is a recent window (closed 2026-07-16,
+  # 7d before the pin), but Amplitude events settle within days so 1% (+-5)
+  # absorbs residual backfill; the discriminating trap there is 0, which fails
+  # by 100%. Population fork settled to candidacy-hygiene in the gold run
+  # (see required_resolutions.population).
+  - name: active_candidates_2026_03_31
+    value: 1014
+    tolerance_pct: 1.0
+  - name: active_candidates_2026_05_31
+    value: 646
+    tolerance_pct: 1.0
+  - name: active_candidates_2026_07_15
+    value: 536
+    tolerance_pct: 1.0
+required_resolutions:
+  # Do NOT read users_win_base.is_active_candidate_30d — it reads FALSE for all
+  # users (dead legacy anchor event, capped 2026-06-13; DATA-2173). Recompute.
+  metric_recompute: recompute_from_raw_not_stored_is_active_candidate_30d
+  # 2-event dashboard union, per-user EXISTS (co-fire-safe). Legacy-only
+  # undercounts May (surface migration); March is legacy-only by code truth
+  # (successor instrumented 2026-04-01, absent before the March window closes).
+  dashboard_event: union_candidate_dashboard_viewed_and_campaign_plan_viewed
+  # Distinct users, hygiene-anchored to the candidacy registry.
+  population: users_win_candidacy_latest_version_non_demo_distinct_user
+  # Trailing 30d matching the OKR flag arithmetic (>= as_of - 30 days), applied
+  # as event_time >= date_sub(as_of,30) AND event_time < date_add(as_of,1):
+  # 31 calendar days, as-of day fully included. Calendar-month alignment here is
+  # a coincidence of two 31-day months, not the definition.
+  trailing_window: trailing_30d_okr_arithmetic_half_open_asof_day_inclusive
+  # Anchored to the as-of date, not current_date (the point-in-time discipline).
+  pit_anchor: anchored_to_as_of_date_not_current_date
+mandatory_sources:
+  - id: population_table
+    pattern: "users_win_candidacy"
+    description: Population must be the candidacy registry (latest-version,
+      non-demo), distinct users — not users_win_base's stored active flag and
+      not un-anchored Amplitude user_ids.
+  - id: raw_event_stream
+    pattern: "stg_airbyte_source__amplitude_api_events"
+    description: The metric must be recomputed from the raw event stream — the
+      stored is_active_candidate_30d flag is dead (reads FALSE for all users).
+  - id: dashboard_union
+    pattern: "Dashboard - Campaign Plan Viewed"
+    description: Evidence the run used the 2-event dashboard union — the legacy
+      event alone undercounts the May window by 13.5% (surface migration).
+severity1_patterns:
+  # Legacy-only (or milestone last_dashboard_viewed_at) read of the May window
+  # stated as the answer: 559 vs true 646 (-13.5%). This is the point-in-time /
+  # dashboard-union trap the question exists to catch; the milestone recompute
+  # anchored to as_of lands exactly here.
+  - "active_candidates_2026_05_31\\D{0,15}\\b559\\b"
+  # Post-death collapse: reporting 0 for the Jul-15 window, where the entire
+  # trailing-30d window is after the 2026-06-13 legacy death. Legacy-only, the
+  # dead is_active_candidate_30d flag, and the milestone last_dashboard_viewed_at
+  # all read 0 here; the union reads 536. This is the headline dead-legacy trap.
+  - "active_candidates_2026_07_15[\"'\\s:=]{1,6}0\\b"
+  # Dead stored-flag read at the March/May dates: reporting 0 active candidates
+  # (is_active_candidate_30d reads FALSE for all users). Assignment-form only,
+  # so a correct run mentioning "the flag reads 0" in prose does not trip it.
+  - "active_candidates_2026_0[35]_31[\"'\\s:=]{1,6}0\\b"
+required_assumptions:
+  - metric_recompute
+  - dashboard_event
+  - population
+  - trailing_window
+  - pit_anchor
+intent_card: |
+  Purpose: tests point-in-time discipline for the Active Candidates OKR —
+  recomputing anchored to a past date (not current_date), avoiding the dead
+  is_active_candidate_30d flag (DATA-2173), and using the version-safe 2-event
+  dashboard union across the 2026-05/06 surface migration and the 2026-06-13
+  legacy-event death. The three dates escalate: Mar-31 (legacy era, tests PIT
+  anchoring), May-31 (union load-bearing mid-migration), Jul-15 (window fully
+  post-death — union is the only source; legacy/dead-flag/milestone all read 0).
+  Audience: data team / OKR reporting; a leadership-facing headline, so
+  demo/internal hygiene is required and the count is distinct users.
+  Forks (asker's answers): metric = recompute from raw, never the stored flag;
+  dashboard = candidate-dashboard OR campaign-plan view union; population =
+  candidacy registry (latest-version, non-demo), distinct users — not
+  users_win_base, not un-anchored user_ids; window = trailing-30d OKR arithmetic,
+  as-of day inclusive; anchor = the as-of date, not current_date.
