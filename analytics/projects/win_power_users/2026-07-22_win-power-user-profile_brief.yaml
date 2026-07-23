@@ -3,6 +3,18 @@ created: 2026-07-22
 author: framing routine (refined with tristan)
 ticket: DATA-2153 (epic DATA-2031); feeds DATA-2154, DATA-2171, DATA-2172
 
+amendments:
+  - date: 2026-07-23
+    change: |
+      Cohorting changed from election_quarter (as framed below) to three named election
+      periods: "pre-Nov 2025" (Jan-Oct 2025 odd-year local generals), "Nov 2025" (the
+      completed cycle), and "2026" (mostly upcoming). Quarterly buckets split the small
+      power-user cohorts (intense N=304) below usable sizes; the three periods preserve the
+      completed-vs-upcoming separation quarterly was chosen for while holding cell counts up.
+      Implemented as election_period in win_power_users.add_derived. The reference_event,
+      rationale, and dimensions.election_quarter entries below are superseded; code is the
+      source of truth.
+
 decision:
   what_action: |
     Two decisions. (1) Planning: characterize the Win power-user segment to inform this
@@ -107,7 +119,8 @@ eligibility:
     implicitly gated to completed generals (see target/censoring).
   reference_event: |
     general_election_date (the candidacy's general election). Cohorting is by election
-    quarter of this date.
+    quarter of this date. [superseded 2026-07-23: three periods pre-Nov 2025 / Nov 2025 /
+    2026 - see amendments.]
   rationale: |
     The population is defined by electoral cycle, not by product signup. Election quarter is
     the coarsest cohort that separates the completed 2025-early-2026 cycles from the upcoming
@@ -180,8 +193,8 @@ cohorts:
     values: "TRUE / FALSE"
   - dimension: won
     values: "won / lost / outcome-unknown (completed generals only)"
-  - dimension: election_quarter
-    values: "quarter of general_election_date (e.g. 2025Q2, 2025Q4, 2026Q4)"
+  - dimension: election_period   # superseded election_quarter, see amendments 2026-07-23
+    values: "pre-Nov 2025 / Nov 2025 / 2026 (from general_election_date)"
   - dimension: office_type
     values: all observed (HubSpot string; School Board, City Council, Mayor, etc.; light grouping if needed)
   - dimension: election_level
@@ -302,7 +315,7 @@ execution_notes:
     - 1. Build the candidacy-grain working set once - one row per gp_candidacy_id in the scoped
       base, carrying the two power-user flags (engaged, intense) and ALL cross-cut dims
       (is_pro, is_activated, won, office_type, election_level, voter_count_band, l2_district_type,
-      campaign_state, campaign_party, viability_band, is_incumbent, tenure, election_quarter,
+      campaign_state, campaign_party, viability_band, is_incumbent, tenure, election_period,
       icp_office_win). Purpose-built query, NOT build_win_working_set (user-grain, funnel-oriented,
       wrong grain).
     - 2. Verify join fan-out - confirm campaign_id = product_campaign_id is ~1:1 after
