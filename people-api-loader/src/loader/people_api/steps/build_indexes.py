@@ -1,4 +1,4 @@
-"""Step 5 — build the PK + indexes on the unified Voter table, then ANALYZE (DATA-1853).
+"""Step 5 — build the PK + indexes on the unified Voter table, then VACUUM (ANALYZE).
 
 Reads the PK, the LALVOTERID unique, and the plain indexes from `schema_spec`
 (the pg_catalog-sourced `_serving_seed`) and applies them to the LIST-partitioned
@@ -297,10 +297,20 @@ def _order_children_largest_first(
     return sorted(units, key=lambda u: partition_bytes.get(u[1], 0), reverse=True)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None) -> None:
+def _vacuum_analyze(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> None:
+    """VACUUM (ANALYZE) `table`, subsuming a plain ANALYZE.
+
+    A freshly bulk-loaded table has an empty visibility map, so `count(*)` and index-only scans fall
+    back to full heap scans. `VACUUM` sets the visibility map (enabling index-only scans); `ANALYZE`
+    refreshes planner stats. `VACUUM` requires autocommit (it cannot run inside a transaction block);
+    `connect_new` defaults to `autocommit=True`, which this relies on — do not pass `autocommit=False`
+    here.
+    """
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
-        cur.execute(f'ANALYZE public."{table}"')  # ty: ignore[no-matching-overload]
-        log.info("indexes.analyzed", table=table)
+        cur.execute(f'VACUUM (ANALYZE) public."{table}"')  # ty: ignore[no-matching-overload]
+        log.info("indexes.vacuum_analyzed", table=table)
 
 
 def _l2type_coverage(
@@ -525,8 +535,11 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
                 # 2. Flat table: plain indexes build directly on the table (no partitions to walk).
                 _build_in_parallel(_create_plain_flat, plain_idxs)
 
-            # 3. ANALYZE this table.
-            _analyze(cfg, run_date, table, forward=fwd)
+            # 3. VACUUM (ANALYZE) this table: sets the visibility map (so serving-side count(*) and
+            #    index-only scans skip the full heap scan a freshly bulk-loaded table would otherwise
+            #    force) and refreshes planner stats in the same pass. On a partitioned parent (Voter)
+            #    this recurses to every partition automatically.
+            _vacuum_analyze(cfg, run_date, table, forward=fwd)
 
             analyzed_tables.append(table)
             constraints_added.extend(p.constraint for p in pks)

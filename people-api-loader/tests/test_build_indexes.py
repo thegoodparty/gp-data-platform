@@ -1,4 +1,4 @@
-"""build-indexes: applies PK + indexes (with State partition key) to public."Voter", then ANALYZE."""
+"""build-indexes: applies PK + indexes (with State partition key) to public."Voter", then VACUUM (ANALYZE)."""
 
 from __future__ import annotations
 
@@ -370,11 +370,11 @@ def test_partition_sizes_uses_table_prefix(monkeypatch: pytest.MonkeyPatch) -> N
     assert any(r"LIKE 'DistrictVoter\_%'" in s for s in executed_sql(conn))
 
 
-def test_analyze_parametrizes_table(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_vacuum_analyze_parametrizes_table(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    step._analyze(_CFG, "20260709", "District", forward=None)
-    assert any('ANALYZE public."District"' in s for s in executed_sql(conn))
+    step._vacuum_analyze(_CFG, "20260709", "District", forward=None)
+    assert any('VACUUM (ANALYZE) public."District"' in s for s in executed_sql(conn))
 
 
 def test_create_index_flat_no_state() -> None:
@@ -470,7 +470,7 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     )
     # ...and NOT built directly on the parent (that's the slow serial-per-partition path we removed).
     assert not any('"Voter_Active_idx" ON public."Voter" USING' in s for s in sql)
-    assert any('ANALYZE public."Voter"' in s for s in sql)
+    assert any('VACUUM (ANALYZE) public."Voter"' in s for s in sql)
     assert manifest.status == "complete"
     assert manifest.analyzed_tables == ["Voter"]
     assert "Voter_pkey" in manifest.constraints_added
@@ -504,7 +504,7 @@ def test_run_adds_postgis_and_geometry_column(monkeypatch: pytest.MonkeyPatch) -
 def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     # The full loop over TABLE_SPECS: partitioned tables (Voter, DistrictVoter) get State appended
     # to PK/unique and the parent-only+child+attach machinery; flat tables (District, DistrictStats)
-    # get a State-free PK and plain indexes built directly on the table. ANALYZE every table.
+    # get a State-free PK and plain indexes built directly on the table. VACUUM (ANALYZE) every table.
     captured: dict = {}
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
@@ -563,7 +563,7 @@ def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not any("District_name_idx" in s and "ON ONLY" in s for s in sql)
     assert not any("District_name_idx_CA" in s for s in sql)
 
-    # ANALYZE every table, in TABLE_SPECS order (Voter first).
+    # VACUUM (ANALYZE) every table, in TABLE_SPECS order (Voter first).
     assert manifest.analyzed_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert set(manifest.constraints_added) == {
         "Voter_pkey",
@@ -598,7 +598,7 @@ def _pool_test_setup(monkeypatch: pytest.MonkeyPatch, connect: object) -> None:
     """Shared `run()` scaffolding for the worker-pool resilience tests below.
 
     `indexes_for` returns no indexes, so only the PK stage (a single item) does real building
-    work through `_build_in_parallel`; `_partition_sizes`/`_analyze` still run (unconditional in
+    work through `_build_in_parallel`; `_partition_sizes`/`_vacuum_analyze` still run (unconditional in
     `run()`) and each make exactly one `connect_new` call, which the tests account for.
     """
     monkeypatch.setattr(step, "connect_new", connect)
@@ -610,7 +610,7 @@ def _pool_test_setup(monkeypatch: pytest.MonkeyPatch, connect: object) -> None:
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
     monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
     # Restrict the per-table loop to Voter so the connect-count/pk-call assertions below (which
-    # account for exactly the Voter PK + _partition_sizes + _analyze connects) stay exact.
+    # account for exactly the Voter PK + _partition_sizes + _vacuum_analyze connects) stay exact.
     monkeypatch.setattr(step, "TABLE_SPECS", {"Voter": step.TABLE_SPECS["Voter"]})
 
 
@@ -634,7 +634,7 @@ def test_run_absorbs_transient_connection_drop(monkeypatch: pytest.MonkeyPatch) 
     assert manifest.status == "complete"
     assert pk_calls["n"] == 2  # failed once, requeued, retried, and succeeded
     # pg_trgm install (1) + PK stage reconnecting once (2) + unconditional
-    # _partition_sizes (1) + _analyze (1).
+    # _partition_sizes (1) + _vacuum_analyze (1).
     assert connect_calls["n"] == 5
 
 

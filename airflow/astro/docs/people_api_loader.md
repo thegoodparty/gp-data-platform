@@ -55,7 +55,7 @@ structure — none of which change across `resize` — so correctness is identic
 | `provision` | Create a fresh Aurora cluster + writer on the **copy-phase** instance class, empty cluster parameter groups, connection string to SSM. Reuses the shared S3 gateway VPC endpoint. |
 | `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
 | `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
-| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
+| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `VACUUM (ANALYZE)` all tables — a freshly bulk-loaded table has an empty visibility map, so this sets it (enabling index-only scans and letting serving-side `count(*)` avoid a full heap scan) in the same pass that refreshes planner stats. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
 | `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Runs on the still-scaled-up index instance (before `resize`). Failure halts the DAG. |
 | `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. Finishes with a lightweight post-resize smoke check (`SELECT 1` against the resized cluster) confirming it's reachable. |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`validate`→`resize`. On any post-provision failure (including a `validate` failure, which now runs on the scaled-up writer before `resize`) it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
@@ -86,8 +86,8 @@ Overridable via `LOADER_LOAD_INSTANCE_CLASS` / `LOADER_INDEX_INSTANCE_CLASS` /
 
 **Cost logic.** Index building is CPU-bound and embarrassingly parallel, so its cost in
 instance-hours is roughly flat across instance sizes for the parallel bulk (a smaller box just takes
-proportionally longer at a proportionally lower rate). The serial tail (PK add, ANALYZE, the few
-giant-partition builds) has a fixed wall-time and makes a bigger box strictly more expensive, since
+proportionally longer at a proportionally lower rate). The serial tail (PK add, VACUUM (ANALYZE), the
+few giant-partition builds) has a fixed wall-time and makes a bigger box strictly more expensive, since
 you pay for idle cores during it. So the cost-minimizing index box is the smallest one whose
 wall-clock you can tolerate; do not upsize past what actually fills. Storage is `aurora-iopt1`
 (I/O-Optimized), which is correct for the write-heavy load and build.
