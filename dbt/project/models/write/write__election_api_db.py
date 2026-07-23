@@ -66,6 +66,14 @@ CANDIDACY_UPSERT_QUERY = """
         -- guarded PK lookup: null when the person is not (yet) synced
         (SELECT p.id FROM {db_schema}."Person" AS p WHERE p.id = gp_candidate_id::uuid)
     FROM {staging_schema}."Candidacy"
+    -- Race is swap-delivered on its own schedule while Candidacy stays here,
+    -- so a staged candidacy can reference a race the swap has not landed
+    -- yet. Skip it; the full push re-offers it next run once the race
+    -- exists. Mirrors the guarded person_id lookup above.
+    WHERE race_id IS NULL
+        OR EXISTS (
+            SELECT 1 FROM {db_schema}."Race" AS r WHERE r.id = race_id::uuid
+        )
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,

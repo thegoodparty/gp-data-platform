@@ -127,3 +127,23 @@ def test_projected_turnout_is_absent():
                 f"'Projected_Turnout' found in a string literal at line {node.lineno}; "
                 "it is delivered by the sync_election_api swap DAG, not this writer."
             )
+
+
+def _string_constant(tree: ast.Module, name: str) -> str:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if name in targets and isinstance(node.value, ast.Constant):
+                return node.value.value
+    raise AssertionError(f"No string constant named {name}")
+
+
+def test_candidacy_upsert_guards_race_existence():
+    """Candidacy stays writer-delivered while Race moves to the swap DAG, so
+    the two refresh on independent schedules: a candidacy can reference a
+    race the swap has not delivered yet. The upsert must skip such rows (they
+    self-heal on the next full push) instead of failing the FK insert and
+    halting every load sequenced after Candidacy."""
+    query = _string_constant(_writer_tree(), "CANDIDACY_UPSERT_QUERY")
+    assert "race_id IS NULL" in query
+    assert "EXISTS" in query and '"Race"' in query.split("EXISTS", 1)[1]
