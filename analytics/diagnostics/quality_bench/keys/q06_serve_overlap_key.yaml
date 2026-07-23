@@ -25,12 +25,18 @@ numbers:
     value: 1833
     tolerance_pct: 0.5
   # pct_serve is a ceiling (~99.7); it does NOT discriminate the internal fork
-  # (excluded 99.73 vs included 99.52, 0.21pt apart) — the count does. 0.4%
-  # (99.30-100.10) accepts every legit fork read and rejects a gross mis-read (e.g. the
-  # pct_win value 3.08 landing in this slot, or a "% of Serve users who WON" confusion).
+  # (excluded 99.73 vs included 99.52, 0.21pt apart), so the count guards scoping.
+  # 0.3% (window [99.40, 100.00)) accepts every legit fork read (99.52-99.73) and
+  # rejects gross mis-reads (the pct_win value 3.08 landing in this slot, or a "% of
+  # Serve users who WON" confusion).
+  # CEILING-TIGHTENED from 0.4% (PR #680 review): grading.py check_numbers uses a raw
+  # relative diff with NO percentage clamp, so 0.4% (upper bound 100.10) would PASS a
+  # run that rounds the 5-user residual away to exactly 100.0 -- which the intent_card
+  # forbids and the severity1 patterns do not catch. 0.3% excludes 100.0 (diff 0.30%
+  # just over tolerance) while keeping every legitimate value.
   - name: pct_serve_users_with_win
     value: 99.7
-    tolerance_pct: 0.4
+    tolerance_pct: 0.3
   # pct_win is robust to the denominator fork BY DESIGN: candidacy base (approved) = 3.078,
   # account base users_win_base (reviewer alternative) = 2.971 (exec3b.py) — both ~3%.
   # 5% (2.92-3.23) accepts the whole legit band [2.97, 3.10] and rejects inversion
@@ -57,14 +63,23 @@ mandatory_sources:
     description: Win population / "has a Win candidacy" must be computed from the
       candidacy mart (is_latest_version AND NOT is_demo), the approved denominator —
       evidence the overlap was COMPUTED, not lifted from the stale doc figure.
+  # Both as-of anchors match the column name ADJACENT TO the July-1 boundary token, not
+  # the bare column (PR #680 review): check_sources does a full-transcript IGNORECASE
+  # re.search, and eo_activated_at / user_created_at appear in essentially every Serve /
+  # Win transcript regardless of whether an as-of filter was applied. Anchoring to the
+  # boundary expression is real evidence the June-30 cut was made. Boundary tokens cover
+  # the exclusive July-1 form and the inclusive June-30 form, quoted or not.
   - id: serve_asof_anchor
-    pattern: "eo_activated_at"
-    description: Evidence the Serve population was reconstructed as-of June 30 from the
-      activation timestamp — is_serve_user alone is current-state and includes July.
+    pattern: "eo_activated_at[^\\n]{0,60}(2026-07-01|2026-06-30|july.?1|june.?30|before.july)"
+    description: Evidence the Serve population was reconstructed as-of June 30 by
+      comparing eo_activated_at against the July-1 boundary; is_serve_user alone is
+      current-state and includes July activations.
   - id: win_asof_anchor
-    pattern: "user_created_at"
-    description: Evidence the Win population was bounded to June 30 (account-creation
-      proxy for candidacy existence), not left at current-state.
+    pattern: "user_created_at[^\\n]{0,60}(2026-07-01|2026-06-30|july.?1|june.?30|before.july)"
+    description: Evidence the Win population was bounded to June 30 by comparing
+      user_created_at (account-creation proxy for candidacy existence) against the
+      July-1 boundary, not merely referencing the column (which appears in every Win
+      transcript).
 severity1_patterns:
   # INVERSION: reporting pct_win_users_who_are_serve as a double-digit+ value is
   # confidently wrong — the true value is ~3.08 and every defensible fork stays in
