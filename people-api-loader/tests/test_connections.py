@@ -140,3 +140,12 @@ def test_statement_timeout_skipped_when_zero(monkeypatch: pytest.MonkeyPatch) ->
     with db.connect_prod(cfg):
         pass
     assert conn.executed == []  # 0 disables the timeout (no SET issued)
+
+
+def test_connect_new_defaults_to_autocommit() -> None:
+    # build_indexes._vacuum_analyze relies on this default: VACUUM cannot run inside a transaction
+    # block, and _vacuum_analyze never passes autocommit explicitly. If this default ever flips to
+    # False, VACUUM would fail in prod — so pin the contract here.
+    import inspect
+
+    assert inspect.signature(db.connect_new).parameters["autocommit"].default is True

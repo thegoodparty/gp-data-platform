@@ -107,10 +107,12 @@ TABLE_SPECS: dict[str, TableSpec] = {
 }
 
 
-# Loader-added Postgres columns absent from the prod serving schema — an intended divergence, like
-# the partition column. build_indexes creates them post-load (it owns the DDL); validate's
-# schema-diff allows them so the extra column doesn't read as drift. Keyed by serving table.
-LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom"}}
+# Serving-cluster columns absent from the current prod (swain) baseline — intended divergences that
+# validate's schema-diff must not read as drift, like the partition column. Two kinds land here:
+# loader-created-post-load columns whose DDL build_indexes owns ("geom"), and newly-projected mart
+# columns the serving schema gained while the prod baseline still predates them
+# ("hf_most_important_policy_item"). Keyed by serving table.
+LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_important_policy_item"}}
 
 
 def is_partitioned(table: str) -> bool:
