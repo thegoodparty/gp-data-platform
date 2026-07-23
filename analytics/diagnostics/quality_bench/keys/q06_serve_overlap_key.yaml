@@ -1,0 +1,117 @@
+id: q06_serve_overlap
+as_of: "2026-07-23"
+numbers:
+  # DISCRIMINATOR = the count. The two percentages are near-invariant across every
+  # legitimate fork (pct_serve 99.5-99.7; pct_win 3.0-3.1), so they confirm shape but
+  # cannot guard scoping — the count does. Near-miss ladder (verified 2026-07-23,
+  # ladder2.py): MAIN (as-of + internal-excluded) = 1833; skip internal filter = 1858
+  # (+1.36%); skip as-of cut = 1840 (+0.38%); skip both = 1867 (+1.85%); stale doc
+  # figure serve-analytics-knowledge/sources.md = 1860 (+1.47%); conflating the Serve
+  # population (1838) for the overlap = +0.27%.
+  # TOLERANCE 0.5% (+-9 users, 1824-1842): fails the internal-filter fork (1858), the
+  # stale doc figure (1860), and skip-both (1867) — the answers this question exists to
+  # catch. Deliberately does NOT numerically catch the as-of-skip (1840) or the
+  # population-conflation (1838); both are guarded by required_resolutions + judge, not
+  # the number (they are <0.4% away and a tolerance that caught them would fail on
+  # ordinary mart drift).
+  # DECAY NOTE: as-of-bounded but built on current-state flags (is_serve_user, is_demo,
+  # is_latest_version) applied to historical timestamps, so a correct re-run can only
+  # LOSE members (post-June-30 deletions / de-flags) — signed DOWNWARD drift. eo_activated_at
+  # is also recomputed retroactively each run. 9 users of headroom absorbs this.
+  # RE-BASELINE TRIGGER: if a correct current-state re-run reads below ~1824, re-pin;
+  # if the internal-filter gap (currently 25 users) ever compresses below ~9 users, the
+  # count stops discriminating that fork and it must move to resolutions/judge.
+  - name: serve_users_with_win_candidacy
+    value: 1833
+    tolerance_pct: 0.5
+  # pct_serve is a ceiling (~99.7); it does NOT discriminate the internal fork
+  # (excluded 99.73 vs included 99.52, 0.21pt apart), so the count guards scoping.
+  # 0.3% (window [99.40, 100.00)) accepts every legit fork read (99.52-99.73) and
+  # rejects gross mis-reads (the pct_win value 3.08 landing in this slot, or a "% of
+  # Serve users who WON" confusion).
+  # CEILING-TIGHTENED from 0.4% (PR #680 review): grading.py check_numbers uses a raw
+  # relative diff with NO percentage clamp, so 0.4% (upper bound 100.10) would PASS a
+  # run that rounds the 5-user residual away to exactly 100.0 -- which the intent_card
+  # forbids and the severity1 patterns do not catch. 0.3% excludes 100.0 (diff 0.30%
+  # just over tolerance) while keeping every legitimate value.
+  - name: pct_serve_users_with_win
+    value: 99.7
+    tolerance_pct: 0.3
+  # pct_win is robust to the denominator fork BY DESIGN: candidacy base (approved) = 3.078,
+  # account base users_win_base (reviewer alternative) = 2.971 (exec3b.py) — both ~3%.
+  # 5% (2.92-3.23) accepts the whole legit band [2.97, 3.10] and rejects inversion
+  # (~99.7) and a grossly-wrong denominator. The candidacy-vs-account-base fork is
+  # guarded by required_resolutions + required_assumptions + judge, NOT this number.
+  - name: pct_win_users_who_are_serve
+    value: 3.08
+    tolerance_pct: 5.0
+required_resolutions:
+  serve_population: canonical_is_serve_user_eo_activated_asof_june30
+  win_population: users_win_candidacy_has_candidacy_latest_nondemo_not_account_base
+  as_of_semantics: point_in_time_via_timestamp_cutoffs_current_state_flags
+  internal_accounts: excluded_via_goodparty_org_email_both_sides
+  grain: person_grain_distinct_user_id
+  boundary_semantics: half_open_before_july1_on_timestamp_columns
+  join_key: product_db_user_id_long_shared_across_both_marts
+mandatory_sources:
+  - id: serve_population_table
+    pattern: "users_serve_base"
+    description: Serve population must come from the canonical mart
+      (is_serve_user + eo_activated_at), not from an activity table or the doc figure.
+  - id: win_population_table
+    pattern: "users_win_candidacy"
+    description: Win population / "has a Win candidacy" must be computed from the
+      candidacy mart (is_latest_version AND NOT is_demo), the approved denominator —
+      evidence the overlap was COMPUTED, not lifted from the stale doc figure.
+  # Both as-of anchors match the column name ADJACENT TO the July-1 boundary token, not
+  # the bare column (PR #680 review): check_sources does a full-transcript IGNORECASE
+  # re.search, and eo_activated_at / user_created_at appear in essentially every Serve /
+  # Win transcript regardless of whether an as-of filter was applied. Anchoring to the
+  # boundary expression is real evidence the June-30 cut was made. Boundary tokens cover
+  # the exclusive July-1 form and the inclusive June-30 form, quoted or not.
+  - id: serve_asof_anchor
+    pattern: "eo_activated_at[^\\n]{0,60}(2026-07-01|2026-06-30|july.?1|june.?30|before.july)"
+    description: Evidence the Serve population was reconstructed as-of June 30 by
+      comparing eo_activated_at against the July-1 boundary; is_serve_user alone is
+      current-state and includes July activations.
+  - id: win_asof_anchor
+    pattern: "user_created_at[^\\n]{0,60}(2026-07-01|2026-06-30|july.?1|june.?30|before.july)"
+    description: Evidence the Win population was bounded to June 30 by comparing
+      user_created_at (account-creation proxy for candidacy existence) against the
+      July-1 boundary, not merely referencing the column (which appears in every Win
+      transcript).
+severity1_patterns:
+  # INVERSION: reporting pct_win_users_who_are_serve as a double-digit+ value is
+  # confidently wrong — the true value is ~3.08 and every defensible fork stays in
+  # [2.97, 3.10]. Matches a >=2-digit number within 15 non-digits of the metric name;
+  # the correct single-digit 3.0x cannot match (a lone digit before the decimal).
+  - "pct_win_users_who_are_serve\\D{0,15}\\b\\d{2,}(\\.\\d+)?\\b"
+  # LOW SERVE OVERLAP: reporting pct_serve_users_with_win below ~90 is confidently wrong
+  # (true 99.7; the "Serve is effectively a subset of Win" story requires >95). Matches
+  # 0.0-89.9 (incl. the pct_win value 3.08 mistakenly placed here); does NOT match 9x.x.
+  - "pct_serve_users_with_win\\D{0,15}\\b[0-8]?\\d\\.\\d+\\b"
+  # DELIBERATELY NO TRIPWIRE on the stale doc figure (1860 / "1,860 of 1,869"): a CORRECT
+  # answer MUST cite it to reconcile against ("the doc says 1,860 but direct SQL gives
+  # 1,833"), so any regex on 1860/1869 is negation-blind and would fire on correct prose.
+  # The count tolerance (1860 fails at +1.47%) plus the judge handle acceptance-as-answer.
+  # DELIBERATELY NO TRIPWIRE on the temporal/independent-recruitment over-claim (asserting
+  # the residual skews recent / independent Serve recruitment is already visible by
+  # June 30): the REQUIRED correct caveat ("N=5 is too small to detect any recent skew")
+  # shares its vocabulary, so a regex is negation-blind. The judge grades the over-claim.
+required_assumptions:
+  - win_population
+  - as_of_semantics
+  - internal_accounts
+  - grain
+intent_card: |
+  Purpose: test whether a run COMPUTES the Serve-Win overlap from the marts (not the
+  stale ~1,860 doc figure) with the right scoping, and reports it against both the
+  Serve and the Win denominators.
+  Audience: benchmark harness / future graded runs.
+  Forks (asker's answers): Serve user = is_serve_user, EO-activated as of June 30; Win
+  user = has a candidacy in users_win_candidacy (latest, non-demo) — NOT the wider
+  users_win_base account base; point-in-time via timestamp cutoffs on current-state
+  marts; internal @goodparty.org excluded on both sides; person-grain distinct user_id.
+  Note: 99.7% (Serve is effectively a subset of Win) and 3.1% (thin Win penetration)
+  are the expected shapes, not errors. The 5-user residual is real — don't round to
+  100%. Independent Serve recruitment is NOT detectable at this as-of (N=5 too small).
