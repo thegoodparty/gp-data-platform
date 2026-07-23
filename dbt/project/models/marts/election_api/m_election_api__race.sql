@@ -39,17 +39,18 @@ with
     -- One row per gp_election_id with the race-level civics attributes
     -- (is_partisan, office_type, official_office_name, office_level), which are
     -- position-grain and in practice invariant across candidacies within an
-    -- election cycle. win_number is carried here too but has no live source:
-    -- BallotReady supplies no win number, and the only values that exist come
-    -- from the 2023-2025 HubSpot archive (int__civics_candidacy_2025), whose
-    -- past elections fall well outside this mart's date window (a 2-month
-    -- grace period at the oldest), so win_number is null for every row this
-    -- mart emits, and consumers fall back
-    -- to a computed estimate. Aggregate with any valid value; downstream Race
-    -- rows that share a gp_election_id (i.e. multiple BR race stages for the
-    -- same election cycle) will all carry the same values. Drop non-positive
-    -- win_number sentinels (e.g. -1) an archive candidacy can attach to an
-    -- in-window race after id re-keying; a sub-1 "votes to win" is never real.
+    -- election cycle.
+    -- win_number is carried here but has no live source: BallotReady
+    -- supplies none, and the only values that ever existed come from
+    -- 2023-2025 HubSpot-archive candidacies. Their races now fall inside
+    -- the six-year window, but archive candidacies rarely resolve to a
+    -- BallotReady race id, so in practice the column is null across the
+    -- mart and consumers fall back to a computed estimate.
+    -- Aggregate with any valid value; downstream Race rows that share a
+    -- gp_election_id (i.e. multiple BR race stages for the same election
+    -- cycle) will all carry the same values. Drop non-positive win_number
+    -- sentinels (e.g. -1) an archive candidacy can attach to an in-window
+    -- race after id re-keying; a sub-1 "votes to win" is never real.
     civics_race_attrs as (
         select
             gp_election_id,
@@ -66,19 +67,15 @@ with
 select
     tbl_race.id,
     tbl_race.created_at,
-    -- Bump updated_at when a filing-address override applies (BallotReady's
-    -- own updated_at does not change), and otherwise ride the place row's
-    -- updated_at: the place mart bumps it whenever a slug changes
-    -- (disambiguation in either direction), so every dependent race clears
-    -- the election-api write model's incremental gate (updated_at greater
-    -- than the postgres max) in the same run and republishes its rebuilt
-    -- slug and place_id. Comparing slugs instead would miss a place moving
-    -- back from a suffixed slug to a clean one.
-    case
-        when filing_overrides.br_database_id is not null
-        then current_timestamp()
-        else greatest(tbl_race.updated_at, tbl_place.updated_at)
-    end as updated_at,
+    -- Ride the greater of the race's own BR timestamp and the place row's
+    -- updated_at (the place mart bumps it whenever a slug changes, so a
+    -- dependent race republishes its rebuilt slug and place_id in the same
+    -- build). Deliberately source-stable: a filing-address override changes
+    -- row content without bumping updated_at, and civics-joined columns can
+    -- also change without a bump. A bump implies the row changed; the
+    -- reverse does not hold, and nothing downstream consumes this column as
+    -- a change signal.
+    greatest(tbl_race.updated_at, tbl_place.updated_at) as updated_at,
     tbl_race.br_hash_id,
     tbl_race.br_database_id,
     tbl_race.election_date,
