@@ -25,9 +25,10 @@ the two failure modes the unit tests can't:
    confirm the transcript shows the `Skill`/`Agent` tools firing rather than a
    permission denial. Headless `claude -p` only allows what
    `.claude/settings.local.json` lists, so if either is denied, add it to
-   `SETTINGS_JSON` in `prep_arms.py` and re-prep the arms. While reading that
-   transcript, also check that the knowledge skills' dead relative links (into
-   skill folders prep deletes) do not visibly derail the run.
+   `SETTINGS_JSON` in `prep_arms.py` and re-prep the arms. (Dead relative
+   links are no longer a runtime concern to watch for here — `prep_arms.py`'s
+   integrity gate now fails the prep step outright if any md link inside an
+   arm doesn't resolve, so a prepped arm can't reach a run with one.)
 
 ## No-decision gates
 
@@ -42,11 +43,14 @@ closed:
    (answer keys) or sibling runs. Gate: container-grade isolation
    (ClickUp 86ajmyk2q), or per-batch transcript spot-checks for out-of-arm
    reads accepted in writing for that batch.
-3. Arms are not one-factor treatments — floor inventory leaks table
-   descriptions to the bare arm; knowledge arm carries dead links; full vs
-   bare differs in repo access, not just the framework. Gate: DATA-2164
-   (additive arm construction + leakage test), or the verdict writeup carries
-   these as explicit alternative explanations.
+3. ~~Arms are not one-factor treatments~~ **Closed by DATA-2164**: arms are
+   now built additively from one substrate with per-arm manifests and
+   integrity gates (dead-link + canary-leakage checks), so bare/knowledge/full
+   differ only by declared treatment layers, not by incidental repo access or
+   description leakage. The intent-card driver (surfacing which skill section
+   an answer actually used) is deferred to its own follow-up ticket under
+   DATA-2142; the interim is the noninteractive contract plus the
+   pre-first-batch skill-engagement probe (checklist item 2 above).
 4. No evidence artifacts or execution metadata — source checks are transcript
    greps, judge output is not persisted with provenance, and rule 3 overhead
    claims have no token/cost data behind them. Gate: ClickUp 86ajmykh4.
@@ -55,16 +59,31 @@ closed:
    unimplemented — verdicts are pre-registered directionally but not yet
    defensible as an experiment. Gate: ClickUp 86ajmykh4.
 
-## Arm ref
+## Arm construction (amended 2026-07-22, DATA-2164)
 
-`prep_arms.py` builds the `full` and `knowledge` arms as `git archive` exports
-of `--ref` (default `main`) — plain directories with no `.git`, so the deleted
-answer keys can't be recovered from history. Until this branch
-(`data-2143-quality-bench`) merges, `main` lacks the Databricks deps it added,
-so arms cut from `main` can't query the warehouse — pass
-`--ref data-2143-quality-bench` explicitly:
+**Pre-registration amendment (Tristan sign-off 2026-07-21):** the full arm is
+no longer "the repo as deployed" (a git-archive export of main). All arms are
+built additively from one substrate: bare = substrate; knowledge = substrate
++ the two product-knowledge skills + their analysis libs; full = knowledge +
+the analytics-process skill + its two claimed reviewer agents. The claim under
+test is therefore "the skills as a treatment," not "the repo as deployed."
+Rationale: subtractive arms were not one-factor contrasts (dead cross-skill
+links in the knowledge arm; repo content only in full/knowledge; curated dbt
+descriptions leaking into the floor), so wins were not attributable to the
+intended treatment (PR #636 human review).
 
-    uv run python diagnostics/quality_bench/prep_arms.py --ref data-2143-quality-bench
+`prep_arms.py` exports treatment layers from `--ref` (default `main`) via
+per-path `git archive`, writes a per-arm `manifest.json` (file, sha256,
+contributing layer), and fails unless integrity passes: every relative md
+link resolves inside the arm, and no canary phrase (canaries.yaml) from an
+excluded layer appears anywhere in the arm or the floor. Batch resume is
+gated on the manifest hashes (state.json `arms_sha256`).
+
+Until this branch merges, pass `--ref data-2164-additive-arms` (or whichever
+branch carries the current skill/lib content) explicitly, since `main` may
+lag the layers under test:
+
+    uv run python diagnostics/quality_bench/prep_arms.py --ref data-2164-additive-arms
 
 After the branch merges, the default (`main`) is correct and the flag can be
 dropped.
@@ -137,7 +156,7 @@ framework quality. Run it with a cheap model and only 2 arms:
 
     cd analytics
     uv run python diagnostics/quality_bench/floor_gen.py
-    uv run python diagnostics/quality_bench/prep_arms.py --ref data-2143-quality-bench
+    uv run python diagnostics/quality_bench/prep_arms.py --ref data-2164-additive-arms
     uv run python diagnostics/quality_bench/run_matrix.py --batch smoke --reps 1 --arms bare full --model sonnet
     uv run python diagnostics/quality_bench/grade.py --batch smoke
 
