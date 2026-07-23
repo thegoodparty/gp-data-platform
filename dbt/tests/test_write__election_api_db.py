@@ -15,8 +15,8 @@ from pathlib import Path
 WRITER_PATH = Path(__file__).parent.parent / "project" / "models" / "write" / "write__election_api_db.py"
 
 # The writer's full table set, in FK-dependency order (parents before
-# children); Projected_Turnout and Race are intentionally absent — they are
-# delivered by the sync_election_api Airflow DAG's atomic table swap (DATA-2015).
+# children); Projected_Turnout and Race are intentionally absent, both
+# delivered by the sync_election_api Airflow DAG's atomic table swap.
 EXPECTED_LOAD_TABLES = [
     "Place",
     "District",
