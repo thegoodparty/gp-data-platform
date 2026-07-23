@@ -133,7 +133,7 @@ def _string_constant(tree: ast.Module, name: str) -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            if name in targets and isinstance(node.value, ast.Constant):
+            if name in targets and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                 return node.value.value
     raise AssertionError(f"No string constant named {name}")
 

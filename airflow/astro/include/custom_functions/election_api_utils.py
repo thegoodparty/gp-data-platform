@@ -254,24 +254,27 @@ def swap_staging_into_target(
         if spec.inbound_fkeys:
             cur.execute(f"SET LOCAL lock_timeout = '{lock_timeout}'")
             cur.execute(f"SET LOCAL statement_timeout = '{statement_timeout}'")
-            for fk in spec.inbound_fkeys:
-                cur.execute(f'LOCK TABLE "{fk.child_schema}"."{fk.child_table}" ' f"IN ACCESS EXCLUSIVE MODE")
+            for inbound in spec.inbound_fkeys:
+                cur.execute(
+                    f'LOCK TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                    f"IN ACCESS EXCLUSIVE MODE"
+                )
             if target_exists:
                 cur.execute(
                     f'LOCK TABLE "{spec.target_schema}"."{spec.target_table}" ' f"IN ACCESS EXCLUSIVE MODE"
                 )
                 _check_inbound_gates(cur, spec, id_overlap_floor, orphan_budget_ratio)
-            for fk in spec.inbound_fkeys:
+            for inbound in spec.inbound_fkeys:
                 cur.execute(
-                    f'UPDATE "{fk.child_schema}"."{fk.child_table}" AS c '
-                    f'SET "{fk.child_column}" = NULL '
-                    f'WHERE c."{fk.child_column}" IS NOT NULL AND NOT EXISTS '
+                    f'UPDATE "{inbound.child_schema}"."{inbound.child_table}" AS c '
+                    f'SET "{inbound.child_column}" = NULL '
+                    f'WHERE c."{inbound.child_column}" IS NOT NULL AND NOT EXISTS '
                     f'(SELECT 1 FROM "{spec.staging_schema}"."{spec.new_table}" stg '
-                    f'WHERE stg."{fk.parent_column}" = c."{fk.child_column}")'
+                    f'WHERE stg."{inbound.parent_column}" = c."{inbound.child_column}")'
                 )
                 cur.execute(
-                    f'ALTER TABLE "{fk.child_schema}"."{fk.child_table}" '
-                    f'DROP CONSTRAINT IF EXISTS "{fk.constraint_name}"'
+                    f'ALTER TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                    f'DROP CONSTRAINT IF EXISTS "{inbound.constraint_name}"'
                 )
 
         statements: list[str] = []
@@ -326,13 +329,13 @@ def swap_staging_into_target(
         for stmt in statements:
             cur.execute(stmt)
 
-        for fk in spec.inbound_fkeys:
+        for inbound in spec.inbound_fkeys:
             cur.execute(
-                f'ALTER TABLE "{fk.child_schema}"."{fk.child_table}" '
-                f'ADD CONSTRAINT "{fk.constraint_name}" '
-                f'FOREIGN KEY ("{fk.child_column}") '
+                f'ALTER TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                f'ADD CONSTRAINT "{inbound.constraint_name}" '
+                f'FOREIGN KEY ("{inbound.child_column}") '
                 f'REFERENCES "{spec.target_schema}"."{spec.target_table}"'
-                f'("{fk.parent_column}") {fk.on_clause}'
+                f'("{inbound.parent_column}") {inbound.on_clause}'
             )
         conn.commit()
         logger.info(
