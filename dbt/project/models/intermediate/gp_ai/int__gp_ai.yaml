@@ -6,14 +6,11 @@ models:
       DEPRECATED (DATA-1834): Frozen snapshot of DDHQ-HubSpot AI election match
       results from Dec 2, 2025. Previously a Python model that fetched parquet from
       S3 via the gp-ai API. Splink modelling replaces this pipeline going forward.
-      Kept as a SQL passthrough for backward compatibility with 6 downstream consumers.
+      Kept as a SQL passthrough for backward compatibility with 3 downstream consumers.
 
       CLEANUP TODO: To fully remove this model, update these downstream consumers
       to reference stg_model_predictions__candidacy_ddhq_matches_20251202 directly
       (or migrate to civics mart / splink data), then delete this file and YAML:
-        - m_general__candidacy_stage.sql (LEFT JOIN)
-        - m_general__candidacy_preview.sql (LEFT JOIN, first in DDHQ>BR>LLM waterfall)
-        - m_general__election_stage.sql (FROM — primary source)
         - int__civics_candidacy_stage_2025.sql (LEFT JOIN, archive)
         - int__civics_election_stage_2025.sql (FROM, archive)
         - mban_candidacy_election_results.sql (INNER JOIN — evaluate deprecation)
