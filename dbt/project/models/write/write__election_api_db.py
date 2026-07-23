@@ -4,7 +4,6 @@ from datetime import datetime
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import add_months, current_date, date_add
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -730,13 +729,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     person_df: DataFrame = dbt.ref("m_election_api__person")
     officeholder_df: DataFrame = dbt.ref("m_election_api__office_holder")
 
-    # keep races from a 2-month post-election grace period through ~2 years out;
-    # the lower bound matches the m_election_api__race window exactly (keep them
-    # in sync, or this filter re-narrows what the mart emits)
-    race_df = race_df.filter(
-        (race_df.election_date >= add_months(current_date(), -2))
-        & (race_df.election_date < date_add(current_date(), 2 * 365))
-    )
+    # the election_date window is owned entirely by m_election_api__race; the
+    # writer loads whatever the mart emits
 
     # Implement incremental logic if this is an incremental run
     if dbt.is_incremental:
@@ -857,16 +851,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             staging_schema=staging_schema,
             db_schema=db_schema,
         )
-
-    # for the race db, drop rows with `election_date` more than 2 years past
-    _execute_sql_query(
-        f"DELETE FROM {db_schema}.\"Race\" WHERE election_date < current_date - interval '2 years'",
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
 
     # now drop the candidacy's that have no race or it's now null
     _execute_sql_query(
