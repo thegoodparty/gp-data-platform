@@ -417,6 +417,7 @@ def test_vacuum_analyze_runs_under_autocommit(
     that default. Also asserts the ANALYZE side effect (planner stats populated) landed.
     """
     with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."VacTgt" CASCADE')
         _exec(cur, 'CREATE TABLE public."VacTgt" (k int)')
         _exec(cur, 'INSERT INTO public."VacTgt" (k) VALUES (1), (2), (3)')
 
