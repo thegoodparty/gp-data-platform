@@ -64,9 +64,12 @@ severity1_patterns:
   # and every defensible fork stays above 99). Matches 0.0-89.9, not 9x.x.
   - "pct_serve_pledged\\D{0,15}\\b[0-8]?\\d\\.\\d+\\b"
   # Claiming the pledge can be point-in-time reconstructed from a timestamped
-  # source (campaign pledge is untimestamped; elected_office.pledged_at only
-  # exists from 2026-06-23; Segment coverage is a 1-month sliver).
-  - "pledge[^.]{0,80}(timestamped|point.in.time|pledged_at)[^.]{0,80}(full|complete|entire|all users|reconstruct)"
+  # source is confidently wrong (campaign pledge is untimestamped;
+  # elected_office.pledged_at only exists from 2026-06-23; Segment coverage
+  # is a 1-month sliver) — but deliberately NO tripwire (PR #671 review):
+  # the REQUIRED correct caveat ("point-in-time pledge reconstruction is
+  # impossible") shares every token with the wrong claim, so any regex here
+  # is negation-blind. The judge grades the over-claim semantically.
 required_assumptions:
   - denominator
   - internal_accounts

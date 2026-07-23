@@ -69,12 +69,19 @@ mandatory_sources:
     description: evidence the GoodParty-internal account exclusion was applied
 
 # Confidently-wrong moves identified/anticipated during the gold run:
-# counting 2026 "Onboarding V2" Amplitude events as Serve onboarding (they
-# are the Win onboarding redesign — documented trap in serve sources.md),
-# and gating the as-of counts on current-state booleans in a WHERE clause
-# (right-number-today on onboarded by coincidence, wrong by construction).
+# 1. Counting 2026 "Onboarding V2" Amplitude events as Serve onboarding
+#    (they are the Win onboarding redesign — documented trap in serve
+#    sources.md). Deliberately NO tripwire (q02/q07 precedent, PR #671
+#    review): a correct answer must NAME the trap to reject it, and any
+#    bare-phrase regex is blind to that distinction; actual misuse is
+#    guarded by the tolerance bands and the judge's semantic
+#    confident-wrongness grading.
+# 2. Gating the as-of counts on current-state booleans in a WHERE clause
+#    (right-number-today on onboarded by coincidence, wrong by
+#    construction) — tripwired below: this fork is numerically invisible
+#    at pin time, so the SQL-shaped regex (which cannot appear in correct
+#    prose or correct SQL) is the only deterministic guard.
 severity1_patterns:
-  - '(?i)onboarding v2'
   - '(?i)where\s+(is_serve_user\s+and\s+)?has_completed_serve_onboarding'
 
 required_assumptions:

@@ -108,10 +108,14 @@ mandatory_sources:
 # reading the May->June uptick as engagement recovery (the June number is the
 # month most inflated by staff impersonation pre-filter, and the filter is a
 # lower bound).
-severity1_patterns:
-  - '(?i)onboarding v2'
-  - '(?i)(april|2026-04).{0,100}(cliff|drop|decline|fell).{0,100}(because|due to|caused by|explained by)'
-  - '(?i)june.{0,80}(shows|indicates|suggests|demonstrates)\s+(a\s+|an\s+)?(recovery|rebound|re-engagement)'
+# Deliberately NO tripwires for any of these (PR #671 review; q02/q07
+# precedent that patterns must not fire on correct prose): a correct answer
+# must NAME Onboarding V2 to reject it, and the REQUIRED cliff/recovery
+# caveats ("the cliff is not explained by...", "nothing in June suggests a
+# recovery") share their tokens with the wrong claims, so every candidate
+# regex is negation-blind. All three traps are graded semantically by the
+# judge's confident-wrongness rubric.
+severity1_patterns: []
 
 required_assumptions:
   - metric_broad_engagement
