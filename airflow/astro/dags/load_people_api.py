@@ -117,27 +117,35 @@ def load_people_api():
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")
     build_indexes = _step("build_indexes", "build-indexes")
-    resize = _step("resize", "resize")
     validate = _step("validate", "validate")
+    resize = _step("resize", "resize")
     # Cost guard: a failed/aborted run after provision strands whatever writer instance class was
-    # in effect (up to db.r8g.48xlarge post build_indexes) because `resize` never runs. Fires
-    # (trigger_rule=one_failed) if any resource-creating task fails, flipping the stranded writer to
-    # db.serverless WITHOUT resize's serve lockdown (no param-group swap, backup retention,
-    # deletion protection, or reboot) so the cluster + loaded data stay around for a resumed retry
-    # or forensics. Skipped when the run succeeds (resize already made the writer serverless).
+    # in effect (up to db.r8g.48xlarge post build_indexes, the same box validate now runs its heavy
+    # per-state counts against) because `resize` never runs. Fires (trigger_rule=one_failed) if any
+    # resource-creating task fails — INCLUDING validate, now that it runs BEFORE resize on the
+    # scaled-up index instance — flipping the stranded writer to db.serverless WITHOUT resize's
+    # serve lockdown (no param-group swap, backup retention, deletion protection, or reboot) so the
+    # cluster + loaded data stay around for a resumed retry or forensics. Skipped when the run
+    # succeeds (resize already made the writer serverless).
     scale_down_on_failure = _step("scale_down_on_failure", "scale-down", trigger_rule="one_failed")
 
     # dbt gate must pass before unload; unload + provision then run in parallel and both feed
-    # create-schema; then the serial load chain.
+    # create-schema; then the serial load chain. validate runs BEFORE resize: it reuses the big
+    # r8g.48xlarge index instance build_indexes already scaled up (validate's per-state
+    # count/GROUP BY checks are heavy over ~227M rows and slow on the small post-resize serving
+    # box), and validate only checks row counts + schema/index structure — none of which change
+    # across resize — so correctness is identical either order. resize is then the clean final step.
     inspect_prod >> dbt_test_voter_gate >> [unload, provision]
     [unload, provision] >> create_schema
-    create_schema >> copy >> build_indexes >> resize >> validate
+    create_schema >> copy >> build_indexes >> validate >> resize
     # The guard's upstreams must include EVERY task after which a cluster can exist, including
-    # `unload` (which runs parallel to provision). one_failed fires only on a DIRECT upstream in
-    # FAILED state; if unload fails while provision succeeds, the downstream tasks go UPSTREAM_FAILED
-    # (which does NOT satisfy one_failed), so unload must feed the guard directly or the stranded
-    # cluster is missed.
-    [provision, unload, create_schema, copy, build_indexes, resize] >> scale_down_on_failure
+    # `unload` (which runs parallel to provision) and `validate` (which now runs on the scaled-up
+    # writer before resize — a validate failure must flip it to serverless, not strand it).
+    # one_failed fires only on a DIRECT upstream in FAILED state; if unload fails while provision
+    # succeeds, the downstream tasks go UPSTREAM_FAILED (which does NOT satisfy one_failed), so
+    # unload (and every other task below) must feed the guard directly or the stranded cluster is
+    # missed.
+    [provision, unload, create_schema, copy, build_indexes, validate, resize] >> scale_down_on_failure
 
 
 load_people_api()

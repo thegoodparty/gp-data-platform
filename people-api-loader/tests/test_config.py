@@ -154,3 +154,16 @@ def test_from_env_instance_classes_override(monkeypatch: pytest.MonkeyPatch) -> 
     cfg = LoaderConfig.from_env()
     assert cfg.load_instance_class == "db.r8g.8xlarge"
     assert cfg.index_instance_class == "db.r8g.24xlarge"
+
+
+def test_from_env_index_parallelism_defaults_to_loader_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Unset = today's behavior exactly: build_indexes._DEFAULT_BUILDERS (128).
+    from loader.people_api.steps.build_indexes import _DEFAULT_BUILDERS
+
+    monkeypatch.delenv("LOADER_INDEX_PARALLELISM", raising=False)
+    assert LoaderConfig.from_env().index_parallelism == _DEFAULT_BUILDERS == 128
+
+
+def test_from_env_index_parallelism_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOADER_INDEX_PARALLELISM", "16")
+    assert LoaderConfig.from_env().index_parallelism == 16

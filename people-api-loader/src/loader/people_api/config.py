@@ -84,6 +84,14 @@ DEFAULT_SCALE_DOWN_MIN_ACU = 0.5
 DEFAULT_SCALE_DOWN_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
 
+# build_indexes's concurrent-builder count, overridable via LOADER_INDEX_PARALLELISM so an
+# operator can back off from the loader default (e.g. against a bastion sshd MaxStartups limit)
+# without a code change. Must match steps/build_indexes.py's `_DEFAULT_BUILDERS` (128, sized for
+# the ~192-vCPU db.r8g.48xlarge index instance) — kept as a separate constant here (not imported
+# from build_indexes) to avoid a config <-> steps import cycle; update both if the index box
+# changes.
+DEFAULT_INDEX_PARALLELISM = 128
+
 # Env-var name reserved for the master password. MUST NEVER be set — included
 # only so we can detect and refuse it. See `LoaderConfig.from_env()`.
 _FORBIDDEN_ENV_VAR = "VOTER_DB_MASTER_PASSWORD"
@@ -150,6 +158,9 @@ class LoaderConfig(BaseLoaderConfig):
     # Failure-cost guard only (steps/scale_down.py) — NOT the serving class, see comment above.
     scale_down_min_acu: float
     scale_down_max_acu: float
+    # build_indexes's default concurrent-builder count (see DEFAULT_INDEX_PARALLELISM above);
+    # the CLI's --parallelism flag still overrides this when passed explicitly.
+    index_parallelism: int
 
     # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
     mart_fqns: dict[str, str]
@@ -229,6 +240,7 @@ class LoaderConfig(BaseLoaderConfig):
             serve_instance_class=_env("LOADER_SERVE_INSTANCE_CLASS", DEFAULT_SERVE_INSTANCE_CLASS),
             scale_down_min_acu=float(os.environ.get("LOADER_SCALE_DOWN_MIN_ACU", DEFAULT_SCALE_DOWN_MIN_ACU)),
             scale_down_max_acu=float(os.environ.get("LOADER_SCALE_DOWN_MAX_ACU", DEFAULT_SCALE_DOWN_MAX_ACU)),
+            index_parallelism=int(os.environ.get("LOADER_INDEX_PARALLELISM", DEFAULT_INDEX_PARALLELISM)),
             mart_fqns=mart_fqns,
             _tags=tags,
         )

@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 from loader.core import aws
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import resize as step
+from tests._fakes import FakeConn, executed_sql, fake_connect
 
 # Deliberately distinct from both DEFAULT_SERVE_INSTANCE_CLASS ("db.r6g.4xlarge") and the dev
 # override ("db.t4g.medium") so these tests catch resize reading a hardcoded default instead of
@@ -87,9 +88,11 @@ class FakeRds:
 def test_resize_applies_provisioned_class_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
     rds_client = FakeRds()
     captured: dict = {}
+    conn = FakeConn().queue_result((1,))
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
 
     manifest = step.run(_CFG, "20260616")
 
@@ -111,6 +114,31 @@ def test_resize_applies_provisioned_class_and_writes_manifest(monkeypatch: pytes
     by = dict(rds_client.calls)
     assert by["modify_instance"]["DBInstanceClass"] == _TEST_SERVE_CLASS
     assert by["modify_instance"]["ApplyImmediately"] is True
+    # Post-resize smoke check: a trivial SELECT 1 against the resized cluster, run after the
+    # reboot settles and before the manifest is written.
+    assert executed_sql(conn) == ["SELECT 1"]
+
+
+def test_resize_smoke_check_failure_propagates_and_blocks_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # If the post-resize connectivity smoke check fails (the resized writer is unreachable), that
+    # must surface as a resize failure — not a silently "complete" manifest over a cluster the
+    # loader can't actually reach.
+    rds_client = FakeRds()
+    wrote: dict = {}
+
+    def _boom(*a: object, **k: object):
+        raise RuntimeError("could not connect to resized writer")
+
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "connect_new", _boom)
+
+    with pytest.raises(RuntimeError, match="could not connect"):
+        step.run(_CFG, "20260616")
+    assert "m" not in wrote  # no complete manifest written over an unreachable resize
 
 
 def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,6 +153,7 @@ def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result((1,))))
 
     manifest = step.run(_CFG, "20260616")  # must not raise; modifies retried after settle
 
@@ -171,6 +200,7 @@ def test_resize_reboot_waits_for_class_applied_not_just_available(monkeypatch: p
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result((1,))))
 
     manifest = step.run(_CFG, "20260616")
 
@@ -221,6 +251,7 @@ def test_resize_waits_for_cluster_settle_before_instance_class_modify(
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result((1,))))
 
     manifest = step.run(_CFG, "20260616")
 

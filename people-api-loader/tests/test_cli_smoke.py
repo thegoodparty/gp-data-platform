@@ -7,7 +7,9 @@ wired up and every documented subcommand is registered.
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 
+import pytest
 from typer.testing import CliRunner
 
 from loader.people_api.cli import app
@@ -51,11 +53,39 @@ def test_status_help_renders() -> None:
     assert "--date" in _plain(result.output)
 
 
-def test_build_indexes_parallelism_defaults_to_module_constant() -> None:
-    # The CLI default must track build_indexes._DEFAULT_BUILDERS (128, tuned for the index box)
-    # rather than a stale hardcoded literal — see the 32-vs-128 under-parallelization finding.
-    from loader.people_api.steps.build_indexes import _DEFAULT_BUILDERS
+def test_build_indexes_omitted_flag_uses_config_parallelism(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With --parallelism omitted, the CLI must resolve the concurrency from
+    # cfg.index_parallelism (LOADER_INDEX_PARALLELISM, else the loader default of 128) at RUNTIME,
+    # not from a value baked in at Typer-decoration time (which can't see env/cfg).
+    from loader.people_api import cli
+    from loader.people_api.steps import build_indexes as step
 
-    result = runner.invoke(app, ["build-indexes", "--help"])
+    captured: dict = {}
+    fake_cfg = SimpleNamespace(index_parallelism=42)
+    monkeypatch.setattr(cli, "_setup", lambda run_date: fake_cfg)
+    monkeypatch.setattr(
+        step, "run", lambda cfg, run_date, *, parallelism: captured.update(parallelism=parallelism)
+    )
+
+    result = runner.invoke(app, ["build-indexes", "--date", "20260709"])
+
     assert result.exit_code == 0, result.output
-    assert f"[default: {_DEFAULT_BUILDERS}]" in _plain(result.output)
+    assert captured["parallelism"] == 42
+
+
+def test_build_indexes_explicit_flag_overrides_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An explicit --parallelism must win over cfg.index_parallelism, not just supply a fallback.
+    from loader.people_api import cli
+    from loader.people_api.steps import build_indexes as step
+
+    captured: dict = {}
+    fake_cfg = SimpleNamespace(index_parallelism=42)
+    monkeypatch.setattr(cli, "_setup", lambda run_date: fake_cfg)
+    monkeypatch.setattr(
+        step, "run", lambda cfg, run_date, *, parallelism: captured.update(parallelism=parallelism)
+    )
+
+    result = runner.invoke(app, ["build-indexes", "--date", "20260709", "--parallelism", "7"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["parallelism"] == 7
