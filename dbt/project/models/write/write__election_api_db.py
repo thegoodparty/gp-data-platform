@@ -583,6 +583,14 @@ STANCE_UPSERT_QUERY = """
         issue_id::uuid,
         candidacy_id::uuid
     FROM {staging_schema}."Stance"
+    -- A stance can arrive in the same run as a candidacy whose race the
+    -- swap has not landed yet; that candidacy gets skipped by its own
+    -- guard above, so insert only stances whose candidacy exists (or is
+    -- null) and let the full push re-offer the rest next run.
+    WHERE candidacy_id IS NULL
+        OR EXISTS (
+            SELECT 1 FROM {db_schema}."Candidacy" AS c WHERE c.id = candidacy_id::uuid
+        )
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,

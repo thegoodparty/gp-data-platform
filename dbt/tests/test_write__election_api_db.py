@@ -147,3 +147,12 @@ def test_candidacy_upsert_guards_race_existence():
     query = _string_constant(_writer_tree(), "CANDIDACY_UPSERT_QUERY")
     assert "race_id IS NULL" in query
     assert "EXISTS" in query and '"Race"' in query.split("EXISTS", 1)[1]
+
+
+def test_stance_upsert_guards_candidacy_existence():
+    """Stances co-arrive with candidacies; when the candidacy guard skips a
+    parent, its stances must skip too (they self-heal on the next full
+    push) instead of failing the FK insert and the load with it."""
+    query = _string_constant(_writer_tree(), "STANCE_UPSERT_QUERY")
+    assert "candidacy_id IS NULL" in query
+    assert "EXISTS" in query and '"Candidacy"' in query.split("EXISTS", 1)[1]
