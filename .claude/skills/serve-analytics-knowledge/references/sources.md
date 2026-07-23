@@ -27,6 +27,11 @@ For most Serve analyses, start with one of these:
   `is_active_serve_user`, registration cohort fields. Includes ALL users (not just Serve) so
   funnels have correct denominators — always filter `is_serve_user` for the canonical
   population.
+- **Activation anchor derivation:** `eo_activated_at` is computed in the civics `users` mart
+  from product-DB tables (least of min completed-poll `created_at` via `elected_offices` and
+  first serve-org `created_at`), not from any Amplitude event, so instrumentation changes
+  cannot shift it. Recomputed retroactively each run; definition broadened 2026-03-31 (#291),
+  so a future definition change restates all history. (state · 2026-07)
 - **`dbt.int__serve_active_user`** — the single source of truth for the behavioral half of the
   People Served cohort (`has_sent_sms_poll AND has_pledged`).
 - **`mart_analytics.people_served`** — the North Star mart: census population covered by the
