@@ -157,12 +157,11 @@ left join
     {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
     on tbl_race.br_database_id = filing_overrides.br_database_id
 where
-    -- 2-month grace period keeps recently-passed races serveable (the campaign
-    -- plan reads races after election day). Keep the lower bound in sync with
-    -- the race filter in write__election_api_db.py, which otherwise re-narrows
-    -- this window
+    -- serve races from 6 years past through 2 years out, so recently-passed and
+    -- historical races stay queryable. This is the sole election_date window for
+    -- the Race table; write__election_api_db.py loads whatever the mart emits
     tbl_race.election_date
-    between current_date() - interval '2 months' and current_date() + interval '2 years'
+    between current_date() - interval '6 years' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
     -- depends on; a Race with no matching Position can't serve the
     -- campaign-strategy-context endpoint (no projected_turnout, no district
