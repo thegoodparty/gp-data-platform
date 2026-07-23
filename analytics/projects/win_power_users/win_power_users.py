@@ -225,6 +225,11 @@ def over_index(df: pd.DataFrame, dim: str, cohort_col: str, *, n_floor: int = 30
     95% CI on the cell rate. n = base rows in the cell.
     """
     base_rate = df[cohort_col].mean()
+    if not base_rate:
+        raise ValueError(
+            f"over_index: base_rate is 0 for cohort_col={cohort_col!r}: all rows are 0 "
+            "in the supplied DataFrame, so over_index would be NaN for every cell."
+        )
     rows = []
     for val, g in df.groupby(dim, dropna=False):
         n = len(g)
