@@ -88,3 +88,15 @@ def test_psycopg2_adapts_python_lists_to_postgres_arrays():
 
     assert adapt([1, 2]).getquoted() == b"ARRAY[1,2]"
     assert adapt(["a", "b"]).getquoted() == b"ARRAY['a','b']"
+
+
+def test_race_swap_enabled_parse():
+    from dags.sync_election_api import _race_swap_enabled
+
+    assert _race_swap_enabled("true")
+    assert _race_swap_enabled("TRUE")
+    assert _race_swap_enabled("  true  ")
+    assert not _race_swap_enabled("false")
+    assert not _race_swap_enabled("")
+    assert not _race_swap_enabled("yes")
+    assert not _race_swap_enabled("1")

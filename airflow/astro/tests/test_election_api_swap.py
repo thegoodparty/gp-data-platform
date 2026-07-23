@@ -57,6 +57,9 @@ class FakePostgres:
         self.indexes: dict[tuple[str, str], tuple[str, str]] = {}
         # (child_schema, child_table, constraint_name) -> (ref_schema, ref_table)
         self.fk_refs: dict[tuple[str, str, str], tuple[str, str]] = {}
+        # (child_schema, child_table, constraint_name) -> pg_get_constraintdef
+        # text (test setup data; no durability tracking needed).
+        self.constraint_defs: dict[tuple[str, str, str], str] = {}
         # normalized "SELECT count(*) ..." statement -> value the fake returns
         self.scalar_results: dict[str, int] = {}
         # every statement executed, normalized, in order (for order asserts)
@@ -78,6 +81,9 @@ class FakePostgres:
 
     def seed_scalar(self, stmt: str, value: int):
         self.scalar_results[" ".join(stmt.split())] = value
+
+    def seed_constraint_def(self, schema, table, conname, definition):
+        self.constraint_defs[(schema, table, conname)] = definition
 
     def connect(self):
         return _FakeConnection(self)
@@ -288,6 +294,19 @@ class FakePostgres:
             self.fk_refs.pop((schema, table, con), None)
             return []
 
+        if stmt == (
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid = %s::regclass AND conname = %s"
+        ):
+            qualified, conname = params
+            m2 = re.fullmatch(r'"([^"]+)"\."([^"]+)"', qualified)
+            schema, table = m2.group(1), m2.group(2)
+            self._require_table(schema, table)
+            key = (schema, table, conname)
+            if key in self.constraint_defs:
+                return [(self.constraint_defs[key],)]
+            return []
+
         raise AssertionError(f"FakePostgres: unhandled SQL: {stmt}")
 
     # -- internals ------------------------------------------------------------
@@ -402,6 +421,12 @@ def _seed_race_world(pg, live_count=100, overlap=100, referencing=80, orphans=0)
         constraints={"Candidacy_pkey", "Candidacy_race_id_fkey"},
         indexes={"Candidacy_pkey", "Candidacy_race_id_idx"},
         fk_refs={("public", "Candidacy", "Candidacy_race_id_fkey"): ("public", "Race")},
+    )
+    pg.seed_constraint_def(
+        "public",
+        "Candidacy",
+        "Candidacy_race_id_fkey",
+        'FOREIGN KEY (race_id) REFERENCES "Race"(id) ON UPDATE CASCADE ON DELETE SET NULL',
     )
     t = f'"{RACE_SPEC.target_schema}"."{RACE_SPEC.target_table}"'
     s = f'"{RACE_SPEC.staging_schema}"."{RACE_SPEC.new_table}"'
@@ -741,6 +766,29 @@ def test_orphan_budget_aborts():
 
     with pytest.raises(ValueError, match="orphan"):
         swap_staging_into_target(conn, RACE_SPEC)
+
+
+def test_changed_inbound_fk_definition_aborts():
+    """A migration that changes the child FK's actions must stop the swap;
+    re-adding from the spec would silently revert the migration."""
+    pg = FakePostgres()
+    _seed_race_world(pg)
+    pg.seed_constraint_def(
+        "public",
+        "Candidacy",
+        "Candidacy_race_id_fkey",
+        'FOREIGN KEY (race_id) REFERENCES "Race"(id) ON UPDATE CASCADE ON DELETE RESTRICT',
+    )
+    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
+    conn = pg.connect()
+    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    state_before = pg.state()
+
+    with pytest.raises(ValueError, match="does not end"):
+        swap_staging_into_target(conn, RACE_SPEC)
+
+    assert pg.state() == state_before
+    assert not any(s.startswith("UPDATE") for s in pg.statements)
 
 
 def test_orphans_within_budget_are_nulled_and_swap_completes():

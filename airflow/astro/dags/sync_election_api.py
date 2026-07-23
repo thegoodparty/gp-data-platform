@@ -541,6 +541,13 @@ def _race_quality_gate(
         raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small")
 
 
+def _race_swap_enabled(raw: str) -> bool:
+    """Cutover switch: only the exact word "true" (case and surrounding
+    whitespace insensitive) enables the swap; anything else is rehearsal
+    mode. Pure; unit-tested."""
+    return raw.strip().lower() == "true"
+
+
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -1112,9 +1119,7 @@ def sync_election_api():
             # first deploy without this gate. Placed AFTER quality_checks so
             # every night while disabled is a full dress rehearsal: staging
             # built, loaded, indexed, gated; only the swap is withheld.
-            enabled = (
-                Variable.get("election_api_race_swap_enabled", default="false").strip().lower() == "true"
-            )
+            enabled = _race_swap_enabled(Variable.get("election_api_race_swap_enabled", default="false"))
             if not enabled:
                 t_log.info("Race swap disabled (rehearsal mode); staging left for parity checks")
             return enabled

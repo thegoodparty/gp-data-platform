@@ -206,6 +206,21 @@ def _check_inbound_gates(
             f"{id_overlap_floor}; wholesale re-key suspected, refusing to swap"
         )
     for fk in spec.inbound_fkeys:
+        cur.execute(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid = %s::regclass AND conname = %s",
+            (f'"{fk.child_schema}"."{fk.child_table}"', fk.constraint_name),
+        )
+        row = cur.fetchone()
+        # Absent constraint = cold start or prior-crash state; nothing to
+        # preserve. Present but with different actions = a migration changed
+        # it; re-adding from our spec would silently revert it.
+        if row is not None and not row[0].endswith(fk.on_clause):
+            raise ValueError(
+                f"live {fk.constraint_name} definition ({row[0]}) does not end "
+                f"with the spec's on_clause ({fk.on_clause}); a migration may "
+                f"have changed it; refusing to swap"
+            )
         c = f'"{fk.child_schema}"."{fk.child_table}"'
         cur.execute(f'SELECT count(*) FROM {c} c WHERE c."{fk.child_column}" IS NOT NULL')
         referencing = cur.fetchone()[0]
