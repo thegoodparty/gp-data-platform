@@ -210,6 +210,8 @@ def wilson_ci(k: int, n: int, z: float = 1.959963984540054) -> tuple[float, floa
     """Wilson 95% interval on a proportion, returned as (lo, hi) in [0,1]. NaN if n==0."""
     if n == 0:
         return (np.nan, np.nan)
+    if k < 0 or k > n:
+        raise ValueError(f"wilson_ci: k={k} is outside [0, n={n}]")
     p = k / n
     den = 1 + z * z / n
     center = (p + z * z / (2 * n)) / den
