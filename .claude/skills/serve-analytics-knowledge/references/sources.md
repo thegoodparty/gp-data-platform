@@ -19,14 +19,18 @@ table to start from.
 
 For most Serve analyses, start with one of these:
 
-- **`mart_analytics.users_serve_base`** — user-grain view over civics `users` (grain asserted
-  in a SQL comment only — no dbt `unique` test; verify `count(*) = count(distinct user_id)`
-  before counting from it): Serve flags
+- **`mart_analytics.users_serve_base`** — user-grain view over civics `users` (grain enforced
+  by a dbt `unique` + `not_null` test on `user_id`): Serve flags
   (`is_serve_user`, `eo_activated_at`), the 7-step onboarding funnel (timestamps + boolean
   flags + `serve_onboarding_steps_completed`), `is_active_eo`, `has_pledged`,
   `is_active_serve_user`, registration cohort fields. Includes ALL users (not just Serve) so
   funnels have correct denominators — always filter `is_serve_user` for the canonical
   population.
+- **Activation anchor derivation:** `eo_activated_at` is computed in the civics `users` mart
+  from product-DB tables (least of min completed-poll `created_at` via `elected_offices` and
+  first serve-org `created_at`), not from any Amplitude event, so instrumentation changes
+  cannot shift it. Recomputed retroactively each run; definition broadened 2026-03-31 (#291),
+  so a future definition change restates all history. (state · 2026-07)
 - **`dbt.int__serve_active_user`** — the single source of truth for the behavioral half of the
   People Served cohort (`has_sent_sms_poll AND has_pledged`).
 - **`mart_analytics.people_served`** — the North Star mart: census population covered by the
@@ -44,7 +48,10 @@ For most Serve analyses, start with one of these:
   source (via `int__serve_active_user`). **Current-state only: no timestamp exists anywhere**
   (`pledgedAt`/`pledgeDate`/`pledged_at` all absent across 62,685 campaigns, verified
   2026-07-23), so point-in-time pledge reconstruction is impossible from it. Amplitude
-  onboarding-pledge events (2025-05-28 →) can bound *recent* pledge dates; Segment pledge
+  onboarding-pledge events (2025-05-28 →) can bound *recent* pledge dates — **when joining
+  these events to a user table, cast the product-side key: `cast(u.user_id as string) =
+  e.user_id`; casting the Amplitude side to bigint throws `CAST_INVALID_INPUT` on legacy
+  Firebase-style IDs (see [gotchas.md](gotchas.md) — Amplitude user_id casts)**; Segment pledge
   tables cover only 2026-02-23 → 2026-03-24.
 - **EO pledge** — `gp_api_db_elected_office.pledged_at`, a timestamped EO-level pledge from
   the new Serve onboarding (live 2026-06-23; 17 rows as of 2026-07-23). **Not read by
