@@ -19,7 +19,9 @@ table to start from.
 
 For most Serve analyses, start with one of these:
 
-- **`mart_analytics.users_serve_base`** — user-grain view over civics `users`: Serve flags
+- **`mart_analytics.users_serve_base`** — user-grain view over civics `users` (grain asserted
+  in a SQL comment only — no dbt `unique` test; verify `count(*) = count(distinct user_id)`
+  before counting from it): Serve flags
   (`is_serve_user`, `eo_activated_at`), the 7-step onboarding funnel (timestamps + boolean
   flags + `serve_onboarding_steps_completed`), `is_active_eo`, `has_pledged`,
   `is_active_serve_user`, registration cohort fields. Includes ALL users (not just Serve) so
@@ -35,6 +37,19 @@ For most Serve analyses, start with one of these:
   caveat in [methodology_defaults.md](methodology_defaults.md) before using it.
 - **`dbt.stg_airbyte_source__amplitude_api_events`** — raw event grain; the source for the
   broad-engagement working set built by `analytics/lib/serve_analysis.py`.
+
+## Pledge instruments (two, asymmetric)
+
+- **Campaign pledge** — `details:pledged` on gp_api campaigns, the governed `has_pledged`
+  source (via `int__serve_active_user`). **Current-state only: no timestamp exists anywhere**
+  (`pledgedAt`/`pledgeDate`/`pledged_at` all absent across 62,685 campaigns, verified
+  2026-07-23), so point-in-time pledge reconstruction is impossible from it. Amplitude
+  onboarding-pledge events (2025-05-28 →) can bound *recent* pledge dates; Segment pledge
+  tables cover only 2026-02-23 → 2026-03-24.
+- **EO pledge** — `gp_api_db_elected_office.pledged_at`, a timestamped EO-level pledge from
+  the new Serve onboarding (live 2026-06-23; 17 rows as of 2026-07-23). **Not read by
+  `int__serve_active_user`** — a pledge-share analysis needs the union explicitly (state ·
+  2026-07: the union added no users beyond campaign pledge on the June-30 population).
 
 ## The Serve event landscape (two generations)
 
