@@ -269,6 +269,11 @@ def combination_sweep(
     from itertools import combinations
 
     base_rate = df[cohort_col].mean()
+    if not base_rate:
+        raise ValueError(
+            f"combination_sweep: base_rate is 0 for cohort_col={cohort_col!r}: all rows are 0 "
+            "in the supplied DataFrame, so lift_score would be NaN for every cell."
+        )
     results = []
     n_combos = 0
     n_cells_eval = 0
