@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Win power-user profile: findings (DATA-2153)</title>
+<style>
+  :root {
+    --ground: #fbfbfd;
+    --panel: #ffffff;
+    --ink: #1b1d29;
+    --muted: #5b6074;
+    --faint: #8a8fa3;
+    --accent: #5f55ee;
+    --accent-soft: #ecebfd;
+    --border: #e4e5ee;
+    --border-strong: #d3d5e2;
+    --thead: #f3f3f9;
+    --pos: #0e7a68;
+    --neg: #b4532a;
+    --maxw: 60rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #131420;
+      --panel: #1a1c2a;
+      --ink: #e9eaf2;
+      --muted: #a3a7bd;
+      --faint: #767b93;
+      --accent: #8f87ff;
+      --accent-soft: #232449;
+      --border: #2a2d3f;
+      --border-strong: #383b52;
+      --thead: #212333;
+      --pos: #4fd6bf;
+      --neg: #e6a184;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #fbfbfd; --panel: #ffffff; --ink: #1b1d29; --muted: #5b6074; --faint: #8a8fa3;
+    --accent: #5f55ee; --accent-soft: #ecebfd; --border: #e4e5ee; --border-strong: #d3d5e2;
+    --thead: #f3f3f9; --pos: #0e7a68; --neg: #b4532a;
+  }
+  :root[data-theme="dark"] {
+    --ground: #131420; --panel: #1a1c2a; --ink: #e9eaf2; --muted: #a3a7bd; --faint: #767b93;
+    --accent: #8f87ff; --accent-soft: #232449; --border: #2a2d3f; --border-strong: #383b52;
+    --thead: #212333; --pos: #4fd6bf; --neg: #e6a184;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 4rem 1.5rem 6rem; }
+
+  /* Masthead */
+  header.mast { border-bottom: 2px solid var(--ink); padding-bottom: 1.4rem; margin-bottom: 2.6rem; }
+  .eyebrow {
+    font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin: 0 0 0.7rem;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.7rem); line-height: 1.1; margin: 0 0 0.9rem;
+    font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;
+  }
+  .meta { color: var(--muted); font-size: 0.9rem; line-height: 1.55; max-width: 46rem; }
+  .meta code { background: var(--accent-soft); color: var(--ink); padding: 0.05em 0.4em; border-radius: 4px; font-size: 0.85em; }
+
+  /* Sections */
+  section { margin-top: 3.2rem; }
+  h2 {
+    font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 1rem;
+    padding-top: 1rem; border-top: 1px solid var(--border); text-wrap: balance;
+  }
+  h3 { font-size: 1.06rem; font-weight: 700; margin: 2rem 0 0.6rem; color: var(--ink); }
+  h4 { font-size: 0.94rem; font-weight: 700; margin: 1.6rem 0 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  p { margin: 0.85rem 0; max-width: 42rem; }
+  strong { font-weight: 700; }
+
+  /* Two-question cards */
+  .qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin: 1.4rem 0; max-width: none; }
+  .qcard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; }
+  .qcard .qn { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .qcard .qt { font-weight: 700; margin: 0.35rem 0 0.35rem; font-size: 1.02rem; }
+  .qcard p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  /* Definition list */
+  ul.clean { margin: 0.85rem 0; padding-left: 1.1rem; max-width: 42rem; }
+  ul.clean li { margin: 0.4rem 0; }
+  ul.clean li::marker { color: var(--accent); }
+
+  /* Punchline callout */
+  .punch {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 0.85rem 1.1rem; border-radius: 0 8px 8px 0; margin: 1.3rem 0;
+    max-width: none; font-size: 1.02rem;
+  }
+  .punch strong { color: var(--ink); }
+
+  /* Tables */
+  .tbl { overflow-x: auto; margin: 1.1rem 0 0.4rem; border: 1px solid var(--border); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  thead th {
+    background: var(--thead); text-align: left; font-weight: 700; color: var(--muted);
+    padding: 0.6rem 0.85rem; white-space: nowrap; border-bottom: 1px solid var(--border-strong);
+    font-size: 0.78rem; letter-spacing: 0.03em; text-transform: uppercase;
+  }
+  tbody td { padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .oi { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+  .oi.hi { color: var(--pos); }
+  .oi.lo { color: var(--neg); }
+  td.period { font-weight: 600; white-space: nowrap; }
+  .prov { font-size: 0.78rem; color: var(--faint); margin: 0.4rem 0 0; line-height: 1.5; max-width: none; font-style: italic; }
+
+  a { color: var(--accent); }
+  @media (max-width: 640px) { .wrap { padding: 2.5rem 1rem 4rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Win product &middot; DATA-2153</p>
+  <h1>Win power-user profile: findings</h1>
+  <p class="meta">
+    Prepared 2026-07-22. Overall figures are the frozen 2026-07-22 values. The three-period cuts
+    were refreshed from live data on 2026-07-23; the engaged total across periods (2,602) differs
+    from the frozen headline (2,598) by four candidacies, an immaterial live-data drift.
+    Source notebook: <code>notebooks/01_power_user_profile.ipynb</code>.<br><br>
+    Scope: Win candidacies with a general election in 2025 or 2026, constituency of at least
+    1,000 voters, latest non-demo campaign version. One row per candidacy. 23,244 candidacies.
+  </p>
+</header>
+
+<section>
+  <h2>What we set out to answer</h2>
+  <p>
+    Bryan's question was whether the people who use the Win product most are a distinctive,
+    recognizable group we could profile and then go acquire more of. That power users exist is
+    not in doubt. The real question was whether they cluster into segments sharp enough to define
+    a lookalike acquisition target for DATA-2154.
+  </p>
+  <p>That breaks into two questions this report answers in order.</p>
+  <div class="qgrid">
+    <div class="qcard">
+      <div class="qn">Question 1</div>
+      <div class="qt">What does the average power user look like?</div>
+      <p>The absolute composition of the cohort, so we know who these people are for messaging and understanding.</p>
+    </div>
+    <div class="qcard">
+      <div class="qn">Question 2</div>
+      <div class="qt">Are they distinct in any way we can use to distinguish them?</div>
+      <p>The over-index against a baseline, so we know which traits actually set power users apart and can be handed to acquisition.</p>
+    </div>
+  </div>
+
+  <h3>How we defined a power user</h3>
+  <p>
+    Power use is a usage signal, kept deliberately separate from Pro (a commercial signal). We
+    used two nested cohorts.
+  </p>
+  <ul class="clean">
+    <li><strong>Engaged:</strong> sent at least one voter outreach campaign, or viewed the dashboard heavily (top decile). 2,598 candidacies, about 11 percent of the base.</li>
+    <li><strong>Intense:</strong> sent at least five outreach campaigns. 304 candidacies, about 1 percent. A subset of engaged, the deep-usage core.</li>
+  </ul>
+  <p>
+    We report every cut two ways: against the full base (who are our power users across the whole
+    candidate list) and against the active-only population of 7,892 candidacies that did anything
+    at all (among people who did something, what makes some become power users). The second
+    comparator matters because 66 percent of the base is dormant, meaning it never touched the
+    product. Comparing only against the full base would partly just measure who signed up versus
+    who did not.
+  </p>
+
+  <h3>The headline</h3>
+  <p class="punch">
+    <strong>Power users do cluster, but as a moderate tilt, not a bright line.</strong> The
+    distinctive signals are in the range of 1.2 to 2 times the baseline rate, not an order of
+    magnitude. There is a real profile to hand to acquisition, but it should be described as a
+    lean, not a rule.
+  </p>
+</section>
+
+<section>
+  <h2>What the average power user looks like</h2>
+  <p>
+    This section answers the first question. It is the absolute composition of the cohort, not an
+    over-index. A segment can be common without being distinctive, so the portrait and the
+    distinctiveness view do not have to agree, and they do not.
+  </p>
+
+  <h3>Overall portrait</h3>
+  <p class="punch">
+    The intense power user (the deep-usage core, 304 candidacies) is <strong>most often a
+    city-council challenger in a mid-size district.</strong>
+  </p>
+  <ul class="clean">
+    <li>By office: city council 49 percent, mayor 14 percent, school board 11 percent, county supervisor 8 percent.</li>
+    <li>Where incumbency is known: challenger 54 percent, incumbent 12 percent.</li>
+    <li>Runs at the city level, median constituency around 19,000 voters, mostly 5,000 to 100,000.</li>
+    <li>Spread across the country. Georgia, Texas, Ohio, California, and Washington lead, no single state above about 10 percent.</li>
+    <li>71 percent inside today's ICP, 31 percent upgraded to Pro, wins about 40 percent of decided races.</li>
+  </ul>
+  <p>
+    The broader engaged cohort (2,598 candidacies) looks similar but flatter: city council 36
+    percent, school board 15 percent, mayor 11 percent, congressional 8 percent; a median
+    constituency around 27,000 voters; 61 percent ICP; 20 percent Pro.
+  </p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Attribute</th><th class="num">Engaged</th><th class="num">Intense</th></tr></thead>
+    <tbody>
+      <tr><td>Candidacies (N)</td><td class="num">2,598</td><td class="num">304</td></tr>
+      <tr><td>Median constituency (voters)</td><td class="num">27,197</td><td class="num">18,884</td></tr>
+      <tr><td>Inside today's ICP</td><td class="num">61%</td><td class="num">71%</td></tr>
+      <tr><td>Upgraded to Pro</td><td class="num">20%</td><td class="num">31%</td></tr>
+      <tr><td>Win rate (decided generals)</td><td class="num">39%</td><td class="num">40%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohorts engaged (N=2,598) and intense (N=304); absolute composition, no comparator; frozen 2026-07-22 values.</p>
+
+  <p>
+    The office table makes the common-versus-distinctive tension concrete. It puts each office's
+    share of the power-user cohort next to its over-index. City council fills 36 percent of engaged
+    users but over-indexes at only 1.07, so it is common, not distinctive. Mayor is 11 percent of
+    engaged users yet over-indexes at 1.3.
+  </p>
+  <p class="punch">
+    <strong>This is the direct answer to "are power users mayors just because we have a lot of
+    mayors": no.</strong> The over-index divides out how many of each office we have, so an office
+    that is merely common lands near 1.0.
+  </p>
+
+  <div class="tbl"><table>
+    <thead><tr>
+      <th>Office</th><th class="num">Base N</th><th class="num">Base share</th>
+      <th class="num">% engaged</th><th class="num">% intense</th>
+      <th class="num">OI vs base</th><th class="num">OI vs active</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>City Council</td><td class="num">7,779</td><td class="num">33.5%</td><td class="num">35.9%</td><td class="num">49.0%</td><td class="oi mid">1.07</td><td class="oi mid">1.07</td></tr>
+      <tr><td>School Board</td><td class="num">4,321</td><td class="num">18.6%</td><td class="num">14.9%</td><td class="num">11.2%</td><td class="oi lo">0.80</td><td class="oi mid">0.98</td></tr>
+      <tr><td>Congressional</td><td class="num">1,912</td><td class="num">8.2%</td><td class="num">8.2%</td><td class="num">3.9%</td><td class="oi mid">1.00</td><td class="oi mid">0.86</td></tr>
+      <tr><td>Mayor</td><td class="num">1,889</td><td class="num">8.1%</td><td class="num">10.5%</td><td class="num">13.8%</td><td class="oi hi">1.30</td><td class="oi hi">1.23</td></tr>
+      <tr><td>Other</td><td class="num">1,662</td><td class="num">7.2%</td><td class="num">4.8%</td><td class="num">3.3%</td><td class="oi lo">0.68</td><td class="oi lo">0.80</td></tr>
+      <tr><td>County Supervisor</td><td class="num">1,431</td><td class="num">6.2%</td><td class="num">7.8%</td><td class="num">7.6%</td><td class="oi hi">1.27</td><td class="oi mid">1.04</td></tr>
+      <tr><td>State House</td><td class="num">1,243</td><td class="num">5.3%</td><td class="num">6.5%</td><td class="num">4.3%</td><td class="oi hi">1.22</td><td class="oi mid">1.07</td></tr>
+      <tr><td>Statewide/Governor</td><td class="num">641</td><td class="num">2.8%</td><td class="num">3.3%</td><td class="num">1.6%</td><td class="oi hi">1.21</td><td class="oi lo">0.88</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged (N=2,598) for shares, intense (N=304) for the intense column; over-index vs full base and vs active-only; base N shown per row; N&ge;30 floor met on every row. Frozen 2026-07-22 values.</p>
+
+  <p>
+    So the portrait is mostly a reflection of what is common on the platform, while the over-index
+    signals in the next section are what actually set power users apart. For messaging and
+    understanding who these people are, use the portrait. For acquisition, lean on the distinctive
+    signals.
+  </p>
+
+  <h3>Portrait by period</h3>
+  <p>
+    We split the window into three periods: pre-November 2025 (odd-year local generals, January to
+    October 2025), November 2025 (the completed cycle), and 2026 (mostly upcoming). Adoption rose
+    over time. Read the pre-November 2025 portrait as anecdotal, since it has only 85 engaged and
+    14 intense candidacies and is dominated by a single state.
+  </p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th class="num">Base N</th><th class="num">Engaged N</th><th class="num">Engaged rate</th><th class="num">Intense N</th><th class="num">Intense rate</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td class="num">3,993</td><td class="num">85</td><td class="num">2.1%</td><td class="num">14</td><td class="num">0.4%</td></tr>
+      <tr><td class="period">Nov 2025</td><td class="num">9,352</td><td class="num">1,117</td><td class="num">11.9%</td><td class="num">179</td><td class="num">1.9%</td></tr>
+      <tr><td class="period">2026</td><td class="num">9,899</td><td class="num">1,400</td><td class="num">14.1%</td><td class="num">111</td><td class="num">1.1%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohorts engaged and intense within each period; rate is cohort N over period base N; full-base counts; no floor rule (all periods above 30). Refreshed 2026-07-23.</p>
+
+  <h4>Engaged cohort by period</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th class="num">N</th><th>Top offices</th><th class="num">Challenger</th><th class="num">Median voters</th><th class="num">ICP</th><th class="num">Pro</th><th class="num">Win rate</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td class="num">85</td><td>City Council 58%, Mayor 26%, School Board 9%</td><td class="num">69%</td><td class="num">7,173</td><td class="num">86%</td><td class="num">29%</td><td class="num">37% (n=71)</td></tr>
+      <tr><td class="period">Nov 2025</td><td class="num">1,117</td><td>City Council 55%, School Board 21%, Mayor 14%</td><td class="num">57%</td><td class="num">13,366</td><td class="num">70%</td><td class="num">16%</td><td class="num">39% (n=965)</td></tr>
+      <tr><td class="period">2026</td><td class="num">1,400</td><td>City Council 20%, Congressional 15%, County Supervisor 13%, State House 12%</td><td class="num">12%</td><td class="num">66,690</td><td class="num">51%</td><td class="num">22%</td><td class="num">35% (n=142)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged split by period; absolute composition within each period cohort, no comparator; N shown per row; pre-Nov 2025 (n=85) below reliable-read size, treat as anecdotal. Refreshed 2026-07-23. In 2026 incumbency is unclassified for 85 percent of engaged candidacies, so the low challenger share reflects missing labels on upcoming races, not incumbents.</p>
+
+  <h4>Intense cohort by period</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th class="num">N</th><th>Top offices</th><th class="num">Challenger</th><th class="num">Median voters</th><th class="num">ICP</th><th class="num">Pro</th><th class="num">Win rate</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td class="num">14</td><td>City Council 71%, Mayor 29%</td><td class="num">79%</td><td class="num">11,212</td><td class="num">100%</td><td class="num">36%</td><td class="num">36% (n=14)</td></tr>
+      <tr><td class="period">Nov 2025</td><td class="num">179</td><td>City Council 58%, Mayor 16%, School Board 15%, County Supervisor 5%</td><td class="num">74%</td><td class="num">11,837</td><td class="num">78%</td><td class="num">28%</td><td class="num">41% (n=169)</td></tr>
+      <tr><td class="period">2026</td><td class="num">111</td><td>City Council 32%, County Supervisor 14%, State House 11%, Congressional 11%</td><td class="num">18%</td><td class="num">50,735</td><td class="num">57%</td><td class="num">34%</td><td class="num">30% (n=23)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort intense split by period; absolute composition within each period cohort, no comparator; N shown per row; pre-Nov 2025 (n=14) and the 2026 win-rate (n=23) are very small, treat as directional. Refreshed 2026-07-23.</p>
+
+  <p class="punch">
+    <strong>The type of power user shifted upmarket over time, but mostly because of the election
+    calendar, not changed behavior.</strong> In November 2025 the typical power user was a
+    city-council, school-board, or mayoral challenger in a small-to-mid district. In 2026 the mix
+    moves to congressional, county supervisor, and state house candidacies in larger districts,
+    with a lower ICP share.
+  </p>
+  <p>
+    Most of that is odd-year local races in 2025 versus a midterm year in 2026, plus the fact that
+    upcoming 2026 races are not yet classified, so incumbency and office level read as unknown for
+    most of them. It is not clean evidence that behavior changed. The pre-November 2025 period is
+    100 percent Alabama in the intense cohort and 72 percent Alabama in the engaged cohort, so its
+    portrait is anecdotal and should not be compared.
+  </p>
+</section>
+
+<section>
+  <h2>What distinguishes power users</h2>
+  <p>
+    This section answers the second question. The over-index divides each segment against its own
+    base rate, so a segment that is merely common does not read as a signal. Over 1 means
+    over-represented among power users.
+  </p>
+
+  <h3>Overall</h3>
+  <p class="punch">
+    <strong>Challengers, not incumbents. This is the single clearest and most durable signal.</strong>
+    Challengers over-index at 1.28 against the full base, and the signal gets stronger, not weaker,
+    when we control for sign-up: 1.57 against the active population, and 2.07 in the intense core.
+    Incumbents under-index throughout. The people leaning on the product hardest are outsiders
+    trying to unseat someone, not sitting officeholders.
+  </p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Incumbency</th><th class="num">Base N</th><th class="num">Engaged vs base</th><th class="num">Engaged vs active</th><th class="num">Intense vs base</th></tr></thead>
+    <tbody>
+      <tr><td>Challenger</td><td class="num">6,047</td><td class="oi hi">1.28</td><td class="oi hi">1.57</td><td class="oi hi">2.07</td></tr>
+      <tr><td>Incumbent</td><td class="num">4,066</td><td class="oi lo">0.47</td><td class="oi lo">0.88</td><td class="oi lo">0.66</td></tr>
+      <tr><td>Unknown</td><td class="num">13,131</td><td class="oi mid">1.03</td><td class="oi lo">0.84</td><td class="oi lo">0.61</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohorts engaged and intense; over-index vs full base and vs active-only; base N shown per row; N&ge;30 floor met on every row. Frozen 2026-07-22 values.</p>
+
+  <p>
+    <strong>Geography holds up.</strong> A consistent set of states over-indexes in both
+    comparators, including Maine, New Hampshire, Colorado, and Georgia. Unlike office and
+    constituency size, the state signal survives the active-only comparison, so it is a genuine
+    targeting axis rather than a sign-up artifact. Full state tables are in the descriptive notes.
+  </p>
+  <p>
+    <strong>Office and constituency size are mostly a sign-up effect.</strong> Against the full
+    base, mayor, county supervisor, and state house over-index, and school board and clerk roles
+    under-index. But these over-indexes compress to roughly parity once we compare within the
+    active population, as the office table above shows in its last column. Those offices predict who
+    joins the product, not who becomes a power user. Treat them as weak signals, not headlines.
+  </p>
+
+  <h4>What is not signal</h4>
+  <p>
+    The three largest raw over-indexes in the data are not acquisition targets and should not be
+    read as the profile.
+  </p>
+  <ul class="clean">
+    <li>Pro status has the highest raw lift, but Pro is a conversion that happens after signup, so you cannot acquire a lookalike on it. It is also partly baked into the engaged definition (Pro users view the dashboard a lot). We report Pro as context and keep it out of the segment search.</li>
+    <li>Missing-data buckets (unknown election level, unscored viability) over-index because recent or unclassified candidacies are both more active and more likely to have blanks. These are coverage artifacts, not segments.</li>
+  </ul>
+
+  <h3>By period</h3>
+  <p>
+    The distinguishing signals per period, with counts and Wilson 95 percent intervals so the
+    uncertainty on small cells is visible. Comparator is the full base within each period.
+  </p>
+  <p class="punch">
+    <strong>Challenger is the distinguishing signal in every period, and it strengthens as the
+    cohort deepens and as the calendar moves toward 2026.</strong> Engaged challenger over-index
+    runs 1.38, 1.48, 2.87 across the three periods; intense runs 1.56, 1.91, 4.34.
+  </p>
+
+  <h4>Engaged, challenger over-index by period</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th class="num">Challenger base N</th><th class="num">In cohort</th><th class="num">Cell rate</th><th class="num">Over-index</th><th class="num">95% CI</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td class="num">2,007</td><td class="num">59</td><td class="num">2.9%</td><td class="oi hi">1.38</td><td class="num">2.3 to 3.8%</td></tr>
+      <tr><td class="period">Nov 2025</td><td class="num">3,629</td><td class="num">641</td><td class="num">17.7%</td><td class="oi hi">1.48</td><td class="num">16.5 to 18.9%</td></tr>
+      <tr><td class="period">2026</td><td class="num">411</td><td class="num">167</td><td class="num">40.6%</td><td class="oi hi">2.87</td><td class="num">36.0 to 45.4%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged; over-index vs full base within period; base N shown per row; all cells above the N&ge;30 floor. Refreshed 2026-07-23. The 2026 challenger base is only 411 of 9,899 candidacies, since most 2026 races are not yet classified, so the high over-index rests on that classified slice.</p>
+
+  <h4>Intense, challenger over-index by period</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th class="num">Challenger base N</th><th class="num">In cohort</th><th class="num">Cell rate</th><th class="num">Over-index</th><th class="num">95% CI</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td class="num">2,007</td><td class="num">11</td><td class="num">0.5%</td><td class="oi hi">1.56</td><td class="num">0.3 to 1.0%</td></tr>
+      <tr><td class="period">Nov 2025</td><td class="num">3,629</td><td class="num">133</td><td class="num">3.7%</td><td class="oi hi">1.91</td><td class="num">3.1 to 4.3%</td></tr>
+      <tr><td class="period">2026</td><td class="num">411</td><td class="num">20</td><td class="num">4.9%</td><td class="oi hi">4.34</td><td class="num">3.2 to 7.4%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort intense; over-index vs full base within period; base N shown per row; cells above the N&ge;30 floor on the challenger base. Refreshed 2026-07-23. The intense cohort is small (14, 179, 111 by period), so read the pre-Nov 2025 row as directional.</p>
+
+  <h4>Office over-index by period (engaged)</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Period</th><th>Office</th><th class="num">Base N</th><th class="num">In cohort</th><th class="num">Cell rate</th><th class="num">Over-index</th><th class="num">95% CI</th></tr></thead>
+    <tbody>
+      <tr><td class="period">pre-Nov 2025</td><td>Mayor</td><td class="num">446</td><td class="num">22</td><td class="num">4.9%</td><td class="oi hi">2.32</td><td class="num">3.3 to 7.4%</td></tr>
+      <tr><td class="period">pre-Nov 2025</td><td>City Council</td><td class="num">1,573</td><td class="num">49</td><td class="num">3.1%</td><td class="oi hi">1.46</td><td class="num">2.4 to 4.1%</td></tr>
+      <tr><td class="period">pre-Nov 2025</td><td>School Board</td><td class="num">1,316</td><td class="num">8</td><td class="num">0.6%</td><td class="oi lo">0.29</td><td class="num">0.3 to 1.2%</td></tr>
+      <tr><td class="period">Nov 2025</td><td>Mayor</td><td class="num">1,015</td><td class="num">159</td><td class="num">15.7%</td><td class="oi hi">1.31</td><td class="num">13.6 to 18.0%</td></tr>
+      <tr><td class="period">Nov 2025</td><td>City Council</td><td class="num">4,807</td><td class="num">609</td><td class="num">12.7%</td><td class="oi mid">1.06</td><td class="num">11.8 to 13.6%</td></tr>
+      <tr><td class="period">Nov 2025</td><td>School Board</td><td class="num">2,165</td><td class="num">239</td><td class="num">11.0%</td><td class="oi mid">0.92</td><td class="num">9.8 to 12.4%</td></tr>
+      <tr><td class="period">2026</td><td>Mayor</td><td class="num">428</td><td class="num">93</td><td class="num">21.7%</td><td class="oi hi">1.54</td><td class="num">18.1 to 25.9%</td></tr>
+      <tr><td class="period">2026</td><td>City Council</td><td class="num">1,399</td><td class="num">277</td><td class="num">19.8%</td><td class="oi hi">1.40</td><td class="num">17.8 to 22.0%</td></tr>
+      <tr><td class="period">2026</td><td>Congressional</td><td class="num">1,902</td><td class="num">214</td><td class="num">11.3%</td><td class="oi lo">0.80</td><td class="num">9.9 to 12.8%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged; over-index vs full base within period; base N shown per row; rows with base N&lt;30 in the period omitted. Refreshed 2026-07-23.</p>
+
+  <p>
+    Mayor is the most consistent office signal, over-indexing in every period. City council tracks
+    near or just above parity, in line with the overall read that it is common rather than
+    distinctive. School board under-indexes. The office picture per period does not overturn the
+    overall conclusion that office is a weaker axis than incumbency.
+  </p>
+</section>
+
+<section>
+  <h2>What power users are not (the anti-profile)</h2>
+  <p>
+    The inverse of the profile is as clear as the profile. Power users are not incumbents
+    (incumbents under-index at 0.47). They are especially not city-level incumbents (0.27) or
+    candidates in the smallest 1,000 to 5,000 voter city races (0.45).
+  </p>
+  <p class="punch">
+    <strong>If the profile is a mid-district challenger, the anti-profile is a small-town
+    incumbent.</strong>
+  </p>
+</section>
+
+<section>
+  <h2>The counterintuitive planning finding</h2>
+  <p class="punch"><strong>Power users win less.</strong> Among decided completed generals, the base wins 57 percent of the time, but engaged users win 38 percent and the intense core 40 percent.</p>
+  <p>
+    Some of this is a composition effect, because the base is full of dormant incumbents who win
+    easily and never need the tool. But the gap survives when we compare within incumbency status:
+    engaged incumbents win 69 percent versus 82 percent for incumbents overall, and engaged
+    challengers win 31 percent versus 45 percent for challengers overall. So the effect is real,
+    not purely an artifact. The honest read is that power users are strivers in harder races, not
+    the people already positioned to win. Absolute win levels should be treated as directional,
+    since they depend on which races get a recorded result.
+  </p>
+  <div class="tbl"><table>
+    <thead><tr><th>Cohort</th><th class="num">All decided</th><th class="num">Incumbents</th><th class="num">Challengers</th></tr></thead>
+    <tbody>
+      <tr><td>Base</td><td class="num">57.2% (n=11,003)</td><td class="num">82.0% (n=3,833)</td><td class="num">44.6% (n=5,289)</td></tr>
+      <tr><td>Engaged</td><td class="num">38.5% (n=1,178)</td><td class="num">68.9% (n=196)</td><td class="num">31.4% (n=729)</td></tr>
+      <tr><td>Intense</td><td class="num">39.8% (n=206)</td><td class="num">63.6% (n=33)</td><td class="num">35.9% (n=153)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohorts base, engaged, intense; decided completed generals only; N shown per cell; within-incumbency columns stratify the base-vs-cohort comparison. Frozen 2026-07-22 values.</p>
+</section>
+
+<section>
+  <h2>Implications for ICP (DATA-2154)</h2>
+  <p class="punch">
+    <strong>Power users skew toward today's ICP but do not sit entirely inside it.</strong> The ICP
+    share rises from 55 percent of the base to 60 percent of engaged users to 71 percent of the
+    intense core. That leaves about 29 percent of the intense core outside today's ICP definition,
+    mostly school board and congressional candidacies.
+  </p>
+  <p>
+    This is a soft signal for an ICP revisit rather than a clear instruction, because school board
+    also under-indexes on engagement overall, so its presence here is partly a function of its
+    large raw count.
+  </p>
+</section>
+
+<section>
+  <h2>Other descriptive notes</h2>
+  <ul class="clean">
+    <li><strong>Usage intensity: half the engaged cohort actually sent zero outreach</strong> and qualified on dashboard use alone (median campaigns sent is 0, 90th percentile is 5). The intense cohort is the real outreach core. If we want a cohort that is unambiguously "used the core product to reach voters," intense is it.</li>
+    <li><strong>Pro does not lift winning.</strong> Crossing Pro with power-user status, the 60 percent headline win-rate belongs entirely to the dormant "neither" quadrant. Every engaged quadrant wins about 38 to 40 percent whether or not the candidate went Pro. Pro and winning are not linked here.</li>
+    <li>Geography is moderately concentrated. The top 10 states hold about half of power users, led by Ohio, California, Georgia, and Texas. <strong>Georgia is the standout: both high-volume (6.5 percent of all power users) and strongly over-indexing (1.8 times the base rate), so it is the clearest place to look for more.</strong></li>
+  </ul>
+
+  <h4>Top states by volume (share of engaged power users)</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>State</th><th class="num">Engaged N</th><th class="num">% of engaged</th></tr></thead>
+    <tbody>
+      <tr><td>OH</td><td class="num">202</td><td class="num">7.8%</td></tr>
+      <tr><td>CA</td><td class="num">181</td><td class="num">7.0%</td></tr>
+      <tr><td>GA</td><td class="num">170</td><td class="num">6.5%</td></tr>
+      <tr><td>TX</td><td class="num">166</td><td class="num">6.4%</td></tr>
+      <tr><td>NC</td><td class="num">127</td><td class="num">4.9%</td></tr>
+      <tr><td>MA</td><td class="num">113</td><td class="num">4.3%</td></tr>
+      <tr><td>WA</td><td class="num">103</td><td class="num">4.0%</td></tr>
+      <tr><td>MI</td><td class="num">101</td><td class="num">3.9%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged (N=2,598); share of the engaged cohort, not an over-index; frozen 2026-07-22 values.</p>
+
+  <h4>Top states by over-index (base N at least 30)</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>State</th><th class="num">Base N</th><th class="num">Over-index</th><th class="num">Cell rate 95% CI</th></tr></thead>
+    <tbody>
+      <tr><td>ME</td><td class="num">150</td><td class="oi hi">1.91</td><td class="num">15.5 to 28.6%</td></tr>
+      <tr><td>GA</td><td class="num">838</td><td class="oi hi">1.81</td><td class="num">17.7 to 23.1%</td></tr>
+      <tr><td>CO</td><td class="num">439</td><td class="oi hi">1.71</td><td class="num">15.7 to 23.1%</td></tr>
+      <tr><td>LA</td><td class="num">66</td><td class="oi hi">1.63</td><td class="num">10.7 to 29.1%</td></tr>
+      <tr><td>AR</td><td class="num">240</td><td class="oi hi">1.57</td><td class="num">13.2 to 22.8%</td></tr>
+      <tr><td>NE</td><td class="num">82</td><td class="oi hi">1.53</td><td class="num">10.5 to 26.6%</td></tr>
+      <tr><td>WY</td><td class="num">32</td><td class="oi hi">1.40</td><td class="num">6.9 to 31.8%</td></tr>
+      <tr><td>TN</td><td class="num">435</td><td class="oi hi">1.36</td><td class="num">12.1 to 18.8%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prov">Provenance: cohort engaged; over-index vs full base; base N shown per row; N&ge;30 floor applied. Frozen 2026-07-22 values.</p>
+
+  <p>
+    Georgia is the one state that appears near the top of both tables, which is why it is the
+    standout. Maine and Colorado over-index hard but carry far less volume.
+  </p>
+</section>
+
+<section>
+  <h2>Methodology and caveats</h2>
+  <ul class="clean">
+    <li>Distribution versus distinctiveness. The over-index divides each segment against its own base rate, so a segment that is merely common (city council, school board) does not read as a signal. That handles the "is this just our user mix" question one dimension at a time. It does not isolate each factor net of the others: if mayors also tend to be challengers, the single-dimension view cannot say how much of "mayor" is really "challenger." The combination sweep in the notebook looks at joint cells (office by state by incumbency) as a partial check, but it is still descriptive. A multivariate model that holds the other dimensions constant is deferred to DATA-2154.</li>
+    <li>Overall figures are the frozen 2026-07-22 run. The three-period cuts were recomputed on the 2026-07-23 refresh with the same helper and cohort definitions; the engaged total across periods (2,602) differs from the frozen headline (2,598) by four candidacies, which does not move any read.</li>
+    <li>Usage counts are lifetime, not anchored to the election date, so for completed 2025 races a little post-election activity can count toward the power-user definition. We confirmed the Pro flag has only a 1 percent leak of this kind; a full check on the usage counts is deferred.</li>
+    <li>Tenure could not be built as intended. Prior-run history exists for only about 1.6 percent of candidates in the warehouse, so we substituted incumbency status. The full first-timer versus re-election versus long-term split needs a web-search backfill, which is deferred.</li>
+    <li>Party was dropped. GoodParty only onboards non-major-party candidates, so party is nearly constant by design and carried no usable signal.</li>
+    <li>This profile is descriptive and associational, not causal.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What is next</h2>
+  <ul class="clean">
+    <li>DATA-2154 turns the challenger and geography signals into an acquisition target and revisits the ICP definition using the out-of-ICP office list.</li>
+    <li>DATA-2171 reruns these cuts on the full Win population as an unbiased control on the sales-selection bias in the Pro segment.</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>
