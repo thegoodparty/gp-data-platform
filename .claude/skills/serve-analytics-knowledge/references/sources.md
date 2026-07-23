@@ -19,9 +19,8 @@ table to start from.
 
 For most Serve analyses, start with one of these:
 
-- **`mart_analytics.users_serve_base`** — user-grain view over civics `users` (grain asserted
-  in a SQL comment only — no dbt `unique` test; verify `count(*) = count(distinct user_id)`
-  before counting from it): Serve flags
+- **`mart_analytics.users_serve_base`** — user-grain view over civics `users` (grain enforced
+  by a dbt `unique` + `not_null` test on `user_id`): Serve flags
   (`is_serve_user`, `eo_activated_at`), the 7-step onboarding funnel (timestamps + boolean
   flags + `serve_onboarding_steps_completed`), `is_active_eo`, `has_pledged`,
   `is_active_serve_user`, registration cohort fields. Includes ALL users (not just Serve) so
