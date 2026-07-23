@@ -1,0 +1,130 @@
+id: q08_serve_provenance
+as_of: "2026-07-23"
+
+# Gold run 2026-07-23 (supervised). Metric: broad Serve engagement MAU (the
+# analysis default, serve methodology_defaults.md; predicate committed in
+# analytics/lib/serve_analysis.py). Per month = COUNT(DISTINCT user_id) among
+# is_serve_user (users_serve_base, grain verified 69,893 = 69,893 distinct at
+# pin) with >= 1 qualifying event that calendar month (UTC, half-open
+# date_trunc buckets): family = 'serve' in int__amplitude_event_catalog OR a
+# Viewed on a Serve-surface path; event_time >= eo_activated_at (product-DB
+# derived, NOT an Amplitude event); in-session only (session_id != -1);
+# event-level email not @goodparty.org; impersonation-tainted
+# (user_id, session_id) excluded. Execution record with exact SQL:
+# analytics/ad_hoc/2026-07-23_q08_serve_mau_results.md (gitignored, local).
+#
+# The provenance trap does NOT discriminate numerically: in-window
+# instrumentation changes create no seam. eo_activated_at is derived in dbt
+# from durable product-DB tables (min completed-poll created_at via
+# elected_offices, least-ed with first serve-org created_at; definition
+# broadened 2026-03-31 but recomputed retroactively, so one definition covers
+# all five months). The one in-window supersession (Briefings-% retired
+# 2026-05-28, replaced same day by Briefing Assistant-%) involves Win-named
+# events that were never family='serve'; both eras are covered by the
+# /dashboard/briefings% path-Viewed backstop. So a provenance-naive run can
+# land on correct numbers by luck: the trap is guarded by mandatory_sources
+# (provenance-asset consult) and required_resolutions, not by the numbers.
+#
+# Wrong-fork ladder at pin time (per-month distinct users, gold in [] ):
+#   month    [gold] poll_anch  family_only  no_activation  no_hygiene  incl_server
+#   2026-02  [346]  363        338          439            351         366
+#   2026-03  [294]  257        268          353            302         337
+#   2026-04  [61]   27         36           78             71          65
+#   2026-05  [48]   17         24           51             58          327
+#   2026-06  [60]   16         55           61             91          327
+# At tolerance_pct 2 (integer granularity makes Apr-Jun effectively exact or
+# +-1), no single month excludes every fork (Feb no_hygiene 351 and Jun
+# no_activation 61 each sit inside their month's band) but EVERY fork fails
+# >= 3 of the 5 graded months, so the five-number contract jointly rejects
+# all five. Poll-anchored is ABOVE gold in Feb (+4.9%); the "undercounts
+# 2-3x" heuristic holds only from April on.
+#
+# Tolerances are a drift budget, not measurement uncertainty: replication is
+# exact (0.00% drift vs the 2026-07-14 reference series in all months, and an
+# independently-structured query reproduces gold exactly). Drift channels:
+# Amplitude user-merge/reprocessing; product-DB corrections backdating
+# eo_activated_at or poll/org rows (the retroactive derivation restates all
+# months if the definition changes again); and, distinctively,
+# reclassification of int__amplitude_event_catalog. Catalog pin at as_of:
+# 81 family='serve' event types, md5(newline-joined sorted list) =
+# 010fe390668d1c535613e818e51ddb05. Re-baseline this key (not widen bands)
+# if the pin changes, if the users.sql serve derivation changes, or when the
+# broad-engagement registry row (pending ratification) is ratified with an
+# amended definition.
+#
+# June caveat carried on the number: taint bite is 15/75 raw (vs 1-3 in other
+# months); the excluded 15 were wholly impersonation-driven, and 18 of the 60
+# clean users also carried tainted sessions. 60 stands as the governed clean
+# count, but May->Jun (48->60) is not evidence of organic recovery, and the
+# taint filter is a known lower bound.
+numbers:
+  - name: serve_active_users_2026_02
+    value: 346
+    tolerance_pct: 2
+  - name: serve_active_users_2026_03
+    value: 294
+    tolerance_pct: 2
+  - name: serve_active_users_2026_04
+    value: 61
+    tolerance_pct: 2
+  - name: serve_active_users_2026_05
+    value: 48
+    tolerance_pct: 2
+  - name: serve_active_users_2026_06
+    value: 60
+    tolerance_pct: 2
+
+required_resolutions:
+  metric: broad_serve_engagement (family='serve' catalog membership OR Viewed on Serve-surface path, per analytics/lib/serve_analysis.py; NOT poll-anchored users_serve_activity)
+  activation_scope: events at/after eo_activated_at (product-DB derived column; pre-activation activity is Win campaigning)
+  server_emitted_events: excluded via session_id != -1 (Briefing Assistant dispatch events are not user engagement)
+  hygiene: exclude @goodparty.org event-level emails AND impersonation-tainted (user_id, session_id) sessions
+  month_bucketing: calendar months on event_time (UTC), half-open [month start, next month start); months independent
+
+mandatory_sources:
+  - id: serve_engagement_definition
+    pattern: '(?i)(serve_analysis|serve_engagement_predicate|broad.{0,3}serve.{0,3}engagement|broad.{0,3}engagement)'
+    description: resolved "actively used" to the broad-engagement analysis default, not an improvised or poll-anchored metric
+  - id: event_taxonomy
+    pattern: "int__amplitude_event_catalog|family\\s*=\\s*'serve'"
+    description: serve-surface membership sourced from the governed event catalog
+  - id: activation_anchor
+    pattern: 'eo_activated_at'
+    description: engagement time-scoped to the EO activation anchor
+  - id: provenance_assets
+    pattern: '(?i)(amplitude_event_provenance|event-lifecycle-assets|instrumented_date|retired_date)'
+    description: version-continuity across the 2026-05/06 Serve event generation checked against the omni event-lifecycle assets (the q08 trap)
+  - id: server_emitted_exclusion
+    pattern: 'session_id\s*(!=|<>)\s*-1'
+    description: evidence the in-session condition excluded server-emitted dispatch events
+  - id: impersonation_hygiene
+    pattern: '(?i)impersonat'
+    description: evidence the staff-impersonation taint exclusion was considered and applied
+
+# Confidently-wrong moves identified/anticipated during the gold run:
+# counting "Onboarding V2" events as Serve (they are the Win onboarding
+# redesign; documented trap in serve sources.md); asserting a settled cause
+# for the April 2026 cliff (open question per methodology_defaults.md); and
+# reading the May->June uptick as engagement recovery (the June number is the
+# month most inflated by staff impersonation pre-filter, and the filter is a
+# lower bound).
+severity1_patterns:
+  - '(?i)onboarding v2'
+  - '(?i)(april|2026-04).{0,100}(cliff|drop|decline|fell).{0,100}(because|due to|caused by|explained by)'
+  - '(?i)june.{0,80}(shows|indicates|suggests|demonstrates)\s+(a\s+|an\s+)?(recovery|rebound|re-engagement)'
+
+required_assumptions:
+  - metric_broad_engagement
+  - activation_time_scope
+  - server_emitted_exclusion
+  - impersonation_hygiene
+  - month_boundary_semantics
+
+intent_card: |
+  Purpose: gold key for q08 (provenance trap): monthly distinct active Serve
+  users, Feb-Jun 2026.
+  Audience: benchmark grader scoring future agent runs on trust and bloat.
+  Fork answers (asker): broad-engagement MAU per the committed lib predicate
+  (poll-anchored rejected); events scoped to at/after product-DB
+  eo_activated_at; calendar months UTC; current is_serve_user flag; clean
+  (impersonation-excluded) counts are the answer.
