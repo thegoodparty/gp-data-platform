@@ -240,7 +240,9 @@ class LoaderConfig(BaseLoaderConfig):
             serve_instance_class=_env("LOADER_SERVE_INSTANCE_CLASS", DEFAULT_SERVE_INSTANCE_CLASS),
             scale_down_min_acu=float(os.environ.get("LOADER_SCALE_DOWN_MIN_ACU", DEFAULT_SCALE_DOWN_MIN_ACU)),
             scale_down_max_acu=float(os.environ.get("LOADER_SCALE_DOWN_MAX_ACU", DEFAULT_SCALE_DOWN_MAX_ACU)),
-            index_parallelism=int(os.environ.get("LOADER_INDEX_PARALLELISM", DEFAULT_INDEX_PARALLELISM)),
+            index_parallelism=max(
+                1, int(os.environ.get("LOADER_INDEX_PARALLELISM", DEFAULT_INDEX_PARALLELISM))
+            ),
             mart_fqns=mart_fqns,
             _tags=tags,
         )

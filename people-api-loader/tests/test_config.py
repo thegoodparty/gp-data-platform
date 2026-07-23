@@ -167,3 +167,13 @@ def test_from_env_index_parallelism_defaults_to_loader_default(monkeypatch: pyte
 def test_from_env_index_parallelism_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOADER_INDEX_PARALLELISM", "16")
     assert LoaderConfig.from_env().index_parallelism == 16
+
+
+@pytest.mark.parametrize("bad", ["0", "-4"])
+def test_from_env_index_parallelism_clamped_to_at_least_one(
+    monkeypatch: pytest.MonkeyPatch, bad: str
+) -> None:
+    # A 0/negative value would spawn zero builder threads and silently skip every index while
+    # still writing a "complete" manifest; clamp to at least one worker.
+    monkeypatch.setenv("LOADER_INDEX_PARALLELISM", bad)
+    assert LoaderConfig.from_env().index_parallelism == 1
