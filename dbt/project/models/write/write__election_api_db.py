@@ -445,121 +445,6 @@ PLACE_UPSERT_QUERY = """
         parent_id = EXCLUDED.parent_id
 """
 
-RACE_UPSERT_QUERY = """
-    INSERT INTO {db_schema}."Race" (
-        id,
-        created_at,
-        updated_at,
-        br_hash_id,
-        br_database_id,
-        election_date,
-        state,
-        position_geoid,
-        position_level,
-        normalized_position_name,
-        position_description,
-        filing_office_address,
-        filing_phone_number,
-        paperwork_instructions,
-        filing_requirements,
-        is_runoff,
-        is_primary,
-        partisan_type,
-        filing_date_start,
-        filing_date_end,
-        employment_type,
-        eligibility_requirements,
-        salary,
-        sub_area_name,
-        sub_area_value,
-        frequency,
-        place_id,
-        slug,
-        position_names,
-        position_id,
-        number_of_seats,
-        win_number,
-        is_partisan,
-        office_type,
-        official_office_name,
-        office_level
-    )
-    SELECT
-        id::uuid,
-        created_at,
-        updated_at,
-        br_hash_id,
-        br_database_id,
-        election_date,
-        state,
-        position_geoid::text,
-        position_level::\"PositionLevel\",
-        normalized_position_name,
-        position_description,
-        filing_office_address,
-        filing_phone_number,
-        paperwork_instructions,
-        filing_requirements,
-        is_runoff,
-        is_primary,
-        partisan_type,
-        filing_date_start,
-        filing_date_end,
-        employment_type,
-        eligibility_requirements,
-        salary,
-        sub_area_name,
-        sub_area_value,
-        frequency,
-        place_id::uuid,
-        slug,
-        position_names,
-        position_id::uuid,
-        number_of_seats,
-        win_number,
-        is_partisan,
-        office_type,
-        official_office_name,
-        office_level
-    FROM {staging_schema}."Race"
-    ON CONFLICT (id) DO UPDATE SET
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        br_hash_id = EXCLUDED.br_hash_id,
-        br_database_id = EXCLUDED.br_database_id,
-        election_date = EXCLUDED.election_date,
-        state = EXCLUDED.state,
-        position_geoid = EXCLUDED.position_geoid,
-        position_level = EXCLUDED.position_level,
-        normalized_position_name = EXCLUDED.normalized_position_name,
-        position_description = EXCLUDED.position_description,
-        filing_office_address = EXCLUDED.filing_office_address,
-        filing_phone_number = EXCLUDED.filing_phone_number,
-        paperwork_instructions = EXCLUDED.paperwork_instructions,
-        filing_requirements = EXCLUDED.filing_requirements,
-        is_runoff = EXCLUDED.is_runoff,
-        is_primary = EXCLUDED.is_primary,
-        partisan_type = EXCLUDED.partisan_type,
-        filing_date_start = EXCLUDED.filing_date_start,
-        filing_date_end = EXCLUDED.filing_date_end,
-        employment_type = EXCLUDED.employment_type,
-        eligibility_requirements = EXCLUDED.eligibility_requirements,
-        salary = EXCLUDED.salary,
-        sub_area_name = EXCLUDED.sub_area_name,
-        sub_area_value = EXCLUDED.sub_area_value,
-        frequency = EXCLUDED.frequency,
-        place_id = EXCLUDED.place_id,
-        slug = EXCLUDED.slug,
-        position_names = EXCLUDED.position_names,
-        position_id = EXCLUDED.position_id,
-        number_of_seats = EXCLUDED.number_of_seats,
-        win_number = EXCLUDED.win_number,
-        is_partisan = EXCLUDED.is_partisan,
-        office_type = EXCLUDED.office_type,
-        official_office_name = EXCLUDED.official_office_name,
-        office_level = EXCLUDED.office_level
-"""
-
 STANCE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Stance" (
         id,
@@ -738,7 +623,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     candidacy_df: DataFrame = dbt.ref("m_election_api__candidacy")
     issue_df: DataFrame = dbt.ref("m_election_api__issue")
     place_df: DataFrame = dbt.ref("m_election_api__place")
-    race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
     district_df: DataFrame = dbt.ref("m_election_api__district")
     position_df: DataFrame = dbt.ref("m_election_api__position")
@@ -765,7 +649,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "Candidacy",
                 "Issue",
                 "Place",
-                "Race",
                 "Stance",
                 "District",
             ],
@@ -773,7 +656,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 candidacy_df,
                 issue_df,
                 place_df,
-                race_df,
                 stance_df,
                 district_df,
             ],
@@ -805,7 +687,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   District -> (none)
     #   Position -> District, Place
     #   Person -> (none)
-    #   Race -> Place, Position
+    #   Race: swap-delivered by the sync_election_api DAG (not written here)
     #   Candidacy -> Race, Person
     #   OfficeHolder -> Person, Position
     #   Issue (self-ref)
@@ -825,7 +707,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             "District",
             "Position",
             "Person",
-            "Race",
             "Candidacy",
             "OfficeHolder",
             "Issue",
@@ -836,7 +717,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             district_df,
             position_df,
             person_df,
-            race_df,
             candidacy_df,
             officeholder_df,
             issue_df,
@@ -847,7 +727,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             DISTRICT_UPSERT_QUERY,
             POSITION_UPSERT_QUERY,
             PERSON_UPSERT_QUERY,
-            RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             OFFICEHOLDER_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,

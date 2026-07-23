@@ -15,14 +15,13 @@ from pathlib import Path
 WRITER_PATH = Path(__file__).parent.parent / "project" / "models" / "write" / "write__election_api_db.py"
 
 # The writer's full table set, in FK-dependency order (parents before
-# children); Projected_Turnout is intentionally absent — it is delivered by
-# the sync_election_api Airflow DAG's atomic table swap (DATA-2015).
+# children); Projected_Turnout and Race are intentionally absent — they are
+# delivered by the sync_election_api Airflow DAG's atomic table swap (DATA-2015).
 EXPECTED_LOAD_TABLES = [
     "Place",
     "District",
     "Position",
     "Person",
-    "Race",
     "Candidacy",
     "OfficeHolder",
     "Issue",
@@ -31,7 +30,7 @@ EXPECTED_LOAD_TABLES = [
 
 # The incremental max-updated_at filter covers every load table except
 # Position, Person, and OfficeHolder, which have no updated_at to filter on.
-EXPECTED_INCREMENTAL_TABLES = ["Candidacy", "Issue", "Place", "Race", "Stance", "District"]
+EXPECTED_INCREMENTAL_TABLES = ["Candidacy", "Issue", "Place", "Stance", "District"]
 EXPECTED_NON_INCREMENTAL_TABLES = {"Position", "Person", "OfficeHolder"}
 
 
@@ -156,3 +155,17 @@ def test_stance_upsert_guards_candidacy_existence():
     query = _string_constant(_writer_tree(), "STANCE_UPSERT_QUERY")
     assert "candidacy_id IS NULL" in query
     assert "EXISTS" in query and '"Candidacy"' in query.split("EXISTS", 1)[1]
+
+
+def test_race_is_absent():
+    """Race must never reappear in this writer: it is delivered by the
+    sync_election_api Airflow DAG's atomic table swap. The candidacy-orphan
+    cleanup still READS live Race; only delivery is out of scope here."""
+    tree = _writer_tree()
+    source = WRITER_PATH.read_text()
+    for call in _zip_calls(tree):
+        first = _literal_string_list(call.args[0]) if call.args else None
+        if first:
+            assert "Race" not in first
+    assert "RACE_UPSERT_QUERY" not in source
+    assert 'INSERT INTO {db_schema}."Race"' not in source
