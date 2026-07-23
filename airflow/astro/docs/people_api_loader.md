@@ -38,8 +38,14 @@ not part of this loader.
 
 ```
 inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> copy
-             -> build_indexes -> resize -> validate
+             -> build_indexes -> validate -> resize
 ```
+
+`validate` runs **before** `resize`: `resize` flips the writer down to the small serving instance
+class, and `validate`'s heavy per-state `count`/`GROUP BY` checks over ~227M rows are slow there.
+Running `validate` first reuses the big index instance `build_indexes` already scaled up, so it's
+fast; `resize` is then the clean final step. `validate` only checks row counts + schema/index
+structure — none of which change across `resize` — so correctness is identical either order.
 
 | Step | Purpose |
 |---|---|
@@ -49,10 +55,10 @@ inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> c
 | `provision` | Create a fresh Aurora cluster + writer on the **copy-phase** instance class, empty cluster parameter groups, connection string to SSM. Reuses the shared S3 gateway VPC endpoint. |
 | `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
 | `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
-| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. See below. |
-| `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. |
-| `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Failure halts the DAG. |
-| `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`resize`. On any post-provision failure it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
+| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
+| `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Runs on the still-scaled-up index instance (before `resize`). Failure halts the DAG. |
+| `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. Finishes with a lightweight post-resize smoke check (`SELECT 1` against the resized cluster) confirming it's reachable. |
+| `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`validate`→`resize`. On any post-provision failure (including a `validate` failure, which now runs on the scaled-up writer before `resize`) it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
 ## Connectivity: bastion
 
@@ -120,26 +126,29 @@ v2 flip. Airflow retries also cover a mid-build drop since every step is idempot
 
 ## Failure cost guard
 
-`resize` (which flips the writer down to the serving instance class) is downstream of
-`build_indexes`, so a run that fails or is aborted mid-build never reaches it and would otherwise
-strand its scaled-up writer at full index-class cost. The `scale_down_on_failure` task
+`resize` (which flips the writer down to the serving instance class) is now downstream of both
+`build_indexes` and `validate`, so a run that fails or is aborted mid-build **or during validate**
+never reaches `resize` and would otherwise strand its scaled-up writer at full index-class cost —
+`validate` runs on that same scaled-up writer (before `resize`), so its failure carries exactly the
+same stranding risk `build_indexes`'s failure always has. The `scale_down_on_failure` task
 (`trigger_rule=one_failed`, upstreams
-`provision`/`create_schema`/`copy`/`build_indexes`/`resize`) runs `loader scale-down`, which flips
-the writer to `db.serverless` to stop that cost — Serverless v2 (min ACU) is the cheapest holding
-state for a cluster kept only for resume/forensics, distinct from the provisioned class the healthy
-path serves from. It deliberately skips the serve lockdown that `resize` applies (no serve parameter
-group, backup-retention bump, deletion protection, or reboot), so the failed run's cluster and
-loaded data survive for resume/forensics and stay easy to `teardown`. It is skipped on a fully
-successful run (where `resize` already sized the writer to the serving class). Limit: it fires on an
-organic failure or a task marked failed, but not if the whole DAG
+`provision`/`create_schema`/`copy`/`build_indexes`/`validate`/`resize`) runs `loader scale-down`,
+which flips the writer to `db.serverless` to stop that cost — Serverless v2 (min ACU) is the
+cheapest holding state for a cluster kept only for resume/forensics, distinct from the provisioned
+class the healthy path serves from. It deliberately skips the serve lockdown that `resize` applies
+(no serve parameter group, backup-retention bump, deletion protection, or reboot), so the failed
+run's cluster and loaded data survive for resume/forensics and stay easy to `teardown`. It is
+skipped on a fully successful run (where `resize` already sized the writer to the serving class).
+Limit: it fires on an organic failure or a task marked failed, but not if the whole DAG
 run is hard-deleted — that still needs a manual `loader teardown`/`scale-down`.
 
 ## Validation
 
-The `validate` step runs a battery of gates against the freshly loaded cluster and fails the step —
-blocking cutover — if any gate fails (each check is a named `ValidationCheck` with a `passed` flag
-and details, persisted in the step manifest). Gates run per table (`Voter`, `DistrictVoter`,
-`District`, `DistrictStats`) except where noted:
+The `validate` step runs **before** `resize` (see "Step sequence" above) so its checks execute on
+the big index instance rather than the small serving box. It runs a battery of gates against the
+freshly loaded cluster and fails the step — blocking `resize` — if any gate fails (each check is a
+named `ValidationCheck` with a `passed` flag and details, persisted in the step manifest). Gates run
+per table (`Voter`, `DistrictVoter`, `District`, `DistrictStats`) except where noted:
 
 - **`row_counts_match_databricks:<table>`** — new-cluster row count matches the Databricks mart
   source (per state for the partitioned tables).
@@ -171,6 +180,10 @@ from `os.environ`; BashOperators forward them with `append_env=True`):
 - `LOADER_VPC_ID`, `LOADER_DB_SUBNET_GROUP`, `LOADER_SECURITY_GROUP_ID`, `LOADER_KMS_KEY_ARN`
 - `LOADER_DATABRICKS_WAREHOUSE_ID` (unload only)
 - Optional sizing overrides: `LOADER_LOAD_INSTANCE_CLASS`, `LOADER_INDEX_INSTANCE_CLASS`
+- `LOADER_INDEX_PARALLELISM` — optional override for `build_indexes`'s concurrent-builder count
+  (default 128, tuned for the 192-vCPU `db.r8g.48xlarge` index instance). All builders share one
+  bastion tunnel, so this is the knob to back off with if the bastion sshd's session limits get
+  tight; the CLI's `--parallelism` flag still overrides this when passed explicitly.
 
 **Airflow Variables** (need a per-deployment override; an unset override resolves to empty at
 runtime, it does not fall back to the workspace value):

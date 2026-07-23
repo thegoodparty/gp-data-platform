@@ -17,7 +17,6 @@ from rich.table import Table
 from loader.core.cli import RunDateArg, setup_environment
 from loader.core.log import get_logger
 from loader.people_api.config import LoaderConfig, require_run_date
-from loader.people_api.steps.build_indexes import _DEFAULT_BUILDERS
 
 app = typer.Typer(
     help="GoodParty voter-DB refresh pipeline.",
@@ -152,15 +151,22 @@ def copy(
 def build_indexes(
     run_date: RunDateArg,
     parallelism: Annotated[
-        int,
-        typer.Option("--parallelism", help="Concurrent CREATE INDEX builds (peak memory scales with this)."),
-    ] = _DEFAULT_BUILDERS,
+        int | None,
+        typer.Option(
+            "--parallelism",
+            help=(
+                "Concurrent CREATE INDEX builds (peak memory scales with this). Defaults to "
+                "cfg.index_parallelism (LOADER_INDEX_PARALLELISM, else the loader default) "
+                "when omitted; passing this flag always overrides that."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Step 5 — PKs, non-unique indexes, FKs, ANALYZE."""
     from loader.people_api.steps import build_indexes as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date, parallelism=parallelism)
+    step.run(cfg, run_date, parallelism=parallelism if parallelism is not None else cfg.index_parallelism)
 
 
 @app.command()

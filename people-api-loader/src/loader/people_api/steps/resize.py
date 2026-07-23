@@ -6,6 +6,12 @@ parameter group for the serve group (reboot applies it), bump backup retention t
 days, and enable deletion protection. The rds-s3-import role is intentionally left attached
 (future incremental loads reuse it).
 
+resize is now the pipeline's LAST step (validate runs before it — see steps/validate.py), so
+after the reboot settles we run one trivial `SELECT 1` against the resized cluster and log a
+confirmation. This is a connectivity smoke check only (is the freshly-resized writer actually
+reachable and serving), not a data check — that's validate's job, run earlier while the writer
+was still on the large index instance.
+
 Idempotent: a completed manifest short-circuits.
 """
 
@@ -16,6 +22,7 @@ from datetime import UTC, datetime
 from loader.core.aws import flip_writer_to_provisioned, rds, retry_after_settle
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
+from loader.people_api.db import connect_new
 from loader.people_api.manifests import (
     ResizeManifest,
     manifest_uri,
@@ -86,6 +93,17 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
     _wait()
     log.info("resize.applied", instance_class=cfg.serve_instance_class)
+
+    # Lightweight post-resize smoke check: the resized/rebooted writer actually accepts a
+    # connection and serves a trivial query. NOT a data check (row counts/schema/indexes were
+    # already validated pre-resize); this only guards against the resize itself leaving the
+    # cluster unreachable (e.g. a security-group or param-group misstep, or a reboot that didn't
+    # fully clear). A failure here raises and no "complete" manifest is written, same as any other
+    # resize failure.
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1")
+        cur.fetchone()
+    log.info("resize.smoke_check_ok")
 
     manifest = ResizeManifest(
         run_date=run_date,

@@ -105,6 +105,8 @@ def test_resize_applies_lockdown(monkeypatch: pytest.MonkeyPatch) -> None:
     rds = boto3.client("rds", region_name=_REGION)
     monkeypatch.setattr(resize_step, "read_manifest", lambda *a: None)
     monkeypatch.setattr(resize_step, "write_manifest", lambda cfg, m: "uri")
+    # No real DB behind moto's RDS: fake the post-resize smoke check's connection too.
+    monkeypatch.setattr(resize_step, "connect_new", fake_connect(FakeConn().queue_result((1,))))
 
     manifest = resize_step.run(cfg, _DATE)
 
