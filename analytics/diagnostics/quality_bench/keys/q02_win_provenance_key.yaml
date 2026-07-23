@@ -124,6 +124,8 @@ severity1_patterns:
 required_assumptions:
   - completion_metric
   - onboarding_event_eras
+  - account_created
+  - population
   - internal_accounts
   - demo_accounts
   - completion_window
