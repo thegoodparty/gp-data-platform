@@ -11,7 +11,9 @@ Power user is a USAGE cohort, deliberately distinct from Pro:
   - intense: sent >=5 outreach  (nested subset of engaged)
 
 Connection-agnostic: callers inject run_query(sql) -> DataFrame (analytics/lib/databricks_conn).
-Reuses wilson() from analytics/lib/win_analysis.
+Includes a self-contained Wilson interval (wilson_ci, same formula as
+analytics/lib/win_analysis.wilson) so this module runs inside the Databricks workspace
+without analytics/lib on the path.
 """
 
 from __future__ import annotations
@@ -118,7 +120,10 @@ def add_derived(df: pd.DataFrame, *, dash_p90: float | None = None, asof: pd.Tim
     """Add derived columns in place-ish (returns a copy). Returns (df, meta) where meta
     records the pinned thresholds so the notebook can pre-register + report them."""
     df = df.copy()
-    asof = asof or pd.Timestamp.today().normalize()
+    # UTC to match SQL current_date() (brief boundary_semantics). The local clock could
+    # otherwise flip a candidacy whose general_election_date == today's UTC date across the
+    # completed/upcoming line.
+    asof = asof or pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
 
     # Dashboard-engagement threshold: base p90 of dash_views (pinned, pre-registered).
     if dash_p90 is None:
@@ -280,8 +285,8 @@ def combination_sweep(
                 n_cells_kept += 1
                 k = int(g[cohort_col].sum())
                 rate = k / n
-                if rate == 0:
-                    continue
+                # Keep rate==0 cells: over_index is a valid 0.0 and the strongest deficit
+                # (most negative lift_score), which direction="under" must surface, not drop.
                 lo, hi = wilson_ci(k, n)
                 oi = rate / base_rate if base_rate else np.nan
                 key_t = key if isinstance(key, tuple) else (key,)
