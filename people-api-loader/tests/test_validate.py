@@ -398,6 +398,20 @@ def test_check_schema_diff_loader_added_geom_allowed(monkeypatch: pytest.MonkeyP
     assert "geom" in check.details["allowed_extra"]
 
 
+def test_check_schema_diff_hf_policy_column_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # hf_most_important_policy_item is a mart column the serving schema gained while the prod
+    # baseline still predates it — an intended divergence registered in LOADER_ADDED_COLUMNS,
+    # so it must NOT read as drift (this is what made validate's schema-diff fail on the first
+    # refresh that added it).
+    prod = [("col_a",), ("col_b",)]
+    new = [*prod, ("hf_most_important_policy_item",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert "hf_most_important_policy_item" in check.details["allowed_extra"]
+
+
 def test_check_schema_diff_non_partition_extra_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only the partition column is a free pass; any other extra column still fails.
     prod = [("district_id",), ("voter_id",), ("created_at",), ("updated_at",)]
