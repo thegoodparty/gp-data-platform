@@ -75,12 +75,19 @@ severity1_patterns:
   - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
   - 'users_win_base\.user_created_at'
 
+# Names must exactly match required_resolutions keys: check_assumptions and
+# check_resolutions read the same answer-ledger fork names (grading.py).
+# Renamed 2026-07-23 (PR #671): account_created_definition -> account_created,
+# *_exclusion -> internal_accounts / demo_accounts, boundary_semantics ->
+# month_bucketing (q01's boundary fork IS the half-open month rule),
+# win_user_current_state_flag -> population (the flag choice is the
+# population resolution).
 required_assumptions:
-  - account_created_definition
-  - internal_accounts_exclusion
-  - demo_accounts_exclusion
-  - boundary_semantics
-  - win_user_current_state_flag
+  - account_created
+  - internal_accounts
+  - demo_accounts
+  - month_bucketing
+  - population
 
 intent_card: |
   Purpose: calibration-split census metric — any competent full-context run

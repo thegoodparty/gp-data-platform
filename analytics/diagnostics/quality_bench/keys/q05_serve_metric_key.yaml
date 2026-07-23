@@ -1,0 +1,102 @@
+id: q05_serve_metric
+as_of: "2026-07-22"
+
+# Gold run 2026-07-22 (supervised). Source: mart_analytics.users_serve_base
+# (user grain, verified 1876 rows = 1876 distinct user_ids at pin time).
+# As-of reconstruction from timestamps, NOT current-state flags:
+#   serve_users_total     = is_serve_user population, email NOT ILIKE
+#                           '%@goodparty.org', eo_activated_at < TIMESTAMP
+#                           '2026-07-01 00:00:00' (all of June 30 included,
+#                           column stored representation, TIMESTAMP_NTZ)
+#   serve_users_onboarded = strict subset of total AND first_sms_poll_sent_at
+#                           < TIMESTAMP '2026-07-01 00:00:00' (TIMESTAMP/UTC);
+#                           no poll>=activation ordering requirement
+# Definition provenance: canonical_metrics.md rows "Serve user / EO activated"
+# and "Onboarding completed (Serve)", DATA-2115 lineage, status pending
+# ratification at pin time. If ratification amends either definition (e.g.
+# adds impersonation hygiene to the poll milestone), re-baseline this key
+# rather than failing runs. Known caveat, accepted: first_sms_poll_sent_at is
+# an Amplitude-milestone column upstream of impersonation hygiene, so a
+# staff-impersonated poll send would count — matching the governed flag is
+# the intended gold behavior.
+#
+# Wrong-fork ladder at pin time (what tolerances must exclude):
+#   1845  current-flag external total today (+0.38%)  <- binding constraint
+#   1867  as-of total without internal exclusion (+1.58%)
+#   1876  current-flag total incl. internal (+2.07%)
+#   1039  onboarded without strict-subset rule, 1028 + 11 non-Serve
+#         poll-senders (+1.07%)
+# Current-flag onboarded = 1028 today, numerically identical to gold (no poll
+# milestones exist after 2026-06-26), so the flag-vs-timestamp fork on
+# onboarded is guarded by required_resolutions/severity1, not by the number.
+#
+# Tolerances are a drift budget, not measurement uncertainty (replication is
+# exact from one deterministic query). As-of counts are frozen by
+# construction — new activity cannot move them; drift channels are mart
+# restatement only (Amplitude user-merge/reprocessing shifting
+# first_sms_poll_sent_at; product-DB corrections to pre-cutoff
+# eo_activated_at). Boundary exposure measured at pin: 0 external activations
+# dated 2026-06-30, 1 dated 2026-07-01, 0 polls near the boundary (max
+# ±1 user ≈ 0.05%). Total gets 0.3% (~5 users), below the 0.38% current-flag
+# fork; onboarded gets 0.5% (~5 users), below the 1.07% non-subset fork.
+# Restatement drift beyond these bands means re-baseline, not wider bands.
+numbers:
+  - name: serve_users_total
+    value: 1838
+    tolerance_pct: 0.3
+  - name: serve_users_onboarded
+    value: 1028
+    tolerance_pct: 0.5
+
+required_resolutions:
+  population: asof_timestamp_reconstruction (eo_activated_at < 2026-07-01 on users_serve_base; NOT current-state is_serve_user alone)
+  internal_accounts: exclude_goodparty_org_email_domain
+  onboarded_definition: first_sms_poll_sent_at < 2026-07-01, strict subset of serve_users_total (no poll/activation ordering requirement)
+  boundary_semantics: all_of_june_30_included (cutoff strictly before 2026-07-01 00:00:00, per-column stored representation)
+
+mandatory_sources:
+  - id: serve_user_mart
+    pattern: 'users_serve_base'
+    description: consulted the governed Serve user mart rather than raw civics/Amplitude tables alone
+  - id: activation_anchor
+    pattern: 'eo_activated_at'
+    description: anchored the census on the EO activation timestamp, not the current-state flag alone
+  - id: poll_milestone
+    pattern: 'first_sms_poll_sent_at'
+    description: onboarding completion read from the first-SMS-poll milestone timestamp
+  - id: internal_exclusion
+    pattern: '(?i)goodparty\.org'
+    description: evidence the GoodParty-internal account exclusion was applied
+
+# Confidently-wrong moves identified/anticipated during the gold run:
+# 1. Counting 2026 "Onboarding V2" Amplitude events as Serve onboarding
+#    (they are the Win onboarding redesign — documented trap in serve
+#    sources.md). Deliberately NO tripwire (q02/q07 precedent, PR #671
+#    review): a correct answer must NAME the trap to reject it, and any
+#    bare-phrase regex is blind to that distinction; actual misuse is
+#    guarded by the tolerance bands and the judge's semantic
+#    confident-wrongness grading.
+# 2. Gating the as-of counts on current-state booleans in a WHERE clause
+#    (right-number-today on onboarded by coincidence, wrong by
+#    construction) — tripwired below: this fork is numerically invisible
+#    at pin time, so the SQL-shaped regex (which cannot appear in correct
+#    prose or correct SQL) is the only deterministic guard.
+severity1_patterns:
+  - '(?i)where\s+(is_serve_user\s+and\s+)?has_completed_serve_onboarding'
+
+# Names must exactly match required_resolutions keys: check_assumptions and
+# check_resolutions read the same answer-ledger fork names (grading.py).
+required_assumptions:
+  - population
+  - internal_accounts
+  - onboarded_definition
+  - boundary_semantics
+
+intent_card: |
+  Purpose: pin the Serve as-of census (activation + poll-onboarding) as a
+  graded gold answer; guard the current-flag-vs-as-of trap.
+  Audience: benchmark grader + future re-baseliners (DATA-2144 harness).
+  Fork answers (asker): internal @goodparty.org accounts excluded (hygiene
+  default); "as of June 30" = all of June 30 (< 2026-07-01, stored
+  representation); onboarded = strict subset of total, no poll/activation
+  ordering; reconstruct from timestamps, never current-state flags.

@@ -1,0 +1,87 @@
+id: q07_serve_denominator
+as_of: "2026-07-23"
+numbers:
+  # Tolerance rationale (re-baseline convention): the discriminating number is
+  # the count. Near-miss ladder (verified 2026-07-23): skip the pledge filter
+  # entirely = 1838 (+0.38%); skip the internal-email filter = 1856 (+1.37%);
+  # skip the as-of activation cut = ~1865 (+1.9%); all-product pledge base =
+  # ~39k. 0.2% (+-3 users) fails every rung. The legitimate
+  # censoring-band floor (subtracting the 6-user contamination bound, 1825,
+  # -0.33%) ALSO fails numerically by design — keep-current-state is the
+  # required resolution; a run that subtracts is caught here and graded on
+  # scoping via resolutions/judge, not passed silently.
+  # DECAY NOTE: has_pledged is current-state and only accretes, so a correct
+  # later re-run drifts UP toward the 1838 no-filter value (7 users of
+  # headroom). Denominator is fully as-of-bounded and stable at 1838.
+  # RE-BASELINE TRIGGER: when a correct current-state re-run reads within
+  # tolerance of 1838, the count no longer discriminates the pledge-filter
+  # fork — re-pin the key or move that guard entirely to resolutions/judge.
+  - name: serve_pledged_users
+    value: 1831
+    tolerance_pct: 0.2
+  # pct cannot discriminate the internal-filter (99.4) or as-of (99.4) forks
+  # at one decimal — the count guards those. 0.3% spans the legitimate
+  # censoring band (true as-of pct in [99.3, 99.6]) while failing the
+  # no-pledge-filter read (100.0) and the all-product-base read (~4.7).
+  - name: pct_serve_pledged
+    value: 99.6
+    tolerance_pct: 0.3
+required_resolutions:
+  denominator: canonical_serve_population_eo_activated_asof_june30
+  internal_accounts: excluded_via_goodparty_org_email_proxy
+  pledge_definition: campaign_pledge_or_elected_office_pledge_union
+  pledge_asof: current_state_flag_kept_with_documented_bound
+  boundary_semantics: half_open_before_july1_on_timestamp_columns
+  activation_floor: none_oct_2025_launch_wave_included
+mandatory_sources:
+  - id: population_table
+    pattern: "users_serve_base"
+    description: Population anchor and pledge flag must come from the canonical
+      Serve mart (is_serve_user + eo_activated_at), not from the all-product
+      campaign pledge base or an activity table.
+  - id: asof_anchor
+    pattern: "eo_activated_at"
+    description: Evidence the run reconstructed the June 30 population from the
+      activation timestamp — is_serve_user alone is current-state and includes
+      July activations.
+  # LIMITATION (verified 2026-07-23): the union arm is numerically invisible
+  # in-window — all 3 elected_office-pledge-only users resolved by acquiring
+  # pledged campaigns or being internal, so campaign has_pledged alone
+  # reproduces 1831 exactly. This check is string-presence evidence the run
+  # CONSULTED the new EO-pledge field (live 2026-06-23), not proof it used
+  # the union, and a disclaimer mention passes it. Deliberately NO severity1
+  # tripwire on correct prose saying "the EO-pledge arm adds nothing
+  # in-window" (q02/q04 precedent: tripwires must not fire on correct prose).
+  - id: eo_pledge_arm
+    pattern: "pledged_at|elected_office"
+    description: Evidence the run consulted the elected_office EO-pledge field
+      (consultation check only — see limitation comment above).
+severity1_patterns:
+  # All-product pledge base as the numerator (true value 1831; the documented
+  # gotcha reads ~39k — any 5+ digit count is confidently wrong).
+  - "serve_pledged_users\\D{0,15}\\b\\d{5,}\\b"
+  # A pct below ~90 (all-product-base denominator reads ~4.7; true value 99.6
+  # and every defensible fork stays above 99). Matches 0.0-89.9, not 9x.x.
+  - "pct_serve_pledged\\D{0,15}\\b[0-8]?\\d\\.\\d+\\b"
+  # Claiming the pledge can be point-in-time reconstructed from a timestamped
+  # source is confidently wrong (campaign pledge is untimestamped;
+  # elected_office.pledged_at only exists from 2026-06-23; Segment coverage
+  # is a 1-month sliver) — but deliberately NO tripwire (PR #671 review):
+  # the REQUIRED correct caveat ("point-in-time pledge reconstruction is
+  # impossible") shares every token with the wrong claim, so any regex here
+  # is negation-blind. The judge grades the over-claim semantically.
+required_assumptions:
+  - denominator
+  - internal_accounts
+  - pledge_definition
+  - pledge_asof
+intent_card: |
+  Purpose: test whether a run picks the right denominator — the ~1.8k
+  canonical Serve population, not the 39k all-product pledge base.
+  Audience: benchmark harness / future graded runs.
+  Forks: Serve user = EO-activated as of June 30 (no activation-date floor —
+  the late-Oct 2025 wave is the real launch); internal @goodparty.org
+  excluded; pledge = campaign pledge or the new EO pledge; the untimestamped
+  pledge flag is used current-state with a documented <=6-user bound.
+  Note: ~99.6% is the expected shape, not an error — don't reward hedging
+  away from it.

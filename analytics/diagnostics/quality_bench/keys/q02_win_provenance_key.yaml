@@ -117,12 +117,19 @@ mandatory_sources:
 severity1_patterns:
   - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
 
+# Names must exactly match required_resolutions keys: check_assumptions and
+# check_resolutions read the same answer-ledger fork names (grading.py).
+# Renamed 2026-07-23 (PR #671); boundary_semantics split into its two actual
+# boundary forks, completion_window (14d half-open) and month_bucketing.
 required_assumptions:
-  - completion_metric_definition
-  - onboarding_event_era_resolution
-  - internal_accounts_exclusion
-  - demo_accounts_exclusion
-  - boundary_semantics
+  - completion_metric
+  - onboarding_event_eras
+  - account_created
+  - population
+  - internal_accounts
+  - demo_accounts
+  - completion_window
+  - month_bucketing
 
 intent_card: |
   Purpose: provenance trap — "completed onboarding" spans three instrumented
