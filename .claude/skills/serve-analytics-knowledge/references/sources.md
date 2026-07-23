@@ -52,7 +52,6 @@ For most Serve analyses, start with one of these:
   these events to a user table, cast the product-side key: `cast(u.user_id as string) =
   e.user_id`; casting the Amplitude side to bigint throws `CAST_INVALID_INPUT` on legacy
   Firebase-style IDs (see [gotchas.md](gotchas.md) — Amplitude user_id casts)**; Segment pledge
-  onboarding-pledge events (2025-05-28 →) can bound *recent* pledge dates; Segment pledge
   tables cover only 2026-02-23 → 2026-03-24.
 - **EO pledge** — `gp_api_db_elected_office.pledged_at`, a timestamped EO-level pledge from
   the new Serve onboarding (live 2026-06-23; 17 rows as of 2026-07-23). **Not read by
