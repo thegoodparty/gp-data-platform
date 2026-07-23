@@ -185,7 +185,13 @@ def add_derived(df: pd.DataFrame, *, dash_p90: float | None = None, asof: pd.Tim
     # election_level and office_type NULL handling (explicit buckets, never dropped).
     df["election_level"] = df["election_level"].fillna("unknown")
     df["office_type"] = df["office_type"].fillna("unknown")
-    df["campaign_party"] = df["campaign_party"].fillna("unknown")
+    df["campaign_party"] = (
+        df["campaign_party"]
+        .fillna("unknown")
+        .str.lower()
+        .str.replace(r"\s*party\s*$", "", regex=True)
+        .str.strip()
+    )
     df["l2_district_type"] = df["l2_district_type"].fillna("unknown")
 
     # ICP-under-today's-definition (mayor or legislator, constituency > 1000) - OUTPUT ONLY.
