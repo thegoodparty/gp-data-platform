@@ -247,8 +247,8 @@ AT_ELECTION_COLS = [
 ]
 
 
-def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Return (report, crosstab, sanity). df must come from build_working_flags."""
+def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    """Return (report, crosstab, pro_activation, sanity). df must come from build_working_flags."""
     report_buckets = [
         b
         for name in BUCKETS
@@ -281,16 +281,47 @@ def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFra
     rows = []
     for b in past_buckets:
         g = in_report[in_report["bucket"] == b]
+        pro_and_act = int((g["pro_at_election"] & g["activated_at_election"]).sum())
+        pro_not_act = int((g["pro_at_election"] & ~g["activated_at_election"]).sum())
         rows.append(
             {
                 "bucket": b,
-                "pro_and_activated": int((g["pro_at_election"] & g["activated_at_election"]).sum()),
-                "pro_not_activated": int((g["pro_at_election"] & ~g["activated_at_election"]).sum()),
+                "pro_and_activated": pro_and_act,
+                "pro_not_activated": pro_not_act,
                 "activated_not_pro": int((~g["pro_at_election"] & g["activated_at_election"]).sum()),
                 "neither": int((~g["pro_at_election"] & ~g["activated_at_election"]).sum()),
+                "pro_to_activated_pct": round(100 * pro_and_act / (pro_and_act + pro_not_act), 1)
+                if pro_and_act + pro_not_act
+                else None,
             }
         )
     crosstab = pd.DataFrame(rows).set_index("bucket")
+
+    # Pro -> activated conversion per bucket, both semantics (2026-07-23 amendment,
+    # Bryan's ratio). Lifetime = as-of-run-date flags; at-election = anchored flags.
+    # Bases differ by construction: pro_today includes post-election churn-out and
+    # new upgrades, pro_at_election is the evidence-only anchored count.
+    pa_rows = []
+    for b in [x for x in report_buckets if x != "no_election_date"]:
+        g = in_report[in_report["bucket"] == b]
+        pro_today = int(g["is_pro"].sum())
+        pro_today_act = int((g["is_pro"] & g["is_activated"]).sum())
+        pro_at = int(g["pro_at_election"].sum())
+        pro_at_act = int((g["pro_at_election"] & g["activated_at_election"]).sum())
+        pa_rows.append(
+            {
+                "bucket": b,
+                "pro_today": pro_today,
+                "pro_today_activated": pro_today_act,
+                "pro_today_to_activated_pct": round(100 * pro_today_act / pro_today, 1)
+                if pro_today
+                else None,
+                "pro_at_election": pro_at,
+                "pro_at_election_activated": pro_at_act,
+                "pro_at_election_to_activated_pct": round(100 * pro_at_act / pro_at, 1) if pro_at else None,
+            }
+        )
+    pro_activation = pd.DataFrame(pa_rows).set_index("bucket")
 
     dropped = int((df["bucket"] == "outside_buckets").sum())
     pre_era = int((df["bucket"] == "pre_era_no_date").sum())
@@ -310,7 +341,7 @@ def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFra
         "reconciliation_ok": int(report.loc[report.index != "TOTAL", "accounts"].sum()) + dropped + pre_era
         == len(df),
     }
-    return report, crosstab, sanity
+    return report, crosstab, pro_activation, sanity
 
 
 def csv_footer(sanity: dict) -> list[str]:
@@ -350,24 +381,31 @@ def main() -> None:
     print(f"Working set: {len(raw):,} users\n")
 
     df = build_working_flags(raw, asof)
-    report, crosstab, sanity = build_report(df, asof)
+    report, crosstab, pro_activation, sanity = build_report(df, asof)
     labels = display_labels(asof)
 
     print("=== Win top-line report, by general-election-date bucket ===")
     print(report.rename(index=labels).to_string())
     print("\n=== Pro x activation cross-tab (at-election, held buckets) ===")
     print(crosstab.rename(index=labels).to_string())
+    print("\n=== Pro -> activated conversion (lifetime + at-election) ===")
+    print(pro_activation.rename(index=labels).to_string())
     print("\n=== Sanity checks (brief execution_notes 1-5) ===")
     for k, v in sanity.items():
         print(f"{k}: {v}")
 
-    out = Path(__file__).parent / f"topline_report_{asof.isoformat()}.csv"
-    with open(out, "w") as f:
-        report.rename(index=labels).to_csv(f)
-        f.write("\n".join(csv_footer(sanity)) + "\n")
-    xt = Path(__file__).parent / f"topline_crosstab_{asof.isoformat()}.csv"
-    crosstab.rename(index=labels).to_csv(xt)
-    print(f"\nSaved: {out}\nSaved: {xt}")
+    # Output is stdout-only (owner decision 2026-07-23: CSV files were never
+    # viewed or committed). The footnotes must travel with any table that
+    # leaves this terminal — paste them alongside.
+    print("\n=== Footnotes (paste with any shared table) ===")
+    print("\n".join(line for line in csv_footer(sanity) if line))
+    print(
+        "# Pro -> activated table: pro_today / is_activated are as-of-run-date"
+        " (lifetime) flags; at-election columns are anchored at min(election"
+        " date, run date) and evidence-only. Bases differ by construction; for"
+        " upcoming elections the two semantics converge on 'today'. Activated"
+        " and Pro are OVERLAPPING flags, not mutually exclusive segments."
+    )
 
 
 if __name__ == "__main__":

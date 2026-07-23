@@ -26,6 +26,7 @@ live in the owning doc, not here, so this stays small enough to load on every re
 | **Viability Score 2.0** | `round(5 × P(win))`, range 0.0–5.0, mapped to a 5-band label (`No Chance` … `Frontrunner`) | `int__techspeed_viability_scoring.viability_rating_2_0` / `score_viability_automated` | [viability.md](viability.md) | pending |
 | **PMF (KR2)** | Share of ICP-activated users answering "very disappointed" (Option 1) on the Win PMF survey if they could no longer use Win; target 40% | `stg_airbyte_source__hubspot_api_feedback_submissions` (`survey_name LIKE 'Win PMF%'`, `pmf_response`) | [outcomes.md](outcomes.md) | pending |
 | **Upcoming/live election base** | Distinct `is_latest_version AND NOT is_demo` users whose per-user `MAX(election_date)`, bounded to `[2020-01-01, 2050-01-01]`, is `>= the as-of date` (open-ended; includes future cycles) | `users_win_candidacy.election_date` | [segmentation.md](segmentation.md) | pending |
+| **Win W+1 Retention (OKR O2 KR1)** | Share of Win-ICP users viewing the dashboard 8–14 days after their first voter outreach send (conditions on activated ICP users by construction); target 60% | Amplitude chart `owc6mfnp` (start `ce:Voter Outreach - All`, return `Viewed` path=/dashboard, segment Win ICP) | [engagement.md](engagement.md) | pending |
 
 When a question names a concept not in this table, fall through to the per-domain routing
 table in the knowledge skill's `SKILL.md`. When you define a genuinely new canonical metric,
