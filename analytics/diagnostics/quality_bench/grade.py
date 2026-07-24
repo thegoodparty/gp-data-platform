@@ -118,6 +118,11 @@ def judge_cached(
     different judge model re-judges; --rejudge forces it."""
     judge_file = batch_dir / f"{run_id}.judge.json"
     answer_sha256 = hashlib.sha256(answer.encode()).hexdigest()
+    if rejudge:
+        # --rejudge means the cached verdict is distrusted: drop it up front so
+        # a failed re-judge cannot leave it behind for the next normal run to
+        # silently reuse.
+        judge_file.unlink(missing_ok=True)
     if judge_file.exists() and not rejudge:
         try:
             record = json.loads(judge_file.read_text())
@@ -151,8 +156,11 @@ def cost_lines(df: pd.DataFrame) -> list[str]:
         cost_mean = f"${g.cost_usd.mean():.2f}" if g.cost_usd.notna().any() else "n/a"
         tokens = f"{g.output_tokens.mean():.0f}" if g.output_tokens.notna().any() else "n/a"
         turns = f"{g.num_turns.mean():.1f}" if g.num_turns.notna().any() else "n/a"
+        # meta n/N makes partial coverage visible: sums/means computed over the
+        # reps that recorded metadata would otherwise read as full-arm figures.
         lines.append(
-            f"- {arm}: runs {len(g)}, total {cost_total}, mean {cost_mean}, "
+            f"- {arm}: runs {len(g)}, meta {int(g.cost_usd.notna().sum())}/{len(g)}, "
+            f"total {cost_total}, mean {cost_mean}, "
             f"mean output tokens {tokens}, mean turns {turns}"
         )
     return lines

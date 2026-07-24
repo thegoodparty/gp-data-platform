@@ -172,3 +172,23 @@ def test_transcript_without_cwd_is_flagged_unreviewable(tmp_path):
     assert spot_check.flag_transcript(t) == [
         "no cwd recorded in transcript; cannot establish the allowed surface"
     ]
+
+
+def test_check_batch_scans_failed_runs_too(tmp_path):
+    """Contamination is contamination whether or not the run succeeded: a
+    failed run with a transcript is scanned, one without flags unreviewable
+    (delegate bfb218f7, PR #686)."""
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    dirty = batch / "dirty.jsonl"
+    dirty.write_text(line("Read", {"file_path": "/Users/op/repos/gp-data-platform/secret.md"}))
+    state = {
+        "runs": {
+            "q01__full__r1": {"ok": False, "transcript_file": str(dirty)},
+            "q01__full__r2": {"ok": False, "transcript_file": None},
+        }
+    }
+    (batch / "state.json").write_text(json.dumps(state))
+    result = spot_check.check_batch(batch)
+    assert len(result["q01__full__r1"]) == 1
+    assert result["q01__full__r2"] == ["transcript missing"]

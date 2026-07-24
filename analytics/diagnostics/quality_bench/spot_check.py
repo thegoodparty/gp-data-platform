@@ -98,13 +98,12 @@ def flag_transcript(transcript_file: Path) -> list[str]:
 
 
 def check_batch(batch_dir: Path) -> dict[str, list[str]]:
-    """Flag every ok run in a batch; a missing transcript is itself a flag
-    (an unreviewable run cannot be accepted)."""
+    """Flag every recorded run in a batch — failed runs included, since
+    contamination does not depend on the run's outcome. A missing transcript
+    is itself a flag (an unreviewable run cannot be accepted)."""
     state = json.loads((batch_dir / "state.json").read_text())
     out: dict[str, list[str]] = {}
     for run_id, run_state in state["runs"].items():
-        if not run_state.get("ok"):
-            continue
         t = run_state.get("transcript_file")
         if not t or not Path(t).exists():
             out[run_id] = ["transcript missing"]

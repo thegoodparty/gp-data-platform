@@ -349,3 +349,42 @@ def test_cost_lines_mixed_arms_no_nan_cost():
     assert "$0.00" not in bare_line
     assert "n/a" in bare_line
     assert "$2.00" in text  # full arm still reports
+
+
+def test_judge_cached_rejudge_failure_leaves_no_stale_cache(tmp_path, monkeypatch):
+    """--rejudge means the operator distrusts the cached verdict; if the
+    re-judge then fails, the old file must not survive to be silently reused
+    by the next normal run (delegate 3648305803, PR #686)."""
+    calls = []
+
+    def judge_ok(key, answer, model):
+        calls.append("ok")
+        return dict(JUDGE_VERDICT)
+
+    def judge_fail(key, answer, model):
+        calls.append("fail")
+        return None
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_ok)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_fail)
+    assert grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m", rejudge=True) is None
+    assert not (tmp_path / "q01__full__r1.judge.json").exists()
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_ok)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")  # normal run re-judges
+    assert calls == ["ok", "fail", "ok"]
+
+
+def test_cost_lines_partial_meta_shows_coverage():
+    """An arm where only some reps recorded metadata must say so: sums/means
+    over the subset are indistinguishable from full-arm figures otherwise
+    (delegate 3648465354, PR #686)."""
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100.0, "num_turns": 5.0},
+            {"arm": "full", "cost_usd": None, "output_tokens": None, "num_turns": None},
+        ]
+    ).astype({"cost_usd": "float", "output_tokens": "float", "num_turns": "float"})
+    text = "\n".join(grade.cost_lines(df))
+    assert "meta 1/2" in text
+    assert "$2.00" in text
