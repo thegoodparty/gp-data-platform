@@ -280,3 +280,34 @@ def test_judge_cached_failed_judge_not_persisted(tmp_path, monkeypatch):
     monkeypatch.setattr(grade.judge_mod, "judge_answer", lambda *a: None)
     assert grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m") is None
     assert not (tmp_path / "q01__full__r1.judge.json").exists()
+
+
+def test_judge_cached_corrupt_cache_rejudges(tmp_path, monkeypatch):
+    """A truncated judge.json (crash mid-write) is a cache miss, not a crash:
+    grading must re-judge and overwrite instead of aborting the batch
+    (delegate, PR #686)."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(1)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    judge_file = tmp_path / "q01__full__r1.judge.json"
+    judge_file.write_text('{"scores": {"scop')  # truncated write
+    j = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m")
+    assert j["scores"]["caveat_quality"] == 1
+    assert calls == [1]
+    assert json.loads(judge_file.read_text())["answer_sha256"]  # overwritten clean
+
+
+def test_cost_lines_no_nan_when_tokens_missing():
+    """cost_usd recorded but token/turn metadata absent must render n/a, not the
+    literal string 'nan' (delegate, PR #686)."""
+    df = pd.DataFrame([{"arm": "full", "cost_usd": 2.0, "output_tokens": None, "num_turns": None}]).astype(
+        {"output_tokens": "float", "num_turns": "float"}
+    )
+    text = "\n".join(grade.cost_lines(df))
+    assert "$2.00" in text
+    assert "nan" not in text
+    assert "n/a" in text

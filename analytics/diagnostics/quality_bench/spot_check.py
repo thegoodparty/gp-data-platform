@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 import re
 from pathlib import Path
 
@@ -46,12 +47,19 @@ SYSTEM_PREFIXES = (
     "/Applications/",
 )
 ABS_PATH = re.compile(r"(?<![\w@.-])/(?:[\w.@-]+/)*[\w.@-]+")
+# Relative tokens that climb via `..` — invisible to ABS_PATH but resolved
+# against the run cwd they can escape it (Bugbot, PR #686).
+REL_DOTDOT = re.compile(r"(?<![\w@./-])(?:[\w.@-]+/)*\.\.(?:/[\w.@-]+)*")
 
 
-def _allowed(path: str, run_prefixes: tuple[str, ...]) -> bool:
-    if not path.startswith("/"):
-        return True  # relative: resolves under the run's cwd
-    probe = path if path.endswith("/") else path + "/"
+def _allowed(path: str, cwd: str, run_prefixes: tuple[str, ...]) -> bool:
+    """Lexical containment check: relative paths resolve against the run cwd and
+    `..` segments are normalized before prefix matching, so a path that *starts*
+    under an allowed prefix but climbs out via `..` is not allowed. Lexical only
+    (paths are gone by check time); symlink escapes are out of scope for this
+    interim — flags are review items, not verdicts."""
+    resolved = posixpath.normpath(path if path.startswith("/") else posixpath.join(cwd, path))
+    probe = resolved + "/"
     return any(probe.startswith(p) for p in (*run_prefixes, *SYSTEM_PREFIXES))
 
 
@@ -76,11 +84,12 @@ def flag_transcript(transcript_file: Path) -> list[str]:
                 accesses.append((tool, p))
             elif tool == "Bash" and (cmd := tool_input.get("command")):
                 accesses.extend(("Bash", m) for m in ABS_PATH.findall(cmd))
+                accesses.extend(("Bash", m) for m in REL_DOTDOT.findall(cmd))
     if not cwd:
         return ["no cwd recorded in transcript; cannot establish the allowed surface"]
     run_dir = cwd.rstrip("/")
     run_prefixes = (run_dir + "/", f"{run_dir}.home/")
-    return [f"{tool}: {p}" for tool, p in accesses if not _allowed(p, run_prefixes)]
+    return [f"{tool}: {p}" for tool, p in accesses if not _allowed(p, run_dir, run_prefixes)]
 
 
 def check_batch(batch_dir: Path) -> dict[str, list[str]]:

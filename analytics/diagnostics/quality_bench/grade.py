@@ -115,7 +115,12 @@ def judge_cached(
     judge_file = batch_dir / f"{run_id}.judge.json"
     answer_sha256 = hashlib.sha256(answer.encode()).hexdigest()
     if judge_file.exists() and not rejudge:
-        record = json.loads(judge_file.read_text())
+        try:
+            record = json.loads(judge_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            # A truncated cache file (crash mid-write) is a cache miss, not a
+            # reason to abort the batch; fall through and re-judge over it.
+            record = {}
         if record.get("answer_sha256") == answer_sha256 and record.get("model") == model:
             return record
     j = judge_mod.judge_answer(key, answer, model)
@@ -135,9 +140,13 @@ def cost_lines(df: pd.DataFrame) -> list[str]:
         return []
     lines = ["", "## Execution cost by arm (reported, not verdict-gated)", ""]
     for arm, g in df.groupby("arm"):
+        # A group can have cost but no token/turn metadata (partially-upgraded
+        # batch); .mean() is then NaN and :.0f would print the literal 'nan'.
+        tokens = f"{g.output_tokens.mean():.0f}" if g.output_tokens.notna().any() else "n/a"
+        turns = f"{g.num_turns.mean():.1f}" if g.num_turns.notna().any() else "n/a"
         lines.append(
             f"- {arm}: runs {len(g)}, total ${g.cost_usd.sum():.2f}, mean ${g.cost_usd.mean():.2f}, "
-            f"mean output tokens {g.output_tokens.mean():.0f}, mean turns {g.num_turns.mean():.1f}"
+            f"mean output tokens {tokens}, mean turns {turns}"
         )
     return lines
 

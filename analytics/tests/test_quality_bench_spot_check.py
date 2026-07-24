@@ -91,3 +91,37 @@ def test_check_batch_maps_flags_by_run(tmp_path):
     assert result["q01__full__r1"] == []
     assert len(result["q01__full__r2"]) == 1
     assert result["q01__full__r3"] == ["transcript missing"]
+
+
+def test_absolute_dotdot_traversal_flagged(tmp_path):
+    """A path that starts with an allowed prefix but escapes via `..` must be
+    flagged (Bugbot, PR #686): prefix matching on the raw string is not enough."""
+    sneaky = f"{CWD}/../../../../../repos/gp-data-platform/analytics/diagnostics/quality_bench/keys/k.yaml"
+    t = write_transcript(tmp_path, [line("Read", {"file_path": sneaky})])
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_relative_dotdot_traversal_flagged(tmp_path):
+    """Relative paths resolve against the run cwd; one that climbs out of the
+    run dir is out-of-arm even though it never names an absolute path."""
+    t = write_transcript(tmp_path, [line("Read", {"file_path": "../../../../repo/keys/k.yaml"})])
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_relative_dotdot_staying_inside_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Read", {"file_path": "sub/../CLAUDE.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_absolute_dotdot_staying_inside_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Read", {"file_path": f"{CWD}/sub/../CLAUDE.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_bash_relative_dotdot_traversal_flagged(tmp_path):
+    t = write_transcript(
+        tmp_path,
+        [line("Bash", {"command": "cat ../../../../../repos/gp-data-platform/keys/k.yaml"})],
+    )
+    flags = spot_check.flag_transcript(t)
+    assert len(flags) == 1
