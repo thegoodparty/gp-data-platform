@@ -241,6 +241,14 @@ def _check_inbound_gates(cur, spec: TableSyncSpec, id_overlap_floor: float) -> N
                 f"with the spec's on_clause ({fk.on_clause}); a migration may "
                 f"have changed it; refusing to swap"
             )
+
+
+def _check_orphan_budgets(cur, spec: TableSyncSpec) -> None:
+    """Orphan budget per inbound FK: child rows whose reference is absent
+    from staging. Joins only child against staging, so it guards cold starts
+    too; the id-overlap floor (which needs the live table) does not."""
+    s = f'"{spec.staging_schema}"."{spec.new_table}"'
+    for fk in spec.inbound_fkeys:
         c = f'"{fk.child_schema}"."{fk.child_table}"'
         cur.execute(
             f'SELECT count(*) FILTER (WHERE c."{fk.child_column}" IS NOT NULL), '
@@ -272,12 +280,14 @@ def swap_staging_into_target(
     bounded lock/statement timeouts, child-first lock order (matches the
     legacy writer's DML order, so an overlapping writer run cannot AB-BA
     deadlock), in-transaction destructive gates (staged-vs-live id-overlap
-    floor and an orphaned-child budget, evaluated under the locks, where they
-    must be current at the moment of mutation; the task-level quality gates
-    cover counts, window, and schema shape earlier and more cheaply), orphan
-    SET NULL mirroring the FK's own ON DELETE action, constraint drop,
-    renames, re-add validated. A crash anywhere rolls the whole transaction
-    back, including the orphan nulls and the constraint drop.
+    floor, gated on the live target existing, and an orphaned-child budget
+    that runs on both branches so it guards cold starts too, evaluated under
+    the locks, where they must be current at the moment of mutation; the
+    task-level quality gates cover counts, window, and schema shape earlier
+    and more cheaply), orphan SET NULL mirroring the FK's own ON DELETE
+    action, constraint drop, renames, re-add validated. A crash anywhere
+    rolls the whole transaction back, including the orphan nulls and the
+    constraint drop.
     """
     cur = conn.cursor()
     try:
@@ -300,6 +310,7 @@ def swap_staging_into_target(
                     f'LOCK TABLE "{spec.target_schema}"."{spec.target_table}" ' f"IN ACCESS EXCLUSIVE MODE"
                 )
                 _check_inbound_gates(cur, spec, id_overlap_floor)
+            _check_orphan_budgets(cur, spec)
             for inbound in spec.inbound_fkeys:
                 cur.execute(
                     f'UPDATE "{inbound.child_schema}"."{inbound.child_table}" AS c '

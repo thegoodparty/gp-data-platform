@@ -790,6 +790,35 @@ def test_orphan_budget_aborts():
         swap_staging_into_target(conn, RACE_SPEC)
 
 
+def test_orphan_budget_aborts_on_cold_start():
+    """No live target: the id-overlap floor is meaningless, but the orphan
+    budget must still stop a swap from mass-nulling child rows."""
+    pg = FakePostgres()
+    _seed_fk_parents(pg, "Place", "Position")
+    pg.seed_table(
+        "public",
+        "Candidacy",
+        constraints={"Candidacy_pkey"},
+        indexes={"Candidacy_pkey", "Candidacy_race_id_idx"},
+    )
+    conn = _prep_race_staging(pg)
+    stg_tbl = f'"{RACE_SPEC.staging_schema}"."{RACE_SPEC.new_table}"'
+    child_tbl = '"public"."Candidacy"'
+    pg.seed_scalar(
+        f'SELECT count(*) FILTER (WHERE c."race_id" IS NOT NULL), '
+        f'count(*) FILTER (WHERE c."race_id" IS NOT NULL AND stg."id" IS NULL) '
+        f'FROM {child_tbl} c LEFT JOIN {stg_tbl} stg ON stg."id" = c."race_id"',
+        (100, 5),
+    )
+    state_before = pg.state()
+
+    with pytest.raises(ValueError, match="orphan"):
+        swap_staging_into_target(conn, RACE_SPEC)
+
+    assert pg.state() == state_before
+    assert not any(stmt.startswith("UPDATE") for stmt in pg.statements)
+
+
 def test_changed_inbound_fk_definition_aborts():
     """A migration that changes the child FK's actions must stop the swap;
     re-adding from the spec would silently revert the migration."""
