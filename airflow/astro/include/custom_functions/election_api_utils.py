@@ -37,6 +37,27 @@ logger = logging.getLogger("airflow.task")
 
 
 @dataclass(frozen=True)
+class InboundForeignKey:
+    """A FK on a CHILD table referencing the swapped table.
+
+    Constraints follow the referenced table's identity through renames, so
+    after a rename-swap the child FK points at `<Target>_old` and drop_old
+    fails on the dependency. The swap transaction therefore nulls orphaned
+    child rows, drops this constraint, renames, and re-adds it against the
+    fresh table, atomically.
+    """
+
+    child_table: str
+    constraint_name: str
+    child_column: str
+    child_schema: str = "public"
+    parent_column: str = "id"
+    on_clause: str = "ON UPDATE CASCADE ON DELETE SET NULL"
+    # Budget for child rows the swap may null: ~2x the historical daily aging rate for Candidacy on Race.
+    orphan_budget_ratio: float = 0.02
+
+
+@dataclass(frozen=True)
 class TableSyncSpec:
     """Declares a Databricks-mart-to-Postgres-table sync target."""
 
@@ -49,6 +70,11 @@ class TableSyncSpec:
     indexes: tuple[str, ...] = field(default_factory=tuple)
     # Canonical (post-swap) foreign-key constraint names.
     fkeys: tuple[str, ...] = field(default_factory=tuple)
+    # FKs on OTHER tables referencing this one; re-pointed inside the swap.
+    inbound_fkeys: tuple[InboundForeignKey, ...] = field(default_factory=tuple)
+    # Primary-key column used by the staged-vs-live id-overlap gate.
+    # Used only by the inbound-FK gates; irrelevant to specs without inbound_fkeys.
+    pk_column: str = "id"
 
     @property
     def new_table(self) -> str:
@@ -165,15 +191,103 @@ def apply_ddl(conn, statements: Sequence[str]) -> None:
         cur.close()
 
 
-def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
+def prior_live_state(cur, spec: TableSyncSpec) -> tuple[bool, int]:
+    """to_regclass existence + row count of the live target (identifiers
+    double-quoted so mixed case survives).
+
+    Both identifiers must be double-quoted in the regclass argument:
+    Postgres folds unquoted mixed-case to lowercase, so `public.Race` would
+    resolve to `public.race` and always return NULL.
+    """
+    cur.execute(
+        "SELECT to_regclass(%s)",
+        (f'"{spec.target_schema}"."{spec.target_table}"',),
+    )
+    exists = cur.fetchone()[0] is not None
+    count = 0
+    if exists:
+        cur.execute(f'SELECT COUNT(*) FROM "{spec.target_schema}"."{spec.target_table}"')
+        count = cur.fetchone()[0]
+    return exists, count
+
+
+def _check_inbound_gates(cur, spec: TableSyncSpec, id_overlap_floor: float) -> None:
+    """Destructive-mutation gates, evaluated inside the swap transaction."""
+    t = f'"{spec.target_schema}"."{spec.target_table}"'
+    s = f'"{spec.staging_schema}"."{spec.new_table}"'
+    cur.execute(
+        f'SELECT count(*), count(stg."{spec.pk_column}") FROM {t} live '
+        f'LEFT JOIN {s} stg ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
+    )
+    live_count, overlap = cur.fetchone()
+    if live_count > 0 and overlap / live_count < id_overlap_floor:
+        raise ValueError(
+            f"staged id overlap {overlap}/{live_count} below floor "
+            f"{id_overlap_floor}; wholesale re-key suspected, refusing to swap"
+        )
+    for fk in spec.inbound_fkeys:
+        cur.execute(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid = %s::regclass AND conname = %s",
+            (f'"{fk.child_schema}"."{fk.child_table}"', fk.constraint_name),
+        )
+        row = cur.fetchone()
+        # Absent constraint = cold start or prior-crash state; nothing to
+        # preserve. Present but with different actions = a migration changed
+        # it; re-adding from our spec would silently revert it.
+        if row is not None and not row[0].endswith(fk.on_clause):
+            raise ValueError(
+                f"live {fk.constraint_name} definition ({row[0]}) does not end "
+                f"with the spec's on_clause ({fk.on_clause}); a migration may "
+                f"have changed it; refusing to swap"
+            )
+
+
+def _check_orphan_budgets(cur, spec: TableSyncSpec) -> None:
+    """Orphan budget per inbound FK: child rows whose reference is absent
+    from staging. Joins only child against staging, so it guards cold starts
+    too; the id-overlap floor (which needs the live table) does not."""
+    s = f'"{spec.staging_schema}"."{spec.new_table}"'
+    for fk in spec.inbound_fkeys:
+        c = f'"{fk.child_schema}"."{fk.child_table}"'
+        cur.execute(
+            f'SELECT count(*) FILTER (WHERE c."{fk.child_column}" IS NOT NULL), '
+            f'count(*) FILTER (WHERE c."{fk.child_column}" IS NOT NULL '
+            f'AND stg."{fk.parent_column}" IS NULL) '
+            f'FROM {c} c LEFT JOIN {s} stg ON stg."{fk.parent_column}" = c."{fk.child_column}"'
+        )
+        referencing, orphans = cur.fetchone()
+        if referencing > 0 and orphans / referencing > fk.orphan_budget_ratio:
+            raise ValueError(
+                f"{orphans}/{referencing} {fk.child_table}.{fk.child_column} rows would "
+                f"orphan (budget {fk.orphan_budget_ratio}); refusing to swap"
+            )
+
+
+def swap_staging_into_target(
+    conn,
+    spec: TableSyncSpec,
+    *,
+    lock_timeout: str = "10s",
+    statement_timeout: str = "120s",
+    # Floor on staged-vs-live id overlap: catches a wholesale re-key while
+    # tolerating daily churn and the un-pruned interim sliver.
+    id_overlap_floor: float = 0.95,
+) -> None:
     """Atomic rename-swap: stage `_new` -> `public.<table>`, old -> `_old`.
 
-    All indexes/constraints listed on `spec` are renamed to/from canonical
-    Prisma names so the post-swap shape matches the migration exactly. Safe
-    on first run when `public.<table>` doesn't yet exist (skip the rename-old
-    branch), and self-healing when a prior run crashed between this
-    transaction committing and `drop_old_table` completing: the leftover
-    `<table>_old` is dropped inside the same transaction before the renames.
+    With `spec.inbound_fkeys`, the same transaction also re-points child FKs:
+    bounded lock/statement timeouts, child-first lock order (matches the
+    legacy writer's DML order, so an overlapping writer run cannot AB-BA
+    deadlock), in-transaction destructive gates (staged-vs-live id-overlap
+    floor, gated on the live target existing, and an orphaned-child budget
+    that runs on both branches so it guards cold starts too, evaluated under
+    the locks, where they must be current at the moment of mutation; the
+    task-level quality gates cover counts, window, and schema shape earlier
+    and more cheaply), orphan SET NULL mirroring the FK's own ON DELETE
+    action, constraint drop, renames, re-add validated. A crash anywhere
+    rolls the whole transaction back, including the orphan nulls and the
+    constraint drop.
     """
     cur = conn.cursor()
     try:
@@ -182,6 +296,33 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
             (spec.target_schema, spec.target_table),
         )
         target_exists = cur.fetchone() is not None
+
+        if spec.inbound_fkeys:
+            cur.execute(f"SET LOCAL lock_timeout = '{lock_timeout}'")
+            cur.execute(f"SET LOCAL statement_timeout = '{statement_timeout}'")
+            for inbound in spec.inbound_fkeys:
+                cur.execute(
+                    f'LOCK TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                    f"IN ACCESS EXCLUSIVE MODE"
+                )
+            if target_exists:
+                cur.execute(
+                    f'LOCK TABLE "{spec.target_schema}"."{spec.target_table}" ' f"IN ACCESS EXCLUSIVE MODE"
+                )
+                _check_inbound_gates(cur, spec, id_overlap_floor)
+            _check_orphan_budgets(cur, spec)
+            for inbound in spec.inbound_fkeys:
+                cur.execute(
+                    f'UPDATE "{inbound.child_schema}"."{inbound.child_table}" AS c '
+                    f'SET "{inbound.child_column}" = NULL '
+                    f'WHERE c."{inbound.child_column}" IS NOT NULL AND NOT EXISTS '
+                    f'(SELECT 1 FROM "{spec.staging_schema}"."{spec.new_table}" stg '
+                    f'WHERE stg."{inbound.parent_column}" = c."{inbound.child_column}")'
+                )
+                cur.execute(
+                    f'ALTER TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                    f'DROP CONSTRAINT IF EXISTS "{inbound.constraint_name}"'
+                )
 
         statements: list[str] = []
         # A `<table>_old` left behind by a run that died in the swap->drop_old
@@ -234,11 +375,21 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
 
         for stmt in statements:
             cur.execute(stmt)
+
+        for inbound in spec.inbound_fkeys:
+            cur.execute(
+                f'ALTER TABLE "{inbound.child_schema}"."{inbound.child_table}" '
+                f'ADD CONSTRAINT "{inbound.constraint_name}" '
+                f'FOREIGN KEY ("{inbound.child_column}") '
+                f'REFERENCES "{spec.target_schema}"."{spec.target_table}"'
+                f'("{inbound.parent_column}") {inbound.on_clause}'
+            )
         conn.commit()
         logger.info(
-            "Swap complete for %s (target_existed=%s)",
+            "Swap complete for %s (target_existed=%s, inbound_fkeys=%d)",
             spec.target_table,
             target_exists,
+            len(spec.inbound_fkeys),
         )
     except Exception:
         conn.rollback()
