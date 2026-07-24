@@ -48,16 +48,16 @@ with
             )
     ),
 
+    dashboard_view_flags as (
+        select
+            user_id, {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
+        from milestone_events
+        where {{ is_dashboard_view_event("event_type") }}
+    ),
+
     dashboard_views_dedup as (
         select user_id, count_if(is_new_view) as dashboard_view_count
-        from
-            (
-                select
-                    user_id,
-                    {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
-                from milestone_events
-                where {{ is_dashboard_view_event("event_type") }}
-            )
+        from dashboard_view_flags
         group by 1
     ),
 
