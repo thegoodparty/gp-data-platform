@@ -123,6 +123,15 @@ models:
             expression: "first_dashboard_viewed_at <= last_dashboard_viewed_at"
           config:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+      # At user grain the earliest dashboard event always has lag = null, so it
+      # always counts as a new view. Any user with a dashboard view must have
+      # dashboard_view_count >= 1; a value of 0 here would mean the co-fire
+      # dedup logic zeroed out a real view.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dashboard_view_count >= 1"
+          config:
+            where: "last_dashboard_viewed_at is not null"
 
   - name: int__amplitude_serve_activity
     description: >
