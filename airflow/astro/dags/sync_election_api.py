@@ -15,6 +15,9 @@ in Databricks. Each table is its own task group following the same lifecycle:
    transaction, so a crashed run never wedges subsequent ones.
 6. **drop_old** — drop the renamed-aside `_old` table.
 
+The race group adds a seventh step: a cutover short-circuit between
+quality_checks and swap (rehearsal mode until the cutover Variable flips).
+
 The shared lifecycle lives in
 `include/custom_functions/election_api_utils.py`. Each task group below is
 a thin per-table wrapper that supplies the source query, transform, and
@@ -68,7 +71,7 @@ eventually pausing the DAG, which freezes all synced tables silently.
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
@@ -78,6 +81,7 @@ from include.custom_functions.election_api_utils import (
     bulk_insert_from_databricks,
     create_staging_table,
     drop_old_table,
+    prior_live_state,
     swap_staging_into_target,
 )
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
@@ -495,8 +499,6 @@ def _race_constraint_ddl() -> list[str]:
 
 def _race_quality_gate(
     loaded_count: int,
-    dup_ids: int,
-    null_ids: int,
     prior_count: int,
     min_election_date,
     max_election_date,
@@ -506,7 +508,7 @@ def _race_quality_gate(
 ) -> None:
     """Decide whether staged Race data may swap into place. Pure; unit-tested.
 
-    The destructive gates (id overlap, orphan budget) run again INSIDE the
+    The destructive gates (id overlap, orphan budget) run ONLY inside the
     swap transaction; these task-level checks fail fast and cheap.
     """
     if unknown_live_columns:
@@ -520,12 +522,10 @@ def _race_quality_gate(
             f"loader supplies columns live Race lacks: {sorted(missing_live_columns)}; "
             f"schema drift, refusing to swap"
         )
-    if null_ids > 0:
-        raise ValueError(f"{null_ids} staged rows have a NULL id; refusing to swap")
-    if dup_ids > 0:
-        raise ValueError(f"{dup_ids} duplicate staged ids; refusing to swap")
     if min_election_date is None or max_election_date is None:
         raise ValueError("staged Race is empty; refusing to swap")
+    # Bounds mirror m_election_api__race's WHERE window (the source of truth);
+    # the pads absorb calendar drift and build-vs-gate date skew.
     if min_election_date < today - timedelta(days=6 * 365 + 32):
         raise ValueError(f"staged min election_date {min_election_date} outside window")
     if max_election_date > today + timedelta(days=2 * 365 + 32):
@@ -538,7 +538,7 @@ def _race_quality_gate(
                 f"(ratio {ratio:.2f}); refusing to swap"
             )
     elif loaded_count < 100_000:
-        raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small")
+        raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small; refusing to swap")
 
 
 def _race_swap_enabled(raw: str) -> bool:
@@ -1038,11 +1038,11 @@ def sync_election_api():
                     RACE,
                     source_query=query,
                     target_columns=RACE_COLUMNS,
-                    # ~1M rows over the six-year window (Projected_Turnout-scale);
-                    # one state at a time bounds worker memory like the other
-                    # groups. The int[]/text[] array columns pass through as
-                    # Python lists; psycopg2 adapts lists to Postgres arrays
-                    # natively.
+                    # ~1M rows at the six-years-back retention (window [-6y, +2y];
+                    # Projected_Turnout-scale); one state at a time bounds worker
+                    # memory like the other groups. The int[]/text[] array columns
+                    # pass through as Python lists; psycopg2 adapts lists to
+                    # Postgres arrays natively.
                     partition_column="state",
                 )
 
@@ -1053,33 +1053,18 @@ def sync_election_api():
 
         @task
         def quality_checks(loaded_count: int) -> None:
-            from datetime import date
-
             with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
-                    cur.execute(
-                        f'SELECT COUNT(*) FROM (SELECT id FROM "{RACE.staging_schema}"."{RACE.new_table}" '
-                        f"GROUP BY id HAVING COUNT(*) > 1) AS d"
-                    )
-                    dup_ids = cur.fetchone()[0]
-                    cur.execute(
-                        f'SELECT COUNT(*) FROM "{RACE.staging_schema}"."{RACE.new_table}" WHERE id IS NULL'
-                    )
-                    null_ids = cur.fetchone()[0]
+                    # NULL/duplicate ids are impossible here: build_indexes_and_fk
+                    # added the staging PK before this task ran.
                     cur.execute(
                         f"SELECT MIN(election_date)::date, MAX(election_date)::date "
                         f'FROM "{RACE.staging_schema}"."{RACE.new_table}"'
                     )
                     min_d, max_d = cur.fetchone()
-                    cur.execute(
-                        "SELECT to_regclass(%s)",
-                        (f'"{RACE.target_schema}"."{RACE.target_table}"',),
-                    )
-                    prior_exists = cur.fetchone()[0] is not None
+                    prior_exists, prior_count = prior_live_state(cur, RACE)
                     if prior_exists:
-                        cur.execute(f'SELECT COUNT(*) FROM "{RACE.target_schema}"."{RACE.target_table}"')
-                        prior_count = cur.fetchone()[0]
                         cur.execute(
                             "SELECT column_name FROM information_schema.columns "
                             "WHERE table_schema = %s AND table_name = %s",
@@ -1087,7 +1072,6 @@ def sync_election_api():
                         )
                         live_columns = {r[0] for r in cur.fetchall()}
                     else:
-                        prior_count = 0
                         live_columns = set(RACE_COLUMNS)
                 finally:
                     cur.close()
@@ -1096,8 +1080,6 @@ def sync_election_api():
             missing = set(RACE_COLUMNS) - live_columns
             _race_quality_gate(
                 loaded_count,
-                dup_ids,
-                null_ids,
                 prior_count,
                 min_d,
                 max_d,

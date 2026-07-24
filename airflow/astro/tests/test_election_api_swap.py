@@ -8,7 +8,8 @@ in-transaction pre-drop, the next run's swap then fails on the rename
 collision — run after run, until a human drops the leftover — and five
 consecutive failed runs auto-pause the whole DAG, freezing every table group.
 These tests prove the lifecycle self-heals from a crash at every point in the
-sequence.
+sequence, with destructive-mutation-gate and lock-order tests for the
+inbound-FK re-point added alongside crash recovery.
 
 FakePostgres models just enough real Postgres semantics for the proofs to be
 honest: transactional DDL (rollback restores everything, including a
@@ -46,6 +47,14 @@ class FakePostgres:
       - ``indexes``: (schema, index_name) -> (schema, table) owning it.
         Index names are schema-scoped (as in Postgres); constraint names are
         table-scoped.
+      - ``fk_refs``: (child_schema, child_table, constraint_name) -> the
+        (ref_schema, ref_table) the constraint points at.
+      - ``constraint_defs``: (child_schema, child_table, constraint_name) ->
+        the ``pg_get_constraintdef`` text seeded for it.
+      - ``scalar_results``: normalized statement text -> the value (or row
+        tuple) the fake returns for it.
+      - ``statements``: every statement executed, normalized, in order (for
+        order assertions).
 
     ``arm_crash(after=k)`` makes the k-th subsequent statement raise before
     executing, simulating a worker crash at that exact point; the lifecycle's
@@ -61,7 +70,7 @@ class FakePostgres:
         # text (test setup data; no durability tracking needed).
         self.constraint_defs: dict[tuple[str, str, str], str] = {}
         # normalized "SELECT count(*) ..." statement -> value the fake returns
-        self.scalar_results: dict[str, int] = {}
+        self.scalar_results: dict[str, int | tuple[int, ...]] = {}
         # every statement executed, normalized, in order (for order asserts)
         self.statements: list[str] = []
         self._durable = self._copy_state()
@@ -79,7 +88,7 @@ class FakePostgres:
             self.fk_refs.update(fk_refs)
         self._durable = self._copy_state()
 
-    def seed_scalar(self, stmt: str, value: int):
+    def seed_scalar(self, stmt: str, value: int | tuple[int, ...]):
         self.scalar_results[" ".join(stmt.split())] = value
 
     def seed_constraint_def(self, schema, table, conname, definition):
@@ -277,7 +286,8 @@ class FakePostgres:
             for ref in re.finditer(r'"([^"]+)"\."([^"]+)"', stmt):
                 self._require_table(ref.group(1), ref.group(2))
             if stmt in self.scalar_results:
-                return [(self.scalar_results[stmt],)]
+                value = self.scalar_results[stmt]
+                return [value] if isinstance(value, tuple) else [(value,)]
             raise AssertionError(f"FakePostgres: unseeded scalar query: {stmt}")
 
         m = re.fullmatch(r'UPDATE "([^"]+)"\."([^"]+)" AS c SET "([^"]+)" = NULL WHERE .+', stmt)
@@ -412,8 +422,7 @@ RACE_SPEC = TableSyncSpec(
 
 def _seed_race_world(pg, live_count=100, overlap=100, referencing=80, orphans=0):
     """Live Race + Candidacy with the inbound FK, plus seeded gate scalars."""
-    pg.seed_table("public", "Place", constraints={"Place_pkey"}, indexes={"Place_pkey"})
-    pg.seed_table("public", "Position", constraints={"Position_pkey"}, indexes={"Position_pkey"})
+    _seed_fk_parents(pg, "Place", "Position")
     _seed_live(pg, RACE_SPEC)
     pg.seed_table(
         "public",
@@ -431,30 +440,42 @@ def _seed_race_world(pg, live_count=100, overlap=100, referencing=80, orphans=0)
     t = f'"{RACE_SPEC.target_schema}"."{RACE_SPEC.target_table}"'
     s = f'"{RACE_SPEC.staging_schema}"."{RACE_SPEC.new_table}"'
     c = '"public"."Candidacy"'
-    pg.seed_scalar(f"SELECT count(*) FROM {t}", live_count)
-    pg.seed_scalar(f'SELECT count(*) FROM {t} live JOIN {s} stg ON live."id" = stg."id"', overlap)
-    pg.seed_scalar(f'SELECT count(*) FROM {c} c WHERE c."race_id" IS NOT NULL', referencing)
+    # The two statements _check_inbound_gates now emits, merged via LEFT JOIN.
     pg.seed_scalar(
-        f'SELECT count(*) FROM {c} c WHERE c."race_id" IS NOT NULL AND NOT EXISTS '
-        f'(SELECT 1 FROM {s} stg WHERE stg."id" = c."race_id")',
-        orphans,
+        f'SELECT count(*), count(stg."id") FROM {t} live LEFT JOIN {s} stg ON live."id" = stg."id"',
+        (live_count, overlap),
+    )
+    pg.seed_scalar(
+        f'SELECT count(*) FILTER (WHERE c."race_id" IS NOT NULL), '
+        f'count(*) FILTER (WHERE c."race_id" IS NOT NULL AND stg."id" IS NULL) '
+        f'FROM {c} c LEFT JOIN {s} stg ON stg."id" = c."race_id"',
+        (referencing, orphans),
     )
 
 
 def _race_stage_ddl(spec):
+    """Staging constraint DDL exactly as the DAG's Race builder emits it."""
     sn, nt = spec.staging_schema, spec.new_table
-    ddl = [f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{spec.stage_name(spec.pk_name)}" PRIMARY KEY (id)']
-    for idx, col in zip(spec.indexes, ["br_hash_id", "place_id", "position_id", "slug"], strict=True):
-        ddl.append(f'CREATE INDEX "{spec.stage_name(idx)}" ON "{sn}"."{nt}" ({col})')
-    for fk, (col, parent) in zip(
-        spec.fkeys, [("place_id", "Place"), ("position_id", "Position")], strict=True
-    ):
-        ddl.append(
-            f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{spec.stage_name(fk)}" '
-            f'FOREIGN KEY ("{col}") REFERENCES "public"."{parent}"(id) '
+    target_schema = spec.target_schema
+    return [
+        f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{spec.stage_name(spec.pk_name)}" PRIMARY KEY (id)',
+        f'CREATE INDEX "{spec.stage_name(spec.indexes[0])}" ON "{sn}"."{nt}" (br_hash_id)',
+        f'CREATE INDEX "{spec.stage_name(spec.indexes[1])}" ON "{sn}"."{nt}" (place_id)',
+        f'CREATE INDEX "{spec.stage_name(spec.indexes[2])}" ON "{sn}"."{nt}" (position_id)',
+        f'CREATE INDEX "{spec.stage_name(spec.indexes[3])}" ON "{sn}"."{nt}" (slug)',
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{spec.stage_name(spec.fkeys[0])}" '
+            f'FOREIGN KEY (place_id) REFERENCES "{target_schema}"."Place"(id) '
             f"ON UPDATE CASCADE ON DELETE SET NULL"
-        )
-    return ddl
+        ),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{spec.stage_name(spec.fkeys[1])}" '
+            f'FOREIGN KEY (position_id) REFERENCES "{target_schema}"."Position"(id) '
+            f"ON UPDATE CASCADE ON DELETE SET NULL"
+        ),
+    ]
 
 
 def _stage_ddl(spec):
@@ -474,16 +495,17 @@ def _stage_ddl(spec):
     ]
 
 
-def _seed_fk_parents(pg):
-    """Referenced parents for the PT stage DDL's FK; the fake validates
-    REFERENCES targets exist (as Postgres does). Seeded bare (no indexes)
-    so the PT tests' exact-equality index assertions stay intact."""
-    pg.seed_table("public", "District")
+def _seed_fk_parents(pg, *tables):
+    """Referenced parents seeded bare so exact-equality index assertions
+    stay intact; the fake validates REFERENCES targets exist (as Postgres
+    does)."""
+    for table in tables:
+        pg.seed_table("public", table)
 
 
 def _seed_live(pg, spec):
     """The live table as the election-api Prisma migration creates it."""
-    _seed_fk_parents(pg)
+    _seed_fk_parents(pg, "District")
     pg.seed_table(
         spec.target_schema,
         spec.target_table,
@@ -502,23 +524,36 @@ def _seed_leftover_old(pg, spec):
     )
 
 
-def _run_cycle(pg, spec, skip_drop_old=False):
+def _run_cycle(pg, spec, skip_drop_old=False, ddl_fn=_stage_ddl):
     """One DAG-run's build -> stage-DDL -> swap [-> drop_old] sequence."""
     conn = pg.connect()
     create_staging_table(conn, spec)
-    apply_ddl(conn, _stage_ddl(spec))
+    apply_ddl(conn, ddl_fn(spec))
     swap_staging_into_target(conn, spec)
     if not skip_drop_old:
         drop_old_table(conn, spec)
 
 
-def _assert_canonical_shape(pg, spec):
-    """Post-cycle invariant: live table under canonical Prisma names, no debris."""
+def _assert_canonical_shape(pg, spec, *, exact_indexes=True):
+    """Post-cycle invariant: live table under canonical Prisma names, no debris.
+
+    ``exact_indexes=False`` is for worlds that seed other live tables sharing
+    the target schema (e.g. Race's Place/Position/Candidacy neighbors): it
+    checks the canonical set is present and that no stage/archive-named index
+    leaked, instead of requiring the schema's index set to match exactly.
+    """
     assert pg.has_table(spec.target_schema, spec.target_table)
     assert not pg.has_table(spec.target_schema, spec.old_table)
     assert not pg.has_table(spec.staging_schema, spec.new_table)
     assert pg.constraints(spec.target_schema, spec.target_table) == {spec.pk_name, *spec.fkeys}
-    assert pg.index_names(spec.target_schema) == {spec.pk_name, *spec.indexes}
+    if exact_indexes:
+        assert pg.index_names(spec.target_schema) == {spec.pk_name, *spec.indexes}
+    else:
+        assert {spec.pk_name, *spec.indexes} <= pg.index_names(spec.target_schema)
+        assert not any(
+            name.startswith((f"{spec.target_table}_new_", f"{spec.target_table}_old_"))
+            for name in pg.index_names(spec.target_schema)
+        )
     assert pg.index_names(spec.staging_schema) == set()
 
 
@@ -649,7 +684,7 @@ def test_first_swap_without_live_target():
     """Cold start: no live table yet — the swap takes the rename-old-skipping
     branch, and the pre-drop of a nonexistent `_old` is a no-op."""
     pg = FakePostgres()
-    _seed_fk_parents(pg)
+    _seed_fk_parents(pg, "District")
     pg.seed_table(SPEC.staging_schema, SPEC.new_table)
     conn = pg.connect()
     apply_ddl(conn, _stage_ddl(SPEC))
@@ -675,29 +710,22 @@ def test_drop_old_is_idempotent():
 # ---------------------------------------------------------------------------
 
 
-def _run_race_cycle(pg, skip_drop_old=False):
-    conn = pg.connect()
-    create_staging_table(conn, RACE_SPEC)
-    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
-    swap_staging_into_target(conn, RACE_SPEC)
-    if not skip_drop_old:
-        drop_old_table(conn, RACE_SPEC)
-
-
 def _assert_race_canonical_shape(pg):
     """Race-world variant of _assert_canonical_shape: this world also holds
     Candidacy/Place/Position (their pkeys and indexes live in public too),
     so assert subset-plus-no-debris instead of exact equality, and pin the
     re-pointed inbound FK."""
-    spec = RACE_SPEC
-    assert pg.has_table(spec.target_schema, spec.target_table)
-    assert not pg.has_table(spec.target_schema, spec.old_table)
-    assert not pg.has_table(spec.staging_schema, spec.new_table)
-    assert pg.constraints(spec.target_schema, spec.target_table) == {spec.pk_name, *spec.fkeys}
-    assert {spec.pk_name, *spec.indexes} <= pg.index_names(spec.target_schema)
-    assert not any(name.startswith(("Race_new_", "Race_old_")) for name in pg.index_names(spec.target_schema))
-    assert pg.index_names(spec.staging_schema) == set()
+    _assert_canonical_shape(pg, RACE_SPEC, exact_indexes=False)
     assert pg.fk_refs[("public", "Candidacy", "Candidacy_race_id_fkey")] == ("public", "Race")
+
+
+def _prep_race_staging(pg):
+    """Seed staging Race_new bare and apply its constraint DDL: the common
+    preamble the gate-abort tests need before calling swap directly."""
+    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
+    conn = pg.connect()
+    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    return conn
 
 
 def test_drop_old_fails_without_inbound_repoint():
@@ -706,9 +734,7 @@ def test_drop_old_fails_without_inbound_repoint():
     dependency instead of deleting the referenced table out from under it."""
     pg = FakePostgres()
     _seed_race_world(pg)
-    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
-    conn = pg.connect()
-    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    conn = _prep_race_staging(pg)
 
     spec_without_inbound = TableSyncSpec(
         target_table="Race",
@@ -723,14 +749,14 @@ def test_drop_old_fails_without_inbound_repoint():
 def test_inbound_repoint_happy_path():
     pg = FakePostgres()
     _seed_race_world(pg)
-    _run_race_cycle(pg)
+    _run_cycle(pg, RACE_SPEC, ddl_fn=_race_stage_ddl)
     _assert_race_canonical_shape(pg)
 
 
 def test_child_locked_before_target_and_timeouts_set():
     pg = FakePostgres()
     _seed_race_world(pg)
-    _run_race_cycle(pg)
+    _run_cycle(pg, RACE_SPEC, ddl_fn=_race_stage_ddl)
     stmts = pg.statements
     lock_child = stmts.index('LOCK TABLE "public"."Candidacy" IN ACCESS EXCLUSIVE MODE')
     lock_target = stmts.index('LOCK TABLE "public"."Race" IN ACCESS EXCLUSIVE MODE')
@@ -744,9 +770,7 @@ def test_overlap_floor_aborts_before_any_mutation():
     overlap floor must refuse before the orphan UPDATE or FK drop runs."""
     pg = FakePostgres()
     _seed_race_world(pg, live_count=100, overlap=10, referencing=80, orphans=80)
-    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
-    conn = pg.connect()
-    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    conn = _prep_race_staging(pg)
     state_before = pg.state()
 
     with pytest.raises(ValueError, match="id overlap"):
@@ -760,9 +784,7 @@ def test_overlap_floor_aborts_before_any_mutation():
 def test_orphan_budget_aborts():
     pg = FakePostgres()
     _seed_race_world(pg, live_count=100, overlap=100, referencing=100, orphans=5)
-    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
-    conn = pg.connect()
-    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    conn = _prep_race_staging(pg)
 
     with pytest.raises(ValueError, match="orphan"):
         swap_staging_into_target(conn, RACE_SPEC)
@@ -779,9 +801,7 @@ def test_changed_inbound_fk_definition_aborts():
         "Candidacy_race_id_fkey",
         'FOREIGN KEY (race_id) REFERENCES "Race"(id) ON UPDATE CASCADE ON DELETE RESTRICT',
     )
-    pg.seed_table(RACE_SPEC.staging_schema, RACE_SPEC.new_table)
-    conn = pg.connect()
-    apply_ddl(conn, _race_stage_ddl(RACE_SPEC))
+    conn = _prep_race_staging(pg)
     state_before = pg.state()
 
     with pytest.raises(ValueError, match="does not end"):
@@ -794,7 +814,7 @@ def test_changed_inbound_fk_definition_aborts():
 def test_orphans_within_budget_are_nulled_and_swap_completes():
     pg = FakePostgres()
     _seed_race_world(pg, live_count=100, overlap=99, referencing=100, orphans=1)
-    _run_race_cycle(pg)
+    _run_cycle(pg, RACE_SPEC, ddl_fn=_race_stage_ddl)
     _assert_race_canonical_shape(pg)
     assert any(s.startswith('UPDATE "public"."Candidacy" AS c SET "race_id" = NULL') for s in pg.statements)
 
@@ -837,12 +857,12 @@ def test_race_committed_swap_retry_fails_closed():
     the fresh live table or the re-pointed FK; next full run heals _old."""
     pg = FakePostgres()
     _seed_race_world(pg)
-    _run_race_cycle(pg, skip_drop_old=True)
+    _run_cycle(pg, RACE_SPEC, ddl_fn=_race_stage_ddl, skip_drop_old=True)
     state_after_commit = pg.state()
 
     with pytest.raises(FakePostgresError):
         swap_staging_into_target(pg.connect(), RACE_SPEC)
     assert pg.state() == state_after_commit
 
-    _run_race_cycle(pg)  # scalar seeds persist; same values reused
+    _run_cycle(pg, RACE_SPEC, ddl_fn=_race_stage_ddl)  # scalar seeds persist; same values reused
     _assert_race_canonical_shape(pg)

@@ -53,6 +53,8 @@ class InboundForeignKey:
     child_schema: str = "public"
     parent_column: str = "id"
     on_clause: str = "ON UPDATE CASCADE ON DELETE SET NULL"
+    # Budget for child rows the swap may null: ~2x the historical daily aging rate for Candidacy on Race.
+    orphan_budget_ratio: float = 0.02
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ class TableSyncSpec:
     # FKs on OTHER tables referencing this one; re-pointed inside the swap.
     inbound_fkeys: tuple[InboundForeignKey, ...] = field(default_factory=tuple)
     # Primary-key column used by the staged-vs-live id-overlap gate.
+    # Used only by the inbound-FK gates; irrelevant to specs without inbound_fkeys.
     pk_column: str = "id"
 
     @property
@@ -188,18 +191,35 @@ def apply_ddl(conn, statements: Sequence[str]) -> None:
         cur.close()
 
 
-def _check_inbound_gates(
-    cur, spec: TableSyncSpec, id_overlap_floor: float, orphan_budget_ratio: float
-) -> None:
+def prior_live_state(cur, spec: TableSyncSpec) -> tuple[bool, int]:
+    """to_regclass existence + row count of the live target (identifiers
+    double-quoted so mixed case survives).
+
+    Both identifiers must be double-quoted in the regclass argument:
+    Postgres folds unquoted mixed-case to lowercase, so `public.Race` would
+    resolve to `public.race` and always return NULL.
+    """
+    cur.execute(
+        "SELECT to_regclass(%s)",
+        (f'"{spec.target_schema}"."{spec.target_table}"',),
+    )
+    exists = cur.fetchone()[0] is not None
+    count = 0
+    if exists:
+        cur.execute(f'SELECT COUNT(*) FROM "{spec.target_schema}"."{spec.target_table}"')
+        count = cur.fetchone()[0]
+    return exists, count
+
+
+def _check_inbound_gates(cur, spec: TableSyncSpec, id_overlap_floor: float) -> None:
     """Destructive-mutation gates, evaluated inside the swap transaction."""
     t = f'"{spec.target_schema}"."{spec.target_table}"'
     s = f'"{spec.staging_schema}"."{spec.new_table}"'
-    cur.execute(f"SELECT count(*) FROM {t}")
-    live_count = cur.fetchone()[0]
     cur.execute(
-        f'SELECT count(*) FROM {t} live JOIN {s} stg ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
+        f'SELECT count(*), count(stg."{spec.pk_column}") FROM {t} live '
+        f'LEFT JOIN {s} stg ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
     )
-    overlap = cur.fetchone()[0]
+    live_count, overlap = cur.fetchone()
     if live_count > 0 and overlap / live_count < id_overlap_floor:
         raise ValueError(
             f"staged id overlap {overlap}/{live_count} below floor "
@@ -222,18 +242,17 @@ def _check_inbound_gates(
                 f"have changed it; refusing to swap"
             )
         c = f'"{fk.child_schema}"."{fk.child_table}"'
-        cur.execute(f'SELECT count(*) FROM {c} c WHERE c."{fk.child_column}" IS NOT NULL')
-        referencing = cur.fetchone()[0]
         cur.execute(
-            f'SELECT count(*) FROM {c} c WHERE c."{fk.child_column}" IS NOT NULL '
-            f"AND NOT EXISTS (SELECT 1 FROM {s} stg "
-            f'WHERE stg."{fk.parent_column}" = c."{fk.child_column}")'
+            f'SELECT count(*) FILTER (WHERE c."{fk.child_column}" IS NOT NULL), '
+            f'count(*) FILTER (WHERE c."{fk.child_column}" IS NOT NULL '
+            f'AND stg."{fk.parent_column}" IS NULL) '
+            f'FROM {c} c LEFT JOIN {s} stg ON stg."{fk.parent_column}" = c."{fk.child_column}"'
         )
-        orphans = cur.fetchone()[0]
-        if referencing > 0 and orphans / referencing > orphan_budget_ratio:
+        referencing, orphans = cur.fetchone()
+        if referencing > 0 and orphans / referencing > fk.orphan_budget_ratio:
             raise ValueError(
                 f"{orphans}/{referencing} {fk.child_table}.{fk.child_column} rows would "
-                f"orphan (budget {orphan_budget_ratio}); refusing to swap"
+                f"orphan (budget {fk.orphan_budget_ratio}); refusing to swap"
             )
 
 
@@ -243,8 +262,9 @@ def swap_staging_into_target(
     *,
     lock_timeout: str = "10s",
     statement_timeout: str = "120s",
+    # Floor on staged-vs-live id overlap: catches a wholesale re-key while
+    # tolerating daily churn and the un-pruned interim sliver.
     id_overlap_floor: float = 0.95,
-    orphan_budget_ratio: float = 0.02,
 ) -> None:
     """Atomic rename-swap: stage `_new` -> `public.<table>`, old -> `_old`.
 
@@ -252,11 +272,12 @@ def swap_staging_into_target(
     bounded lock/statement timeouts, child-first lock order (matches the
     legacy writer's DML order, so an overlapping writer run cannot AB-BA
     deadlock), in-transaction destructive gates (staged-vs-live id-overlap
-    floor and an orphaned-child budget, recomputed under the locks because
-    task-level checks are stale by swap time), orphan SET NULL mirroring the
-    FK's own ON DELETE action, constraint drop, renames, re-add validated.
-    A crash anywhere rolls the whole transaction back, including the orphan
-    nulls and the constraint drop.
+    floor and an orphaned-child budget, evaluated under the locks, where they
+    must be current at the moment of mutation; the task-level quality gates
+    cover counts, window, and schema shape earlier and more cheaply), orphan
+    SET NULL mirroring the FK's own ON DELETE action, constraint drop,
+    renames, re-add validated. A crash anywhere rolls the whole transaction
+    back, including the orphan nulls and the constraint drop.
     """
     cur = conn.cursor()
     try:
@@ -278,7 +299,7 @@ def swap_staging_into_target(
                 cur.execute(
                     f'LOCK TABLE "{spec.target_schema}"."{spec.target_table}" ' f"IN ACCESS EXCLUSIVE MODE"
                 )
-                _check_inbound_gates(cur, spec, id_overlap_floor, orphan_budget_ratio)
+                _check_inbound_gates(cur, spec, id_overlap_floor)
             for inbound in spec.inbound_fkeys:
                 cur.execute(
                     f'UPDATE "{inbound.child_schema}"."{inbound.child_table}" AS c '
