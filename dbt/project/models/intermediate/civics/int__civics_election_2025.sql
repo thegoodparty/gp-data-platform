@@ -1,6 +1,7 @@
 -- Historical archive of elections from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
--- Inlines m_general__election logic for self-contained archive
+-- Self-contained archive: election logic is inlined here, not sourced from an
+-- external mart
 with
     elections as (
         select
