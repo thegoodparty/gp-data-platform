@@ -123,6 +123,15 @@ models:
             expression: "first_dashboard_viewed_at <= last_dashboard_viewed_at"
           config:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+      # At user grain the earliest dashboard event always has lag = null, so it
+      # always counts as a new view. Any user with a dashboard view must have
+      # dashboard_view_count >= 1; a value of 0 here would mean the co-fire
+      # dedup logic zeroed out a real view.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dashboard_view_count >= 1"
+          config:
+            where: "last_dashboard_viewed_at is not null"
 
   - name: int__amplitude_serve_activity
     description: >
@@ -192,7 +201,7 @@ models:
     description: >
       User x month intermediate aggregating Win product engagement from Amplitude.
       Captures campaign sends (Voter Outreach - Campaign Completed), and dashboard views
-      (Dashboard - Candidate Dashboard Viewed).
+      (unioning the legacy and current dashboard-view event names, deduped).
 
       Grain: One row per user_id x activity_month_year.
 
@@ -238,8 +247,9 @@ models:
 
       - name: dashboard_views
         description: >
-          Count of 'Dashboard - Candidate Dashboard Viewed' events in this month.
-          Zero if user had only campaign events this month.
+          Deduped count of dashboard-view events (legacy + live event names)
+          in this month. Co-fires of both event names for the same view are
+          collapsed to one. Zero if user had only campaign events this month.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -255,7 +265,10 @@ models:
                 min_value: 0
 
       - name: total_events
-        description: Total Win engagement events (campaigns + dashboard views) in this month.
+        description: >
+          Total raw Win engagement events (campaigns + dashboard views) in
+          this month, undeduped; can exceed campaigns_sent + dashboard_views
+          when a dashboard view co-fired both event names.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -306,7 +319,9 @@ models:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "campaigns_sent + dashboard_views = total_events"
+            # dashboard_views is deduped; total_events is raw, so equality
+            # only holds outside co-fire windows where both event names fired.
+            expression: "campaigns_sent + dashboard_views <= total_events"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "dashboard_view_days <= activity_days"
@@ -383,8 +398,9 @@ models:
 
       - name: dashboard_views
         description: >
-          Count of 'Dashboard - Candidate Dashboard Viewed' events in this week.
-          Zero if user had only campaign events this week.
+          Deduped count of dashboard-view events (legacy + live event names)
+          in this week. Co-fires of both event names for the same view are
+          collapsed to one. Zero if user had only campaign events this week.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -400,7 +416,10 @@ models:
                 min_value: 0
 
       - name: total_events
-        description: Total Win engagement events (campaigns + dashboard views) in this week.
+        description: >
+          Total raw Win engagement events (campaigns + dashboard views) in
+          this week, undeduped; can exceed campaigns_sent + dashboard_views
+          when a dashboard view co-fired both event names.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -455,7 +474,9 @@ models:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "campaigns_sent + dashboard_views = total_events"
+            # dashboard_views is deduped; total_events is raw, so equality
+            # only holds outside co-fire windows where both event names fired.
+            expression: "campaigns_sent + dashboard_views <= total_events"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "dashboard_view_days <= activity_days"

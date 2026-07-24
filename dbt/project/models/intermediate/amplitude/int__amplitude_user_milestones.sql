@@ -37,6 +37,7 @@ with
                 'pro_upgrade_complete',
                 'Voter Outreach - Campaign Completed',
                 'Dashboard - Candidate Dashboard Viewed',
+                'Dashboard - Campaign Plan Viewed',
                 'Serve Onboarding - Getting Started Viewed',
                 'Serve Onboarding - Constituency Profile Viewed',
                 'Serve Onboarding - Poll Value Props Viewed',
@@ -47,9 +48,22 @@ with
             )
     ),
 
+    dashboard_view_flags as (
+        select
+            user_id, {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
+        from milestone_events
+        where {{ is_dashboard_view_event("event_type") }}
+    ),
+
+    dashboard_views_dedup as (
+        select user_id, count_if(is_new_view) as dashboard_view_count
+        from dashboard_view_flags
+        group by 1
+    ),
+
     final as (
         select
-            user_id,
+            me.user_id,
 
             -- Onboarding CVR
             min(
@@ -60,8 +74,7 @@ with
             ) as amplitude_registration_completed_at,
             min(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
-                    then event_time
+                    when {{ is_dashboard_view_event("event_type") }} then event_time
                 end
             ) as first_dashboard_viewed_at,
             min_by(
@@ -97,15 +110,10 @@ with
             -- Active Candidates
             max(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
-                    then event_time
+                    when {{ is_dashboard_view_event("event_type") }} then event_time
                 end
             ) as last_dashboard_viewed_at,
-            count(
-                case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed' then 1
-                end
-            ) as dashboard_view_count,
+            coalesce(max(dv.dashboard_view_count), 0) as dashboard_view_count,
 
             -- Supplemental
             min(
@@ -154,8 +162,9 @@ with
                     then event_time
                 end
             ) as serve_poll_preview_at
-        from milestone_events
-        group by 1
+        from milestone_events me
+        left join dashboard_views_dedup dv on me.user_id = dv.user_id
+        group by me.user_id
     )
 
 select *
