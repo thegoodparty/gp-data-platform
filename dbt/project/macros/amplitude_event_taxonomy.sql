@@ -145,7 +145,8 @@
         (int__amplitude_win_activity and its weekly variant). Extend this list
         when a genuinely recurrent activity event is added to those rollups.
 
-        The dashboard view is now a 3-event allowlist entry, not 2: the legacy
+        The allowlist now carries 3 events total (1 campaign-outreach event
+        plus 2 dashboard-view events): the legacy
         'Dashboard - Candidate Dashboard Viewed' and its live replacement
         'Dashboard - Campaign Plan Viewed' co-fired Apr-Jun 2026 during the
         dashboard-surface migration (see is_dashboard_view_event /
