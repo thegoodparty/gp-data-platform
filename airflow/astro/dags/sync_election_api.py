@@ -15,6 +15,9 @@ in Databricks. Each table is its own task group following the same lifecycle:
    transaction, so a crashed run never wedges subsequent ones.
 6. **drop_old** — drop the renamed-aside `_old` table.
 
+The race group adds a seventh step: a cutover short-circuit between
+quality_checks and swap (rehearsal mode until the cutover Variable flips).
+
 The shared lifecycle lives in
 `include/custom_functions/election_api_utils.py`. Each task group below is
 a thin per-table wrapper that supplies the source query, transform, and
@@ -68,15 +71,17 @@ eventually pausing the DAG, which freezes all synced tables silently.
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
+    InboundForeignKey,
     TableSyncSpec,
     apply_ddl,
     bulk_insert_from_databricks,
     create_staging_table,
     drop_old_table,
+    prior_live_state,
     swap_staging_into_target,
 )
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
@@ -391,6 +396,156 @@ def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, nul
             )
     elif loaded_count < 100_000:
         raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
+
+
+# ---------------------------------------------------------------------------
+# Race
+# ---------------------------------------------------------------------------
+
+# Second table cut over from the legacy dbt writer. Unlike Projected_Turnout,
+# Race has an inbound FK (Candidacy.race_id) that must be re-pointed inside
+# the swap transaction, and Candidacy itself remains writer-delivered, so the
+# writer's candidacy upsert carries an existence guard against live Race.
+RACE = TableSyncSpec(
+    target_table="Race",
+    indexes=(
+        "Race_br_hash_id_idx",
+        "Race_place_id_idx",
+        "Race_position_id_idx",
+        "Race_slug_idx",
+    ),
+    fkeys=("Race_place_id_fkey", "Race_position_id_fkey"),
+    inbound_fkeys=(
+        InboundForeignKey(
+            child_table="Candidacy",
+            constraint_name="Candidacy_race_id_fkey",
+            child_column="race_id",
+        ),
+    ),
+)
+
+# Mart columns == Postgres columns (names identical; this list fixes order).
+# The schema-contract gate fails closed if live Race grows a column this list
+# does not carry (a Prisma migration landing ahead of the loader), so a swap
+# can never silently NULL a column that has real data.
+RACE_COLUMNS = [
+    "id",
+    "created_at",
+    "updated_at",
+    "br_hash_id",
+    "br_database_id",
+    "election_date",
+    "state",
+    "position_level",
+    "normalized_position_name",
+    "position_description",
+    "filing_office_address",
+    "filing_phone_number",
+    "paperwork_instructions",
+    "filing_requirements",
+    "is_runoff",
+    "is_primary",
+    "partisan_type",
+    "filing_date_start",
+    "filing_date_end",
+    "employment_type",
+    "eligibility_requirements",
+    "salary",
+    "sub_area_name",
+    "sub_area_value",
+    "frequency",
+    "place_id",
+    "slug",
+    "position_names",
+    "position_geoid",
+    "number_of_seats",
+    "win_number",
+    "is_partisan",
+    "office_type",
+    "official_office_name",
+    "position_id",
+    "office_level",
+]
+
+# Live columns Prisma owns that the loader deliberately does not supply.
+# Empty today; the projection-columns step will extend it when those columns
+# deploy ahead of their data.
+RACE_DB_OWNED_COLUMNS: frozenset[str] = frozenset()
+
+
+def _race_constraint_ddl() -> list[str]:
+    sn, nt = RACE.staging_schema, RACE.new_table
+    target_schema = RACE.target_schema
+    return [
+        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{RACE.stage_name(RACE.pk_name)}" PRIMARY KEY (id)'),
+        (f'CREATE INDEX "{RACE.stage_name("Race_br_hash_id_idx")}" ' f'ON "{sn}"."{nt}" (br_hash_id)'),
+        (f'CREATE INDEX "{RACE.stage_name("Race_place_id_idx")}" ' f'ON "{sn}"."{nt}" (place_id)'),
+        (f'CREATE INDEX "{RACE.stage_name("Race_position_id_idx")}" ' f'ON "{sn}"."{nt}" (position_id)'),
+        (f'CREATE INDEX "{RACE.stage_name("Race_slug_idx")}" ' f'ON "{sn}"."{nt}" (slug)'),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{RACE.stage_name("Race_place_id_fkey")}" '
+            f'FOREIGN KEY (place_id) REFERENCES "{target_schema}"."Place"(id) '
+            f"ON UPDATE CASCADE ON DELETE SET NULL"
+        ),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{RACE.stage_name("Race_position_id_fkey")}" '
+            f'FOREIGN KEY (position_id) REFERENCES "{target_schema}"."Position"(id) '
+            f"ON UPDATE CASCADE ON DELETE SET NULL"
+        ),
+    ]
+
+
+def _race_quality_gate(
+    loaded_count: int,
+    prior_count: int,
+    min_election_date,
+    max_election_date,
+    today,
+    unknown_live_columns: set[str],
+    missing_live_columns: set[str],
+) -> None:
+    """Decide whether staged Race data may swap into place. Pure; unit-tested.
+
+    The destructive gates (id overlap, orphan budget) run ONLY inside the
+    swap transaction; these task-level checks fail fast and cheap.
+    """
+    if unknown_live_columns:
+        raise ValueError(
+            f"live Race has columns the loader does not supply: "
+            f"{sorted(unknown_live_columns)}; a swap would NULL them. "
+            f"Extend RACE_COLUMNS or allowlist in RACE_DB_OWNED_COLUMNS"
+        )
+    if missing_live_columns:
+        raise ValueError(
+            f"loader supplies columns live Race lacks: {sorted(missing_live_columns)}; "
+            f"schema drift, refusing to swap"
+        )
+    if min_election_date is None or max_election_date is None:
+        raise ValueError("staged Race is empty; refusing to swap")
+    # Bounds mirror m_election_api__race's WHERE window (the source of truth);
+    # the pads absorb calendar drift and build-vs-gate date skew.
+    if min_election_date < today - timedelta(days=6 * 365 + 32):
+        raise ValueError(f"staged min election_date {min_election_date} outside window")
+    if max_election_date > today + timedelta(days=2 * 365 + 32):
+        raise ValueError(f"staged max election_date {max_election_date} outside window")
+    if prior_count > 0:
+        ratio = loaded_count / prior_count
+        if ratio < 0.5:
+            raise ValueError(
+                f"Loaded {loaded_count} rows, prior live had {prior_count} "
+                f"(ratio {ratio:.2f}); refusing to swap"
+            )
+    elif loaded_count < 100_000:
+        raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small; refusing to swap")
+
+
+def _race_swap_enabled(raw: str) -> bool:
+    """Cutover switch: only the exact word "true" (case and surrounding
+    whitespace insensitive) enables the swap; anything else is rehearsal
+    mode. Pure; unit-tested."""
+    return raw.strip().lower() == "true"
 
 
 @dag(
@@ -865,6 +1020,111 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
+    @task_group(group_id="race")
+    def race():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, RACE)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(RACE_COLUMNS)
+            query = f"SELECT {col_list} " f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`." f"`m_election_api__race`"
+            with _open_pg() as conn:
+                return bulk_insert_from_databricks(
+                    conn,
+                    RACE,
+                    source_query=query,
+                    target_columns=RACE_COLUMNS,
+                    # ~1M rows at the six-years-back retention (window [-6y, +2y];
+                    # Projected_Turnout-scale); one state at a time bounds worker
+                    # memory like the other groups. The int[]/text[] array columns
+                    # pass through as Python lists; psycopg2 adapts lists to
+                    # Postgres arrays natively.
+                    partition_column="state",
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, _race_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            with _open_pg() as conn:
+                cur = conn.cursor()
+                try:
+                    # NULL/duplicate ids are impossible here: build_indexes_and_fk
+                    # added the staging PK before this task ran.
+                    cur.execute(
+                        f"SELECT MIN(election_date)::date, MAX(election_date)::date "
+                        f'FROM "{RACE.staging_schema}"."{RACE.new_table}"'
+                    )
+                    min_d, max_d = cur.fetchone()
+                    prior_exists, prior_count = prior_live_state(cur, RACE)
+                    if prior_exists:
+                        cur.execute(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema = %s AND table_name = %s",
+                            (RACE.target_schema, RACE.target_table),
+                        )
+                        live_columns = {r[0] for r in cur.fetchall()}
+                    else:
+                        live_columns = set(RACE_COLUMNS)
+                finally:
+                    cur.close()
+
+            unknown = live_columns - set(RACE_COLUMNS) - RACE_DB_OWNED_COLUMNS
+            missing = set(RACE_COLUMNS) - live_columns
+            _race_quality_gate(
+                loaded_count,
+                prior_count,
+                min_d,
+                max_d,
+                date.today(),
+                unknown,
+                missing,
+            )
+            t_log.info(
+                "Quality checks passed: %d rows (prior %d), window %s..%s",
+                loaded_count,
+                prior_count,
+                min_d,
+                max_d,
+            )
+
+        @task.short_circuit
+        def cutover_enabled() -> bool:
+            # The DAG is live and unpaused, so a new group would swap on its
+            # first deploy without this gate. Placed AFTER quality_checks so
+            # every night while disabled is a full dress rehearsal: staging
+            # built, loaded, indexed, gated; only the swap is withheld.
+            enabled = _race_swap_enabled(Variable.get("election_api_race_swap_enabled", default="false"))
+            if not enabled:
+                t_log.info("Race swap disabled (rehearsal mode); staging left for parity checks")
+            return enabled
+
+        @task
+        def swap() -> None:
+            with _open_pg() as conn:
+                swap_staging_into_target(conn, RACE)
+
+        @task
+        def drop_old() -> None:
+            with _open_pg() as conn:
+                drop_old_table(conn, RACE)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        gate = cutover_enabled()
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> gate >> sw >> do
+
     # The pipelines run in parallel; under the Kubernetes executor each task
     # is its own pod, and each load_staging reads one partition at a time, so
     # they don't contend for memory.
@@ -872,6 +1132,7 @@ def sync_election_api():
     district_top_issues()
     elected_official_support()
     projected_turnout()
+    race()
 
 
 sync_election_api()
