@@ -8,7 +8,7 @@ stream they're computed from.
 
 - **Business context:** how engaged a Win candidate is — from "appears in Amplitude" through onboarding, dashboard activity, and outreach activation (the OKR metrics).
 - **Entity grain:** stored metrics are user-grain (`users_win_base`); the raw stream is event-grain; the Win activity intermediates are user×month (and user×week).
-- **Standard hygiene filter:** for candidate-attributed analysis, exclude anonymous/auto-track families (`[Amplitude]%`, `Scroll Depth`, `session_*`) and require a numeric `user_id`.
+- **Standard hygiene filter:** for candidate-attributed analysis, exclude anonymous/auto-track families (`[Amplitude]%`, `Scroll Depth`, `session_*`) and require a numeric `user_id`. **Co-firing caveat:** generic families (`viewed_generic`, `navigation`, `auth_or_settings`) co-fire in virtually every session that contains a dashboard view or send, so an "activity excluding X events" metric that still counts them passes vacuously - restrict exclusion/orthogonality variants to win-family non-definitional events (DATA-2183: the loose variant read 0.9pp delta by construction; the strict one read up to 13pp).
 
 ## Routing triggers
 
@@ -79,6 +79,8 @@ The dbt intermediates aggregate only **~4% of distinct event types** (12 of ~300
 Membership is **not** maintained here. `is_win` (Win membership) and `first_seen_date` (drift) live in the dbt model `int__amplitude_event_catalog`; the LIKE/IN patterns live in the `amplitude_event_family` macro (`dbt/project/macros/amplitude_event_taxonomy.sql`). Read those for the authoritative set — do not infer membership from the index below. This list is a human-readable index of what families exist and how to read them; it deliberately omits the patterns (the macro owns them) and per-family first-seen dates (the model's `first_seen_date` owns them, governed by the analysis `drift_cutoff`, default `2026-01-01`).
 
 **Win families** (`is_win = true`, prefixed `win_`): `win_onboarding`, `win_dashboard`, `win_voter_outreach`, `win_outreach_planning`, `win_outreach_scheduling`, `win_content_builder`, `win_voter_data`, `win_candidate_profile`, `win_pro_upgrade`, `win_p2p_upgrade`, `win_candidate_website`, `win_candidacy_self_report` (the Did-You-Win modal — see [outcomes.md](outcomes.md) for outcomes use), `win_compliance_or_planning`, `win_ai_assistant`, `win_briefings`, `win_contacts`, `win_resources`. Families first seen after the cutoff (e.g. `win_briefings`, and `Dashboard - Campaign Plan Viewed` within `win_dashboard`) fall out as drift unless you widen `drift_cutoff`.
+
+**`win_pro_upgrade` is impression-dominated:** its top event by users is the passively-shown `Pro Upgrade - Modal: Modal Shown` (4,004 users of ~6.5k family-touchers), so family touch overstates upgrade intent. For intent reads use the deliberate actions `Pro Upgrade - Splash Page: Click upgrade` and `Pro Upgrade: Confirm office` (DATA-2183: family touch 79% vs deliberate action 44.5% on the same cohort).
 
 **Non-Win families** (`is_win = false`): `serve` (Serve product, covered in the Serve runbook), `auth_or_settings`, `navigation` (cross-product); `viewed_generic`, `amplitude_autotrack`, `session_or_browser` (noise — skip for candidate-attributed analysis); `experiment_assignment` (noise, but usable as an A/B-exposure stratification covariate). Anything unmatched falls through to `other`.
 
