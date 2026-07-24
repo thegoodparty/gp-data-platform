@@ -36,6 +36,11 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [br_position_database_id, election_date]
+          config:
+            where: "br_position_database_id is not null"
 
   - name: int__civics_election_stage_2025
     description: >
