@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 from quality_bench import grade
 from quality_bench.bank import Question
@@ -160,3 +162,121 @@ def test_load_keys_for_batch_skips_unauthored_keys(tmp_path):
     ]
     keys = grade.load_keys_for_batch(tmp_path, questions, {"q01"})
     assert set(keys) == {"q01"}
+
+
+def test_grade_run_carries_execution_meta(tmp_path):
+    """Meta recorded by run_matrix flows through grade_run into the scores row;
+    a legacy state.json without meta yields the same columns as None."""
+    from quality_bench.bank import Key, NumberSpec
+
+    key = Key(id="q01", as_of="2026-07-24", numbers=[NumberSpec("n", 1.0, 5)])
+    answer = tmp_path / "a.md"
+    answer.write_text("no results block")
+    run_state = {
+        "run_id": "q01__full__r1",
+        "ok": True,
+        "answer_file": str(answer),
+        "transcript_file": None,
+        "meta": {"total_cost_usd": 2.5, "output_tokens": 999, "num_turns": 4},
+    }
+    row = grade.grade_run(run_state, key)
+    assert row["cost_usd"] == 2.5
+    assert row["output_tokens"] == 999
+    assert row["num_turns"] == 4
+
+    legacy = {**run_state}
+    legacy.pop("meta")
+    row = grade.grade_run(legacy, key)
+    assert row["cost_usd"] is None and row["output_tokens"] is None and row["num_turns"] is None
+
+
+def test_cost_lines_report_per_arm_totals():
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100, "num_turns": 5},
+            {"arm": "full", "cost_usd": 4.0, "output_tokens": 300, "num_turns": 15},
+            {"arm": "bare", "cost_usd": 1.0, "output_tokens": 50, "num_turns": 2},
+        ]
+    )
+    lines = grade.cost_lines(df)
+    text = "\n".join(lines)
+    assert "full" in text and "bare" in text
+    assert "$6.00" in text  # full total
+    assert "200" in text  # full mean output tokens
+
+
+def test_cost_lines_empty_without_meta():
+    df = pd.DataFrame([{"arm": "full"}])  # no meta columns at all (legacy batch)
+    assert grade.cost_lines(df) == []
+
+
+JUDGE_VERDICT = {
+    "scores": {
+        "scoping_correctness": 2,
+        "confident_wrongness": 2,
+        "caveat_quality": 1,
+        "assumptions_surfaced": 2,
+    },
+    "severity1_found": False,
+    "rationale": "fine",
+}
+
+
+def _key(qid="q01"):
+    from quality_bench.bank import Key, NumberSpec
+
+    return Key(id=qid, as_of="2026-07-24", numbers=[NumberSpec("n", 1.0, 5)])
+
+
+def test_judge_cached_persists_provenance_and_reuses(tmp_path, monkeypatch):
+    """First call judges and persists a provenance record (DATA-2165 item 3);
+    second call reuses the file without re-invoking the judge."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(model)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    j1 = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m1")
+    assert j1["scores"]["caveat_quality"] == 1
+    record = json.loads((tmp_path / "q01__full__r1.judge.json").read_text())
+    assert record["model"] == "m1"
+    assert record["key_id"] == "q01"
+    assert record["answer_sha256"]
+    j2 = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m1")
+    assert calls == ["m1"]
+    assert j2["scores"] == j1["scores"]
+
+
+def test_judge_cached_rejudges_when_answer_changed(tmp_path, monkeypatch):
+    """A cached verdict for a different answer text must not be reused."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(answer)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "answer v1", "m")
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "answer v2", "m")
+    assert calls == ["answer v1", "answer v2"]
+
+
+def test_judge_cached_rejudge_flag_forces(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(1)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m", rejudge=True)
+    assert len(calls) == 2
+
+
+def test_judge_cached_failed_judge_not_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", lambda *a: None)
+    assert grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m") is None
+    assert not (tmp_path / "q01__full__r1.judge.json").exists()

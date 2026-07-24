@@ -330,3 +330,74 @@ def test_resume_guard_blocks_changed_arms(tmp_path: Path):
     run_matrix.resume_guard(state, fp)
     with pytest.raises(SystemExit):
         run_matrix.resume_guard(state, {**fp, "arms_sha256": "y"})
+
+
+def test_launch_run_captures_execution_meta(tmp_path: Path):
+    """The CLI result payload carries cost/token/turn metadata; launch_run must
+    persist it into the run record (DATA-2165 item 4) so rule 3 overhead claims
+    have numbers behind them."""
+    arm_dir = make_arm_dir(tmp_path)
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", arm_dir)
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = json.dumps(
+            {
+                "session_id": "sess1",
+                "result": "answer",
+                "total_cost_usd": 1.23,
+                "duration_ms": 5009,
+                "duration_api_ms": 4912,
+                "num_turns": 7,
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 22,
+                    "cache_read_input_tokens": 33,
+                    "cache_creation_input_tokens": 44,
+                },
+            }
+        )
+        stderr = ""
+
+    out = run_matrix.launch_run(
+        spec, "claude-fable-5", 60, batch_dir=tmp_path / "batch", runner=lambda *a, **k: FakeCompleted()
+    )
+    assert out["ok"] is True
+    assert out["meta"] == {
+        "total_cost_usd": 1.23,
+        "duration_ms": 5009,
+        "duration_api_ms": 4912,
+        "num_turns": 7,
+        "input_tokens": 11,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 33,
+        "cache_creation_input_tokens": 44,
+    }
+
+
+def test_launch_run_meta_missing_fields_are_none(tmp_path: Path):
+    """A payload without usage/cost fields (older CLI) still yields a meta dict
+    with every key present as None, so scores.csv columns stay stable."""
+    arm_dir = make_arm_dir(tmp_path)
+    spec = run_matrix.RunSpec("q01", "bare", 1, "prompt", arm_dir)
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = json.dumps({"session_id": "sess1", "result": "answer"})
+        stderr = ""
+
+    out = run_matrix.launch_run(
+        spec, "claude-fable-5", 60, batch_dir=tmp_path / "batch", runner=lambda *a, **k: FakeCompleted()
+    )
+    assert out["ok"] is True
+    assert set(out["meta"]) == {
+        "total_cost_usd",
+        "duration_ms",
+        "duration_api_ms",
+        "num_turns",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    }
+    assert all(v is None for v in out["meta"].values())
