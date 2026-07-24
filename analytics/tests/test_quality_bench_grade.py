@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 from quality_bench import grade
 from quality_bench.bank import Question
@@ -160,3 +162,229 @@ def test_load_keys_for_batch_skips_unauthored_keys(tmp_path):
     ]
     keys = grade.load_keys_for_batch(tmp_path, questions, {"q01"})
     assert set(keys) == {"q01"}
+
+
+def test_grade_run_carries_execution_meta(tmp_path):
+    """Meta recorded by run_matrix flows through grade_run into the scores row;
+    a legacy state.json without meta yields the same columns as None."""
+    from quality_bench.bank import Key, NumberSpec
+
+    key = Key(id="q01", as_of="2026-07-24", numbers=[NumberSpec("n", 1.0, 5)])
+    answer = tmp_path / "a.md"
+    answer.write_text("no results block")
+    run_state = {
+        "run_id": "q01__full__r1",
+        "ok": True,
+        "answer_file": str(answer),
+        "transcript_file": None,
+        "meta": {"total_cost_usd": 2.5, "output_tokens": 999, "num_turns": 4},
+    }
+    row = grade.grade_run(run_state, key)
+    assert row["cost_usd"] == 2.5
+    assert row["output_tokens"] == 999
+    assert row["num_turns"] == 4
+
+    legacy = {**run_state}
+    legacy.pop("meta")
+    row = grade.grade_run(legacy, key)
+    assert row["cost_usd"] is None and row["output_tokens"] is None and row["num_turns"] is None
+
+
+def test_cost_lines_report_per_arm_totals():
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100, "num_turns": 5},
+            {"arm": "full", "cost_usd": 4.0, "output_tokens": 300, "num_turns": 15},
+            {"arm": "bare", "cost_usd": 1.0, "output_tokens": 50, "num_turns": 2},
+        ]
+    )
+    lines = grade.cost_lines(df)
+    text = "\n".join(lines)
+    assert "full" in text and "bare" in text
+    assert "$6.00" in text  # full total
+    assert "200" in text  # full mean output tokens
+
+
+def test_cost_lines_empty_without_meta():
+    df = pd.DataFrame([{"arm": "full"}])  # no meta columns at all (legacy batch)
+    assert grade.cost_lines(df) == []
+
+
+JUDGE_VERDICT = {
+    "scores": {
+        "scoping_correctness": 2,
+        "confident_wrongness": 2,
+        "caveat_quality": 1,
+        "assumptions_surfaced": 2,
+    },
+    "severity1_found": False,
+    "rationale": "fine",
+}
+
+
+def _key(qid="q01"):
+    from quality_bench.bank import Key, NumberSpec
+
+    return Key(id=qid, as_of="2026-07-24", numbers=[NumberSpec("n", 1.0, 5)])
+
+
+def test_judge_cached_persists_provenance_and_reuses(tmp_path, monkeypatch):
+    """First call judges and persists a provenance record (DATA-2165 item 3);
+    second call reuses the file without re-invoking the judge."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(model)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    j1 = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m1")
+    assert j1["scores"]["caveat_quality"] == 1
+    record = json.loads((tmp_path / "q01__full__r1.judge.json").read_text())
+    assert record["model"] == "m1"
+    assert record["key_id"] == "q01"
+    assert record["answer_sha256"]
+    j2 = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m1")
+    assert calls == ["m1"]
+    assert j2["scores"] == j1["scores"]
+
+
+def test_judge_cached_rejudges_when_answer_changed(tmp_path, monkeypatch):
+    """A cached verdict for a different answer text must not be reused."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(answer)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "answer v1", "m")
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "answer v2", "m")
+    assert calls == ["answer v1", "answer v2"]
+
+
+def test_judge_cached_rejudge_flag_forces(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(1)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m", rejudge=True)
+    assert len(calls) == 2
+
+
+def test_judge_cached_failed_judge_not_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", lambda *a: None)
+    assert grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m") is None
+    assert not (tmp_path / "q01__full__r1.judge.json").exists()
+
+
+def test_judge_cached_corrupt_cache_rejudges(tmp_path, monkeypatch):
+    """A truncated judge.json (crash mid-write) is a cache miss, not a crash:
+    grading must re-judge and overwrite instead of aborting the batch
+    (delegate, PR #686)."""
+    calls = []
+
+    def fake_judge(key, answer, model):
+        calls.append(1)
+        return dict(JUDGE_VERDICT)
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", fake_judge)
+    judge_file = tmp_path / "q01__full__r1.judge.json"
+    judge_file.write_text('{"scores": {"scop')  # truncated write
+    j = grade.judge_cached(tmp_path, "q01__full__r1", _key(), "the answer", "m")
+    assert j["scores"]["caveat_quality"] == 1
+    assert calls == [1]
+    assert json.loads(judge_file.read_text())["answer_sha256"]  # overwritten clean
+
+
+def test_cost_lines_no_nan_when_tokens_missing():
+    """cost_usd recorded but token/turn metadata absent must render n/a, not the
+    literal string 'nan' (delegate, PR #686)."""
+    df = pd.DataFrame([{"arm": "full", "cost_usd": 2.0, "output_tokens": None, "num_turns": None}]).astype(
+        {"output_tokens": "float", "num_turns": "float"}
+    )
+    text = "\n".join(grade.cost_lines(df))
+    assert "$2.00" in text
+    assert "nan" not in text
+    assert "n/a" in text
+
+
+def test_grade_run_carries_cache_creation_and_api_duration(tmp_path):
+    """cache_creation_input_tokens drives per-arm cost differences and
+    duration_api_ms is the pure-API latency; both must reach scores.csv
+    (delegate ce8e2bf0, PR #686)."""
+    answer = tmp_path / "a.md"
+    answer.write_text("x")
+    run_state = {
+        "run_id": "q01__full__r1",
+        "ok": True,
+        "answer_file": str(answer),
+        "transcript_file": None,
+        "meta": {"cache_creation_input_tokens": 777, "duration_api_ms": 1234},
+    }
+    row = grade.grade_run(run_state, _key())
+    assert row["cache_creation_input_tokens"] == 777
+    assert row["duration_api_ms"] == 1234
+    assert "cache_creation_input_tokens" in grade.BASE_COLUMNS
+    assert "duration_api_ms" in grade.BASE_COLUMNS
+
+
+def test_cost_lines_mixed_arms_no_nan_cost():
+    """One arm with cost, another all-NaN (mixed-metadata batch): the NaN arm
+    must render n/a, not '$nan' mean or a misleading '$0.00' total
+    (delegate 8016714b/325f2079, PR #686)."""
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100.0, "num_turns": 5.0},
+            {"arm": "bare", "cost_usd": None, "output_tokens": None, "num_turns": None},
+        ]
+    ).astype({"cost_usd": "float", "output_tokens": "float", "num_turns": "float"})
+    text = "\n".join(grade.cost_lines(df))
+    bare_line = next(line for line in text.splitlines() if line.startswith("- bare"))
+    assert "nan" not in bare_line
+    assert "$0.00" not in bare_line
+    assert "n/a" in bare_line
+    assert "$2.00" in text  # full arm still reports
+
+
+def test_judge_cached_rejudge_failure_leaves_no_stale_cache(tmp_path, monkeypatch):
+    """--rejudge means the operator distrusts the cached verdict; if the
+    re-judge then fails, the old file must not survive to be silently reused
+    by the next normal run (delegate 3648305803, PR #686)."""
+    calls = []
+
+    def judge_ok(key, answer, model):
+        calls.append("ok")
+        return dict(JUDGE_VERDICT)
+
+    def judge_fail(key, answer, model):
+        calls.append("fail")
+        return None
+
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_ok)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_fail)
+    assert grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m", rejudge=True) is None
+    assert not (tmp_path / "q01__full__r1.judge.json").exists()
+    monkeypatch.setattr(grade.judge_mod, "judge_answer", judge_ok)
+    grade.judge_cached(tmp_path, "q01__full__r1", _key(), "a", "m")  # normal run re-judges
+    assert calls == ["ok", "fail", "ok"]
+
+
+def test_cost_lines_partial_meta_shows_coverage():
+    """An arm where only some reps recorded metadata must say so: sums/means
+    over the subset are indistinguishable from full-arm figures otherwise
+    (delegate 3648465354, PR #686)."""
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100.0, "num_turns": 5.0},
+            {"arm": "full", "cost_usd": None, "output_tokens": None, "num_turns": None},
+        ]
+    ).astype({"cost_usd": "float", "output_tokens": "float", "num_turns": "float"})
+    text = "\n".join(grade.cost_lines(df))
+    assert "meta 1/2" in text
+    assert "$2.00" in text

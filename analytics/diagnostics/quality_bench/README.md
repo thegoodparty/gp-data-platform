@@ -30,6 +30,10 @@ the two failure modes the unit tests can't:
    integrity gate now fails the prep step outright if any md link inside an
    arm doesn't resolve, so a prepped arm can't reach a run with one.)
 
+Both probes passed 2026-07-24: judge on the smoke batch graded 2/2 with no
+failures, and a full-arm headless run of q01 (batch `probe-skill`) invoked
+analytics-process + win-analytics-knowledge with zero permission denials.
+
 ## No-decision gates
 
 **The current harness must not produce decision-bearing verdicts.** Calibration
@@ -51,9 +55,13 @@ closed:
    an answer actually used) is deferred to its own follow-up ticket under
    DATA-2142; the interim is the noninteractive contract plus the
    pre-first-batch skill-engagement probe (checklist item 2 above).
-4. No evidence artifacts or execution metadata — source checks are transcript
-   greps, judge output is not persisted with provenance, and rule 3 overhead
-   claims have no token/cost data behind them. Gate: ClickUp 86ajmykh4.
+4. Evidence artifacts and execution metadata — partially closed 2026-07-24:
+   run_matrix now records per-run cost/tokens/turns into state.json (surfaced
+   as scores.csv columns and a per-arm cost section in report.md), and judge
+   verdicts persist to `<run_id>.judge.json` with model, key id, and answer
+   hash (reused on regrade; `--rejudge` forces). Still open under ClickUp
+   86ajmykh4: per-check evidence records (source checks are still transcript
+   greps) and the immutable BatchConfig bundle.
 5. Protocol items (randomized/paired schedule, rule 2 effect size, rule 3
    non-inferiority margin, holdout enforcement, frozen snapshot) are
    unimplemented — verdicts are pre-registered directionally but not yet
@@ -108,6 +116,15 @@ from `analytics/` — no `PYTHONPATH` fiddling or `-m` invocation needed.
 
 Outputs: `results/<batch>/scores.csv`, `results/<batch>/report.md` (gitignored).
 Resume: rerunning run_matrix with the same --batch skips completed runs.
+
+Before trusting a batch verdict, run the isolation spot-check (no-decision
+gate 2 interim) and record acceptance in writing on the ticket:
+
+    uv run python diagnostics/quality_bench/spot_check.py --batch 2026-07-20
+
+It scans every run transcript for filesystem access outside the run's own
+dir/HOME/tmp/system prefixes and exits 1 with per-run flag lines if any need
+review. Flags are review items, not verdicts.
 
 The real-batch default model is `claude-fable-5` (both `run_matrix.py` and
 `grade.py --judge` default to it). A smoke run can use a cheaper `--model`

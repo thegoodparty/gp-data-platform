@@ -1,0 +1,194 @@
+"""Tests for the per-batch isolation spot-check (README no-decision gate 2
+interim: flag out-of-arm filesystem access in run transcripts)."""
+
+import json
+from pathlib import Path
+
+from quality_bench import spot_check
+
+CWD = "/Users/op/.cache/gp_quality_bench/arms/runs/b1/q01__full__r1"
+HOME = "/Users/op/.cache/gp_quality_bench/arms/runs/b1/q01__full__r1.home"
+
+
+def line(tool: str, tool_input: dict) -> str:
+    return json.dumps(
+        {
+            "type": "assistant",
+            "cwd": CWD,
+            "message": {"content": [{"type": "tool_use", "name": tool, "input": tool_input}]},
+        }
+    )
+
+
+def write_transcript(tmp_path: Path, lines: list[str]) -> Path:
+    t = tmp_path / "t.jsonl"
+    t.write_text("\n".join(lines))
+    return t
+
+
+def test_in_arm_reads_not_flagged(tmp_path):
+    t = write_transcript(
+        tmp_path,
+        [
+            line("Read", {"file_path": f"{CWD}/.claude/skills/x/SKILL.md"}),
+            line("Read", {"file_path": f"{HOME}/.claude/settings.json"}),
+            line("Read", {"file_path": "relative/path.md"}),
+            line("Bash", {"command": "cat > /tmp/q.py <<'EOF'\nprint(1)\nEOF"}),
+            line("Bash", {"command": "uv run python /tmp/q.py"}),
+        ],
+    )
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_out_of_arm_read_flagged(tmp_path):
+    keys_path = "/Users/op/repos/gp-data-platform/analytics/diagnostics/quality_bench/keys/q01_key.yaml"
+    t = write_transcript(tmp_path, [line("Read", {"file_path": keys_path})])
+    flags = spot_check.flag_transcript(t)
+    assert len(flags) == 1
+    assert keys_path in flags[0]
+
+
+def test_sibling_run_read_flagged(tmp_path):
+    sibling = "/Users/op/.cache/gp_quality_bench/arms/runs/b1/q02__full__r1/answer.md"
+    t = write_transcript(tmp_path, [line("Read", {"file_path": sibling})])
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_bash_command_touching_checkout_flagged(tmp_path):
+    t = write_transcript(
+        tmp_path,
+        [line("Bash", {"command": "cat /Users/op/repos/gp-data-platform/analytics/lib/x.py"})],
+    )
+    flags = spot_check.flag_transcript(t)
+    assert len(flags) == 1
+    assert "gp-data-platform" in flags[0]
+
+
+def test_system_paths_in_bash_not_flagged(tmp_path):
+    t = write_transcript(
+        tmp_path,
+        [line("Bash", {"command": "/usr/bin/env python3 -c 'print(1)' > /dev/null 2>/tmp/err"})],
+    )
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_check_batch_maps_flags_by_run(tmp_path):
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    bad = "/Users/op/repos/gp-data-platform/secret.md"
+    clean_t = write_transcript(tmp_path, [line("Read", {"file_path": f"{CWD}/CLAUDE.md"})])
+    dirty = batch / "dirty.jsonl"
+    dirty.write_text(line("Read", {"file_path": bad}))
+    state = {
+        "runs": {
+            "q01__full__r1": {"ok": True, "transcript_file": str(clean_t)},
+            "q01__full__r2": {"ok": True, "transcript_file": str(dirty)},
+            "q01__full__r3": {"ok": True, "transcript_file": None},
+        }
+    }
+    (batch / "state.json").write_text(json.dumps(state))
+    result = spot_check.check_batch(batch)
+    assert result["q01__full__r1"] == []
+    assert len(result["q01__full__r2"]) == 1
+    assert result["q01__full__r3"] == ["transcript missing"]
+
+
+def test_absolute_dotdot_traversal_flagged(tmp_path):
+    """A path that starts with an allowed prefix but escapes via `..` must be
+    flagged (Bugbot, PR #686): prefix matching on the raw string is not enough."""
+    sneaky = f"{CWD}/../../../../../repos/gp-data-platform/analytics/diagnostics/quality_bench/keys/k.yaml"
+    t = write_transcript(tmp_path, [line("Read", {"file_path": sneaky})])
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_relative_dotdot_traversal_flagged(tmp_path):
+    """Relative paths resolve against the run cwd; one that climbs out of the
+    run dir is out-of-arm even though it never names an absolute path."""
+    t = write_transcript(tmp_path, [line("Read", {"file_path": "../../../../repo/keys/k.yaml"})])
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_relative_dotdot_staying_inside_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Read", {"file_path": "sub/../CLAUDE.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_absolute_dotdot_staying_inside_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Read", {"file_path": f"{CWD}/sub/../CLAUDE.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_bash_relative_dotdot_traversal_flagged(tmp_path):
+    t = write_transcript(
+        tmp_path,
+        [line("Bash", {"command": "cat ../../../../../repos/gp-data-platform/keys/k.yaml"})],
+    )
+    flags = spot_check.flag_transcript(t)
+    assert len(flags) == 1
+
+
+def test_glob_absolute_pattern_flagged(tmp_path):
+    """Glob accepts a bare `pattern` with no `path`; an absolute out-of-arm
+    pattern must be scanned, not silently skipped (delegate fb9b1060, PR #686)."""
+    t = write_transcript(
+        tmp_path,
+        [
+            line(
+                "Glob",
+                {"pattern": "/Users/op/repos/gp-data-platform/analytics/diagnostics/quality_bench/keys/**"},
+            )
+        ],
+    )
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_glob_relative_pattern_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Glob", {"pattern": "**/*.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_glob_scans_both_path_and_pattern(tmp_path):
+    """When both keys are present, each is checked — an in-arm `path` must not
+    shadow an absolute out-of-arm `pattern`."""
+    t = write_transcript(
+        tmp_path,
+        [line("Glob", {"path": CWD, "pattern": "/Users/op/repos/gp-data-platform/keys/**"})],
+    )
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_transcript_without_cwd_is_flagged_unreviewable(tmp_path):
+    """Entries lacking cwd give the scanner no allowed surface; that is itself
+    a review flag, never a silent pass (delegate f4923b26, PR #686)."""
+    no_cwd = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": f"{CWD}/CLAUDE.md"}}]
+            },
+        }
+    )
+    t = write_transcript(tmp_path, [no_cwd])
+    assert spot_check.flag_transcript(t) == [
+        "no cwd recorded in transcript; cannot establish the allowed surface"
+    ]
+
+
+def test_check_batch_scans_failed_runs_too(tmp_path):
+    """Contamination is contamination whether or not the run succeeded: a
+    failed run with a transcript is scanned, one without flags unreviewable
+    (delegate bfb218f7, PR #686)."""
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    dirty = batch / "dirty.jsonl"
+    dirty.write_text(line("Read", {"file_path": "/Users/op/repos/gp-data-platform/secret.md"}))
+    state = {
+        "runs": {
+            "q01__full__r1": {"ok": False, "transcript_file": str(dirty)},
+            "q01__full__r2": {"ok": False, "transcript_file": None},
+        }
+    }
+    (batch / "state.json").write_text(json.dumps(state))
+    result = spot_check.check_batch(batch)
+    assert len(result["q01__full__r1"]) == 1
+    assert result["q01__full__r2"] == ["transcript missing"]
