@@ -189,7 +189,9 @@
         both dashboard events. TRUE for a user's first dashboard view and for any
         view whose gap from the prior dashboard event exceeds gap_seconds; co-fired
         pairs collapse to one, genuine re-visits still count. Apply only to rows
-        already filtered to is_dashboard_view_event, then count_if the result.
+        already filtered to is_dashboard_view_event, materialize the result as a
+        boolean column in a CTE/subquery, then count_if that column in an outer
+        query (a window function cannot be nested directly inside count_if).
 
         Args:
             event_time_col: SQL expression for the event timestamp.
