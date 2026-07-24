@@ -80,8 +80,13 @@ def flag_transcript(transcript_file: Path) -> list[str]:
             if not (isinstance(c, dict) and c.get("type") == "tool_use"):
                 continue
             tool, tool_input = c.get("name", ""), c.get("input") or {}
-            if tool in PATH_TOOLS and (p := tool_input.get("file_path") or tool_input.get("path")):
-                accesses.append((tool, p))
+            if tool in PATH_TOOLS:
+                # Check every path-carrying key independently: Glob accepts a
+                # bare absolute `pattern` with no `path`, and an in-arm `path`
+                # must not shadow an out-of-arm `pattern` (delegate, PR #686).
+                for k in ("file_path", "path", "pattern"):
+                    if p := tool_input.get(k):
+                        accesses.append((tool, p))
             elif tool == "Bash" and (cmd := tool_input.get("command")):
                 accesses.extend(("Bash", m) for m in ABS_PATH.findall(cmd))
                 accesses.extend(("Bash", m) for m in REL_DOTDOT.findall(cmd))

@@ -125,3 +125,33 @@ def test_bash_relative_dotdot_traversal_flagged(tmp_path):
     )
     flags = spot_check.flag_transcript(t)
     assert len(flags) == 1
+
+
+def test_glob_absolute_pattern_flagged(tmp_path):
+    """Glob accepts a bare `pattern` with no `path`; an absolute out-of-arm
+    pattern must be scanned, not silently skipped (delegate fb9b1060, PR #686)."""
+    t = write_transcript(
+        tmp_path,
+        [
+            line(
+                "Glob",
+                {"pattern": "/Users/op/repos/gp-data-platform/analytics/diagnostics/quality_bench/keys/**"},
+            )
+        ],
+    )
+    assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_glob_relative_pattern_not_flagged(tmp_path):
+    t = write_transcript(tmp_path, [line("Glob", {"pattern": "**/*.md"})])
+    assert spot_check.flag_transcript(t) == []
+
+
+def test_glob_scans_both_path_and_pattern(tmp_path):
+    """When both keys are present, each is checked — an in-arm `path` must not
+    shadow an absolute out-of-arm `pattern`."""
+    t = write_transcript(
+        tmp_path,
+        [line("Glob", {"path": CWD, "pattern": "/Users/op/repos/gp-data-platform/keys/**"})],
+    )
+    assert len(spot_check.flag_transcript(t)) == 1
