@@ -384,11 +384,12 @@ models:
                 inclusive: true
       - name: win_number
         description: >
-          BallotReady viability_score.win_number passed through from
-          mart_civics.candidacy. Sparse in practice; null for nearly all
-          small non-partisan local races. The consuming app computes a
-          fallback estimate from projected_turnout / number_of_seats; do not
-          coalesce here.
+          Path-to-victory vote target. No live source supplies it: BallotReady
+          carries no win number, and the only values that ever existed come
+          from 2023-2025 HubSpot-archive candidacies. Their races fall inside
+          the six-year window, but archive candidacies rarely resolve to a
+          BallotReady race id, so in practice the column remains null across
+          the mart and consumers fall back to a computed estimate.
         tests:
           - dbt_utils.accepted_range:
               arguments:
