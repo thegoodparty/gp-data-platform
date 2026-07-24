@@ -76,9 +76,11 @@ def grade_run(run_state: dict, key: Key) -> dict:
         "cost_usd": meta.get("total_cost_usd"),
         "num_turns": meta.get("num_turns"),
         "duration_ms": meta.get("duration_ms"),
+        "duration_api_ms": meta.get("duration_api_ms"),
         "input_tokens": meta.get("input_tokens"),
         "output_tokens": meta.get("output_tokens"),
         "cache_read_input_tokens": meta.get("cache_read_input_tokens"),
+        "cache_creation_input_tokens": meta.get("cache_creation_input_tokens"),
         "_block": block,
     }
 
@@ -98,9 +100,11 @@ BASE_COLUMNS = [
     "cost_usd",
     "num_turns",
     "duration_ms",
+    "duration_api_ms",
     "input_tokens",
     "output_tokens",
     "cache_read_input_tokens",
+    "cache_creation_input_tokens",
 ]
 
 
@@ -140,12 +144,15 @@ def cost_lines(df: pd.DataFrame) -> list[str]:
         return []
     lines = ["", "## Execution cost by arm (reported, not verdict-gated)", ""]
     for arm, g in df.groupby("arm"):
-        # A group can have cost but no token/turn metadata (partially-upgraded
-        # batch); .mean() is then NaN and :.0f would print the literal 'nan'.
+        # Guards are per-arm, not per-frame: a mixed-metadata batch can have one
+        # arm with recorded cost and another all-NaN, and an all-NaN group would
+        # format as '$nan' mean / misleading '$0.00' skipna total.
+        cost_total = f"${g.cost_usd.sum():.2f}" if g.cost_usd.notna().any() else "n/a"
+        cost_mean = f"${g.cost_usd.mean():.2f}" if g.cost_usd.notna().any() else "n/a"
         tokens = f"{g.output_tokens.mean():.0f}" if g.output_tokens.notna().any() else "n/a"
         turns = f"{g.num_turns.mean():.1f}" if g.num_turns.notna().any() else "n/a"
         lines.append(
-            f"- {arm}: runs {len(g)}, total ${g.cost_usd.sum():.2f}, mean ${g.cost_usd.mean():.2f}, "
+            f"- {arm}: runs {len(g)}, total {cost_total}, mean {cost_mean}, "
             f"mean output tokens {tokens}, mean turns {turns}"
         )
     return lines

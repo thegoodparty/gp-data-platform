@@ -311,3 +311,41 @@ def test_cost_lines_no_nan_when_tokens_missing():
     assert "$2.00" in text
     assert "nan" not in text
     assert "n/a" in text
+
+
+def test_grade_run_carries_cache_creation_and_api_duration(tmp_path):
+    """cache_creation_input_tokens drives per-arm cost differences and
+    duration_api_ms is the pure-API latency; both must reach scores.csv
+    (delegate ce8e2bf0, PR #686)."""
+    answer = tmp_path / "a.md"
+    answer.write_text("x")
+    run_state = {
+        "run_id": "q01__full__r1",
+        "ok": True,
+        "answer_file": str(answer),
+        "transcript_file": None,
+        "meta": {"cache_creation_input_tokens": 777, "duration_api_ms": 1234},
+    }
+    row = grade.grade_run(run_state, _key())
+    assert row["cache_creation_input_tokens"] == 777
+    assert row["duration_api_ms"] == 1234
+    assert "cache_creation_input_tokens" in grade.BASE_COLUMNS
+    assert "duration_api_ms" in grade.BASE_COLUMNS
+
+
+def test_cost_lines_mixed_arms_no_nan_cost():
+    """One arm with cost, another all-NaN (mixed-metadata batch): the NaN arm
+    must render n/a, not '$nan' mean or a misleading '$0.00' total
+    (delegate 8016714b/325f2079, PR #686)."""
+    df = pd.DataFrame(
+        [
+            {"arm": "full", "cost_usd": 2.0, "output_tokens": 100.0, "num_turns": 5.0},
+            {"arm": "bare", "cost_usd": None, "output_tokens": None, "num_turns": None},
+        ]
+    ).astype({"cost_usd": "float", "output_tokens": "float", "num_turns": "float"})
+    text = "\n".join(grade.cost_lines(df))
+    bare_line = next(line for line in text.splitlines() if line.startswith("- bare"))
+    assert "nan" not in bare_line
+    assert "$0.00" not in bare_line
+    assert "n/a" in bare_line
+    assert "$2.00" in text  # full arm still reports
