@@ -17,8 +17,13 @@ CATALOG_BEGIN = "<!-- catalog:begin -->"
 CATALOG_END = "<!-- catalog:end -->"
 
 
+def _cell(text: str | None) -> str:
+    # Escape pipes so a filter/definition never breaks the table.
+    return (text or "").replace("|", "\\|")
+
+
 def _decision_makers(owners: dict, people: dict | None) -> str:
-    lines = ["## Decision-makers (data side)", ""]
+    lines = ["## Decision-makers", ""]
     for key, team in owners.get("teams", {}).items():
         slug = team["slug"]
         role = team.get("role", "")
@@ -46,13 +51,13 @@ def _catalog(records: list[MetricRecord], lifecycles: dict[str, Lifecycle]) -> s
     rows = [header]
     for rec in records:
         lc = lifecycles.get(rec.yaml_file)
-        detail = f"[{rec.detail_doc}]({rec.detail_doc})" if rec.detail_doc else ""
+        detail = f"[{_cell(rec.detail_doc)}]({_cell(rec.detail_doc)})" if rec.detail_doc else ""
         ratified = rec.ratified or "pending"
         if rec.retired:
             ratified = f"{ratified} (retired {rec.retired})"
         rows.append(
-            f"| {rec.label} | {rec.definition} | {rec.metric_type} | {rec.source} "
-            f"| {rec.owner or ''} | {ratified} | {_lifecycle_cell(lc)} | {detail} |"
+            f"| {_cell(rec.label)} | {_cell(rec.definition)} | {rec.metric_type} | {_cell(rec.source)} "
+            f"| {_cell(rec.owner or '')} | {ratified} | {_lifecycle_cell(lc)} | {detail} |"
         )
     return f"{CATALOG_BEGIN}\n" + "\n".join(rows) + f"\n{CATALOG_END}"
 

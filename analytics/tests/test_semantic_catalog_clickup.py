@@ -57,3 +57,28 @@ def test_decision_makers_use_people_when_present():
     people = {"semantic-layer-data": ["Alice", "Bob"], "semantic-layer-business": ["Charlie"]}
     page = render_page([_rec()], _lifecycles(), "SOP", OWNERS, people=people)
     assert "Alice" in page and "Charlie" in page
+
+
+def test_catalog_escapes_pipes_in_cells():
+    """Verify that pipe characters in metric metadata are escaped to prevent table corruption."""
+    rec_with_pipe = MetricRecord(
+        name="test_metric",
+        label="Test Metric | With Pipe",
+        definition="count where is_winner | has_source",
+        metric_type="simple",
+        source="ref('test_table') | filter",
+        dimensions=("dim1",),
+        filter=None,
+        owner="semantic-layer-data | backup",
+        ratified="2026-07-24",
+        detail_doc="test.md | backup.md",
+        retired=None,
+        yaml_file="test.yml",
+        kind="metric",
+    )
+    page = render_page([rec_with_pipe], {}, "SOP", OWNERS)
+    # Verify escaped pipes appear in output (raw unescaped pipes should not break table)
+    assert "is_winner \\| has_source" in page
+    assert "With Pipe" in page  # label should still be readable (escaped internally)
+    # Ensure catalog markers are present (table not corrupted)
+    assert CATALOG_BEGIN in page and CATALOG_END in page
