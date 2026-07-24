@@ -24,9 +24,10 @@ with
             user_id is not null
             and try_cast(user_id as bigint) is not null
             -- Recurrent-activity events come from the single-source catalog
-            -- instead of a hardcoded list. Resolves to the same 2 events:
-            -- 'Voter Outreach - Campaign Completed',
-            -- 'Dashboard - Candidate Dashboard Viewed'.
+            -- instead of a hardcoded list. Resolves to 3 events:
+            -- 'Voter Outreach - Campaign Completed', plus both the legacy
+            -- and live dashboard-view events (unioned below via
+            -- is_dashboard_view_event).
             and event_type in (
                 select event_type
                 from {{ ref("int__amplitude_event_catalog") }}
@@ -34,11 +35,29 @@ with
             )
     ),
 
-    final as (
+    dashboard_view_flags as (
         select
             user_id,
-            week_start_date,
-            date_add(week_start_date, 6) as week_end_date,
+            event_time,
+            {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
+        from win_events
+        where {{ is_dashboard_view_event("event_type") }}
+    ),
+
+    dashboard_views_dedup as (
+        select
+            user_id,
+            cast(date_trunc('week', event_time) as date) as week_start_date,
+            count_if(is_new_view) as dashboard_views
+        from dashboard_view_flags
+        group by 1, 2
+    ),
+
+    final as (
+        select
+            we.user_id,
+            we.week_start_date,
+            date_add(we.week_start_date, 6) as week_end_date,
 
             -- Campaign activity
             count(
@@ -64,27 +83,21 @@ with
             ) as last_campaign_sent_at,
 
             -- Dashboard activity
-            count(
-                case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed' then 1
-                end
-            ) as dashboard_views,
+            coalesce(max(dv.dashboard_views), 0) as dashboard_views,
             count(
                 distinct case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
+                    when {{ is_dashboard_view_event("event_type") }}
                     then date(event_time)
                 end
             ) as dashboard_view_days,
             min(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
-                    then event_time
+                    when {{ is_dashboard_view_event("event_type") }} then event_time
                 end
             ) as first_dashboard_viewed_at,
             max(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
-                    then event_time
+                    when {{ is_dashboard_view_event("event_type") }} then event_time
                 end
             ) as last_dashboard_viewed_at,
 
@@ -93,8 +106,12 @@ with
             count(distinct date(event_time)) as activity_days,
             min(event_time) as first_activity_at,
             max(event_time) as last_activity_at
-        from win_events
-        group by 1, 2
+        from win_events we
+        left join
+            dashboard_views_dedup dv
+            on we.user_id = dv.user_id
+            and we.week_start_date = dv.week_start_date
+        group by we.user_id, we.week_start_date
     )
 
 select *

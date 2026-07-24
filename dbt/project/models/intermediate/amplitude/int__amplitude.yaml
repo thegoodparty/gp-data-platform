@@ -398,8 +398,9 @@ models:
 
       - name: dashboard_views
         description: >
-          Count of 'Dashboard - Candidate Dashboard Viewed' events in this week.
-          Zero if user had only campaign events this week.
+          Deduped count of dashboard-view events (legacy + live event names)
+          in this week. Co-fires of both event names for the same view are
+          collapsed to one. Zero if user had only campaign events this week.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -415,7 +416,10 @@ models:
                 min_value: 0
 
       - name: total_events
-        description: Total Win engagement events (campaigns + dashboard views) in this week.
+        description: >
+          Total raw Win engagement events (campaigns + dashboard views) in
+          this week, undeduped; can exceed campaigns_sent + dashboard_views
+          when a dashboard view co-fired both event names.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -470,7 +474,9 @@ models:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "campaigns_sent + dashboard_views = total_events"
+            # dashboard_views is deduped; total_events is raw, so equality
+            # only holds outside co-fire windows where both event names fired.
+            expression: "campaigns_sent + dashboard_views <= total_events"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "dashboard_view_days <= activity_days"
