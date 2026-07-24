@@ -155,3 +155,20 @@ def test_glob_scans_both_path_and_pattern(tmp_path):
         [line("Glob", {"path": CWD, "pattern": "/Users/op/repos/gp-data-platform/keys/**"})],
     )
     assert len(spot_check.flag_transcript(t)) == 1
+
+
+def test_transcript_without_cwd_is_flagged_unreviewable(tmp_path):
+    """Entries lacking cwd give the scanner no allowed surface; that is itself
+    a review flag, never a silent pass (delegate f4923b26, PR #686)."""
+    no_cwd = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": f"{CWD}/CLAUDE.md"}}]
+            },
+        }
+    )
+    t = write_transcript(tmp_path, [no_cwd])
+    assert spot_check.flag_transcript(t) == [
+        "no cwd recorded in transcript; cannot establish the allowed surface"
+    ]
