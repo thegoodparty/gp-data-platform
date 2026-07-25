@@ -46,26 +46,35 @@ jobs:
             BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
             COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
               uv run python -m semantic_catalog.composition)
+            PR_URL="https://github.com/$REPO/pull/$PR"
           else
             # No PR found for this commit (e.g. a direct push to main): fall
             # back to the conservative "incomplete" default rather than
             # guessing at approval state.
             COV='{"data":false,"business":false}'
+            PR_URL="(direct push to main — no PR)"
           fi
           echo "COV=$COV" >> "$GITHUB_ENV"
-          echo "PR_URL=https://github.com/$REPO/pull/$PR" >> "$GITHUB_ENV"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
       - name: Build Slack change summary
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
         run: |
           set -euo pipefail
-          git worktree add --detach /tmp/base "${{ github.event.before }}"
-          uv run python -m semantic_catalog.cli \
-            --emit-slack /tmp/slack.txt \
-            --base-dir /tmp/base \
-            --pr-url "$PR_URL" \
-            --coverage "$COV"
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # No prior commit to diff against — emit with an empty before-set.
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
+          else
+            git worktree add --detach /tmp/base "$BEFORE"
+            uv run python -m semantic_catalog.cli \
+              --emit-slack /tmp/slack.txt \
+              --base-dir /tmp/base \
+              --pr-url "$PR_URL" \
+              --coverage "$COV"
+            git worktree remove --force /tmp/base
+          fi
       - name: Post Slack change summary
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -100,7 +109,7 @@ jobs:
           # The regenerated MD lives outside the sem_*.yml path filter above,
           # so this push does not re-trigger this workflow (no infinite loop).
           if ! git diff --quiet -- '.claude/skills/**/canonical_metrics.md'; then
-            git add .claude/skills/**/canonical_metrics.md
+            git add '.claude/skills/**/canonical_metrics.md'
             git commit -m "chore(semantic-layer): regenerate canonical_metrics.md"
             git push
           fi
