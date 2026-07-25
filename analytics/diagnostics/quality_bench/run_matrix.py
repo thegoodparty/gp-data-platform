@@ -266,6 +266,21 @@ def launch_run(
             return out
         session_id = payload.get("session_id", "")
         answer = payload.get("result", "")
+        # Execution metadata (DATA-2165 item 4): the CLI already reports cost,
+        # tokens, turns, and latency per run — persist them so rule 3
+        # overhead/bloat claims have numbers behind them. Keys are always
+        # present (None when the CLI omits a field) to keep scores.csv stable.
+        usage = payload.get("usage") or {}
+        out["meta"] = {
+            "total_cost_usd": payload.get("total_cost_usd"),
+            "duration_ms": payload.get("duration_ms"),
+            "duration_api_ms": payload.get("duration_api_ms"),
+            "num_turns": payload.get("num_turns"),
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "cache_read_input_tokens": usage.get("cache_read_input_tokens"),
+            "cache_creation_input_tokens": usage.get("cache_creation_input_tokens"),
+        }
         answer_file = batch_dir / f"{spec.run_id}.answer.md"
         answer_file.write_text(answer)
         out.update(ok=True, session_id=session_id, answer_file=str(answer_file))

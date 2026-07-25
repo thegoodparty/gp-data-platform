@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -58,6 +59,7 @@ def grade_run(run_state: dict, key: Key) -> dict:
     sev1 = grading.check_severity1(answer, key)
     assumptions = grading.check_assumptions(block, key)
     resolutions = grading.check_resolutions(block, key)
+    meta = run_state.get("meta") or {}
     return {
         "run_id": run_id,
         "question_id": question_id,
@@ -70,6 +72,15 @@ def grade_run(run_state: dict, key: Key) -> dict:
         "severity1_tripped": any(not c.passed for c in sev1),
         "assumptions_pass": all(c.passed for c in assumptions),
         "resolutions_match": all(c.passed for c in resolutions),
+        # Execution metadata recorded by run_matrix (None on legacy batches).
+        "cost_usd": meta.get("total_cost_usd"),
+        "num_turns": meta.get("num_turns"),
+        "duration_ms": meta.get("duration_ms"),
+        "duration_api_ms": meta.get("duration_api_ms"),
+        "input_tokens": meta.get("input_tokens"),
+        "output_tokens": meta.get("output_tokens"),
+        "cache_read_input_tokens": meta.get("cache_read_input_tokens"),
+        "cache_creation_input_tokens": meta.get("cache_creation_input_tokens"),
         "_block": block,
     }
 
@@ -86,7 +97,73 @@ BASE_COLUMNS = [
     "severity1_tripped",
     "assumptions_pass",
     "resolutions_match",
+    "cost_usd",
+    "num_turns",
+    "duration_ms",
+    "duration_api_ms",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
 ]
+
+
+def judge_cached(
+    batch_dir: Path, run_id: str, key: Key, answer: str, model: str, rejudge: bool = False
+) -> dict | None:
+    """Judge with persisted provenance (DATA-2165 item 3): the verdict is
+    written to <run_id>.judge.json alongside the answer hash, key id, and judge
+    model, and reused on regrade instead of re-invoking the judge. The cache is
+    keyed on the answer text (sha256) and model, so a changed answer or a
+    different judge model re-judges; --rejudge forces it."""
+    judge_file = batch_dir / f"{run_id}.judge.json"
+    answer_sha256 = hashlib.sha256(answer.encode()).hexdigest()
+    if rejudge:
+        # --rejudge means the cached verdict is distrusted: drop it up front so
+        # a failed re-judge cannot leave it behind for the next normal run to
+        # silently reuse.
+        judge_file.unlink(missing_ok=True)
+    if judge_file.exists() and not rejudge:
+        try:
+            record = json.loads(judge_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            # A truncated cache file (crash mid-write) is a cache miss, not a
+            # reason to abort the batch; fall through and re-judge over it.
+            record = {}
+        if record.get("answer_sha256") == answer_sha256 and record.get("model") == model:
+            return record
+    j = judge_mod.judge_answer(key, answer, model)
+    if j is None:
+        return None
+    record = {**j, "model": model, "key_id": key.id, "answer_sha256": answer_sha256}
+    judge_file.write_text(json.dumps(record, indent=2))
+    return record
+
+
+def cost_lines(df: pd.DataFrame) -> list[str]:
+    """Per-arm execution cost/size summary (DATA-2165 item 4). Reported next to
+    the verdicts but never gated into them: rule 3's pre-registered criterion is
+    pass-rate + consistency; cost is the context that makes a prune proposal's
+    token delta concrete. Empty on legacy batches with no recorded meta."""
+    if "cost_usd" not in df.columns or df.cost_usd.isna().all():
+        return []
+    lines = ["", "## Execution cost by arm (reported, not verdict-gated)", ""]
+    for arm, g in df.groupby("arm"):
+        # Guards are per-arm, not per-frame: a mixed-metadata batch can have one
+        # arm with recorded cost and another all-NaN, and an all-NaN group would
+        # format as '$nan' mean / misleading '$0.00' skipna total.
+        cost_total = f"${g.cost_usd.sum():.2f}" if g.cost_usd.notna().any() else "n/a"
+        cost_mean = f"${g.cost_usd.mean():.2f}" if g.cost_usd.notna().any() else "n/a"
+        tokens = f"{g.output_tokens.mean():.0f}" if g.output_tokens.notna().any() else "n/a"
+        turns = f"{g.num_turns.mean():.1f}" if g.num_turns.notna().any() else "n/a"
+        # meta n/N makes partial coverage visible: sums/means computed over the
+        # reps that recorded metadata would otherwise read as full-arm figures.
+        lines.append(
+            f"- {arm}: runs {len(g)}, meta {int(g.cost_usd.notna().sum())}/{len(g)}, "
+            f"total {cost_total}, mean {cost_mean}, "
+            f"mean output tokens {tokens}, mean turns {turns}"
+        )
+    return lines
 
 
 def scores_frame(rows: list[dict]) -> pd.DataFrame:
@@ -175,6 +252,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch", required=True)
     parser.add_argument("--judge", action="store_true")
+    parser.add_argument(
+        "--rejudge", action="store_true", help="re-invoke the judge even when a cached verdict exists"
+    )
     parser.add_argument("--model", default="claude-fable-5")
     args = parser.parse_args()
 
@@ -196,7 +276,7 @@ def main() -> None:
         if args.judge:
             judge_eligible += 1
             answer = Path(run_state["answer_file"]).read_text()
-            j = judge_mod.judge_answer(keys[qid], answer, args.model)
+            j = judge_cached(batch_dir, run_id, keys[qid], answer, args.model, rejudge=args.rejudge)
             if j:
                 judge_ok += 1
                 row.update({f"judge_{k}": v for k, v in j["scores"].items()})
@@ -246,6 +326,7 @@ def main() -> None:
             f"max_spread={c['max_spread_pct']:.2f}% parsed {c['n_parsed']}/{c['n_reps']}"
         )
     lines += adherence_lines(df)
+    lines += cost_lines(df)
     (batch_dir / "report.md").write_text("\n".join(lines))
     print("\n".join(lines))
 
