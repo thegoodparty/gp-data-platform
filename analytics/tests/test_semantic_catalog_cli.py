@@ -26,3 +26,22 @@ def test_write_then_check_is_idempotent(tmp_path):
     records = parse_semantic_tree(cli.SEM_ROOTS)
     cli.write_region(target, records)
     assert cli.region_is_current(target, records) is True
+
+
+def test_emit_slack_writes_rendered_message(tmp_path):
+    out = tmp_path / "slack.txt"
+    rc = cli.main(
+        [
+            "--emit-slack",
+            str(out),
+            "--pr-url",
+            "http://pr/1",
+            "--coverage",
+            '{"data": true, "business": false}',
+        ]
+    )
+    assert rc == 0
+    text = out.read_text()
+    assert "http://pr/1" in text
+    assert "incomplete" in text.lower()
+    assert "business" in text.lower()

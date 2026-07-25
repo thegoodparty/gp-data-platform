@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
 from semantic_catalog.parser import parse_semantic_tree
 from semantic_catalog.records import MetricRecord
+from semantic_catalog.slack_diff import render_message
 
 # analytics/diagnostics/semantic_catalog/cli.py -> parents[0]=semantic_catalog,
 # [1]=diagnostics, [2]=analytics, [3]=repo root.
@@ -56,7 +58,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--emit-clickup", type=Path)
-    parser.add_argument("--emit-slack-page", type=Path)  # placeholder for the publish job
+    parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--base-dir", type=Path, default=None)
+    parser.add_argument("--pr-url", type=str, default="")
+    parser.add_argument("--coverage", type=str, default="")
     args = parser.parse_args(argv)
 
     records = parse_semantic_tree(SEM_ROOTS)
@@ -80,6 +85,23 @@ def main(argv: list[str] | None = None) -> int:
         page = render_page(records, _lifecycles(records), SOP_MD, OWNERS)
         args.emit_clickup.write_text(page)
         print(f"wrote {args.emit_clickup}")
+
+    if args.emit_slack:
+        after = records
+        before = (
+            parse_semantic_tree(
+                [
+                    args.base_dir / "dbt/project/models/marts/analytics",
+                    args.base_dir / "dbt/project/models/marts/civics",
+                ]
+            )
+            if args.base_dir
+            else []
+        )
+        coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
+        msg = render_message(before, after, args.pr_url, coverage)
+        args.emit_slack.write_text(msg)
+        print(f"wrote {args.emit_slack}")
 
     return 0
 

@@ -1,0 +1,106 @@
+name: semantic-layer-publish
+on:
+  push:
+    branches: [main]
+    paths: ['dbt/project/models/**/sem_*.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Regenerate catalog artifacts
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          uv run python -m semantic_catalog.cli --write --emit-clickup /tmp/clickup_page.md
+      - name: Re-derive review coverage for the merged PR
+        id: coverage
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Cross-run outputs from the composition-check workflow are not
+          # available here, so re-derive coverage from the live GitHub API
+          # against the PR that introduced this merge commit.
+          PR=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')
+          if [ -n "$PR" ]; then
+            APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" \
+              --jq '[.[] | select(.state=="APPROVED") | .user.login] | unique | join(",")')
+            DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
+            BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
+            COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
+              uv run python -m semantic_catalog.composition)
+          else
+            # No PR found for this commit (e.g. a direct push to main): fall
+            # back to the conservative "incomplete" default rather than
+            # guessing at approval state.
+            COV='{"data":false,"business":false}'
+          fi
+          echo "COV=$COV" >> "$GITHUB_ENV"
+          echo "PR_URL=https://github.com/$REPO/pull/$PR" >> "$GITHUB_ENV"
+      - name: Build Slack change summary
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/base "${{ github.event.before }}"
+          uv run python -m semantic_catalog.cli \
+            --emit-slack /tmp/slack.txt \
+            --base-dir /tmp/base \
+            --pr-url "$PR_URL" \
+            --coverage "$COV"
+      - name: Post Slack change summary
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # LIVE-VERIFY SEAM: SLACK_BOT_TOKEN is not yet provisioned. Once it
+          # lands, confirm this chat.postMessage payload (channel id, scopes,
+          # response handling) against the live Slack API before relying on it.
+          curl -sf -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/json; charset=utf-8" \
+            --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')"
+      - name: Upsert ClickUp reference page
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          PAGE_ID: ${{ secrets.SEMANTIC_LAYER_CLICKUP_PAGE_ID }}
+        run: |
+          set -euo pipefail
+          # LIVE-VERIFY SEAM: CLICKUP_API_TOKEN and SEMANTIC_LAYER_CLICKUP_PAGE_ID
+          # are not yet provisioned. Once they land, confirm the v3 page-update
+          # body shape (content/content_format, page vs subpage semantics)
+          # against the live ClickUp API before relying on it.
+          curl -sf -X PUT "https://api.clickup.com/api/v3/docs/pages/$PAGE_ID" \
+            -H "Authorization: $CLICKUP_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$(python3 -c 'import json;print(json.dumps({"content":open("/tmp/clickup_page.md").read(),"content_format":"text/md"}))')"
+      - name: Commit regenerated canonical_metrics.md
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # The regenerated MD lives outside the sem_*.yml path filter above,
+          # so this push does not re-trigger this workflow (no infinite loop).
+          if ! git diff --quiet -- '.claude/skills/**/canonical_metrics.md'; then
+            git add .claude/skills/**/canonical_metrics.md
+            git commit -m "chore(semantic-layer): regenerate canonical_metrics.md"
+            git push
+          fi
