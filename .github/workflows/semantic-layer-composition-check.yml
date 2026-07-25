@@ -1,0 +1,40 @@
+name: semantic-layer-composition-check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['dbt/project/models/**/sem_*.yml']
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  composition:
+    runs-on: ubuntu-latest
+    # Soft gate: report, never block. The job always succeeds.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Evaluate approval composition
+        id: eval
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          APPROVERS=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            --jq '[.[] | select(.state=="APPROVED") | .user.login] | unique | join(",")')
+          DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
+          BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
+          COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
+            uv run python -m semantic_catalog.composition)
+          echo "coverage=$COV" >> "$GITHUB_OUTPUT"
+          echo "Approval coverage: $COV"
