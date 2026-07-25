@@ -72,7 +72,8 @@ def flag_transcript(transcript_file: Path) -> list[str]:
             entry = json.loads(raw)
         except json.JSONDecodeError:
             continue
-        cwd = cwd or entry.get("cwd", "")
+        if not cwd and entry.get("type") == "assistant":
+            cwd = entry.get("cwd", "")
         content = (entry.get("message") or {}).get("content")
         if not isinstance(content, list):
             continue
