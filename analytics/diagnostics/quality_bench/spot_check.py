@@ -84,7 +84,7 @@ def flag_transcript(transcript_file: Path) -> list[str]:
                 # Check every path-carrying key independently: Glob accepts a
                 # bare absolute `pattern` with no `path`, and an in-arm `path`
                 # must not shadow an out-of-arm `pattern` (delegate, PR #686).
-                for k in ("file_path", "path", "pattern"):
+                for k in ("file_path", "notebook_path", "path", "pattern"):
                     if p := tool_input.get(k):
                         accesses.append((tool, p))
             elif tool == "Bash" and (cmd := tool_input.get("command")):
