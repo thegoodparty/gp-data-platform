@@ -159,7 +159,11 @@ def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
 
 def _content_match(got: str, want: str) -> bool:
     g, w = _norm(got), _norm(want)
-    if bool(g) and (w in g or g in w):
+    # Both sides must carry content: `"" in s` is vacuously True, so an empty
+    # resolution must never "match" a non-empty one (or vice versa).
+    if not g or not w:
+        return False
+    if w in g or g in w:
         return True
     # Free-phrased resolutions rarely containment-match a key slug; two
     # non-generic token hits is the lenient reported-only fallback.
@@ -177,14 +181,18 @@ def check_resolutions(block: dict | None, key: Key) -> list[CheckResult]:
     out = []
     for fork, expected in key.required_resolutions.items():
         name = _find_fork(fork, ledger)
-        got = ledger.get(name, "") if name else ""
-        # No name match anywhere: fall back to scanning every entry's content,
-        # so a fork filed under an unrecognizable slug still gets credit.
-        matched = (
-            _content_match(got, expected)
-            if got
-            else any(_content_match(r, expected) for r in ledger.values())
-        )
+        if name is not None:
+            # A matched fork with an empty resolution is unresolved — it must
+            # not fall through to the whole-ledger scan and pass on unrelated
+            # overlap.
+            got = ledger[name]
+            matched = _content_match(got, expected)
+        else:
+            # No name match anywhere: fall back to scanning every entry's
+            # content, so a fork filed under an unrecognizable slug still gets
+            # credit.
+            got = ""
+            matched = any(_content_match(r, expected) for r in ledger.values())
         out.append(CheckResult(fork, "resolution", matched, f"resolved {got!r}, key {expected!r}"))
     return out
 
@@ -216,17 +224,28 @@ def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
                 # Zero mean: identical reps (all zero) are perfectly consistent.
                 spreads[name] = 0.0 if max(vals) == min(vals) else float("inf")
     # Resolution agreement is key-blind AND reported-only: reps invent their own
-    # fork names and phrase resolutions freely, so the comparable set is fork
-    # names two or more reps both surfaced, compared fuzzily. It never gates
-    # `consistent`: key tolerances are set so a divergent fork choice moves the
-    # number, making numeric spread the deterministic instrument (same argument
-    # as check_resolutions).
+    # fork names AND their own spellings of them, so forks are matched across
+    # ledgers fuzzily (_find_fork), not by exact name. Each fork concept anchors
+    # on its first appearance (ledger order); a concept surfaced by >=2 reps must
+    # be resolved compatibly in all of them. It never gates `consistent`: key
+    # tolerances are set so a divergent fork choice moves the number, making
+    # numeric spread the deterministic instrument (same argument as
+    # check_resolutions).
     ledgers = [_resolutions(b) for b in parsed]
-    shared = {f for i, led in enumerate(ledgers) for f in led if any(f in o for o in ledgers[i + 1 :])}
     agreement = {}
-    for fork in shared:
-        seen = [led[fork] for led in ledgers if fork in led]
-        agreement[fork] = all(_content_match(a, b) for a, b in itertools.pairwise(seen))
+    consumed: set[tuple[int, str]] = set()
+    for i, anchor in enumerate(ledgers):
+        for fork in anchor:
+            if (i, fork) in consumed:
+                continue
+            seen = [anchor[fork]]
+            for j in range(i + 1, len(ledgers)):
+                matched = _find_fork(fork, ledgers[j])
+                if matched is not None and (j, matched) not in consumed:
+                    consumed.add((j, matched))
+                    seen.append(ledgers[j][matched])
+            if len(seen) >= 2:
+                agreement[fork] = all(_content_match(a, b) for a, b in itertools.pairwise(seen))
     numbers_ok = all(spreads.get(n, float("inf")) <= t for n, t in tol.items()) if parsed else False
     max_spread = max(spreads.get(n.name, float("inf")) for n in key.numbers) if parsed else float("inf")
     return {

@@ -242,7 +242,11 @@ def test_cli_help_works_via_path_shim():
 
 
 def _run_prep_cli(
-    fake_repo: Path, tmp_path: Path, canaries_yaml: str, arms_subdir: str = "arms"
+    fake_repo: Path,
+    tmp_path: Path,
+    canaries_yaml: str,
+    arms_subdir: str = "arms",
+    extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess:
     """Run the prep CLI as a real subprocess against the fake repo, by copying
     the harness modules in. The CLI resolves repo_root from its own file
@@ -257,7 +261,14 @@ def _run_prep_cli(
     (dest / "floor.md").write_text("# floor\nlib {{LIB_PATH}} proj {{UV_PROJECT}}\n")
     (dest / "canaries.yaml").write_text(canaries_yaml)
     return subprocess.run(
-        [sys.executable, str(dest / "prep_arms.py"), "--arms-root", str(tmp_path / arms_subdir), "--no-sync"],
+        [
+            sys.executable,
+            str(dest / "prep_arms.py"),
+            "--arms-root",
+            str(tmp_path / arms_subdir),
+            "--no-sync",
+            *(extra_args or []),
+        ],
         capture_output=True,
         text=True,
         timeout=120,
@@ -271,6 +282,18 @@ def test_cli_passes_integrity_on_clean_repo(fake_repo, tmp_path):
     proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)
     assert proc.returncode == 0, proc.stderr
     assert "integrity ok" in proc.stdout
+
+
+def test_cli_bare_arms_flag_is_an_error(fake_repo, tmp_path):
+    """PR #688 delegate: `--arms` with no values (nargs='*' -> []) must error,
+    not silently fall through to building the pre-registered default arms."""
+    canaries_yaml = (
+        'canaries:\n  - {layer: reviewers, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
+    )
+    proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml, extra_args=["--arms"])
+    assert proc.returncode != 0
+    assert "requires at least one arm name" in proc.stderr
+    assert "prepped" not in proc.stdout
 
 
 def test_cli_fails_when_treatment_canary_leaks_into_floor(fake_repo, tmp_path):

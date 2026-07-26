@@ -263,7 +263,12 @@ if __name__ == "__main__":
     failures += [f"floor: {f}" for f in integrity.check_text_leakage(floor_text, set(), canaries)]
     if failures:
         raise SystemExit("pre-prep integrity failed:\n" + "\n".join(failures))
-    for arm in args.arms or ARMS:
+    # nargs="*" makes a bare `--arms` an empty list; that's a user error, not a
+    # request for the defaults.
+    arms = args.arms if args.arms is not None else ARMS
+    if not arms:
+        parser.error("--arms requires at least one arm name; omit the flag to build the default arms")
+    for arm in arms:
         path = prep_arm(arm, repo_root, args.arms_root, floor_text, ref=args.ref, sync=not args.no_sync)
         arm_failures = integrity.check_links(path)
         arm_failures += integrity.check_arm_leakage(path, set(ARM_LAYERS[arm]), canaries)
