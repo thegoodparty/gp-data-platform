@@ -115,8 +115,9 @@ def test_manifest_covers_every_file_with_layer_attribution(fake_repo, tmp_path):
     on_disk = {str(p.relative_to(arm)) for p in arm.rglob("*") if p.is_file() and p.name != "manifest.json"}
     assert set(manifest["files"]) == on_disk
     layers = {f["layer"] for f in manifest["files"].values()}
-    assert layers == {"substrate", "knowledge", "process"}
-    assert manifest["files"][".claude/skills/analytics-process/SKILL.md"]["layer"] == "process"
+    assert layers == {"substrate", "knowledge", "process-docs", "reviewers"}
+    assert manifest["files"][".claude/skills/analytics-process/SKILL.md"]["layer"] == "process-docs"
+    assert manifest["files"][".claude/agents/product-manager.md"]["layer"] == "reviewers"
     assert manifest["files"]["analytics/lib/win_analysis.py"]["layer"] == "knowledge"
     assert manifest["files"]["analytics/lib/databricks_conn.py"]["layer"] == "substrate"
     assert all(len(f["sha256"]) == 64 for f in manifest["files"].values())
@@ -126,6 +127,37 @@ def test_manifest_is_deterministic(fake_repo, tmp_path):
     m1 = _manifest(_prep("knowledge", fake_repo, tmp_path))
     arm2 = prep_arms.prep_arm("knowledge", fake_repo, tmp_path / "arms2", FLOOR, sync=False)
     assert m1 == _manifest(arm2)
+
+
+def test_ablation_arms_layer_composition_and_mandate(fake_repo, tmp_path):
+    """The 2026-07-25 ablation arms: forced_full ships everything full does plus
+    a mandate; the two component arms ship exactly one process component each."""
+    forced = _prep("forced_full", fake_repo, tmp_path / "a")
+    docs = _prep("knowledge_docs", fake_repo, tmp_path / "b")
+    reviewers = _prep("knowledge_reviewers", fake_repo, tmp_path / "c")
+    for arm in (forced, docs, reviewers):
+        assert (arm / "PROCESS_MANDATE.md").exists()
+        assert _manifest(arm)["files"]["PROCESS_MANDATE.md"]["layer"] == "mandate"
+        assert (arm / ".claude" / "skills" / "win-analytics-knowledge").exists()
+    assert (forced / ".claude" / "skills" / "analytics-process").exists()
+    assert (forced / ".claude" / "agents" / "product-manager.md").exists()
+    assert (docs / ".claude" / "skills" / "analytics-process").exists()
+    assert not (docs / ".claude" / "agents").exists()
+    assert not (reviewers / ".claude" / "skills" / "analytics-process").exists()
+    assert (reviewers / ".claude" / "agents" / "product-data-scientist.md").exists()
+    # The pre-registered arms carry no mandate.
+    assert not (_prep("full", fake_repo, tmp_path / "d") / "PROCESS_MANDATE.md").exists()
+
+
+def test_forced_full_file_set_matches_full_except_mandate(fake_repo, tmp_path):
+    """forced_full is full + mandate and nothing else: the ablation must not
+    accidentally vary treatment content."""
+    full = _manifest(_prep("full", fake_repo, tmp_path / "a"))["files"]
+    forced = _manifest(_prep("forced_full", fake_repo, tmp_path / "b"))["files"]
+    assert set(forced) - set(full) == {"PROCESS_MANDATE.md"}
+    assert {k: v["sha256"] for k, v in full.items()} == {
+        k: v["sha256"] for k, v in forced.items() if k != "PROCESS_MANDATE.md"
+    }
 
 
 def test_unknown_arm_raises(fake_repo, tmp_path):
@@ -234,7 +266,7 @@ def _run_prep_cli(
 
 def test_cli_passes_integrity_on_clean_repo(fake_repo, tmp_path):
     canaries_yaml = (
-        'canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
+        'canaries:\n  - {layer: reviewers, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
     )
     proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)
     assert proc.returncode == 0, proc.stderr
@@ -247,7 +279,7 @@ def test_cli_fails_when_treatment_canary_leaks_into_floor(fake_repo, tmp_path):
     to confirm the pre-prep floor-leakage gate fires on its own, not just as
     a side effect of a fresh copy."""
     canaries_yaml = (
-        'canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
+        'canaries:\n  - {layer: reviewers, source: .claude/agents/product-manager.md, phrase: "pm prose"}\n'
     )
     proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml, arms_subdir="arms")
     assert proc.returncode == 0, proc.stderr
@@ -266,7 +298,7 @@ def test_cli_fails_when_treatment_canary_leaks_into_floor(fake_repo, tmp_path):
 
 def test_cli_fails_on_stale_canary(fake_repo, tmp_path):
     canaries_yaml = (
-        "canaries:\n  - {layer: process, source: .claude/agents/product-manager.md, "
+        "canaries:\n  - {layer: reviewers, source: .claude/agents/product-manager.md, "
         'phrase: "not actually in the file"}\n'
     )
     proc = _run_prep_cli(fake_repo, tmp_path, canaries_yaml)

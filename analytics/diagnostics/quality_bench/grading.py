@@ -5,6 +5,7 @@ owns the judged layer)."""
 from __future__ import annotations
 
 import contextlib
+import itertools
 import re
 from dataclasses import dataclass
 
@@ -79,39 +80,112 @@ def check_severity1(answer_text: str, key: Key) -> list[CheckResult]:
     return out
 
 
-def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
-    """Each required_assumptions fork must be surfaced in the answer's assumptions
-    ledger with a non-empty resolution: a bare fork entry says nothing about how
-    the fork was actually resolved."""
-    ledger = _resolutions(block) if block else {}
-    out = []
-    for fork in key.required_assumptions:
-        resolution = ledger.get(fork, "").strip()
-        detail = f"resolved as {resolution!r}" if resolution else "fork missing or resolution empty"
-        out.append(CheckResult(fork, "assumption", bool(resolution), detail))
-    return out
-
-
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
 
+# Tokens too generic to indicate two fork names/resolutions are about the same
+# thing (every ledger entry has a "definition" or touches "users").
+_GENERIC_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "by",
+    "de",
+    "definition",
+    "for",
+    "handling",
+    "in",
+    "is",
+    "no",
+    "not",
+    "of",
+    "on",
+    "or",
+    "per",
+    "the",
+    "to",
+    "via",
+    "with",
+}
+
+
+def _tokens(s: str) -> set[str]:
+    return {t for t in _norm(s).split() if t not in _GENERIC_TOKENS}
+
+
+def _tokens_match(a: str, b: str) -> bool:
+    # Same word, or same 4-char prefix (registered/registration, created/creation,
+    # user/users) — cheap inflection tolerance without a stemmer.
+    return a == b or (len(a) >= 4 and len(b) >= 4 and a[:4] == b[:4])
+
+
+def _token_overlap(a: set[str], b: set[str]) -> int:
+    return sum(1 for x in a if any(_tokens_match(x, y) for y in b))
+
+
+def _find_fork(key_fork: str, ledger: dict[str, str]) -> str | None:
+    """Best ledger fork name for a key fork. Answers invent their own fork slugs
+    (the floor deliberately does not leak the key's names), so exact lookup is
+    the fast path and token overlap the real one: `account_created` should find
+    `account_creation_timestamp`, not miss."""
+    if key_fork in ledger:
+        return key_fork
+    want = _tokens(key_fork)
+    best, best_score = None, 0
+    for name in ledger:
+        score = _token_overlap(want, _tokens(name))
+        if score > best_score:
+            best, best_score = name, score
+    return best
+
+
+def check_assumptions(block: dict | None, key: Key) -> list[CheckResult]:
+    """Each required_assumptions fork must be surfaced in the answer's assumptions
+    ledger with a non-empty resolution: a bare fork entry says nothing about how
+    the fork was actually resolved. Fork names are matched by token overlap, not
+    exact string (see _find_fork)."""
+    ledger = _resolutions(block) if block else {}
+    out = []
+    for fork in key.required_assumptions:
+        name = _find_fork(fork, ledger)
+        resolution = ledger.get(name, "").strip() if name else ""
+        detail = f"as {name!r}: {resolution!r}" if resolution else "fork missing or resolution empty"
+        out.append(CheckResult(fork, "assumption", bool(resolution), detail))
+    return out
+
+
+def _content_match(got: str, want: str) -> bool:
+    g, w = _norm(got), _norm(want)
+    if bool(g) and (w in g or g in w):
+        return True
+    # Free-phrased resolutions rarely containment-match a key slug; two
+    # non-generic token hits is the lenient reported-only fallback.
+    return _token_overlap(_tokens(got), _tokens(want)) >= 2
+
+
 def check_resolutions(block: dict | None, key: Key) -> list[CheckResult]:
     """Compare each resolved fork against the key's expected value (normalized
-    containment either way — models phrase resolutions freely). Reported as the
-    resolutions_match column, NOT gated into the verdict rules: cross-rep
+    containment or token overlap — models phrase resolutions freely). Reported as
+    the resolutions_match column, NOT gated into the verdict rules: cross-rep
     agreement (cell_consistency) is deliberately correctness-blind, and the
     deterministic instrument for a wrong resolution is the numbers themselves —
     key tolerances must be tight enough that the wrong fork's number fails."""
     ledger = _resolutions(block) if block else {}
     out = []
     for fork, expected in key.required_resolutions.items():
-        got = _norm(ledger.get(fork, ""))
-        want = _norm(expected)
-        matched = bool(got) and (want in got or got in want)
-        out.append(
-            CheckResult(fork, "resolution", matched, f"resolved {ledger.get(fork, '')!r}, key {expected!r}")
+        name = _find_fork(fork, ledger)
+        got = ledger.get(name, "") if name else ""
+        # No name match anywhere: fall back to scanning every entry's content,
+        # so a fork filed under an unrecognizable slug still gets credit.
+        matched = (
+            _content_match(got, expected)
+            if got
+            else any(_content_match(r, expected) for r in ledger.values())
         )
+        out.append(CheckResult(fork, "resolution", matched, f"resolved {got!r}, key {expected!r}"))
     return out
 
 
@@ -141,11 +215,18 @@ def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
             else:
                 # Zero mean: identical reps (all zero) are perfectly consistent.
                 spreads[name] = 0.0 if max(vals) == min(vals) else float("inf")
-    forks = set(key.required_resolutions)
+    # Resolution agreement is key-blind AND reported-only: reps invent their own
+    # fork names and phrase resolutions freely, so the comparable set is fork
+    # names two or more reps both surfaced, compared fuzzily. It never gates
+    # `consistent`: key tolerances are set so a divergent fork choice moves the
+    # number, making numeric spread the deterministic instrument (same argument
+    # as check_resolutions).
+    ledgers = [_resolutions(b) for b in parsed]
+    shared = {f for i, led in enumerate(ledgers) for f in led if any(f in o for o in ledgers[i + 1 :])}
     agreement = {}
-    for fork in forks:
-        seen = {_resolutions(b).get(fork) for b in parsed}
-        agreement[fork] = len(seen) == 1 and None not in seen
+    for fork in shared:
+        seen = [led[fork] for led in ledgers if fork in led]
+        agreement[fork] = all(_content_match(a, b) for a, b in itertools.pairwise(seen))
     numbers_ok = all(spreads.get(n, float("inf")) <= t for n, t in tol.items()) if parsed else False
     max_spread = max(spreads.get(n.name, float("inf")) for n in key.numbers) if parsed else float("inf")
     return {
@@ -154,5 +235,5 @@ def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
         "number_spread_pct": spreads,
         "max_spread_pct": max_spread,
         "resolution_agreement": agreement,
-        "consistent": bool(parsed) and numbers_ok and all(agreement.values()),
+        "consistent": bool(parsed) and numbers_ok,
     }

@@ -66,7 +66,7 @@ def test_real_canaries_are_fresh():
     # only checks entries that remain). Adding a canary means bumping this.
     assert len(canaries) == 9
     layers = {c.layer for c in canaries}
-    assert layers == {"knowledge", "process"}
+    assert layers == {"knowledge", "process-docs", "reviewers"}
     assert integrity.check_canary_staleness(canaries, REPO_ROOT) == []
 
 
