@@ -5,7 +5,7 @@ description = "GoodParty.org data loader: generic Databricks -> S3 -> RDS pipeli
 requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.43.51",
-    "psycopg[binary,pool]>=3.2",
+    "psycopg[binary,pool]>=3.3.4",
     "databricks-sdk>=0.121.0",
     "pydantic>=2.8",
     "typer>=0.27.0",

@@ -477,7 +477,7 @@ requires-dist = [
     { name = "moto", extras = ["rds", "ec2"], marker = "extra == 'dev'", specifier = ">=5.2.2" },
     { name = "paramiko", specifier = ">=3.4.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.4" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14" },
