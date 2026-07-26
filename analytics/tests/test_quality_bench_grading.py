@@ -219,6 +219,148 @@ def test_cell_consistency_handles_unparsed_reps():
     assert cell["n_parsed"] == 2
 
 
+def test_check_assumptions_free_form_fork_names():
+    """2026-07-25 batch regression: answers invent their own fork slugs (the floor
+    never leaks the key's names), so matching is token-overlap, not exact. These
+    are the actual q01 key forks vs the fork names a full-arm run emitted."""
+    key = make_key(
+        required_assumptions=[
+            "account_created",
+            "internal_accounts",
+            "demo_accounts",
+            "month_bucketing",
+            "population",
+        ]
+    )
+    answer = """```yaml
+results:
+  numbers:
+    total_users_jan: 9885
+  assumptions:
+    - fork: win_user_population_table
+      resolution: mart_analytics.users_win_base (user grain)
+    - fork: account_creation_timestamp
+      resolution: registered_at
+    - fork: internal_account_definition
+      resolution: email ILIKE '%@goodparty.org' excluded
+    - fork: demo_account_handling
+      resolution: demo exclusion applied in cross-check
+    - fork: month_boundary_timezone
+      resolution: calendar month of stored timestamp
+```"""
+    block = grading.parse_results_block(answer)
+    by_fork = {c.check_id: c.passed for c in grading.check_assumptions(block, key)}
+    assert by_fork == {
+        "account_created": True,
+        "internal_accounts": True,
+        "demo_accounts": True,
+        "month_bucketing": True,
+        "population": True,
+    }
+
+
+def test_check_resolutions_free_form_fork_and_phrasing():
+    """Key slug and answer phrasing share no containment, only tokens; two
+    non-generic token hits count, zero must not."""
+    key = make_key(
+        required_resolutions={
+            "account_created": "db_registration (registered_at / gp_api user.created_at; NOT onboarding-gated)",
+            "internal_accounts": "exclude_goodparty_org_email_domain",
+        }
+    )
+    answer = """```yaml
+results:
+  numbers:
+    total_users_jan: 9885
+  assumptions:
+    - fork: account_creation_timestamp
+      resolution: registered_at from the users mart
+    - fork: internal_account_definition
+      resolution: dropped rows where email matches goodparty.org domain
+```"""
+    block = grading.parse_results_block(answer)
+    by_fork = {c.check_id: c.passed for c in grading.check_resolutions(block, key)}
+    assert by_fork == {"account_created": True, "internal_accounts": True}
+    # A resolution about something else entirely still fails.
+    wrong_key = make_key(required_resolutions={"account_created": "onboarding_completion_event"})
+    assert grading.check_resolutions(block, wrong_key)[0].passed is False
+
+
+def test_cell_consistency_key_blind_fork_agreement():
+    """Reps agreeing on their OWN fork names count as consistent even when those
+    names match nothing in the key; a fork surfaced by only one rep is not a
+    disagreement."""
+    key = make_key(required_resolutions={"denominator": "cumulative"})
+
+    def rep(res: str, extra: bool = False) -> dict:
+        assumptions = [{"fork": "my_own_slug", "resolution": res}]
+        if extra:
+            assumptions.append({"fork": "only_in_one_rep", "resolution": "whatever"})
+        return {"results": {"numbers": {"total_users_jan": 9880}, "assumptions": assumptions}}
+
+    cell = grading.cell_consistency(
+        [rep("cumulative"), rep("cumulative"), rep("cumulative", extra=True)], key
+    )
+    assert cell["consistent"] is True
+    assert cell["resolution_agreement"] == {"my_own_slug": True}
+    # Divergent resolution phrasing with agreeing numbers: numbers are the
+    # instrument, so the cell stays consistent; the disagreement is reported.
+    cell = grading.cell_consistency([rep("cumulative"), rep("monthly active")], key)
+    assert cell["consistent"] is True
+    assert cell["resolution_agreement"] == {"my_own_slug": False}
+
+
+def test_cell_consistency_cross_rep_variant_fork_names():
+    """PR #688 delegate: reps spell the same fork concept differently, so
+    cross-rep matching must be fuzzy — variant slugs with divergent resolutions
+    are a reported disagreement, not silently absent."""
+    key = make_key()
+
+    def rep(fork: str, res: str) -> dict:
+        return {
+            "results": {
+                "numbers": {"total_users_jan": 9880},
+                "assumptions": [{"fork": fork, "resolution": res}],
+            }
+        }
+
+    cell = grading.cell_consistency(
+        [rep("account_creation_timestamp", "registered_at"), rep("account_created_at", "onboarded_at")], key
+    )
+    assert cell["resolution_agreement"] == {"account_creation_timestamp": False}
+    cell = grading.cell_consistency(
+        [rep("account_creation_timestamp", "registered_at"), rep("account_created_at", "registered_at")], key
+    )
+    assert cell["resolution_agreement"] == {"account_creation_timestamp": True}
+
+
+def test_content_match_rejects_empty_sides():
+    """PR #688 Bugbot: '' in s is vacuously True — an empty resolution must not
+    agree with a non-empty one in either direction, nor with another empty."""
+    assert grading._content_match("", "registered_at") is False
+    assert grading._content_match("registered_at", "") is False
+    assert grading._content_match("", "") is False
+
+
+def test_check_resolutions_matched_fork_with_empty_resolution_fails():
+    """PR #688 Bugbot: a name-matched fork with an empty resolution is
+    unresolved; it must not fall through to the whole-ledger content scan and
+    pass on an unrelated entry's overlap."""
+    key = make_key(required_resolutions={"denominator": "cumulative registered users"})
+    answer = """```yaml
+results:
+  numbers:
+    total_users_jan: 9885
+  assumptions:
+    - fork: denominator
+      resolution: null
+    - fork: unrelated_note
+      resolution: cumulative registered users mentioned in passing
+```"""
+    block = grading.parse_results_block(answer)
+    assert grading.check_resolutions(block, key)[0].passed is False
+
+
 def test_cell_consistency_sparse_number_reports_inf_spread():
     key = make_key(
         numbers=[NumberSpec("total_users_jan", 9880.0, 0.5), NumberSpec("activated_jan", 100.0, 0.5)]

@@ -133,8 +133,12 @@ severity1_patterns:
   # The known single-event near-miss for May dashboard views, stated as the
   # answer value.
   - "viewed_dashboard_2026_05\\D{0,15}\\b157\\b"
-  # Reading the fake completion collapse as a real product finding.
-  - "(onboarding|completion)[^.]{0,80}(collaps|dropped to (near[- ])?zero)"
+  # A prose-shaped pattern for "reading the fake completion collapse as a real
+  # product finding" was DROPPED 2026-07-25 (#671 rule: negation-blind): it
+  # fired on correct acquisition-mix prose ("paid share ... collapsed" near the
+  # word "onboarding") in 2 judge-clean runs and never on a true misread. The
+  # real dead-event trap stays guarded by the numeric onboarded_2026_05
+  # pattern above (true positive confirmed on bare r1, judge concurring).
 required_assumptions:
   - denominator
   - internal_accounts

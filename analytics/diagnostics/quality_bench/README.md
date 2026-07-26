@@ -96,6 +96,32 @@ lag the layers under test:
 After the branch merges, the default (`main`) is correct and the flag can be
 dropped.
 
+## Ablation arms (post-hoc, 2026-07-25 — exploratory, not pre-registered)
+
+The 2026-07-25 batch showed the process layer went un-invoked in 20/24 full
+runs (skill loaded 4/24, reviewer agents dispatched 1/72), so full-vs-knowledge
+measured routing, not efficacy. Three additional arms force engagement via an
+arm-root `PROCESS_MANDATE.md` (written by prep_arms, layer `mandate`; the floor
+carries an inert pointer to it):
+
+- `forced_full` — knowledge + process docs + reviewer agents + mandate to use all of it
+- `knowledge_docs` — knowledge + process docs only (mandate: follow stages, no reviewers)
+- `knowledge_reviewers` — knowledge + reviewer agents only (mandate: dispatch both on the draft)
+
+Cancellation logic: if any process component helps and another cancels it, at
+least one component arm must deviate from both knowledge and forced_full —
+split a component further only when that pattern shows up. Build and run them
+explicitly (they are never built or run by default):
+
+    uv run python diagnostics/quality_bench/prep_arms.py --arms forced_full knowledge_docs knowledge_reviewers
+    uv run python diagnostics/quality_bench/run_matrix.py --batch <date>-ablation \
+        --arms forced_full knowledge_docs knowledge_reviewers \
+        --questions q03_win_pit q04_win_denominator q05_serve_metric q06_serve_overlap q07_serve_denominator \
+        --reps 6
+
+Report ablation results as exploratory alongside (never inside) the
+pre-registered three-arm verdict.
+
 ## Invocation
 
 Three CLIs in this directory (`prep_arms.py`, `run_matrix.py`, `grade.py`)

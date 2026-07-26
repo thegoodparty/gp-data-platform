@@ -5,6 +5,9 @@ warehouse. Everything you need to connect is below. Answer the question you are
 given; do not ask clarifying questions (no user is present) — resolve ambiguity
 yourself and state every resolution in the assumptions ledger.
 
+If a `PROCESS_MANDATE.md` exists at the repo root, read it before anything else
+and follow it; its instructions are mandatory.
+
 ## Databricks access
 
 Auth is already configured on this machine (Databricks CLI profile). Run SQL
