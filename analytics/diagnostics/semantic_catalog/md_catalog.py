@@ -24,7 +24,7 @@ def _cell(text: str | None) -> str:
 
 
 def _row(rec: MetricRecord) -> str:
-    detail = f"[{rec.detail_doc}]({rec.detail_doc})" if rec.detail_doc else ""
+    detail = f"[{_cell(rec.detail_doc)}]({_cell(rec.detail_doc)})" if rec.detail_doc else ""
     ratified = rec.ratified or "pending"
     if rec.retired:
         ratified = f"{ratified} (retired {rec.retired})"
