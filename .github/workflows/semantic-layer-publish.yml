@@ -89,7 +89,12 @@ jobs:
           set -euo pipefail
           # LIVE-VERIFY SEAM: SLACK_BOT_TOKEN is not yet provisioned. Once it
           # lands, confirm this chat.postMessage payload (channel id, scopes)
-          # against the live Slack API before relying on it.
+          # against the live Slack API before relying on it. Until then, skip
+          # cleanly so the first governed merge does not red-fail this job.
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+            echo "SLACK_BOT_TOKEN not provisioned; skipping Slack notification."
+            exit 0
+          fi
           RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
@@ -106,7 +111,12 @@ jobs:
           # LIVE-VERIFY SEAM: CLICKUP_API_TOKEN and SEMANTIC_LAYER_CLICKUP_PAGE_ID
           # are not yet provisioned. Once they land, confirm the v3 page-update
           # body shape (content/content_format, page vs subpage semantics)
-          # against the live ClickUp API before relying on it.
+          # against the live ClickUp API before relying on it. Until then, skip
+          # cleanly so the first governed merge does not red-fail this job.
+          if [ -z "${CLICKUP_API_TOKEN:-}" ] || [ -z "${PAGE_ID:-}" ]; then
+            echo "ClickUp secrets not provisioned; skipping ClickUp upsert."
+            exit 0
+          fi
           curl -sf -X PUT "https://api.clickup.com/api/v3/docs/pages/$PAGE_ID" \
             -H "Authorization: $CLICKUP_API_TOKEN" \
             -H "Content-Type: application/json" \

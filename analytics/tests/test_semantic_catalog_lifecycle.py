@@ -1,4 +1,6 @@
-from semantic_catalog.lifecycle import derive
+import subprocess
+
+from semantic_catalog.lifecycle import Lifecycle, derive
 
 
 def _fake_git(commits):
@@ -39,3 +41,12 @@ def test_derive_handles_untracked_file():
     lc = derive("never_committed.yml", run_git=run_git)
     assert lc.created is None
     assert lc.last_updated is None
+
+
+def test_derive_degrades_on_git_error():
+    # git missing / shallow clone / corrupt repo: return an empty lifecycle
+    # rather than propagating the exception and crashing the generator.
+    def run_git(args):
+        raise subprocess.CalledProcessError(128, ["git", "log"])
+
+    assert derive("x.yml", run_git=run_git) == Lifecycle(None, None, None, None)

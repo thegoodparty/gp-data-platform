@@ -35,7 +35,13 @@ def _pr(subject: str) -> str | None:
 
 
 def derive(yaml_file: str, run_git=_default_run_git) -> Lifecycle:
-    out = run_git(["log", "--follow", f"--format=%ad{_SEP}%s", "--date=short", "--", yaml_file])
+    try:
+        out = run_git(["log", "--follow", f"--format=%ad{_SEP}%s", "--date=short", "--", yaml_file])
+    except (subprocess.SubprocessError, OSError):
+        # git missing, shallow clone where --follow is unavailable, corrupt
+        # repo, etc.: degrade to an empty lifecycle rather than crashing the
+        # generator (same graceful-degradation as the no-history case below).
+        return Lifecycle(None, None, None, None)
     lines = [ln for ln in out.splitlines() if ln.strip()]
     if not lines:
         return Lifecycle(None, None, None, None)
