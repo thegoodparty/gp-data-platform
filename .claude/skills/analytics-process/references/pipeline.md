@@ -27,10 +27,11 @@ The pipeline's robustness is invisible unless narrated: from the user's seat, un
 stages read as delay. Three always-on conventions keep the chat transcript legible; each is one
 line, near-zero cost.
 
-**TodoWrite tree.** At the start of a run, seed a `TodoWrite` list with one item per step of the
-senior-analyst loop plus the two hard gates (approve framing, results checkpoint), and flip each
-to `in_progress`/`completed` as you advance. The harness pins and re-renders the active list, so
-it reads as a live progress tree — the at-a-glance complement to the per-transition banners below.
+**TodoWrite tree.** At the start of a run, seed a `TodoWrite` list with the staged to-do items
+the runbook names (frame → approve framing → execute → results checkpoint → review → calibrate),
+and flip each to `in_progress`/`completed` as you advance. The harness pins and re-renders the
+active list, so it reads as a live progress tree — the at-a-glance complement to the
+per-transition banners below.
 
 **Stage banner.** At every transition into a step of the senior-analyst loop (the skill's
 6-step numbering), open with one line:
