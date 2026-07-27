@@ -29,7 +29,7 @@ def _row(rec: MetricRecord) -> str:
     if rec.retired:
         ratified = f"{ratified} (retired {rec.retired})"
     concept = f"**{_cell(rec.label)}**"
-    return f"| {concept} | {_cell(rec.definition)} | {_cell(rec.source)} " f"| {detail} | {ratified} |"
+    return f"| {concept} | {_cell(rec.definition)} | {_cell(rec.source)} " f"| {detail} | {_cell(ratified)} |"
 
 
 def render_rows(records: list[MetricRecord]) -> str:

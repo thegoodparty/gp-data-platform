@@ -57,7 +57,7 @@ def _catalog(records: list[MetricRecord], lifecycles: dict[str, Lifecycle]) -> s
             ratified = f"{ratified} (retired {rec.retired})"
         rows.append(
             f"| {_cell(rec.label)} | {_cell(rec.definition)} | {rec.metric_type} | {_cell(rec.source)} "
-            f"| {_cell(rec.owner or '')} | {ratified} | {_lifecycle_cell(lc)} | {detail} |"
+            f"| {_cell(rec.owner or '')} | {_cell(ratified)} | {_lifecycle_cell(lc)} | {detail} |"
         )
     return f"{CATALOG_BEGIN}\n" + "\n".join(rows) + f"\n{CATALOG_END}"
 
