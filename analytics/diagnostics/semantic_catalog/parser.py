@@ -36,7 +36,7 @@ def parse_semantic_file(path: Path) -> list[MetricRecord]:
     models = doc.get("semantic_models") or []
     # A sem_*.yml holds one primary source; use the first model's `model:` ref
     # as the source for its metrics. Dimensions are the union across models.
-    default_source = models[0]["model"] if models else ""
+    default_source = models[0].get("model", "") if models else ""
     dims = _dimensions_for(models)
 
     records: list[MetricRecord] = []
