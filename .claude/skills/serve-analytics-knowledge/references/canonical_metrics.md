@@ -32,3 +32,9 @@ explicitly in the analysis and flag it as a candidate registry row in the calibr
 **Outcome note (from the DATA-2115 decisions):** People Served is the decision-level outcome;
 **retention on broad engagement** is the per-user analysis outcome. Re-election / continuation
 in office is parked until officeholder data lands in civics.
+
+<!-- semantic-catalog:begin -->
+| Concept | Governed definition (one line) | Source | Owns detail | Ratified |
+|---|---|---|---|---|
+| **Active Serve Users** | Count of active serve users: completed Serve onboarding by sending an SMS poll AND pledged. Definition owned by int__serve_active_user, surfaced through users_serve_base; the gold membership view users_serve_active exposes the same population for direct dashboard reads. Time series bucket by onboarding-completion date (the metric's aggregation time is first_sms_poll_sent_at), not by pledge or account registration date. | ref('users_serve_base') | [sources.md](sources.md) | pending |
+<!-- semantic-catalog:end -->

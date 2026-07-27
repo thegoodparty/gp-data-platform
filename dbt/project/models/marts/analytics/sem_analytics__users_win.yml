@@ -51,3 +51,7 @@ metrics:
     type: simple
     type_params:
       measure: win_user_count
+    config:
+      meta:
+        owner: semantic-layer-data
+        detail_doc: engagement.md

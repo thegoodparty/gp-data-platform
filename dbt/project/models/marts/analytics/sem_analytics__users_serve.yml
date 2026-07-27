@@ -63,3 +63,7 @@ metrics:
     type: simple
     type_params:
       measure: active_serve_user_count
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: sources.md

@@ -56,3 +56,39 @@ def test_region_is_current_false_on_half_marked_file(tmp_path):
     target.write_text(f"# Canonical metrics\n\n{BEGIN_MARK}\nrows but no end marker\n")
     records = parse_semantic_tree(cli.SEM_ROOTS)
     assert cli.region_is_current(target, records) is False
+
+
+def test_records_by_target_routes_each_metric_to_its_skill():
+    # Per-skill projection: each product's cheat sheet gets only its own
+    # metrics. Civics outcome metrics route to Win (outcomes.md lives there).
+    records = parse_semantic_tree(cli.SEM_ROOTS)
+    grouped = cli.records_by_target(records)
+    win_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["win-analytics-knowledge"]]}
+    serve_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["serve-analytics-knowledge"]]}
+
+    assert win_names == {"win_users", "goodparty_win_rate", "goodparty_cumulative_wins"}
+    assert serve_names == {"active_serve_users"}
+    assert "active_serve_users" not in win_names
+
+
+def test_records_by_target_raises_on_unmapped_sem_file():
+    import pytest
+    from semantic_catalog.records import MetricRecord
+
+    stray = MetricRecord(
+        name="stray",
+        label="Stray",
+        definition="x",
+        metric_type="simple",
+        source="ref('m')",
+        dimensions=(),
+        filter=None,
+        owner=None,
+        ratified=None,
+        detail_doc=None,
+        retired=None,
+        yaml_file="sem_unmapped__thing.yml",
+        kind="metric",
+    )
+    with pytest.raises(ValueError):
+        cli.records_by_target([stray])
