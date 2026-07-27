@@ -1,0 +1,58 @@
+semantic_models:
+  - name: users_demo
+    description: Fixture semantic model for parser tests.
+    model: ref('users_demo_base')
+    defaults:
+      agg_time_dimension: registered_at
+    entities:
+      - name: user
+        type: primary
+        expr: user_id
+    dimensions:
+      - name: registered_at
+        type: time
+        type_params:
+          time_granularity: day
+      - name: is_activated
+        description: Has sent at least one outreach campaign.
+        type: categorical
+    measures:
+      - name: demo_user_count
+        agg: sum
+        expr: "1"
+
+metrics:
+  - name: activated_users
+    label: Activated Users
+    description: Count of users who have sent at least one outreach campaign.
+    type: simple
+    type_params:
+      measure: demo_user_count
+    filter: "{{ Dimension('user__is_activated') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        ratified: '2026-07-24'
+        detail_doc: engagement.md
+  - name: demo_users
+    label: Demo Users
+    description: Count of demo users.
+    type: simple
+    type_params:
+      measure: demo_user_count
+
+exposures:
+  - name: demo_external_retention
+    label: Demo External Retention
+    type: analysis
+    description: Externally-defined retention rate.
+    url: https://example.amplitude.com/chart/abc123
+    owner:
+      name: analytics-team
+      email: analytics@example.org
+    config:
+      meta:
+        owner: semantic-layer-business
+        ratified: '2026-07-20'
+        detail_doc: engagement.md
+        definition: Share of activated users returning in week one.

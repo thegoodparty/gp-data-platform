@@ -1,0 +1,11 @@
+# Team slugs and roles for the two review groups. NO person names (repo rule).
+# Per-metric ownership lives in each metric's config.meta.owner, not here.
+# Human display names for the ClickUp decision-makers section come from an
+# untracked file at publish time, never from this file.
+teams:
+  data:
+    slug: semantic-layer-data
+    role: Technical review — builds, conventions, value-for-value parity.
+  business:
+    slug: semantic-layer-business
+    role: Ratification — confirms the definition itself is correct.

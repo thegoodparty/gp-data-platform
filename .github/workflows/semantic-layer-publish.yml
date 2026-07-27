@@ -1,0 +1,134 @@
+name: semantic-layer-publish
+on:
+  push:
+    branches: [main]
+    paths: ['dbt/project/models/**/sem_*.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Regenerate ClickUp page from merged state
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          # canonical_metrics.md is regenerated and committed in the same PR
+          # that changes a sem_*.yml (enforced by the catalog-freshness PR
+          # check), so main is already in sync. We do NOT --write or push to
+          # main here (main is protected). Only build the ClickUp page for the
+          # upsert below.
+          uv run python -m semantic_catalog.cli --emit-clickup /tmp/clickup_page.md
+      - name: Re-derive review coverage for the merged PR
+        id: coverage
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Until ORG_READ_TOKEN is provisioned, GH_TOKEN is empty and the gh
+          # calls below would fail the job. Record conservative coverage and
+          # skip cleanly instead of red-failing the first governed merge.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ORG_READ_TOKEN not provisioned; recording conservative coverage."
+            {
+              echo 'COV={"data":false,"business":false}'
+              echo 'PR_URL=(coverage unavailable until ORG_READ_TOKEN is provisioned)'
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Cross-run outputs from the composition-check workflow are not
+          # available here, so re-derive coverage from the live GitHub API
+          # against the PR that introduced this merge commit.
+          PR=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')
+          if [ -n "$PR" ]; then
+            # Count only each reviewer's LATEST review, so a superseded or
+            # dismissed approval no longer counts as current coverage.
+            APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" \
+              --jq 'group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").user.login) | join(",")')
+            DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
+            BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
+            COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
+              uv run python -m semantic_catalog.composition)
+            PR_URL="https://github.com/$REPO/pull/$PR"
+          else
+            # No PR found for this commit (e.g. a direct push to main): fall
+            # back to the conservative "incomplete" default rather than
+            # guessing at approval state.
+            COV='{"data":false,"business":false}'
+            PR_URL="(direct push to main — no PR)"
+          fi
+          echo "COV=$COV" >> "$GITHUB_ENV"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+      - name: Build Slack change summary
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # No prior commit to diff against — emit with an empty before-set.
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
+          else
+            git worktree add --detach /tmp/base "$BEFORE"
+            uv run python -m semantic_catalog.cli \
+              --emit-slack /tmp/slack.txt \
+              --base-dir /tmp/base \
+              --pr-url "$PR_URL" \
+              --coverage "$COV"
+            git worktree remove --force /tmp/base
+          fi
+      - name: Post Slack change summary
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # LIVE-VERIFY SEAM: SLACK_BOT_TOKEN is not yet provisioned. Once it
+          # lands, confirm this chat.postMessage payload (channel id, scopes)
+          # against the live Slack API before relying on it. Until then, skip
+          # cleanly so the first governed merge does not red-fail this job.
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+            echo "SLACK_BOT_TOKEN not provisioned; skipping Slack notification."
+            exit 0
+          fi
+          RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/json; charset=utf-8" \
+            --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')")
+          # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
+          # channel, missing scope, auth), so check the body, not just status.
+          echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
+      - name: Upsert ClickUp reference page
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          PAGE_ID: ${{ secrets.SEMANTIC_LAYER_CLICKUP_PAGE_ID }}
+        run: |
+          set -euo pipefail
+          # LIVE-VERIFY SEAM: CLICKUP_API_TOKEN and SEMANTIC_LAYER_CLICKUP_PAGE_ID
+          # are not yet provisioned. Once they land, confirm the v3 page-update
+          # body shape (content/content_format, page vs subpage semantics)
+          # against the live ClickUp API before relying on it. Until then, skip
+          # cleanly so the first governed merge does not red-fail this job.
+          if [ -z "${CLICKUP_API_TOKEN:-}" ] || [ -z "${PAGE_ID:-}" ]; then
+            echo "ClickUp secrets not provisioned; skipping ClickUp upsert."
+            exit 0
+          fi
+          curl -sf -X PUT "https://api.clickup.com/api/v3/docs/pages/$PAGE_ID" \
+            -H "Authorization: $CLICKUP_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$(python3 -c 'import json;print(json.dumps({"content":open("/tmp/clickup_page.md").read(),"content_format":"text/md"}))')"
