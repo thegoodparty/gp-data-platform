@@ -38,7 +38,12 @@ PKG = Path(__file__).parent
 def region_is_current(target: Path, records: list[MetricRecord]) -> bool:
     if not target.exists():
         return False
-    return splice_region(target.read_text(), render_region(records)) == target.read_text()
+    try:
+        return splice_region(target.read_text(), render_region(records)) == target.read_text()
+    except ValueError:
+        # Half-marked/corrupt file (one marker present): report as not current
+        # so --check fails cleanly as stale, not with an uncaught traceback.
+        return False
 
 
 def write_region(target: Path, records: list[MetricRecord]) -> None:

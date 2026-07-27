@@ -45,3 +45,14 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert "http://pr/1" in text
     assert "incomplete" in text.lower()
     assert "business" in text.lower()
+
+
+def test_region_is_current_false_on_half_marked_file(tmp_path):
+    # One marker present (corrupt/merge-conflict): --check should treat the
+    # file as stale (return False), not crash with an uncaught ValueError.
+    from semantic_catalog.md_catalog import BEGIN_MARK
+
+    target = tmp_path / "canonical_metrics.md"
+    target.write_text(f"# Canonical metrics\n\n{BEGIN_MARK}\nrows but no end marker\n")
+    records = parse_semantic_tree(cli.SEM_ROOTS)
+    assert cli.region_is_current(target, records) is False

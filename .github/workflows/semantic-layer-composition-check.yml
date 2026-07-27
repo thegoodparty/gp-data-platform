@@ -30,6 +30,14 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Until ORG_READ_TOKEN is provisioned, GH_TOKEN is empty and gh would
+          # exit non-zero under set -e. Report conservative coverage and skip,
+          # same as the publish workflow's coverage step.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ORG_READ_TOKEN not provisioned; skipping composition check."
+            echo 'coverage={"data":false,"business":false}' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # Count only each reviewer's LATEST review, so a superseded or
           # dismissed approval no longer counts as current coverage.
           APPROVERS=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
