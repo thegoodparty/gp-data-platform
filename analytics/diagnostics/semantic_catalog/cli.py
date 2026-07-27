@@ -33,8 +33,6 @@ MD_TARGETS = [
     SKILLS_ROOT / "serve-analytics-knowledge" / "references" / "canonical_metrics.md",
 ]
 PKG = Path(__file__).parent
-OWNERS = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
-SOP_MD = (PKG / "templates" / "sop.md").read_text()
 
 
 def region_is_current(target: Path, records: list[MetricRecord]) -> bool:
@@ -82,7 +80,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote {t}")
 
     if args.emit_clickup:
-        page = render_page(records, _lifecycles(records), SOP_MD, OWNERS)
+        owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
+        sop_md = (PKG / "templates" / "sop.md").read_text()
+        page = render_page(records, _lifecycles(records), sop_md, owners)
         args.emit_clickup.write_text(page)
         print(f"wrote {args.emit_clickup}")
 

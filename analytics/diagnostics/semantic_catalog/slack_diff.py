@@ -42,7 +42,8 @@ def render_message(
     body.append("")
     missing = [g for g in ("data", "business") if not coverage.get(g)]
     if missing:
-        body.append(f":warning: review incomplete — missing approval from: {', '.join(missing)} group")
+        noun = "group" if len(missing) == 1 else "groups"
+        body.append(f":warning: review incomplete — missing approval from: {', '.join(missing)} {noun}")
     else:
         body.append(":white_check_mark: review complete — both groups approved")
     return "\n".join(body)

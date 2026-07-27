@@ -41,6 +41,13 @@ def test_message_flags_incomplete_review():
     assert "http://pr/1" in msg
     assert "incomplete" in msg.lower() or "missing" in msg.lower()
     assert "business" in msg.lower()
+    assert "business group" in msg.lower()
+    assert "business groups" not in msg.lower()
+
+
+def test_message_flags_incomplete_review_both_groups_pluralizes():
+    msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": False, "business": False})
+    assert "data, business groups" in msg.lower()
 
 
 def test_message_confirms_complete_review():

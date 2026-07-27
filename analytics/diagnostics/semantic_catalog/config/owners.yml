@@ -1,4 +1,5 @@
-# Team slugs and the metric -> owning-team map. NO person names (repo rule).
+# Team slugs and roles for the two review groups. NO person names (repo rule).
+# Per-metric ownership lives in each metric's config.meta.owner, not here.
 # Human display names for the ClickUp decision-makers section come from an
 # untracked file at publish time, never from this file.
 teams:
