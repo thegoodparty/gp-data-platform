@@ -14,9 +14,15 @@ work*, not *what is true about the data*.
 
 An index, not the specification: each step's operational detail lives in its reference doc,
 and the stage/actor/gate topology lives in [`references/pipeline.md`](references/pipeline.md),
-the single description of the pipeline flow. Two legibility conventions are always on —
-announce each step transition with a one-line stage banner, and each cleared checkpoint with a
-gate receipt; formats and stock why-clauses live in `pipeline.md` ("Legibility").
+the single description of the pipeline flow. Three legibility conventions are always on —
+seed a `TodoWrite` list at the start of a run with the staged to-do items the runbook names —
+**frame**, **approve framing** (hard gate), **execute**, **results checkpoint** (hard gate),
+**review**, **calibrate** — and flip each to `in_progress`/`completed` as you advance (the
+pinned tree is the at-a-glance progress view, and the two hard gates are items so they can't be
+skipped);
+announce each step transition with a one-line stage banner; and mark each cleared checkpoint
+with a gate receipt. Banner/receipt formats and stock why-clauses live in `pipeline.md`
+("Legibility").
 
 1. **Clarify and scope (framing).** Run the framing routine ([`references/framing.md`](references/framing.md)) in your own context — it converses with the user. No execution code until the human approves the framing.
 2. **Find sources.** Resolve every concept through the knowledge skill, and verify named tables/columns/events against the live catalog — docs drift.
