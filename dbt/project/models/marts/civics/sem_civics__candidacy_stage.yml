@@ -47,6 +47,10 @@ metrics:
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} >= '2026-01-01'
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < '2027-01-01'
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < current_date()
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: outcomes.md
 
   - name: goodparty_cumulative_wins
     label: GoodParty Cumulative Wins
@@ -63,3 +67,7 @@ metrics:
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} >= '2026-01-01'
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < '2027-01-01'
       and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < current_date()
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: outcomes.md

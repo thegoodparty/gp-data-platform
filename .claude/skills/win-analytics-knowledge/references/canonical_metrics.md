@@ -32,3 +32,11 @@ When a question names a concept not in this table, fall through to the per-domai
 table in the knowledge skill's `SKILL.md`. When you define a genuinely new canonical metric,
 add a row here (and have the owner ratify it) rather than letting the definition live only in
 a domain doc.
+
+<!-- semantic-catalog:begin -->
+| Concept | Governed definition (one line) | Source | Owns detail | Ratified |
+|---|---|---|---|---|
+| **GoodParty Cumulative Wins** | Running total of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. Accumulates all time, so each period shows the cumulative win count to date. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
+| **GoodParty Win Rate** | Count of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
+| **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | pending |
+<!-- semantic-catalog:end -->
