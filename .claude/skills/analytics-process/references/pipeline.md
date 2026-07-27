@@ -21,11 +21,16 @@ doc documents the flow; a human (or the process skill stepping through it) drive
 | 3 | **Review (methodology + interpretation)** | `product-data-scientist` | the executed notebook, read against the brief | a methodology review + an interpretation of results | Read-only and advisory. Surfaces leakage / survivorship / calibration concerns and interprets effect sizes. Does not edit code or open PRs. |
 | + | **Review (usefulness)** | `product-manager` | the plan or the deliverable | a framing / actionability review | Read-only and advisory. Asks whether this answers the team's real question and whether names/segments/thresholds match how consumers think. Invoked proactively at plan checkpoints and pre-PR — a checkpoint, not a strict sequence position. |
 
-## Legibility: stage banners and gate receipts
+## Legibility: stage banners, gate receipts, and the TodoWrite tree
 
 The pipeline's robustness is invisible unless narrated: from the user's seat, unannounced
-stages read as delay. Two always-on conventions keep the chat transcript legible; each is one
+stages read as delay. Three always-on conventions keep the chat transcript legible; each is one
 line, near-zero cost.
+
+**TodoWrite tree.** At the start of a run, seed a `TodoWrite` list with one item per step of the
+senior-analyst loop plus the two hard gates (approve framing, results checkpoint), and flip each
+to `in_progress`/`completed` as you advance. The harness pins and re-renders the active list, so
+it reads as a live progress tree — the at-a-glance complement to the per-transition banners below.
 
 **Stage banner.** At every transition into a step of the senior-analyst loop (the skill's
 6-step numbering), open with one line:

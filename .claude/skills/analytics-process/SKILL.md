@@ -15,8 +15,11 @@ work*, not *what is true about the data*.
 An index, not the specification: each step's operational detail lives in its reference doc,
 and the stage/actor/gate topology lives in [`references/pipeline.md`](references/pipeline.md),
 the single description of the pipeline flow. Three legibility conventions are always on —
-seed a `TodoWrite` list with one item per loop step below at the start of a run and flip each
-to `in_progress`/`completed` as you advance (the pinned tree is the at-a-glance progress view);
+seed a `TodoWrite` list at the start of a run with these items in order — **frame**, **approve
+framing** (hard gate), **find sources**, **brief**, **execute**, **results checkpoint** (hard
+gate), **review**, **close the loop** — and flip each to `in_progress`/`completed` as you
+advance (the pinned tree is the at-a-glance progress view, and the two hard gates are items so
+they can't be skipped);
 announce each step transition with a one-line stage banner; and mark each cleared checkpoint
 with a gate receipt. Banner/receipt formats and stock why-clauses live in `pipeline.md`
 ("Legibility").
