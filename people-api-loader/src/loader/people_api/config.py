@@ -187,9 +187,12 @@ class LoaderConfig(BaseLoaderConfig):
         # RDS create policies condition on `RequestTag/managedBy=dataplatform`, so
         # loader-created RDS resources must carry it to be authorized.
         tags = {
-            "Project": os.environ.get("LOADER_TAG_PROJECT", "gp-api"),
+            # _env() (not raw os.environ.get) so an Astro-injected trailing newline is
+            # stripped: managedBy is checked by an IAM RequestTag condition, so
+            # "dataplatform\n" would fail it and return an opaque AccessDenied.
+            "Project": _env("LOADER_TAG_PROJECT", "gp-api"),
             "Environment": env,
-            "managedBy": os.environ.get("LOADER_TAG_MANAGED_BY", "dataplatform"),
+            "managedBy": _env("LOADER_TAG_MANAGED_BY", "dataplatform"),
         }
 
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
