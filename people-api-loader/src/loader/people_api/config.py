@@ -41,6 +41,7 @@ DEFAULT_S3_BUCKET = ""
 # with the serving cluster). connect_prod/connect_new fetch and decrypt at connect time —
 # nothing connection-related is committed here.
 DEFAULT_ENVIRONMENT = "dev"
+_VALID_ENVIRONMENTS = ("dev", "qa", "prod")
 CONN_PARAM_PREFIX = "people-db-connection-string"
 
 # Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
@@ -179,6 +180,14 @@ class LoaderConfig(BaseLoaderConfig):
         # keys the SSM connection-string parameter names, the dated cluster identifiers
         # (new_cluster_id etc.), and the Environment tag below, so all three stay in sync.
         env = _env("ENVIRONMENT", DEFAULT_ENVIRONMENT)
+        if env not in _VALID_ENVIRONMENTS:
+            # Fail fast: a typo (e.g. "production") would build the wrong SSM parameter
+            # name and an Environment tag that misses the IAM RequestTag/Environment
+            # condition, surfacing only as an opaque AccessDenied much later.
+            raise RuntimeError(
+                f"ENVIRONMENT={env!r} is not a recognized deployment environment "
+                f"(one of {', '.join(_VALID_ENVIRONMENTS)})."
+            )
 
         # Tagging for loader-created resources. The IAM role this loader runs under
         # conditions its RDS create/manage actions on `RequestTag/Environment = {env}`

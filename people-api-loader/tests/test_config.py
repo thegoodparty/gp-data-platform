@@ -69,6 +69,14 @@ def test_environment_var_drives_conn_param_tag_and_cluster_name(
     assert cfg.new_cluster_id("20260707") == "gp-people-db-20260707-prod"
 
 
+def test_unrecognized_environment_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A typo must fail loudly, not silently build a wrong SSM param / tag that later
+    # surfaces as an opaque AccessDenied.
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="not a recognized deployment environment"):
+        LoaderConfig.from_env()
+
+
 def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
     # Dev and prod provision into the SAME AWS account, and `provision` is idempotent by name,
     # so a same-date run in the other env would adopt this env's cluster (cross-env contamination)
