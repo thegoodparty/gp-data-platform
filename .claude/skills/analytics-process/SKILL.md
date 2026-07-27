@@ -22,7 +22,7 @@ gate receipt; formats and stock why-clauses live in `pipeline.md` ("Legibility")
 2. **Find sources.** Resolve every concept through the knowledge skill, and verify named tables/columns/events against the live catalog — docs drift.
 3. **Produce the brief.** The framing output is a structured brief per [`references/brief-schema.md`](references/brief-schema.md), the framing→execution contract.
 4. **Execute.** Build the working set once, then slice every cut from it in pandas — the discipline is in [`references/methodology.md`](references/methodology.md); the product's defaults, cohort tables, and working-set column caveats are in the product knowledge skill's `methodology_defaults.md`.
-5. **Review.** After the results checkpoint, route the executed analysis through the two adversarial reviewer agents; the gate and dispatch rules are in `pipeline.md`.
+5. **Review.** After the results checkpoint, route the executed analysis through the two adversarial reviewer agents; the gate and dispatch rules are in `pipeline.md`. The reviewers are gate-dependent: dispatched without the human checkpoint they rubber-stamp the draft's frame and launder wrong numbers into confident ones (2026-07 ablation, quality bench), so never wire them into unattended runs.
 6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)), ending with the candidates-ledger read-back it requires. Pruning happens via **consolidation mode**, detailed in the same doc.
 
 ## Reusable analysis patterns
