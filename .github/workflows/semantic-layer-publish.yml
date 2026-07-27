@@ -5,7 +5,7 @@ on:
     paths: ['dbt/project/models/**/sem_*.yml']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish:
@@ -21,12 +21,17 @@ jobs:
       - name: Install analytics env
         working-directory: analytics
         run: uv sync --frozen
-      - name: Regenerate catalog artifacts
+      - name: Regenerate ClickUp page from merged state
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
         run: |
-          uv run python -m semantic_catalog.cli --write --emit-clickup /tmp/clickup_page.md
+          # canonical_metrics.md is regenerated and committed in the same PR
+          # that changes a sem_*.yml (enforced by the catalog-freshness PR
+          # check), so main is already in sync. We do NOT --write or push to
+          # main here (main is protected). Only build the ClickUp page for the
+          # upsert below.
+          uv run python -m semantic_catalog.cli --emit-clickup /tmp/clickup_page.md
       - name: Re-derive review coverage for the merged PR
         id: coverage
         env:
@@ -40,8 +45,10 @@ jobs:
           # against the PR that introduced this merge commit.
           PR=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')
           if [ -n "$PR" ]; then
+            # Count only each reviewer's LATEST review, so a superseded or
+            # dismissed approval no longer counts as current coverage.
             APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" \
-              --jq '[.[] | select(.state=="APPROVED") | .user.login] | unique | join(",")')
+              --jq 'group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").user.login) | join(",")')
             DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
             BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
             COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
@@ -81,12 +88,15 @@ jobs:
         run: |
           set -euo pipefail
           # LIVE-VERIFY SEAM: SLACK_BOT_TOKEN is not yet provisioned. Once it
-          # lands, confirm this chat.postMessage payload (channel id, scopes,
-          # response handling) against the live Slack API before relying on it.
-          curl -sf -X POST https://slack.com/api/chat.postMessage \
+          # lands, confirm this chat.postMessage payload (channel id, scopes)
+          # against the live Slack API before relying on it.
+          RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
-            --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')"
+            --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')")
+          # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
+          # channel, missing scope, auth), so check the body, not just status.
+          echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
       - name: Upsert ClickUp reference page
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
@@ -101,15 +111,3 @@ jobs:
             -H "Authorization: $CLICKUP_API_TOKEN" \
             -H "Content-Type: application/json" \
             --data "$(python3 -c 'import json;print(json.dumps({"content":open("/tmp/clickup_page.md").read(),"content_format":"text/md"}))')"
-      - name: Commit regenerated canonical_metrics.md
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # The regenerated MD lives outside the sem_*.yml path filter above,
-          # so this push does not re-trigger this workflow (no infinite loop).
-          if ! git diff --quiet -- '.claude/skills/**/canonical_metrics.md'; then
-            git add '.claude/skills/**/canonical_metrics.md'
-            git commit -m "chore(semantic-layer): regenerate canonical_metrics.md"
-            git push
-          fi

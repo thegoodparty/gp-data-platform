@@ -30,11 +30,39 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Count only each reviewer's LATEST review, so a superseded or
+          # dismissed approval no longer counts as current coverage.
           APPROVERS=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
-            --jq '[.[] | select(.state=="APPROVED") | .user.login] | unique | join(",")')
+            --jq 'group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").user.login) | join(",")')
           DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
           BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
           COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
             uv run python -m semantic_catalog.composition)
           echo "coverage=$COV" >> "$GITHUB_OUTPUT"
           echo "Approval coverage: $COV"
+
+  catalog-freshness:
+    runs-on: ubuntu-latest
+    # Blocking gate: the generated canonical_metrics.md region must be
+    # regenerated and committed in the SAME PR that changes a sem_*.yml, so the
+    # projection is reviewed in the diff (and main never needs a bot push). A
+    # stale region fails the PR. This is a data-consistency check, separate from
+    # the soft human-approval signal above.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Check canonical_metrics.md is regenerated
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          if ! uv run python -m semantic_catalog.cli --check; then
+            echo "::error::canonical_metrics.md is out of date. From analytics/, run 'uv run python -m semantic_catalog.cli --write' and commit the result in this PR." >&2
+            exit 1
+          fi
