@@ -50,3 +50,11 @@ def test_derive_degrades_on_git_error():
         raise subprocess.CalledProcessError(128, ["git", "log"])
 
     assert derive("x.yml", run_git=run_git) == Lifecycle(None, None, None, None)
+
+
+def test_derive_takes_last_pr_number_in_title():
+    # A squash title with a linked issue then the PR: last "(#N)" is the PR.
+    run_git = _fake_git([("2026-07-24", "Feature (#609) (#720)")])
+    lc = derive("x.yml", run_git=run_git)
+    assert lc.created_pr == "720"
+    assert lc.last_updated_pr == "720"

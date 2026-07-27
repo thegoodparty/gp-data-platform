@@ -30,8 +30,10 @@ def _default_run_git(args: list[str]) -> str:
 
 
 def _pr(subject: str) -> str | None:
-    match = _PR_RE.search(subject)
-    return match.group(1) if match else None
+    # Take the LAST match: a squash title like "Feature (#609) (#720)" carries
+    # the PR number last, with earlier "(#N)" referencing linked issues.
+    matches = _PR_RE.findall(subject)
+    return matches[-1] if matches else None
 
 
 def derive(yaml_file: str, run_git=_default_run_git) -> Lifecycle:

@@ -27,6 +27,10 @@ def diff_records(before: list[MetricRecord], after: list[MetricRecord]) -> list[
             lines.append(f"• changed: {name}\n    before: {old.definition}\n    after:  {new.definition}")
         if old.ratified != new.ratified:
             lines.append(f"• ratified: {name} — {old.ratified or 'pending'} → {new.ratified or 'pending'}")
+        if old.retired != new.retired:
+            lines.append(f"• retired: {name} — {old.retired or 'active'} → {new.retired or 'active'}")
+        if old.owner != new.owner:
+            lines.append(f"• owner: {name} — {old.owner or '(none)'} → {new.owner or '(none)'}")
     return lines
 
 

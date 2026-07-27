@@ -40,6 +40,17 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # Until ORG_READ_TOKEN is provisioned, GH_TOKEN is empty and the gh
+          # calls below would fail the job. Record conservative coverage and
+          # skip cleanly instead of red-failing the first governed merge.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ORG_READ_TOKEN not provisioned; recording conservative coverage."
+            {
+              echo 'COV={"data":false,"business":false}'
+              echo 'PR_URL=(coverage unavailable until ORG_READ_TOKEN is provisioned)'
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
           # Cross-run outputs from the composition-check workflow are not
           # available here, so re-derive coverage from the live GitHub API
           # against the PR that introduced this merge commit.

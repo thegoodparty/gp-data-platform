@@ -1,3 +1,5 @@
+import dataclasses
+
 from semantic_catalog.records import MetricRecord
 from semantic_catalog.slack_diff import diff_records, render_message
 
@@ -53,3 +55,11 @@ def test_message_flags_incomplete_review_both_groups_pluralizes():
 def test_message_confirms_complete_review():
     msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": True, "business": True})
     assert "both groups" in msg.lower() or "complete" in msg.lower()
+
+
+def test_diff_detects_retired_and_owner_changes():
+    base = _rec("a", "d")
+    after = dataclasses.replace(base, retired="2026-07-01", owner="semantic-layer-data")
+    lines = "\n".join(diff_records([base], [after]))
+    assert "retired: a" in lines and "2026-07-01" in lines
+    assert "owner: a" in lines and "semantic-layer-data" in lines
