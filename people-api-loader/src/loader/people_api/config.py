@@ -36,11 +36,11 @@ DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = ""
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
-# (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
+# (ENVIRONMENT, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
 # provisioned cluster is `{CONN_PARAM_PREFIX}-{env}-{run_date}` (unique per run, no collision
 # with the serving cluster). connect_prod/connect_new fetch and decrypt at connect time —
 # nothing connection-related is committed here.
-DEFAULT_DB_ENV = "dev"
+_VALID_ENVIRONMENTS = ("dev", "qa", "prod")
 CONN_PARAM_PREFIX = "people-db-connection-string"
 
 # Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
@@ -174,23 +174,43 @@ class LoaderConfig(BaseLoaderConfig):
                 "env-var passwords are not allowed. Unset it and re-run."
             )
 
-        # Tagging for loader-created resources. The IAM role this loader runs
-        # under has a permissions-boundary condition restricting most actions
-        # to `ResourceTag/Environment = dev`, so every resource the loader
-        # creates MUST carry `Environment=dev`. At cutover the ops team can
-        # re-tag to `Environment=prod` to match the serving-cluster convention.
-        # `managedBy=dataplatform` matches the platform IAM convention: the RDS
-        # create policies condition on `RequestTag/managedBy=dataplatform`, so
+        # Single source of the deployment environment (dev/qa/prod): the ENVIRONMENT
+        # env var, set per Astro deployment (dev on astro-dev, prod on astro-prod). It
+        # keys the SSM connection-string parameter names, the dated cluster identifiers
+        # (new_cluster_id etc.), and the Environment tag below, so all three stay in sync.
+        # Required, not defaulted. A silent "dev" fallback on an unset prod deployment is
+        # exactly how prod previously ran as dev (wrong SSM param, Environment tag, and
+        # dated cluster names). A typo produces the same opaque AccessDenied downstream, so
+        # validate the value too.
+        env = _env("ENVIRONMENT")
+        if not env:
+            raise RuntimeError(
+                "ENVIRONMENT is not set. Set it to 'dev', 'qa', or 'prod' on the Astro "
+                "deployment (astro-dev -> 'dev', astro-prod -> 'prod')."
+            )
+        if env not in _VALID_ENVIRONMENTS:
+            raise RuntimeError(
+                f"ENVIRONMENT={env!r} is not a recognized deployment environment "
+                f"(one of {', '.join(_VALID_ENVIRONMENTS)})."
+            )
+
+        # Tagging for loader-created resources. The IAM role this loader runs under
+        # conditions its RDS create/manage actions on `RequestTag/Environment = {env}`
+        # per environment, so every resource the loader creates MUST carry the matching
+        # `Environment`. `managedBy=dataplatform` matches the platform IAM convention: the
+        # RDS create policies condition on `RequestTag/managedBy=dataplatform`, so
         # loader-created RDS resources must carry it to be authorized.
         tags = {
-            "Project": os.environ.get("LOADER_TAG_PROJECT", "gp-api"),
-            "Environment": os.environ.get("LOADER_TAG_ENVIRONMENT", "dev"),
-            "managedBy": os.environ.get("LOADER_TAG_MANAGED_BY", "dataplatform"),
+            # _env() (not raw os.environ.get) so an Astro-injected trailing newline is
+            # stripped: managedBy is checked by an IAM RequestTag condition, so
+            # "dataplatform\n" would fail it and return an opaque AccessDenied.
+            "Project": _env("LOADER_TAG_PROJECT", "gp-api"),
+            "Environment": env,
+            "managedBy": _env("LOADER_TAG_MANAGED_BY", "dataplatform"),
         }
 
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
-        # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
-        env = _env("LOADER_ENV", DEFAULT_DB_ENV)
+        # the param name is people-db-connection-string-{ENVIRONMENT} unless fully overridden.
         db_conn_param = _env("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
         # Loader output bucket is used from the first step (inspect) onward. It is real infra, not
         # committed to this public repo, so require it explicitly — a clear failure here beats an

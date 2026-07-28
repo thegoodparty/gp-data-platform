@@ -173,10 +173,11 @@ the pipeline. A check that raises unexpectedly still leaves a `failed` manifest 
 
 ## Configuration
 
-Set on the Astro deployment as **Environment Variables** (the CLI reads `LOADER_*` / `DATABRICKS_*`
-from `os.environ`; BashOperators forward them with `append_env=True`):
+Set on the Astro deployment as **Environment Variables** (the CLI reads `ENVIRONMENT` + `LOADER_*` /
+`DATABRICKS_*` from `os.environ`; BashOperators forward them with `append_env=True`):
 
-- `LOADER_ENV`, `LOADER_S3_BUCKET`, `LOADER_S3_IMPORT_ROLE_ARN`, `LOADER_AWS_ACCOUNT_ID`
+- `ENVIRONMENT` (`dev`/`prod`, per deployment — keys the SSM param names, dated cluster ids, and `Environment` tag)
+- `LOADER_S3_BUCKET`, `LOADER_S3_IMPORT_ROLE_ARN`, `LOADER_AWS_ACCOUNT_ID`
 - `LOADER_VPC_ID`, `LOADER_DB_SUBNET_GROUP`, `LOADER_SECURITY_GROUP_ID`, `LOADER_KMS_KEY_ARN`
 - `LOADER_DATABRICKS_WAREHOUSE_ID` (unload only)
 - Optional sizing overrides: `LOADER_LOAD_INSTANCE_CLASS`, `LOADER_INDEX_INSTANCE_CLASS`
