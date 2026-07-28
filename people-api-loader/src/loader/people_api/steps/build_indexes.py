@@ -99,9 +99,11 @@ _GEOM_TABLE = "Voter"
 _ADD_GEOM_COLUMN_SQL = (
     f'ALTER TABLE public."{_GEOM_TABLE}" ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326) '
     # lat/long are TEXT in the serving schema (they match the Prisma contract); ST_MakePoint needs
-    # float8, and Postgres has no implicit text->float8 cast, so cast explicitly.
-    'GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint("Residence_Addresses_Longitude"::float8, '
-    '"Residence_Addresses_Latitude"::float8), 4326)) STORED'
+    # float8, and Postgres has no implicit text->float8 cast. copy leaves a missing value as '' (not
+    # NULL) in a TEXT column, and ''::float8 errors, so NULLIF('') first — a missing coordinate then
+    # yields a NULL geom rather than failing the generated-column evaluation for the whole table.
+    "GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(NULLIF(\"Residence_Addresses_Longitude\", '')::float8, "
+    "NULLIF(\"Residence_Addresses_Latitude\", '')::float8), 4326)) STORED"
 )
 
 
