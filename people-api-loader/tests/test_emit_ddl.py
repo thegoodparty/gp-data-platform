@@ -66,26 +66,61 @@ def test_render_appends_prisma_extra_columns() -> None:
     )
 
 
-def test_render_voter_forces_address_columns_to_text() -> None:
-    # The voter mart types these numeric (int ZipPlus4, double lat/long), but the serving contract
-    # (Prisma) is String — the Voter spec must override them to TEXT so people-api can read them.
+def test_render_voter_forces_contract_types_to_text() -> None:
+    # The voter mart types election flags as boolean, ZIP/DPBC/sequence codes as int, and
+    # lat/long + voting-performance as double, but the serving contract (Prisma) is String for all
+    # of them — the Voter spec must override every one to TEXT so people-api can read them.
     from loader.people_api.schema.schema_spec import TABLE_SPECS
 
     cols = [
         MartColumn(name="id", spark_type="string", nullable=False),
         MartColumn(name="State", spark_type="string", nullable=False),
+        MartColumn(name="General_2024", spark_type="boolean", nullable=True),  # election flag
         MartColumn(name="Residence_Addresses_ZipPlus4", spark_type="int", nullable=True),
+        MartColumn(name="SequenceZigZag", spark_type="int", nullable=True),
         MartColumn(name="Residence_Addresses_Latitude", spark_type="double", nullable=True),
-        MartColumn(name="Residence_Addresses_Longitude", spark_type="double", nullable=True),
-        MartColumn(name="Mailing_Addresses_ZipPlus4", spark_type="int", nullable=True),
+        MartColumn(name="VotingPerformanceMinorElection", spark_type="double", nullable=True),
     ]
     ddl = render_create_table(TABLE_SPECS["Voter"], cols)
-    assert '"Residence_Addresses_ZipPlus4" TEXT' in ddl
-    assert '"Residence_Addresses_Latitude" TEXT' in ddl
-    assert '"Residence_Addresses_Longitude" TEXT' in ddl
-    assert '"Mailing_Addresses_ZipPlus4" TEXT' in ddl
-    # the mart-inferred numeric types must not survive the override
-    assert "INTEGER" not in ddl and "DOUBLE PRECISION" not in ddl
+    for col in (
+        "General_2024",
+        "Residence_Addresses_ZipPlus4",
+        "SequenceZigZag",
+        "Residence_Addresses_Latitude",
+        "VotingPerformanceMinorElection",
+    ):
+        assert f'"{col}" TEXT' in ddl
+    # none of the mart-inferred types may survive the override
+    assert "BOOLEAN" not in ddl and "INTEGER" not in ddl and "DOUBLE PRECISION" not in ddl
+
+
+def test_render_district_family_matches_contract_types() -> None:
+    # District: mart timestamptz -> contract timestamp WITHOUT time zone; state deliberately stays
+    # TEXT (the country-scope "US" row can't fit the USState enum). DistrictStats: mart text id ->
+    # uuid, mart timestamptz -> timestamp without time zone.
+    from loader.people_api.schema.schema_spec import TABLE_SPECS
+
+    district = render_create_table(
+        TABLE_SPECS["District"],
+        [
+            MartColumn(name="id", spark_type="string", nullable=False),
+            MartColumn(name="state", spark_type="string", nullable=True),
+            MartColumn(name="created_at", spark_type="timestamp", nullable=True),
+            MartColumn(name="updated_at", spark_type="timestamp", nullable=True),
+        ],
+    )
+    assert '"created_at" TIMESTAMP' in district and "TIMESTAMPTZ" not in district
+    assert '"state" TEXT' in district
+
+    stats = render_create_table(
+        TABLE_SPECS["DistrictStats"],
+        [
+            MartColumn(name="district_id", spark_type="string", nullable=False),
+            MartColumn(name="updated_at", spark_type="timestamp", nullable=True),
+        ],
+    )
+    assert '"district_id" UUID' in stats
+    assert '"updated_at" TIMESTAMP' in stats and "TIMESTAMPTZ" not in stats
 
 
 def test_render_round_trips_through_extract_create_tables() -> None:
