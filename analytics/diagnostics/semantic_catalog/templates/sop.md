@@ -1,3 +1,12 @@
+This page is the single source of truth for GoodParty's governed business
+metrics, the numbers we hold ourselves to (Win and Serve activation, win rate,
+cumulative wins, and more). Each metric is defined once in code, reviewed by
+both a data owner and a business owner, and published here automatically. A
+metric marked **ratified** has an agreed definition that is safe to build
+dashboards, reports, and AI answers on. **Pending** means the definition exists
+but has not been signed off yet. Nothing here is hand-edited; it regenerates
+from the code definitions on every change.
+
 ## How the semantic layer is updated
 
 Governed metric definitions are authored in one place: the dbt semantic YAML

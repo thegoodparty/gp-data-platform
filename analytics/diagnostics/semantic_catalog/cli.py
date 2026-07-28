@@ -130,7 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.emit_clickup:
         owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
         sop_md = (PKG / "templates" / "sop.md").read_text()
-        page = render_page(records, _lifecycles(records), sop_md, owners)
+        footer_md = (PKG / "templates" / "footer.md").read_text()
+        page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
         args.emit_clickup.write_text(page)
         print(f"wrote {args.emit_clickup}")
 
