@@ -1,3 +1,4 @@
+# temporary no-op edit to verify the semantic-layer governance gate (will be closed unmerged)
 semantic_models:
   - name: candidacy_stage
     description: >
