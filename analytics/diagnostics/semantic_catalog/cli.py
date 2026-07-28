@@ -25,8 +25,13 @@ from semantic_catalog.slack_diff import render_message
 # analytics/diagnostics/semantic_catalog/cli.py -> parents[0]=semantic_catalog,
 # [1]=diagnostics, [2]=analytics, [3]=repo root.
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models" / "marts"
-SEM_ROOTS = [DBT_MODELS / "analytics", DBT_MODELS / "civics"]
+# Parse EVERY sem_*.yml under models, not an allow-list of subdirs, so the
+# parser's coverage matches the CODEOWNERS glob (/dbt/project/models/**/sem_*.yml)
+# exactly. A governed file added under any subdir is auto-catalogued; the naming
+# guard (semantic_catalog.naming_guard) enforces that all semantic content lives
+# in a sem_*.yml so nothing can escape this scope.
+DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+SEM_ROOTS = [DBT_MODELS]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
 
 # Each skill owns one canonical_metrics.md. The generated region is projected
@@ -137,16 +142,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.emit_slack:
         after = records
-        before = (
-            parse_semantic_tree(
-                [
-                    args.base_dir / "dbt/project/models/marts/analytics",
-                    args.base_dir / "dbt/project/models/marts/civics",
-                ]
-            )
-            if args.base_dir
-            else []
-        )
+        before = parse_semantic_tree([args.base_dir / "dbt/project/models"]) if args.base_dir else []
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
         msg = render_message(before, after, args.pr_url, coverage)
         args.emit_slack.write_text(msg)
