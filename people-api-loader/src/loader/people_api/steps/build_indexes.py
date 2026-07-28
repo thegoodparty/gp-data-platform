@@ -98,8 +98,10 @@ def _apply_session(cur: psycopg.Cursor) -> None:
 _GEOM_TABLE = "Voter"
 _ADD_GEOM_COLUMN_SQL = (
     f'ALTER TABLE public."{_GEOM_TABLE}" ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326) '
-    'GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint("Residence_Addresses_Longitude", '
-    '"Residence_Addresses_Latitude"), 4326)) STORED'
+    # lat/long are TEXT in the serving schema (they match the Prisma contract); ST_MakePoint needs
+    # float8, and Postgres has no implicit text->float8 cast, so cast explicitly.
+    'GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint("Residence_Addresses_Longitude"::float8, '
+    '"Residence_Addresses_Latitude"::float8), 4326)) STORED'
 )
 
 

@@ -311,11 +311,14 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
     schema_tables: list[str] = []
+    types_tables: list[str] = []
     index_tables: list[str] = []
     monkeypatch.setattr(
         step, "_check_schema_diff", lambda cfg, rd, table, **k: (schema_tables.append(table), ok)[1]
     )
-    monkeypatch.setattr(step, "_check_schema_types", lambda *a, **k: ok)
+    monkeypatch.setattr(
+        step, "_check_schema_types", lambda cfg, rd, table, **k: (types_tables.append(table), ok)[1]
+    )
     monkeypatch.setattr(
         step, "_check_indexes", lambda cfg, rd, table, **k: (index_tables.append(table), ok)[1]
     )
@@ -324,6 +327,7 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert types_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
 
 
