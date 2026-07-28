@@ -149,3 +149,41 @@ def test_connect_new_defaults_to_autocommit() -> None:
     import inspect
 
     assert inspect.signature(db.connect_new).parameters["autocommit"].default is True
+
+
+def test_connect_prod_tolerates_unsupported_schema_param(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An SSM connection string with a stray `?schema=green` (libpq has no `schema` param)
+    # must not blow up connect_prod with an opaque "invalid URI query parameter" error.
+    captured: dict = {}
+
+    def _fake_ssm(cfg: object, name: str, **k: object) -> str:
+        return "postgresql://u:p@rds.internal:5432/d?schema=green&sslmode=require"
+
+    monkeypatch.setattr(db, "get_ssm_parameter", _fake_ssm)
+
+    @contextmanager
+    def _fake_connect(conninfo: str, **k: object):
+        captured["conninfo"] = conninfo
+        yield "CONN"
+
+    monkeypatch.setattr(db.psycopg, "connect", _fake_connect)
+    cfg = cast(
+        LoaderConfig,
+        SimpleNamespace(db_conn_param="p", bastion_enabled=False, db_statement_timeout_ms=0),
+    )
+    with db.connect_prod(cfg) as conn:
+        assert conn == "CONN"
+    parts = conninfo_to_dict(captured["conninfo"])
+    assert "schema" not in parts
+    assert parts["host"] == "rds.internal"
+    assert parts["dbname"] == "d"
+    assert parts["sslmode"] == "require"  # other query params are preserved
+
+
+def test_conn_str_passthrough_for_keyword_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    # keyword=value strings (no URI query) are returned unchanged.
+    monkeypatch.setattr(db, "get_ssm_parameter", lambda cfg, name, **k: "host=h dbname=d user=u port=5432")
+    cfg = cast(LoaderConfig, SimpleNamespace())
+    assert db._conn_str(cfg, "p") == "host=h dbname=d user=u port=5432"
