@@ -38,5 +38,6 @@ a domain doc.
 |---|---|---|---|---|
 | **GoodParty Cumulative Wins** | Running total of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. Accumulates all time, so each period shows the cumulative win count to date. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
 | **GoodParty Win Rate** | Count of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
+| **Win Activated Users** | Count of Win-product users who have activated: sent at least one voter outreach campaign (first_campaign_sent_at is not null). The activated slice of win_users; the Activated Candidates OKR. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-07-28 |
 | **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | pending |
 <!-- semantic-catalog:end -->
