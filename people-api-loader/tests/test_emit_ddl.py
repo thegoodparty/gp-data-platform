@@ -95,9 +95,9 @@ def test_render_voter_forces_contract_types_to_text() -> None:
 
 
 def test_render_district_family_matches_contract_types() -> None:
-    # District: mart timestamptz -> contract timestamp WITHOUT time zone; state deliberately stays
-    # TEXT (the country-scope "US" row can't fit the USState enum). DistrictStats: mart text id ->
-    # uuid, mart timestamptz -> timestamp without time zone.
+    # District: mart timestamptz -> contract timestamp WITHOUT time zone; state -> the USState enum
+    # (matching prod, with "US" added to the enum for the country-scope row). DistrictStats: mart
+    # text id -> uuid, mart timestamptz -> timestamp without time zone.
     from loader.people_api.schema.schema_spec import TABLE_SPECS
 
     district = render_create_table(
@@ -110,7 +110,7 @@ def test_render_district_family_matches_contract_types() -> None:
         ],
     )
     assert '"created_at" TIMESTAMP' in district and "TIMESTAMPTZ" not in district
-    assert '"state" TEXT' in district
+    assert '"state" "USState"' in district
 
     stats = render_create_table(
         TABLE_SPECS["DistrictStats"],

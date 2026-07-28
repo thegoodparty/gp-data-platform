@@ -476,15 +476,17 @@ def test_check_schema_types_mismatch_fails(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_check_schema_types_accepted_divergence_not_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
-    # District.state is loader text vs prod USState enum — an ACCEPTED_TYPE_DIVERGENCES entry.
-    prod = [("state", "USState"), ("id", "uuid")]
-    new = [("state", "text"), ("id", "uuid")]
+    # A registered ACCEPTED_TYPE_DIVERGENCES column is skipped even when its type differs. The real
+    # registry is currently empty, so patch in an entry to exercise the mechanism.
+    monkeypatch.setattr(step, "ACCEPTED_TYPE_DIVERGENCES", {"Voter": {"legacy_col"}})
+    prod = [("legacy_col", "text"), ("id", "uuid")]
+    new = [("legacy_col", "int4"), ("id", "uuid")]
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
-    check = step._check_schema_types(_CFG, "20260609", "District")
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
     assert check.passed is True
-    assert check.details["accepted_divergences"] == ["state"]
-    assert "state" not in check.details["mismatches"]
+    assert check.details["accepted_divergences"] == ["legacy_col"]
+    assert "legacy_col" not in check.details["mismatches"]
 
 
 def test_check_schema_types_ignores_column_absent_from_new(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -116,13 +116,16 @@ TABLE_SPECS: dict[str, TableSpec] = {
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
         # created_at/updated_at: the mart emits timestamptz, but the District serving contract is
         # timestamp WITHOUT time zone (unlike DistrictVoter, which is timestamptz) — match the contract.
-        # state: intentionally stays TEXT (no override), unlike Voter/DistrictVoter. District includes
-        # one country-scope row (type=Country, state="US") that the 51-value USState enum (50 states +
-        # DC) cannot hold, so this column can't be coerced to the enum on COPY like the others. The prod
-        # contract types it as the USState enum, so this is a KNOWN, deliberate divergence that needs a
-        # product decision (add "US" to the enum, drop/remap the country row, or accept text) before it
-        # can match — do not blindly flip it to the enum or the country-row COPY fails.
-        type_overrides={"id": "UUID", "created_at": "TIMESTAMP", "updated_at": "TIMESTAMP"},
+        # state: the serving public."USState" enum, matching prod. District has one country-scope row
+        # (type=Country, state="US") the 51-value enum can't hold, so "US" is appended to the enum in
+        # create_schema._USSTATE_LABELS. The app's Prisma USState enum must also include "US", or
+        # people-api fails reading that row (a coordinated people-api change).
+        type_overrides={
+            "id": "UUID",
+            "state": '"USState"',
+            "created_at": "TIMESTAMP",
+            "updated_at": "TIMESTAMP",
+        },
     ),
     "DistrictStats": TableSpec(
         pg_table="DistrictStats",
@@ -178,10 +181,10 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_importan
 
 # Columns whose serving TYPE intentionally differs from the prod contract, so the validate
 # schema-type guardrail must not flag them as drift (the type analogue of LOADER_ADDED_COLUMNS).
-# District.state: the loader stores text because District's country-scope row (type=Country,
-# state="US") cannot fit the 51-value USState enum prod uses; reconciling that needs a product
-# decision, so it is an accepted divergence, not a bug. Keyed by serving table -> column names.
-ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {"District": {"state"}}
+# Keyed by serving table -> column names. Currently empty: District.state (previously here because
+# the loader stored text) now matches prod as the USState enum, with "US" added to the enum for the
+# country-scope row. Add an entry only for a genuinely intended, documented type divergence.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {}
 
 
 def is_partitioned(table: str) -> bool:

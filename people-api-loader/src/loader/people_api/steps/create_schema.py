@@ -88,6 +88,11 @@ _USSTATE_LABELS = (
     "WI",
     "WY",
     "DC",
+    # "US" is the District country-scope row (type=Country). Appended AFTER the 51 state labels so
+    # the existing labels keep prod's ordinals; only District.state ever holds it (Voter /
+    # DistrictVoter partition on real states, never "US"). The app's Prisma USState enum must
+    # include "US" too, or people-api fails reading that District row.
+    "US",
 )
 
 
