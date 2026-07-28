@@ -28,6 +28,7 @@ from loader.core.manifest.io import (
 from loader.core.manifest.models import ManifestBase, Status
 
 __all__ = [
+    "AnalyzeManifest",
     "CopyManifest",
     "CopyTableResult",
     "IndexManifest",
@@ -151,6 +152,12 @@ class ResizeManifest(ManifestBase):
     final_instance_class: str
     backup_retention_days: int
     deletion_protection: bool
+
+
+class AnalyzeManifest(ManifestBase):
+    step: Literal["analyze"] = "analyze"
+    # public base tables + leaf partitions with fresh manual-ANALYZE stats after the run.
+    tables_analyzed: int
 
 
 class ValidationCheck(BaseModel):

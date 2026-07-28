@@ -535,10 +535,12 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
                 # 2. Flat table: plain indexes build directly on the table (no partitions to walk).
                 _build_in_parallel(_create_plain_flat, plain_idxs)
 
-            # 3. VACUUM (ANALYZE) this table: sets the visibility map (so serving-side count(*) and
-            #    index-only scans skip the full heap scan a freshly bulk-loaded table would otherwise
-            #    force) and refreshes planner stats in the same pass. On a partitioned parent (Voter)
-            #    this recurses to every partition automatically.
+            # 3. VACUUM (ANALYZE) this table: on a partitioned parent (Voter) the VACUUM recurses to
+            #    every leaf partition and sets its visibility map (so serving-side count(*) /
+            #    index-only scans skip the full heap scan a freshly bulk-loaded partition would
+            #    otherwise force). The parent-level ANALYZE refreshes only the parent's inheritance
+            #    stats, NOT each leaf partition's per-column stats — the final `analyze` step (a
+            #    database-wide ANALYZE) covers those.
             _vacuum_analyze(cfg, run_date, table, forward=fwd)
 
             analyzed_tables.append(table)

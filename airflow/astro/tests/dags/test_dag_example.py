@@ -125,5 +125,6 @@ def test_load_people_api_scale_down_on_failure():
         "build_indexes",
         "validate",
         "resize",
+        "analyze",
     }
     assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
