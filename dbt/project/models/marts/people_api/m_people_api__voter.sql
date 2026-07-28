@@ -31,7 +31,14 @@ with
 
             -- Demographics
             `ConsumerData_Business_Owner` as `Business_Owner`,
-            cast(`Voters_CalculatedRegDate` as date) as `CalculatedRegDate`,
+            -- The data is ISO (yyyy-MM-dd) across all states, but the L2 spec
+            -- documents MM/dd/yyyy,
+            -- so parse both and keep whichever succeeds (try_to_date returns null,
+            -- never errors).
+            coalesce(
+                try_to_date(`Voters_CalculatedRegDate`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_CalculatedRegDate`, 'MM/dd/yyyy')
+            ) as `CalculatedRegDate`,
             `CountyEthnic_Description`,
             `CountyEthnic_LALEthnicCode`,
             `Voters_CountyVoterID` as `CountyVoterID`,
