@@ -266,6 +266,7 @@ def status(run_date: RunDateArg) -> None:
     cfg = _setup(run_date, verify_aws=False)
     from loader.core.manifest.io import read_manifest
     from loader.people_api.manifests import (
+        AnalyzeManifest,
         CopyManifest,
         IndexManifest,
         InspectManifest,
@@ -283,8 +284,9 @@ def status(run_date: RunDateArg) -> None:
         ("schema", SchemaManifest),
         ("copy", CopyManifest),
         ("indexes", IndexManifest),
-        ("resize", ResizeManifest),
         ("validate", ValidateManifest),
+        ("resize", ResizeManifest),
+        ("analyze", AnalyzeManifest),
     ]
     tbl = Table(title=f"Run {run_date} — step status")
     tbl.add_column("Step")
