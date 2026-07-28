@@ -206,6 +206,7 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_schema_types", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: bad)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
@@ -238,6 +239,7 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
+        "_check_schema_types",
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",
@@ -275,6 +277,7 @@ def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPa
     ok = step.ValidationCheck(name="x", passed=True, details={})
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_schema_types", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
@@ -308,9 +311,13 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
     schema_tables: list[str] = []
+    types_tables: list[str] = []
     index_tables: list[str] = []
     monkeypatch.setattr(
         step, "_check_schema_diff", lambda cfg, rd, table, **k: (schema_tables.append(table), ok)[1]
+    )
+    monkeypatch.setattr(
+        step, "_check_schema_types", lambda cfg, rd, table, **k: (types_tables.append(table), ok)[1]
     )
     monkeypatch.setattr(
         step, "_check_indexes", lambda cfg, rd, table, **k: (index_tables.append(table), ok)[1]
@@ -320,6 +327,7 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert types_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
 
 
@@ -442,6 +450,68 @@ def test_check_schema_diff_skips_table_absent_from_prod(monkeypatch: pytest.Monk
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([])))
     check = step._check_schema_diff(_CFG, "20260609", "DistrictStats")
     assert check.name == "schema_diff_clean:DistrictStats"
+    assert check.passed is True
+    assert "skipped" in check.details
+
+
+# --- _check_schema_types ---
+
+
+def test_check_schema_types_match_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    cols = [("id", "uuid"), ("General_2024", "text"), ("Age_Int", "int4")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(cols)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(cols)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.name == "schema_types_match:Voter"
+    assert check.passed is True
+    assert check.details["mismatches"] == {}
+
+
+def test_check_schema_types_mismatch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The exact bug class: prod (Prisma contract) is text, the new cluster took the mart's type.
+    prod = [("General_2024", "text"), ("Residence_Addresses_ZipPlus4", "text")]
+    new = [("General_2024", "bool"), ("Residence_Addresses_ZipPlus4", "int4")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is False
+    assert check.details["mismatches"]["General_2024"] == {"prod": "text", "new": "bool"}
+    assert "Residence_Addresses_ZipPlus4" in check.details["mismatches"]
+
+
+def test_check_schema_types_accepted_divergence_not_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A registered ACCEPTED_TYPE_DIVERGENCES column is skipped even when its type differs. The real
+    # registry is currently empty, so patch in an entry to exercise the mechanism.
+    monkeypatch.setattr(step, "ACCEPTED_TYPE_DIVERGENCES", {"Voter": {"legacy_col"}})
+    prod = [("legacy_col", "text"), ("id", "uuid")]
+    new = [("legacy_col", "int4"), ("id", "uuid")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert check.details["accepted_divergences"] == ["legacy_col"]
+    assert "legacy_col" not in check.details["mismatches"]
+
+
+def test_check_schema_types_ignores_column_absent_from_new(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A prod column missing from the new cluster is _check_schema_diff's concern, not this check.
+    prod = [("id", "uuid"), ("extra_prod_only", "text")]
+    new = [("id", "uuid")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is True
+
+
+def test_check_schema_types_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is False and "error_reading_prod" in check.details
+
+
+def test_check_schema_types_skips_table_absent_from_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([])))
+    check = step._check_schema_types(_CFG, "20260609", "DistrictStats")
     assert check.passed is True
     assert "skipped" in check.details
 
@@ -723,6 +793,7 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
+        "_check_schema_types",
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",

@@ -54,27 +54,91 @@ TABLE_SPECS: dict[str, TableSpec] = {
         partition_by="State",
         # State: the serving public."USState" enum (matches the serving cluster); the mart emits it as text
         # and Postgres coerces text -> enum on COPY.
-        type_overrides={"id": "UUID", "State": '"USState"'},
+        # Everything below is a serving-contract (Prisma) type the voter mart does NOT match: the mart
+        # types the election-participation flags as boolean, the ZIP/DPBC/ethnic/sequence codes as int,
+        # and lat/long + voting-performance scores as double, but Prisma types all of them String. The
+        # app reads through Prisma, so each serving column must be TEXT (the loader is the source of
+        # truth for the serving schema; the schema-type validate check enforces this against prod).
+        # NOTE: forcing TEXT fixes the column TYPE; it cannot recover precision the mart already dropped
+        # (e.g. a ZipPlus4's leading zeros) — that needs the mart to emit these columns as strings.
+        type_overrides={
+            "id": "UUID",
+            "State": '"USState"',
+            # election-participation flags (mart boolean -> contract text)
+            "AnyElection_2017": "TEXT",
+            "AnyElection_2019": "TEXT",
+            "AnyElection_2021": "TEXT",
+            "AnyElection_2023": "TEXT",
+            "AnyElection_2025": "TEXT",
+            "General_2016": "TEXT",
+            "General_2018": "TEXT",
+            "General_2020": "TEXT",
+            "General_2022": "TEXT",
+            "General_2024": "TEXT",
+            "General_2026": "TEXT",
+            "Primary_2016": "TEXT",
+            "Primary_2018": "TEXT",
+            "Primary_2020": "TEXT",
+            "Primary_2022": "TEXT",
+            "Primary_2024": "TEXT",
+            "Primary_2026": "TEXT",
+            "PresidentialPrimary_2016": "TEXT",
+            "PresidentialPrimary_2020": "TEXT",
+            "PresidentialPrimary_2024": "TEXT",
+            "OtherElection_2016": "TEXT",
+            "OtherElection_2018": "TEXT",
+            "OtherElection_2020": "TEXT",
+            "OtherElection_2022": "TEXT",
+            "OtherElection_2024": "TEXT",
+            "OtherElection_2026": "TEXT",
+            # ZIP / delivery-point / ethnic / sequence codes (mart integer -> contract text)
+            "Residence_Addresses_ZipPlus4": "TEXT",
+            "Residence_Addresses_DPBC": "TEXT",
+            "Mailing_Addresses_Zip": "TEXT",
+            "Mailing_Addresses_ZipPlus4": "TEXT",
+            "Mailing_Addresses_DPBC": "TEXT",
+            "CountyEthnic_LALEthnicCode": "TEXT",
+            "SequenceOddEven": "TEXT",
+            "SequenceZigZag": "TEXT",
+            # geo coordinates + voting-performance scores (mart double precision -> contract text)
+            "Residence_Addresses_Latitude": "TEXT",
+            "Residence_Addresses_Longitude": "TEXT",
+            "VotingPerformanceEvenYearGeneral": "TEXT",
+            "VotingPerformanceEvenYearGeneralAndPrimary": "TEXT",
+            "VotingPerformanceEvenYearPrimary": "TEXT",
+            "VotingPerformanceMinorElection": "TEXT",
+        },
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
     "District": TableSpec(
         pg_table="District",
         partition_by=None,
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
-        # state: stays TEXT (no override), unlike Voter/DistrictVoter. District includes one
-        # country-scope row (type=Country, state="US") that the 51-value USState enum (50 states +
-        # DC) cannot hold, so this column can't be coerced to the enum on COPY like the others.
-        type_overrides={"id": "UUID"},
+        # created_at/updated_at: the mart emits timestamptz, but the District serving contract is
+        # timestamp WITHOUT time zone (unlike DistrictVoter, which is timestamptz) — match the contract.
+        # state: the serving public."USState" enum, matching prod. District has one country-scope row
+        # (type=Country, state="US") the 51-value enum can't hold, so "US" is appended to the enum in
+        # create_schema._USSTATE_LABELS. The app's Prisma USState enum must also include "US", or
+        # people-api fails reading that row (a coordinated people-api change).
+        type_overrides={
+            "id": "UUID",
+            "state": '"USState"',
+            "created_at": "TIMESTAMP",
+            "updated_at": "TIMESTAMP",
+        },
     ),
     "DistrictStats": TableSpec(
         pg_table="DistrictStats",
         partition_by=None,
         # buckets: mart struct -> jsonb. total_constituents columns: the mart emits them as bigint,
-        # but Prisma types them Int, so store INTEGER to match the serving contract.
+        # but Prisma types them Int, so store INTEGER to match the serving contract. district_id: mart
+        # text -> contract uuid. updated_at: mart timestamptz -> contract timestamp WITHOUT time zone.
         type_overrides={
             "buckets": "jsonb",
             "total_constituents": "INTEGER",
             "total_constituents_with_cell_phone": "INTEGER",
+            "district_id": "UUID",
+            "updated_at": "TIMESTAMP",
         },
         primary_key=PrimaryKey(
             table="DistrictStats", constraint="DistrictStats_pkey", columns=["district_id"]
@@ -113,6 +177,14 @@ TABLE_SPECS: dict[str, TableSpec] = {
 # columns the serving schema gained while the prod baseline still predates them
 # ("hf_most_important_policy_item"). Keyed by serving table.
 LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_important_policy_item"}}
+
+
+# Columns whose serving TYPE intentionally differs from the prod contract, so the validate
+# schema-type guardrail must not flag them as drift (the type analogue of LOADER_ADDED_COLUMNS).
+# Keyed by serving table -> column names. Currently empty: District.state (previously here because
+# the loader stored text) now matches prod as the USState enum, with "US" added to the enum for the
+# country-scope row. Add an entry only for a genuinely intended, documented type divergence.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {}
 
 
 def is_partitioned(table: str) -> bool:
