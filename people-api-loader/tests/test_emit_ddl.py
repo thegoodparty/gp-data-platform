@@ -66,6 +66,28 @@ def test_render_appends_prisma_extra_columns() -> None:
     )
 
 
+def test_render_voter_forces_address_columns_to_text() -> None:
+    # The voter mart types these numeric (int ZipPlus4, double lat/long), but the serving contract
+    # (Prisma) is String — the Voter spec must override them to TEXT so people-api can read them.
+    from loader.people_api.schema.schema_spec import TABLE_SPECS
+
+    cols = [
+        MartColumn(name="id", spark_type="string", nullable=False),
+        MartColumn(name="State", spark_type="string", nullable=False),
+        MartColumn(name="Residence_Addresses_ZipPlus4", spark_type="int", nullable=True),
+        MartColumn(name="Residence_Addresses_Latitude", spark_type="double", nullable=True),
+        MartColumn(name="Residence_Addresses_Longitude", spark_type="double", nullable=True),
+        MartColumn(name="Mailing_Addresses_ZipPlus4", spark_type="int", nullable=True),
+    ]
+    ddl = render_create_table(TABLE_SPECS["Voter"], cols)
+    assert '"Residence_Addresses_ZipPlus4" TEXT' in ddl
+    assert '"Residence_Addresses_Latitude" TEXT' in ddl
+    assert '"Residence_Addresses_Longitude" TEXT' in ddl
+    assert '"Mailing_Addresses_ZipPlus4" TEXT' in ddl
+    # the mart-inferred numeric types must not survive the override
+    assert "INTEGER" not in ddl and "DOUBLE PRECISION" not in ddl
+
+
 def test_render_round_trips_through_extract_create_tables() -> None:
     from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 

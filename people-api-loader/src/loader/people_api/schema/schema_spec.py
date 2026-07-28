@@ -54,7 +54,19 @@ TABLE_SPECS: dict[str, TableSpec] = {
         partition_by="State",
         # State: the serving public."USState" enum (matches the serving cluster); the mart emits it as text
         # and Postgres coerces text -> enum on COPY.
-        type_overrides={"id": "UUID", "State": '"USState"'},
+        # The four address columns are numeric in the voter mart (int ZipPlus4, double lat/long) but
+        # the serving contract (Prisma) types them String, so people-api reads them as text — force
+        # TEXT to match the app (loader is the source of truth for the serving schema). NOTE: since
+        # the mart is already numeric, this fixes the column TYPE but cannot recover any leading
+        # zeros a ZipPlus4 lost when the mart stored it as an int; true fidelity needs a mart change.
+        type_overrides={
+            "id": "UUID",
+            "State": '"USState"',
+            "Residence_Addresses_ZipPlus4": "TEXT",
+            "Residence_Addresses_Latitude": "TEXT",
+            "Residence_Addresses_Longitude": "TEXT",
+            "Mailing_Addresses_ZipPlus4": "TEXT",
+        },
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
     "District": TableSpec(
