@@ -15,6 +15,11 @@ Runs, PER TABLE in the unload manifest (Voter, District, DistrictStats, District
    loader-added columns (schema_spec.LOADER_ADDED_COLUMNS, e.g. Voter."geom"), which are intended
    divergences. Skipped (not failed) when prod has no such table at all (same DistrictStats case:
    nothing to diff against).
+3b. schema_types_match — every column present on BOTH new and prod has the SAME type (udt_name),
+   modulo schema_spec.ACCEPTED_TYPE_DIVERGENCES (e.g. District.state). This is the guardrail for
+   the class of bug where emit_ddl takes a Databricks mart type instead of the Prisma serving
+   contract type (an election flag shipped as boolean, a ZIP as integer); it fails the run rather
+   than leaving the mismatch for functional tests. Same skip-when-absent behavior as schema_diff.
 4. index_constraint_diff_clean — every prod index present on new (trivially passes when prod has
    no indexes for an absent table).
 
@@ -44,7 +49,12 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.schema_spec import LOADER_ADDED_COLUMNS, is_partitioned, partition_column
+from loader.people_api.schema.schema_spec import (
+    ACCEPTED_TYPE_DIVERGENCES,
+    LOADER_ADDED_COLUMNS,
+    is_partitioned,
+    partition_column,
+)
 from loader.people_api.schema.unload_sql import BUCKETS_OUTPUT_KEYS
 
 log = get_logger(__name__)
@@ -301,6 +311,60 @@ def _check_schema_diff(
             "missing_from_new": sorted(missing_from_new)[:20],
             "extra_in_new": sorted(extra_in_new)[:20],
             "allowed_extra": sorted(allowed_extra),
+        },
+    )
+
+
+def _column_types(conn, table: str) -> dict[str, str]:
+    # udt_name (int4/text/bool/float8/timestamp/timestamptz/uuid/<enum name>) discriminates the
+    # cases that bit us — int/double/text, timestamp vs timestamptz, text vs uuid, text vs enum —
+    # more precisely than data_type (which collapses every enum to 'USER-DEFINED').
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT column_name, udt_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name=%s",
+            (table,),
+        )
+        return {r[0]: r[1] for r in cur.fetchall()}
+
+
+def _check_schema_types(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
+    """Every shared column's TYPE on the new cluster matches prod (the Prisma serving contract).
+
+    The counterpart to _check_schema_diff (which compares column NAMES): emit_ddl types columns
+    from the Databricks mart unless schema_spec overrides them, so a missing override silently
+    ships the wrong type (e.g. an election flag as boolean, a ZIP as integer). This fails the run
+    on any such drift instead of leaving it for functional tests. Only columns present on BOTH are
+    compared (name drift is _check_schema_diff's job); ACCEPTED_TYPE_DIVERGENCES are skipped.
+    """
+    name = f"schema_types_match:{table}"
+    try:
+        with connect_prod(cfg) as prod_conn:
+            prod_types = _column_types(prod_conn, table)
+    except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
+        log.error("validate.prod_unreachable", check=name, error=str(e))
+        return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
+    if not prod_types:
+        # Table absent from prod (e.g. DistrictStats) — nothing to diff against, like _check_schema_diff.
+        log.warning("validate.schema_types.skip", table=table, reason="table absent from prod")
+        return ValidationCheck(name=name, passed=True, details={"skipped": "table absent from prod"})
+    with connect_new(cfg, run_date, forward=forward) as conn:
+        new_types = _column_types(conn, table)
+    accepted = ACCEPTED_TYPE_DIVERGENCES.get(table, set())
+    mismatches = {
+        col: {"prod": prod_t, "new": new_types[col]}
+        for col, prod_t in prod_types.items()
+        if col not in accepted and col in new_types and new_types[col] != prod_t
+    }
+    return ValidationCheck(
+        name=name,
+        passed=not mismatches,
+        details={
+            "prod_cols": len(prod_types),
+            "mismatches": dict(sorted(mismatches.items())[:20]),
+            "accepted_divergences": sorted(accepted),
         },
     )
 
@@ -567,6 +631,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
                 *count_checks,
                 *_check_prod_row_counts(cfg, run_date, new_counts),
                 *[_check_schema_diff(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
+                *[_check_schema_types(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_indexes(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_indexes_valid(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 _check_districtstats_buckets(cfg, run_date, forward=fwd),

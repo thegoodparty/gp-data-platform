@@ -176,6 +176,14 @@ TABLE_SPECS: dict[str, TableSpec] = {
 LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_important_policy_item"}}
 
 
+# Columns whose serving TYPE intentionally differs from the prod contract, so the validate
+# schema-type guardrail must not flag them as drift (the type analogue of LOADER_ADDED_COLUMNS).
+# District.state: the loader stores text because District's country-scope row (type=Country,
+# state="US") cannot fit the 51-value USState enum prod uses; reconciling that needs a product
+# decision, so it is an accepted divergence, not a bug. Keyed by serving table -> column names.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {"District": {"state"}}
+
+
 def is_partitioned(table: str) -> bool:
     return TABLE_SPECS[table].partition_by is not None
 
