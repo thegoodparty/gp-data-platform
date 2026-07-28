@@ -1,4 +1,9 @@
 name: semantic-layer-publish
+# On merge to main touching a governed sem_*.yml, post a change summary to
+# #data-alignment. The ClickUp reference page is refreshed out-of-band via the
+# ClickUp MCP (no CI token), matching the omni analytics-governance pattern; the
+# in-repo canonical_metrics.md is the source of truth, kept fresh by the
+# blocking catalog-freshness PR check.
 on:
   push:
     branches: [main]
@@ -21,17 +26,6 @@ jobs:
       - name: Install analytics env
         working-directory: analytics
         run: uv sync --frozen
-      - name: Regenerate ClickUp page from merged state
-        working-directory: analytics
-        env:
-          PYTHONPATH: diagnostics
-        run: |
-          # canonical_metrics.md is regenerated and committed in the same PR
-          # that changes a sem_*.yml (enforced by the catalog-freshness PR
-          # check), so main is already in sync. We do NOT --write or push to
-          # main here (main is protected). Only build the ClickUp page for the
-          # upsert below.
-          uv run python -m semantic_catalog.cli --emit-clickup /tmp/clickup_page.md
       - name: Re-derive review coverage for the merged PR
         id: coverage
         env:
@@ -95,40 +89,21 @@ jobs:
           fi
       - name: Post Slack change summary
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
         run: |
           set -euo pipefail
-          # LIVE-VERIFY SEAM: SLACK_BOT_TOKEN is not yet provisioned. Once it
+          # LIVE-VERIFY SEAM: SLACK_APP_BOT_TOKEN is not yet provisioned. Once it
           # lands, confirm this chat.postMessage payload (channel id, scopes)
           # against the live Slack API before relying on it. Until then, skip
           # cleanly so the first governed merge does not red-fail this job.
-          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
-            echo "SLACK_BOT_TOKEN not provisioned; skipping Slack notification."
+          if [ -z "${SLACK_APP_BOT_TOKEN:-}" ]; then
+            echo "SLACK_APP_BOT_TOKEN not provisioned; skipping Slack notification."
             exit 0
           fi
           RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
-            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
           echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
-      - name: Upsert ClickUp reference page
-        env:
-          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
-          PAGE_ID: ${{ secrets.SEMANTIC_LAYER_CLICKUP_PAGE_ID }}
-        run: |
-          set -euo pipefail
-          # LIVE-VERIFY SEAM: CLICKUP_API_TOKEN and SEMANTIC_LAYER_CLICKUP_PAGE_ID
-          # are not yet provisioned. Once they land, confirm the v3 page-update
-          # body shape (content/content_format, page vs subpage semantics)
-          # against the live ClickUp API before relying on it. Until then, skip
-          # cleanly so the first governed merge does not red-fail this job.
-          if [ -z "${CLICKUP_API_TOKEN:-}" ] || [ -z "${PAGE_ID:-}" ]; then
-            echo "ClickUp secrets not provisioned; skipping ClickUp upsert."
-            exit 0
-          fi
-          curl -sf -X PUT "https://api.clickup.com/api/v3/docs/pages/$PAGE_ID" \
-            -H "Authorization: $CLICKUP_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "$(python3 -c 'import json;print(json.dumps({"content":open("/tmp/clickup_page.md").read(),"content_format":"text/md"}))')"
