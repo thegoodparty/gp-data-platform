@@ -40,7 +40,6 @@ DEFAULT_S3_BUCKET = ""
 # provisioned cluster is `{CONN_PARAM_PREFIX}-{env}-{run_date}` (unique per run, no collision
 # with the serving cluster). connect_prod/connect_new fetch and decrypt at connect time —
 # nothing connection-related is committed here.
-DEFAULT_ENVIRONMENT = "dev"
 _VALID_ENVIRONMENTS = ("dev", "qa", "prod")
 CONN_PARAM_PREFIX = "people-db-connection-string"
 
@@ -179,11 +178,17 @@ class LoaderConfig(BaseLoaderConfig):
         # env var, set per Astro deployment (dev on astro-dev, prod on astro-prod). It
         # keys the SSM connection-string parameter names, the dated cluster identifiers
         # (new_cluster_id etc.), and the Environment tag below, so all three stay in sync.
-        env = _env("ENVIRONMENT", DEFAULT_ENVIRONMENT)
+        # Required, not defaulted. A silent "dev" fallback on an unset prod deployment is
+        # exactly how prod previously ran as dev (wrong SSM param, Environment tag, and
+        # dated cluster names). A typo produces the same opaque AccessDenied downstream, so
+        # validate the value too.
+        env = _env("ENVIRONMENT")
+        if not env:
+            raise RuntimeError(
+                "ENVIRONMENT is not set. Set it to 'dev', 'qa', or 'prod' on the Astro "
+                "deployment (astro-dev -> 'dev', astro-prod -> 'prod')."
+            )
         if env not in _VALID_ENVIRONMENTS:
-            # Fail fast: a typo (e.g. "production") would build the wrong SSM parameter
-            # name and an Environment tag that misses the IAM RequestTag/Environment
-            # condition, surfacing only as an opaque AccessDenied much later.
             raise RuntimeError(
                 f"ENVIRONMENT={env!r} is not a recognized deployment environment "
                 f"(one of {', '.join(_VALID_ENVIRONMENTS)})."

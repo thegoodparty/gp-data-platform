@@ -43,10 +43,13 @@ def test_from_env_db_conn_param_defaults_to_env(monkeypatch: pytest.MonkeyPatch)
     assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-qa"
 
 
-def test_from_env_db_conn_param_defaults_to_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_env_requires_environment_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ENVIRONMENT has no silent default: an unset value on prod is exactly how prod ran
+    # as dev, so from_env() must fail fast rather than fall back.
     for var in ("LOADER_DB_CONN_PARAM", "ENVIRONMENT"):
         monkeypatch.delenv(var, raising=False)
-    assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-dev"
+    with pytest.raises(RuntimeError, match="ENVIRONMENT is not set"):
+        LoaderConfig.from_env()
 
 
 def test_from_env_db_conn_param_full_override(monkeypatch: pytest.MonkeyPatch) -> None:
