@@ -123,10 +123,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
             table_name = _extract_table_name(source_file_type, state_id)
 
             s3_path = f"s3a://{s3_bucket}/{file.s3_state_prefix}{source_file_name}"
+            # Read every column as string (inferSchema=False), matching the main L2 loader. LALVOTERID
+            # is the join key to the uniform table in int__l2_nationwide_uniform_w_haystaq; if this
+            # side inferred it as a number and dropped a leading zero, the join would silently miss
+            # any zero-padded id. Keeping both sides string keeps the keys identical.
             data_df = session.read.options(delimiter="\t").csv(
                 path=s3_path,
                 header=True,
-                inferSchema=True,
+                inferSchema=False,
             )
             data_df = data_df.withColumn("loaded_at", current_timestamp())
 

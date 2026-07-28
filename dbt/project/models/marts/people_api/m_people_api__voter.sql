@@ -31,7 +31,14 @@ with
 
             -- Demographics
             `ConsumerData_Business_Owner` as `Business_Owner`,
-            `Voters_CalculatedRegDate` as `CalculatedRegDate`,
+            -- The data is ISO (yyyy-MM-dd) across all states, but the L2 spec
+            -- documents MM/dd/yyyy,
+            -- so parse both and keep whichever succeeds (try_to_date returns null,
+            -- never errors).
+            coalesce(
+                try_to_date(`Voters_CalculatedRegDate`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_CalculatedRegDate`, 'MM/dd/yyyy')
+            ) as `CalculatedRegDate`,
             `CountyEthnic_Description`,
             `CountyEthnic_LALEthnicCode`,
             `Voters_CountyVoterID` as `CountyVoterID`,
@@ -71,8 +78,9 @@ with
             `Mailing_Families_FamilyID`,
             -- `Mailing_HHGender_Description`,
             `ConsumerData_Marital_Status` as `Marital_Status`,
-            cast(
-                to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy') as date
+            coalesce(
+                try_to_date(`Voters_MovedFrom_Date`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy')
             ) as `MovedFrom_Date`,
             `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
@@ -173,13 +181,24 @@ with
             `Primary_2022`,
             `Primary_2024`,
             `Primary_2026`,
-            `Voters_VotingPerformanceEvenYearGeneral`
-            as `VotingPerformanceEvenYearGeneral`,
-            `Voters_VotingPerformanceEvenYearGeneralAndPrimary`
-            as `VotingPerformanceEvenYearGeneralAndPrimary`,
-            `Voters_VotingPerformanceEvenYearPrimary`
-            as `VotingPerformanceEvenYearPrimary`,
-            `Voters_VotingPerformanceMinorElection` as `VotingPerformanceMinorElection`,
+            -- The int model casts these to double for its other consumers, but prod
+            -- stores them as
+            -- integer text ('42', not '42.0'); round-trip through int so the serving
+            -- text matches.
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearGeneral` as int) as string
+            ) as `VotingPerformanceEvenYearGeneral`,
+            cast(
+                cast(
+                    `Voters_VotingPerformanceEvenYearGeneralAndPrimary` as int
+                ) as string
+            ) as `VotingPerformanceEvenYearGeneralAndPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearPrimary` as int) as string
+            ) as `VotingPerformanceEvenYearPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceMinorElection` as int) as string
+            ) as `VotingPerformanceMinorElection`,
 
             -- Districts
             `AddressDistricts_Change_Changed_CD`,
@@ -265,7 +284,7 @@ with
             `EXT_District`,
             `Exempted_Village_School_District`,
             `Facilities_Improvement_District`,
-            `Voters_FIPS` as `FIPS`,
+            cast(`Voters_FIPS` as int) as `FIPS`,
             `Fire_District`,
             `Fire_Maintenance_District`,
             `Fire_Protection_District`,
