@@ -1,22 +1,14 @@
 ## How governance works
 
-```
-   AUTHOR                  REVIEW  (auto-requested by CODEOWNERS)        PUBLISH
-   ------                  -----------------------------------          -------
+The flow, from a definition change to a published metric:
 
-  edit the metric    open    +--------------------------------+  merge   catalog
-  in its dbt YAML  ->  PR -> | data group:                    | ------>  updates
-  (sem_*.yml +               | builds + value-for-value parity|          +
-  config.meta)               +--------------------------------+          change summary
-                             | business group:                |          posts to
-                             | confirms the definition        |          #data-alignment
-                             | = RATIFIES (sets ratified date)|
-                             +--------------------------------+
+| Stage | What happens |
+|---|---|
+| **1. Author** | Edit the metric in its dbt semantic YAML (`sem_*.yml`), including its `config.meta` block, and open a pull request. |
+| **2. Review** (auto-requested) | CODEOWNERS requests both groups on the PR. The **data group** confirms it builds and matches the prior definition value-for-value. The **business group** confirms the definition is correct; that approval is the ratification and sets the `ratified` date. |
+| **3. Publish** (on merge) | The catalog updates and a change summary posts to #data-alignment. |
 
-  Soft gate: both groups are auto-requested on every change. A merge without
-  both approvals still goes through, but it is announced in #data-alignment as
-  exactly that. Accountability by visibility, not by blocking.
-```
+Soft gate: both groups are auto-requested on every change. A merge without both approvals still goes through, but it is announced in #data-alignment as exactly that. Accountability by visibility, not by blocking.
 
 ## What this means for you
 
