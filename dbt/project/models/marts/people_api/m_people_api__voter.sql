@@ -31,7 +31,7 @@ with
 
             -- Demographics
             `ConsumerData_Business_Owner` as `Business_Owner`,
-            `Voters_CalculatedRegDate` as `CalculatedRegDate`,
+            cast(`Voters_CalculatedRegDate` as date) as `CalculatedRegDate`,
             `CountyEthnic_Description`,
             `CountyEthnic_LALEthnicCode`,
             `Voters_CountyVoterID` as `CountyVoterID`,
@@ -265,7 +265,7 @@ with
             `EXT_District`,
             `Exempted_Village_School_District`,
             `Facilities_Improvement_District`,
-            `Voters_FIPS` as `FIPS`,
+            cast(`Voters_FIPS` as int) as `FIPS`,
             `Fire_District`,
             `Fire_Maintenance_District`,
             `Fire_Protection_District`,
