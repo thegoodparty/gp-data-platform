@@ -35,6 +35,7 @@ __all__ = [
     "IndexSpec",
     "InspectManifest",
     "ManifestBase",
+    "PromoteManifest",
     "ProvisionManifest",
     "ResizeManifest",
     "SchemaManifest",
@@ -158,6 +159,16 @@ class AnalyzeManifest(ManifestBase):
     step: Literal["analyze"] = "analyze"
     # public base tables + leaf partitions with fresh manual-ANALYZE stats after the run.
     tables_analyzed: int
+
+
+class PromoteManifest(ManifestBase):
+    step: Literal["promote"] = "promote"
+    # The single serving parameter this cutover wrote (people-db-connection-string-{env}).
+    serving_param: str
+    # The SSM version this write produced and the label pinned to it (refresh-{run_date}) —
+    # the rollback/traceability anchor for which refresh is serving.
+    version: int
+    label: str
 
 
 class ValidationCheck(BaseModel):

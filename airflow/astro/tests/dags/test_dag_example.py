@@ -61,6 +61,10 @@ with suppress_logging("airflow"):
     # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
     _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
 
+_PROMOTE_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "promote_people_api.py")
+with suppress_logging("airflow"):
+    _PROMOTE_DAG = DagBag(dag_folder=_PROMOTE_DAG_FILE).dags.get("promote_people_api")
+
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -128,3 +132,11 @@ def test_load_people_api_scale_down_on_failure():
         "analyze",
     }
     assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
+
+
+def test_promote_people_api_is_manual_only():
+    """The serving cutover is a separate, gated DAG: it must NEVER schedule itself (schedule=None
+    so it only runs on a manual trigger) and is just the single `promote` step."""
+    assert _PROMOTE_DAG is not None, f"promote_people_api failed to load from {_PROMOTE_DAG_FILE}"
+    assert _PROMOTE_DAG.schedule is None, "cutover DAG must be manual-trigger only (schedule=None)"
+    assert {t.task_id for t in _PROMOTE_DAG.tasks} == {"promote"}

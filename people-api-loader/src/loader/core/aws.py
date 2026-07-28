@@ -243,21 +243,35 @@ def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True)
         return _ssm_cache[key]
 
 
-def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> None:
+def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> int:
     """Write (create or overwrite) an SSM Parameter Store value; SecureString by default.
 
     The parameter is tagged with the loader's Environment tags so IAM policies scoped by
     `aws:ResourceTag/Environment` (the loader's permissions boundary) allow subsequent
     Get/Describe. SSM forbids combining `Tags` with `Overwrite` in one call, so we
     create-with-tags first and fall back to overwrite + re-tag if it already exists.
+
+    Returns the parameter version this write produced, so callers can label it.
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
     try:
-        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=cfg.tags_as_aws())
+        resp = client.put_parameter(Name=name, Value=value, Type=param_type, Tags=cfg.tags_as_aws())
     except client.exceptions.ParameterAlreadyExists:
-        client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
+        resp = client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
         client.add_tags_to_resource(ResourceType="Parameter", ResourceId=name, Tags=cfg.tags_as_aws())
+    return int(resp["Version"])
+
+
+def label_ssm_parameter_version(cfg: BaseLoaderConfig, name: str, version: int, labels: list[str]) -> None:
+    """Attach version label(s) to a specific SSM parameter version.
+
+    A version label is the human-readable anchor for which refresh a serving-parameter version
+    came from (traceability + rollback). A label lives on exactly one version at a time, so
+    re-applying an existing label moves it. SSM rejects labels that begin with a digit or with
+    `aws`/`ssm`, so a bare date stamp is invalid — callers prefix it (e.g. `refresh-<date>`).
+    """
+    ssm(cfg).label_parameter_version(Name=name, ParameterVersion=version, Labels=labels)
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
