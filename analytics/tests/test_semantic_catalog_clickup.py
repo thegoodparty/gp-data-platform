@@ -39,6 +39,24 @@ def test_page_has_three_parts():
     assert CATALOG_BEGIN in page and CATALOG_END in page  # dynamic part 3
 
 
+def test_footer_renders_after_catalog():
+    page = render_page(
+        [_rec()],
+        _lifecycles(),
+        "SOP",
+        OWNERS,
+        footer_md="## How governance works\n## What this means for you\nBROADCAST",
+    )
+    assert "What this means for you" in page
+    # Footer must come after the catalog block, not before it.
+    assert page.index(CATALOG_END) < page.index("What this means for you")
+
+
+def test_footer_omitted_when_empty():
+    page = render_page([_rec()], _lifecycles(), "SOP", OWNERS)
+    assert "What this means for you" not in page
+
+
 def test_catalog_row_has_lifecycle_and_governance():
     page = render_page([_rec()], _lifecycles(), "SOP", OWNERS)
     assert "Activated Candidates" in page
