@@ -78,8 +78,9 @@ with
             `Mailing_Families_FamilyID`,
             -- `Mailing_HHGender_Description`,
             `ConsumerData_Marital_Status` as `Marital_Status`,
-            cast(
-                to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy') as date
+            coalesce(
+                try_to_date(`Voters_MovedFrom_Date`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy')
             ) as `MovedFrom_Date`,
             `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
