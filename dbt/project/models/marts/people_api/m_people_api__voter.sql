@@ -173,13 +173,24 @@ with
             `Primary_2022`,
             `Primary_2024`,
             `Primary_2026`,
-            `Voters_VotingPerformanceEvenYearGeneral`
-            as `VotingPerformanceEvenYearGeneral`,
-            `Voters_VotingPerformanceEvenYearGeneralAndPrimary`
-            as `VotingPerformanceEvenYearGeneralAndPrimary`,
-            `Voters_VotingPerformanceEvenYearPrimary`
-            as `VotingPerformanceEvenYearPrimary`,
-            `Voters_VotingPerformanceMinorElection` as `VotingPerformanceMinorElection`,
+            -- The int model casts these to double for its other consumers, but prod
+            -- stores them as
+            -- integer text ('42', not '42.0'); round-trip through int so the serving
+            -- text matches.
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearGeneral` as int) as string
+            ) as `VotingPerformanceEvenYearGeneral`,
+            cast(
+                cast(
+                    `Voters_VotingPerformanceEvenYearGeneralAndPrimary` as int
+                ) as string
+            ) as `VotingPerformanceEvenYearGeneralAndPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearPrimary` as int) as string
+            ) as `VotingPerformanceEvenYearPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceMinorElection` as int) as string
+            ) as `VotingPerformanceMinorElection`,
 
             -- Districts
             `AddressDistricts_Change_Changed_CD`,
