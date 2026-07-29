@@ -42,6 +42,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
+        # Append load-history log. A full refresh isn't data-losing here (it rebuilds from the
+        # guarded upstream S3 log) but re-reads every state and is prone to clustering conflicts.
+        # Pin full_refresh off so heavy re-reads stay a deliberate op, not an on-merge side effect;
+        # the incremental history gate then stays authoritative.
+        full_refresh=False,
         tags=["l2", "haystaq", "s3", "databricks", "load"],
     )
 
