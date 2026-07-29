@@ -116,10 +116,10 @@ TABLE_SPECS: dict[str, TableSpec] = {
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
         # created_at/updated_at: the mart emits timestamptz, but the District serving contract is
         # timestamp WITHOUT time zone (unlike DistrictVoter, which is timestamptz) — match the contract.
-        # state: the serving public."USState" enum, matching prod. District has one country-scope row
-        # (type=Country, state="US") the 51-value enum can't hold, so "US" is appended to the enum in
-        # create_schema._USSTATE_LABELS. The app's Prisma USState enum must also include "US", or
-        # people-api fails reading that row (a coordinated people-api change).
+        # state: the serving public."USState" enum, matching prod. The one country-scope row
+        # (type=Country, state="US") that the 51-value enum can't hold is dropped in the
+        # m_people_api__district mart (prod never carried it; nothing references it), so every
+        # District.state value lands within the enum and no Prisma enum change is needed.
         type_overrides={
             "id": "UUID",
             "state": '"USState"',
@@ -182,8 +182,8 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_importan
 # Columns whose serving TYPE intentionally differs from the prod contract, so the validate
 # schema-type guardrail must not flag them as drift (the type analogue of LOADER_ADDED_COLUMNS).
 # Keyed by serving table -> column names. Currently empty: District.state (previously here because
-# the loader stored text) now matches prod as the USState enum, with "US" added to the enum for the
-# country-scope row. Add an entry only for a genuinely intended, documented type divergence.
+# the loader stored text) now matches prod as the USState enum, since the country-scope "US" row is
+# dropped in the district mart. Add an entry only for a genuinely intended, documented type divergence.
 ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {}
 
 
