@@ -109,8 +109,11 @@ with
                     coalesce(gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}) as {{ col }},
                 {% endif %}
             {% endfor %}
-            -- hubspot_company_ids: BR-only (gp_api / TS / DDHQ never set it).
-            br.hubspot_company_ids,
+            -- hubspot_company_ids: gp_api carries the HubSpot company id (from the
+            -- campaign); BR/TS/DDHQ do not set it.
+            coalesce(
+                gp_api.hubspot_company_ids, br.hubspot_company_ids
+            ) as hubspot_company_ids,
             -- candidacy_result: DDHQ remains authoritative for results.
             coalesce(
                 ddhq.candidacy_result,

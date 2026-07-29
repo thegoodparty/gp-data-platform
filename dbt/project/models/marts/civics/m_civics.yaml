@@ -414,7 +414,9 @@ models:
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
-          hubspot_company_ids, win_number, win_number_model
+          win_number, win_number_model
+        gp_api (campaign HubSpot company id); 2025-archive otherwise:
+          hubspot_company_ids
         2025-archive only (no 2026+ provider computes viability):
           viability_score, score_viability_automated
 
@@ -488,8 +490,10 @@ models:
 
       - name: hubspot_company_ids
         description: >
-          Comma-separated HubSpot company IDs associated with this candidacy.
-          A candidacy may link to multiple HubSpot companies.
+          HubSpot company IDs associated with this candidacy, stored as a
+          JSON-array string (e.g. ["12345"]). Sourced from the gp_api campaign's
+          HubSpot company id for post-2026 candidacies and from the archived
+          HubSpot company association for 2025 candidacies.
 
       - name: candidate_id_source
         description: >

@@ -144,7 +144,9 @@ with
 
             campaign_id as product_campaign_id,
             hubspot_id as hubspot_contact_id,
-            cast(null as string) as hubspot_company_ids,
+            case
+                when hubspot_id is not null then to_json(array(hubspot_id))
+            end as hubspot_company_ids,
             'gp_api' as candidate_id_source,
             party_affiliation,
             cast(null as boolean) as is_incumbent,
