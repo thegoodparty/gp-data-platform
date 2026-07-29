@@ -97,7 +97,18 @@ with
 select
     people.gp_person_id as id,
     people.br_person_id_int as br_person_id,
-    {{ slugify("concat_ws('-', people.first_name, people.last_name)") }} as slug,
+    -- Globally unique: the /people/<slug> URL resolves on slug alone (no
+    -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
+    -- Leading trim drops the separator when the name slugifies to empty.
+    trim(
+        leading '-'
+        from
+            concat(
+                {{ slugify("concat_ws('-', people.first_name, people.last_name)") }},
+                '-',
+                left(people.gp_person_id, 8)
+            )
+    ) as slug,
     people.first_name,
     coalesce(br_person.middle_name, office_holder.middle_name) as middle_name,
     people.last_name,
