@@ -1041,8 +1041,8 @@ def sync_election_api():
                     # ~1M rows at the six-years-back retention (window [-6y, +2y];
                     # Projected_Turnout-scale); one state at a time bounds worker
                     # memory like the other groups. The int[]/text[] array columns
-                    # pass through as Python lists; psycopg2 adapts lists to
-                    # Postgres arrays natively.
+                    # arrive as numpy arrays from the arrow-backed connector; the
+                    # loader normalizes them to Python lists for psycopg2.
                     partition_column="state",
                 )
 

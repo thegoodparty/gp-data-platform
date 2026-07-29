@@ -287,8 +287,9 @@ def test_cold_start_floor():
 
 def test_psycopg2_adapts_python_lists_to_postgres_arrays():
     """The race loader is the framework's first array round-trip
-    (frequency int[], position_names text[]): rows arrive from the
-    Databricks connector as Python lists and must adapt to ARRAY literals."""
+    (frequency int[], position_names text[]): the arrow-backed connector
+    returns numpy arrays, the loader normalizes them to Python lists, and
+    those lists must adapt to ARRAY literals."""
     from psycopg2.extensions import adapt
 
     assert adapt([1, 2]).getquoted() == b"ARRAY[1,2]"
