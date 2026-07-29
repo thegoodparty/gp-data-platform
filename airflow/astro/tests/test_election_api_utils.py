@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from include.custom_functions import election_api_utils
 from include.custom_functions.election_api_utils import bulk_insert_from_databricks
@@ -97,3 +98,36 @@ class TestBulkInsert:
 
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()
+
+    def test_numpy_arrays_from_arrow_reads_become_python_lists(self):
+        """The arrow-backed Databricks connector returns ARRAY columns as
+        numpy arrays whose elements are numpy scalars; psycopg2 can only
+        adapt Python lists of native values, so the loader must normalize
+        every value before execute_values sees it."""
+        conn = MagicMock()
+        conn.cursor.return_value = MagicMock()
+        batch = [(1, np.array([2, 4], dtype=np.int64), np.array(["Mayor", "Clerk"]))]
+
+        with (
+            patch.object(
+                election_api_utils,
+                "read_databricks_table",
+                return_value=(["id", "frequency", "position_names"], _gen([batch])),
+            ),
+            patch.object(election_api_utils.psycopg2.extras, "execute_values") as ev,
+        ):
+            total = bulk_insert_from_databricks(
+                conn,
+                _spec(),
+                "SELECT id, frequency, position_names FROM t",
+                ["id", "frequency", "position_names"],
+            )
+
+        assert total == 1
+        (row,) = ev.call_args.args[2]
+        assert type(row[1]) is list
+        assert type(row[2]) is list
+        assert row[1] == [2, 4]
+        assert row[2] == ["Mayor", "Clerk"]
+        assert all(type(v) is int for v in row[1])
+        assert all(type(v) is str for v in row[2])

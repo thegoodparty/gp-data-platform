@@ -27,6 +27,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+import numpy as np
 import psycopg2.extras
 from include.custom_functions.databricks_utils import (
     read_databricks_partitioned,
@@ -156,7 +157,16 @@ def bulk_insert_from_databricks(
     cur = conn.cursor()
     try:
         for batch in batches:
-            rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
+            # The arrow-backed connector returns ARRAY columns as numpy
+            # arrays (with numpy scalars inside); psycopg2 only adapts
+            # Python lists of native values, so normalize each value.
+            rows = [
+                tuple(
+                    v.tolist() if isinstance(v, np.ndarray) else v
+                    for v in (transform_row(r) if transform_row else r)
+                )
+                for r in batch
+            ]
             if not rows:
                 continue
             psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
