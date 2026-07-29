@@ -8,21 +8,14 @@
 }}
 
 with
-    extracted_engagements as (
-        select distinct
-            tbl_companies.id as company_id,
-            regexp_extract(
-                tbl_engagements.associations_companyids, '\\[(\\d+)\\]', 1
-            ) as company_id_association,
-            regexp_extract(
-                tbl_engagements.associations_contactids, '\\[(\\d+)\\]', 1
-            ) as contact_id_association
-        from {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
-        left join
-            {{ ref("stg_airbyte_source__hubspot_api_engagements") }} as tbl_engagements
-            on tbl_companies.id
-            = regexp_extract(tbl_engagements.associations_companyids, '\\[(\\d+)\\]', 1)
-        where tbl_companies.id is not null
+    contact_company_pairs as (
+        -- HubSpot's real contact->company association, already synced as an
+        -- array on the contact. Explode to one row per (contact, company);
+        -- ranked_matches below collapses multi-company contacts back to one.
+        select
+            tbl_contacts.id as contact_id, explode(tbl_contacts.companies) as company_id
+        from {{ ref("int__hubspot_contacts") }} as tbl_contacts
+        where tbl_contacts.companies is not null
     ),
     joined_data as (
         select
@@ -181,7 +174,8 @@ with
             tbl_contacts.created_at,
             tbl_contacts.updated_at,
             coalesce(
-                tbl_gp_db_campaign.details:dob::string, tbl_contacts.birth_date
+                try_cast(tbl_gp_db_campaign.details:dob::string as date),
+                tbl_contacts.birth_date
             ) as birth_date,
             tbl_gp_db_campaign.details:dob::string as birth_date_gp_db,
             coalesce(
@@ -201,8 +195,6 @@ with
                 tbl_companies.verified_candidates
             ) as verified_candidate,
             coalesce(tbl_contacts.is_pledged, tbl_companies.is_pledged) as is_pledged,
-            tbl_engagements.company_id_association,
-            tbl_engagements.contact_id_association,
             tbl_gp_db_campaign.id as product_campaign_id,
 
             -- assessments
@@ -229,11 +221,10 @@ with
 
         from {{ ref("int__hubspot_contacts") }} as tbl_contacts
         left join
-            extracted_engagements as tbl_engagements
-            on tbl_contacts.id = tbl_engagements.contact_id_association
+            contact_company_pairs as tbl_pairs on tbl_contacts.id = tbl_pairs.contact_id
         left join
             {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
-            on tbl_companies.id = tbl_engagements.company_id_association
+            on tbl_companies.id = tbl_pairs.company_id
         left join
             {{ ref("clean_states") }} as tbl_states_company
             on trim(upper(tbl_companies.state)) = tbl_states_company.state_raw
@@ -322,8 +313,6 @@ select
     instagram_handle_gp_db,
     population,
     email_contacts,
-    company_id_association,
-    contact_id_association,
     email_match,
     name_match,
     win_number,
