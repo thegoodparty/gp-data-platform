@@ -122,6 +122,20 @@ def create_staging_table(conn, spec: TableSyncSpec) -> None:
         cur.close()
 
 
+def _pg_adaptable(value: object) -> object:
+    """psycopg2 adapts native Python values, not numpy ones. The arrow-backed
+    connector returns ARRAY columns as numpy arrays: typed when dense,
+    object-dtype (numpy scalars and None inside) when mixed; whole-NULL arrays
+    arrive as None and pass through untouched. A null-bearing integer array
+    that arrow promotes to float64 still fails loudly at insert (int column,
+    float values) rather than loading corrupted values."""
+    if isinstance(value, np.ndarray):
+        return [_pg_adaptable(x) for x in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def bulk_insert_from_databricks(
     conn,
     spec: TableSyncSpec,
@@ -157,15 +171,10 @@ def bulk_insert_from_databricks(
     cur = conn.cursor()
     try:
         for batch in batches:
-            # The arrow-backed connector returns ARRAY columns as numpy
-            # arrays (with numpy scalars inside); psycopg2 only adapts
-            # Python lists of native values, so normalize each value.
+            # Normalize numpy values (ARRAY columns, and any scalars inside
+            # them) to native Python so psycopg2 can adapt them.
             rows = [
-                tuple(
-                    v.tolist() if isinstance(v, np.ndarray) else v
-                    for v in (transform_row(r) if transform_row else r)
-                )
-                for r in batch
+                tuple(_pg_adaptable(v) for v in (transform_row(r) if transform_row else r)) for r in batch
             ]
             if not rows:
                 continue

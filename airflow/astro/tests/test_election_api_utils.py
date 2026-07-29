@@ -131,3 +131,39 @@ class TestBulkInsert:
         assert row[2] == ["Mayor", "Clerk"]
         assert all(type(v) is int for v in row[1])
         assert all(type(v) is str for v in row[2])
+
+    def test_object_dtype_arrays_and_null_arrays_normalize(self):
+        """Object-dtype arrays (numpy's shape for mixed/null-bearing lists)
+        keep numpy scalars inside — .tolist() alone would pass them through.
+        Whole-NULL arrays arrive as None and must survive as SQL NULL; empty
+        arrays stay empty lists. All shapes the mart schema permits."""
+        conn = MagicMock()
+        conn.cursor.return_value = MagicMock()
+        batch = [
+            (1, np.array([np.int64(2), None], dtype=object), None),
+            (2, np.array([], dtype=np.int64), np.array(["Mayor"])),
+        ]
+
+        with (
+            patch.object(
+                election_api_utils,
+                "read_databricks_partitioned",
+                return_value=_gen([batch]),
+            ),
+            patch.object(election_api_utils.psycopg2.extras, "execute_values") as ev,
+        ):
+            total = bulk_insert_from_databricks(
+                conn,
+                _spec(),
+                "SELECT id, frequency, position_names FROM t",
+                ["id", "frequency", "position_names"],
+                partition_column="state",
+            )
+
+        assert total == 2
+        row1, row2 = ev.call_args.args[2]
+        assert row1[1] == [2, None]
+        assert type(row1[1][0]) is int
+        assert row1[2] is None
+        assert row2[1] == []
+        assert row2[2] == ["Mayor"]
