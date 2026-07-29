@@ -33,6 +33,10 @@ models:
     description: >
       This model writes data from Databricks to the voter db in gp-api.
     config:
+      # Legacy path to the gp-api voter DB, being retired in favor of the people-api loader. It is
+      # incompatible with the all-string L2 source (its numeric target columns reject text), so
+      # disable it rather than leave it failing every on-merge/CI build.
+      enabled: false
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
