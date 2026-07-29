@@ -137,9 +137,8 @@ def test_build_green_view_ddl_covers_all_tables() -> None:
     assert len(stmts) == 1 + len(TABLE_SPECS)
 
 
-# public."USState" labels: the 51 state labels in the serving cluster's public.USState order (DC
-# last), then "US" appended for the District country-scope row (mirrors the private _USSTATE_LABELS
-# in create_schema.py so a drift there is caught here too).
+# public."USState" labels, DC LAST, matching the serving cluster's public.USState order exactly (mirrors
+# the private _USSTATE_LABELS in create_schema.py so a drift there is caught here too).
 _USSTATE_LABELS = (
     "AL",
     "AK",
@@ -192,7 +191,6 @@ _USSTATE_LABELS = (
     "WI",
     "WY",
     "DC",
-    "US",  # country-scope District row; appended after the 51 state labels (see create_schema.py)
 )
 
 
@@ -200,16 +198,14 @@ def test_build_usstate_enum_ddl_shape() -> None:
     ddl = step.build_usstate_enum_ddl()
     assert 'CREATE TYPE public."USState" AS ENUM' in ddl
     assert "EXCEPTION WHEN duplicate_object THEN NULL" in ddl
-    assert len(_USSTATE_LABELS) == 52
+    assert len(_USSTATE_LABELS) == 51
     for label in _USSTATE_LABELS:
         assert f"'{label}'" in ddl
-    assert ddl.count("'") == 2 * len(_USSTATE_LABELS)  # exactly 52 quoted labels, no duplicates
-    # The 51 state labels are in prod's public.USState order with DC last; "US" (the District
-    # country-scope row) is appended after them.
+    assert ddl.count("'") == 2 * len(_USSTATE_LABELS)  # exactly 51 quoted labels, no duplicates
+    # DC is last among the labels (matches the serving cluster's public.USState order).
     label_positions = [ddl.index(f"'{s}'") for s in _USSTATE_LABELS]
     assert label_positions == sorted(label_positions)
-    assert _USSTATE_LABELS[-2] == "DC"
-    assert _USSTATE_LABELS[-1] == "US"
+    assert _USSTATE_LABELS[-1] == "DC"
 
 
 def test_usstate_type_created_before_voter_table(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,13 +219,12 @@ def test_usstate_type_created_before_voter_table(monkeypatch: pytest.MonkeyPatch
 
 
 def test_states_and_usstate_labels_agree_as_a_set() -> None:
-    # STATES (partition keys) and _USSTATE_LABELS (enum labels) are separately ordered lists. The
-    # enum labels are the 51 partition-key states plus "US" (the District country-scope row, which
-    # is never a partition key). Guard that relationship so adding a code to one but not the other
-    # surfaces here rather than at loader run time.
+    # STATES (partition keys) and _USSTATE_LABELS (enum labels) are separately ordered
+    # lists; guard that they cover the same 51 codes so adding a code to one but not the
+    # other surfaces here rather than at loader run time.
     from loader.people_api.schema.states import STATES
 
-    assert set(step._USSTATE_LABELS) == set(STATES) | {"US"}
+    assert set(STATES) == set(step._USSTATE_LABELS)
 
 
 def test_build_partitioned_ddl_parametrizes_table_and_column() -> None:
