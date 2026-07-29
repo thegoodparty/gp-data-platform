@@ -1,16 +1,16 @@
--- Non-archive candidacies whose HubSpot contact has a company association must
--- carry hubspot_company_ids. Failures mean the mart dropped the association for
--- current candidacies (the since-2026 branch previously read a hard-null column).
+-- A candidacy whose gp_api campaign carries a HubSpot company id must surface it
+-- as hubspot_company_ids. gp_api stores the HubSpot COMPANY id on the campaign;
+-- the mart must expose it. Failures mean the company id was dropped for current
+-- candidacies. (The gp_api model currently carries that company id in its
+-- hubspot_contact_id column; correcting that label is tracked separately.)
 select cand.gp_candidacy_id
 from {{ ref("candidacy") }} as cand
 where
-    cand.hubspot_contact_id is not null
-    and cand.hubspot_company_ids is null
+    (cand.hubspot_company_ids is null or trim(cand.hubspot_company_ids) in ('', '[]'))
     and exists (
         select 1
-        from {{ ref("int__hubspot_contacts_w_companies") }} as hcw
+        from {{ ref("int__civics_candidacy_gp_api") }} as gp
         where
-            hcw.contact_id = cand.hubspot_contact_id
-            and hcw.extra_companies is not null
-            and size(hcw.extra_companies) > 0
+            gp.product_campaign_id = cand.product_campaign_id
+            and gp.hubspot_contact_id is not null
     )
