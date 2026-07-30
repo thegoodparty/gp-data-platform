@@ -100,6 +100,8 @@ TABLE_SPECS: dict[str, TableSpec] = {
             "CountyEthnic_LALEthnicCode": "TEXT",
             "SequenceOddEven": "TEXT",
             "SequenceZigZag": "TEXT",
+            # 3-digit code (001-840) — text so the leading zero survives (the mart keeps it raw too).
+            "FIPS": "TEXT",
             # geo coordinates + voting-performance scores (mart double precision -> contract text)
             "Residence_Addresses_Latitude": "TEXT",
             "Residence_Addresses_Longitude": "TEXT",
