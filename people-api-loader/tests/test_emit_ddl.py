@@ -80,6 +80,8 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         MartColumn(name="SequenceZigZag", spark_type="int", nullable=True),
         MartColumn(name="Residence_Addresses_Latitude", spark_type="double", nullable=True),
         MartColumn(name="VotingPerformanceMinorElection", spark_type="double", nullable=True),
+        # 3-digit FIPS code: int-inferred by the mart, must stay TEXT so leading zeros survive.
+        MartColumn(name="FIPS", spark_type="int", nullable=True),
     ]
     ddl = render_create_table(TABLE_SPECS["Voter"], cols)
     for col in (
@@ -88,6 +90,7 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         "SequenceZigZag",
         "Residence_Addresses_Latitude",
         "VotingPerformanceMinorElection",
+        "FIPS",
     ):
         assert f'"{col}" TEXT' in ddl
     # none of the mart-inferred types may survive the override
