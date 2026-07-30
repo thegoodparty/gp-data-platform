@@ -333,3 +333,16 @@ models:
             - election_code
             - model_version
             - inference_at
+
+  - name: stg_model_predictions__voter_turnout_scores_20260730
+    description: In-house per-voter turnout propensity scores (prob_vote) for 2026 General
+    columns:
+      - name: LALVOTERID
+        description: L2 voter id; join key to m_people_api__voter
+        data_tests:
+          - not_null
+          - unique
+      - name: prob_vote
+        description: Modeled turnout probability in [0, 1] for the 2026 General
+        data_tests:
+          - not_null
