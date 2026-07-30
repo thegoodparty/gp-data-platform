@@ -85,7 +85,13 @@ with
             `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
             `Voters_NameSuffix` as `NameSuffix`,
-            `Voters_OfficialRegDate` as `OfficialRegDate`,
+            -- Same date handling as CalculatedRegDate/MovedFrom_Date: raw L2 is a
+            -- string, so parse ISO and MM/dd/yyyy and keep whichever succeeds,
+            -- otherwise the leading-zero source fix leaves this as a raw string.
+            coalesce(
+                try_to_date(`Voters_OfficialRegDate`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_OfficialRegDate`, 'MM/dd/yyyy')
+            ) as `OfficialRegDate`,
             `Parties_Description`,
             `Voters_PlaceOfBirth` as `PlaceOfBirth`,
             `ConsumerData_Presence_Of_Children_in_HH` as `Presence_Of_Children`,
