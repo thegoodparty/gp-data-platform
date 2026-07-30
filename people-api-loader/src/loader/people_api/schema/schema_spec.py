@@ -107,6 +107,11 @@ TABLE_SPECS: dict[str, TableSpec] = {
             "VotingPerformanceEvenYearGeneralAndPrimary": "TEXT",
             "VotingPerformanceEvenYearPrimary": "TEXT",
             "VotingPerformanceMinorElection": "TEXT",
+            # created_at/updated_at/Voter_Status_UpdatedAt: mart emits timestamptz, but the Voter
+            # serving contract is timestamp WITHOUT time zone (like District/DistrictStats) — match it.
+            "created_at": "TIMESTAMP",
+            "updated_at": "TIMESTAMP",
+            "Voter_Status_UpdatedAt": "TIMESTAMP",
         },
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
@@ -115,7 +120,7 @@ TABLE_SPECS: dict[str, TableSpec] = {
         partition_by=None,
         # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
         # created_at/updated_at: the mart emits timestamptz, but the District serving contract is
-        # timestamp WITHOUT time zone (unlike DistrictVoter, which is timestamptz) — match the contract.
+        # timestamp WITHOUT time zone (as for Voter/DistrictVoter/DistrictStats) — match the contract.
         # state: the serving public."USState" enum, matching prod. The one country-scope row
         # (type=Country, state="US") that the 51-value enum can't hold is dropped in the
         # m_people_api__district mart (prod never carried it; nothing references it), so every
@@ -155,8 +160,10 @@ TABLE_SPECS: dict[str, TableSpec] = {
         type_overrides={
             "district_id": "UUID",
             "voter_id": "UUID",
-            "created_at": "TIMESTAMPTZ",
-            "updated_at": "TIMESTAMPTZ",
+            # timestamp WITHOUT time zone, matching the prod contract (same as District/DistrictStats;
+            # the mart emits timestamptz).
+            "created_at": "TIMESTAMP",
+            "updated_at": "TIMESTAMP",
             # the serving public."USState" enum, matching Voter/District.
             "state": '"USState"',
         },
@@ -181,10 +188,11 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_importan
 
 # Columns whose serving TYPE intentionally differs from the prod contract, so the validate
 # schema-type guardrail must not flag them as drift (the type analogue of LOADER_ADDED_COLUMNS).
-# Keyed by serving table -> column names. Currently empty: District.state (previously here because
-# the loader stored text) now matches prod as the USState enum, since the country-scope "US" row is
-# dropped in the district mart. Add an entry only for a genuinely intended, documented type divergence.
-ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {}
+# Keyed by serving table -> column names.
+# Voter.State: served as the public."USState" enum (matching District/DistrictVoter and swain-db, so
+# the app needs no code change — the 2026-07-21 decision), while the current prod baseline still
+# stores Voter."State" as text. This is an intended forward migration, not drift.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {"Voter": {"State"}}
 
 
 def is_partitioned(table: str) -> bool:
