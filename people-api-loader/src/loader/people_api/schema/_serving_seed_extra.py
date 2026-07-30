@@ -10,13 +10,16 @@ from __future__ import annotations
 
 from loader.people_api.schema.index_specs import IndexDef
 
-# people-api name-search indexes, carried here because prisma migrations don't run on
-# loader-built clusters. lower() expressions must match people-api's emitted SQL exactly or the
-# planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%'
-# uses them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
-# from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves the
-# substring path no b-tree can. pg_trgm is installed by create_schema and build_indexes (each step
-# is independently re-runnable).
+# Serving-only performance indexes, carried here because they don't come from a prisma migration
+# that runs on loader-built clusters. Two families:
+#   1. people-api name-search (first/last name): lower() expressions must match people-api's emitted
+#      SQL exactly or the planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%' uses
+#      them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
+#      from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves
+#      the substring path no b-tree can.
+#   2. party-registration substring filter (Parties_Description): a trgm GIN serving the gp-api
+#      contacts ILIKE audience filter (see the IndexDef comment below).
+# pg_trgm is installed by create_schema and build_indexes (each step is independently re-runnable).
 EXTRA_INDEXES: list[IndexDef] = [
     IndexDef(
         table="Voter",
@@ -56,6 +59,24 @@ EXTRA_INDEXES: list[IndexDef] = [
         sql='CREATE INDEX "Voter_lastname_lower_trgm_idx" ON public."Voter" USING gin (lower("LastName") gin_trgm_ops);',
         unique=False,
         columns=['lower("LastName")'],
+        where=None,
+    ),
+    # Party-registration substring filter. gp-api compiles a party audience to
+    # `"Parties_Description" ILIKE '%<substring>%'` (case-insensitive, ORed per rule —
+    # gp-api/src/peopleDb/utils/filters.sql.util.ts). The generated seed only carries a
+    # plain b-tree on this column (Voter_Parties_Description_idx), which a substring ILIKE
+    # can't use, so the contacts count/overlap-count/list-detail aggregates fall back to a
+    # full Voter scan and hit the app's statement-timeout fence. A trgm GIN on the raw column
+    # serves ILIKE directly (pg_trgm handles the case-folding), the same substring path the
+    # name-search trgm indexes above serve. On the raw column, not lower(), to match the
+    # emitted SQL exactly. Carried here (not the generated seed) because it doesn't yet exist
+    # on the extraction-source cluster; build_indexes re-issues it on every rebuild.
+    IndexDef(
+        table="Voter",
+        name="Voter_Parties_Description_trgm_idx",
+        sql='CREATE INDEX "Voter_Parties_Description_trgm_idx" ON public."Voter" USING gin ("Parties_Description" gin_trgm_ops);',
+        unique=False,
+        columns=["Parties_Description"],
         where=None,
     ),
     # Geospatial lookups on the residence coordinates. GiST is the standard PostGIS point index:
