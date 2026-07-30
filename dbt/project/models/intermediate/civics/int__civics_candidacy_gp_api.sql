@@ -21,6 +21,13 @@ with
     -- exist in the users mart (matches candidate_gp_api's user filter).
     users as (select user_id from {{ ref("users") }}),
 
+    -- hubspotid lives in the user's meta_data JSON (a real HubSpot CONTACT id),
+    -- not on the users mart. Mirrors int__civics_candidate_gp_api.
+    user_hubspot as (
+        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+    ),
+
     person_ids as (
         select record_key, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
@@ -74,6 +81,7 @@ with
         select
             c.campaign_id,
             c.user_id,
+            uh.hubspot_contact_id,
             c.hubspot_id,
             c.is_verified,
             c.is_pledged,
@@ -100,6 +108,7 @@ with
         inner join users as u on c.user_id = u.user_id
         left join
             person_ids as p on 'gp_api|' || cast(c.user_id as string) = p.record_key
+        left join user_hubspot as uh on c.user_id = uh.user_id
     ),
 
     candidacies_with_ids as (
@@ -143,7 +152,7 @@ with
             ) as gp_election_id,
 
             campaign_id as product_campaign_id,
-            hubspot_id as hubspot_contact_id,
+            hubspot_contact_id,
             case
                 when hubspot_id is not null then to_json(array(hubspot_id))
             end as hubspot_company_ids,
