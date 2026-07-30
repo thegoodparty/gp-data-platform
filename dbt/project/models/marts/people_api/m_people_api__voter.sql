@@ -133,23 +133,6 @@ with
             -- + (case when {{ '`OtherElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
             -- + (case when {{ '`AnyElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
             -- ) as `Voter_Status`,
-            (case when `AnyElection_2025` is true then 1 else 0 end)
-            + (case when `General_2024` is true then 1 else 0 end)
-            + (case when `Primary_2024` is true then 1 else 0 end)
-            + (case when `PresidentialPrimary_2024` is true then 1 else 0 end)
-            + (case when `OtherElection_2024` is true then 1 else 0 end)
-            + (case when `AnyElection_2023` is true then 1 else 0 end)
-            + (case when `General_2022` is true then 1 else 0 end)
-            + (case when `Primary_2022` is true then 1 else 0 end)
-            + (case when `OtherElection_2022` is true then 1 else 0 end)
-            + (
-                case when `AnyElection_2021` is true then 1 else 0 end
-            ) as `Last_10_Elections_Voted`,
-            (case when `AnyElection_2025` is true then 1 else 0 end)
-            + (case when `General_2024` is true then 1 else 0 end)
-            + (
-                case when `Primary_2024` is true then 1 else 0 end
-            ) as `Last_3_Elections_Voted`,
             current_timestamp() as `Voter_Status_UpdatedAt`,
             cast(
                 `VoterTelephones_CellConfidenceCode` as int
@@ -459,6 +442,10 @@ with
         qualify
             row_number() over (partition by lalvoterid order by dbt_valid_from desc) = 1
     ),
+    voter_propensity as (
+        select `LALVOTERID`, `prob_vote`
+        from {{ ref("stg_model_predictions__voter_turnout_scores_20260730") }}
+    ),
     /*
         Note that here we need to list each column individually since we need to
         explicitly case protect each column name with backticks to match the Voter table
@@ -545,16 +532,17 @@ with
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
             case
-                when tbl_updated.`Last_10_Elections_Voted` = 0
-                then 'First Time'
-                when tbl_updated.`Last_3_Elections_Voted` = 0
+                when tbl_propensity.`prob_vote` is null
+                then 'Unknown'
+                when tbl_propensity.`prob_vote` < 0.25
                 then 'Unlikely'
-                when tbl_updated.`Last_3_Elections_Voted` = 3
-                then 'Super'
-                when tbl_updated.`Last_3_Elections_Voted` = 2
+                when tbl_propensity.`prob_vote` < 0.50
+                then 'Unreliable'
+                when tbl_propensity.`prob_vote` < 0.75
                 then 'Likely'
-                else 'Unknown'
+                else 'Super'
             end as `Voter_Status`,
+            tbl_propensity.`prob_vote` as `Voter_Turnout_Probability`,
             tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
@@ -849,6 +837,9 @@ with
             -- Always set updated_at to dbt_valid_from
             tbl_updated.`dbt_valid_from` as updated_at
         from updated_voters as tbl_updated
+        left join
+            voter_propensity as tbl_propensity
+            on tbl_updated.`LALVOTERID` = tbl_propensity.`LALVOTERID`
         {% if is_incremental() %}
             left join
                 {{ this }} as tbl_existing
