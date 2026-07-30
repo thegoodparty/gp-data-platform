@@ -82,6 +82,10 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         MartColumn(name="VotingPerformanceMinorElection", spark_type="double", nullable=True),
         # 3-digit FIPS code: int-inferred by the mart, must stay TEXT so leading zeros survive.
         MartColumn(name="FIPS", spark_type="int", nullable=True),
+        # audit/status timestamps: timestamp-inferred (-> TIMESTAMPTZ) but overridden to TIMESTAMP.
+        MartColumn(name="created_at", spark_type="timestamp", nullable=False),
+        MartColumn(name="updated_at", spark_type="timestamp", nullable=False),
+        MartColumn(name="Voter_Status_UpdatedAt", spark_type="timestamp", nullable=True),
     ]
     ddl = render_create_table(TABLE_SPECS["Voter"], cols)
     for col in (
@@ -93,8 +97,11 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         "FIPS",
     ):
         assert f'"{col}" TEXT' in ddl
+    for col in ("created_at", "updated_at", "Voter_Status_UpdatedAt"):
+        assert f'"{col}" TIMESTAMP' in ddl
     # none of the mart-inferred types may survive the override
     assert "BOOLEAN" not in ddl and "INTEGER" not in ddl and "DOUBLE PRECISION" not in ddl
+    assert "TIMESTAMPTZ" not in ddl
 
 
 def test_render_district_family_matches_contract_types() -> None:
