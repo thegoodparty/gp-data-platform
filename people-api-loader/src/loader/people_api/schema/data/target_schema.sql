@@ -74,7 +74,7 @@ CREATE TABLE public."Voter" (
     "Veteran_Status" TEXT,
     "VoterParties_Change_Changed_Party" TEXT,
     "Voter_Status" TEXT,
-    "Voter_Status_UpdatedAt" TIMESTAMPTZ,
+    "Voter_Status_UpdatedAt" TIMESTAMP,
     "VoterTelephones_CellConfidenceCode" INTEGER,
     "VoterTelephones_CellPhoneFormatted" TEXT,
     "VoterTelephones_LandlineConfidenceCode" INTEGER,
@@ -192,7 +192,7 @@ CREATE TABLE public."Voter" (
     "EXT_District" TEXT,
     "Exempted_Village_School_District" TEXT,
     "Facilities_Improvement_District" TEXT,
-    "FIPS" INTEGER,
+    "FIPS" TEXT,
     "Fire_District" TEXT,
     "Fire_Maintenance_District" TEXT,
     "Fire_Protection_District" TEXT,
@@ -351,8 +351,8 @@ CREATE TABLE public."Voter" (
     "Water_SubDistrict" TEXT,
     "Weed_District" TEXT,
     "hf_most_important_policy_item" TEXT,
-    "created_at" TIMESTAMPTZ,
-    "updated_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMP,
+    "updated_at" TIMESTAMP,
     "Mailing_HHGender_Description" TEXT
 );
 
@@ -377,6 +377,6 @@ CREATE TABLE public."DistrictVoter" (
     "voter_id" UUID,
     "district_id" UUID,
     "State" "USState",
-    "created_at" TIMESTAMPTZ,
-    "updated_at" TIMESTAMPTZ
+    "created_at" TIMESTAMP,
+    "updated_at" TIMESTAMP
 );

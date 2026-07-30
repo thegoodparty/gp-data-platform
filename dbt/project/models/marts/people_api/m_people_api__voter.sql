@@ -290,7 +290,7 @@ with
             `EXT_District`,
             `Exempted_Village_School_District`,
             `Facilities_Improvement_District`,
-            cast(`Voters_FIPS` as int) as `FIPS`,
+            `Voters_FIPS` as `FIPS`,
             `Fire_District`,
             `Fire_Maintenance_District`,
             `Fire_Protection_District`,

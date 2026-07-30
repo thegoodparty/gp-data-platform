@@ -480,8 +480,9 @@ def test_check_schema_types_mismatch_fails(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_check_schema_types_accepted_divergence_not_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A registered ACCEPTED_TYPE_DIVERGENCES column is skipped even when its type differs. The real
-    # registry is currently empty, so patch in an entry to exercise the mechanism.
+    # A registered ACCEPTED_TYPE_DIVERGENCES column is skipped even when its type differs. Patch in a
+    # synthetic entry to exercise the mechanism; the real registry is guarded by
+    # test_accepted_type_divergences_pins_voter_state below.
     monkeypatch.setattr(step, "ACCEPTED_TYPE_DIVERGENCES", {"Voter": {"legacy_col"}})
     prod = [("legacy_col", "text"), ("id", "uuid")]
     new = [("legacy_col", "int4"), ("id", "uuid")]
@@ -491,6 +492,14 @@ def test_check_schema_types_accepted_divergence_not_flagged(monkeypatch: pytest.
     assert check.passed is True
     assert check.details["accepted_divergences"] == ["legacy_col"]
     assert "legacy_col" not in check.details["mismatches"]
+
+
+def test_accepted_type_divergences_pins_voter_state() -> None:
+    # Voter.State is served as the USState enum while the prod baseline is still text; the entry must
+    # stay in the real registry or schema_types_match:Voter hard-fails every load.
+    from loader.people_api.schema.schema_spec import ACCEPTED_TYPE_DIVERGENCES
+
+    assert "State" in ACCEPTED_TYPE_DIVERGENCES.get("Voter", set())
 
 
 def test_check_schema_types_ignores_column_absent_from_new(monkeypatch: pytest.MonkeyPatch) -> None:
