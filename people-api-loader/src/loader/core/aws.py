@@ -253,9 +253,12 @@ def put_ssm_parameter(
 ) -> None:
     """Write (create or overwrite) an SSM Parameter Store value; SecureString by default.
 
-    The parameter is tagged with the loader's Environment tags so IAM policies scoped by
-    `aws:ResourceTag/Environment` (the loader's permissions boundary) allow subsequent
-    Get/Describe. Pass `tags` to override that set (e.g. to omit `Environment`); defaults to
+    The parameter is tagged with the loader's resource tags for consistency. The loader's own
+    Get/Put on this parameter is authorized by parameter NAME (the `loader-s3-ssm` role policy
+    scopes `people-db-connection-string-{env}[-date]` by ARN, with no tag condition and no
+    permissions boundary), NOT by the `Environment` tag — so omitting `Environment` via `tags`
+    does not affect the loader's access; it only removes the tag a human role's
+    `ResourceTag/Environment` deny keys on. Pass `tags` to override the set; defaults to
     `cfg.tags_as_aws()`. SSM forbids combining `Tags` with `Overwrite` in one call, so we
     create-with-tags first and fall back to overwrite + re-tag if it already exists.
     """
