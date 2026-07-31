@@ -242,6 +242,29 @@ def teardown(
             help="Also delete the S3 gateway VPC endpoint. Default keeps it in place for future refreshes.",
         ),
     ] = False,
+    snapshot: Annotated[
+        bool,
+        typer.Option(
+            "--snapshot",
+            help="Take a final cluster snapshot (gp-people-db-{date}-{env}-final) before deleting, "
+            "kept until manually removed. Default skips it.",
+        ),
+    ] = False,
+    keep_ssm: Annotated[
+        bool,
+        typer.Option(
+            "--keep-ssm",
+            help="Keep the dated connection-string SSM parameter (for a restore-from-snapshot). "
+            "Default deletes it.",
+        ),
+    ] = False,
+    keep_param_groups: Annotated[
+        bool,
+        typer.Option(
+            "--keep-param-groups",
+            help="Keep the cluster's load/serve DB parameter groups. Default deletes them.",
+        ),
+    ] = False,
 ) -> None:
     """Delete loader-created resources for a run_date. Dry-run by default."""
     from loader.people_api.steps import teardown as step
@@ -253,6 +276,9 @@ def teardown(
         confirm=confirm,
         delete_s3=delete_s3,
         delete_vpce=delete_vpce,
+        snapshot=snapshot,
+        keep_ssm=keep_ssm,
+        keep_param_groups=keep_param_groups,
     )
 
 
