@@ -33,7 +33,7 @@ _CFG = cast(
         new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
         tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}, {"Key": "Environment", "Value": "prod"}],
         # Default: the SSM param gets the full tag set (Environment included), same as tags_as_aws().
-        omit_ssm_env_tag=False,
+        set_ssm_env_tag=True,
         ssm_param_tags_as_aws=lambda: [
             {"Key": "Project", "Value": "gp-api"},
             {"Key": "Environment", "Value": "prod"},
@@ -219,9 +219,10 @@ def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytes
     assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]
 
 
-def test_provision_omit_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
-    # With omit_ssm_env_tag, provision forwards the Environment-less SSM tags to put_ssm_parameter,
-    # but the RDS cluster still carries Environment (its create policy requires RequestTag/Environment).
+def test_provision_unset_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With set_ssm_env_tag=False, provision forwards the Environment-less SSM tags to
+    # put_ssm_parameter, but the RDS cluster still carries Environment (its create policy requires
+    # RequestTag/Environment).
     rds_client, ec2_client = FakeRds(), FakeEc2()
     captured = _patch(monkeypatch, rds_client, ec2_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
@@ -230,7 +231,7 @@ def test_provision_omit_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: py
         SimpleNamespace(
             **{
                 **vars(_CFG),
-                "omit_ssm_env_tag": True,
+                "set_ssm_env_tag": False,
                 "ssm_param_tags_as_aws": lambda: [{"Key": "Project", "Value": "gp-api"}],
             }
         ),

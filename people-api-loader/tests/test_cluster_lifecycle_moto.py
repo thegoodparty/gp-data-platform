@@ -158,3 +158,34 @@ def test_put_ssm_parameter_overwrites_and_retags(monkeypatch: pytest.MonkeyPatch
     )
     tags = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)["TagList"]
     assert {"Key": "Environment", "Value": "dev"} in tags
+
+
+@mock_aws
+def test_put_ssm_parameter_reset_tags_removes_dropped_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A first write tags the param with Environment; a later write (set_ssm_env_tag=False) passes an
+    # Environment-less tag list. add_tags_to_resource only upserts, so it would leave Environment
+    # behind and the human ResourceTag/Environment deny would still fire. The already-exists path
+    # deletes + recreates to enforce the exact set, so the dropped key is actually gone.
+    from loader.core.aws import put_ssm_parameter
+
+    for k, v in {
+        "AWS_REGION": _REGION,
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+    }.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    cfg = LoaderConfig.from_env()
+    name = cfg.new_conn_param(_DATE)
+
+    put_ssm_parameter(cfg, name, "postgresql://u:p@h:5432/d?sslmode=require")  # full tags incl. Environment
+    env_less = [t for t in cfg.tags_as_aws() if t["Key"] != "Environment"]
+    put_ssm_parameter(cfg, name, "postgresql://u:p2@h:5432/d?sslmode=require", tags=env_less)  # exists path
+
+    ssm = boto3.client("ssm", region_name=_REGION)
+    tags = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)["TagList"]
+    assert all(t["Key"] != "Environment" for t in tags)  # the dropped key is actually removed
+    assert {"Key": "Project", "Value": "gp-api"} in tags  # non-Environment tags survive
+    assert ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"].endswith(
+        "p2@h:5432/d?sslmode=require"
+    )

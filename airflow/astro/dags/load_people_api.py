@@ -98,18 +98,19 @@ def _step(
     default_args={"retries": 3, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader"],
     # Surfaced in the manual-trigger form so the operator makes a conscious choice each run,
-    # rather than a forgettable deployment-wide env var. @monthly scheduled runs use the default
-    # (False = normal, tagged behavior); only a manual trigger that checks the box omits the tag.
+    # rather than a forgettable deployment-wide env var. Default checked = normal, tagged behavior;
+    # @monthly scheduled runs use that default. Uncheck it on a manual trigger to omit the tag.
     params={
-        "omit_ssm_env_tag": Param(
-            False,
+        "set_ssm_env_tag": Param(
+            True,
             type="boolean",
-            title="Omit Environment tag on the connection-string SSM param",
+            title="Tag the connection-string SSM parameter with Environment",
             description=(
-                "Bring-up escape hatch. When checked, provision writes "
-                "people-db-connection-string-{env}-{date} WITHOUT the Environment tag, so a human "
-                "role denied by ResourceTag/Environment=prod can read the connection string. RDS "
-                "resources still get the full tag set. Leave unchecked for normal, tagged runs."
+                "Leave checked for normal runs: provision tags "
+                "people-db-connection-string-{env}-{date} with Environment. Uncheck as a bring-up "
+                "escape hatch to write it WITHOUT the Environment tag, so a human role denied by "
+                "ResourceTag/Environment=prod can read the connection string. RDS resources always "
+                "get the full tag set."
             ),
         ),
     },
@@ -129,12 +130,12 @@ def load_people_api():
         timeout=1800,
     )
     unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only loader step that reaches Databricks
-    # The trigger-time param sets LOADER_OMIT_SSM_ENV_TAG for this run's provision only; the loader
+    # The trigger-time param sets LOADER_SET_SSM_ENV_TAG for this run's provision only; the loader
     # config reads it from env. A boolean param renders as "True"/"False", which the config parses.
     provision = _step(
         "provision",
         "provision",
-        extra_env={"LOADER_OMIT_SSM_ENV_TAG": "{{ params.omit_ssm_env_tag }}"},
+        extra_env={"LOADER_SET_SSM_ENV_TAG": "{{ params.set_ssm_env_tag }}"},
     )
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")

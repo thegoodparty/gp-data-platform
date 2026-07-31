@@ -259,8 +259,14 @@ def put_ssm_parameter(
     permissions boundary), NOT by the `Environment` tag — so omitting `Environment` via `tags`
     does not affect the loader's access; it only removes the tag a human role's
     `ResourceTag/Environment` deny keys on. Pass `tags` to override the set; defaults to
-    `cfg.tags_as_aws()`. SSM forbids combining `Tags` with `Overwrite` in one call, so we
-    create-with-tags first and fall back to overwrite + re-tag if it already exists.
+    `cfg.tags_as_aws()`.
+
+    SSM forbids combining `Tags` with `Overwrite`, so a create-with-tags is tried first. If the
+    parameter already exists it is deleted and recreated with `tags` — NOT overwrite + re-tag,
+    because `add_tags_to_resource` only upserts keys and never removes them, so a tag intentionally
+    dropped from `tags` (e.g. `Environment`) would linger. Delete + recreate enforces the exact set,
+    and needs only the `ssm:DeleteParameter`/`PutParameter` the loader role already has (it has no
+    `ssm:RemoveTagsFromResource`).
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
@@ -268,8 +274,8 @@ def put_ssm_parameter(
     try:
         client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
     except client.exceptions.ParameterAlreadyExists:
-        client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
-        client.add_tags_to_resource(ResourceType="Parameter", ResourceId=name, Tags=param_tags)
+        client.delete_parameter(Name=name)
+        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
