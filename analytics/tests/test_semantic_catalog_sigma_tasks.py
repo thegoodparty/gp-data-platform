@@ -56,3 +56,17 @@ def test_build_key_is_name_at_ratified_date():
         sigma_tasks.build_key(_rec("active_serve_users", ratified="2026-07-28"))
         == "active_serve_users@2026-07-28"
     )
+
+
+def test_task_payload_shape():
+    p = sigma_tasks.task_payload(
+        _rec("active_serve_users", ratified="2026-07-28", definition="count of active serve users")
+    )
+    assert p.build_key == "active_serve_users@2026-07-28"
+    assert "active_serve_users" in p.name
+    assert p.name.startswith("Build in Sigma:")
+    assert "count of active serve users" in p.markdown_description
+    assert "2026-07-28" in p.markdown_description
+    assert "active_serve_users@2026-07-28" in p.markdown_description
+    # Org copy rule: no em dashes, no emoji in generated copy.
+    assert "—" not in p.name and "—" not in p.markdown_description

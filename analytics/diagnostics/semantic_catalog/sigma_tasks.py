@@ -8,12 +8,51 @@ ClickUp (see sync()).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from semantic_catalog.records import MetricRecord
 
 
 def build_key(rec: MetricRecord) -> str:
     """Dedupe key: metric name plus the ratified date it was shipped under."""
     return f"{rec.name}@{rec.ratified}"
+
+
+@dataclass(frozen=True)
+class TaskPayload:
+    name: str
+    markdown_description: str
+    build_key: str
+
+
+_DESCRIPTION = """\
+Build this ratified semantic-layer metric in Sigma.
+
+Metric: {name}
+Definition: {definition}
+Ratified: {ratified}
+
+Created automatically when the metric was ratified and merged. This is an interim
+step until the dbt to Sigma automation (DATA-2200) or Sigma's native OSI write-back
+is in place. Check this off once the metric exists in Sigma, and link the Sigma
+object here.
+
+Build key: {build_key}
+"""
+
+
+def task_payload(rec: MetricRecord) -> TaskPayload:
+    key = build_key(rec)
+    return TaskPayload(
+        name=f"Build in Sigma: {rec.label} ({rec.name})",
+        markdown_description=_DESCRIPTION.format(
+            name=rec.name,
+            definition=rec.definition,
+            ratified=rec.ratified,
+            build_key=key,
+        ),
+        build_key=key,
+    )
 
 
 def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
