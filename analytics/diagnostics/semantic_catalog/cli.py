@@ -164,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
             return 0
         cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
         before, after = _before_after(args.base_dir)
         client = ClickUpClient(token)
         result = sigma_tasks.sync(client, cfg["list_id"], cfg["build_key_field_id"], before, after)

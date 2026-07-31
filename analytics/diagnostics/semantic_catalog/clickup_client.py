@@ -25,7 +25,7 @@ class ClickUpClient:
         req = urllib.request.Request(f"{self._api_base}{path}", data=data, method=method)
         req.add_header("Authorization", self._token)
         req.add_header("Content-Type", "application/json")
-        with urllib.request.urlopen(req) as resp:  # fixed api base, not user input
+        with urllib.request.urlopen(req, timeout=30) as resp:  # fixed api base, not user input
             return json.loads(resp.read().decode())
 
     def find_task_by_build_key(self, list_id: str, field_id: str, build_key: str) -> str | None:
