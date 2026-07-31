@@ -42,9 +42,12 @@ class FakeRds:
         pg_error: str = "DBParameterGroupNotFound",
         modify_error: str | None = None,
         delete_creating_once: bool = False,
+        snapshot_exists: bool = False,
     ) -> None:
         self.calls: list[str] = []
         self.delete_cluster_kwargs: dict[str, Any] = {}  # last delete_db_cluster kwargs
+        # delete_db_cluster with FinalDBSnapshotIdentifier raises AlreadyExists (prior-retire snapshot).
+        self._snapshot_exists = snapshot_exists
         self._missing = missing or set()  # ops that should raise NotFound
         self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
         self._modify_error = modify_error  # error code modify_db_cluster raises (e.g. bad state)
@@ -65,6 +68,8 @@ class FakeRds:
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append("delete_cluster")
         self.delete_cluster_kwargs = kw
+        if self._snapshot_exists and "FinalDBSnapshotIdentifier" in kw:
+            raise _err("DBClusterSnapshotAlreadyExistsFault")
         if self._delete_creating_once and self.calls.count("delete_cluster") == 1:
             raise _err("InvalidDBClusterStateFault")
         if "cluster" in self._missing:
@@ -264,3 +269,14 @@ def test_teardown_keep_param_groups_skips_delete_but_still_tears_down_compute(
     step.run(_CFG, "20260616", confirm=True, keep_param_groups=True)
     assert "delete_pg" not in rds_client.calls  # param groups kept
     assert "delete_cluster" in rds_client.calls  # compute is still torn down
+
+
+def test_teardown_snapshot_reuses_existing_snapshot_on_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Re-running the retire when the final snapshot already exists must NOT crash and must NOT
+    # replace the snapshot: the delete falls back to SkipFinalSnapshot, reusing the restore point.
+    rds_client, ssm_client = FakeRds(snapshot_exists=True), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, snapshot=True)  # must not raise
+    assert rds_client.calls.count("delete_cluster") == 2  # snapshot attempt, then reuse fallback
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is True  # last call reused the snapshot

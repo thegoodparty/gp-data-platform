@@ -13,6 +13,8 @@ is a documented no-op — we reference a shared endpoint, never our own.
 
 from __future__ import annotations
 
+from botocore.exceptions import ClientError
+
 from loader.core.aws import ignore_client_errors, rds, retry_after_settle, s3, ssm
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
@@ -54,8 +56,9 @@ def run(
     serve_pg = cfg.new_serve_param_group(run_date)
     conn_param = cfg.new_conn_param(run_date)
     # Retire-with-restore-safety: take a final cluster snapshot and keep it (RDS retains it until
-    # manually deleted). Snapshot id is deterministic per cluster; if one already exists (a prior
-    # retire), delete it first.
+    # manually deleted). Snapshot id is deterministic per cluster; if one already exists from a
+    # prior retire, that snapshot IS the restore point, so the delete below reuses it rather than
+    # crashing or replacing it.
     snapshot_id = f"{cluster_id}-final"
 
     plan = [
@@ -107,9 +110,23 @@ def run(
         if snapshot
         else {"DBClusterIdentifier": cluster_id, "SkipFinalSnapshot": True}
     )
+
+    def _delete_cluster() -> None:
+        try:
+            rds_client.delete_db_cluster(**delete_cluster_kwargs)
+        except ClientError as exc:
+            # A prior retire already captured this cluster's final snapshot — that snapshot IS the
+            # restore point, so reuse it and delete the cluster WITHOUT a duplicate. (A re-run where
+            # the cluster is already gone raises DBClusterNotFoundFault instead, caught below, and
+            # never touches the snapshot — so a retry-after-success can't delete the restore point.)
+            if snapshot and exc.response["Error"]["Code"] == "DBClusterSnapshotAlreadyExistsFault":
+                rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+            else:
+                raise
+
     with ignore_client_errors("DBClusterNotFoundFault"):
         retry_after_settle(
-            lambda: rds_client.delete_db_cluster(**delete_cluster_kwargs),
+            _delete_cluster,
             fault_code="InvalidDBClusterStateFault",
             settle=lambda: rds_client.get_waiter("db_cluster_available").wait(
                 DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
