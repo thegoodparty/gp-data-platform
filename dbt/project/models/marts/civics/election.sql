@@ -176,8 +176,25 @@ select
     deduplicated.population,
     deduplicated.seats_available,
     deduplicated.term_start_date,
-    deduplicated.is_uncontested,
-    deduplicated.number_of_opponents,
+    -- number_of_opponents / is_uncontested come only from TS/DDHQ (BR hardcodes
+    -- them NULL). Fall back to the candidacy-stage estimate in the contested
+    -- direction only: an estimate is present just when >= 2 active candidacies
+    -- were loaded, so it only ever fills a positive opponent count / a
+    -- contested (false) flag. It never asserts 0 opponents or uncontested.
+    coalesce(
+        deduplicated.is_uncontested,
+        case when est_opp.estimated_number_of_opponents is not null then false end
+    ) as is_uncontested,
+    deduplicated.is_uncontested is null
+    and est_opp.estimated_number_of_opponents
+    is not null as is_uncontested_is_estimated,
+    coalesce(
+        deduplicated.number_of_opponents,
+        cast(est_opp.estimated_number_of_opponents as string)
+    ) as number_of_opponents,
+    deduplicated.number_of_opponents is null
+    and est_opp.estimated_number_of_opponents
+    is not null as number_of_opponents_is_estimated,
     deduplicated.is_open_seat,
     deduplicated.has_ddhq_match,
     deduplicated.br_position_database_id,
@@ -231,3 +248,6 @@ left join
     on deduplicated.br_position_database_id = pos_ot.br_position_database_id
 left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
 left join gp_api_membership as gp on deduplicated.gp_election_id = gp.gp_election_id
+left join
+    {{ ref("int__civics_election_estimated_opponents") }} as est_opp
+    on deduplicated.gp_election_id = est_opp.gp_election_id
