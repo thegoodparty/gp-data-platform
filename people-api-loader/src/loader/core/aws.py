@@ -266,7 +266,9 @@ def put_ssm_parameter(
     because `add_tags_to_resource` only upserts keys and never removes them, so a tag intentionally
     dropped from `tags` (e.g. `Environment`) would linger. Delete + recreate enforces the exact set,
     and needs only the `ssm:DeleteParameter`/`PutParameter` the loader role already has (it has no
-    `ssm:RemoveTagsFromResource`).
+    `ssm:RemoveTagsFromResource`). The existing value is captured before the delete and restored
+    (value only) if the recreate fails, so a transient error never leaves the parameter missing —
+    which would otherwise strand provision's reuse branch on `ParameterNotFound`.
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
@@ -274,8 +276,15 @@ def put_ssm_parameter(
     try:
         client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
     except client.exceptions.ParameterAlreadyExists:
+        old_value = client.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
         client.delete_parameter(Name=name)
-        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
+        try:
+            client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
+        except Exception:
+            # Best-effort restore so the param is never left missing. Value only (Overwrite forbids
+            # Tags); the caller can retry put_ssm_parameter to reach the intended tag state.
+            client.put_parameter(Name=name, Value=old_value, Type=param_type, Overwrite=True)
+            raise
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
