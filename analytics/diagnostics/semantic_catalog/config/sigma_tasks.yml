@@ -2,4 +2,4 @@
 # Non-secret identifiers only. The API token is injected via the
 # CLICKUP_TASK_TOKEN CI secret and is never committed.
 list_id: "901326391561"                 # Data Board (start here; movable later)
-build_key_field_id: "REPLACE_WITH_FIELD_ID"  # id of the "Sigma build key" text custom field (prerequisite P1)
+build_key_field_id: "891e5e55-47af-4724-90d5-dca1b7fe9162"  # id of the "Sigma build key" custom field on the Data Board
