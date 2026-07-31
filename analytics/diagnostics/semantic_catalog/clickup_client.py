@@ -8,6 +8,7 @@ CLICKUP_TASK_TOKEN env var in cli.py); nothing here reads the environment.
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -25,15 +26,24 @@ class ClickUpClient:
         req = urllib.request.Request(f"{self._api_base}{path}", data=data, method=method)
         req.add_header("Authorization", self._token)
         req.add_header("Content-Type", "application/json")
-        with urllib.request.urlopen(req, timeout=30) as resp:  # fixed api base, not user input
-            return json.loads(resp.read().decode())
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # fixed api base, not user input
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")[:500]
+            raise RuntimeError(f"ClickUp API {method} {path} failed: HTTP {e.code} {detail}") from e
 
     def find_task_by_build_key(self, list_id: str, field_id: str, build_key: str) -> str | None:
         cf = json.dumps([{"field_id": field_id, "operator": "=", "value": build_key}])
         query = urllib.parse.urlencode({"custom_fields": cf, "include_closed": "true"})
         resp = self._http_json("GET", f"/list/{list_id}/task?{query}")
-        tasks = resp.get("tasks") or []
-        return tasks[0]["id"] if tasks else None
+        # ClickUp's "=" filter can be a substring match on short text, so confirm an
+        # EXACT build-key match client-side before treating it as a dedupe hit.
+        for task in resp.get("tasks") or []:
+            for field in task.get("custom_fields") or []:
+                if field.get("id") == field_id and field.get("value") == build_key:
+                    return task["id"]
+        return None
 
     def create_task(self, list_id: str, payload: TaskPayload, field_id: str) -> str:
         body = {
