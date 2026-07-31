@@ -55,6 +55,26 @@ def test_connect_prod_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     assert parts["dbname"] == "d"
     assert parts["port"] == "5432"
     assert parts["keepalives"] == "1"
+    # The dated conn-string params no longer embed sslmode, so the loader enforces TLS itself.
+    assert parts["sslmode"] == "require"
+
+
+def test_connect_does_not_downgrade_stricter_sslmode(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+    _patch(monkeypatch, captured, bastion=False)
+    # A string that already sets a stricter sslmode (e.g. a verify-* Present-cluster param) must win.
+    monkeypatch.setattr(
+        db,
+        "get_ssm_parameter",
+        lambda cfg, name, **k: "host=rds.internal dbname=d user=u port=5432 sslmode=verify-full",
+    )
+    cfg = cast(
+        LoaderConfig,
+        SimpleNamespace(db_conn_param="p", bastion_enabled=False, db_statement_timeout_ms=0),
+    )
+    with db.connect_prod(cfg):
+        pass
+    assert conninfo_to_dict(captured["conninfo"])["sslmode"] == "verify-full"
 
 
 def test_connect_prod_tunneled(monkeypatch: pytest.MonkeyPatch) -> None:

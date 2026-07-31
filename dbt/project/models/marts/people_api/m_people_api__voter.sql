@@ -1,19 +1,36 @@
 /*
-Deduplication for this voter data is done by comparing each row against a snapshot. With the current size of
-220 MM rows/voters and ~350 columns, this processes takes nearly 5 hours. For this reason, it is tagged "monthly"
-since L2 data loads monthly.
+Reads int__l2_nationwide_uniform_w_haystaq directly (one row per LALVOTERID) and fully rebuilds each
+run. L2 loads monthly, so the ~5h full build is tagged "monthly". This previously deduplicated against
+an SCD2 snapshot, but the snapshot retained voters removed from L2 (inflating counts) and lagged the
+source; reading the current L2 keeps the mart in sync. created_at/updated_at come from the L2 loaded_at.
 */
 {{
     config(
-        materialized="incremental",
-        unique_key="LALVOTERID",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=True,
         tags=["monthly"],
     )
 }}
 
 with
+    -- Defensive: L2 files for some states have loaded blank fields as '' rather than
+    -- null in the
+    -- past. Normalize every string column to null once, before the casts below, so it
+    -- holds through
+    -- them and downstream into green.Voter regardless of how a given state's source
+    -- represents blanks.
+    source_nulled as (
+        select
+            {%- for c in adapter.get_columns_in_relation(
+                ref("int__l2_nationwide_uniform_w_haystaq")
+            ) %}
+                {%- if c.is_string() %} nullif(`{{ c.name }}`, '') as `{{ c.name }}`
+                {%- else %} `{{ c.name }}`
+                {%- endif %}
+                {% if not loop.last %},{% endif %}
+            {%- endfor %}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+    ),
     updated_voters as (
         select
             -- Core Voter Information
@@ -432,15 +449,8 @@ with
             `Water_SubDistrict`,
             `Weed_District`,
             `hf_most_important_policy_item`,
-            dbt_valid_from
-        from {{ ref("snapshot__int__l2_nationwide_uniform") }}
-        where
-            1 = 1
-            {% if is_incremental() %}
-                and dbt_valid_from > (select max(updated_at) from {{ this }})  -- use dbt_valid_from to get true updated_at
-            {% endif %}
-        qualify
-            row_number() over (partition by lalvoterid order by dbt_valid_from desc) = 1
+            loaded_at
+        from source_nulled
     ),
     voter_propensity as (
         select `LALVOTERID`, `prob_vote`
@@ -824,27 +834,14 @@ with
             tbl_updated.`Water_SubDistrict`,
             tbl_updated.`Weed_District`,
             tbl_updated.`hf_most_important_policy_item`,
-            {% if is_incremental() %}
-                -- For incremental runs, preserve existing created_at for existing
-                -- records,
-                coalesce(
-                    tbl_existing.created_at, tbl_updated.`dbt_valid_from`
-                ) as created_at,
-            {% else %}
-                -- For full refresh, set created_at to dbt_valid_from for all records
-                tbl_updated.`dbt_valid_from` as created_at,
-            {% endif %}
-            -- Always set updated_at to dbt_valid_from
-            tbl_updated.`dbt_valid_from` as updated_at
+            -- No first-seen history without the snapshot: both timestamps are the L2
+            -- load time.
+            tbl_updated.`loaded_at` as created_at,
+            tbl_updated.`loaded_at` as updated_at
         from updated_voters as tbl_updated
         left join
             voter_propensity as tbl_propensity
             on tbl_updated.`LALVOTERID` = tbl_propensity.`LALVOTERID`
-        {% if is_incremental() %}
-            left join
-                {{ this }} as tbl_existing
-                on tbl_updated.`LALVOTERID` = tbl_existing.`LALVOTERID`
-        {% endif %}
     )
 
 select *
