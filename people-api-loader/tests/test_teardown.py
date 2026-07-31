@@ -44,6 +44,7 @@ class FakeRds:
         delete_creating_once: bool = False,
     ) -> None:
         self.calls: list[str] = []
+        self.delete_cluster_kwargs: dict[str, Any] = {}  # last delete_db_cluster kwargs
         self._missing = missing or set()  # ops that should raise NotFound
         self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
         self._modify_error = modify_error  # error code modify_db_cluster raises (e.g. bad state)
@@ -63,6 +64,7 @@ class FakeRds:
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append("delete_cluster")
+        self.delete_cluster_kwargs = kw
         if self._delete_creating_once and self.calls.count("delete_cluster") == 1:
             raise _err("InvalidDBClusterStateFault")
         if "cluster" in self._missing:
@@ -224,3 +226,41 @@ def test_delete_s3_prefix_raises_on_partial_failure(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(step, "s3", lambda cfg: s3_client)
     with pytest.raises(RuntimeError, match="partial failure"):
         step._delete_s3_prefix(_CFG, "20260616")
+
+
+def test_teardown_snapshot_takes_final_cluster_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    # --snapshot deletes the cluster with a kept final snapshot instead of SkipFinalSnapshot.
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, snapshot=True)
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is False
+    assert rds_client.delete_cluster_kwargs["FinalDBSnapshotIdentifier"] == "gp-people-db-20260616-final"
+
+
+def test_teardown_no_snapshot_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is True
+    assert "FinalDBSnapshotIdentifier" not in rds_client.delete_cluster_kwargs
+
+
+def test_teardown_keep_ssm_leaves_conn_param(monkeypatch: pytest.MonkeyPatch) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, keep_ssm=True)
+    assert ssm_client.deleted == []  # SSM connection-string param kept for a restore
+
+
+def test_teardown_keep_param_groups_skips_delete_but_still_tears_down_compute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, keep_param_groups=True)
+    assert "delete_pg" not in rds_client.calls  # param groups kept
+    assert "delete_cluster" in rds_client.calls  # compute is still torn down
