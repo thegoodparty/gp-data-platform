@@ -192,11 +192,12 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
     assert (
         "cluster" in rds_client.names() and "instance" in rds_client.names() and "role" in rds_client.names()
     )
-    # the connection string was stored in SSM with the endpoint + master password embedded,
-    # and forces TLS so the password can't traverse a plaintext-negotiated channel
+    # the connection string was stored in SSM with the endpoint + master password embedded, and no
+    # sslmode (consumers choose their own TLS policy; the loader's psycopg defaults to `prefer`)
     assert captured["param"] == "people-db-connection-string-dev-20260616"
     assert captured["conninfo"].startswith("postgresql://people_admin:")
-    assert "@gp-people-db-20260616.rds.aws:5432/people_prod?sslmode=require" in captured["conninfo"]
+    assert captured["conninfo"].endswith("@gp-people-db-20260616.rds.aws:5432/people_prod")
+    assert "sslmode" not in captured["conninfo"]
 
 
 def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -222,12 +222,12 @@ def run(cfg: LoaderConfig, run_date: str, *, set_ssm_env_tag: bool = True) -> Pr
         # creation. The generated master password lives only in memory, so if this write fails
         # (IAM/throttle/crash) it is unrecoverable, and the reuse branch on a re-run would then
         # loop forever on ParameterNotFound. Roll the cluster back on any write failure so a
-        # clean re-run regenerates. `sslmode=require` forces TLS: psycopg defaults to `prefer`
-        # (plaintext fallback) and the cluster's default param group does not set rds.force_ssl.
+        # clean re-run regenerates. No sslmode: consumers set their own TLS policy, and the loader's
+        # psycopg connections default to `prefer` (TLS when the server offers it, as RDS does).
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
             f"postgresql://{cfg.db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}?sslmode=require"
+            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}"
         )
         try:
             # SSM-scoped tags: identical to the resource tags unless set_ssm_env_tag is False, which
