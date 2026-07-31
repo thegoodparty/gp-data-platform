@@ -92,3 +92,29 @@ def test_records_by_target_raises_on_unmapped_sem_file():
     )
     with pytest.raises(ValueError):
         cli.records_by_target([stray])
+
+
+def test_sync_sigma_tasks_skips_cleanly_without_token(capsys, monkeypatch):
+    monkeypatch.delenv("CLICKUP_TASK_TOKEN", raising=False)
+    rc = cli.main(["--sync-sigma-tasks"])
+    assert rc == 0
+    assert "skipping" in capsys.readouterr().out.lower()
+
+
+def test_sync_sigma_tasks_invokes_sync_when_token_present(capsys, monkeypatch):
+    monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
+    seen = {}
+
+    def fake_sync(client, list_id, field_id, before, after):
+        seen["list_id"] = list_id
+        seen["field_id"] = field_id
+        from semantic_catalog.sigma_tasks import SyncResult
+
+        return SyncResult(created=("m",), skipped=())
+
+    monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
+    rc = cli.main(["--sync-sigma-tasks"])
+    assert rc == 0
+    # list_id comes from the committed config, not a hardcoded literal in cli.py
+    assert seen["list_id"] == "901326391561"
+    assert "created 1" in capsys.readouterr().out.lower()
