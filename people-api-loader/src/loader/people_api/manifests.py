@@ -163,6 +163,8 @@ class AnalyzeManifest(ManifestBase):
 class ValidationCheck(BaseModel):
     name: str
     passed: bool
+    # A failing warn_only check is surfaced (WARN) but does NOT set all_passed=False / block handoff.
+    warn_only: bool = False
     details: dict = Field(default_factory=dict)
 
 

@@ -6,11 +6,11 @@ Runs, PER TABLE in the unload manifest (Voter, District, DistrictStats, District
    table (District, DistrictStats), within ±10% of the unload baseline (did COPY load everything
    that was unloaded).
 2. prod_row_counts_within_tolerance — the same ±10% shape against the inspect-prod baseline
-   (sanity: refresh magnitude vs the current Present cluster). Fails closed if inspect-prod hasn't
-   run for this run_date, or if the REQUIRED Voter baseline is somehow missing. An optional table
-   absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" — see
-   schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped
-   instead — there's no magnitude baseline to sanity-check.
+   (sanity: refresh magnitude vs the current Present cluster). WARN-ONLY (does not block handoff):
+   it compares against the PREVIOUS serving cluster, so a legitimate L2 change (a voter-roll purge)
+   reads as a shortfall; the fatal load-integrity gate is row_counts_match_databricks above. An
+   optional table absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" —
+   see schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped.
 3. schema_diff_clean — new columns equal prod columns, modulo the partition column and any
    loader-added columns (schema_spec.LOADER_ADDED_COLUMNS, e.g. Voter."geom"), which are intended
    divergences. Skipped (not failed) when prod has no such table at all (same DistrictStats case:
@@ -581,7 +581,8 @@ def _to_markdown(manifest: ValidateManifest) -> str:
         "",
     ]
     for c in manifest.checks:
-        lines.append(f"### {c.name} — {'PASS' if c.passed else 'FAIL'}")
+        status = "PASS" if c.passed else ("WARN" if c.warn_only else "FAIL")
+        lines.append(f"### {c.name} — {status}")
         lines.append("")
         for k, v in c.details.items():
             pretty = [*v[:10], "..."] if isinstance(v, list) and len(v) > 10 else v
@@ -629,7 +630,14 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
 
             checks: list[ValidationCheck] = [
                 *count_checks,
-                *_check_prod_row_counts(cfg, run_date, new_counts),
+                # Prod comparison is a WARNING, not a gate: it measures the refresh against the
+                # PREVIOUS serving cluster, so a legitimate L2 change (e.g. a voter-roll purge) reads
+                # as a shortfall. The hard load-integrity gate is row_counts_match_databricks (new
+                # cluster == the mart it was built from), which stays fatal.
+                *(
+                    c.model_copy(update={"warn_only": True})
+                    for c in _check_prod_row_counts(cfg, run_date, new_counts)
+                ),
                 *[_check_schema_diff(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_schema_types(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_indexes(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
@@ -655,7 +663,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     for c in checks:
         log.info("validate.check", name=c.name, passed=c.passed)
 
-    all_passed = all(c.passed for c in checks)
+    all_passed = all(c.passed for c in checks if not c.warn_only)
     # Write "failed" (not "complete") on a failed gate so the skip-guard does not
     # short-circuit a retry: an operator can re-run validate after fixing the data
     # without manually deleting the S3 manifest.

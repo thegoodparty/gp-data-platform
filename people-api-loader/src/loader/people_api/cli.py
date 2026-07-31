@@ -209,7 +209,7 @@ def scale_down(run_date: RunDateArg) -> None:
 
 @app.command()
 def validate(run_date: RunDateArg) -> None:
-    """Step 7 — six validation checks. Exits non-zero if any fail."""
+    """Step 7 — validation checks. Exits non-zero if any blocking (non-warn-only) check fails."""
     from loader.people_api.steps import validate as step
 
     cfg = _setup(run_date)
@@ -224,7 +224,13 @@ def _print_validate_report(manifest) -> None:
     tbl.add_column("Check")
     tbl.add_column("Status")
     for c in manifest.checks:
-        tbl.add_row(c.name, "[green]PASS[/green]" if c.passed else "[red]FAIL[/red]")
+        if c.passed:
+            status = "[green]PASS[/green]"
+        elif c.warn_only:
+            status = "[yellow]WARN[/yellow]"
+        else:
+            status = "[red]FAIL[/red]"
+        tbl.add_row(c.name, status)
     console.print(tbl)
 
 

@@ -13,6 +13,24 @@ source; reading the current L2 keeps the mart in sync. created_at/updated_at com
 }}
 
 with
+    -- Defensive: L2 files for some states have loaded blank fields as '' rather than
+    -- null in the
+    -- past. Normalize every string column to null once, before the casts below, so it
+    -- holds through
+    -- them and downstream into green.Voter regardless of how a given state's source
+    -- represents blanks.
+    source_nulled as (
+        select
+            {%- for c in adapter.get_columns_in_relation(
+                ref("int__l2_nationwide_uniform_w_haystaq")
+            ) %}
+                {%- if c.is_string() %} nullif(`{{ c.name }}`, '') as `{{ c.name }}`
+                {%- else %} `{{ c.name }}`
+                {%- endif %}
+                {% if not loop.last %},{% endif %}
+            {%- endfor %}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+    ),
     updated_voters as (
         select
             -- Core Voter Information
@@ -432,7 +450,7 @@ with
             `Weed_District`,
             `hf_most_important_policy_item`,
             loaded_at
-        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        from source_nulled
     ),
     voter_propensity as (
         select `LALVOTERID`, `prob_vote`
