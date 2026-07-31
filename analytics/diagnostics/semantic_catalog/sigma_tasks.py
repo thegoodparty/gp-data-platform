@@ -1,0 +1,33 @@
+"""Create interim ClickUp tasks for metrics that were just ratified (DATA-2199).
+
+Pure detection + payload logic here; the ClickUp HTTP calls live in
+semantic_catalog.clickup_client. A task fires when a metric transitions to a
+new ratified date; re-run idempotency is handled downstream by a check against
+ClickUp (see sync()).
+"""
+
+from __future__ import annotations
+
+from semantic_catalog.records import MetricRecord
+
+
+def build_key(rec: MetricRecord) -> str:
+    """Dedupe key: metric name plus the ratified date it was shipped under."""
+    return f"{rec.name}@{rec.ratified}"
+
+
+def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
+    """Metrics whose ratified date is set in `after` and differs from `before`.
+
+    Excludes still-pending and retired metrics. A brand-new metric that arrives
+    already ratified counts as newly ratified.
+    """
+    prev = {r.name: r for r in before}
+    out: list[MetricRecord] = []
+    for rec in after:
+        if rec.retired or not rec.ratified:
+            continue
+        old = prev.get(rec.name)
+        if old is None or old.ratified != rec.ratified:
+            out.append(rec)
+    return out
