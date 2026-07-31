@@ -230,7 +230,10 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             f"@{endpoint}:{cfg.db_port}/{cfg.db_name}?sslmode=require"
         )
         try:
-            put_ssm_parameter(cfg, conn_param, conninfo)
+            # SSM-scoped tags: identical to the resource tags unless omit_ssm_env_tag drops
+            # `Environment` (bring-up escape hatch so a human role denied by ResourceTag/Environment
+            # can still read the connection string). RDS resources above keep the full tag set.
+            put_ssm_parameter(cfg, conn_param, conninfo, tags=cfg.ssm_param_tags_as_aws())
         except Exception:
             log.error("provision.conn_param_write_failed", cluster=cluster_id, name=conn_param)
             # Best-effort rollback. The delete frequently fails with InvalidDBClusterStateFault

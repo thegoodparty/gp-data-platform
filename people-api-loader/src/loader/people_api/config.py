@@ -165,6 +165,22 @@ class LoaderConfig(BaseLoaderConfig):
     # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
     mart_fqns: dict[str, str]
 
+    # Temporary bring-up escape hatch: when true, provision writes the dated connection-string SSM
+    # parameter WITHOUT the `Environment` tag, so a human role whose access is denied by
+    # `ResourceTag/Environment=prod` can still read it. RDS resources keep the full tag set (their
+    # create policies require `RequestTag/Environment`), so this is scoped to the SSM parameter only.
+    # NOTE: the loader's own cross-account role reads this param on every post-provision step; only
+    # enable this once that role can Get an untagged param (else the build fails at create_schema).
+    omit_ssm_env_tag: bool = False
+
+    def ssm_param_tags_as_aws(self) -> list[dict[str, str]]:
+        """Tags for the connection-string SSM parameter: the full set, minus `Environment` when
+        `omit_ssm_env_tag` is set. Only the SSM write uses this; RDS resources use tags_as_aws()."""
+        tags = self.tags_as_aws()
+        if self.omit_ssm_env_tag:
+            return [t for t in tags if t["Key"] != "Environment"]
+        return tags
+
     @classmethod
     def from_env(cls) -> LoaderConfig:
         if _FORBIDDEN_ENV_VAR in os.environ:
@@ -264,6 +280,7 @@ class LoaderConfig(BaseLoaderConfig):
                 1, int(os.environ.get("LOADER_INDEX_PARALLELISM", DEFAULT_INDEX_PARALLELISM))
             ),
             mart_fqns=mart_fqns,
+            omit_ssm_env_tag=_env("LOADER_OMIT_SSM_ENV_TAG").lower() in ("1", "true", "yes", "on"),
             _tags=tags,
         )
 

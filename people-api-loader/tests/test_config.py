@@ -72,6 +72,40 @@ def test_environment_var_drives_conn_param_tag_and_cluster_name(
     assert cfg.new_cluster_id("20260707") == "gp-people-db-20260707-prod"
 
 
+def test_ssm_param_tags_include_environment_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Default: the connection-string SSM param carries the same tags as every other loader
+    # resource (Environment included), so the loader's tag-scoped IAM can read it back.
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.delenv("LOADER_OMIT_SSM_ENV_TAG", raising=False)
+    cfg = LoaderConfig.from_env()
+    assert cfg.omit_ssm_env_tag is False
+    assert cfg.ssm_param_tags_as_aws() == cfg.tags_as_aws()
+    assert {"Key": "Environment", "Value": "prod"} in cfg.ssm_param_tags_as_aws()
+
+
+def test_omit_ssm_env_tag_drops_environment_from_ssm_param_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bring-up escape hatch: LOADER_OMIT_SSM_ENV_TAG drops `Environment` from the SSM param tags
+    # (so a human role denied by ResourceTag/Environment=prod can still read the connection string),
+    # while the general resource tags used for RDS are UNCHANGED — the RDS create policies require
+    # RequestTag/Environment, so the flag must not touch them.
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.setenv("LOADER_OMIT_SSM_ENV_TAG", "true")
+    cfg = LoaderConfig.from_env()
+    assert cfg.omit_ssm_env_tag is True
+    ssm_tags = cfg.ssm_param_tags_as_aws()
+    assert all(t["Key"] != "Environment" for t in ssm_tags)
+    assert {"Key": "Project", "Value": "gp-api"} in ssm_tags  # non-Environment tags survive
+    assert {"Key": "Environment", "Value": "prod"} in cfg.tags_as_aws()  # RDS tags untouched
+
+
+def test_omit_ssm_env_tag_off_for_non_truthy_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.setenv("LOADER_OMIT_SSM_ENV_TAG", "false")
+    cfg = LoaderConfig.from_env()
+    assert cfg.omit_ssm_env_tag is False
+    assert {"Key": "Environment", "Value": "prod"} in cfg.ssm_param_tags_as_aws()
+
+
 def test_unrecognized_environment_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     # A typo must fail loudly, not silently build a wrong SSM param / tag that later
     # surfaces as an opaque AccessDenied.
