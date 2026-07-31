@@ -79,12 +79,13 @@ models:
 
       - name: Voter_Status
         description: |
-          Voter engagement status based on recent turnout:
-          - First Time: No votes in last 10 elections
-          - Unlikely: No votes in last 3 elections
-          - Likely: 2 votes in last 3 elections
-          - Super: 3 votes in last 3 elections
-          - Unknown: Other patterns
+          Turnout-propensity bucket for the 2026 General, derived from an
+          in-house model's turnout probability:
+          - Unlikely: probability below 0.25
+          - Unreliable: probability below 0.50
+          - Likely: probability below 0.75
+          - Super: probability 0.75 or above
+          - Unknown: no score available
 
       - name: Residence_Addresses_Latitude
         description: Residence latitude rounded to 3 decimal places (~100m precision)

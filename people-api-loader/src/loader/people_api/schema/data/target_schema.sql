@@ -74,6 +74,7 @@ CREATE TABLE public."Voter" (
     "Veteran_Status" TEXT,
     "VoterParties_Change_Changed_Party" TEXT,
     "Voter_Status" TEXT,
+    "Voter_Turnout_Probability" DOUBLE PRECISION,
     "Voter_Status_UpdatedAt" TIMESTAMP,
     "VoterTelephones_CellConfidenceCode" INTEGER,
     "VoterTelephones_CellPhoneFormatted" TEXT,

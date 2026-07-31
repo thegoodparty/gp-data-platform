@@ -185,7 +185,9 @@ TABLE_SPECS: dict[str, TableSpec] = {
 # loader-created-post-load columns whose DDL build_indexes owns ("geom"), and newly-projected mart
 # columns the serving schema gained while the prod baseline still predates them
 # ("hf_most_important_policy_item"). Keyed by serving table.
-LOADER_ADDED_COLUMNS: dict[str, set[str]] = {"Voter": {"geom", "hf_most_important_policy_item"}}
+LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
+    "Voter": {"geom", "hf_most_important_policy_item", "Voter_Turnout_Probability"}
+}
 
 
 # Columns whose serving TYPE intentionally differs from the prod contract, so the validate
