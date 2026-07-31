@@ -42,6 +42,8 @@ Build key: {build_key}
 
 
 def task_payload(rec: MetricRecord) -> TaskPayload:
+    # label and definition are echoed verbatim from config; the no-em-dash/no-emoji copy
+    # rule is enforced upstream at the governance layer (see DATA-2211).
     key = build_key(rec)
     return TaskPayload(
         name=f"Build in Sigma: {rec.label} ({rec.name})",
