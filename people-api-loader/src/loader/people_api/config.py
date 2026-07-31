@@ -169,8 +169,9 @@ class LoaderConfig(BaseLoaderConfig):
     # parameter WITHOUT the `Environment` tag, so a human role whose access is denied by
     # `ResourceTag/Environment=prod` can still read it. RDS resources keep the full tag set (their
     # create policies require `RequestTag/Environment`), so this is scoped to the SSM parameter only.
-    # NOTE: the loader's own cross-account role reads this param on every post-provision step; only
-    # enable this once that role can Get an untagged param (else the build fails at create_schema).
+    # Safe for the loader's own reads: its cross-account role is authorized by parameter NAME
+    # (loader-s3-ssm, no tag condition and no permissions boundary), not by the Environment tag.
+    # Set per-run via the load_people_api DAG's omit_ssm_env_tag trigger param (env LOADER_OMIT_SSM_ENV_TAG).
     omit_ssm_env_tag: bool = False
 
     def ssm_param_tags_as_aws(self) -> list[dict[str, str]]:

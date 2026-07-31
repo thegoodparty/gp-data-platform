@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
 from airflow.providers.standard.operators.bash import BashOperator
-from airflow.sdk import dag
+from airflow.sdk import Param, dag
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -97,6 +97,22 @@ def _step(
     is_paused_upon_creation=True,
     default_args={"retries": 3, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader"],
+    # Surfaced in the manual-trigger form so the operator makes a conscious choice each run,
+    # rather than a forgettable deployment-wide env var. @monthly scheduled runs use the default
+    # (False = normal, tagged behavior); only a manual trigger that checks the box omits the tag.
+    params={
+        "omit_ssm_env_tag": Param(
+            False,
+            type="boolean",
+            title="Omit Environment tag on the connection-string SSM param",
+            description=(
+                "Bring-up escape hatch. When checked, provision writes "
+                "people-db-connection-string-{env}-{date} WITHOUT the Environment tag, so a human "
+                "role denied by ResourceTag/Environment=prod can read the connection string. RDS "
+                "resources still get the full tag set. Leave unchecked for normal, tagged runs."
+            ),
+        ),
+    },
 )
 def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
@@ -113,7 +129,13 @@ def load_people_api():
         timeout=1800,
     )
     unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only loader step that reaches Databricks
-    provision = _step("provision", "provision")
+    # The trigger-time param sets LOADER_OMIT_SSM_ENV_TAG for this run's provision only; the loader
+    # config reads it from env. A boolean param renders as "True"/"False", which the config parses.
+    provision = _step(
+        "provision",
+        "provision",
+        extra_env={"LOADER_OMIT_SSM_ENV_TAG": "{{ params.omit_ssm_env_tag }}"},
+    )
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")
     build_indexes = _step("build_indexes", "build-indexes")
