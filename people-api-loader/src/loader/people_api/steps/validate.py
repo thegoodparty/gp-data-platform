@@ -570,10 +570,17 @@ def _check_districtstats_buckets(
 
 
 def _to_markdown(manifest: ValidateManifest) -> str:
+    has_warnings = any(not c.passed and c.warn_only for c in manifest.checks)
+    if not manifest.all_passed:
+        status = "FAIL"
+    elif has_warnings:
+        status = "PASS (with warnings)"
+    else:
+        status = "PASS"
     lines: list[str] = [
         f"# Voter-DB Refresh Validation — {manifest.run_date}",
         "",
-        f"**Status:** {'PASS' if manifest.all_passed else 'FAIL'}",
+        f"**Status:** {status}",
         f"**Started:** {manifest.started_at.isoformat()}",
         f"**Finished:** {manifest.finished_at.isoformat() if manifest.finished_at else '—'}",
         "",

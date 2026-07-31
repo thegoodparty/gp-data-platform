@@ -220,7 +220,9 @@ def validate(run_date: RunDateArg) -> None:
 
 
 def _print_validate_report(manifest) -> None:
-    tbl = Table(title=f"Validation — {manifest.run_date}")
+    warns = sum(1 for c in manifest.checks if not c.passed and c.warn_only)
+    suffix = f" — {warns} warning(s)" if warns else ""
+    tbl = Table(title=f"Validation — {manifest.run_date}{suffix}")
     tbl.add_column("Check")
     tbl.add_column("Status")
     for c in manifest.checks:
