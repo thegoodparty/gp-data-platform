@@ -290,6 +290,47 @@ def test_run_prod_row_count_mismatch_is_warn_only_not_fatal(monkeypatch: pytest.
     assert prod.passed is False and prod.warn_only is True
 
 
+def test_run_prod_fail_closed_guard_stays_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The fail-closed prod guards (missing inspect manifest / Voter baseline, which set an `error`
+    # detail) must NOT be downgraded to warn-only — they signal the check couldn't run and must block.
+    unload = _unload_all_tables()
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
+    monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
+    ok = step.ValidationCheck(name="x", passed=True, details={})
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    fail_closed = step.ValidationCheck(
+        name="prod_row_counts_within_tolerance:Voter",
+        passed=False,
+        details={"error": "no completed inspect manifest for this run_date"},
+    )
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [fail_closed])
+    for name in (
+        "_check_schema_diff",
+        "_check_schema_types",
+        "_check_indexes",
+        "_check_indexes_valid",
+        "_check_districtstats_buckets",
+        "_check_index_usage",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
+        monkeypatch.setattr(step, name, lambda *a, **k: ok)
+
+    manifest = step.run(_CFG, "20260609")
+
+    assert manifest.all_passed is False  # missing baseline still blocks handoff
+    assert manifest.status == "failed"
+    prod = next(c for c in manifest.checks if c.name == "prod_row_counts_within_tolerance:Voter")
+    assert prod.warn_only is False
+
+
 def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPatch) -> None:
     # The unload-integrity gate must produce one row_counts_match_databricks check per table,
     # not just Voter — and a flat table (District/DistrictStats) must use the total branch while

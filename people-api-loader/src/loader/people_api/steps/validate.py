@@ -630,12 +630,14 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
 
             checks: list[ValidationCheck] = [
                 *count_checks,
-                # Prod comparison is a WARNING, not a gate: it measures the refresh against the
-                # PREVIOUS serving cluster, so a legitimate L2 change (e.g. a voter-roll purge) reads
-                # as a shortfall. The hard load-integrity gate is row_counts_match_databricks (new
-                # cluster == the mart it was built from), which stays fatal.
+                # A magnitude-tolerance shortfall is a WARNING, not a gate: it measures the refresh
+                # against the PREVIOUS serving cluster, so a legitimate L2 change (e.g. a voter-roll
+                # purge) reads as a shortfall. The hard load-integrity gate is
+                # row_counts_match_databricks (new cluster == the mart it was built from). But the
+                # fail-closed guards (missing inspect manifest / missing Voter baseline, which set an
+                # `error` detail) must STAY fatal — they signal the check couldn't run at all.
                 *(
-                    c.model_copy(update={"warn_only": True})
+                    c.model_copy(update={"warn_only": True}) if "error" not in c.details else c
                     for c in _check_prod_row_counts(cfg, run_date, new_counts)
                 ),
                 *[_check_schema_diff(cfg, run_date, t.table, forward=fwd) for t in unload.tables],

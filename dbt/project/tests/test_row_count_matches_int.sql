@@ -10,4 +10,6 @@ from
                 select count(*) from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
             ) as int_row_count
     ) comparison
-where voter_row_count != int_row_count
+-- null-aware: a plain != passes silently if a count subquery yields null
+-- (inaccessible model).
+where voter_row_count is distinct from int_row_count
