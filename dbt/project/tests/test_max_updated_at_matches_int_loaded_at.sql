@@ -13,4 +13,9 @@ from
                 from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
             ) as int_max_loaded_at
     ) comparison
-where voter_max_updated_at != int_max_loaded_at
+-- `is distinct from` is null-aware (a plain `!=` passes silently when either side is
+-- null);
+-- the `is null` guard additionally fails an all-null loaded_at (both maxes null are
+-- "not distinct").
+where
+    voter_max_updated_at is distinct from int_max_loaded_at or int_max_loaded_at is null
