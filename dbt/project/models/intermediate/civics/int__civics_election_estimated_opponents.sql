@@ -41,10 +41,19 @@ with
     election_rollup as (
         select
             gp_election_id,
-            -- deciding-contest field: the largest single general-stage race
+            -- deciding-contest field: the largest single general-family race.
+            -- Includes runoff variants — a general/special runoff is a deciding
+            -- contest too, and folding it in stops a runoff-only race from
+            -- falling through to an earlier, larger primary field.
             max(
                 case
-                    when stage_type in ('general', 'general special')
+                    when
+                        stage_type in (
+                            'general',
+                            'general special',
+                            'general runoff',
+                            'general special runoff'
+                        )
                     then active_candidate_count
                 end
             ) as general_field_size,
