@@ -1400,14 +1400,45 @@ models:
         description: Start date of the term
 
       - name: is_uncontested
-        description: Whether the election is uncontested
+        description: >
+          Whether the election is uncontested. Sourced from TechSpeed (with
+          DDHQ fallback). Where those are NULL, filled to false only when the
+          candidacy-stage estimate finds >= 1 opponent
+          (int__civics_election_estimated_opponents). Never filled to true from
+          the estimate: a sparse roster is unknown, not uncontested. See
+          is_uncontested_is_estimated.
         data_tests:
           - accepted_values:
               arguments:
                 values: [true, false]
 
+      - name: is_uncontested_is_estimated
+        description: >
+          True when is_uncontested was filled (to false) from the
+          candidacy-stage estimate rather than a source system.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
       - name: number_of_opponents
-        description: Number of opponents in the race (may contain string values like '10+')
+        description: >
+          Number of opponents in the race (may contain string values like
+          '10+'). Sourced from TechSpeed (with BR/DDHQ fallback). Where those
+          are NULL, filled from the candidacy-stage estimate but only when it
+          finds >= 1 opponent (>= 2 active candidacies in a stage); a field of
+          <= 1 stays NULL rather than assert 0. See number_of_opponents_is_estimated.
+
+      - name: number_of_opponents_is_estimated
+        description: >
+          True when number_of_opponents was filled from the candidacy-stage
+          estimate rather than a source system.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: is_open_seat
         description: Whether the election is for an open seat

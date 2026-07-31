@@ -940,6 +940,61 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_election_estimated_opponents
+    description: >
+      Estimated opponent count per election, from counting the active
+      candidacies loaded within an election-stage. Feeds a contested-direction
+      fallback for number_of_opponents / is_uncontested on the election mart
+      (both come only from TechSpeed/DDHQ today; BallotReady hardcodes them
+      NULL).
+
+      Grain: One row per gp_election_id that has at least one loaded
+      candidacy-stage row.
+
+      One-directional by design: an estimate is present only when a stage has
+      >= 2 active candidates (>= 1 opponent). A field of <= 1 stays NULL because
+      it means the rest of the roster is not loaded, not that the race is
+      uncontested. Counts are per stage instance (not pooled across a
+      gp_election_id that spans several offices), and the rollup prefers the
+      general stage, falling back to the largest loaded stage only when no
+      general-stage candidacies exist.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: estimated_field_size
+        description: >
+          Active-candidate count of the chosen stage (general preferred, else
+          largest loaded stage). Always >= 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: estimated_number_of_opponents
+        description: >
+          estimated_field_size - 1, populated only when the chosen stage has
+          >= 2 active candidates. NULL otherwise (never asserts 0 opponents).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: estimated_opponents_stage_basis
+        description: >
+          Which stage the estimate came from: 'general' (general-family stage)
+          or 'largest_stage' (fallback max). NULL when no estimate.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["general", "largest_stage"]
+
   - name: int__civics_candidate_ddhq
     description: >
       DDHQ candidates transformed into civics mart candidate schema.
