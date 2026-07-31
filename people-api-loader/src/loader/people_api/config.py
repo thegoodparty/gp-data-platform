@@ -165,24 +165,6 @@ class LoaderConfig(BaseLoaderConfig):
     # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
     mart_fqns: dict[str, str]
 
-    # SSM connection-string tagging. Default true = provision tags the dated conn-string param with
-    # the full set including `Environment` (the normal, secure behavior). Set false as a bring-up
-    # escape hatch to write it WITHOUT `Environment`, so a human role denied by
-    # `ResourceTag/Environment=prod` can read the connection string. RDS resources always keep the
-    # full tag set (their create policies require `RequestTag/Environment`), so this is SSM-scoped.
-    # Safe for the loader's own reads: its role is authorized by parameter NAME (loader-s3-ssm, no
-    # tag condition and no permissions boundary), not the Environment tag. Set per-run via the
-    # load_people_api DAG's set_ssm_env_tag trigger param (env LOADER_SET_SSM_ENV_TAG).
-    set_ssm_env_tag: bool = True
-
-    def ssm_param_tags_as_aws(self) -> list[dict[str, str]]:
-        """Tags for the connection-string SSM parameter: the full resource set, minus `Environment`
-        when set_ssm_env_tag is False. Only the SSM write uses this; RDS resources use tags_as_aws()."""
-        tags = self.tags_as_aws()
-        if not self.set_ssm_env_tag:
-            return [t for t in tags if t["Key"] != "Environment"]
-        return tags
-
     @classmethod
     def from_env(cls) -> LoaderConfig:
         if _FORBIDDEN_ENV_VAR in os.environ:
@@ -282,7 +264,6 @@ class LoaderConfig(BaseLoaderConfig):
                 1, int(os.environ.get("LOADER_INDEX_PARALLELISM", DEFAULT_INDEX_PARALLELISM))
             ),
             mart_fqns=mart_fqns,
-            set_ssm_env_tag=_env("LOADER_SET_SSM_ENV_TAG", "true").lower() not in ("0", "false", "no", "off"),
             _tags=tags,
         )
 

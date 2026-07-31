@@ -32,12 +32,6 @@ _CFG = cast(
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
         new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
         tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}, {"Key": "Environment", "Value": "prod"}],
-        # Default: the SSM param gets the full tag set (Environment included), same as tags_as_aws().
-        set_ssm_env_tag=True,
-        ssm_param_tags_as_aws=lambda: [
-            {"Key": "Project", "Value": "gp-api"},
-            {"Key": "Environment", "Value": "prod"},
-        ],
     ),
 )
 
@@ -206,8 +200,7 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
 
 
 def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Default: the SSM param gets the SSM-scoped tags (which include Environment), so the loader's
-    # tag-scoped IAM can read the connection string back on every later step.
+    # Default (set_ssm_env_tag=True): the SSM param gets the full tag set including Environment.
     rds_client, ec2_client = FakeRds(), FakeEc2()
     captured = _patch(monkeypatch, rds_client, ec2_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
@@ -219,25 +212,14 @@ def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytes
     assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]
 
 
-def test_provision_unset_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
-    # With set_ssm_env_tag=False, provision forwards the Environment-less SSM tags to
-    # put_ssm_parameter, but the RDS cluster still carries Environment (its create policy requires
-    # RequestTag/Environment).
+def test_provision_no_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # set_ssm_env_tag=False (the --no-ssm-env-tag flag): provision drops Environment from the SSM
+    # param tags, but the RDS cluster still carries it (its create policy requires RequestTag/Environment).
     rds_client, ec2_client = FakeRds(), FakeEc2()
     captured = _patch(monkeypatch, rds_client, ec2_client)
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
-    cfg = cast(
-        LoaderConfig,
-        SimpleNamespace(
-            **{
-                **vars(_CFG),
-                "set_ssm_env_tag": False,
-                "ssm_param_tags_as_aws": lambda: [{"Key": "Project", "Value": "gp-api"}],
-            }
-        ),
-    )
 
-    step.run(cfg, "20260616")
+    step.run(_CFG, "20260616", set_ssm_env_tag=False)
 
     assert {"Key": "Environment", "Value": "prod"} not in captured["ssm_tags"]
     assert {"Key": "Project", "Value": "gp-api"} in captured["ssm_tags"]

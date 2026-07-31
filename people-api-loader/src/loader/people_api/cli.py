@@ -114,12 +114,23 @@ def unload(
 
 
 @app.command()
-def provision(run_date: RunDateArg) -> None:
+def provision(
+    run_date: RunDateArg,
+    ssm_env_tag: Annotated[
+        bool,
+        typer.Option(
+            "--ssm-env-tag/--no-ssm-env-tag",
+            help="Tag the connection-string SSM parameter with Environment (default). Pass "
+            "--no-ssm-env-tag as a bring-up escape hatch to omit it, so a human role denied by "
+            "ResourceTag/Environment=prod can read the connection string. RDS resources keep the tag.",
+        ),
+    ] = True,
+) -> None:
     """Step 2 — provision Aurora cluster + IAM role + VPCE + param groups."""
     from loader.people_api.steps import provision as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date)
+    step.run(cfg, run_date, set_ssm_env_tag=ssm_env_tag)
 
 
 @app.command(name="create-schema")

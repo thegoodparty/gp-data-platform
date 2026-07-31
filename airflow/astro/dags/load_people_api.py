@@ -130,12 +130,12 @@ def load_people_api():
         timeout=1800,
     )
     unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only loader step that reaches Databricks
-    # The trigger-time param sets LOADER_SET_SSM_ENV_TAG for this run's provision only; the loader
-    # config reads it from env. A boolean param renders as "True"/"False", which the config parses.
+    # The trigger param drives a provision CLI flag (not an env var): when unchecked it renders
+    # --no-ssm-env-tag for this run only, so provision omits the Environment tag on the SSM param.
     provision = _step(
         "provision",
         "provision",
-        extra_env={"LOADER_SET_SSM_ENV_TAG": "{{ params.set_ssm_env_tag }}"},
+        extra_args="{% if not params.set_ssm_env_tag %}--no-ssm-env-tag{% endif %}",
     )
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")

@@ -89,3 +89,40 @@ def test_build_indexes_explicit_flag_overrides_config(monkeypatch: pytest.Monkey
 
     assert result.exit_code == 0, result.output
     assert captured["parallelism"] == 7
+
+
+def test_provision_defaults_to_setting_the_ssm_env_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    from loader.people_api import cli
+    from loader.people_api.steps import provision as step
+
+    captured: dict = {}
+    monkeypatch.setattr(cli, "_setup", lambda run_date: SimpleNamespace())
+    monkeypatch.setattr(
+        step,
+        "run",
+        lambda cfg, run_date, *, set_ssm_env_tag: captured.update(set_ssm_env_tag=set_ssm_env_tag),
+    )
+
+    result = runner.invoke(app, ["provision", "--date", "20260709"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["set_ssm_env_tag"] is True
+
+
+def test_provision_no_ssm_env_tag_flag_omits_the_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # --no-ssm-env-tag (rendered by the DAG's set_ssm_env_tag trigger param) reaches the step.
+    from loader.people_api import cli
+    from loader.people_api.steps import provision as step
+
+    captured: dict = {}
+    monkeypatch.setattr(cli, "_setup", lambda run_date: SimpleNamespace())
+    monkeypatch.setattr(
+        step,
+        "run",
+        lambda cfg, run_date, *, set_ssm_env_tag: captured.update(set_ssm_env_tag=set_ssm_env_tag),
+    )
+
+    result = runner.invoke(app, ["provision", "--date", "20260709", "--no-ssm-env-tag"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["set_ssm_env_tag"] is False
