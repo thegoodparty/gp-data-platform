@@ -9,6 +9,7 @@ ClickUp (see sync()).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from semantic_catalog.records import MetricRecord
 
@@ -72,3 +73,36 @@ def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> lis
         if old is None or old.ratified != rec.ratified:
             out.append(rec)
     return out
+
+
+class ClickUpTaskClient(Protocol):
+    def find_task_by_build_key(self, list_id: str, field_id: str, build_key: str) -> str | None: ...
+
+    def create_task(self, list_id: str, payload: TaskPayload, field_id: str) -> str: ...
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    created: tuple[str, ...]
+    skipped: tuple[str, ...]
+
+
+def sync(
+    client: ClickUpTaskClient,
+    list_id: str,
+    field_id: str,
+    before: list[MetricRecord],
+    after: list[MetricRecord],
+) -> SyncResult:
+    """Create one ClickUp task per newly-ratified metric, skipping any that
+    already exist in ClickUp (keyed on the build key custom field)."""
+    created: list[str] = []
+    skipped: list[str] = []
+    for rec in newly_ratified(before, after):
+        key = build_key(rec)
+        if client.find_task_by_build_key(list_id, field_id, key) is not None:
+            skipped.append(rec.name)
+            continue
+        client.create_task(list_id, task_payload(rec), field_id)
+        created.append(rec.name)
+    return SyncResult(created=tuple(created), skipped=tuple(skipped))

@@ -70,3 +70,46 @@ def test_task_payload_shape():
     assert "active_serve_users@2026-07-28" in p.markdown_description
     # Org copy rule: no em dashes, no emoji in generated copy.
     assert "—" not in p.name and "—" not in p.markdown_description
+
+
+class _FakeClient:
+    def __init__(self, existing_keys=()):
+        self.existing = set(existing_keys)
+        self.created = []
+
+    def find_task_by_build_key(self, list_id, field_id, build_key):
+        return "existing-id" if build_key in self.existing else None
+
+    def create_task(self, list_id, payload, field_id):
+        self.created.append(payload.build_key)
+        return "new-id"
+
+
+def test_sync_creates_task_for_newly_ratified():
+    client = _FakeClient()
+    result = sigma_tasks.sync(
+        client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
+    )
+    assert client.created == ["m@2026-07-28"]
+    assert result.created == ("m",)
+    assert result.skipped == ()
+
+
+def test_sync_is_idempotent_when_task_already_exists():
+    # Same transition seen again on a workflow re-run: ClickUp already has the task.
+    client = _FakeClient(existing_keys={"m@2026-07-28"})
+    result = sigma_tasks.sync(
+        client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
+    )
+    assert client.created == []
+    assert result.created == ()
+    assert result.skipped == ("m",)
+
+
+def test_sync_noop_when_nothing_newly_ratified():
+    client = _FakeClient()
+    result = sigma_tasks.sync(
+        client, "901", "field1", [_rec("m", ratified="2026-07-28")], [_rec("m", ratified="2026-07-28")]
+    )
+    assert client.created == []
+    assert result == sigma_tasks.SyncResult(created=(), skipped=())
