@@ -44,8 +44,8 @@ def test_render_districtvoter_projects_and_renames_to_serving_shape() -> None:
         '    "voter_id" UUID NOT NULL,\n'
         '    "district_id" UUID NOT NULL,\n'
         '    "State" "USState" NOT NULL,\n'
-        '    "created_at" TIMESTAMPTZ NOT NULL,\n'
-        '    "updated_at" TIMESTAMPTZ NOT NULL\n'
+        '    "created_at" TIMESTAMP NOT NULL,\n'
+        '    "updated_at" TIMESTAMP NOT NULL\n'
         ");"
     )
     # denormalized-only mart columns are dropped, and lowercase "state" never appears
@@ -80,6 +80,12 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         MartColumn(name="SequenceZigZag", spark_type="int", nullable=True),
         MartColumn(name="Residence_Addresses_Latitude", spark_type="double", nullable=True),
         MartColumn(name="VotingPerformanceMinorElection", spark_type="double", nullable=True),
+        # 3-digit FIPS code: int-inferred by the mart, must stay TEXT so leading zeros survive.
+        MartColumn(name="FIPS", spark_type="int", nullable=True),
+        # audit/status timestamps: timestamp-inferred (-> TIMESTAMPTZ) but overridden to TIMESTAMP.
+        MartColumn(name="created_at", spark_type="timestamp", nullable=False),
+        MartColumn(name="updated_at", spark_type="timestamp", nullable=False),
+        MartColumn(name="Voter_Status_UpdatedAt", spark_type="timestamp", nullable=True),
     ]
     ddl = render_create_table(TABLE_SPECS["Voter"], cols)
     for col in (
@@ -88,10 +94,14 @@ def test_render_voter_forces_contract_types_to_text() -> None:
         "SequenceZigZag",
         "Residence_Addresses_Latitude",
         "VotingPerformanceMinorElection",
+        "FIPS",
     ):
         assert f'"{col}" TEXT' in ddl
+    for col in ("created_at", "updated_at", "Voter_Status_UpdatedAt"):
+        assert f'"{col}" TIMESTAMP' in ddl
     # none of the mart-inferred types may survive the override
     assert "BOOLEAN" not in ddl and "INTEGER" not in ddl and "DOUBLE PRECISION" not in ddl
+    assert "TIMESTAMPTZ" not in ddl
 
 
 def test_render_district_family_matches_contract_types() -> None:

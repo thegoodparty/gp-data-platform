@@ -105,8 +105,8 @@ def test_districtvoter_spec() -> None:
     assert spec.type_overrides == {
         "district_id": "UUID",
         "voter_id": "UUID",
-        "created_at": "TIMESTAMPTZ",
-        "updated_at": "TIMESTAMPTZ",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
         "state": '"USState"',
     }
     # The other tables' marts already match serving -> no column map.
