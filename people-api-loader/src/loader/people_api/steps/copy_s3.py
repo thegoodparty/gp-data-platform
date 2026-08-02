@@ -74,21 +74,40 @@ _SESSION_SQL: tuple[str, ...] = (
 _IMPORT_OPTIONS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
 
 
-def _force_null_columns(column_types: dict[str, str]) -> list[str]:
-    """Every column, in DDL order — the copy force-nulls all of them.
+# Tables whose feeding mart source-nulls every string empty (only m_people_api__voter's
+# `source_nulled` CTE). Their text columns' quoted-empties are mart NULLs to restore, so force-null
+# text columns too; other tables keep genuine text empties (see `_force_null_columns`).
+_SOURCE_NULLED_TABLES = frozenset({"Voter"})
 
-    The mart source-nulls every string empty (m_people_api__voter's `source_nulled` CTE), so no
-    column carries a genuine empty string that must survive as ''. Spark writes the mart's NULLs as
-    a quoted-empty CSV field (its `nullValue=''` collides with the default `emptyValue` '""'), and
-    PG's `NULL ''` only nulls an UNQUOTED empty — so a quoted-empty lands '' on any column not
-    force-nulled: wrong for TEXT (green.Voter wants NULL) and a fatal cast error for
-    INTEGER/BOOLEAN/DATE/etc. FORCE_NULL on all columns converts every quoted-empty back to NULL.
+# Target types that can hold an empty string. On a table WITHOUT a source-null guarantee an empty
+# CSV field on these stays '' (the null-vs-empty distinction is preserved); every OTHER type
+# (INTEGER/BOOLEAN/DATE/TIMESTAMPTZ/DOUBLE/UUID/...) cannot parse '' and must import as NULL via
+# FORCE_NULL, or the COPY cast fails.
+_TEXT_TYPE_PREFIXES = ("TEXT", "VARCHAR", "CHAR", "CHARACTER", "CITEXT", "BPCHAR", "NAME")
+
+
+def _force_null_columns(column_types: dict[str, str], *, source_nulled: bool) -> list[str]:
+    """Columns (in DDL order) whose quoted-empty CSV field must import as NULL.
+
+    Typed (non-text) columns are ALWAYS force-nulled: PG's `NULL ''` reads a quoted-empty "" as ''
+    (fine for TEXT) but a fatal cast error for INTEGER/BOOLEAN/DATE/etc.
+
+    When the source mart source-nulls every string empty (`source_nulled=True` — only the voter
+    mart's `source_nulled` CTE), a quoted-empty on a TEXT column is a mart NULL that Spark wrote as
+    "", so force-null text columns too; otherwise they'd land '' where green.Voter wants NULL. Tables
+    without that guarantee (District/DistrictStats/DistrictVoter) keep any genuine text empty intact.
     """
-    return list(column_types)
+    if source_nulled:
+        return list(column_types)
+    return [
+        col
+        for col, typ in column_types.items()
+        if not typ.upper().split("(", 1)[0].strip().startswith(_TEXT_TYPE_PREFIXES)
+    ]
 
 
 def _import_options(force_null_columns: list[str]) -> str:
-    """Base CSV options with a FORCE_NULL clause for every column appended inside the option
+    """Base CSV options with a FORCE_NULL clause for the given columns appended inside the option
     parens. With no columns, returns the base options unchanged."""
     if not force_null_columns:
         return _IMPORT_OPTIONS
@@ -299,9 +318,12 @@ def run(
 
         # Spark writes the mart's NULLs as a quoted-empty "" CSV field; PG's `NULL ''` only nulls an
         # UNQUOTED empty, so without FORCE_NULL a quoted-empty lands '' (text) or fails the cast
-        # (typed). The mart source-nulls all string empties, so force-null every column back to NULL.
-        # See `_force_null_columns` / `_import_options`.
-        force_null = _force_null_columns(extract_column_types(tables_ddl[table]))
+        # (typed). The voter mart source-nulls all string empties, so force-null every column there;
+        # other tables force-null only typed columns and keep genuine text empties. See
+        # `_force_null_columns` / `_import_options`.
+        force_null = _force_null_columns(
+            extract_column_types(tables_ddl[table]), source_nulled=table in _SOURCE_NULLED_TABLES
+        )
         options = _import_options(force_null)
 
         files_by_state: dict[str, list[str]] = {}

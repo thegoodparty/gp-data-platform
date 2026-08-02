@@ -63,8 +63,7 @@ def _unload_multi(*table_entries):
     return SimpleNamespace(status="complete", tables=tables)
 
 
-# A realistic mix of target types (text + typed). Every column is force-nulled now, so an empty
-# CSV field imports as NULL uniformly (the mart source-nulls all string empties, none survive as '').
+# A realistic mix of target types (text + typed) for exercising both force-null paths.
 _MIXED_TYPES = {
     "LALVOTERID": "TEXT",
     "State": "TEXT",
@@ -77,12 +76,20 @@ _MIXED_TYPES = {
 }
 
 
-def test_force_null_columns_returns_every_column_in_ddl_order() -> None:
-    # The mart source-nulls all string empties, so no column carries a genuine '' to preserve —
-    # every column is force-nulled (in DDL order) so a quoted-empty "" imports as NULL.
-    forced = step._force_null_columns(_MIXED_TYPES)
+def test_force_null_columns_source_nulled_returns_every_column() -> None:
+    # A source-nulled mart (the voter mart) has no genuine '' to preserve, so every column is
+    # force-nulled (in DDL order) — text included — so a quoted-empty "" imports as NULL.
+    forced = step._force_null_columns(_MIXED_TYPES, source_nulled=True)
     assert forced == list(_MIXED_TYPES)
     assert "LALVOTERID" in forced and "State" in forced
+
+
+def test_force_null_columns_not_source_nulled_returns_only_typed() -> None:
+    # Without the source-null guarantee, text columns keep their genuine empties; only typed columns
+    # force-null (to convert their quoted-empty "" that would otherwise fail the cast).
+    forced = step._force_null_columns(_MIXED_TYPES, source_nulled=False)
+    assert forced == ["Age_Int", "Active", "Estimated_Income", "created_at", "Registration_Date", "id"]
+    assert "LALVOTERID" not in forced and "State" not in forced
 
 
 def test_import_options_appends_force_null_for_given_columns() -> None:
