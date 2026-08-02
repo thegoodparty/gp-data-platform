@@ -63,8 +63,8 @@ def _unload_multi(*table_entries):
     return SimpleNamespace(status="complete", tables=tables)
 
 
-# A realistic mix of target types: text columns (which legitimately hold empty
-# strings) and typed columns (which cannot — an empty field must import as NULL).
+# A realistic mix of target types (text + typed). Every column is force-nulled now, so an empty
+# CSV field imports as NULL uniformly (the mart source-nulls all string empties, none survive as '').
 _MIXED_TYPES = {
     "LALVOTERID": "TEXT",
     "State": "TEXT",
@@ -77,24 +77,24 @@ _MIXED_TYPES = {
 }
 
 
-def test_force_null_columns_selects_only_non_text() -> None:
-    # Text columns keep their empty-vs-NULL distinction (empty string preserved);
-    # every non-text type is FORCE_NULL so a quoted-empty "" imports as NULL.
+def test_force_null_columns_returns_every_column_in_ddl_order() -> None:
+    # The mart source-nulls all string empties, so no column carries a genuine '' to preserve —
+    # every column is force-nulled (in DDL order) so a quoted-empty "" imports as NULL.
     forced = step._force_null_columns(_MIXED_TYPES)
-    assert forced == ["Age_Int", "Active", "Estimated_Income", "created_at", "Registration_Date", "id"]
-    assert "LALVOTERID" not in forced and "State" not in forced
+    assert forced == list(_MIXED_TYPES)
+    assert "LALVOTERID" in forced and "State" in forced
 
 
-def test_import_options_appends_force_null_for_typed_columns() -> None:
+def test_import_options_appends_force_null_for_given_columns() -> None:
     opts = step._import_options(["Age_Int", "Active"])
     # base CSV options are preserved verbatim (still paired with unload)...
     assert opts.startswith("(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8'")
-    # ...and a FORCE_NULL clause for the named typed columns is appended inside the parens.
+    # ...and a FORCE_NULL clause for the named columns is appended inside the parens.
     assert opts.endswith(', FORCE_NULL ("Age_Int", "Active"))')
 
 
-def test_import_options_no_force_null_when_all_text() -> None:
-    # No typed columns -> plain base options, no dangling FORCE_NULL ().
+def test_import_options_no_force_null_when_no_columns() -> None:
+    # Empty column list -> plain base options, no dangling FORCE_NULL ().
     assert step._import_options([]) == step._IMPORT_OPTIONS
     assert "FORCE_NULL" not in step._import_options([])
 
