@@ -12,7 +12,7 @@ the analyst workflow and patterns, see the **analytics-process** skill.
 
 ## How to resolve a concept
 
-1. **Check the canonical registry first.** Open [`references/canonical_metrics.md`](references/canonical_metrics.md). If the concept is there, use that governed one-line definition and follow its "owns detail" link to the single domain doc for caveats, coverage, and query patterns. The registry is the governed layer — do not redefine a metric that already has a row.
+1. **Resolve governed status via the semantic layer first.** Check `dbt/project/models/**/sem_*.yml` `config.meta` (`ratified` date, `owner`) — the dbt semantic layer is the first-line source of truth for governed status. Then open [`references/canonical_metrics.md`](references/canonical_metrics.md) as the projected registry; note it can lag the yml. If the concept is governed, use that definition and follow its "owns detail" link to the single domain doc for caveats, coverage, and query patterns. Do not redefine a metric that is already governed.
 2. **If it's not canonical, route by domain** using the table below, then open that one doc.
 3. **Verify against the live catalog.** The live `goodparty_data_catalog` (or the model SQL) is ground truth, not these docs — docs drift. Confirm any named table/column/event before relying on it. The verification protocol lives in the process skill's `methodology.md`.
 
