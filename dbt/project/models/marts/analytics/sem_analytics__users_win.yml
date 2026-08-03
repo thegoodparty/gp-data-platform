@@ -55,6 +55,7 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
+        ratified: 2026-08-03
 
   - name: win_activated_users
     label: Win Activated Users
