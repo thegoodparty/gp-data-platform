@@ -1,5 +1,12 @@
 # Canonical metrics (governed)
 
+> **⚠ HIGH PRIORITY — the semantic layer supersedes this table.** Where a concept exists in the
+> dbt semantic layer (`dbt/project/models/**/sem_*.yml`), that model's `config.meta` is the source
+> of truth, including its `ratified:` date, and **overrides this projected table, which can lag the
+> yml**. Check `sem_*.yml` as a first-class step *before* trusting a `Ratified` value here. This
+> projection is regenerated from the yml and can be stale between regenerations (observed 2026-08 on
+> the Serve catalog).
+
 The single governed answer for each Win-product concept. **Resolve a concept here first**;
 follow the "owns detail" link for the full definition's caveats, coverage, and query patterns.
 
