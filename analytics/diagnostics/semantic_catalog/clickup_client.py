@@ -56,4 +56,8 @@ class ClickUpClient:
         if payload.assignee_ids:
             body["assignees"] = list(payload.assignee_ids)
         resp = self._http_json("POST", f"/list/{list_id}/task", body)
+        # ClickUp v2 can return HTTP 200 with an {"err": ..., "ECODE": ...} body
+        # (quota / rate limit), which _http_json does not treat as an error.
+        if "id" not in resp:
+            raise RuntimeError(f"ClickUp create_task returned no id: {resp}")
         return resp["id"]
