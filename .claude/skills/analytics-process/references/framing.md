@@ -53,7 +53,7 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 **Feasibility:**
 - Does the data actually exist at the grain needed? **Verify by query, not by reading the runbook.** See "Pre-brief verification checklist" below.
 - Does the modeled metric measure what the decision needs, or does it measure something narrower (e.g., the Win activity intermediates aggregate only a handful of event types)? Check the source SQL's `WHERE event_type IN (...)`; the product knowledge skill documents the universe-vs-modeled landscape (Win: `engagement.md`; Serve: `sources.md`).
-- Are there team-canonical metrics for this concept already defined? If so, default to them rather than inventing a new one. Resolve the concept through the product's knowledge skill, whose `canonical_metrics.md` is the governed registry.
+- Are there team-canonical metrics for this concept already defined? If so, default to them rather than inventing a new one. Resolve governed status via the dbt semantic layer (`dbt/project/models/**/sem_*.yml` `config.meta`) as the first-line check — `canonical_metrics.md` is a generated projection that can lag the yml. See "Canonical metric enumeration" in the checklist below.
 - Is the sample size plausibly large enough at the *intended cohort filter* (not at the registered-user grain)?
 - Are the cohort cuts populated enough to be informative?
 
