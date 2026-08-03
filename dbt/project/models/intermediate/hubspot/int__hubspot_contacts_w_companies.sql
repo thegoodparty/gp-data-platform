@@ -254,10 +254,7 @@ with
             row_number() over (
                 partition by contact_id
                 order by email_match desc, name_match desc, updated_at desc
-            ) as row_rank,
-            row_number() over (
-                partition by gp_candidacy_id order by updated_at desc
-            ) as row_rank_gp_candidacy_id
+            ) as row_rank
         from joined_data
     )
 
@@ -328,5 +325,9 @@ select
     win_number,
     win_number_model,
     product_campaign_id
+-- One row per contact (best company match). Dedup to the candidacy grain
+-- happens in the downstream candidacy/candidate marts, which each re-rank by
+-- gp_candidacy_id; deduping here too would silently drop a contact whenever two
+-- distinct contacts hash to the same gp_candidacy_id.
 from ranked_matches
-where 1 = 1 and row_rank = 1 and row_rank_gp_candidacy_id = 1
+where row_rank = 1
