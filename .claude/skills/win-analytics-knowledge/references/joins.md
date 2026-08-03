@@ -56,6 +56,18 @@ users_win_candidacy.user_id = int__amplitude_user_milestones.user_id
 candidacy.gp_candidacy_id = candidacy_stage.gp_candidacy_id  (one-to-many)
 ```
 
+**Candidacy → corroboration (external match) flag:**
+```
+-- roll up to gp_candidacy_id:
+MAX(CASE WHEN candidacy_stage.br_candidacy_id IS NOT NULL
+          OR candidacy_stage.ts_source_candidate_id IS NOT NULL THEN 1 ELSE 0 END)
+```
+"Has a BallotReady or TechSpeed record" is the corroboration signal. Do **NOT** use
+`candidate_id_source` for this — it is identity-mint provenance (the earliest-member ER rule), so a
+product-sourced (`gp_api`) candidacy still carries BR/DDHQ matches and outcomes yet reads as
+`gp_api`; using it as a match flag undercounts external corroboration massively. See the
+corroborated-candidate definition (and its retrospective-only caveat) in [sources.md](sources.md).
+
 **Candidacy → viability (TS-side, forward-stable):**
 ```
 candidacy.candidate_code = int__techspeed_viability_scoring.techspeed_candidate_code

@@ -55,6 +55,22 @@ The `candidacy` mart is itself built as a UNION ALL of two structurally differen
 
 Field availability differs across these halves — see [gotchas.md](gotchas.md).
 
+### BallotReady timeliness and candidate corroboration (retrospective only)
+
+BallotReady is a **lagging** source: it lists a race's candidates well after the filing deadline.
+Measured on 2025 general elections (n=45,854), only ~15% of candidates are in BR by the filing
+deadline; median lag ~40 days, p90 ~101 days (measured 2026-08). So **BR presence cannot verify
+candidates in-cycle** — "not in BR" near a deadline is uninformative, and any real-time gate built
+on it rejects real candidates. Trust BR presence only retrospectively: after the election, or after
+the filing deadline plus a ~60-100 day buffer.
+
+A **corroborated candidate** (the reusable "is this a real candidacy" cut, DATA-2202) is a candidacy
+that has a BallotReady or TechSpeed candidacy-stage record AND whose general election has already
+happened OR whose general filing deadline has passed. Reliable only on completed elections (per the
+lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-covers local races, so
+some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
+flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`.
+
 ## Event-lifecycle assets (omni repo)
 
 For when an event was added or retired in code, its current lifecycle status, or what
