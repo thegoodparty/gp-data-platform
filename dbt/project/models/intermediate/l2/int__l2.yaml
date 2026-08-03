@@ -179,11 +179,13 @@ models:
       precinct-trained model) but aggregate back to the precinct projections.
     config:
       meta:
-        # All optional overrides. Left blank, the model derives them at run time:
-        # inference_year = current year; model_slug / election_code = that year's
-        # November election; max_vote_history_year = most recent vote-history year in
-        # L2, capped below the inference year. Set them only for backfills.
-        max_vote_history_year: "{{ var('max_vote_history_year', '') }}"
+        # Most recent year L2 has COMPLETE vote history. Manually maintained (the
+        # same knob the district model uses); bump it when L2 gains a new complete
+        # year. Not auto-detected: L2 pre-provisions empty future vote-history
+        # columns, so column presence is not data presence.
+        max_vote_history_year: "{{ var('max_vote_history_year', 2025) }}"
+        # Derived at run time when left blank: inference_year = current calendar year;
+        # model_slug / election_code = that year's November election. Overrides for backfills.
         voter_turnout_inference_year: "{{ var('voter_turnout_inference_year', '') }}"
         voter_turnout_model_slug: "{{ var('voter_turnout_model_slug', '') }}"
         voter_turnout_election_code: "{{ var('voter_turnout_election_code', '') }}"
