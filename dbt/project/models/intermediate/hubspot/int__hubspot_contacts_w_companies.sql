@@ -1,7 +1,12 @@
+-- Incremental key is contact_id alone (the output grain: ranked_matches keeps a
+-- single row per contact_id). gp_candidacy_id is a hash of mutable contact
+-- fields, so including it in the key would orphan the prior row -- leaving a
+-- stale company_id-null row -- whenever a contact's identity changes, e.g. when
+-- a company association enriches the contact.
 {{
     config(
         materialized="incremental",
-        unique_key=["contact_id", "gp_candidacy_id"],
+        unique_key="contact_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
@@ -20,7 +25,12 @@ with
     joined_data as (
         select
             tbl_contacts.id as contact_id,
-            tbl_companies.id as company_id,
+            -- Carry the association's company_id from the contact side, not the
+            -- enrichment join: HubSpot can associate a company that never synced
+            -- into the companies source, and sourcing from tbl_companies.id would
+            -- null out (drop) that real association. Enrichment fields below stay
+            -- null when the company row is absent, which is accurate.
+            tbl_pairs.company_id as company_id,
             {{
                 generate_salted_uuid(
                     fields=[
