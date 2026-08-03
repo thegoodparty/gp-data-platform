@@ -60,9 +60,10 @@ candidacy.gp_candidacy_id = candidacy_stage.gp_candidacy_id  (one-to-many)
 ```
 -- roll up to gp_candidacy_id:
 MAX(CASE WHEN candidacy_stage.br_candidacy_id IS NOT NULL
-          OR candidacy_stage.ts_source_candidate_id IS NOT NULL THEN 1 ELSE 0 END)
+          OR candidacy_stage.ts_source_candidate_id IS NOT NULL
+          OR candidacy_stage.ddhq_candidate_id IS NOT NULL THEN 1 ELSE 0 END)
 ```
-"Has a BallotReady or TechSpeed record" is the corroboration signal. Do **NOT** use
+"Has a BallotReady, TechSpeed, or DDHQ record" is the corroboration signal. Do **NOT** use
 `candidate_id_source` for this — it is identity-mint provenance (the earliest-member ER rule), so a
 product-sourced (`gp_api`) candidacy still carries BR/DDHQ matches and outcomes yet reads as
 `gp_api`; using it as a match flag undercounts external corroboration massively. See the

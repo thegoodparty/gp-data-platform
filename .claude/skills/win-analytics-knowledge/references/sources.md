@@ -65,7 +65,7 @@ on it rejects real candidates. Trust BR presence only retrospectively: after the
 the filing deadline plus a ~60-100 day buffer.
 
 A **corroborated candidate** (the reusable "is this a real candidacy" cut, DATA-2202) is a candidacy
-that has a BallotReady or TechSpeed candidacy-stage record AND whose general election has already
+that has a BallotReady, TechSpeed, or DDHQ candidacy-stage record AND whose general election has already
 happened OR whose general filing deadline has passed. Reliable only on completed elections (per the
 lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-covers local races, so
 some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
