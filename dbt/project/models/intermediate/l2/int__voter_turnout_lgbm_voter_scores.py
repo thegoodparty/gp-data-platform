@@ -137,14 +137,6 @@ def _detect_election_cols(l2_columns, max_vote_history_year):
     return result
 
 
-def _detect_max_vote_history_year(l2_columns):
-    """Most recent election year present among L2's vote-history columns. Lets the
-    lag window follow the data as L2 is refreshed, instead of a hardcoded constant,
-    so a future inference year does not silently miss its most recent election."""
-    years = [int(m.group(2)) for column_name in l2_columns if (m := _VH_COL_RE.match(column_name))]
-    return max(years) if years else None
-
-
 def _november_model_for_year(year):
     """(model_slug, election_code) for the November election of `year`, collapsed to
     the single projection this table serves: even years are the general (midterm vs
@@ -467,8 +459,12 @@ def model(dbt, session):
         model_slug, election_code = slug_override, code_override
     else:
         model_slug, election_code = _november_model_for_year(inference_year)
-    # max_vote_history_year is derived from the loaded L2 columns below; a var wins.
-    max_vote_history_override = dbt.config.meta_get("max_vote_history_year")
+    # Most recent year L2 has COMPLETE vote history. Manually maintained (the same
+    # value the district model uses), NOT auto-detected: L2 pre-provisions empty
+    # future vote-history columns, so column presence is not data presence. Bump it
+    # when L2 gains a new complete year. The lag window still tracks the target
+    # because lag = inference_year - year, so it shifts as inference_year advances.
+    max_vote_history_year = int(dbt.config.meta_get("max_vote_history_year") or 2025)
     models_schema = dbt.config.meta_get("voter_turnout_models_schema") or "model_predictions"
     precincts_schema = dbt.config.meta_get("voter_turnout_precincts_schema") or "model_predictions"
     # UC Volume the driver stages the booster to and executors read it from. PROD
@@ -517,14 +513,6 @@ def model(dbt, session):
         l2 = l2.join(already_scored, on="LALVOTERID", how="left_anti")
     l2.createOrReplaceTempView("_l2")
     l2_col_set = set(l2.columns)
-    # Lag window: the most recent vote-history year actually in L2, never at or past
-    # the inference year (a voter's own target-year turnout must not be a feature).
-    # The lag < 1 guard in the feature builder is a second line of defence.
-    if max_vote_history_override:
-        max_vote_history_year = int(max_vote_history_override)
-    else:
-        detected = _detect_max_vote_history_year(l2.columns)
-        max_vote_history_year = min(inference_year - 1, detected) if detected else inference_year - 1
     election_cols = _detect_election_cols(l2.columns, max_vote_history_year)
 
     op_years = _op_years(election_cols, l2_col_set, inference_year)
