@@ -19,6 +19,8 @@ _DUMP = (
     'CREATE TABLE public."DistrictVoter" ("district_id" uuid NOT NULL, "voter_id" uuid NOT NULL, "State" text NOT NULL);\n'
     'CREATE TABLE public."District" ("id" uuid NOT NULL, "state" text NOT NULL);\n'
     'CREATE TABLE public."DistrictStats" ("district_id" uuid NOT NULL, "buckets" jsonb);\n'
+    'CREATE TABLE public."DistrictVoterDensity" ("district_id" uuid, "resolution" integer, "h3_index" text, "State" "USState");\n'
+    'CREATE TABLE public."DistrictVoterDensityMeta" ("district_id" uuid, "resolution" integer, "coverage" double precision, "State" "USState");\n'
 )
 
 
@@ -57,8 +59,9 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
     assert manifest.status == "complete"
     assert "Voter" in manifest.tables_created
     assert "Voter_TX" in manifest.tables_created
-    # Voter + its 51 state children + DistrictVoter + its 51 state children + District + DistrictStats
-    assert len(manifest.tables_created) == 2 * (1 + len(STATES)) + 2
+    # Voter + its 51 state children + DistrictVoter + its 51 state children + 4 flat tables
+    # (District, DistrictStats, DistrictVoterDensity, DistrictVoterDensityMeta).
+    assert len(manifest.tables_created) == 2 * (1 + len(STATES)) + 4
 
 
 def test_creates_partitioned_and_flat(monkeypatch: pytest.MonkeyPatch) -> None:

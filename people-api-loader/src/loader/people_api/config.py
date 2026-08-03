@@ -104,6 +104,10 @@ _MART_MODELS = {
     "District": "m_people_api__district",
     "DistrictStats": "m_people_api__districtstats",
     "DistrictVoter": "m_people_api__districtvoter",
+    # Voter-density heat map serving tables (voter-density-heatmap-handoff.md §7).
+    # Loaded by the airflow load_people_api DAG after districts (FK ordering).
+    "DistrictVoterDensity": "m_people_api__district_voter_density",
+    "DistrictVoterDensityMeta": "m_people_api__district_voter_density_meta",
 }
 
 

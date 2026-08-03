@@ -531,6 +531,17 @@ def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
         "DistrictVoter": step.PrimaryKey(
             table="DistrictVoter", constraint="DistrictVoter_pkey", columns=["district_id", "voter_id"]
         ),
+        # Flat voter-density serving tables: composite PK carried on the spec, no State append.
+        "DistrictVoterDensity": step.PrimaryKey(
+            table="DistrictVoterDensity",
+            constraint="DistrictVoterDensity_pkey",
+            columns=["district_id", "resolution", "h3_index"],
+        ),
+        "DistrictVoterDensityMeta": step.PrimaryKey(
+            table="DistrictVoterDensityMeta",
+            constraint="DistrictVoterDensityMeta_pkey",
+            columns=["district_id", "resolution"],
+        ),
     }
     idxs = {
         "Voter": _IDXS,  # a unique (LALVOTERID) + a plain (Active)
@@ -546,6 +557,18 @@ def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
         ],
         "DistrictStats": [],
         "DistrictVoter": [],
+        # The density table's serving index is built directly on the flat table (no partitions).
+        "DistrictVoterDensity": [
+            step.IndexDef(
+                table="DistrictVoterDensity",
+                name="DistrictVoterDensity_district_id_resolution_idx",
+                sql='CREATE INDEX "DistrictVoterDensity_district_id_resolution_idx" ON public."DistrictVoterDensity" USING btree ("district_id", "resolution");',
+                unique=False,
+                columns=["district_id", "resolution"],
+                where=None,
+            )
+        ],
+        "DistrictVoterDensityMeta": [],
     }
     monkeypatch.setattr(step, "primary_key_for", lambda t: pks[t])
     monkeypatch.setattr(step, "indexes_for", lambda t: idxs[t])
@@ -569,13 +592,33 @@ def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not any("District_name_idx" in s and "ON ONLY" in s for s in sql)
     assert not any("District_name_idx_CA" in s for s in sql)
 
+    # The flat density table's composite PK carries NO State, and its serving index builds directly.
+    dvd_pk = [s for s in sql if 'ADD CONSTRAINT "DistrictVoterDensity_pkey"' in s]
+    assert dvd_pk and 'PRIMARY KEY ("district_id", "resolution", "h3_index")' in dvd_pk[0]
+    assert '"State"' not in dvd_pk[0]
+    assert any(
+        'CREATE INDEX IF NOT EXISTS "DistrictVoterDensity_district_id_resolution_idx" ON public."DistrictVoterDensity"'
+        in s
+        for s in sql
+    )
+    assert not any("DistrictVoterDensity_district_id_resolution_idx" in s and "ON ONLY" in s for s in sql)
+
     # VACUUM (ANALYZE) every table, in TABLE_SPECS order (Voter first).
-    assert manifest.analyzed_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert manifest.analyzed_tables == [
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    ]
     assert set(manifest.constraints_added) == {
         "Voter_pkey",
         "District_pkey",
         "DistrictStats_pkey",
         "DistrictVoter_pkey",
+        "DistrictVoterDensity_pkey",
+        "DistrictVoterDensityMeta_pkey",
     }
     # Manifest: State appended only for a partitioned table's unique index.
     by_name = {i.index_name: i for i in manifest.indexes}
