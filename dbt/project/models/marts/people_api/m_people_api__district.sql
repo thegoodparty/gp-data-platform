@@ -17,3 +17,11 @@ select
     l2_district_name as name,
     state
 from {{ ref("m_election_api__district") }}
+-- Drop the single country-scope row (state='US', a Country district). The serving
+-- contract types
+-- District.state as the USState enum (50 states + DC), which has no 'US' value; prod
+-- never carried
+-- this row, and nothing references it (no DistrictVoter link, no DistrictStats row).
+-- Excluding it
+-- keeps District.state within the enum without extending it.
+where state <> 'US'

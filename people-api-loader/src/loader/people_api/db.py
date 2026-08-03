@@ -100,7 +100,14 @@ def _connect(
     bastion would otherwise each open their own tunnel and flood sshd MaxStartups; sharing one
     forward multiplexes them as channels on a single SSH transport. Ignored when no bastion.
     """
-    conninfo = make_conninfo(_conn_str(cfg, param_name), **_KEEPALIVE_KW)
+    # Enforce TLS for the loader's OWN connections: the dated connection-string params no longer
+    # embed sslmode (consumers set their own), but the master password lives in the URL, so default
+    # to `require` when the string specifies no sslmode. Never override a stricter one already set
+    # (e.g. a verify-* on the Present-cluster param), and psycopg still validates the RDS host's SNI
+    # through the tunnel below.
+    conn_str = _conn_str(cfg, param_name)
+    tls_kw = {} if "sslmode" in conninfo_to_dict(conn_str) else {"sslmode": "require"}
+    conninfo = make_conninfo(conn_str, **tls_kw, **_KEEPALIVE_KW)
     if not cfg.bastion_enabled:
         # Direct: the SSM connection string, plus the keepalive params baked in above.
         with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:

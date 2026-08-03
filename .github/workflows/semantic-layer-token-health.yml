@@ -1,0 +1,109 @@
+name: semantic-layer-token-health
+# The governance gate's accountability rests on two secrets: ORG_READ_TOKEN (the
+# composition check reads team membership with it) and SLACK_APP_BOT_TOKEN (the
+# publish job announces every governed merge to #data-alignment). Both workflows
+# skip cleanly when their token is missing, so a revoked or expired token, or a
+# bot removed from the channel, would silently disable the gate's visibility with
+# no error anywhere. This heartbeat exercises both tokens on a schedule and shouts
+# if either is unhealthy or nearing expiry, so a dead integration cannot rot
+# unnoticed. It fails the run on a hard problem (so GitHub notifies watchers even
+# when Slack itself is the dead integration and cannot self-report).
+on:
+  schedule:
+    - cron: '0 15 * * 1'   # Mondays 15:00 UTC (~7-8am PT)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  SLACK_CHANNEL: C08K22X9ZNH   # #data-alignment
+  EXPIRY_WARN_DAYS: '7'        # warn when a token expires within this many days
+
+jobs:
+  token-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise governance tokens
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          # No `set -e`: collect every problem in one run rather than exit on the
+          # first. pipefail still surfaces failures inside pipes.
+          set -o pipefail
+          problems=()
+          warnings=()
+
+          # --- ORG_READ_TOKEN: make the exact team-membership call the gate uses ---
+          if [ -z "${GH_TOKEN:-}" ]; then
+            problems+=("ORG_READ_TOKEN is not set. The composition check cannot read team membership, so approval coverage is always reported as incomplete.")
+          else
+            hdrs="$(mktemp)"
+            if gh api -i "orgs/thegoodparty/teams/semantic-layer-data/members" >"$hdrs" 2>/dev/null; then
+              # Fine-grained / expiring PATs return this header; a classic
+              # never-expiring token omits it, in which case there is nothing to
+              # warn about.
+              exp="$(grep -i '^github-authentication-token-expiration:' "$hdrs" | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r')"
+              if [ -n "$exp" ]; then
+                # GNU date on the ubuntu runner parses the header timestamp
+                # ("YYYY-MM-DD HH:MM:SS UTC" or "... +0000") directly.
+                exp_epoch="$(date -d "$exp" +%s 2>/dev/null || true)"
+                if [ -n "$exp_epoch" ]; then
+                  days=$(( (exp_epoch - $(date -u +%s)) / 86400 ))
+                  if [ "$days" -le "${EXPIRY_WARN_DAYS}" ]; then
+                    warnings+=("ORG_READ_TOKEN expires in ${days} day(s) (on ${exp}). Rotate it before it lapses or the composition check goes dark.")
+                  fi
+                fi
+              fi
+            else
+              problems+=("ORG_READ_TOKEN cannot read team membership (revoked, expired, or missing the org read scope).")
+            fi
+            rm -f "$hdrs"
+          fi
+
+          # --- SLACK_APP_BOT_TOKEN: validate the token, then confirm the bot is
+          # still in the announcement channel (a valid token alone does not prove
+          # it can post there). ---
+          if [ -z "${SLACK_APP_BOT_TOKEN:-}" ]; then
+            problems+=("SLACK_APP_BOT_TOKEN is not set. Governed merges cannot be announced in #data-alignment, which is the gate's only enforcement.")
+          else
+            auth="$(curl -sS -X POST https://slack.com/api/auth.test -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN")"
+            if ! echo "$auth" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("ok") else 1)'; then
+              err="$(echo "$auth" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("error","unknown"))')"
+              problems+=("SLACK_APP_BOT_TOKEN failed auth.test (error: ${err}). Merge announcements will not post.")
+            else
+              info="$(curl -sS "https://slack.com/api/conversations.info?channel=${SLACK_CHANNEL}" -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN")"
+              member="$(echo "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("ok") and d.get("channel",{}).get("is_member") else "no")')"
+              if [ "$member" != "yes" ]; then
+                problems+=("The Slack bot is not a member of #data-alignment (${SLACK_CHANNEL}). Re-invite it or announcements will silently fail.")
+              fi
+            fi
+          fi
+
+          # --- report ---
+          if [ ${#problems[@]} -eq 0 ] && [ ${#warnings[@]} -eq 0 ]; then
+            echo "Governance tokens healthy."
+            exit 0
+          fi
+
+          msg="Semantic-layer governance token health check found issues:"
+          for p in "${problems[@]}"; do msg="${msg}"$'\n'"- [PROBLEM] ${p}"; done
+          for w in "${warnings[@]}"; do msg="${msg}"$'\n'"- [WARNING] ${w}"; done
+          echo "$msg"
+
+          # Best-effort Slack alert. Only lands if the Slack token itself is
+          # healthy; when Slack is the broken integration, the job failure below
+          # is the signal instead.
+          if [ -n "${SLACK_APP_BOT_TOKEN:-}" ]; then
+            curl -sS -X POST https://slack.com/api/chat.postMessage \
+              -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
+              -H "Content-type: application/json; charset=utf-8" \
+              --data "$(MSG="$msg" CH="$SLACK_CHANNEL" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" \
+              >/dev/null || true
+          fi
+
+          # Hard problems fail the run so GitHub notifies watchers regardless of
+          # Slack. Warnings-only (e.g. impending expiry) surface without failing.
+          [ ${#problems[@]} -gt 0 ] && exit 1
+          exit 0

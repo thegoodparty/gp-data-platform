@@ -35,12 +35,17 @@ def test_hand_added_extras_merge_and_survive_regeneration() -> None:
         "Voter_last_first_id_idx",
         "Voter_firstname_lower_idx",
         "Voter_lastname_lower_idx",
+        "Voter_Parties_Description_trgm_idx",
     ):
         assert expected not in generated_names
         assert expected in names
     assert len(names) == len(set(names))
     trgm = next(i for i in idxs if i.name == "Voter_firstname_lower_trgm_idx")
     assert 'USING gin (lower("FirstName") gin_trgm_ops)' in trgm.sql
+    # The party filter is a case-insensitive substring match on the RAW column (gp-api emits
+    # `"Parties_Description" ILIKE '%..%'`), so the trgm GIN is on the raw column, not lower().
+    party_trgm = next(i for i in idxs if i.name == "Voter_Parties_Description_trgm_idx")
+    assert 'USING gin ("Parties_Description" gin_trgm_ops)' in party_trgm.sql
 
 
 def test_extras_merge_and_name_collision_suppression(monkeypatch) -> None:
@@ -100,8 +105,8 @@ def test_districtvoter_spec() -> None:
     assert spec.type_overrides == {
         "district_id": "UUID",
         "voter_id": "UUID",
-        "created_at": "TIMESTAMPTZ",
-        "updated_at": "TIMESTAMPTZ",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
         "state": '"USState"',
     }
     # The other tables' marts already match serving -> no column map.

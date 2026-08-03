@@ -1,5 +1,12 @@
 # Canonical metrics (governed)
 
+> **⚠ HIGH PRIORITY — the semantic layer supersedes this table.** Where a concept exists in the
+> dbt semantic layer (`dbt/project/models/**/sem_*.yml`), that model's `config.meta` is the source
+> of truth, including its `ratified:` date, and **overrides this projected table, which can lag the
+> yml**. Check `sem_*.yml` as a first-class step *before* trusting a `Ratified` value here. This
+> projection is regenerated from the yml and can be stale between regenerations (observed 2026-08 on
+> the Serve catalog).
+
 The single governed answer for each Win-product concept. **Resolve a concept here first**;
 follow the "owns detail" link for the full definition's caveats, coverage, and query patterns.
 
@@ -26,7 +33,7 @@ live in the owning doc, not here, so this stays small enough to load on every re
 | **Viability Score 2.0** | `round(5 × P(win))`, range 0.0–5.0, mapped to a 5-band label (`No Chance` … `Frontrunner`) | `int__techspeed_viability_scoring.viability_rating_2_0` / `score_viability_automated` | [viability.md](viability.md) | pending |
 | **PMF (KR2)** | Share of ICP-activated users answering "very disappointed" (Option 1) on the Win PMF survey if they could no longer use Win; target 40% | `stg_airbyte_source__hubspot_api_feedback_submissions` (`survey_name LIKE 'Win PMF%'`, `pmf_response`) | [outcomes.md](outcomes.md) | pending |
 | **Upcoming/live election base** | Distinct `is_latest_version AND NOT is_demo` users whose per-user `MAX(election_date)`, bounded to `[2020-01-01, 2050-01-01]`, is `>= the as-of date` (open-ended; includes future cycles) | `users_win_candidacy.election_date` | [segmentation.md](segmentation.md) | pending |
-| **Win W+1 Retention (OKR O2 KR1)** | Share of Win-ICP users viewing the dashboard 8–14 days after their first voter outreach send (conditions on activated ICP users by construction); target 60% | Amplitude chart `owc6mfnp` (start `ce:Voter Outreach - All`, return `Viewed` path=/dashboard, segment Win ICP) | [engagement.md](engagement.md) | pending |
+| **Win W+1 Retention (OKR O2 KR1)** | Share of Win-ICP users returning to the dashboard within ~a week or later (**rolling**) of their first voter outreach send; conditions on activated ICP users by construction; target 60% (rolling ≈ 64.5%; the saved chart is N-day ≈ 12.6% — ~5x method gap, see [engagement.md](engagement.md)) | Amplitude chart `owc6mfnp` (start `ce:Voter Outreach - All`, return `Viewed` path=/dashboard, segment Win ICP) | [engagement.md](engagement.md) | pending |
 
 When a question names a concept not in this table, fall through to the per-domain routing
 table in the knowledge skill's `SKILL.md`. When you define a genuinely new canonical metric,
@@ -38,5 +45,6 @@ a domain doc.
 |---|---|---|---|---|
 | **GoodParty Cumulative Wins** | Running total of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. Accumulates all time, so each period shows the cumulative win count to date. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
 | **GoodParty Win Rate** | Count of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
+| **Win Activated Users** | Count of Win-product users who have activated: sent at least one voter outreach campaign (first_campaign_sent_at is not null). The activated slice of win_users; the Activated Candidates OKR. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-07-28 |
 | **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | pending |
 <!-- semantic-catalog:end -->

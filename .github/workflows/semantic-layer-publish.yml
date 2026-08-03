@@ -68,24 +68,23 @@ jobs:
           fi
           echo "COV=$COV" >> "$GITHUB_ENV"
           echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+      - name: Prepare base tree for diffing
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git worktree add --detach /tmp/base "$BEFORE"
+          fi
       - name: Build Slack change summary
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
         run: |
           set -euo pipefail
-          BEFORE="${{ github.event.before }}"
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            # No prior commit to diff against — emit with an empty before-set.
-            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
+          if [ -d /tmp/base ]; then
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --base-dir /tmp/base --pr-url "$PR_URL" --coverage "$COV"
           else
-            git worktree add --detach /tmp/base "$BEFORE"
-            uv run python -m semantic_catalog.cli \
-              --emit-slack /tmp/slack.txt \
-              --base-dir /tmp/base \
-              --pr-url "$PR_URL" \
-              --coverage "$COV"
-            git worktree remove --force /tmp/base
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
           fi
       - name: Post Slack change summary
         env:
@@ -107,3 +106,22 @@ jobs:
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
           echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
+      - name: Create Sigma build tasks for newly ratified metrics
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          CLICKUP_TASK_TOKEN: ${{ secrets.CLICKUP_TASK_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLICKUP_TASK_TOKEN:-}" ]; then
+            echo "CLICKUP_TASK_TOKEN not provisioned; skipping Sigma build-task creation."
+            exit 0
+          fi
+          if [ -d /tmp/base ]; then
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base
+          else
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks
+          fi
+      - name: Clean up base tree
+        if: always()
+        run: git worktree remove --force /tmp/base || true

@@ -99,3 +99,15 @@ repos:
         files: ^apps/genie-slack-bot/
         pass_filenames: false
         stages: [pre-push]
+    # Governance guard: semantic_models:/metrics: content must live in a
+    # sem_*.yml so it cannot bypass the review gate and catalog. Broad `files:`
+    # (any yml under models) so it fires on a mis-named file, which is the
+    # violation. CI enforcement is semantic-layer-file-placement.yml; this is the
+    # local pre-push copy. Runs in the analytics env like the pytest hooks above.
+    -   id: semantic-file-placement
+        name: semantic definitions must live in sem_*.yml (pre-push)
+        entry: bash -c 'cd analytics && PYTHONPATH=diagnostics uv run python -m semantic_catalog.naming_guard'
+        language: system
+        files: ^dbt/project/models/.*\.ya?ml$
+        pass_filenames: false
+        stages: [pre-push]

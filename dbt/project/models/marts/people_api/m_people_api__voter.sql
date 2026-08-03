@@ -1,19 +1,36 @@
 /*
-Deduplication for this voter data is done by comparing each row against a snapshot. With the current size of
-220 MM rows/voters and ~350 columns, this processes takes nearly 5 hours. For this reason, it is tagged "monthly"
-since L2 data loads monthly.
+Reads int__l2_nationwide_uniform_w_haystaq directly (one row per LALVOTERID) and fully rebuilds each
+run. L2 loads monthly, so the ~5h full build is tagged "monthly". This previously deduplicated against
+an SCD2 snapshot, but the snapshot retained voters removed from L2 (inflating counts) and lagged the
+source; reading the current L2 keeps the mart in sync. created_at/updated_at come from the L2 loaded_at.
 */
 {{
     config(
-        materialized="incremental",
-        unique_key="LALVOTERID",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=True,
         tags=["monthly"],
     )
 }}
 
 with
+    -- Defensive: L2 files for some states have loaded blank fields as '' rather than
+    -- null in the
+    -- past. Normalize every string column to null once, before the casts below, so it
+    -- holds through
+    -- them and downstream into green.Voter regardless of how a given state's source
+    -- represents blanks.
+    source_nulled as (
+        select
+            {%- for c in adapter.get_columns_in_relation(
+                ref("int__l2_nationwide_uniform_w_haystaq")
+            ) %}
+                {%- if c.is_string() %} nullif(`{{ c.name }}`, '') as `{{ c.name }}`
+                {%- else %} `{{ c.name }}`
+                {%- endif %}
+                {% if not loop.last %},{% endif %}
+            {%- endfor %}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+    ),
     updated_voters as (
         select
             -- Core Voter Information
@@ -31,7 +48,14 @@ with
 
             -- Demographics
             `ConsumerData_Business_Owner` as `Business_Owner`,
-            `Voters_CalculatedRegDate` as `CalculatedRegDate`,
+            -- The data is ISO (yyyy-MM-dd) across all states, but the L2 spec
+            -- documents MM/dd/yyyy,
+            -- so parse both and keep whichever succeeds (try_to_date returns null,
+            -- never errors).
+            coalesce(
+                try_to_date(`Voters_CalculatedRegDate`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_CalculatedRegDate`, 'MM/dd/yyyy')
+            ) as `CalculatedRegDate`,
             `CountyEthnic_Description`,
             `CountyEthnic_LALEthnicCode`,
             `Voters_CountyVoterID` as `CountyVoterID`,
@@ -71,13 +95,20 @@ with
             `Mailing_Families_FamilyID`,
             -- `Mailing_HHGender_Description`,
             `ConsumerData_Marital_Status` as `Marital_Status`,
-            cast(
-                to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy') as date
+            coalesce(
+                try_to_date(`Voters_MovedFrom_Date`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy')
             ) as `MovedFrom_Date`,
             `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
             `Voters_NameSuffix` as `NameSuffix`,
-            `Voters_OfficialRegDate` as `OfficialRegDate`,
+            -- Same date handling as CalculatedRegDate/MovedFrom_Date: raw L2 is a
+            -- string, so parse ISO and MM/dd/yyyy and keep whichever succeeds,
+            -- otherwise the leading-zero source fix leaves this as a raw string.
+            coalesce(
+                try_to_date(`Voters_OfficialRegDate`, 'yyyy-MM-dd'),
+                try_to_date(`Voters_OfficialRegDate`, 'MM/dd/yyyy')
+            ) as `OfficialRegDate`,
             `Parties_Description`,
             `Voters_PlaceOfBirth` as `PlaceOfBirth`,
             `ConsumerData_Presence_Of_Children_in_HH` as `Presence_Of_Children`,
@@ -119,23 +150,6 @@ with
             -- + (case when {{ '`OtherElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
             -- + (case when {{ '`AnyElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
             -- ) as `Voter_Status`,
-            (case when `AnyElection_2025` is true then 1 else 0 end)
-            + (case when `General_2024` is true then 1 else 0 end)
-            + (case when `Primary_2024` is true then 1 else 0 end)
-            + (case when `PresidentialPrimary_2024` is true then 1 else 0 end)
-            + (case when `OtherElection_2024` is true then 1 else 0 end)
-            + (case when `AnyElection_2023` is true then 1 else 0 end)
-            + (case when `General_2022` is true then 1 else 0 end)
-            + (case when `Primary_2022` is true then 1 else 0 end)
-            + (case when `OtherElection_2022` is true then 1 else 0 end)
-            + (
-                case when `AnyElection_2021` is true then 1 else 0 end
-            ) as `Last_10_Elections_Voted`,
-            (case when `AnyElection_2025` is true then 1 else 0 end)
-            + (case when `General_2024` is true then 1 else 0 end)
-            + (
-                case when `Primary_2024` is true then 1 else 0 end
-            ) as `Last_3_Elections_Voted`,
             current_timestamp() as `Voter_Status_UpdatedAt`,
             cast(
                 `VoterTelephones_CellConfidenceCode` as int
@@ -173,13 +187,24 @@ with
             `Primary_2022`,
             `Primary_2024`,
             `Primary_2026`,
-            `Voters_VotingPerformanceEvenYearGeneral`
-            as `VotingPerformanceEvenYearGeneral`,
-            `Voters_VotingPerformanceEvenYearGeneralAndPrimary`
-            as `VotingPerformanceEvenYearGeneralAndPrimary`,
-            `Voters_VotingPerformanceEvenYearPrimary`
-            as `VotingPerformanceEvenYearPrimary`,
-            `Voters_VotingPerformanceMinorElection` as `VotingPerformanceMinorElection`,
+            -- The int model casts these to double for its other consumers, but prod
+            -- stores them as
+            -- integer text ('42', not '42.0'); round-trip through int so the serving
+            -- text matches.
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearGeneral` as int) as string
+            ) as `VotingPerformanceEvenYearGeneral`,
+            cast(
+                cast(
+                    `Voters_VotingPerformanceEvenYearGeneralAndPrimary` as int
+                ) as string
+            ) as `VotingPerformanceEvenYearGeneralAndPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceEvenYearPrimary` as int) as string
+            ) as `VotingPerformanceEvenYearPrimary`,
+            cast(
+                cast(`Voters_VotingPerformanceMinorElection` as int) as string
+            ) as `VotingPerformanceMinorElection`,
 
             -- Districts
             `AddressDistricts_Change_Changed_CD`,
@@ -424,15 +449,12 @@ with
             `Water_SubDistrict`,
             `Weed_District`,
             `hf_most_important_policy_item`,
-            dbt_valid_from
-        from {{ ref("snapshot__int__l2_nationwide_uniform") }}
-        where
-            1 = 1
-            {% if is_incremental() %}
-                and dbt_valid_from > (select max(updated_at) from {{ this }})  -- use dbt_valid_from to get true updated_at
-            {% endif %}
-        qualify
-            row_number() over (partition by lalvoterid order by dbt_valid_from desc) = 1
+            loaded_at
+        from source_nulled
+    ),
+    voter_propensity as (
+        select `LALVOTERID`, `prob_vote`
+        from {{ ref("stg_model_predictions__voter_turnout_scores_20260730") }}
     ),
     /*
         Note that here we need to list each column individually since we need to
@@ -520,16 +542,17 @@ with
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
             case
-                when tbl_updated.`Last_10_Elections_Voted` = 0
-                then 'First Time'
-                when tbl_updated.`Last_3_Elections_Voted` = 0
+                when tbl_propensity.`prob_vote` is null
+                then 'Unknown'
+                when tbl_propensity.`prob_vote` < 0.25
                 then 'Unlikely'
-                when tbl_updated.`Last_3_Elections_Voted` = 3
-                then 'Super'
-                when tbl_updated.`Last_3_Elections_Voted` = 2
+                when tbl_propensity.`prob_vote` < 0.50
+                then 'Unreliable'
+                when tbl_propensity.`prob_vote` < 0.75
                 then 'Likely'
-                else 'Unknown'
+                else 'Super'
             end as `Voter_Status`,
+            tbl_propensity.`prob_vote` as `Voter_Turnout_Probability`,
             tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
@@ -811,24 +834,14 @@ with
             tbl_updated.`Water_SubDistrict`,
             tbl_updated.`Weed_District`,
             tbl_updated.`hf_most_important_policy_item`,
-            {% if is_incremental() %}
-                -- For incremental runs, preserve existing created_at for existing
-                -- records,
-                coalesce(
-                    tbl_existing.created_at, tbl_updated.`dbt_valid_from`
-                ) as created_at,
-            {% else %}
-                -- For full refresh, set created_at to dbt_valid_from for all records
-                tbl_updated.`dbt_valid_from` as created_at,
-            {% endif %}
-            -- Always set updated_at to dbt_valid_from
-            tbl_updated.`dbt_valid_from` as updated_at
+            -- No first-seen history without the snapshot: both timestamps are the L2
+            -- load time.
+            tbl_updated.`loaded_at` as created_at,
+            tbl_updated.`loaded_at` as updated_at
         from updated_voters as tbl_updated
-        {% if is_incremental() %}
-            left join
-                {{ this }} as tbl_existing
-                on tbl_updated.`LALVOTERID` = tbl_existing.`LALVOTERID`
-        {% endif %}
+        left join
+            voter_propensity as tbl_propensity
+            on tbl_updated.`LALVOTERID` = tbl_propensity.`LALVOTERID`
     )
 
 select *

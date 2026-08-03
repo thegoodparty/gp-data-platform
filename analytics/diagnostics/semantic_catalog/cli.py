@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,9 @@ import yaml
 
 from semantic_catalog import lifecycle as lc_mod
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
+from semantic_catalog import sigma_tasks
+from semantic_catalog.clickup_client import ClickUpClient
+from semantic_catalog.clickup_page import render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
 from semantic_catalog.parser import parse_semantic_tree
@@ -25,8 +29,13 @@ from semantic_catalog.slack_diff import render_message
 # analytics/diagnostics/semantic_catalog/cli.py -> parents[0]=semantic_catalog,
 # [1]=diagnostics, [2]=analytics, [3]=repo root.
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models" / "marts"
-SEM_ROOTS = [DBT_MODELS / "analytics", DBT_MODELS / "civics"]
+# Parse EVERY sem_*.yml under models, not an allow-list of subdirs, so the
+# parser's coverage matches the CODEOWNERS glob (/dbt/project/models/**/sem_*.yml)
+# exactly. A governed file added under any subdir is auto-catalogued; the naming
+# guard (semantic_catalog.naming_guard) enforces that all semantic content lives
+# in a sem_*.yml so nothing can escape this scope.
+DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+SEM_ROOTS = [DBT_MODELS]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
 
 # Each skill owns one canonical_metrics.md. The generated region is projected
@@ -98,12 +107,20 @@ def _lifecycles(records: list[MetricRecord]) -> dict[str, Lifecycle]:
     return {f: lc_mod.derive(f) for f in files}
 
 
+def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[MetricRecord]]:
+    """Records as of HEAD (after) and as of the merge base (before, empty if none)."""
+    after = parse_semantic_tree(SEM_ROOTS)
+    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    return before, after
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="semantic_catalog")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--sync-sigma-tasks", action="store_true")
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
@@ -142,21 +159,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {args.emit_clickup}")
 
     if args.emit_slack:
-        after = records
-        before = (
-            parse_semantic_tree(
-                [
-                    args.base_dir / "dbt/project/models/marts/analytics",
-                    args.base_dir / "dbt/project/models/marts/civics",
-                ]
-            )
-            if args.base_dir
-            else []
-        )
+        before, after = _before_after(args.base_dir)
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
         msg = render_message(before, after, args.pr_url, coverage)
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
+
+    if args.sync_sigma_tasks:
+        token = os.environ.get("CLICKUP_TASK_TOKEN")
+        if not token:
+            print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
+            return 0
+        cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
+        before, after = _before_after(args.base_dir)
+        client = ClickUpClient(token)
+        result = sigma_tasks.sync(client, cfg["list_id"], cfg["build_key_field_id"], before, after)
+        print(f"created {len(result.created)}: {', '.join(result.created) or '(none)'}")
+        print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
+        return 0
 
     return 0
 

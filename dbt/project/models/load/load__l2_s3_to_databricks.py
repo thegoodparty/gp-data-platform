@@ -95,6 +95,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
+        # Append load-history log. A full refresh isn't data-losing here (it rebuilds from the
+        # guarded upstream S3 log) but re-reads every state and is prone to clustering conflicts.
+        # Pin full_refresh off so heavy re-reads stay a deliberate op, not an on-merge side effect;
+        # the incremental history gate then stays authoritative.
+        full_refresh=False,
         tags=["l2", "s3", "databricks", "load"],
     )
 
@@ -180,10 +185,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
             # set up reader and add loaded_at column
             delimiter = "\t" if source_file_name.endswith(".tab") else ","
             s3_path = f"s3a://{s3_bucket}/{file.s3_state_prefix}{source_file_name}"
+            # Read every column as string (inferSchema=False). The raw L2 files carry zero-padded
+            # codes (ZIPs, ZipPlus4, DPBC, sequence codes) that Spark's type inference silently
+            # coerces to int, dropping leading zeros (e.g. 01854 -> 1854) before any model can see
+            # them. Keeping the source faithful preserves the original strings; downstream models
+            # cast the columns that need a non-string type.
             data_df = session.read.options(delimiter=delimiter).csv(
                 path=s3_path,
                 header=True,
-                inferSchema=True,
+                inferSchema=False,
             )
             data_df = data_df.withColumn("loaded_at", current_timestamp())
 

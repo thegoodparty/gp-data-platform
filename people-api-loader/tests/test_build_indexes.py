@@ -496,7 +496,13 @@ def test_run_adds_postgis_and_geometry_column(monkeypatch: pytest.MonkeyPatch) -
     sql = executed_sql(conn)
     assert any("CREATE EXTENSION IF NOT EXISTS postgis" in s for s in sql)
     assert any(
-        'ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326)' in s and "ST_MakePoint" in s and "STORED" in s
+        'ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326)' in s
+        and "ST_MakePoint" in s
+        and "STORED" in s
+        # lat/long are TEXT: cast to float8 for ST_MakePoint, and NULLIF('') so a missing
+        # coordinate becomes NULL instead of erroring the generated-column evaluation.
+        and "::float8" in s
+        and "NULLIF" in s
         for s in sql
     )
 
