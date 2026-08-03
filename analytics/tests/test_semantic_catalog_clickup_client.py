@@ -86,3 +86,21 @@ def test_create_posts_name_description_and_build_key_field():
     assert body["name"] == "Build in Sigma: M (m)"
     assert body["markdown_description"] == "body"
     assert {"id": "field1", "value": "m@2026-07-28"} in body["custom_fields"]
+
+
+def test_create_includes_assignees_when_payload_has_them():
+    client, calls = _client_with_recorder([{"id": "new1"}])
+    payload = TaskPayload(
+        name="n", markdown_description="d", build_key="m@2026-07-28", assignee_ids=(111975138,)
+    )
+    client.create_task("901", payload, "field1")
+    _, _, body = calls[0]
+    assert body["assignees"] == [111975138]
+
+
+def test_create_omits_assignees_when_payload_has_none():
+    client, calls = _client_with_recorder([{"id": "new1"}])
+    payload = TaskPayload(name="n", markdown_description="d", build_key="m@2026-07-28")
+    client.create_task("901", payload, "field1")
+    _, _, body = calls[0]
+    assert "assignees" not in body

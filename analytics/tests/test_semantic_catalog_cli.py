@@ -110,16 +110,51 @@ def test_sync_sigma_tasks_invokes_sync_when_token_present(capsys, monkeypatch):
     monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
     seen = {}
 
-    def fake_sync(client, list_id, field_id, before, after):
+    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
         seen["list_id"] = list_id
         seen["field_id"] = field_id
-        from semantic_catalog.sigma_tasks import SyncResult
+        seen["assignee_ids"] = assignee_ids
+        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
 
-        return SyncResult(created=("m",), skipped=())
+        return SyncResult(
+            created=(CreatedTask(metric_name="m", task_id="id-1", url="https://app.clickup.com/t/id-1"),),
+            skipped=(),
+        )
 
     monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
     rc = cli.main(["--sync-sigma-tasks"])
     assert rc == 0
     # list_id comes from the committed config, not a hardcoded literal in cli.py
     assert seen["list_id"] == "901326391561"
+    # default assignee (Audrey) is read from the committed config, not hardcoded in cli.py
+    assert seen["assignee_ids"] == (111975138,)
     assert "created 1" in capsys.readouterr().out.lower()
+
+
+def test_sync_sigma_tasks_emits_created_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
+
+    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
+        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
+
+        return SyncResult(
+            created=(
+                CreatedTask(
+                    metric_name="win_users",
+                    task_id="abc123",
+                    url="https://app.clickup.com/t/abc123",
+                ),
+            ),
+            skipped=(),
+        )
+
+    monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
+    out = tmp_path / "created_tasks.json"
+    rc = cli.main(["--sync-sigma-tasks", "--emit-created", str(out)])
+    assert rc == 0
+    import json
+
+    payload = json.loads(out.read_text())
+    assert payload == [
+        {"metric": "win_users", "task_id": "abc123", "url": "https://app.clickup.com/t/abc123"}
+    ]

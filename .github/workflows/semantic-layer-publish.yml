@@ -105,7 +105,9 @@ jobs:
             --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
-          echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
+          TS=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown")); print(d["ts"])')
+          # Expose the summary message ts so the Sigma-task step can reply in-thread.
+          echo "SLACK_TS=$TS" >> "$GITHUB_ENV"
       - name: Create Sigma build tasks for newly ratified metrics
         working-directory: analytics
         env:
@@ -118,10 +120,45 @@ jobs:
             exit 0
           fi
           if [ -d /tmp/base ]; then
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base --emit-created /tmp/created_tasks.json
           else
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --emit-created /tmp/created_tasks.json
           fi
+      - name: Reply in the Slack thread with created Sigma task links
+        # Only when the summary posted (SLACK_TS set). No created tasks => the
+        # JSON is an empty list and the loop below posts nothing, so a workflow
+        # re-run (dedupe skips creation) never double-posts into the thread.
+        if: ${{ env.SLACK_TS != '' }}
+        env:
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_APP_BOT_TOKEN:-}" ] || [ ! -f /tmp/created_tasks.json ]; then
+            echo "No Slack token or no created-tasks file; skipping thread replies."
+            exit 0
+          fi
+          python3 - "$SLACK_APP_BOT_TOKEN" "$SLACK_TS" <<'PY'
+          import json, sys, urllib.request
+          token, thread_ts = sys.argv[1], sys.argv[2]
+          with open("/tmp/created_tasks.json") as fh:
+              tasks = json.load(fh)
+          for t in tasks:
+              text = f"Sigma build task created for `{t['metric']}`: {t['url']}"
+              body = json.dumps(
+                  {"channel": "C08K22X9ZNH", "thread_ts": thread_ts, "text": text}
+              ).encode()
+              req = urllib.request.Request(
+                  "https://slack.com/api/chat.postMessage", data=body, method="POST"
+              )
+              req.add_header("Authorization", f"Bearer {token}")
+              req.add_header("Content-type", "application/json; charset=utf-8")
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  d = json.load(resp)
+              # chat.postMessage returns 200 with ok:false on errors; check the body.
+              if not d.get("ok"):
+                  sys.exit(f"Slack thread reply failed for {t['metric']}: {d.get('error', 'unknown')}")
+              print(f"replied in thread for {t['metric']}")
+          PY
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true
