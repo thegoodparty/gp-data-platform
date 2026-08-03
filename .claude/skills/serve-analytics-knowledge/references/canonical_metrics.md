@@ -1,5 +1,12 @@
 # Canonical metrics (governed)
 
+> **⚠ HIGH PRIORITY — the semantic layer supersedes this table.** Where a concept exists in the
+> dbt semantic layer (`dbt/project/models/**/sem_*.yml`), that model's `config.meta` is the source
+> of truth, including its `ratified:` date, and **overrides this projected table, which can lag the
+> yml**. Check `sem_*.yml` as a first-class step *before* trusting a `Ratified` value here. Known
+> drift (2026-08): `active_serve_users` was ratified `2026-07-28` in `sem_analytics__users_serve.yml`
+> while this projection still read `pending` — regenerate the catalog projection to reconcile.
+
 The single governed answer for each Serve-product concept. **Resolve a concept here first**;
 follow the "owns detail" link for the full definition's caveats, coverage, and query patterns.
 
