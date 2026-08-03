@@ -147,7 +147,7 @@ def test_render_round_trips_through_extract_create_tables() -> None:
     assert extract_column_names(parsed["District"]) == ["id", "name"]
 
 
-def test_renders_all_four_tables(monkeypatch) -> None:
+def test_renders_all_tables(monkeypatch) -> None:
     from types import SimpleNamespace
 
     from loader.people_api.schema import emit_ddl
@@ -170,6 +170,28 @@ def test_renders_all_four_tables(monkeypatch) -> None:
             MartColumn(name="voter_id", spark_type="string", nullable=False),
             MartColumn(name="state", spark_type="string", nullable=False),
         ],
+        "DistrictVoterDensity": [
+            MartColumn(name="district_id", spark_type="string", nullable=True),
+            MartColumn(name="resolution", spark_type="int", nullable=True),
+            MartColumn(name="h3_index", spark_type="string", nullable=True),
+            MartColumn(name="lat", spark_type="double", nullable=True),
+            MartColumn(name="lng", spark_type="double", nullable=True),
+            MartColumn(name="voter_count", spark_type="bigint", nullable=True),
+            MartColumn(name="state", spark_type="string", nullable=True),
+            MartColumn(name="updated_at", spark_type="timestamp", nullable=True),
+        ],
+        "DistrictVoterDensityMeta": [
+            MartColumn(name="district_id", spark_type="string", nullable=True),
+            MartColumn(name="resolution", spark_type="int", nullable=True),
+            MartColumn(name="coverage", spark_type="double", nullable=True),
+            MartColumn(name="min_cell_count", spark_type="int", nullable=True),
+            MartColumn(name="total_voters", spark_type="bigint", nullable=True),
+            MartColumn(name="geocoded_voters", spark_type="bigint", nullable=True),
+            MartColumn(name="rendered_voters", spark_type="bigint", nullable=True),
+            MartColumn(name="suppressed_cells", spark_type="bigint", nullable=True),
+            MartColumn(name="state", spark_type="string", nullable=True),
+            MartColumn(name="updated_at", spark_type="timestamp", nullable=True),
+        ],
     }
 
     cfg = SimpleNamespace(
@@ -178,6 +200,8 @@ def test_renders_all_four_tables(monkeypatch) -> None:
             "District": "cat.schema.m_people_api__district",
             "DistrictStats": "cat.schema.m_people_api__districtstats",
             "DistrictVoter": "cat.schema.m_people_api__districtvoter",
+            "DistrictVoterDensity": "cat.schema.m_people_api__district_voter_density",
+            "DistrictVoterDensityMeta": "cat.schema.m_people_api__district_voter_density_meta",
         }
     )
 
@@ -197,7 +221,19 @@ def test_renders_all_four_tables(monkeypatch) -> None:
     assert 'CREATE TABLE public."District" (' in sql
     assert 'CREATE TABLE public."DistrictStats" (' in sql
     assert 'CREATE TABLE public."DistrictVoter" (' in sql
+    assert 'CREATE TABLE public."DistrictVoterDensity" (' in sql
+    assert 'CREATE TABLE public."DistrictVoterDensityMeta" (' in sql
     # buckets override -> jsonb (case as written in schema_spec)
     assert '"buckets" jsonb' in sql
     # DistrictVoter-specific column to catch dispatch/rendering regression
     assert '"voter_id" UUID NOT NULL' in sql
+    # Density: mart `state` renamed to serving "State" enum; bigint count -> contract INTEGER;
+    # h3_index/lat/lng pass through; mart timestamptz updated_at -> contract TIMESTAMP.
+    assert '"h3_index" TEXT' in sql
+    assert '"lat" DOUBLE PRECISION' in sql
+    assert '"voter_count" INTEGER' in sql
+    assert '"State" "USState"' in sql
+    assert '"updated_at" TIMESTAMP' in sql and "TIMESTAMPTZ" not in sql
+    # Meta: coverage stays double; the count/sum aggregates are overridden bigint -> INTEGER.
+    assert '"coverage" DOUBLE PRECISION' in sql
+    assert '"suppressed_cells" INTEGER' in sql

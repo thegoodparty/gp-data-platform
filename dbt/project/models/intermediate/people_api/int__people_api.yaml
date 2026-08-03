@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: int__people_api__voter_h3
+    description: >
+      Voter → H3 binning for the voter-density heat map. Parses each voter's
+      residence lat/lng and bins to H3 at the published resolutions (one column
+      per resolution). Downstream m_people_api__district_voter_density explodes
+      these columns, joins to the district↔voter bridge, aggregates, and
+      K-suppresses. See packages/people-api/docs/voter-density-heatmap-handoff.md §3.1.
+    columns:
+      - name: voter_id
+        description: >
+          The voter's salted-uuid id (generate_salted_uuid([LALVOTERID], salt='l2')),
+          equal to m_people_api__districtvoter.voter_id — the join key.
+        data_type: uuid
+        data_tests:
+          - not_null
+          - unique
+      - name: lalvoterid
+        description: Raw L2 voter id (kept for Phase-0 analysis)
+        data_type: string
+      - name: state
+        description: Two-letter state postal code
+        data_type: string
+      - name: lat
+        description: Parsed residence latitude (try_cast; US-in-bounds)
+        data_type: double
+      - name: lng
+        description: Parsed residence longitude (try_cast; US-in-bounds)
+        data_type: double
+      - name: latlong_accuracy
+        description: >
+          L2 Residence_Addresses_LatLongAccuracy (rooftop / interpolated /
+          zip-centroid) — feeds the Phase-0 accuracy distribution (handoff §6.2).
+        data_type: string
+      - name: h3_r7
+        description: H3 cell id (BIGINT) at resolution 7
+        data_type: bigint
+      - name: h3_r8
+        description: H3 cell id (BIGINT) at resolution 8
+        data_type: bigint
+      - name: h3_r9
+        description: H3 cell id (BIGINT) at resolution 9
+        data_type: bigint

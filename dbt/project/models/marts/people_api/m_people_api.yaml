@@ -254,3 +254,145 @@ models:
       - dbt_utils.equality:
           arguments:
             compare_model: ref('m_people_api__districtstats')
+
+  - name: m_people_api__district_voter_density
+    description: >
+      Aggregated, K-anonymized, H3-binned voter residence density per district,
+      loaded to people-api green."DistrictVoterDensity". Each row is an H3 cell
+      with a voter count and the deterministic H3 cell centroid — never a voter,
+      address, or the mean of voter positions. See
+      packages/people-api/docs/voter-density-heatmap-handoff.md §3.2 / §7.
+    columns:
+      - name: district_id
+        description: Unique identifier for a district (== District.id, salted-uuid)
+        data_type: uuid
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_people_api__district')
+                field: id
+      - name: resolution
+        description: H3 resolution of this row
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: h3_index
+        description: H3 cell index as an opaque string (h3_h3tostring)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: lat
+        description: H3 cell centroid latitude (deterministic; never a voter position)
+        data_type: double
+        data_tests:
+          - not_null
+      - name: lng
+        description: H3 cell centroid longitude (deterministic; never a voter position)
+        data_type: double
+        data_tests:
+          - not_null
+      - name: voter_count
+        description: Number of voters whose residence falls in this cell; always >= K
+        data_type: integer
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('voter_density_k', 10) }}"
+                inclusive: true
+      - name: state
+        description: Two-letter state postal code (loaded into the "State" USState enum)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Mart run time
+        data_type: timestamp
+        data_tests:
+          - not_null
+    data_tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - resolution
+              - h3_index
+            sample_size: 100000
+          config:
+            severity: error
+
+  - name: m_people_api__district_voter_density_meta
+    description: >
+      Voter-density coverage bookkeeping per (district_id, resolution), loaded to
+      people-api green."DistrictVoterDensityMeta". The app uses coverage to decide
+      whether to render the map and to draw the legend. See handoff §3.3 / §7.
+    columns:
+      - name: district_id
+        description: Unique identifier for a district (== District.id)
+        data_type: uuid
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_people_api__district')
+                field: id
+      - name: resolution
+        description: H3 resolution of this row
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: coverage
+        description: rendered_voters / total_voters ∈ [0, 1]
+        data_type: double
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+      - name: min_cell_count
+        description: The K (voter_density_k) used for this build
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: total_voters
+        description: District voters at this resolution grain
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: geocoded_voters
+        description: Voters with a usable H3 at this resolution
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: rendered_voters
+        description: Sum of voter_count over non-suppressed cells
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: suppressed_cells
+        description: Cells dropped by K-anonymity suppression
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: state
+        description: Two-letter state postal code (loaded into the "State" USState enum)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Mart run time
+        data_type: timestamp
+        data_tests:
+          - not_null
+    data_tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - resolution
+            sample_size: 100000
+          config:
+            severity: error

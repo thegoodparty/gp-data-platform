@@ -105,7 +105,18 @@ def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(k, raising=False)
     cfg = LoaderConfig.from_env()
     assert cfg.mart_fqns["Voter"] == "goodparty_data_catalog.dbt.m_people_api__voter"
-    assert set(cfg.mart_fqns) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+    assert (
+        cfg.mart_fqns["DistrictVoterDensity"]
+        == "goodparty_data_catalog.dbt.m_people_api__district_voter_density"
+    )
+    assert set(cfg.mart_fqns) == {
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    }
 
 
 def test_from_env_strips_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
