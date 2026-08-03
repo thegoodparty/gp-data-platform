@@ -66,7 +66,12 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     win_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["win-analytics-knowledge"]]}
     serve_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["serve-analytics-knowledge"]]}
 
-    assert win_names == {"win_users", "goodparty_win_rate", "goodparty_cumulative_wins"}
+    assert win_names == {
+        "win_users",
+        "win_activated_users",
+        "goodparty_win_rate",
+        "goodparty_cumulative_wins",
+    }
     assert serve_names == {"active_serve_users"}
     assert "active_serve_users" not in win_names
 
