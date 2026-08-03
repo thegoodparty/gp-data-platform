@@ -1,7 +1,12 @@
+-- Incremental key is contact_id alone (the output grain: ranked_matches keeps a
+-- single row per contact_id). gp_candidacy_id is a hash of mutable contact
+-- fields, so including it in the key would orphan the prior row -- leaving a
+-- stale company_id-null row -- whenever a contact's identity changes, e.g. when
+-- a company association enriches the contact.
 {{
     config(
         materialized="incremental",
-        unique_key=["contact_id", "gp_candidacy_id"],
+        unique_key="contact_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
@@ -20,7 +25,12 @@ with
     joined_data as (
         select
             tbl_contacts.id as contact_id,
-            tbl_companies.id as company_id,
+            -- Carry the association's company_id from the contact side, not the
+            -- enrichment join: HubSpot can associate a company that never synced
+            -- into the companies source, and sourcing from tbl_companies.id would
+            -- null out (drop) that real association. Enrichment fields below stay
+            -- null when the company row is absent, which is accurate.
+            tbl_pairs.company_id as company_id,
             {{
                 generate_salted_uuid(
                     fields=[
@@ -244,10 +254,7 @@ with
             row_number() over (
                 partition by contact_id
                 order by email_match desc, name_match desc, updated_at desc
-            ) as row_rank,
-            row_number() over (
-                partition by gp_candidacy_id order by updated_at desc
-            ) as row_rank_gp_candidacy_id
+            ) as row_rank
         from joined_data
     )
 
@@ -318,5 +325,9 @@ select
     win_number,
     win_number_model,
     product_campaign_id
+-- One row per contact (best company match). Dedup to the candidacy grain
+-- happens in the downstream candidacy/candidate marts, which each re-rank by
+-- gp_candidacy_id; deduping here too would silently drop a contact whenever two
+-- distinct contacts hash to the same gp_candidacy_id.
 from ranked_matches
-where 1 = 1 and row_rank = 1 and row_rank_gp_candidacy_id = 1
+where row_rank = 1
