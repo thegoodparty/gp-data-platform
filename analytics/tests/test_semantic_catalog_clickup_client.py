@@ -65,6 +65,17 @@ def test_http_json_wraps_httperror(monkeypatch):
         client.create_task("901", payload, "field1")
 
 
+def test_http_json_wraps_urlerror(monkeypatch):
+    def fake_urlopen(req, timeout=30):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    client = ClickUpClient(token="tok")
+    payload = TaskPayload(name="n", markdown_description="d", build_key="k@2026-07-28")
+    with pytest.raises(RuntimeError, match="connection refused"):
+        client.create_task("901", payload, "field1")
+
+
 def test_create_posts_name_description_and_build_key_field():
     client, calls = _client_with_recorder([{"id": "new1"}])
     payload = TaskPayload(name="Build in Sigma: M (m)", markdown_description="body", build_key="m@2026-07-28")

@@ -32,6 +32,8 @@ class ClickUpClient:
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:500]
             raise RuntimeError(f"ClickUp API {method} {path} failed: HTTP {e.code} {detail}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"ClickUp API {method} {path} failed: {e.reason}") from e
 
     def find_task_by_build_key(self, list_id: str, field_id: str, build_key: str) -> str | None:
         cf = json.dumps([{"field_id": field_id, "operator": "=", "value": build_key}])

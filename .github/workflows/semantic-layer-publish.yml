@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           BEFORE="${{ github.event.before }}"
-          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             git worktree add --detach /tmp/base "$BEFORE"
           fi
       - name: Build Slack change summary
