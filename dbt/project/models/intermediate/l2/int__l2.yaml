@@ -168,21 +168,25 @@ models:
   - name: int__voter_turnout_lgbm_voter_scores
     description: >
       Nationwide PER-VOTER turnout probabilities from the LightGBM turnout model,
-      scoring each voter as a precinct-of-1. One row per LALVOTERID for the 2026
-      General; drives people-api Voter_Status. Incremental (merge on LALVOTERID):
-      scheduled runs score only voters not already present, so they never rescore
-      the full ~218M-row universe; a full refresh rescores everyone with the
-      current @production model. Per-voter probabilities skew low by construction
-      (out-of-distribution vs the precinct-trained model) but aggregate back to the
-      precinct projections.
+      scoring each voter as a precinct-of-1. One row per LALVOTERID for the current
+      year's November election; drives people-api Voter_Status. Incremental (merge on
+      LALVOTERID): scheduled runs score only voters not already present, so they never
+      rescore the full ~218M-row universe; a full refresh rescores everyone with the
+      current @production model. The projection year, model, and lag window all derive
+      automatically (current year and the most recent vote-history year in L2), so the
+      table turns the page on Jan 1 given an annual full refresh. Per-voter
+      probabilities skew low by construction (out-of-distribution vs the
+      precinct-trained model) but aggregate back to the precinct projections.
     config:
       meta:
-        # Most recent year of L2 vote history present (drives the feature window).
-        max_vote_history_year: "{{ var('max_vote_history_year', 2025) }}"
-        # Grain knobs: bump at the next cycle instead of editing code.
-        voter_turnout_inference_year: "{{ var('voter_turnout_inference_year', 2026) }}"
-        voter_turnout_model_slug: "{{ var('voter_turnout_model_slug', 'midterm') }}"
-        voter_turnout_election_code: "{{ var('voter_turnout_election_code', 'General') }}"
+        # All optional overrides. Left blank, the model derives them at run time:
+        # inference_year = current year; model_slug / election_code = that year's
+        # November election; max_vote_history_year = most recent vote-history year in
+        # L2, capped below the inference year. Set them only for backfills.
+        max_vote_history_year: "{{ var('max_vote_history_year', '') }}"
+        voter_turnout_inference_year: "{{ var('voter_turnout_inference_year', '') }}"
+        voter_turnout_model_slug: "{{ var('voter_turnout_model_slug', '') }}"
+        voter_turnout_election_code: "{{ var('voter_turnout_election_code', '') }}"
         # Schema holding the @production registered models.
         voter_turnout_models_schema: "{{ var('voter_turnout_models_schema', 'model_predictions') }}"
         # Schema holding turnout_historical_precincts (promoted alongside the models).
