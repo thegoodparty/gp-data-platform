@@ -5,7 +5,8 @@ PRECINCTS and aggregates to districts; this one scores each individual voter by
 treating them as a degenerate "precinct of 1", so the precinct feature
 expressions collapse: AVG(x) -> x, mode(x) -> x, COUNT(*) -> 1, and the
 vote-history / mobility features become 0 / 1 / NULL instead of precinct rates.
-One row per LALVOTERID for the 2026 General. Output drives people-api Voter_Status.
+One row per LALVOTERID for the current year's November election. Output drives
+people-api Voter_Status.
 
 Scoring a voter as a precinct-of-1 is intentionally out-of-distribution (the
 model was trained on precinct averages): per-voter probabilities skew low and are
@@ -40,6 +41,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -133,6 +135,28 @@ def _detect_election_cols(l2_columns, max_vote_history_year):
         if m and int(m.group(2)) <= max_vote_history_year:
             result.append((column_name, m.group(1), int(m.group(2))))
     return result
+
+
+def _detect_max_vote_history_year(l2_columns):
+    """Most recent election year present among L2's vote-history columns. Lets the
+    lag window follow the data as L2 is refreshed, instead of a hardcoded constant,
+    so a future inference year does not silently miss its most recent election."""
+    years = [int(m.group(2)) for column_name in l2_columns if (m := _VH_COL_RE.match(column_name))]
+    return max(years) if years else None
+
+
+def _november_model_for_year(year):
+    """(model_slug, election_code) for the November election of `year`, collapsed to
+    the single projection this table serves: even years are the general (midterm vs
+    presidential by the 4-year cycle), odd years are the off-year November
+    local/municipal. Mirrors the district model's routing but keeps one row per
+    voter. If the needed slug has no @production model the run fails downstream,
+    intentionally."""
+    if year % 2 == 1:
+        return "off_year_local_lag2", "Local_or_Municipal"
+    if year % 4 == 2:
+        return "midterm", "General"
+    return "presidential_lag3", "General"
 
 
 def _safe_date(column_name):
@@ -428,13 +452,23 @@ def model(dbt, session):
         tags=["intermediate", "l2", "model_prediction", "voter_turnout"],
     )
 
-    max_vote_history_year = int(dbt.config.meta_get("max_vote_history_year") or 2025)
-    # Single-slug, single-year grain (2026 General): one row per LALVOTERID, as the
-    # people-api Voter_Status consumer requires. Bump these at the next cycle instead
-    # of editing code; election_code is fixed to the slug's meaning below.
-    inference_year = int(dbt.config.meta_get("voter_turnout_inference_year") or 2026)
-    model_slug = dbt.config.meta_get("voter_turnout_model_slug") or "midterm"
-    election_code = dbt.config.meta_get("voter_turnout_election_code") or "General"
+    # Dynamic year: default to the current calendar year (evaluated on the cluster at
+    # run time), so the projection turns the page on Jan 1 with nothing hardcoded. The
+    # whole table only advances on a --full-refresh (incremental skips voters already
+    # scored), so schedule an annual full refresh right after the new year. The var is
+    # an override for backfills. model_slug / election_code default to the November
+    # election for that year; a full manual override needs both vars set.
+    current_year = datetime.now().year
+    year_override = dbt.config.meta_get("voter_turnout_inference_year")
+    inference_year = int(year_override) if year_override else current_year
+    slug_override = dbt.config.meta_get("voter_turnout_model_slug")
+    code_override = dbt.config.meta_get("voter_turnout_election_code")
+    if slug_override and code_override:
+        model_slug, election_code = slug_override, code_override
+    else:
+        model_slug, election_code = _november_model_for_year(inference_year)
+    # max_vote_history_year is derived from the loaded L2 columns below; a var wins.
+    max_vote_history_override = dbt.config.meta_get("max_vote_history_year")
     models_schema = dbt.config.meta_get("voter_turnout_models_schema") or "model_predictions"
     precincts_schema = dbt.config.meta_get("voter_turnout_precincts_schema") or "model_predictions"
     # UC Volume the driver stages the booster to and executors read it from. PROD
@@ -483,6 +517,14 @@ def model(dbt, session):
         l2 = l2.join(already_scored, on="LALVOTERID", how="left_anti")
     l2.createOrReplaceTempView("_l2")
     l2_col_set = set(l2.columns)
+    # Lag window: the most recent vote-history year actually in L2, never at or past
+    # the inference year (a voter's own target-year turnout must not be a feature).
+    # The lag < 1 guard in the feature builder is a second line of defence.
+    if max_vote_history_override:
+        max_vote_history_year = int(max_vote_history_override)
+    else:
+        detected = _detect_max_vote_history_year(l2.columns)
+        max_vote_history_year = min(inference_year - 1, detected) if detected else inference_year - 1
     election_cols = _detect_election_cols(l2.columns, max_vote_history_year)
 
     op_years = _op_years(election_cols, l2_col_set, inference_year)
@@ -491,8 +533,11 @@ def model(dbt, session):
             "_hp_opp"
         )
 
+    # l2_collection_year is the current year (when L2 was collected); it only differs
+    # from inference_year on a backfill override, where the length-of-residence
+    # projection must shift accordingly.
     voter_features = session.sql(
-        _build_voter_features_sql(l2_col_set, election_cols, inference_year, inference_year)
+        _build_voter_features_sql(l2_col_set, election_cols, inference_year, current_year)
     )
 
     out_schema = (
