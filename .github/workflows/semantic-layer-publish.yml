@@ -4,6 +4,8 @@ name: semantic-layer-publish
 # ClickUp MCP (no CI token), matching the omni analytics-governance pattern; the
 # in-repo canonical_metrics.md is the source of truth, kept fresh by the
 # blocking catalog-freshness PR check.
+# DATA-2218: when the governance thread exists (semantic-layer-thread.yml), the
+# summary posts as a threaded reply under its anchor.
 on:
   push:
     branches: [main]
@@ -11,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write   # DATA-2218: update the thread marker's merged flag
 
 jobs:
   publish:
@@ -64,6 +67,7 @@ jobs:
             COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
               uv run python -m semantic_catalog.composition)
             PR_URL="https://github.com/$REPO/pull/$PR"
+            echo "PR_NUM=$PR" >> "$GITHUB_ENV"
           else
             # No PR found for this commit (e.g. a direct push to main): fall
             # back to the conservative "incomplete" default rather than
@@ -91,6 +95,22 @@ jobs:
           else
             uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
           fi
+      - name: Read governance thread marker
+        # DATA-2218: recover the anchor ts written at PR-open so the merge
+        # summary lands as a threaded reply. Empty marker => top-level post
+        # (the pre-thread behavior is the permanent fallback).
+        if: ${{ env.PR_NUM != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.thread --emit-marker /tmp/marker.json --pr "$PR_NUM"
+          {
+            echo "SLACK_THREAD_TS=$(python3 -c 'import json;print(json.load(open("/tmp/marker.json")).get("ts",""))')"
+            echo "MARKER_MERGED=$(python3 -c 'import json;print(str(json.load(open("/tmp/marker.json")).get("merged",False)).lower())')"
+          } >> "$GITHUB_ENV"
       - name: Post Slack change summary
         env:
           SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
@@ -104,15 +124,36 @@ jobs:
             echo "SLACK_APP_BOT_TOKEN not provisioned; skipping Slack notification."
             exit 0
           fi
+          if [ "${MARKER_MERGED:-false}" = "true" ]; then
+            echo "Thread already marked merged; skipping duplicate merge post."
+            exit 0
+          fi
           RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
-            --data "$(python3 -c 'import json,os;print(json.dumps({"channel":os.environ["SLACK_CHANNEL_ID"],"text":open("/tmp/slack.txt").read()}))')")
+            --data "$(python3 -c '
+          import json, os
+          p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": open("/tmp/slack.txt").read()}
+          t = os.environ.get("SLACK_THREAD_TS")
+          if t:
+              p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
+          print(json.dumps(p))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
           TS=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown")); print(d["ts"])')
-          # Expose the summary message ts so the Sigma-task step can reply in-thread.
-          echo "SLACK_TS=$TS" >> "$GITHUB_ENV"
+          # Sigma replies thread under the anchor when it exists, else under
+          # this post (pre-thread behavior).
+          echo "SLACK_TS=${SLACK_THREAD_TS:-$TS}" >> "$GITHUB_ENV"
+      - name: Mark governance thread merged
+        # Guard against publish re-runs double-posting the merge summary.
+        if: ${{ env.PR_NUM != '' && env.SLACK_THREAD_TS != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.thread --mark-merged --pr "$PR_NUM"
       - name: Create Sigma build tasks for newly ratified metrics
         working-directory: analytics
         env:
