@@ -364,3 +364,54 @@ def test_mark_merged_without_marker_or_post_env_is_a_noop(tmp_path, monkeypatch,
     assert thread.main(["--mark-merged", "--pr", "7"]) == 0
     assert all(c.get_method() != "POST" for c in calls)
     assert "nothing to mark" in capsys.readouterr().out
+
+
+def test_reconcile_anchor_post_failure_aborts_cleanly_without_marker(tmp_path, monkeypatch, capsys):
+    """A failed anchor post leaves no marker and exits 0; the next event retries."""
+    _env(monkeypatch)
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/sem_x.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/semantic-layer-data/members", []),
+            ("/teams/semantic-layer-business/members", []),
+            ("/issues/7/comments?", []),
+            ("chat.postMessage", {"ok": False, "error": "not_in_channel"}),
+        ],
+    )
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    assert "anchor post failed" in capsys.readouterr().out
+    comment_writes = [c for c in calls if c.get_method() == "POST" and "/issues/7/comments" in c.full_url]
+    assert comment_writes == []
+
+
+def test_reconcile_review_payload_with_merged_at_only_is_treated_as_merged(tmp_path, monkeypatch):
+    """pull_request_review payloads omit `merged`; a non-null merged_at must mean
+    merged, so a closed PR gets NO "Closed without merging." reply."""
+    from semantic_catalog import pr_marker
+    from semantic_catalog.pr_marker import ThreadState
+
+    _env(monkeypatch)
+    marker_body = pr_marker.render(
+        ThreadState(ts="1722.0042", channel="C1", permalink="https://p", pr_state="open")
+    )
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/sem_x.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/semantic-layer-data/members", []),
+            ("/teams/semantic-layer-business/members", []),
+            ("/issues/7/comments?", [{"id": 991, "body": marker_body}]),
+        ],
+    )
+    event = _event(tmp_path, state="closed", merged_at="2026-08-04T12:00:00Z")
+    payload = json.loads(event.read_text())
+    del payload["pull_request"]["merged"]
+    event.write_text(json.dumps(payload))
+    rc = thread.main(["--event-path", str(event)])
+    assert rc == 0
+    slack_posts = [c for c in calls if "chat.postMessage" in c.full_url]
+    assert slack_posts == []  # merged close is silent (publish owns the merge reply)

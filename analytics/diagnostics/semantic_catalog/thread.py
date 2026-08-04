@@ -292,7 +292,16 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
 
     plan = reconcile(state, approvals, ctx, mention_by_team)
     if plan.anchor_text is not None and plan.new_state is not None:
-        ts = slack_reply.post_message(slack_token, channel, plan.anchor_text, urlopen=urllib.request.urlopen)
+        try:
+            ts = slack_reply.post_message(
+                slack_token, channel, plan.anchor_text, urlopen=urllib.request.urlopen
+            )
+        except (RuntimeError, OSError) as e:
+            # No anchor => nothing to thread under and no state worth writing.
+            # Log and exit cleanly so the job stays green and the next event
+            # retries the whole bootstrap.
+            print(f"anchor post failed ({e!r}); aborting reconcile so the next event retries")
+            return 0
         plan.new_state.ts, plan.new_state.channel = ts, channel
         try:
             plan.new_state.permalink = slack_reply.get_permalink(
