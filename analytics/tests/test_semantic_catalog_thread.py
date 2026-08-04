@@ -142,3 +142,74 @@ def test_team_approvers_skips_pending_reviews_without_submitted_at():
     ]
     members = {"data": ["alice", "bob", "carol"], "business": []}
     assert team_approvers(reviews, members) == {"data": ["bob"], "business": []}
+
+
+def test_governed_sem_files_returns_only_touched_sem_basenames():
+    from semantic_catalog.thread import governed_sem_files
+
+    files = [
+        "dbt/project/models/marts/analytics/sem_analytics__users_win.yml",
+        "dbt/project/models/marts/civics/sem_civics__candidacy_stage.yml",
+        "dbt/project/models/marts/analytics/m_analytics.yaml",  # not a sem file
+        "analytics/diagnostics/semantic_catalog/thread.py",
+        ".claude/skills/win-analytics-knowledge/references/canonical_metrics.md",
+    ]
+    assert governed_sem_files(files) == frozenset(
+        {"sem_analytics__users_win.yml", "sem_civics__candidacy_stage.yml"}
+    )
+
+
+def _stub_tree(monkeypatch, by_root):
+    """Stub parse_semantic_tree, keyed by whether the root is the base worktree."""
+    from semantic_catalog import thread as thread_mod
+
+    def fake(roots):
+        return by_root["before" if "basetree" in str(roots[0]) else "after"]
+
+    monkeypatch.setattr(thread_mod, "parse_semantic_tree", fake)
+
+
+def _mrec(name, yaml_name, definition="d"):
+    from semantic_catalog.records import MetricRecord
+
+    return MetricRecord(
+        name=name,
+        label=name,
+        definition=definition,
+        metric_type="simple",
+        source="ref('m')",
+        dimensions=(),
+        filter=None,
+        owner="semantic-layer-business",
+        ratified=None,
+        detail_doc="engagement.md",
+        retired=None,
+        yaml_file=f"/checkout/dbt/project/models/marts/analytics/{yaml_name}",
+        kind="metric",
+    )
+
+
+def test_changed_metrics_scope_excludes_metrics_the_pr_does_not_own(monkeypatch):
+    # Two metrics changed across two files, but the PR only touches one file.
+    from semantic_catalog import thread as thread_mod
+
+    before = [_mrec("win_a", "sem_win.yml", "old"), _mrec("serve_b", "sem_serve.yml", "old")]
+    after = [_mrec("win_a", "sem_win.yml", "new"), _mrec("serve_b", "sem_serve.yml", "new")]
+    _stub_tree(monkeypatch, {"before": before, "after": after})
+
+    from pathlib import Path
+
+    got = thread_mod._changed_metrics(Path("/basetree"), frozenset({"sem_win.yml"}))
+    assert got == (("win_a", "new"),)
+
+
+def test_changed_metrics_without_base_tree_is_bounded_by_scope(monkeypatch):
+    # No base tree => no diff to narrow by. The anchor must still name only the
+    # PR's own metrics, never the whole catalog.
+    from semantic_catalog import thread as thread_mod
+
+    after = [_mrec("win_a", "sem_win.yml"), _mrec("serve_b", "sem_serve.yml")]
+    _stub_tree(monkeypatch, {"before": [], "after": after})
+
+    got = thread_mod._changed_metrics(None, frozenset({"sem_win.yml"}))
+    assert got == (("win_a", "d"),)

@@ -85,3 +85,20 @@ def test_render_message_coverage_is_one_line_complete():
 def test_render_message_coverage_warns_when_incomplete():
     msg = render_message([], [_rec("a")], "http://pr", {"data": True, "business": False})
     assert ":warning: review coverage: data ✓ · business ✗" in msg
+
+
+def test_changed_metric_names_ignores_absolute_path_differences():
+    # The before-set is parsed from a temp worktree, so yaml_file differs by
+    # directory on every record even when nothing changed. Whole-record
+    # equality used to report the entire catalog as changed; the anchor then
+    # listed every metric in the layer instead of the one under review.
+    before = [_rec("a", yaml_file="/tmp/base/dbt/project/models/marts/analytics/sem_x.yml")]
+    after = [_rec("a", yaml_file="/home/runner/work/repo/repo/dbt/project/models/marts/analytics/sem_x.yml")]
+    assert changed_metric_names(before, after) == []
+
+
+def test_changed_metric_names_still_flags_a_move_between_sem_files():
+    # Basename normalization must not swallow a genuine relocation.
+    before = [_rec("a", yaml_file="/tmp/base/dbt/project/models/marts/analytics/sem_x.yml")]
+    after = [_rec("a", yaml_file="/checkout/dbt/project/models/marts/analytics/sem_y.yml")]
+    assert changed_metric_names(before, after) == ["a"]
