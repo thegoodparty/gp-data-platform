@@ -194,8 +194,9 @@ models:
         # Schema holding turnout_historical_precincts (promoted alongside the models).
         voter_turnout_precincts_schema: "{{ var('voter_turnout_precincts_schema', 'model_predictions') }}"
         # UC Volume the booster is staged to for executor-side reads (USER_ISOLATION
-        # cluster: no sparkContext broadcast). PROD needs a Volume in a shared schema.
-        voter_turnout_booster_volume: "{{ var('voter_turnout_booster_volume', '/Volumes/goodparty_data_catalog/model_predictions/object_storage') }}"
+        # cluster: no sparkContext broadcast). PROD reuses the existing dbt.object_storage
+        # scratch volume (dbt Cloud SP already has WRITE); it holds a transient booster, not data.
+        voter_turnout_booster_volume: "{{ var('voter_turnout_booster_volume', '/Volumes/goodparty_data_catalog/dbt/object_storage') }}"
         # DEV-ONLY: comma/space list like "WY" to score a subset without a full run.
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
     columns:

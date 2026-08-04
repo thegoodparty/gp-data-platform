@@ -120,9 +120,35 @@ _NH_VT_PRECINCT = """
 # AnyElection_ columns always get 0 (no per-precinct opportunity check needed).
 _ODD_YEAR_OPPORTUNITY_STATES = frozenset(
     [
-        "AL", "CO", "CT", "GA", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "MA",
-        "MI", "MS", "MT", "NE", "NH", "NJ", "NM", "NY", "NC", "OH", "OR", "PA",
-        "UT", "VA", "VT", "WA", "WI",
+        "AL",
+        "CO",
+        "CT",
+        "GA",
+        "ID",
+        "IL",
+        "IN",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "MA",
+        "MI",
+        "MS",
+        "MT",
+        "NE",
+        "NH",
+        "NJ",
+        "NM",
+        "NY",
+        "NC",
+        "OH",
+        "OR",
+        "PA",
+        "UT",
+        "VA",
+        "VT",
+        "WA",
+        "WI",
     ]
 )
 _OPP_STATES_SQL = "(" + ", ".join(f"'{s}'" for s in sorted(_ODD_YEAR_OPPORTUNITY_STATES)) + ")"
@@ -279,14 +305,10 @@ def _build_voter_features_sql(l2_col_set, election_cols, inference_year, l2_coll
             exprs.append(f"CAST(`{column_name}` AS DOUBLE) AS `{column_name}`")
     for column_name in _DOLLAR_COLS:
         if column_name in l2_col_set:
-            exprs.append(
-                f"CAST(REPLACE(`{column_name}`, '$', '') AS DOUBLE) AS `{column_name}`"
-            )
+            exprs.append(f"CAST(REPLACE(`{column_name}`, '$', '') AS DOUBLE) AS `{column_name}`")
     for column_name in _PCT_COLS:
         if column_name in l2_col_set:
-            exprs.append(
-                f"CAST(REPLACE(`{column_name}`, '%', '') AS DOUBLE) AS `{column_name}`"
-            )
+            exprs.append(f"CAST(REPLACE(`{column_name}`, '%', '') AS DOUBLE) AS `{column_name}`")
     for column_name in _CATEGORICAL_FEATURES:
         if column_name in l2_col_set:
             exprs.append(f"`{column_name}`")  # mode(x) over 1 row -> x itself
@@ -321,9 +343,7 @@ def _build_voter_features_sql(l2_col_set, election_cols, inference_year, l2_coll
             f"  AS `{prefix}_Minus{lag}`"
         )
 
-    return (
-        f"SELECT {', '.join(exprs)} FROM {from_clause} WHERE {_NH_VT_PRECINCT} IS NOT NULL"
-    )
+    return f"SELECT {', '.join(exprs)} FROM {from_clause} WHERE {_NH_VT_PRECINCT} IS NOT NULL"
 
 
 def _parse_state_allowlist(raw):
@@ -468,11 +488,12 @@ def model(dbt, session):
     models_schema = dbt.config.meta_get("voter_turnout_models_schema") or "model_predictions"
     precincts_schema = dbt.config.meta_get("voter_turnout_precincts_schema") or "model_predictions"
     # UC Volume the driver stages the booster to and executors read it from. PROD
-    # needs a Volume in a shared schema (model_predictions has none today — create one
-    # at promotion). Dev can point at private_nigel/object_storage via the var.
+    # reuses the existing dbt.object_storage scratch volume (the dbt Cloud service
+    # principal already has WRITE there); the booster is a transient ~150 MB artifact
+    # re-staged each run, not durable data. Dev can point at a private volume via the var.
     booster_volume = (
         dbt.config.meta_get("voter_turnout_booster_volume")
-        or "/Volumes/goodparty_data_catalog/model_predictions/object_storage"
+        or "/Volumes/goodparty_data_catalog/dbt/object_storage"
     )
     state_allowlist = _parse_state_allowlist(dbt.config.meta_get("l2_state_allowlist"))
     catalog = "goodparty_data_catalog"
@@ -517,9 +538,7 @@ def model(dbt, session):
 
     op_years = _op_years(election_cols, l2_col_set, inference_year)
     if op_years:
-        session.sql(_opp_view_sql(op_years, catalog, precincts_schema)).createOrReplaceTempView(
-            "_hp_opp"
-        )
+        session.sql(_opp_view_sql(op_years, catalog, precincts_schema)).createOrReplaceTempView("_hp_opp")
 
     # l2_collection_year is the current year (when L2 was collected); it only differs
     # from inference_year on a backfill override, where the length-of-residence
@@ -528,12 +547,8 @@ def model(dbt, session):
         _build_voter_features_sql(l2_col_set, election_cols, inference_year, current_year)
     )
 
-    out_schema = (
-        "LALVOTERID string, state string, prob_vote double, prediction double"
-    )
-    scored = voter_features.mapInPandas(
-        _make_scorer(model_file, cat_map, feat_names), schema=out_schema
-    )
+    out_schema = "LALVOTERID string, state string, prob_vote double, prediction double"
+    scored = voter_features.mapInPandas(_make_scorer(model_file, cat_map, feat_names), schema=out_schema)
     scored.createOrReplaceTempView("_scored")
 
     # Stamp the fixed dimensional columns once, in SQL, to match the promoted
