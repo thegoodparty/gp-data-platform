@@ -3,6 +3,7 @@ import random
 import time
 from base64 import b64encode
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -310,6 +311,17 @@ def model(dbt, session) -> DataFrame:
                 )
                 .filter((col("race_updated_at") >= max_updated_at) | col("existing_id").isNull())
                 .select("br_candidacy_id")
+            )
+        else:
+            # Empty-table incremental run (manual truncation, or a new
+            # environment where full-refresh has not run): bound the S3 side to
+            # a 30-day window instead of re-fetching all history, matching
+            # int__ballotready_party. Upcoming ids pass through in full so the
+            # roster gap is still backfilled.
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            candidacies_s3 = candidacies_s3.filter(candidacies_s3["candidacy_updated_at"] >= thirty_days_ago)
+            logging.info(
+                f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
             )
 
     # union both sources into a single deduplicated worklist of candidacy IDs
