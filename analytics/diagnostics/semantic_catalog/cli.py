@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from semantic_catalog import lifecycle as lc_mod
-from semantic_catalog import sigma_tasks
+from semantic_catalog import sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.clickup_page import render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -120,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
     parser.add_argument("--sync-sigma-tasks", action="store_true")
+    parser.add_argument("--emit-created", type=Path)
+    parser.add_argument("--reply-created", type=Path)
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
@@ -164,12 +166,40 @@ def main(argv: list[str] | None = None) -> int:
             print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
             return 0
         cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        assignee_id = cfg.get("default_assignee_id")
+        assignee_ids = (int(assignee_id),) if assignee_id else ()
         # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
         before, after = _before_after(args.base_dir)
         client = ClickUpClient(token)
-        result = sigma_tasks.sync(client, cfg["list_id"], cfg["build_key_field_id"], before, after)
-        print(f"created {len(result.created)}: {', '.join(result.created) or '(none)'}")
+        result = sigma_tasks.sync(
+            client, cfg["list_id"], cfg["build_key_field_id"], before, after, assignee_ids=assignee_ids
+        )
+        created_names = [c.metric_name for c in result.created]
+        print(f"created {len(created_names)}: {', '.join(created_names) or '(none)'}")
         print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
+        if args.emit_created:
+            # The workflow reads this to post one threaded Slack reply per created task.
+            args.emit_created.write_text(
+                json.dumps(
+                    [{"metric": c.metric_name, "task_id": c.task_id, "url": c.url} for c in result.created]
+                )
+            )
+        return 0
+
+    if args.reply_created:
+        # Secrets stay in the environment, never on the command line.
+        token = os.environ.get("SLACK_APP_BOT_TOKEN")
+        thread_ts = os.environ.get("SLACK_TS")
+        channel = os.environ.get("SLACK_CHANNEL_ID")
+        if not token or not thread_ts or not channel:
+            print("SLACK_APP_BOT_TOKEN/SLACK_TS/SLACK_CHANNEL_ID not all set; skipping thread replies.")
+            return 0
+        if not args.reply_created.exists():
+            print(f"{args.reply_created} not found; skipping thread replies.")
+            return 0
+        tasks = json.loads(args.reply_created.read_text())
+        slack_reply.reply_in_thread(token, channel, thread_ts, tasks)
+        print(f"posted {len(tasks)} thread repl{'y' if len(tasks) == 1 else 'ies'}")
         return 0
 
     return 0

@@ -15,6 +15,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Single source of truth for the #data-alignment channel. The summary post
+    # and its thread replies both read this, so they can never target different
+    # channels (which would break threading).
+    env:
+      SLACK_CHANNEL_ID: C08K22X9ZNH
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,10 +107,12 @@ jobs:
           RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
-            --data "$(python3 -c 'import json;print(json.dumps({"channel":"C08K22X9ZNH","text":open("/tmp/slack.txt").read()}))')")
+            --data "$(python3 -c 'import json,os;print(json.dumps({"channel":os.environ["SLACK_CHANNEL_ID"],"text":open("/tmp/slack.txt").read()}))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
-          echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown"))'
+          TS=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown")); print(d["ts"])')
+          # Expose the summary message ts so the Sigma-task step can reply in-thread.
+          echo "SLACK_TS=$TS" >> "$GITHUB_ENV"
       - name: Create Sigma build tasks for newly ratified metrics
         working-directory: analytics
         env:
@@ -118,10 +125,24 @@ jobs:
             exit 0
           fi
           if [ -d /tmp/base ]; then
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base --emit-created /tmp/created_tasks.json
           else
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --emit-created /tmp/created_tasks.json
           fi
+      - name: Reply in the Slack thread with created Sigma task links
+        # Only when the summary posted (SLACK_TS set). No created tasks => the
+        # emitted JSON is an empty list and reply_in_thread posts nothing, so a
+        # workflow re-run (dedupe skips creation) never double-posts the thread.
+        # The bot token stays in env (never on the command line) and the reply
+        # logic lives in semantic_catalog.slack_reply so it is unit-tested.
+        if: ${{ env.SLACK_TS != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.cli --reply-created /tmp/created_tasks.json
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true

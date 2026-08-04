@@ -72,17 +72,32 @@ def test_task_payload_shape():
     assert "—" not in p.name and "—" not in p.markdown_description
 
 
+def test_task_payload_defaults_to_no_assignees():
+    p = sigma_tasks.task_payload(_rec("m", ratified="2026-07-28"))
+    assert p.assignee_ids == ()
+
+
+def test_task_payload_carries_assignee_ids():
+    p = sigma_tasks.task_payload(_rec("m", ratified="2026-07-28"), assignee_ids=(111975138,))
+    assert p.assignee_ids == (111975138,)
+
+
+def test_task_url_builds_clickup_web_link():
+    assert sigma_tasks.task_url("abc123") == "https://app.clickup.com/t/abc123"
+
+
 class _FakeClient:
     def __init__(self, existing_keys=()):
         self.existing = set(existing_keys)
-        self.created = []
+        self.created = []  # records each TaskPayload passed to create_task
 
     def find_task_by_build_key(self, list_id, field_id, build_key):
         return "existing-id" if build_key in self.existing else None
 
     def create_task(self, list_id, payload, field_id):
-        self.created.append(payload.build_key)
-        return "new-id"
+        self.created.append(payload)
+        # Deterministic id derived from the build key so url assertions are stable.
+        return f"id-{payload.build_key}"
 
 
 def test_sync_creates_task_for_newly_ratified():
@@ -90,9 +105,26 @@ def test_sync_creates_task_for_newly_ratified():
     result = sigma_tasks.sync(
         client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
     )
-    assert client.created == ["m@2026-07-28"]
-    assert result.created == ("m",)
+    assert [p.build_key for p in client.created] == ["m@2026-07-28"]
+    assert len(result.created) == 1
+    task = result.created[0]
+    assert task.metric_name == "m"
+    assert task.task_id == "id-m@2026-07-28"
+    assert task.url == "https://app.clickup.com/t/id-m@2026-07-28"
     assert result.skipped == ()
+
+
+def test_sync_passes_assignee_ids_through_to_the_payload():
+    client = _FakeClient()
+    sigma_tasks.sync(
+        client,
+        "901",
+        "field1",
+        [_rec("m", ratified=None)],
+        [_rec("m", ratified="2026-07-28")],
+        assignee_ids=(111975138,),
+    )
+    assert client.created[0].assignee_ids == (111975138,)
 
 
 def test_sync_is_idempotent_when_task_already_exists():
