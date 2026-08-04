@@ -114,3 +114,171 @@ def reconcile(
 
     plan.new_state = state
     return plan
+
+
+# --- orchestration (env + clients live only below this line) -----------------
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+import urllib.request  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from semantic_catalog import mentions as mentions_mod  # noqa: E402
+from semantic_catalog import pr_marker, slack_diff, slack_reply  # noqa: E402
+from semantic_catalog.github_client import GitHubClient  # noqa: E402
+from semantic_catalog.parser import parse_semantic_tree  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+PKG = Path(__file__).parent
+TEAM_SLUG = {"data": "semantic-layer-data", "business": "semantic-layer-business"}
+
+
+def _github_client(token: str, repo: str) -> GitHubClient:
+    # Forward a fresh `urllib.request.urlopen` lookup rather than relying on
+    # GitHubClient's own default: that default is bound once at import time,
+    # so a test-time monkeypatch of the module attribute never reaches it.
+    return GitHubClient(token, repo, urlopen=urllib.request.urlopen)
+
+
+def _changed_names(base_dir: Path | None) -> tuple[str, ...]:
+    after = parse_semantic_tree([DBT_MODELS])
+    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    return tuple(slack_diff.changed_metric_names(before, after))
+
+
+def _find_marker(gh: GitHubClient, pr: int) -> tuple[int, pr_marker.ThreadState] | None:
+    for c in gh.issue_comments(pr):
+        if pr_marker.is_marker(c.get("body", "")):
+            state = pr_marker.parse(c["body"])
+            if state is not None:
+                return int(c["id"]), state
+    return None
+
+
+def _cmd_emit_marker(gh: GitHubClient, pr: int, out: Path) -> int:
+    found = _find_marker(gh, pr)
+    if found is None:
+        out.write_text("{}")
+        print("no marker found")
+        return 0
+    _, state = found
+    out.write_text(json.dumps({"ts": state.ts, "merged": state.merged, "channel": state.channel}))
+    print(f"marker: ts={state.ts} merged={state.merged}")
+    return 0
+
+
+def _cmd_mark_merged(gh: GitHubClient, pr: int) -> int:
+    found = _find_marker(gh, pr)
+    if found is None:
+        print("no marker found; nothing to mark")
+        return 0
+    comment_id, state = found
+    state.merged = True
+    gh.update_comment(comment_id, pr_marker.render(state))
+    print("marker marked merged")
+    return 0
+
+
+def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
+    gh_token = os.environ.get("GH_TOKEN")
+    slack_token = os.environ.get("SLACK_APP_BOT_TOKEN")
+    channel = os.environ.get("SLACK_CHANNEL_ID")
+    org_token = os.environ.get("ORG_READ_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not gh_token or not repo:
+        print("GH_TOKEN/GITHUB_REPOSITORY not set; skipping thread reconcile.")
+        return 0
+
+    event = json.loads(event_path.read_text())
+    pr = event["pull_request"]
+    number = int(pr["number"])
+    gh = _github_client(gh_token, repo)
+
+    if not is_governed(gh.pr_files(number)):
+        print(f"PR #{number} not governed; nothing to do.")
+        return 0
+    if not slack_token or not channel:
+        print("SLACK_APP_BOT_TOKEN/SLACK_CHANNEL_ID not set; skipping thread reconcile.")
+        return 0
+
+    approvals: dict[str, list[str]] | None = None
+    if org_token:
+        gh_org = _github_client(org_token, repo)
+        org = repo.split("/")[0]
+        members = {team: gh_org.team_members(org, slug) for team, slug in TEAM_SLUG.items()}
+        approvals = team_approvers(gh_org.pr_reviews(number), members)
+    else:
+        print("ORG_READ_TOKEN not set; skipping approval diff (lifecycle only).")
+
+    found = _find_marker(gh, number)
+    comment_id, state = found if found else (None, None)
+    ctx = PRContext(
+        number=number,
+        title=pr["title"],
+        url=pr["html_url"],
+        draft=bool(pr.get("draft")),
+        pr_state="closed" if pr.get("state") == "closed" else "open",
+        merged=bool(pr.get("merged")),
+        metric_names=_changed_names(base_dir) if state is None else (),
+    )
+    teams = mentions_mod.load(PKG / "config" / "slack_mentions.yml")
+    mention_by_team = {t: mentions_mod.render_team(teams.get(t)) for t in ("data", "business")}
+
+    plan = reconcile(state, approvals, ctx, mention_by_team)
+    if plan.anchor_text is not None and plan.new_state is not None:
+        ts = slack_reply.post_message(slack_token, channel, plan.anchor_text, urlopen=urllib.request.urlopen)
+        plan.new_state.ts, plan.new_state.channel = ts, channel
+        try:
+            plan.new_state.permalink = slack_reply.get_permalink(
+                slack_token, channel, ts, urlopen=urllib.request.urlopen
+            )
+        except RuntimeError as e:  # cosmetic only; the marker link degrades to blank
+            print(f"permalink lookup failed: {e}")
+    for text in plan.replies:
+        slack_reply.post_message(
+            slack_token,
+            plan.new_state.channel or channel,
+            text,
+            thread_ts=plan.new_state.ts,
+            urlopen=urllib.request.urlopen,
+        )
+    if plan.new_state is not None:
+        body = pr_marker.render(plan.new_state)
+        if comment_id is not None:
+            gh.update_comment(comment_id, body)
+        else:
+            gh.create_comment(number, body)
+    print(f"reconciled: anchor={'yes' if plan.anchor_text else 'no'} replies={len(plan.replies)}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="semantic_catalog.thread")
+    ap.add_argument("--event-path", type=Path)
+    ap.add_argument("--base-dir", type=Path, default=None)
+    ap.add_argument("--emit-marker", type=Path)
+    ap.add_argument("--mark-merged", action="store_true")
+    ap.add_argument("--pr", type=int)
+    args = ap.parse_args(argv)
+
+    if args.emit_marker or args.mark_merged:
+        gh_token = os.environ.get("GH_TOKEN")
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if not gh_token or not repo or args.pr is None:
+            print("GH_TOKEN/GITHUB_REPOSITORY/--pr required; skipping.", file=sys.stderr)
+            return 0
+        gh = _github_client(gh_token, repo)
+        if args.emit_marker:
+            return _cmd_emit_marker(gh, args.pr, args.emit_marker)
+        return _cmd_mark_merged(gh, args.pr)
+
+    if args.event_path is None:
+        ap.error("--event-path is required for reconcile mode")
+    return _cmd_reconcile(args.event_path, args.base_dir)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
