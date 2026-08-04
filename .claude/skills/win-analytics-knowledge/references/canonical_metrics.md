@@ -21,10 +21,12 @@ Keep this file thin: one row per genuinely-canonical concept, a one-line definit
 owning `table.column` (or event), and the doc that owns the detail. Caveats and usage notes
 live in the owning doc, not here, so this stays small enough to load on every resolution.
 
+The table below holds the concepts **not yet encoded** in the semantic layer. Once a concept is
+encoded, its row is deleted here and it renders in the generated region at the bottom of this
+file instead (row-by-row takeover). Read both tables; nothing lives in both.
+
 | Concept | Governed definition (one line) | Source (`table.column` / event) | Owns detail | Ratified |
 |---|---|---|---|---|
-| **Active Candidates (OKR)** | Viewed the candidate dashboard in the trailing 30 days | ⚠ `users_win_base.is_active_candidate_30d` reads FALSE for all users (dead legacy anchor event, capped 2026-06-13; fix ticketed DATA-2173) — recompute from the 2-event dashboard-view union ([engagement.md](engagement.md)) | [engagement.md](engagement.md) | pending |
-| **Activated Candidates (OKR)** | Has sent ≥1 voter outreach campaign | `users_win_base.is_activated` | [engagement.md](engagement.md) | pending |
 | **Onboarded (canonical cohort)** | Viewed the candidate dashboard within 14 days of account creation; recomputed from the 2-event dashboard-view union (`Dashboard - Candidate Dashboard Viewed` ∪ `Dashboard - Campaign Plan Viewed` — the legacy event died in-data 2026-06-13; era-resolved across the onboarding rebuilds and the 2026-05/06 dashboard-surface migration) | recomputed from the dashboard-view union vs `users_win_candidacy.user_created_at` | [engagement.md](engagement.md) | pending |
 | **Onboarding completed (pledge)** | Fired any era-resolved pledge-completion event (`Onboarding - Candidate Pledge Completed` / `Onboarding - Pledge Completed` / `Onboarding V2 - Pledge Completed`) within 14 days of account creation (strict funnel completion) | recomputed from the era-resolved pledge union | [engagement.md](engagement.md) | pending |
 | **Outreach intensity** | Count of `Voter Outreach - Campaign Completed` events | `users_win_base.total_campaigns_sent` | [engagement.md](engagement.md) | pending |
@@ -47,5 +49,6 @@ a domain doc.
 | **GoodParty Cumulative Wins** | Running total of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. Accumulates all time, so each period shows the cumulative win count to date. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
 | **GoodParty Win Rate** | Count of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
 | **Win Activated Users** | Count of Win-product users who have activated: sent at least one voter outreach campaign (first_campaign_sent_at is not null). The activated slice of win_users; the Activated Candidates OKR. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-07-28 |
+| **Win Active Candidates 30d** | Count of Win-product users who viewed the candidate dashboard in the trailing 30 days: the Active Candidates OKR. Definition owned by users_win_base.is_active_candidate_30d, which is anchored on the 2-event dashboard-view union; the legacy single-event anchor died in-data 2026-06-13 and made the flag read FALSE for every user until the union repair landed. The window is evaluated against current_date() in the mart, so this metric is as-of-run-time and cannot be sliced historically by registered_at. | ref('users_win_base') | [engagement.md](engagement.md) | pending |
 | **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-08-03 |
 <!-- semantic-catalog:end -->
