@@ -192,11 +192,6 @@ with
             ) over (partition by ts.techspeed_candidate_code, ts.election_stage)
             as first_seen_at
         from ts_with_stage as ts
-        -- Column-shifted delivery rows (e.g. a date landing in office_level,
-        -- blank state) yield no candidate code, so source_id and the unique_id
-        -- Splink keys on are null and the record can never match. Drop them at
-        -- the source rather than carrying an unmatchable row into ER.
-        where ts.techspeed_candidate_code is not null
         -- Dedupe: staging is not deduplicated, keep first appearance per
         -- candidate-stage to avoid duplicate source_ids
         qualify
