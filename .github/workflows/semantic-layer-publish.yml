@@ -145,8 +145,11 @@ jobs:
           # this post (pre-thread behavior).
           echo "SLACK_TS=${SLACK_THREAD_TS:-$TS}" >> "$GITHUB_ENV"
       - name: Mark governance thread merged
-        # Guard against publish re-runs double-posting the merge summary.
-        if: ${{ env.PR_NUM != '' && env.SLACK_THREAD_TS != '' }}
+        # SLACK_TS is only exported once "Post Slack change summary" actually
+        # posts (threaded or fallback), so gating on it here guards against
+        # publish re-runs double-posting the merge summary, and also skips
+        # cleanly when the bot token isn't provisioned yet.
+        if: ${{ env.PR_NUM != '' && env.SLACK_THREAD_TS != '' && env.SLACK_TS != '' }}
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
