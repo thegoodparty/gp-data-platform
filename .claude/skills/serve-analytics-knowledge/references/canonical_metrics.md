@@ -23,7 +23,6 @@ live in the owning doc, not here, so this stays small enough to load on every re
 
 | Concept | Governed definition (one line) | Source (`table.column` / event) | Owns detail | Ratified |
 |---|---|---|---|---|
-| **Serve user / EO activated (canonical population)** | `is_serve_user` flag; currently identical to `eo_activated_at IS NOT NULL` (a data-state fact that may diverge) | `mart_analytics.users_serve_base.is_serve_user` | [sources.md](sources.md) | pending |
 | **Active serve user (behavioral)** | Sent ≥1 SMS poll AND has pledged; the behavioral half of the People Served cohort | `dbt.int__serve_active_user.is_active_serve_user` | [sources.md](sources.md) | pending |
 | **People Served cohort** | Active serve user AND Serve-ICP office AND not internal | `dbt.int__serve_district_resolution.in_people_served_cohort` | [sources.md](sources.md) | pending |
 | **People Served (North Star)** | Census population covered by the cohort's districts; headline = cohort `active`, count-once, office_type `all` | `mart_analytics.people_served` | [sources.md](sources.md) | pending |
@@ -44,4 +43,5 @@ in office is parked until officeholder data lands in civics.
 | Concept | Governed definition (one line) | Source | Owns detail | Ratified |
 |---|---|---|---|---|
 | **Active Serve Users** | Count of active serve users: completed Serve onboarding by sending an SMS poll AND pledged. Definition owned by int__serve_active_user, surfaced through users_serve_base; the gold membership view users_serve_active exposes the same population for direct dashboard reads. Time series bucket by onboarding-completion date (the metric's aggregation time is first_sms_poll_sent_at), not by pledge or account registration date. | ref('users_serve_base') | [sources.md](sources.md) | 2026-07-28 |
+| **Serve Users** | Count of Serve product user accounts, excluding internal @goodparty.org accounts. Definition owned by users_serve_base.is_serve_user, which resolves to holding a Serve organization or being a poll user, and is currently 1:1 with eo_activated_at being set (a data-state fact that may diverge). This is the broad account population, NOT an activity or engagement measure: it is strictly larger than activated_serve_users, which additionally requires having sent an SMS poll and pledged. The two are not cleanly nested (one user is flagged activated without the Serve-user flag), so do not treat either as a strict subset of the other. | ref('users_serve_base') | [sources.md](sources.md) | pending |
 <!-- semantic-catalog:end -->

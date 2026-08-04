@@ -48,6 +48,17 @@ semantic_models:
         description: Count of active serve users (sent an SMS poll AND pledged).
         agg: sum
         expr: "case when is_active_serve_user then 1 else 0 end"
+      # Internal accounts are excluded in the measure, not left to the consumer:
+      # the mart keeps all users, and 33 of the flagged Serve users are
+      # @goodparty.org staff who would otherwise inflate every read.
+      - name: serve_user_count
+        description: Count of Serve product users, excluding internal accounts.
+        agg: sum
+        expr: >
+          case
+            when is_serve_user and (email is null or lower(email) not like '%@goodparty.org')
+            then 1 else 0
+          end
 
 metrics:
   - name: active_serve_users
@@ -68,3 +79,24 @@ metrics:
         owner: semantic-layer-business
         detail_doc: sources.md
         ratified: 2026-07-28
+
+  - name: serve_users
+    label: Serve Users
+    description: >
+      Count of Serve product user accounts, excluding internal
+      @goodparty.org accounts. Definition owned by
+      users_serve_base.is_serve_user, which resolves to holding a Serve
+      organization or being a poll user, and is currently 1:1 with
+      eo_activated_at being set (a data-state fact that may diverge). This is
+      the broad account population, NOT an activity or engagement measure:
+      it is strictly larger than activated_serve_users, which additionally
+      requires having sent an SMS poll and pledged. The two are not cleanly
+      nested (one user is flagged activated without the Serve-user flag), so
+      do not treat either as a strict subset of the other.
+    type: simple
+    type_params:
+      measure: serve_user_count
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: sources.md
