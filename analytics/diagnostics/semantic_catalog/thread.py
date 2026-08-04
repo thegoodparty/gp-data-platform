@@ -44,7 +44,8 @@ class PRContext:
     draft: bool
     pr_state: str  # "open" | "closed"
     merged: bool
-    metric_names: tuple[str, ...] = ()
+    # (name, one-line definition) per changed metric; definition may be "".
+    metrics: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -55,13 +56,19 @@ class Plan:
 
 
 def render_anchor(ctx: PRContext, mention_by_team: dict[str, str]) -> str:
-    names = ", ".join(f"`{n}`" for n in ctx.metric_names) or "(see PR diff)"
+    # One bullet per metric with its one-line definition, matching the merge
+    # message's "name — definition" copy so the thread reads consistently.
+    if ctx.metrics:
+        metric_lines = [f"• `{n}` — {d}" if d else f"• `{n}`" for n, d in ctx.metrics]
+        metrics_block = "Metrics:\n" + "\n".join(metric_lines)
+    else:
+        metrics_block = "Metrics: (see PR diff)"
     reviewers = " · ".join(f"{team} {mention_by_team.get(team, '')}".strip() for team in ("data", "business"))
     return "\n".join(
         [
             f":scroll: Governed metric PR ready for review: *{ctx.title}*",
             ctx.url,
-            f"Metrics: {names}",
+            metrics_block,
             f"Reviewers: {reviewers}",
             "Approvals will be tracked in this thread.",
         ]
@@ -150,16 +157,26 @@ def _github_client(token: str, repo: str) -> GitHubClient:
     return GitHubClient(token, repo, urlopen=urllib.request.urlopen)
 
 
-def _changed_names(base_dir: Path | None) -> tuple[str, ...]:
+def _changed_metrics(base_dir: Path | None) -> tuple[tuple[str, str], ...]:
+    """(name, one-line definition) per changed metric, for the anchor message.
+
+    Definitions come from the post-change records, falling back to the
+    pre-change ones for removed metrics.
+    """
     after = parse_semantic_tree([DBT_MODELS])
     before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
-    return tuple(slack_diff.changed_metric_names(before, after))
+    definitions = {r.name: r.definition for r in before}
+    definitions.update({r.name: r.definition for r in after})
+    return tuple((n, definitions.get(n, "")) for n in slack_diff.changed_metric_names(before, after))
 
 
 # ts as rendered by pr_marker: a bare "<seconds>.<fraction>" Slack timestamp.
 # Enforced before the value flows into GITHUB_ENV in the publish workflow, so a
 # forged marker comment can't smuggle a newline (e.g. an env-var injection) in.
 _TS_RE = re.compile(r"^\d+\.\d+$")
+# Slack channel ids are uppercase alphanumeric. Same GITHUB_ENV-injection guard
+# as _TS_RE: the marker's channel is exported as SLACK_CHANNEL_ID at merge time.
+_CHANNEL_RE = re.compile(r"^[A-Z0-9]+$")
 
 
 def _find_marker(gh: GitHubClient, pr: int) -> tuple[int, pr_marker.ThreadState, str] | None:
@@ -183,6 +200,10 @@ def _cmd_emit_marker(gh: GitHubClient, pr: int, out: Path) -> int:
         out.write_text("{}")
         print(f"warning: marker ts {state.ts!r} failed format validation; treating as no-marker")
         return 0
+    if state.channel and not _CHANNEL_RE.match(state.channel):
+        out.write_text("{}")
+        print(f"warning: marker channel {state.channel!r} failed format validation; treating as no-marker")
+        return 0
     out.write_text(json.dumps({"ts": state.ts, "merged": state.merged, "channel": state.channel}))
     print(f"marker: ts={state.ts} merged={state.merged}")
     return 0
@@ -191,7 +212,19 @@ def _cmd_emit_marker(gh: GitHubClient, pr: int, out: Path) -> int:
 def _cmd_mark_merged(gh: GitHubClient, pr: int) -> int:
     found = _find_marker(gh, pr)
     if found is None:
-        print("no marker found; nothing to mark")
+        # No governance thread existed for this PR (pre-thread PR, or a lost
+        # marker). Bootstrap a merged marker from the merge post itself (its
+        # ts/channel arrive via GITHUB_ENV from the publish workflow's post
+        # step), so a publish re-run still sees merged:true and never
+        # double-posts the merge summary.
+        ts = os.environ.get("SLACK_TS", "")
+        chan = os.environ.get("SLACK_CHANNEL_ID", "")
+        if not _TS_RE.match(ts) or not _CHANNEL_RE.match(chan):
+            print("no marker found and no valid SLACK_TS/SLACK_CHANNEL_ID; nothing to mark")
+            return 0
+        state = pr_marker.ThreadState(ts=ts, channel=chan, permalink="", merged=True)
+        gh.create_comment(pr, pr_marker.render(state))
+        print("no marker found; bootstrapped a merged marker from the merge post")
         return 0
     comment_id, state, _ = found
     state.merged = True
@@ -252,7 +285,7 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
         # in some webhook shapes); check both so a review event on an already-
         # merged PR doesn't misread it as merged=False.
         merged=bool(pr.get("merged") or pr.get("merged_at")),
-        metric_names=_changed_names(base_dir) if state is None else (),
+        metrics=_changed_metrics(base_dir) if state is None else (),
     )
     teams = mentions_mod.load(PKG / "config" / "slack_mentions.yml")
     mention_by_team = {t: mentions_mod.render_team(teams.get(t)) for t in ("data", "business")}
@@ -268,13 +301,21 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
         except (RuntimeError, OSError) as e:  # cosmetic only; the marker link degrades to blank
             print(f"permalink lookup failed: {e}")
     for text in plan.replies:
-        slack_reply.post_message(
-            slack_token,
-            plan.new_state.channel or channel,
-            text,
-            thread_ts=plan.new_state.ts,
-            urlopen=urllib.request.urlopen,
-        )
+        try:
+            slack_reply.post_message(
+                slack_token,
+                plan.new_state.channel or channel,
+                text,
+                thread_ts=plan.new_state.ts,
+                urlopen=urllib.request.urlopen,
+            )
+        except (RuntimeError, OSError) as e:
+            # Non-fatal: the marker MUST still be written below, or the next
+            # event finds no marker, re-bootstraps, and posts a duplicate
+            # anchor (same failure class as the permalink lookup above).
+            # Trade-off: this reply is lost (its transition is recorded as
+            # announced), which beats a split thread.
+            print(f"reply post failed ({e!r}); continuing so the marker is still written")
     if plan.new_state is not None:
         body = pr_marker.render(plan.new_state)
         if comment_id is not None:

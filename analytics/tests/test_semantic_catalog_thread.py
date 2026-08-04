@@ -10,7 +10,7 @@ def _ctx(**kw):
         draft=False,
         pr_state="open",
         merged=False,
-        metric_names=("win_users",),
+        metrics=(("win_users", "Distinct users with an activated Win account"),),
     )
     base.update(kw)
     return PRContext(**base)
@@ -22,7 +22,7 @@ def _state(**kw):
     return ThreadState(**base)
 
 
-NO_APPROVALS = {"data": [], "business": []}
+NO_APPROVALS: dict[str, list[str]] = {"data": [], "business": []}
 MENTIONS = {"data": "<@U1>", "business": "<@U2> <@U3>"}
 
 
@@ -62,8 +62,14 @@ def test_draft_is_silent():
 def test_bootstrap_anchor_on_open_pr_without_state():
     plan = reconcile(None, NO_APPROVALS, _ctx(), MENTIONS)
     assert plan.anchor_text is not None
-    assert "`win_users`" in plan.anchor_text and "<@U1>" in plan.anchor_text
+    assert "• `win_users` — Distinct users with an activated Win account" in plan.anchor_text
+    assert "<@U1>" in plan.anchor_text
     assert plan.new_state is not None and plan.new_state.announced == {"data": None, "business": None}
+
+
+def test_render_anchor_metric_without_definition_gets_bare_bullet():
+    text = render_anchor(_ctx(metrics=(("win_users", ""),)), MENTIONS)
+    assert "• `win_users`" in text and "• `win_users` —" not in text
 
 
 def test_no_bootstrap_for_closed_pr_without_state():
@@ -124,5 +130,5 @@ def test_bootstrap_and_approval_in_same_event():
 
 
 def test_render_anchor_without_mentions_or_names():
-    text = render_anchor(_ctx(metric_names=()), {"data": "", "business": ""})
+    text = render_anchor(_ctx(metrics=()), {"data": "", "business": ""})
     assert "(see PR diff)" in text and "Reviewers" in text

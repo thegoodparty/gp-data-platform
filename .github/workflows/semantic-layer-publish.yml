@@ -157,8 +157,12 @@ jobs:
         # SLACK_TS is only exported once "Post Slack change summary" actually
         # posts (threaded or fallback), so gating on it here guards against
         # publish re-runs double-posting the merge summary, and also skips
-        # cleanly when the bot token isn't provisioned yet.
-        if: ${{ env.PR_NUM != '' && env.SLACK_THREAD_TS != '' && env.SLACK_TS != '' }}
+        # cleanly when the bot token is absent. Deliberately NOT gated on
+        # SLACK_THREAD_TS: when no anchor thread exists, --mark-merged
+        # bootstraps a merged marker from this run's post (SLACK_TS /
+        # SLACK_CHANNEL_ID env), so even fallback top-level posts are re-run
+        # idempotent.
+        if: ${{ env.PR_NUM != '' && env.SLACK_TS != '' }}
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics

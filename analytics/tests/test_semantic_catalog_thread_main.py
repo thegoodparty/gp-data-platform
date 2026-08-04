@@ -280,3 +280,87 @@ def test_mark_merged_updates_marker(tmp_path, monkeypatch):
     assert thread.main(["--mark-merged", "--pr", "7"]) == 0
     patch = [c for c in calls if c.get_method() == "PATCH"][-1]
     assert '"merged": true' in json.loads(patch.data)["body"]
+
+
+def test_reconcile_reply_failure_still_writes_marker(tmp_path, monkeypatch, capsys):
+    """A failed threaded reply must not orphan the marker (duplicate-anchor risk)."""
+    _env(monkeypatch)
+    calls = []
+    post_count = {"n": 0}
+    responses = [
+        ("/pulls/7/files", [{"filename": "dbt/project/models/sem_x.yml"}]),
+        (
+            "/pulls/7/reviews",
+            [{"user": {"login": "tristan"}, "state": "APPROVED", "submitted_at": "2026-08-04T10:00:00Z"}],
+        ),
+        ("/teams/semantic-layer-data/members", [{"login": "tristan"}]),
+        ("/teams/semantic-layer-business/members", [{"login": "joe"}]),
+        ("/issues/7/comments?", []),
+        ("chat.getPermalink", {"ok": True, "permalink": "https://p"}),
+        ("/issues/7/comments", {"id": 991}),
+    ]
+
+    def fake_urlopen(req, timeout=30):
+        calls.append(req)
+        if "chat.postMessage" in req.full_url:
+            post_count["n"] += 1
+            # First post is the anchor (succeeds); the approval reply fails.
+            if post_count["n"] == 1:
+                return _FakeResp({"ok": True, "ts": "1722.0042"})
+            return _FakeResp({"ok": False, "error": "ratelimited"})
+        for frag, payload in responses:
+            if frag in req.full_url:
+                return _FakeResp(payload)
+        raise AssertionError(f"unexpected URL: {req.full_url}")
+
+    monkeypatch.setattr(ghmod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(slmod.urllib.request, "urlopen", fake_urlopen)
+
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    assert "reply post failed" in capsys.readouterr().out
+    created = [c for c in calls if c.get_method() == "POST" and "/issues/7/comments" in c.full_url]
+    assert created, "marker must still be written after a failed reply"
+    assert "1722.0042" in json.loads(created[-1].data)["body"]
+
+
+def test_emit_marker_rejects_malformed_channel(tmp_path, monkeypatch, capsys):
+    from semantic_catalog import pr_marker
+    from semantic_catalog.pr_marker import ThreadState
+
+    _env(monkeypatch)
+    forged = pr_marker.render(
+        ThreadState(ts="1722.0042", channel="C0\nSLACK_APP_BOT_TOKEN=attacker", permalink="")
+    )
+    _script(monkeypatch, [("/issues/7/comments?", [{"id": 991, "body": forged}])])
+    out = tmp_path / "marker.json"
+    assert thread.main(["--emit-marker", str(out), "--pr", "7"]) == 0
+    assert json.loads(out.read_text()) == {}
+    assert "channel" in capsys.readouterr().out
+
+
+def test_mark_merged_bootstraps_marker_when_absent(tmp_path, monkeypatch):
+    """A pre-thread PR still gets a merged marker so publish re-runs are idempotent."""
+    _env(monkeypatch)
+    monkeypatch.setenv("SLACK_TS", "1722.0099")
+    calls = _script(
+        monkeypatch,
+        [
+            ("/issues/7/comments?", []),
+            ("/issues/7/comments", {"id": 992}),
+        ],
+    )
+    assert thread.main(["--mark-merged", "--pr", "7"]) == 0
+    created = [c for c in calls if c.get_method() == "POST"]
+    assert created, "bootstrap marker must be created"
+    body = json.loads(created[-1].data)["body"]
+    assert '"merged": true' in body and "1722.0099" in body
+
+
+def test_mark_merged_without_marker_or_post_env_is_a_noop(tmp_path, monkeypatch, capsys):
+    _env(monkeypatch)
+    monkeypatch.delenv("SLACK_TS", raising=False)
+    calls = _script(monkeypatch, [("/issues/7/comments?", [])])
+    assert thread.main(["--mark-merged", "--pr", "7"]) == 0
+    assert all(c.get_method() != "POST" for c in calls)
+    assert "nothing to mark" in capsys.readouterr().out
