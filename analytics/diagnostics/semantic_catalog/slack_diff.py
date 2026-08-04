@@ -7,11 +7,19 @@ announced as incomplete, never hidden.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 from semantic_catalog.records import MetricRecord
 
 
 def _by_name(records: list[MetricRecord]) -> dict[str, MetricRecord]:
-    return {r.name: r for r in records}
+    # Compare on the file's basename, not the absolute path the parser stores.
+    # The before-set is parsed from a temp worktree, so the full path differs
+    # for EVERY record and whole-record equality would report the entire
+    # catalog as changed. The basename still catches a real change: a metric
+    # moving between sem files.
+    return {r.name: replace(r, yaml_file=Path(r.yaml_file).name) for r in records}
 
 
 def changed_metric_names(before: list[MetricRecord], after: list[MetricRecord]) -> list[str]:

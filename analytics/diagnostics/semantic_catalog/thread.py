@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from semantic_catalog.pr_marker import ThreadState
 
@@ -21,6 +22,15 @@ TEAM_LABEL = {"data": "Data team", "business": "Business team"}
 
 def is_governed(files: Iterable[str]) -> bool:
     return any(GOVERNED_RE.match(f) for f in files)
+
+
+def governed_sem_files(files: Iterable[str]) -> frozenset[str]:
+    """Basenames of the governed sem_*.yml files this PR touches.
+
+    Bounds the anchor's metric list to definitions the PR actually owns, so a
+    reviewer never has to guess which metric is up for review.
+    """
+    return frozenset(Path(f).name for f in files if GOVERNED_RE.match(f))
 
 
 def team_approvers(reviews: list[dict], members: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -141,7 +151,6 @@ import json  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 import urllib.request  # noqa: E402
-from pathlib import Path  # noqa: E402
 
 from semantic_catalog import mentions as mentions_mod  # noqa: E402
 from semantic_catalog import pr_marker, slack_diff, slack_reply  # noqa: E402
@@ -161,17 +170,33 @@ def _github_client(token: str, repo: str) -> GitHubClient:
     return GitHubClient(token, repo, urlopen=urllib.request.urlopen)
 
 
-def _changed_metrics(base_dir: Path | None) -> tuple[tuple[str, str], ...]:
+def _changed_metrics(
+    base_dir: Path | None, scope: frozenset[str] | None = None
+) -> tuple[tuple[str, str], ...]:
     """(name, one-line definition) per changed metric, for the anchor message.
 
     Definitions come from the post-change records, falling back to the
     pre-change ones for removed metrics.
+
+    `scope` is the basenames of the sem files the PR touches. It is a hard
+    bound: the anchor can only ever name metrics the PR actually owns. That
+    matters because the base tree is best-effort (an unfetchable base sha
+    leaves `base_dir` None), and without a before-set there is no diff to
+    narrow by, so the fallback below would otherwise name the whole catalog.
     """
     after = parse_semantic_tree([DBT_MODELS])
     before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
     definitions = {r.name: r.definition for r in before}
     definitions.update({r.name: r.definition for r in after})
-    return tuple((n, definitions.get(n, "")) for n in slack_diff.changed_metric_names(before, after))
+
+    # With no before-set there is nothing to diff, so fall back to the whole
+    # after-set and let `scope` below bound it to the PR's own files.
+    names = slack_diff.changed_metric_names(before, after) if before else sorted({r.name for r in after})
+
+    if scope is not None:
+        owned = {r.name for r in (*before, *after) if Path(r.yaml_file).name in scope}
+        names = [n for n in names if n in owned]
+    return tuple((n, definitions.get(n, "")) for n in names)
 
 
 # ts as rendered by pr_marker: a bare "<seconds>.<fraction>" Slack timestamp.
@@ -253,7 +278,8 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
     gh = _github_client(gh_token, repo)
 
     try:
-        governed = is_governed(gh.pr_files(number))
+        pr_files = gh.pr_files(number)
+        governed = is_governed(pr_files)
     except (OSError, RuntimeError) as e:
         # Same graceful degrade as every other external call here: a transient
         # GitHub error must not turn the (non-blocking) workflow step red.
@@ -296,7 +322,7 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
         # in some webhook shapes); check both so a review event on an already-
         # merged PR doesn't misread it as merged=False.
         merged=bool(pr.get("merged") or pr.get("merged_at")),
-        metrics=_changed_metrics(base_dir) if state is None else (),
+        metrics=(_changed_metrics(base_dir, governed_sem_files(pr_files)) if state is None else ()),
     )
     teams = mentions_mod.load(PKG / "config" / "slack_mentions.yml")
     mention_by_team = {t: mentions_mod.render_team(teams.get(t)) for t in ("data", "business")}
