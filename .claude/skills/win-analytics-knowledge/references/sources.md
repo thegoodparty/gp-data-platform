@@ -69,7 +69,7 @@ that has a BallotReady, TechSpeed, or DDHQ candidacy-stage record AND whose gene
 happened OR whose general filing deadline has passed. Reliable only on completed elections (per the
 lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-covers local races, so
 some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
-flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`. When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)).
+flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`. When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)). For the filing-deadline arm, use `election_stage.filing_period_end_on` joined via `candidacy_stage.gp_election_stage_id`; this column is 2026+ only (NULL for <=2025 — use the election-date arm alone for the archive half).
 
 ## Event-lifecycle assets (omni repo)
 

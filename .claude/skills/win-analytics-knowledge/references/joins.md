@@ -66,8 +66,13 @@ MAX(CASE WHEN candidacy_stage.br_candidacy_id IS NOT NULL
 "Has a BallotReady, TechSpeed, or DDHQ record" is the corroboration signal. Do **NOT** use
 `candidate_id_source` for this — it is identity-mint provenance (the earliest-member ER rule), so a
 product-sourced (`gp_api`) candidacy still carries BR/DDHQ matches and outcomes yet reads as
-`gp_api`; using it as a match flag undercounts external corroboration massively. See the
-corroborated-candidate definition (and its retrospective-only caveat) in [sources.md](sources.md).
+`gp_api`; using it as a match flag undercounts external corroboration massively.
+
+This is the match flag *only*. The **corroborated-candidate** definition also requires the
+retrospective time gate: `candidacy.general_election_date` clamped to `[2020-01-01, 2050-01-01]`
+and `< CURRENT_DATE` (election happened), OR `election_stage.filing_period_end_on < CURRENT_DATE`
+joined via `candidacy_stage.gp_election_stage_id` (deadline passed; 2026+ only). Without the gate
+this counts matches, not corroborated candidates. Full definition in [sources.md](sources.md).
 
 **Candidacy → viability (TS-side, forward-stable):**
 ```
