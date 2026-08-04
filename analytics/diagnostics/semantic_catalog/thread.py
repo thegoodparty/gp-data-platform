@@ -206,10 +206,15 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
 
     approvals: dict[str, list[str]] | None = None
     if org_token:
-        gh_org = _github_client(org_token, repo)
-        org = repo.split("/")[0]
-        members = {team: gh_org.team_members(org, slug) for team, slug in TEAM_SLUG.items()}
-        approvals = team_approvers(gh_org.pr_reviews(number), members)
+        try:
+            gh_org = _github_client(org_token, repo)
+            org = repo.split("/")[0]
+            members = {team: gh_org.team_members(org, slug) for team, slug in TEAM_SLUG.items()}
+            # PR reviews belong to the workflow-token client (gh); org_token is
+            # scoped to org team membership only (see github_client.py docstring).
+            approvals = team_approvers(gh.pr_reviews(number), members)
+        except (OSError, RuntimeError) as e:  # narrowly-scoped/expired org token, transient error
+            print(f"ORG_READ_TOKEN lookup failed ({e}); skipping approval diff (lifecycle only).")
     else:
         print("ORG_READ_TOKEN not set; skipping approval diff (lifecycle only).")
 
@@ -235,7 +240,7 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
             plan.new_state.permalink = slack_reply.get_permalink(
                 slack_token, channel, ts, urlopen=urllib.request.urlopen
             )
-        except RuntimeError as e:  # cosmetic only; the marker link degrades to blank
+        except (RuntimeError, OSError) as e:  # cosmetic only; the marker link degrades to blank
             print(f"permalink lookup failed: {e}")
     for text in plan.replies:
         slack_reply.post_message(

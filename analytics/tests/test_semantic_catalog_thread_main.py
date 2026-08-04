@@ -1,4 +1,5 @@
 import json
+import urllib.error
 
 import semantic_catalog.github_client as ghmod
 import semantic_catalog.slack_reply as slmod
@@ -20,13 +21,20 @@ class _FakeResp:
 
 
 def _script(monkeypatch, responses):
-    """Route fake responses by URL substring; record all requests."""
+    """Route fake responses by URL substring; record all requests.
+
+    A response entry may pair a fragment with an Exception instance instead of
+    a payload; matching that fragment raises it (simulates a transport failure
+    such as urllib.error.URLError) instead of returning a fake response.
+    """
     calls = []
 
     def fake_urlopen(req, timeout=30):
         calls.append(req)
         for frag, payload in responses:
             if frag in req.full_url:
+                if isinstance(payload, Exception):
+                    raise payload
                 return _FakeResp(payload)
         raise AssertionError(f"unexpected URL: {req.full_url}")
 
@@ -93,6 +101,88 @@ def test_reconcile_bootstraps_anchor_and_creates_marker(tmp_path, monkeypatch):
     assert created, "marker comment must be created"
     body = json.loads(created[-1].data)["body"]
     assert "semantic-layer-thread v1" in body and "1722.0042" in body
+
+
+def test_reconcile_routes_reviews_and_team_lookups_to_the_right_token(tmp_path, monkeypatch):
+    """PR reviews are a workflow-token (GH_TOKEN) concern; team membership is org-token."""
+    _env(monkeypatch)
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/marts/sem_analytics__users_win.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/semantic-layer-data/members", [{"login": "tristan"}]),
+            ("/teams/semantic-layer-business/members", [{"login": "joe"}]),
+            ("/issues/7/comments?", []),
+            ("chat.postMessage", {"ok": True, "ts": "1722.0042"}),
+            ("chat.getPermalink", {"ok": True, "permalink": "https://gp.slack.com/p42"}),
+            ("/issues/7/comments", {"id": 991}),
+        ],
+    )
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    reviews_calls = [c for c in calls if "/pulls/7/reviews" in c.full_url]
+    team_calls = [c for c in calls if "/teams/" in c.full_url]
+    assert reviews_calls and all(c.get_header("Authorization") == "Bearer ghtok" for c in reviews_calls)
+    assert team_calls and all(c.get_header("Authorization") == "Bearer orgtok" for c in team_calls)
+
+
+def test_reconcile_degrades_when_org_token_lookup_fails(tmp_path, monkeypatch):
+    """A narrowly-scoped/expired ORG_READ_TOKEN must degrade, not crash the whole reconcile."""
+    _env(monkeypatch)
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/marts/sem_analytics__users_win.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/", urllib.error.URLError("no route to host")),
+            ("/issues/7/comments?", []),
+            ("chat.postMessage", {"ok": True, "ts": "1722.0042"}),
+            ("chat.getPermalink", {"ok": True, "permalink": "https://gp.slack.com/p42"}),
+            ("/issues/7/comments", {"id": 991}),
+        ],
+    )
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    posted = [c for c in calls if "chat.postMessage" in c.full_url]
+    assert posted, "anchor must still be posted"
+    created = [c for c in calls if c.get_method() == "POST" and "/issues/7/comments" in c.full_url]
+    assert created, "marker comment must still be created"
+    body = json.loads(created[-1].data)["body"]
+    from semantic_catalog import pr_marker
+
+    state = pr_marker.parse(body)
+    assert state is not None
+    assert state.announced == {"data": None, "business": None}  # no approval diff was possible
+
+
+def test_reconcile_degrades_when_permalink_lookup_raises_transport_error(tmp_path, monkeypatch):
+    """A permalink timeout/URLError must not crash after the anchor is posted, or the
+    marker never gets written and the next event re-bootstraps a duplicate anchor."""
+    _env(monkeypatch)
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/marts/sem_analytics__users_win.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/semantic-layer-data/members", [{"login": "tristan"}]),
+            ("/teams/semantic-layer-business/members", [{"login": "joe"}]),
+            ("/issues/7/comments?", []),
+            ("chat.postMessage", {"ok": True, "ts": "1722.0042"}),
+            ("chat.getPermalink", urllib.error.URLError("timed out")),
+            ("/issues/7/comments", {"id": 991}),
+        ],
+    )
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    created = [c for c in calls if c.get_method() == "POST" and "/issues/7/comments" in c.full_url]
+    assert created, "marker comment must still be created despite the permalink failure"
+    body = json.loads(created[-1].data)["body"]
+    from semantic_catalog import pr_marker
+
+    state = pr_marker.parse(body)
+    assert state is not None
+    assert state.permalink == ""
 
 
 def test_reconcile_without_slack_token_skips_cleanly(tmp_path, monkeypatch, capsys):
