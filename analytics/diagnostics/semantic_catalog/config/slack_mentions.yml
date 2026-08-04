@@ -1,0 +1,17 @@
+# GitHub-team -> Slack mention mapping for the governance-thread anchor message.
+# Non-secret identifiers only.
+#
+# Deliberately decoupled from GitHub team membership; drift is acceptable
+# because the Slack mention is a courtesy ping, not the gate. The GitHub
+# approval and the composition check remain authoritative (DATA-2218).
+#
+# Prefer usergroup_id (a Slack user group "subteam" id, managed in Slack) once
+# usergroups exist; when set it takes precedence over member_ids.
+# member_ids are Slack member ids (e.g. U012ABC3DEF), NOT display names.
+teams:
+  data:
+    usergroup_id: null
+    member_ids: []  # TODO(Tristan): fill Slack member ids before live verify
+  business:
+    usergroup_id: null
+    member_ids: []  # Amanda, Audrey, Joe; fill before live verify
