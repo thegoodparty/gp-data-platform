@@ -13,13 +13,36 @@ is a documented no-op — we reference a shared endpoint, never our own.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from botocore.exceptions import ClientError
 
 from loader.core.aws import ignore_client_errors, rds, retry_after_settle, s3, ssm
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 
+if TYPE_CHECKING:
+    from botocore.client import BaseClient
+
 log = get_logger(__name__)
+
+
+def _describe_cluster(rds_client: BaseClient, cluster_id: str) -> dict[str, object] | None:
+    """The cluster's describe payload, or None if it no longer exists.
+
+    Lets teardown be genuinely describe-first: a re-run after a completed retire finds the cluster
+    already gone and skips the compute-deletion block below, rather than issuing a modify_db_cluster
+    that would come back AccessDenied. The rds:ModifyDBCluster grant is scoped by resource tags
+    (Environment/managedBy), and a deleted cluster has no tags to satisfy that condition — so AWS
+    denies the call rather than reporting it not-found, and the DBClusterNotFoundFault guard below
+    would not catch it.
+    """
+    try:
+        return rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "DBClusterNotFoundFault":
+            return None
+        raise
 
 
 def _delete_s3_prefix(cfg: LoaderConfig, run_date: str) -> None:
@@ -83,56 +106,64 @@ def run(
 
     rds_client = rds(cfg)
 
-    # 1. Writer instance, then wait for it to be gone (cluster can't delete with instances).
-    with ignore_client_errors("DBInstanceNotFound"):
-        rds_client.delete_db_instance(DBInstanceIdentifier=instance_id, SkipFinalSnapshot=True)
-    rds_client.get_waiter("db_instance_deleted").wait(DBInstanceIdentifier=instance_id)
+    # Describe-first, so a re-run after a completed retire is a clean no-op rather than an
+    # AccessDenied (see _describe_cluster). A gone cluster took its writer with it, so skip the whole
+    # compute-deletion block and fall through to the still-idempotent param-group / SSM / S3 cleanup.
+    cluster = _describe_cluster(rds_client, cluster_id)
+    if cluster is None:
+        log.info("teardown.cluster_absent", cluster=cluster_id, reason="already retired")
+    else:
+        # 1. Writer instance, then wait for it to be gone (cluster can't delete with instances).
+        with ignore_client_errors("DBInstanceNotFound"):
+            rds_client.delete_db_instance(DBInstanceIdentifier=instance_id, SkipFinalSnapshot=True)
+        rds_client.get_waiter("db_instance_deleted").wait(DBInstanceIdentifier=instance_id)
 
-    # 2. Cluster — disable deletion protection (resize enabled it) before deleting.
-    #    Tolerate InvalidDBClusterStateFault: an orphan stuck in `creating` (the rollback-failed
-    #    scenario provision documents) never reached resize, so protection is still False —
-    #    nothing to disable, so this modify is safely skipped. The delete below handles the
-    #    same `creating` state by waiting for it to settle first.
-    with ignore_client_errors("DBClusterNotFoundFault", "InvalidDBClusterStateFault"):
-        rds_client.modify_db_cluster(
-            DBClusterIdentifier=cluster_id, DeletionProtection=False, ApplyImmediately=True
+        # 2. Cluster — disable deletion protection (resize enabled it) before deleting, but only when
+        #    it is actually on. A failed build left on serverless never reached resize, and an orphan
+        #    stuck in `creating` likewise; both are already unprotected, so skip the modify entirely
+        #    rather than issue a needless tag-scoped call. Tolerate InvalidDBClusterStateFault for a
+        #    protection flip racing a transitional state.
+        if cluster.get("DeletionProtection"):
+            with ignore_client_errors("DBClusterNotFoundFault", "InvalidDBClusterStateFault"):
+                rds_client.modify_db_cluster(
+                    DBClusterIdentifier=cluster_id, DeletionProtection=False, ApplyImmediately=True
+                )
+        # Delete. A cluster still in `creating` can't be deleted yet (InvalidDBClusterStateFault);
+        # since this is the recovery tool for that orphan, wait for it to settle, then delete —
+        # rather than aborting (operator must retry) or swallowing (the cluster is never deleted
+        # and the deleted-waiter below would just time out). Mirrors resize's wait-then-retry.
+        delete_cluster_kwargs: dict[str, object] = (
+            {
+                "DBClusterIdentifier": cluster_id,
+                "SkipFinalSnapshot": False,
+                "FinalDBSnapshotIdentifier": snapshot_id,
+            }
+            if snapshot
+            else {"DBClusterIdentifier": cluster_id, "SkipFinalSnapshot": True}
         )
-    # Delete. A cluster still in `creating` can't be deleted yet (InvalidDBClusterStateFault);
-    # since this is the recovery tool for that orphan, wait for it to settle, then delete —
-    # rather than aborting (operator must retry) or swallowing (the cluster is never deleted
-    # and the deleted-waiter below would just time out). Mirrors resize's wait-then-retry.
-    delete_cluster_kwargs: dict[str, object] = (
-        {
-            "DBClusterIdentifier": cluster_id,
-            "SkipFinalSnapshot": False,
-            "FinalDBSnapshotIdentifier": snapshot_id,
-        }
-        if snapshot
-        else {"DBClusterIdentifier": cluster_id, "SkipFinalSnapshot": True}
-    )
 
-    def _delete_cluster() -> None:
-        try:
-            rds_client.delete_db_cluster(**delete_cluster_kwargs)
-        except ClientError as exc:
-            # A prior retire already captured this cluster's final snapshot — that snapshot IS the
-            # restore point, so reuse it and delete the cluster WITHOUT a duplicate. (A re-run where
-            # the cluster is already gone raises DBClusterNotFoundFault instead, caught below, and
-            # never touches the snapshot — so a retry-after-success can't delete the restore point.)
-            if snapshot and exc.response["Error"]["Code"] == "DBClusterSnapshotAlreadyExistsFault":
-                rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
-            else:
-                raise
+        def _delete_cluster() -> None:
+            try:
+                rds_client.delete_db_cluster(**delete_cluster_kwargs)
+            except ClientError as exc:
+                # A prior retire already captured this cluster's final snapshot — that snapshot IS
+                # the restore point, so reuse it and delete the cluster WITHOUT a duplicate. (A re-run
+                # after the cluster is fully gone is handled by the describe-first guard above and
+                # never reaches here, so a retry-after-success can't delete the restore point.)
+                if snapshot and exc.response["Error"]["Code"] == "DBClusterSnapshotAlreadyExistsFault":
+                    rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+                else:
+                    raise
 
-    with ignore_client_errors("DBClusterNotFoundFault"):
-        retry_after_settle(
-            _delete_cluster,
-            fault_code="InvalidDBClusterStateFault",
-            settle=lambda: rds_client.get_waiter("db_cluster_available").wait(
-                DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
-            ),
-        )
-    rds_client.get_waiter("db_cluster_deleted").wait(DBClusterIdentifier=cluster_id)
+        with ignore_client_errors("DBClusterNotFoundFault"):
+            retry_after_settle(
+                _delete_cluster,
+                fault_code="InvalidDBClusterStateFault",
+                settle=lambda: rds_client.get_waiter("db_cluster_available").wait(
+                    DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
+                ),
+            )
+        rds_client.get_waiter("db_cluster_deleted").wait(DBClusterIdentifier=cluster_id)
 
     # 3. Parameter groups (only deletable once no cluster references them). Kept when
     #    keep_param_groups (retire-for-restore); they cost nothing and round out the restore set.
