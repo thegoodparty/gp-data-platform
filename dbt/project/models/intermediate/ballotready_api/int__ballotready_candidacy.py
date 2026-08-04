@@ -284,8 +284,13 @@ def model(dbt, session) -> DataFrame:
     if not ce_api_token:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
-    # get candidacies
+    # get candidacies from the S3 feed
     candidacies_s3: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
+
+    # Upcoming general-stage rosters the S3 feed omits but the BallotReady API
+    # race object carries. Seeding the worklist from both keeps those
+    # candidacies from being silently dropped before election-api.
+    upcoming_ids: DataFrame = dbt.ref("int__ballotready_upcoming_candidacy_ids")
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
@@ -294,9 +299,25 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             candidacies_s3 = candidacies_s3.filter(candidacies_s3["candidacy_updated_at"] >= max_updated_at)
+            # Fetch an upcoming candidacy when its race changed since the last
+            # run, or when it is not yet stored (first-time backfill of the gap).
+            existing_ids = existing_table.select(col("database_id").alias("existing_id"))
+            upcoming_ids = (
+                upcoming_ids.join(
+                    existing_ids,
+                    upcoming_ids["br_candidacy_id"] == existing_ids["existing_id"],
+                    "left",
+                )
+                .filter((col("race_updated_at") >= max_updated_at) | col("existing_id").isNull())
+                .select("br_candidacy_id")
+            )
 
-    # get distinct candidacy IDs
-    candidacy_ids = candidacies_s3.select("br_candidacy_id").distinct()
+    # union both sources into a single deduplicated worklist of candidacy IDs
+    candidacy_ids = (
+        candidacies_s3.select(col("br_candidacy_id").cast("int").alias("br_candidacy_id"))
+        .unionByName(upcoming_ids.select(col("br_candidacy_id").cast("int").alias("br_candidacy_id")))
+        .distinct()
+    )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if candidacy_id is empty, return empty DataFrame
