@@ -132,3 +132,13 @@ def test_bootstrap_and_approval_in_same_event():
 def test_render_anchor_without_mentions_or_names():
     text = render_anchor(_ctx(metrics=()), {"data": "", "business": ""})
     assert "(see PR diff)" in text and "Reviewers" in text
+
+
+def test_team_approvers_skips_pending_reviews_without_submitted_at():
+    reviews = [
+        {"user": {"login": "alice"}, "state": "PENDING"},
+        {"user": {"login": "bob"}, "state": "APPROVED", "submitted_at": "2026-08-04T10:00:00Z"},
+        {"user": {"login": "carol"}, "state": "PENDING", "submitted_at": None},
+    ]
+    members = {"data": ["alice", "bob", "carol"], "business": []}
+    assert team_approvers(reviews, members) == {"data": ["bob"], "business": []}

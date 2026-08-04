@@ -27,6 +27,10 @@ def team_approvers(reviews: list[dict], members: dict[str, list[str]]) -> dict[s
     """Latest review per login; APPROVED only; bucketed by team, case-insensitive."""
     latest: dict[str, dict] = {}
     for r in reviews:
+        # PENDING reviews come back from GET /pulls/{n}/reviews without a
+        # submitted_at; they carry no verdict yet, so skip them.
+        if not r.get("submitted_at"):
+            continue
         login = r["user"]["login"].lower()
         if login not in latest or r["submitted_at"] >= latest[login]["submitted_at"]:
             latest[login] = r
@@ -248,7 +252,14 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
     number = int(pr["number"])
     gh = _github_client(gh_token, repo)
 
-    if not is_governed(gh.pr_files(number)):
+    try:
+        governed = is_governed(gh.pr_files(number))
+    except (OSError, RuntimeError) as e:
+        # Same graceful degrade as every other external call here: a transient
+        # GitHub error must not turn the (non-blocking) workflow step red.
+        print(f"pr_files lookup failed ({e}); skipping thread reconcile.")
+        return 0
+    if not governed:
         print(f"PR #{number} not governed; nothing to do.")
         return 0
     if not slack_token or not channel:

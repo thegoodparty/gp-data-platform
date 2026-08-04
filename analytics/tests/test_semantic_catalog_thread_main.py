@@ -415,3 +415,11 @@ def test_reconcile_review_payload_with_merged_at_only_is_treated_as_merged(tmp_p
     assert rc == 0
     slack_posts = [c for c in calls if "chat.postMessage" in c.full_url]
     assert slack_posts == []  # merged close is silent (publish owns the merge reply)
+
+
+def test_reconcile_pr_files_failure_skips_cleanly(tmp_path, monkeypatch, capsys):
+    _env(monkeypatch)
+    _script(monkeypatch, [("/pulls/7/files", urllib.error.URLError("boom"))])
+    rc = thread.main(["--event-path", str(_event(tmp_path))])
+    assert rc == 0
+    assert "pr_files lookup failed" in capsys.readouterr().out
