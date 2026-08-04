@@ -100,8 +100,13 @@ def test_close_without_merge_posts_and_close_with_merge_is_silent():
     plan = reconcile(_state(), NO_APPROVALS, _ctx(pr_state="closed", merged=False), MENTIONS)
     assert ":x: Closed without merging." in plan.replies
     assert plan.new_state.pr_state == "closed"
+    # A merged close posts nothing (unchanged) AND must not persist the
+    # pr_state transition either: merged PRs cannot reopen, so nothing
+    # downstream needs pr_state="closed", and leaving state untouched lets the
+    # orchestration layer recognize the marker as unchanged and skip the write
+    # (avoids racing the publish workflow's mark-merged PATCH).
     merged = reconcile(_state(), NO_APPROVALS, _ctx(pr_state="closed", merged=True), MENTIONS)
-    assert merged.replies == [] and merged.new_state.pr_state == "closed"
+    assert merged.replies == [] and merged.new_state.pr_state == "open"
 
 
 def test_reopen_posts_and_rerun_is_silent():

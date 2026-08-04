@@ -185,6 +185,39 @@ def test_reconcile_degrades_when_permalink_lookup_raises_transport_error(tmp_pat
     assert state.permalink == ""
 
 
+def test_reconcile_merged_close_with_current_marker_writes_nothing(tmp_path, monkeypatch):
+    """A merged PR's close event must not touch the comments API at all when the
+    marker is already current: any write there (even a no-op PATCH) widens the
+    race window against the publish workflow's mark-merged PATCH on the same
+    comment (last-writer-wins)."""
+    from semantic_catalog import pr_marker
+    from semantic_catalog.pr_marker import ThreadState
+
+    _env(monkeypatch)
+    marker_body = pr_marker.render(
+        ThreadState(ts="1722.0042", channel="C1", permalink="https://p", pr_state="open")
+    )
+    calls = _script(
+        monkeypatch,
+        [
+            ("/pulls/7/files", [{"filename": "dbt/project/models/marts/sem_analytics__users_win.yml"}]),
+            ("/pulls/7/reviews", []),
+            ("/teams/semantic-layer-data/members", []),
+            ("/teams/semantic-layer-business/members", []),
+            ("/issues/7/comments?", [{"id": 991, "body": marker_body}]),
+        ],
+    )
+    rc = thread.main(["--event-path", str(_event(tmp_path, state="closed", merged=True))])
+    assert rc == 0
+    comment_writes = [
+        c
+        for c in calls
+        if c.get_method() in ("POST", "PATCH")
+        and ("/issues/7/comments" in c.full_url or "/issues/comments/" in c.full_url)
+    ]
+    assert comment_writes == []
+
+
 def test_reconcile_without_slack_token_skips_cleanly(tmp_path, monkeypatch, capsys):
     _env(monkeypatch, SLACK_APP_BOT_TOKEN=None)
     _script(monkeypatch, [("/pulls/7/files", [{"filename": "dbt/project/models/sem_x.yml"}])])
@@ -213,6 +246,22 @@ def test_emit_marker_writes_empty_object_when_absent(tmp_path, monkeypatch):
     out = tmp_path / "marker.json"
     assert thread.main(["--emit-marker", str(out), "--pr", "7"]) == 0
     assert json.loads(out.read_text()) == {}
+
+
+def test_emit_marker_rejects_malformed_ts(tmp_path, monkeypatch, capsys):
+    """A forged/corrupt marker with a non-numeric ts must not flow through to
+    GITHUB_ENV in the publish workflow (a newline in ts could inject an env
+    var); treat it as no-marker instead."""
+    from semantic_catalog import pr_marker
+    from semantic_catalog.pr_marker import ThreadState
+
+    _env(monkeypatch)
+    marker_body = pr_marker.render(ThreadState(ts="x\nFOO=bar", channel="C1", permalink="https://p"))
+    _script(monkeypatch, [("/issues/7/comments?", [{"id": 991, "body": marker_body}])])
+    out = tmp_path / "marker.json"
+    assert thread.main(["--emit-marker", str(out), "--pr", "7"]) == 0
+    assert json.loads(out.read_text()) == {}
+    assert "warning" in capsys.readouterr().out.lower()
 
 
 def test_mark_merged_updates_marker(tmp_path, monkeypatch):

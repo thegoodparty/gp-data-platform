@@ -105,9 +105,16 @@ def reconcile(
                 state.announced[team] = "dismissed"
 
     if ctx.pr_state == "closed" and state.pr_state == "open":
-        if not ctx.merged:
+        if ctx.merged:
+            # Merged PRs cannot reopen and nothing downstream needs
+            # pr_state="closed" for them, so leave state untouched: this keeps
+            # the re-rendered marker byte-identical to what's already posted,
+            # which lets _cmd_reconcile skip the write entirely (fix for the
+            # lost-update race against the publish workflow's mark-merged PATCH).
+            pass
+        else:
             plan.replies.append(":x: Closed without merging.")
-        state.pr_state = "closed"
+            state.pr_state = "closed"
     elif ctx.pr_state == "open" and state.pr_state == "closed":
         plan.replies.append(":arrows_counterclockwise: Reopened.")
         state.pr_state = "open"
@@ -149,12 +156,19 @@ def _changed_names(base_dir: Path | None) -> tuple[str, ...]:
     return tuple(slack_diff.changed_metric_names(before, after))
 
 
-def _find_marker(gh: GitHubClient, pr: int) -> tuple[int, pr_marker.ThreadState] | None:
+# ts as rendered by pr_marker: a bare "<seconds>.<fraction>" Slack timestamp.
+# Enforced before the value flows into GITHUB_ENV in the publish workflow, so a
+# forged marker comment can't smuggle a newline (e.g. an env-var injection) in.
+_TS_RE = re.compile(r"^\d+\.\d+$")
+
+
+def _find_marker(gh: GitHubClient, pr: int) -> tuple[int, pr_marker.ThreadState, str] | None:
     for c in gh.issue_comments(pr):
-        if pr_marker.is_marker(c.get("body", "")):
-            state = pr_marker.parse(c["body"])
+        body = c.get("body", "")
+        if pr_marker.is_marker(body):
+            state = pr_marker.parse(body)
             if state is not None:
-                return int(c["id"]), state
+                return int(c["id"]), state, body
     return None
 
 
@@ -164,7 +178,11 @@ def _cmd_emit_marker(gh: GitHubClient, pr: int, out: Path) -> int:
         out.write_text("{}")
         print("no marker found")
         return 0
-    _, state = found
+    _, state, _ = found
+    if not _TS_RE.match(state.ts):
+        out.write_text("{}")
+        print(f"warning: marker ts {state.ts!r} failed format validation; treating as no-marker")
+        return 0
     out.write_text(json.dumps({"ts": state.ts, "merged": state.merged, "channel": state.channel}))
     print(f"marker: ts={state.ts} merged={state.merged}")
     return 0
@@ -175,7 +193,7 @@ def _cmd_mark_merged(gh: GitHubClient, pr: int) -> int:
     if found is None:
         print("no marker found; nothing to mark")
         return 0
-    comment_id, state = found
+    comment_id, state, _ = found
     state.merged = True
     gh.update_comment(comment_id, pr_marker.render(state))
     print("marker marked merged")
@@ -213,20 +231,27 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
             # PR reviews belong to the workflow-token client (gh); org_token is
             # scoped to org team membership only (see github_client.py docstring).
             approvals = team_approvers(gh.pr_reviews(number), members)
-        except (OSError, RuntimeError) as e:  # narrowly-scoped/expired org token, transient error
-            print(f"ORG_READ_TOKEN lookup failed ({e}); skipping approval diff (lifecycle only).")
+        except (OSError, RuntimeError) as e:
+            # Covers both the org-token team-membership lookup and the
+            # workflow-token gh.pr_reviews call in this same try, so the
+            # message stays token-neutral rather than blaming ORG_READ_TOKEN
+            # for a failure that could originate from either call.
+            print(f"approval lookup failed ({e}); skipping approval diff (lifecycle only).")
     else:
         print("ORG_READ_TOKEN not set; skipping approval diff (lifecycle only).")
 
     found = _find_marker(gh, number)
-    comment_id, state = found if found else (None, None)
+    comment_id, state, original_body = found if found else (None, None, None)
     ctx = PRContext(
         number=number,
         title=pr["title"],
         url=pr["html_url"],
         draft=bool(pr.get("draft")),
         pr_state="closed" if pr.get("state") == "closed" else "open",
-        merged=bool(pr.get("merged")),
+        # pull_request_review payloads omit `merged` (only `merged_at` shows up
+        # in some webhook shapes); check both so a review event on an already-
+        # merged PR doesn't misread it as merged=False.
+        merged=bool(pr.get("merged") or pr.get("merged_at")),
         metric_names=_changed_names(base_dir) if state is None else (),
     )
     teams = mentions_mod.load(PKG / "config" / "slack_mentions.yml")
@@ -253,7 +278,13 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
     if plan.new_state is not None:
         body = pr_marker.render(plan.new_state)
         if comment_id is not None:
-            gh.update_comment(comment_id, body)
+            # Skip no-change writes: a re-render that matches the marker
+            # already on the PR means nothing to persist, so don't PATCH it.
+            # Every synchronize/review event otherwise re-wrote an unchanged
+            # marker, widening the race window against the publish workflow's
+            # mark-merged PATCH (last-writer-wins on the same comment).
+            if body != original_body:
+                gh.update_comment(comment_id, body)
         else:
             gh.create_comment(number, body)
     print(f"reconciled: anchor={'yes' if plan.anchor_text else 'no'} replies={len(plan.replies)}")

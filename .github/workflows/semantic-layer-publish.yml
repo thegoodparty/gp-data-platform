@@ -111,15 +111,24 @@ jobs:
             echo "SLACK_THREAD_TS=$(python3 -c 'import json;print(json.load(open("/tmp/marker.json")).get("ts",""))')"
             echo "MARKER_MERGED=$(python3 -c 'import json;print(str(json.load(open("/tmp/marker.json")).get("merged",False)).lower())')"
           } >> "$GITHUB_ENV"
+          # The marker pins the channel the anchor was posted to. Honor it here
+          # (overriding the job-level SLACK_CHANNEL_ID default for the
+          # remaining steps) so a mid-PR #data-alignment channel change never
+          # splits the merge-summary reply from its anchor thread.
+          MARKER_CHANNEL=$(python3 -c 'import json;print(json.load(open("/tmp/marker.json")).get("channel",""))')
+          if [ -n "$MARKER_CHANNEL" ]; then
+            echo "SLACK_CHANNEL_ID=$MARKER_CHANNEL" >> "$GITHUB_ENV"
+          fi
       - name: Post Slack change summary
         env:
           SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
         run: |
           set -euo pipefail
-          # LIVE-VERIFY SEAM: SLACK_APP_BOT_TOKEN is not yet provisioned. Once it
-          # lands, confirm this chat.postMessage payload (channel id, scopes)
-          # against the live Slack API before relying on it. Until then, skip
-          # cleanly so the first governed merge does not red-fail this job.
+          # SLACK_APP_BOT_TOKEN was provisioned and live-verified 2026-07-28.
+          # The empty-token guard below is a deliberate graceful-degrade seam
+          # (e.g. fork PRs, which don't get repo secrets), not a provisioning
+          # gap — keep it so a missing secret skips cleanly instead of
+          # red-failing the job.
           if [ -z "${SLACK_APP_BOT_TOKEN:-}" ]; then
             echo "SLACK_APP_BOT_TOKEN not provisioned; skipping Slack notification."
             exit 0
