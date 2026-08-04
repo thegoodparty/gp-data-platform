@@ -14,6 +14,14 @@ def _by_name(records: list[MetricRecord]) -> dict[str, MetricRecord]:
     return {r.name: r for r in records}
 
 
+def changed_metric_names(before: list[MetricRecord], after: list[MetricRecord]) -> list[str]:
+    """Names added, removed, or changed in any field; feeds the thread anchor message."""
+    a, b = _by_name(before), _by_name(after)
+    names = set(a.keys() ^ b.keys())
+    names.update(n for n in a.keys() & b.keys() if a[n] != b[n])
+    return sorted(names)
+
+
 def diff_records(before: list[MetricRecord], after: list[MetricRecord]) -> list[str]:
     a, b = _by_name(before), _by_name(after)
     lines: list[str] = []
@@ -44,10 +52,13 @@ def render_message(
     changes = diff_records(before, after)
     body.extend(changes if changes else ["(no metric-level changes detected)"])
     body.append("")
-    missing = [g for g in ("data", "business") if not coverage.get(g)]
-    if missing:
-        noun = "group" if len(missing) == 1 else "groups"
-        body.append(f":warning: review incomplete — missing approval from: {', '.join(missing)} {noun}")
-    else:
-        body.append(":white_check_mark: review complete — both groups approved")
+
+    def _mark(ok: bool) -> str:
+        return "✓" if ok else "✗"
+
+    # One authoritative line; the live approval history is in the thread now.
+    line = f"review coverage: data {_mark(bool(coverage.get('data')))} · business {_mark(bool(coverage.get('business')))}"
+    if not (coverage.get("data") and coverage.get("business")):
+        line = f":warning: {line}"
+    body.append(line)
     return "\n".join(body)

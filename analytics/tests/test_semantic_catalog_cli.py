@@ -43,8 +43,7 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert rc == 0
     text = out.read_text()
     assert "http://pr/1" in text
-    assert "incomplete" in text.lower()
-    assert "business" in text.lower()
+    assert ":warning: review coverage: data ✓ · business ✗" in text
 
 
 def test_region_is_current_false_on_half_marked_file(tmp_path):
