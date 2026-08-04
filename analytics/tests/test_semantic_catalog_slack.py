@@ -1,11 +1,11 @@
 import dataclasses
 
 from semantic_catalog.records import MetricRecord
-from semantic_catalog.slack_diff import diff_records, render_message
+from semantic_catalog.slack_diff import changed_metric_names, diff_records, render_message
 
 
-def _rec(name, definition, ratified=None):
-    return MetricRecord(
+def _rec(name, definition="d", ratified=None, **kw):
+    base = dict(
         name=name,
         label=name.title(),
         definition=definition,
@@ -20,6 +20,8 @@ def _rec(name, definition, ratified=None):
         yaml_file="sem.yml",
         kind="metric",
     )
+    base.update(kw)
+    return MetricRecord(**base)
 
 
 def test_diff_detects_added_removed_changed():
@@ -41,20 +43,18 @@ def test_diff_detects_ratification():
 def test_message_flags_incomplete_review():
     msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": True, "business": False})
     assert "http://pr/1" in msg
-    assert "incomplete" in msg.lower() or "missing" in msg.lower()
-    assert "business" in msg.lower()
-    assert "business group" in msg.lower()
-    assert "business groups" not in msg.lower()
+    assert ":warning: review coverage: data ✓ · business ✗" in msg
 
 
 def test_message_flags_incomplete_review_both_groups_pluralizes():
     msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": False, "business": False})
-    assert "data, business groups" in msg.lower()
+    assert ":warning: review coverage: data ✗ · business ✗" in msg
 
 
 def test_message_confirms_complete_review():
     msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": True, "business": True})
-    assert "both groups" in msg.lower() or "complete" in msg.lower()
+    assert "review coverage: data ✓ · business ✓" in msg
+    assert ":warning:" not in msg
 
 
 def test_diff_detects_retired_and_owner_changes():
@@ -63,3 +63,25 @@ def test_diff_detects_retired_and_owner_changes():
     lines = "\n".join(diff_records([base], [after]))
     assert "retired: a" in lines and "2026-07-01" in lines
     assert "owner: a" in lines and "semantic-layer-data" in lines
+
+
+def test_changed_metric_names_added_removed_changed():
+    before = [_rec("kept"), _rec("gone"), _rec("edited", definition="old")]
+    after = [_rec("kept"), _rec("new"), _rec("edited", definition="new")]
+    assert changed_metric_names(before, after) == ["edited", "gone", "new"]
+
+
+def test_changed_metric_names_empty_when_identical():
+    recs = [_rec("a"), _rec("b")]
+    assert changed_metric_names(recs, recs) == []
+
+
+def test_render_message_coverage_is_one_line_complete():
+    msg = render_message([], [_rec("a")], "http://pr", {"data": True, "business": True})
+    assert "review coverage: data ✓ · business ✓" in msg
+    assert ":warning:" not in msg
+
+
+def test_render_message_coverage_warns_when_incomplete():
+    msg = render_message([], [_rec("a")], "http://pr", {"data": True, "business": False})
+    assert ":warning: review coverage: data ✓ · business ✗" in msg
