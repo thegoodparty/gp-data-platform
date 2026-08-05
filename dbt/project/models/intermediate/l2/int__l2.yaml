@@ -178,6 +178,10 @@ models:
       probabilities skew low by construction (out-of-distribution vs the
       precinct-trained model) but aggregate back to the precinct projections.
     config:
+      # Monthly, matching the L2 refresh cadence: a full build scores ~218M rows and
+      # takes hours, and new registrations only arrive with an L2 load, so a shorter
+      # cadence would burn cluster time without changing the output.
+      tags: ["monthly"]
       meta:
         # Most recent year L2 has COMPLETE vote history. Manually maintained (the
         # same knob the district model uses); bump it when L2 gains a new complete
