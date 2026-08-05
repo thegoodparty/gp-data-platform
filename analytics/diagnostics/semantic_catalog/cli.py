@@ -16,9 +16,10 @@ from pathlib import Path
 import yaml
 
 from semantic_catalog import lifecycle as lc_mod
+from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
+from semantic_catalog import sigma_tasks
 from semantic_catalog import sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
-from semantic_catalog.clickup_page import render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
 from semantic_catalog.parser import parse_semantic_tree
@@ -150,6 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         sop_md = (PKG / "templates" / "sop.md").read_text()
         footer_md = (PKG / "templates" / "footer.md").read_text()
         page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
+        # The catalog markers exist for splice-based updates; the ClickUp publish
+        # is a full-page replace, and ClickUp's markdown parser glues a trailing
+        # HTML comment onto the next heading. Drop the markers from the emitted page.
+        page = (
+            "\n".join(ln for ln in page.splitlines() if ln.strip() not in (CATALOG_BEGIN, CATALOG_END)) + "\n"
+        )
         args.emit_clickup.write_text(page)
         print(f"wrote {args.emit_clickup}")
 
