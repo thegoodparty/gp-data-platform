@@ -27,8 +27,10 @@ Distributed scoring: the cluster runs in USER_ISOLATION mode, so sparkContext
 (broadcast / addFile) is unavailable and the ~150 MB booster overflows the gRPC
 closure limit. The driver stages the booster to a UC Volume; the mapInPandas
 closure carries only the Volume path (plus cat_map / feat_names), and each
-executor reads the model file directly, cached once per worker process. This is
-the same pattern proven for this scoring job on the shared cluster.
+executor reads the model file directly, cached once per worker process keyed on the
+booster's content digest (the path is reused across runs, and workers on the
+long-lived all-purpose cluster outlive a single run). This is the same pattern
+proven for this scoring job on the shared cluster.
 
 The SQL-building helpers are pure (return SQL strings) so they are unit-tested
 without Spark/MLflow; model() executes them. `import mlflow` is deferred into
@@ -36,6 +38,7 @@ model() so this module imports in the dbt test env (pyspark + pandas, no mlflow)
 """
 
 import glob
+import hashlib
 import json
 import os
 import re
@@ -106,15 +109,23 @@ _DOLLAR_COLS = [
 # Percent-formatted string in L2 — strip '%' before casting.
 _PCT_COLS = ["ConsumerData_AreaPcntHHSpanishSpeaking"]
 
-# Precinct key: NH/VT use ward/town names (their raw Precinct is mostly NULL);
-# everywhere else the raw precinct. Voters with no precinct key are unscoreable by
-# the precinct model and are excluded (matches the precinct-path coverage).
-_NH_VT_PRECINCT = """
-    CASE WHEN state_postal_code IN ('NH', 'VT')
-         THEN COALESCE(Town_Ward, City_Ward, Town_District, City)
-         ELSE CAST(Precinct AS STRING)
+
+def _nh_vt_precinct(qualifier=""):
+    """Precinct key: NH/VT use ward/town names (their raw Precinct is mostly NULL);
+    everywhere else the raw precinct. qualifier prefixes column refs so the same
+    expression works inside multi-table joins (e.g. "l2."). Voters with no precinct
+    key are unscoreable by the precinct model and are excluded (matches the
+    precinct-path coverage)."""
+    q = qualifier
+    return f"""
+    CASE WHEN {q}state_postal_code IN ('NH', 'VT')
+         THEN COALESCE({q}Town_Ward, {q}City_Ward, {q}Town_District, {q}City)
+         ELSE CAST({q}Precinct AS STRING)
     END
 """
+
+
+_NH_VT_PRECINCT = _nh_vt_precinct()
 
 # States that hold odd-year elections statewide — eligible non-voters in odd-year
 # AnyElection_ columns always get 0 (no per-precinct opportunity check needed).
@@ -232,12 +243,15 @@ def _build_voter_features_sql(l2_col_set, election_cols, inference_year, l2_coll
     op_years = _op_years(election_cols, l2_col_set, inference_year)
     if op_years:
         opp_select = ", ".join(f"COALESCE(hp.opp_{y}, 0) AS opp_{y}" for y in op_years)
+        # Precinct must use the same NH/VT ward key as the SELECT:
+        # turnout_historical_precincts carries ward names for NH/VT, whose raw
+        # Precinct is mostly NULL and would never match.
         from_clause = (
             f"(SELECT l2.*, {opp_select} FROM _l2 AS l2"
             f" LEFT JOIN _hp_opp AS hp"
             f"   ON l2.state_postal_code = hp.State"
             f"  AND l2.County = hp.County"
-            f"  AND CAST(l2.Precinct AS STRING) = hp.Precinct) AS _enriched"
+            f"  AND {_nh_vt_precinct('l2.')} = hp.Precinct) AS _enriched"
         )
     else:
         from_clause = "_l2"
@@ -406,10 +420,25 @@ def _read_model_family_tag(registered_model_tags, registered_model_name):
     return family
 
 
-def _make_scorer(model_file, cat_map, feat_names):
+def _file_digest(path, chunk_size=1 << 20):
+    """Short content hash. Not hashlib.file_digest: that needs Python 3.11+ and this
+    also runs on the Databricks cluster runtime."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]
+
+
+def _make_scorer(model_file, cat_map, feat_names, booster_digest):
     """Build the mapInPandas closure. Carries only the Volume path (tiny) plus
     cat_map / feat_names; each executor reads the booster from the Volume once per
-    worker process. Encode-then-predict is identical to the district model."""
+    worker process. Encode-then-predict is identical to the district model.
+
+    The cache key includes booster_digest, not just the path: every run overwrites
+    the same per-slug Volume file, and this scores on a long-lived all-purpose
+    cluster whose Python workers persist across runs. Keying on the path alone would
+    let a reused worker score a post-retrain run with the previous booster."""
 
     def _score_partition(iterator):
         import builtins
@@ -420,9 +449,12 @@ def _make_scorer(model_file, cat_map, feat_names):
         if cache is None:
             cache = {}
             builtins._GP_VOTER_BOOSTER_CACHE = cache
-        if model_file not in cache:
-            cache[model_file] = lgb.Booster(model_file=model_file)
-        booster = cache[model_file]
+        cache_key = (model_file, booster_digest)
+        if cache_key not in cache:
+            # Drop any booster staged at this path by an earlier run.
+            cache.clear()
+            cache[cache_key] = lgb.Booster(model_file=model_file)
+        booster = cache[cache_key]
 
         for pdf in iterator:
             if len(pdf) == 0:
@@ -505,24 +537,29 @@ def model(dbt, session):
     _check_lgbm_version(full_name, client)
     model_family = _read_model_family_tag(client.get_registered_model(full_name).tags, full_name)
 
-    tmp = tempfile.mkdtemp()
-    model_dir = mlflow.artifacts.download_artifacts(
-        artifact_uri=f"models:/{full_name}@production", dst_path=tmp
-    )
-    sk_model = mlflow.lightgbm.load_model(model_dir)
-    feat_names = list(sk_model.feature_name_)
-    cat_path = _select_cat_map_path(
-        glob.glob(os.path.join(model_dir, "**", "*categorical_feature_map.json"), recursive=True)
-    )
-    with open(cat_path) as f:
-        cat_map = json.load(f)
+    # TemporaryDirectory (not mkdtemp): this runs on a long-lived all-purpose
+    # cluster, so an unremoved dir leaks ~150 MB of artifacts per run.
+    with tempfile.TemporaryDirectory() as tmp:
+        model_dir = mlflow.artifacts.download_artifacts(
+            artifact_uri=f"models:/{full_name}@production", dst_path=tmp
+        )
+        sk_model = mlflow.lightgbm.load_model(model_dir)
+        feat_names = list(sk_model.feature_name_)
+        cat_path = _select_cat_map_path(
+            glob.glob(os.path.join(model_dir, "**", "*categorical_feature_map.json"), recursive=True)
+        )
+        with open(cat_path) as f:
+            cat_map = json.load(f)
 
-    # Stage the booster to the Volume so USER_ISOLATION executors can read it
-    # directly (no sparkContext broadcast, no executor-side MLflow).
-    model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster.txt"
-    local_booster = os.path.join(tmp, "booster.txt")
-    sk_model._Booster.save_model(local_booster)
-    shutil.copyfile(local_booster, model_file)
+        # Stage the booster to the Volume so USER_ISOLATION executors can read it
+        # directly (no sparkContext broadcast, no executor-side MLflow).
+        model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster.txt"
+        local_booster = os.path.join(tmp, "booster.txt")
+        sk_model._Booster.save_model(local_booster)
+        # Digest the local copy before staging: it keys the executor booster cache
+        # so a reused worker cannot serve a stale booster after a retrain.
+        booster_digest = _file_digest(local_booster)
+        shutil.copyfile(local_booster, model_file)
 
     l2 = dbt.ref("int__l2_nationwide_uniform")
     if state_allowlist:
@@ -548,7 +585,9 @@ def model(dbt, session):
     )
 
     out_schema = "LALVOTERID string, state string, prob_vote double, prediction double"
-    scored = voter_features.mapInPandas(_make_scorer(model_file, cat_map, feat_names), schema=out_schema)
+    scored = voter_features.mapInPandas(
+        _make_scorer(model_file, cat_map, feat_names, booster_digest), schema=out_schema
+    )
     scored.createOrReplaceTempView("_scored")
 
     # Stamp the fixed dimensional columns once, in SQL, to match the promoted
