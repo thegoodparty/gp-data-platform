@@ -180,7 +180,7 @@ Fallback: override catalog with --vars '{"preflight_metadata_catalog":"<catalog>
         {% endif %}
     {% endfor %}
 
-    {% set primary_target_identifier = "int__l2_nationwide_uniform_raw_districts" %}
+    {% set primary_target_identifier = "int__l2_nationwide_uniform" %}
     {% set primary_target_relation_name = (
         metadata_catalog ~ ".dbt." ~ primary_target_identifier
     ) %}

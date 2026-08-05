@@ -1,11 +1,6 @@
--- L2 omits municipal district geography for some cities, so those seats have no
--- district to resolve against. The seed fills the gap from published precinct
--- maps; coalesce keeps L2 authoritative wherever it does supply a value.
--- Backticks preserve the source column's casing, which the people-api export
--- carries through to its Postgres column names.
--- Databricks freezes the `*` expansion when the view is created, so a run that
--- rebuilds the raw model alone must also rebuild this or new L2 columns stop
--- reaching downstream.
+-- To assign a district L2 does not carry, add rows to
+-- l2_manual_district_assignments. L2 stays authoritative wherever it supplies a
+-- value.
 select
     voters.* except (`City_Council_Commissioner_District`),
     coalesce(
