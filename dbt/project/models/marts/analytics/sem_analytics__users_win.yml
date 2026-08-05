@@ -55,3 +55,20 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
+        ratified: 2026-08-03
+
+  - name: win_activated_users
+    label: Win Activated Users
+    description: >
+      Count of Win-product users who have activated: sent at least one voter
+      outreach campaign (first_campaign_sent_at is not null). The activated
+      slice of win_users; the Activated Candidates OKR.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__is_activated') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md
+        ratified: 2026-07-28

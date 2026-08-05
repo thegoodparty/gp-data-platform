@@ -43,8 +43,7 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert rc == 0
     text = out.read_text()
     assert "http://pr/1" in text
-    assert "incomplete" in text.lower()
-    assert "business" in text.lower()
+    assert ":warning: review coverage: data ✓ · business ✗" in text
 
 
 def test_region_is_current_false_on_half_marked_file(tmp_path):
@@ -66,7 +65,12 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     win_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["win-analytics-knowledge"]]}
     serve_names = {r.name for r in grouped[cli.MD_TARGET_BY_SKILL["serve-analytics-knowledge"]]}
 
-    assert win_names == {"win_users", "goodparty_win_rate", "goodparty_cumulative_wins"}
+    assert win_names == {
+        "win_users",
+        "win_activated_users",
+        "goodparty_win_rate",
+        "goodparty_cumulative_wins",
+    }
     assert serve_names == {"active_serve_users"}
     assert "active_serve_users" not in win_names
 
@@ -105,16 +109,82 @@ def test_sync_sigma_tasks_invokes_sync_when_token_present(capsys, monkeypatch):
     monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
     seen = {}
 
-    def fake_sync(client, list_id, field_id, before, after):
+    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
         seen["list_id"] = list_id
         seen["field_id"] = field_id
-        from semantic_catalog.sigma_tasks import SyncResult
+        seen["assignee_ids"] = assignee_ids
+        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
 
-        return SyncResult(created=("m",), skipped=())
+        return SyncResult(
+            created=(CreatedTask(metric_name="m", task_id="id-1", url="https://app.clickup.com/t/id-1"),),
+            skipped=(),
+        )
 
     monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
     rc = cli.main(["--sync-sigma-tasks"])
     assert rc == 0
     # list_id comes from the committed config, not a hardcoded literal in cli.py
     assert seen["list_id"] == "901326391561"
+    # default assignee (Audrey) is read from the committed config, not hardcoded in cli.py
+    assert seen["assignee_ids"] == (111975138,)
     assert "created 1" in capsys.readouterr().out.lower()
+
+
+def test_sync_sigma_tasks_emits_created_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
+
+    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
+        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
+
+        return SyncResult(
+            created=(
+                CreatedTask(
+                    metric_name="win_users",
+                    task_id="abc123",
+                    url="https://app.clickup.com/t/abc123",
+                ),
+            ),
+            skipped=(),
+        )
+
+    monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
+    out = tmp_path / "created_tasks.json"
+    rc = cli.main(["--sync-sigma-tasks", "--emit-created", str(out)])
+    assert rc == 0
+    import json
+
+    payload = json.loads(out.read_text())
+    assert payload == [
+        {"metric": "win_users", "task_id": "abc123", "url": "https://app.clickup.com/t/abc123"}
+    ]
+
+
+def test_reply_created_skips_cleanly_without_token(capsys, monkeypatch):
+    monkeypatch.delenv("SLACK_APP_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("SLACK_TS", "1699.1")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C999")
+    rc = cli.main(["--reply-created", "/does/not/exist.json"])
+    assert rc == 0
+    assert "skipping" in capsys.readouterr().out.lower()
+
+
+def test_reply_created_invokes_reply_in_thread(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLACK_APP_BOT_TOKEN", "tok")
+    monkeypatch.setenv("SLACK_TS", "1699.1")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C999")
+    seen = {}
+
+    def fake_reply(token, channel, thread_ts, tasks):
+        seen.update(token=token, channel=channel, thread_ts=thread_ts, tasks=tasks)
+
+    monkeypatch.setattr(cli.slack_reply, "reply_in_thread", fake_reply)
+    import json
+
+    p = tmp_path / "created.json"
+    p.write_text(json.dumps([{"metric": "win_users", "task_id": "a", "url": "https://app.clickup.com/t/a"}]))
+    rc = cli.main(["--reply-created", str(p)])
+    assert rc == 0
+    assert seen["token"] == "tok"
+    assert seen["channel"] == "C999"
+    assert seen["thread_ts"] == "1699.1"
+    assert seen["tasks"][0]["metric"] == "win_users"

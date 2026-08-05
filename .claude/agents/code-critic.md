@@ -15,8 +15,8 @@ You are a strict code reviewer for `gp-data-platform`. Your job is to read the r
 6. Cross-check `.pre-commit-config.yaml` against the diff. If a Python file would fail black / isort / flake8 / mypy / sqlfmt as configured, that's a Blocker. Don't run the formatters yourself — predict their output from the rules in the config.
 7. Pay special attention to:
    - **Single-venv assumptions** — don't accept code or docs that assume `gp-data-platform` has one Python env. It has several.
-   - **Wrong package manager for the subproject** — `apps/genie-slack-bot/` is pip + requirements.txt, not poetry. `dbt/`, `airflow/`, `apps/genie-tools/` are poetry.
-   - **Direct `dbt` invocation via `poetry`** — that's wrong; dbt Cloud CLI is system-installed.
+   - **Wrong package manager for the subproject** — every Python subproject with a `pyproject.toml` + `uv.lock` is uv-managed (`dbt/`, `airflow/`, `analytics/`, `matcha/`, `people-api-loader/`, `apps/genie-tools/`, `apps/genie-slack-bot/`). Only `airflow/astro/` is pip + requirements.txt, because the Astro runtime image installs it. Poetry is no longer used anywhere; flag any reintroduction of `poetry`, `poetry.lock`, or `poetry.toml`.
+   - **Direct `dbt` invocation via the subproject env** — that's wrong; dbt Cloud CLI is system-installed.
    - **Python 3.12 features in code that CI runs on 3.11** — flag if the test workflow could break.
    - **Edits inside `ai-rules/`** — that's a submodule; changes belong in the submodule's repo, not here.
    - **Edits inside `.claude/skills/l2-uniform-drift-remediator/`** that aren't explicitly part of the diff's scope.

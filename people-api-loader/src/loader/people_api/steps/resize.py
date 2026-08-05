@@ -19,7 +19,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loader.core.aws import flip_writer_to_provisioned, rds, retry_after_settle
+from loader.core.aws import (
+    flip_writer_to_provisioned,
+    flip_writer_to_serverless,
+    rds,
+    retry_after_settle,
+)
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new
@@ -33,6 +38,12 @@ from loader.people_api.manifests import (
 log = get_logger(__name__)
 
 _BACKUP_RETENTION_DAYS = 14
+
+# Sentinel serve class: LOADER_SERVE_INSTANCE_CLASS=db.serverless (dev) makes resize leave the
+# writer on Serverless v2 instead of a provisioned class, so a dev cluster idles cheap after a
+# successful build the same way scale_down leaves it after a failed one. Prod keeps a provisioned
+# serve class. Matches scale_down._SERVERLESS_CLASS.
+_SERVERLESS_CLASS = "db.serverless"
 
 
 def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
@@ -80,16 +91,28 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     # issuing the writer's class-change modify_db_instance below. This keeps the class-change
     # modify from landing while the cluster is still applying the lockdown settings.
     _wait_cluster()
-    # Shared conversion (writer instance class only — no cluster-level call for a provisioned
-    # class, unlike the Serverless v2 flip scale_down still uses on failure).
-    flip_writer_to_provisioned(rds_client, cluster_id, instance_id, instance_class=cfg.serve_instance_class)
+    # Flip the writer to the serve class. A provisioned class needs only the instance-level modify;
+    # db.serverless (dev) also needs the cluster's ServerlessV2 scaling config, which
+    # flip_writer_to_serverless sets — reusing the scale-down ACU band (nothing serves dev at scale).
+    if cfg.serve_instance_class == _SERVERLESS_CLASS:
+        flip_writer_to_serverless(
+            rds_client,
+            cluster_id,
+            instance_id,
+            min_acu=cfg.scale_down_min_acu,
+            max_acu=cfg.scale_down_max_acu,
+        )
+    else:
+        flip_writer_to_provisioned(
+            rds_client, cluster_id, instance_id, instance_class=cfg.serve_instance_class
+        )
     # A single db_instance_available waiter is NOT enough here: Aurora keeps reporting the
     # instance 'available' for a few seconds after a class-change modify before it flips to
     # 'modifying' and reboots, so a plain `_wait()` can return on the stale state — and the
     # explicit reboot below would then race the conversion's own delayed reboot
-    # (InvalidDBInstanceStateFault). flip_writer_to_provisioned already rides through the
-    # class-change reboot via wait_instance_class_applied; reboot here applies the serve
-    # parameter group, then wait for available again.
+    # (InvalidDBInstanceStateFault). Both flip helpers already ride through the class-change reboot
+    # via wait_instance_class_applied; reboot here applies the serve parameter group, then wait for
+    # available again.
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
     _wait()
     log.info("resize.applied", instance_class=cfg.serve_instance_class)

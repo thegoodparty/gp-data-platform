@@ -1,0 +1,27 @@
+# GitHub-team -> Slack mention mapping for the governance-thread anchor message.
+# Non-secret identifiers only.
+#
+# Deliberately decoupled from GitHub team membership; drift is acceptable
+# because the Slack mention is a courtesy ping, not the gate. The GitHub
+# approval and the composition check remain authoritative (DATA-2218).
+#
+# Prefer usergroup_id (a Slack user group "subteam" id, managed in Slack) once
+# usergroups exist; when set it takes precedence over member_ids.
+# member_ids are Slack member ids (e.g. U012ABC3DEF), NOT display names.
+# Snapshot of GitHub team membership as of 2026-08-04.
+# Swain Molster (swain) is on both GitHub teams but deliberately excluded from
+# both mention lists per Tristan (2026-08-04) - his approvals still count.
+teams:
+  data:
+    usergroup_id: null
+    member_ids:
+      - U09T5BQQUTH  # Dan Ball (danpelota)
+      - U085CFQ96BG  # Tristan Aubert (datawithtristan)
+      - U08BSR3MM3K  # Hugh Karimi (hhkarimi)
+      - U0A34SFCV5E  # Sanjay Roberts (sanjayr1)
+  business:
+    usergroup_id: null
+    member_ids:
+      - U08NXF2J3GW  # Amanda (amanda847)
+      - U0A126JHUBW  # Audrey Hunsberger (audrey-gp)
+      - U0AG7JH6GEL  # Joe Murray (JoeGoodParty2)

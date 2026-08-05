@@ -86,3 +86,30 @@ def test_create_posts_name_description_and_build_key_field():
     assert body["name"] == "Build in Sigma: M (m)"
     assert body["markdown_description"] == "body"
     assert {"id": "field1", "value": "m@2026-07-28"} in body["custom_fields"]
+
+
+def test_create_includes_assignees_when_payload_has_them():
+    client, calls = _client_with_recorder([{"id": "new1"}])
+    payload = TaskPayload(
+        name="n", markdown_description="d", build_key="m@2026-07-28", assignee_ids=(111975138,)
+    )
+    client.create_task("901", payload, "field1")
+    _, _, body = calls[0]
+    assert body["assignees"] == [111975138]
+
+
+def test_create_omits_assignees_when_payload_has_none():
+    client, calls = _client_with_recorder([{"id": "new1"}])
+    payload = TaskPayload(name="n", markdown_description="d", build_key="m@2026-07-28")
+    client.create_task("901", payload, "field1")
+    _, _, body = calls[0]
+    assert "assignees" not in body
+
+
+def test_create_raises_when_response_has_no_id():
+    # ClickUp v2 can return HTTP 200 with an {"err": ..., "ECODE": ...} body
+    # (quota/rate-limit). _http_json succeeds but there is no id to return.
+    client, _ = _client_with_recorder([{"err": "TEAM_LIMIT", "ECODE": "OAUTH_023"}])
+    payload = TaskPayload(name="n", markdown_description="d", build_key="m@2026-07-28")
+    with pytest.raises(RuntimeError, match="no id"):
+        client.create_task("901", payload, "field1")

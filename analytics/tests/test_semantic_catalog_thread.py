@@ -1,0 +1,215 @@
+from semantic_catalog.pr_marker import ThreadState
+from semantic_catalog.thread import PRContext, is_governed, reconcile, render_anchor, team_approvers
+
+
+def _ctx(**kw):
+    base = dict(
+        number=7,
+        title="Ratify win_users",
+        url="https://github.com/x/pull/7",
+        draft=False,
+        pr_state="open",
+        merged=False,
+        metrics=(("win_users", "Distinct users with an activated Win account"),),
+    )
+    base.update(kw)
+    return PRContext(**base)
+
+
+def _state(**kw):
+    base = dict(ts="1722.0001", channel="C1", permalink="https://p")
+    base.update(kw)
+    return ThreadState(**base)
+
+
+NO_APPROVALS: dict[str, list[str]] = {"data": [], "business": []}
+MENTIONS = {"data": "<@U1>", "business": "<@U2> <@U3>"}
+
+
+# --- is_governed -------------------------------------------------------------
+
+
+def test_is_governed_matches_nested_and_direct_sem_files():
+    assert is_governed(["dbt/project/models/marts/sem_analytics__users_win.yml"])
+    assert is_governed(["dbt/project/models/sem_x.yml", "README.md"])
+    assert not is_governed(["dbt/project/models/marts/users_win.yml", "analytics/foo.py"])
+    assert not is_governed([])
+
+
+# --- team_approvers ----------------------------------------------------------
+
+
+def test_team_approvers_latest_review_wins_and_buckets_by_team():
+    reviews = [
+        {"user": {"login": "Alice"}, "state": "APPROVED", "submitted_at": "2026-08-01T10:00:00Z"},
+        {"user": {"login": "alice"}, "state": "CHANGES_REQUESTED", "submitted_at": "2026-08-02T10:00:00Z"},
+        {"user": {"login": "joe"}, "state": "APPROVED", "submitted_at": "2026-08-02T11:00:00Z"},
+        {"user": {"login": "rando"}, "state": "APPROVED", "submitted_at": "2026-08-02T12:00:00Z"},
+    ]
+    members = {"data": ["alice"], "business": ["Joe", "amanda"]}
+    out = team_approvers(reviews, members)
+    assert out == {"data": [], "business": ["joe"]}  # alice superseded; rando in no team
+
+
+# --- reconcile ---------------------------------------------------------------
+
+
+def test_draft_is_silent():
+    plan = reconcile(None, NO_APPROVALS, _ctx(draft=True), MENTIONS)
+    assert plan.anchor_text is None and plan.replies == [] and plan.new_state is None
+
+
+def test_bootstrap_anchor_on_open_pr_without_state():
+    plan = reconcile(None, NO_APPROVALS, _ctx(), MENTIONS)
+    assert plan.anchor_text is not None
+    assert "• `win_users` — Distinct users with an activated Win account" in plan.anchor_text
+    assert "<@U1>" in plan.anchor_text
+    assert plan.new_state is not None and plan.new_state.announced == {"data": None, "business": None}
+
+
+def test_render_anchor_metric_without_definition_gets_bare_bullet():
+    text = render_anchor(_ctx(metrics=(("win_users", ""),)), MENTIONS)
+    assert "• `win_users`" in text and "• `win_users` —" not in text
+
+
+def test_no_bootstrap_for_closed_pr_without_state():
+    plan = reconcile(None, NO_APPROVALS, _ctx(pr_state="closed"), MENTIONS)
+    assert plan.anchor_text is None and plan.replies == [] and plan.new_state is None
+
+
+def test_approval_posts_once_then_replays_are_silent():
+    st = _state()
+    plan = reconcile(st, {"data": ["alice"], "business": []}, _ctx(), MENTIONS)
+    assert plan.replies == [":white_check_mark: Data team approved (alice)"]
+    assert plan.new_state.announced["data"] == "approved"
+    replay = reconcile(plan.new_state, {"data": ["alice"], "business": []}, _ctx(), MENTIONS)
+    assert replay.replies == []
+
+
+def test_dismissal_and_reapproval_both_post():
+    st = _state(announced={"data": "approved", "business": None})
+    plan = reconcile(st, NO_APPROVALS, _ctx(), MENTIONS)
+    assert plan.replies == [":leftwards_arrow_with_hook: Data team approval dismissed, re-review needed"]
+    assert plan.new_state.announced["data"] == "dismissed"
+    again = reconcile(plan.new_state, {"data": ["alice"], "business": []}, _ctx(), MENTIONS)
+    assert again.replies == [":white_check_mark: Data team approved (alice)"]
+
+
+def test_approvals_none_skips_approval_diff():
+    st = _state(announced={"data": "approved", "business": None})
+    plan = reconcile(st, None, _ctx(), MENTIONS)
+    assert plan.replies == []  # no spurious dismissal when ORG_READ_TOKEN is missing
+    assert plan.new_state.announced["data"] == "approved"
+
+
+def test_close_without_merge_posts_and_close_with_merge_is_silent():
+    plan = reconcile(_state(), NO_APPROVALS, _ctx(pr_state="closed", merged=False), MENTIONS)
+    assert ":x: Closed without merging." in plan.replies
+    assert plan.new_state.pr_state == "closed"
+    # A merged close posts nothing (unchanged) AND must not persist the
+    # pr_state transition either: merged PRs cannot reopen, so nothing
+    # downstream needs pr_state="closed", and leaving state untouched lets the
+    # orchestration layer recognize the marker as unchanged and skip the write
+    # (avoids racing the publish workflow's mark-merged PATCH).
+    merged = reconcile(_state(), NO_APPROVALS, _ctx(pr_state="closed", merged=True), MENTIONS)
+    assert merged.replies == [] and merged.new_state.pr_state == "open"
+
+
+def test_reopen_posts_and_rerun_is_silent():
+    st = _state(pr_state="closed")
+    plan = reconcile(st, NO_APPROVALS, _ctx(pr_state="open"), MENTIONS)
+    assert ":arrows_counterclockwise: Reopened." in plan.replies
+    rerun = reconcile(plan.new_state, NO_APPROVALS, _ctx(pr_state="open"), MENTIONS)
+    assert rerun.replies == []
+
+
+def test_bootstrap_and_approval_in_same_event():
+    plan = reconcile(None, {"data": ["alice"], "business": []}, _ctx(), MENTIONS)
+    assert plan.anchor_text is not None
+    assert plan.replies == [":white_check_mark: Data team approved (alice)"]
+
+
+def test_render_anchor_without_mentions_or_names():
+    text = render_anchor(_ctx(metrics=()), {"data": "", "business": ""})
+    assert "(see PR diff)" in text and "Reviewers" in text
+
+
+def test_team_approvers_skips_pending_reviews_without_submitted_at():
+    reviews = [
+        {"user": {"login": "alice"}, "state": "PENDING"},
+        {"user": {"login": "bob"}, "state": "APPROVED", "submitted_at": "2026-08-04T10:00:00Z"},
+        {"user": {"login": "carol"}, "state": "PENDING", "submitted_at": None},
+    ]
+    members = {"data": ["alice", "bob", "carol"], "business": []}
+    assert team_approvers(reviews, members) == {"data": ["bob"], "business": []}
+
+
+def test_governed_sem_files_returns_only_touched_sem_basenames():
+    from semantic_catalog.thread import governed_sem_files
+
+    files = [
+        "dbt/project/models/marts/analytics/sem_analytics__users_win.yml",
+        "dbt/project/models/marts/civics/sem_civics__candidacy_stage.yml",
+        "dbt/project/models/marts/analytics/m_analytics.yaml",  # not a sem file
+        "analytics/diagnostics/semantic_catalog/thread.py",
+        ".claude/skills/win-analytics-knowledge/references/canonical_metrics.md",
+    ]
+    assert governed_sem_files(files) == frozenset(
+        {"sem_analytics__users_win.yml", "sem_civics__candidacy_stage.yml"}
+    )
+
+
+def _stub_tree(monkeypatch, by_root):
+    """Stub parse_semantic_tree, keyed by whether the root is the base worktree."""
+    from semantic_catalog import thread as thread_mod
+
+    def fake(roots):
+        return by_root["before" if "basetree" in str(roots[0]) else "after"]
+
+    monkeypatch.setattr(thread_mod, "parse_semantic_tree", fake)
+
+
+def _mrec(name, yaml_name, definition="d"):
+    from semantic_catalog.records import MetricRecord
+
+    return MetricRecord(
+        name=name,
+        label=name,
+        definition=definition,
+        metric_type="simple",
+        source="ref('m')",
+        dimensions=(),
+        filter=None,
+        owner="semantic-layer-business",
+        ratified=None,
+        detail_doc="engagement.md",
+        retired=None,
+        yaml_file=f"/checkout/dbt/project/models/marts/analytics/{yaml_name}",
+        kind="metric",
+    )
+
+
+def test_changed_metrics_scope_excludes_metrics_the_pr_does_not_own(monkeypatch):
+    # Two metrics changed across two files, but the PR only touches one file.
+    from semantic_catalog import thread as thread_mod
+
+    before = [_mrec("win_a", "sem_win.yml", "old"), _mrec("serve_b", "sem_serve.yml", "old")]
+    after = [_mrec("win_a", "sem_win.yml", "new"), _mrec("serve_b", "sem_serve.yml", "new")]
+    _stub_tree(monkeypatch, {"before": before, "after": after})
+
+    from pathlib import Path
+
+    got = thread_mod._changed_metrics(Path("/basetree"), frozenset({"sem_win.yml"}))
+    assert got == (("win_a", "new"),)
+
+
+def test_changed_metrics_without_base_tree_is_bounded_by_scope(monkeypatch):
+    # No base tree => no diff to narrow by. The anchor must still name only the
+    # PR's own metrics, never the whole catalog.
+    from semantic_catalog import thread as thread_mod
+
+    after = [_mrec("win_a", "sem_win.yml"), _mrec("serve_b", "sem_serve.yml")]
+    _stub_tree(monkeypatch, {"before": [], "after": after})
+
+    got = thread_mod._changed_metrics(None, frozenset({"sem_win.yml"}))
+    assert got == (("win_a", "d"),)

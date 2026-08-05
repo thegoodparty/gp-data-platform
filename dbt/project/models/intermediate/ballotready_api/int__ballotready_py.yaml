@@ -2,6 +2,39 @@ version: 2
 
 models:
 
+  - name: int__ballotready_upcoming_candidacy_ids
+    description: >
+      Candidacy ids for still-upcoming BallotReady races, read from the API race
+      roster (race.candidacies). The S3 candidacies feed omits many upcoming
+      general-stage rosters the API already carries; int__ballotready_candidacy
+      and int__ballotready_party union this source into their fetch worklist so
+      those candidacies reach election-api instead of being dropped.
+    config:
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        owner: "Data Engineering Team"
+        contains_pii: false
+    columns:
+      - name: br_candidacy_id
+        description: "BallotReady candidacy database id from an upcoming race roster"
+        tests:
+          - not_null
+          - unique
+          # The point of the fix: every candidacy an upcoming race roster
+          # carries should be ingested into int__ballotready_candidacy. Warn
+          # (not error) because incremental lag between a roster appearing and
+          # the candidacy model's next run, and API-dropped/withdrawn
+          # candidacies, can leave a small transient gap that should surface
+          # for monitoring rather than fail the build.
+          - relationships:
+              arguments:
+                to: ref('int__ballotready_candidacy')
+                field: database_id
+              config:
+                severity: warn
+      - name: race_updated_at
+        description: "updated_at of the race the candidacy belongs to; used to refetch changed rosters incrementally"
+
   - name: int__ballotready_candidacy
     description: >
       This model retrieves and processes candidate data from the CivicEngine API since the source

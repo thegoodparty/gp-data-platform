@@ -99,4 +99,33 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=["hf_most_important_policy_item"],
         where=None,
     ),
+    # DistrictVoter district lookups. The generated seed carries only the PK
+    # btree(district_id, voter_id, "State"); a `WHERE district_id = X [AND "State" = 'S']` scan can
+    # use it (district_id leads) but reads ~130x more index pages than a dedicated narrow index —
+    # ~83k buffers vs ~640 for a single ~700k-member district (measured). The wide PK can't
+    # deduplicate (every entry has a distinct voter_id); over a district's rows a narrow index shares
+    # one district_id, so btree dedup collapses it to a tiny posting list. Invisible warm (all cache
+    # hits) and to the planner (it costs both alike), but it drives cold / pool-pressure district
+    # timeouts. Both families, deliberately:
+    #   - (district_id, "State"): the one the planner actually picks for the app's queries, which
+    #     always carry the district's "State" — a plain (district_id) loses to the PK there because
+    #     the PK also contains "State". "State" is constant within a LIST partition, so this still
+    #     dedups (~430 MB).
+    #   - (district_id): covers any district_id-only pattern not carrying "State".
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_State_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_State_idx" ON public."DistrictVoter" USING btree (district_id, "State");',
+        unique=False,
+        columns=["district_id", "State"],
+        where=None,
+    ),
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_idx" ON public."DistrictVoter" USING btree (district_id);',
+        unique=False,
+        columns=["district_id"],
+        where=None,
+    ),
 ]
