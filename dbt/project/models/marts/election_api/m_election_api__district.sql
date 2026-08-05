@@ -20,7 +20,7 @@ with
         select
             state_postal_code,
             {{ get_l2_district_columns(use_backticks=true, cast_to_string=true) }}
-        from {{ ref("int__l2_nationwide_uniform") }}
+        from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
         {% if is_incremental() %}
             where loaded_at >= (select max(updated_at) from {{ this }})
         {% endif %}
@@ -43,7 +43,7 @@ with
             state_postal_code as state,
             'State' as l2_district_type,
             state_postal_code as l2_district_name
-        from {{ ref("int__l2_nationwide_uniform") }}
+        from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
         {% if is_incremental() %}
             where loaded_at >= (select max(updated_at) from {{ this }})
         {% endif %}

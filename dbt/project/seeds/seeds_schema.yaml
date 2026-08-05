@@ -89,6 +89,49 @@ seeds:
         data_tests:
           - not_null
 
+  - name: l2_manual_district_assignments
+    description: >
+      Assigns voters to a district L2 does not carry, keyed on a sparse match
+      tuple where a null column means "do not constrain". Applied by
+      int__l2_nationwide_uniform_w_district_overrides, which coalesces the
+      assignment into the named district column so L2 stays authoritative
+      wherever it supplies a value. Editing this seed does not bump voter
+      loaded_at, so the loaded_at-incremental consumers
+      (int__zip_code_to_l2_district, m_election_api__district,
+      int__l2_district_aggregations) need a --full-refresh afterwards;
+      assert_manual_district_assignments_resolve.sql fails until they get one.
+      Pair each new district with an l2_br_match_overrides row so the BR
+      position resolves to it.
+    config:
+      column_types:
+        precinct: string
+    columns:
+      - name: state
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: l2_district_type
+        description: L2 district column the assignment writes into
+        data_tests:
+          - not_null
+      - name: l2_district_name
+        description: District value to assign
+        data_tests:
+          - not_null
+      - name: source
+        description: Published boundary source the assignment was transcribed from
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - county
+              - city
+              - precinct
+              - l2_district_type
+
   - name: l2_br_match_overrides
     description: >
       Manual overrides for LLM-generated L2-to-BallotReady district matches.
@@ -98,6 +141,9 @@ seeds:
       election-api position mart. A row is also honored when its BR position has
       no LLM match row at all (e.g. positions added after the static match
       snapshot): the position mart injects the match directly from this seed.
+      Repointing an existing row at a different district leaves the old
+      zip->office rows behind, since an incremental merge cannot delete them, so
+      --full-refresh int__zip_code_to_br_office after the seed reloads.
     columns:
       - name: br_database_id
         description: BallotReady position database ID to override

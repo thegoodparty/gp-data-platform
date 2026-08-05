@@ -86,6 +86,15 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
+  - name: int__l2_nationwide_uniform_w_district_overrides
+    description: >
+      The voter file with districts L2 does not carry filled in from the
+      l2_manual_district_assignments seed. A view, so seed edits take effect
+      without rebuilding the voter file. Every consumer of the voter file reads
+      this rather than int__l2_nationwide_uniform, so the assignments reach both
+      the election-api district/officepicker models and the people-api voter
+      export.
+
   - name: int__voter_turnout_lgbm_inference
     description: >
       Nationwide district-level voter-turnout projections from the LightGBM
