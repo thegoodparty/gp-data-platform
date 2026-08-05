@@ -150,9 +150,9 @@ def _build_plan(summary: dict[str, Any]) -> dict[str, Any]:
             manual_actions.append(
                 f"Manual deprecation required for {target_model}: target_minus_src columns={cols}"
             )
-            if target_model == "int__l2_nationwide_uniform_raw_districts":
+            if target_model == "int__l2_nationwide_uniform":
                 manual_actions.append(
-                    "When deprecating target-only columns on int__l2_nationwide_uniform_raw_districts, "
+                    "When deprecating target-only columns on int__l2_nationwide_uniform, "
                     "apply the same removals to int__l2_nationwide_uniform_w_haystaq and rerun strict preflight."
                 )
 

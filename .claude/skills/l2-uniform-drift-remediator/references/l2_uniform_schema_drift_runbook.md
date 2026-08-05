@@ -25,7 +25,7 @@ python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py
 
 4. Kick off a one-off dbt Cloud job/command to apply the safe commands from `summary.md` or `safe_fix_plan.sh`.
 5. If `target_minus_src` appears, do not run destructive DDL automatically; follow manual deprecation workflow.
-6. If deprecating target-only columns from `int__l2_nationwide_uniform_raw_districts`, apply equivalent removals to `int__l2_nationwide_uniform_w_haystaq`, then rerun strict preflight.
+6. If deprecating target-only columns from `int__l2_nationwide_uniform`, apply equivalent removals to `int__l2_nationwide_uniform_w_haystaq`, then rerun strict preflight.
 
 ## PR Hygiene
 

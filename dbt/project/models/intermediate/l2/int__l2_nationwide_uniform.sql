@@ -3,6 +3,9 @@
 -- maps; coalesce keeps L2 authoritative wherever it does supply a value.
 -- Backticks preserve the source column's casing, which the people-api export
 -- carries through to its Postgres column names.
+-- Databricks freezes the `*` expansion when the view is created, so a run that
+-- rebuilds the raw model alone must also rebuild this or new L2 columns stop
+-- reaching downstream.
 select
     voters.* except (`City_Council_Commissioner_District`),
     coalesce(

@@ -1,6 +1,6 @@
 ---
 name: l2-uniform-drift-remediator
-description: Triage and remediate L2 uniform schema drift using `l2_uniform_schema_preflight` output. Use when dbt runs touching `int__l2_nationwide_uniform_raw_districts` or `int__l2_nationwide_uniform_w_haystaq` fail, or when `L2_PREFLIGHT|` lines report drift (`stg_minus_src`, `src_minus_stg`, `target_minus_src`, `relation_missing`). Parse preflight logs, generate deterministic safe commands and manual instructions, and produce operator-ready next steps.
+description: Triage and remediate L2 uniform schema drift using `l2_uniform_schema_preflight` output. Use when dbt runs touching `int__l2_nationwide_uniform` or `int__l2_nationwide_uniform_w_haystaq` fail, or when `L2_PREFLIGHT|` lines report drift (`stg_minus_src`, `src_minus_stg`, `target_minus_src`, `relation_missing`). Parse preflight logs, generate deterministic safe commands and manual instructions, and produce operator-ready next steps.
 ---
 
 # L2 Uniform Drift Remediator
@@ -24,8 +24,8 @@ python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py
 ```
 4. Review `summary.md`, run safe commands manually in a one-off dbt Cloud job (or equivalent), and complete follow-up steps.
 5. If `target_minus_src` or `relation_missing` exists, follow manual remediation steps in the summary.
-6. If `target_minus_src` includes `int__l2_nationwide_uniform_raw_districts`, apply approved column deprecations to both:
-- `int__l2_nationwide_uniform_raw_districts`
+6. If `target_minus_src` includes `int__l2_nationwide_uniform`, apply approved column deprecations to both:
+- `int__l2_nationwide_uniform`
 - `int__l2_nationwide_uniform_w_haystaq`
 Then rerun strict preflight.
 

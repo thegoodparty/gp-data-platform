@@ -26,7 +26,7 @@ def sample_preflight_log_with_manual_actions() -> str:
     lines = [
         'L2_PREFLIGHT|{"kind":"config","metadata_catalog":"prod_catalog","strict":true,"states_expected":51}',
         'L2_PREFLIGHT|{"kind":"stg_minus_src","state":"ME","columns":["old_col"]}',
-        'L2_PREFLIGHT|{"kind":"target_minus_src","target_model":"int__l2_nationwide_uniform_raw_districts","columns":["legacy_col"]}',
+        'L2_PREFLIGHT|{"kind":"target_minus_src","target_model":"int__l2_nationwide_uniform","columns":["legacy_col"]}',
         'L2_PREFLIGHT|{"kind":"summary","metadata_catalog":"prod_catalog","strict":true,"status":"fail","states_evaluated":51,"source_relations_found":51,"staging_relations_found":51,"finding_count":2}',
     ]
     return "\n".join(lines) + "\n"
