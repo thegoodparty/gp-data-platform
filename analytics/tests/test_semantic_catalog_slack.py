@@ -30,7 +30,9 @@ def test_diff_detects_added_removed_changed():
     lines = "\n".join(diff_records(before, after))
     assert "b" in lines and "added" in lines.lower()
     assert "gone" in lines and "removed" in lines.lower()
-    assert "a" in lines and "old def" in lines and "new def" in lines
+    assert "a" in lines and "changed" in lines.lower()
+    # Definition TEXT never appears in the thread; the PR diff owns the wording.
+    assert "old def" not in lines and "new def" not in lines and "brand new" not in lines
 
 
 def test_diff_detects_ratification():
