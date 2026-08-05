@@ -507,6 +507,13 @@ def model(dbt, session):
     inference_year = int(year_override) if year_override else current_year
     slug_override = dbt.config.meta_get("voter_turnout_model_slug")
     code_override = dbt.config.meta_get("voter_turnout_election_code")
+    # Fail on a half-set override instead of silently falling back: the pair decides
+    # which model scores ~218M rows and which election_code is stamped on every row.
+    if bool(slug_override) != bool(code_override):
+        raise ValueError(
+            "voter_turnout_model_slug and voter_turnout_election_code must be set "
+            f"together; got slug={slug_override!r}, code={code_override!r}"
+        )
     if slug_override and code_override:
         model_slug, election_code = slug_override, code_override
     else:
@@ -553,12 +560,14 @@ def model(dbt, session):
 
         # Stage the booster to the Volume so USER_ISOLATION executors can read it
         # directly (no sparkContext broadcast, no executor-side MLflow).
-        model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster.txt"
         local_booster = os.path.join(tmp, "booster.txt")
         sk_model._Booster.save_model(local_booster)
-        # Digest the local copy before staging: it keys the executor booster cache
-        # so a reused worker cannot serve a stale booster after a retrain.
+        # The digest goes in the filename AND keys the executor cache. Content-addressed
+        # so a retrain writes a new file rather than overwriting the path a prior run's
+        # executors may still be reading, and so a reused worker on the long-lived
+        # cluster cannot serve a stale booster.
         booster_digest = _file_digest(local_booster)
+        model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster_{booster_digest}.txt"
         shutil.copyfile(local_booster, model_file)
 
     l2 = dbt.ref("int__l2_nationwide_uniform")
