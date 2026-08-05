@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loader.core.aws import get_ssm_parameter, label_ssm_parameter_version, put_ssm_parameter
+from loader.core.aws import get_ssm_parameter, label_ssm_parameter_version, overwrite_ssm_parameter
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.manifests import (
@@ -75,7 +75,9 @@ def run(cfg: LoaderConfig, run_date: str) -> PromoteManifest:
     log.info("promote.start", serving_param=serving_param, dated_param=dated_param, labels=labels)
 
     conn_str = get_ssm_parameter(cfg, dated_param)
-    version = put_ssm_parameter(cfg, serving_param, conn_str)
+    # Version-preserving overwrite (NOT put_ssm_parameter, which delete+recreates and would wipe the
+    # serving param's prior versions + their build-/live labels).
+    version = overwrite_ssm_parameter(cfg, serving_param, conn_str)
     label_ssm_parameter_version(cfg, serving_param, version, labels)
     log.info("promote.done", serving_param=serving_param, version=version, labels=labels)
 

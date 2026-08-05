@@ -31,7 +31,7 @@ _CFG = cast(
         new_load_param_group=lambda rd: f"gp-people-db-{rd}-load",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
         new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
-        tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}],
+        tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}, {"Key": "Environment", "Value": "prod"}],
     ),
 )
 
@@ -139,7 +139,9 @@ def _patch(monkeypatch: pytest.MonkeyPatch, rds_client: FakeRds, ec2_client: Fak
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "ec2", lambda cfg: ec2_client)
     monkeypatch.setattr(
-        step, "put_ssm_parameter", lambda cfg, name, value, **k: captured.update(param=name, conninfo=value)
+        step,
+        "put_ssm_parameter",
+        lambda cfg, name, value, **k: captured.update(param=name, conninfo=value, ssm_tags=k.get("tags")),
     )
     # The reuse branch reads the param back to fail fast; default it present.
     monkeypatch.setattr(step, "get_ssm_parameter", lambda cfg, name, **k: "postgresql://u:p@h:5432/d")
@@ -190,11 +192,40 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
     assert (
         "cluster" in rds_client.names() and "instance" in rds_client.names() and "role" in rds_client.names()
     )
-    # the connection string was stored in SSM with the endpoint + master password embedded,
-    # and forces TLS so the password can't traverse a plaintext-negotiated channel
+    # the connection string was stored in SSM with the endpoint + master password embedded, and no
+    # sslmode (consumers choose their own TLS policy; the loader's psycopg defaults to `prefer`)
     assert captured["param"] == "people-db-connection-string-dev-20260616"
     assert captured["conninfo"].startswith("postgresql://people_admin:")
-    assert "@gp-people-db-20260616.rds.aws:5432/people_prod?sslmode=require" in captured["conninfo"]
+    assert captured["conninfo"].endswith("@gp-people-db-20260616.rds.aws:5432/people_prod")
+    assert "sslmode" not in captured["conninfo"]
+
+
+def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Default (set_ssm_env_tag=True): the SSM param gets the full tag set including Environment.
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    captured = _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    assert {"Key": "Environment", "Value": "prod"} in captured["ssm_tags"]
+    cluster_kw = next(kw for name, kw in rds_client.calls if name == "cluster")
+    assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]
+
+
+def test_provision_no_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # set_ssm_env_tag=False (the --no-ssm-env-tag flag): provision drops Environment from the SSM
+    # param tags, but the RDS cluster still carries it (its create policy requires RequestTag/Environment).
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    captured = _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616", set_ssm_env_tag=False)
+
+    assert {"Key": "Environment", "Value": "prod"} not in captured["ssm_tags"]
+    assert {"Key": "Project", "Value": "gp-api"} in captured["ssm_tags"]
+    cluster_kw = next(kw for name, kw in rds_client.calls if name == "cluster")
+    assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]  # RDS tag untouched
 
 
 def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:

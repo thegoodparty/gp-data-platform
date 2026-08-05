@@ -39,7 +39,7 @@ def test_promote_puts_serving_param_and_labels_version(monkeypatch: pytest.Monke
         calls["get"] = name
         return "postgresql://serving"
 
-    def fake_put(cfg, name, value):
+    def fake_overwrite(cfg, name, value):
         calls["put"] = (name, value)
         return 7
 
@@ -48,7 +48,7 @@ def test_promote_puts_serving_param_and_labels_version(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
     monkeypatch.setattr(step, "get_ssm_parameter", fake_get)
-    monkeypatch.setattr(step, "put_ssm_parameter", fake_put)
+    monkeypatch.setattr(step, "overwrite_ssm_parameter", fake_overwrite)
     monkeypatch.setattr(step, "label_ssm_parameter_version", fake_label)
 
     manifest = step.run(_CFG, "20260728")
@@ -70,7 +70,7 @@ def test_promote_refuses_without_green_validate(monkeypatch: pytest.MonkeyPatch)
     for validate in (None, SimpleNamespace(status="complete", all_passed=False)):
         _manifests(monkeypatch, promote=None, validate=validate)
         # Any SSM write here would be a bug — promote must abort before touching serving.
-        monkeypatch.setattr(step, "put_ssm_parameter", lambda *a, **k: pytest.fail("must not write"))
+        monkeypatch.setattr(step, "overwrite_ssm_parameter", lambda *a, **k: pytest.fail("must not write"))
         with pytest.raises(RuntimeError, match="promote refused"):
             step.run(_CFG, "20260728")
 
@@ -79,5 +79,5 @@ def test_promote_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> No
     done = SimpleNamespace(status="complete")
     _manifests(monkeypatch, promote=done, validate=None)
     monkeypatch.setattr(step, "manifest_uri", lambda cfg, rd, name: "uri")
-    monkeypatch.setattr(step, "put_ssm_parameter", lambda *a, **k: pytest.fail("must not write"))
+    monkeypatch.setattr(step, "overwrite_ssm_parameter", lambda *a, **k: pytest.fail("must not write"))
     assert step.run(_CFG, "20260728") is done

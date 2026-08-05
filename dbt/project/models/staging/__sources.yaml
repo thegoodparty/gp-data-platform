@@ -1226,6 +1226,8 @@ sources:
         description: raw data load from voter turnout projections for 2027
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+      - name: voter_turnout_scores_20260730
+        description: In-house per-voter turnout propensity scores (prob_vote) for 2026 General
 
   - name: segment_storage_source
     database: segment_storage

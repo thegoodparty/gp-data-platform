@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 import yaml
 
 from semantic_catalog import lifecycle as lc_mod
+from semantic_catalog import sigma_tasks, slack_reply
+from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.clickup_page import render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
@@ -25,8 +28,13 @@ from semantic_catalog.slack_diff import render_message
 # analytics/diagnostics/semantic_catalog/cli.py -> parents[0]=semantic_catalog,
 # [1]=diagnostics, [2]=analytics, [3]=repo root.
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models" / "marts"
-SEM_ROOTS = [DBT_MODELS / "analytics", DBT_MODELS / "civics"]
+# Parse EVERY sem_*.yml under models, not an allow-list of subdirs, so the
+# parser's coverage matches the CODEOWNERS glob (/dbt/project/models/**/sem_*.yml)
+# exactly. A governed file added under any subdir is auto-catalogued; the naming
+# guard (semantic_catalog.naming_guard) enforces that all semantic content lives
+# in a sem_*.yml so nothing can escape this scope.
+DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+SEM_ROOTS = [DBT_MODELS]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
 
 # Each skill owns one canonical_metrics.md. The generated region is projected
@@ -98,12 +106,22 @@ def _lifecycles(records: list[MetricRecord]) -> dict[str, Lifecycle]:
     return {f: lc_mod.derive(f) for f in files}
 
 
+def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[MetricRecord]]:
+    """Records as of HEAD (after) and as of the merge base (before, empty if none)."""
+    after = parse_semantic_tree(SEM_ROOTS)
+    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    return before, after
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="semantic_catalog")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--sync-sigma-tasks", action="store_true")
+    parser.add_argument("--emit-created", type=Path)
+    parser.add_argument("--reply-created", type=Path)
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
@@ -130,26 +148,59 @@ def main(argv: list[str] | None = None) -> int:
     if args.emit_clickup:
         owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
         sop_md = (PKG / "templates" / "sop.md").read_text()
-        page = render_page(records, _lifecycles(records), sop_md, owners)
+        footer_md = (PKG / "templates" / "footer.md").read_text()
+        page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
         args.emit_clickup.write_text(page)
         print(f"wrote {args.emit_clickup}")
 
     if args.emit_slack:
-        after = records
-        before = (
-            parse_semantic_tree(
-                [
-                    args.base_dir / "dbt/project/models/marts/analytics",
-                    args.base_dir / "dbt/project/models/marts/civics",
-                ]
-            )
-            if args.base_dir
-            else []
-        )
+        before, after = _before_after(args.base_dir)
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
         msg = render_message(before, after, args.pr_url, coverage)
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
+
+    if args.sync_sigma_tasks:
+        token = os.environ.get("CLICKUP_TASK_TOKEN")
+        if not token:
+            print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
+            return 0
+        cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        assignee_id = cfg.get("default_assignee_id")
+        assignee_ids = (int(assignee_id),) if assignee_id else ()
+        # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
+        before, after = _before_after(args.base_dir)
+        client = ClickUpClient(token)
+        result = sigma_tasks.sync(
+            client, cfg["list_id"], cfg["build_key_field_id"], before, after, assignee_ids=assignee_ids
+        )
+        created_names = [c.metric_name for c in result.created]
+        print(f"created {len(created_names)}: {', '.join(created_names) or '(none)'}")
+        print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
+        if args.emit_created:
+            # The workflow reads this to post one threaded Slack reply per created task.
+            args.emit_created.write_text(
+                json.dumps(
+                    [{"metric": c.metric_name, "task_id": c.task_id, "url": c.url} for c in result.created]
+                )
+            )
+        return 0
+
+    if args.reply_created:
+        # Secrets stay in the environment, never on the command line.
+        token = os.environ.get("SLACK_APP_BOT_TOKEN")
+        thread_ts = os.environ.get("SLACK_TS")
+        channel = os.environ.get("SLACK_CHANNEL_ID")
+        if not token or not thread_ts or not channel:
+            print("SLACK_APP_BOT_TOKEN/SLACK_TS/SLACK_CHANNEL_ID not all set; skipping thread replies.")
+            return 0
+        if not args.reply_created.exists():
+            print(f"{args.reply_created} not found; skipping thread replies.")
+            return 0
+        tasks = json.loads(args.reply_created.read_text())
+        slack_reply.reply_in_thread(token, channel, thread_ts, tasks)
+        print(f"posted {len(tasks)} thread repl{'y' if len(tasks) == 1 else 'ies'}")
+        return 0
 
     return 0
 

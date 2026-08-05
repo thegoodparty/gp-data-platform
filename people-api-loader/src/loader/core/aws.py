@@ -243,23 +243,66 @@ def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True)
         return _ssm_cache[key]
 
 
-def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> int:
+def put_ssm_parameter(
+    cfg: BaseLoaderConfig,
+    name: str,
+    value: str,
+    *,
+    secure: bool = True,
+    tags: list[dict[str, str]] | None = None,
+) -> None:
     """Write (create or overwrite) an SSM Parameter Store value; SecureString by default.
 
-    The parameter is tagged with the loader's Environment tags so IAM policies scoped by
-    `aws:ResourceTag/Environment` (the loader's permissions boundary) allow subsequent
-    Get/Describe. SSM forbids combining `Tags` with `Overwrite` in one call, so we
-    create-with-tags first and fall back to overwrite + re-tag if it already exists.
+    The parameter is tagged with the loader's resource tags for consistency. The loader's own
+    Get/Put on this parameter is authorized by parameter NAME (the `loader-s3-ssm` role policy
+    scopes `people-db-connection-string-{env}[-date]` by ARN, with no tag condition and no
+    permissions boundary), NOT by the `Environment` tag — so omitting `Environment` via `tags`
+    does not affect the loader's access; it only removes the tag a human role's
+    `ResourceTag/Environment` deny keys on. Pass `tags` to override the set; defaults to
+    `cfg.tags_as_aws()`.
 
-    Returns the parameter version this write produced, so callers can label it.
+    SSM forbids combining `Tags` with `Overwrite`, so a create-with-tags is tried first. If the
+    parameter already exists it is deleted and recreated with `tags` — NOT overwrite + re-tag,
+    because `add_tags_to_resource` only upserts keys and never removes them, so a tag intentionally
+    dropped from `tags` (e.g. `Environment`) would linger. Delete + recreate enforces the exact set,
+    and needs only the `ssm:DeleteParameter`/`PutParameter` the loader role already has (it has no
+    `ssm:RemoveTagsFromResource`). The existing value is captured before the delete and restored
+    (value only) if the recreate fails, so a transient error never leaves the parameter missing —
+    which would otherwise strand provision's reuse branch on `ParameterNotFound`.
+
+    NOTE: delete + recreate resets the parameter's version numbering and drops all version labels,
+    so this must NOT be used on the serving parameter `promote` maintains — use
+    `overwrite_ssm_parameter` there, which adds a version and preserves history + labels.
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
+    param_tags = cfg.tags_as_aws() if tags is None else tags
     try:
-        resp = client.put_parameter(Name=name, Value=value, Type=param_type, Tags=cfg.tags_as_aws())
+        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
     except client.exceptions.ParameterAlreadyExists:
-        resp = client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
-        client.add_tags_to_resource(ResourceType="Parameter", ResourceId=name, Tags=cfg.tags_as_aws())
+        old_value = client.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+        client.delete_parameter(Name=name)
+        try:
+            client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
+        except Exception:
+            # Best-effort restore so the param is never left missing. Value only (Overwrite forbids
+            # Tags); the caller can retry put_ssm_parameter to reach the intended tag state.
+            client.put_parameter(Name=name, Value=old_value, Type=param_type, Overwrite=True)
+            raise
+
+
+def overwrite_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str) -> int:
+    """Overwrite an existing SecureString parameter's value, creating a NEW version and preserving
+    the parameter's version history and labels — unlike `put_ssm_parameter`, which delete+recreates
+    an existing parameter (resetting version numbering and dropping labels) to enforce an exact tag
+    set.
+
+    This is the serving-cutover write: `promote` overwrites the single serving parameter so each
+    refresh is a new version it can label `build-{date}` and move `live` onto, and rollback can
+    move `live` back to a prior version's label. Tags are left untouched (Overwrite forbids Tags,
+    and the serving parameter's access is by ARN, not tag). Returns the new version.
+    """
+    resp = ssm(cfg).put_parameter(Name=name, Value=value, Type="SecureString", Overwrite=True)
     return int(resp["Version"])
 
 

@@ -113,18 +113,33 @@ models:
               arguments:
                 values: "{{ get_us_states_list(include_DC=true, include_US=true) }}"
       - name: Voter_Status
-        description: Status of the voter
+        description: >
+          Turnout-propensity bucket for the 2026 General, derived from the
+          in-house model probability: Unlikely (<0.25), Unreliable (<0.50),
+          Likely (<0.75), Super (>=0.75), Unknown (no score).
         data_type: varchar
         tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
-                  - First Time
                   - Unlikely
+                  - Unreliable
                   - Likely
                   - Super
                   - Unknown
+      - name: Voter_Turnout_Probability
+        description: >
+          In-house modeled turnout probability in [0,1] for the 2026 General;
+          null when the voter has no score.
+        data_type: double
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                where: "Voter_Turnout_Probability is not null"
 
   - name: m_people_api__districtstats
     config:

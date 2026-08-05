@@ -6,6 +6,8 @@ if an untracked `people` map is supplied at publish time (repo rule: no names in
 tracked files).
 Part 3 (dynamic): the per-metric catalog, generated from records + git lifecycle,
 inside CATALOG_BEGIN/CATALOG_END so any out-of-band page context is preserved.
+Part 4 (static, optional): a footer rendered after the catalog (governance
+diagram + reader explainer), passed in from the repo template.
 """
 
 from __future__ import annotations
@@ -68,6 +70,7 @@ def render_page(
     sop_md: str,
     owners: dict,
     people: dict | None = None,
+    footer_md: str = "",
 ) -> str:
     parts = [
         "# Semantic layer reference",
@@ -80,4 +83,6 @@ def render_page(
         "",
         _catalog(records, lifecycles),
     ]
+    if footer_md:
+        parts += ["", footer_md]
     return "\n".join(parts) + "\n"

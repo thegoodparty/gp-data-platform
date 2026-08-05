@@ -1,0 +1,36 @@
+name: semantic-layer-file-placement
+# Blocking gate: a semantic_models:/metrics: block outside a governed sem_*.yml
+# would bypass CODEOWNERS, the composition check, catalog-freshness, and the
+# catalog itself all at once. This job fails the PR so the sem_*.yml naming
+# convention is an enforced invariant, not just a convention.
+#
+# The path filter is deliberately BROAD (every .yml/.yaml under models), not the
+# sem_*.yml filter the sibling workflows use: the violation is a file that is NOT
+# named sem_*.yml, so a narrow filter would never trigger on the PR that adds one.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'dbt/project/models/**/*.yml'
+      - 'dbt/project/models/**/*.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  file-placement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Check semantic definitions live in sem_*.yml
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: uv run python -m semantic_catalog.naming_guard

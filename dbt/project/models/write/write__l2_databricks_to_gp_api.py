@@ -1058,6 +1058,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
         for column in INTEGER_COLUMNS:
             df = df.withColumn(column, col(column).try_cast("int"))
 
+        # The source is now all-string (inferSchema=False upstream). This legacy write path has
+        # numeric target columns that an implicit text->numeric insert would reject on an empty
+        # geocoding/age value. try_cast reproduces the double/int values this path already wrote
+        # (empty -> null), so its output is unchanged. Fidelity for the new serving cluster comes
+        # from the loader path, not here.
+        for column in ["Residence_Addresses_Latitude", "Residence_Addresses_Longitude"]:
+            df = df.withColumn(column, col(column).try_cast("double"))
+        df = df.withColumn("Voters_Age", col("Voters_Age").try_cast("int"))
+
         num_rows_loaded = _load_data_to_postgres(
             df=df,
             state_id=state_id,

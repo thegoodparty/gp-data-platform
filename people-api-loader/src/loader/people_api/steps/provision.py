@@ -151,7 +151,7 @@ def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
     return endpoints[0]["VpcEndpointId"] if endpoints else ""
 
 
-def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
+def run(cfg: LoaderConfig, run_date: str, *, set_ssm_env_tag: bool = True) -> ProvisionManifest:
     bind(run_date=run_date, step="provision")
     existing = read_manifest(cfg, run_date, "provision", ProvisionManifest)
     if existing and existing.status == "complete":
@@ -222,15 +222,21 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         # creation. The generated master password lives only in memory, so if this write fails
         # (IAM/throttle/crash) it is unrecoverable, and the reuse branch on a re-run would then
         # loop forever on ParameterNotFound. Roll the cluster back on any write failure so a
-        # clean re-run regenerates. `sslmode=require` forces TLS: psycopg defaults to `prefer`
-        # (plaintext fallback) and the cluster's default param group does not set rds.force_ssl.
+        # clean re-run regenerates. No sslmode: consumers set their own TLS policy, and the loader's
+        # psycopg connections default to `prefer` (TLS when the server offers it, as RDS does).
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
-            f"postgresql://{cfg.db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}?sslmode=require"
+            f"postgresql://{cfg.db_user}:{quote(password, safe='')}@{endpoint}:{cfg.db_port}/{cfg.db_name}"
         )
         try:
-            put_ssm_parameter(cfg, conn_param, conninfo)
+            # SSM-scoped tags: identical to the resource tags unless set_ssm_env_tag is False, which
+            # drops `Environment` (bring-up escape hatch so a human role denied by
+            # ResourceTag/Environment can still read the connection string). RDS resources above keep
+            # the full tag set. The flag comes from the load_people_api trigger param, not an env var.
+            ssm_tags = cfg.tags_as_aws()
+            if not set_ssm_env_tag:
+                ssm_tags = [t for t in ssm_tags if t["Key"] != "Environment"]
+            put_ssm_parameter(cfg, conn_param, conninfo, tags=ssm_tags)
         except Exception:
             log.error("provision.conn_param_write_failed", cluster=cluster_id, name=conn_param)
             # Best-effort rollback. The delete frequently fails with InvalidDBClusterStateFault

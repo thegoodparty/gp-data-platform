@@ -114,12 +114,23 @@ def unload(
 
 
 @app.command()
-def provision(run_date: RunDateArg) -> None:
+def provision(
+    run_date: RunDateArg,
+    ssm_env_tag: Annotated[
+        bool,
+        typer.Option(
+            "--ssm-env-tag/--no-ssm-env-tag",
+            help="Tag the connection-string SSM parameter with Environment (default). Pass "
+            "--no-ssm-env-tag as a bring-up escape hatch to omit it, so a human role denied by "
+            "ResourceTag/Environment=prod can read the connection string. RDS resources keep the tag.",
+        ),
+    ] = True,
+) -> None:
     """Step 2 — provision Aurora cluster + IAM role + VPCE + param groups."""
     from loader.people_api.steps import provision as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date)
+    step.run(cfg, run_date, set_ssm_env_tag=ssm_env_tag)
 
 
 @app.command(name="create-schema")
@@ -207,7 +218,7 @@ def scale_down(run_date: RunDateArg) -> None:
 
 @app.command()
 def validate(run_date: RunDateArg) -> None:
-    """Step 7 — six validation checks. Exits non-zero if any fail."""
+    """Step 7 — validation checks. Exits non-zero if any blocking (non-warn-only) check fails."""
     from loader.people_api.steps import validate as step
 
     cfg = _setup(run_date)
@@ -218,11 +229,19 @@ def validate(run_date: RunDateArg) -> None:
 
 
 def _print_validate_report(manifest) -> None:
-    tbl = Table(title=f"Validation — {manifest.run_date}")
+    warns = sum(1 for c in manifest.checks if not c.passed and c.warn_only)
+    suffix = f" — {warns} warning(s)" if warns else ""
+    tbl = Table(title=f"Validation — {manifest.run_date}{suffix}")
     tbl.add_column("Check")
     tbl.add_column("Status")
     for c in manifest.checks:
-        tbl.add_row(c.name, "[green]PASS[/green]" if c.passed else "[red]FAIL[/red]")
+        if c.passed:
+            status = "[green]PASS[/green]"
+        elif c.warn_only:
+            status = "[yellow]WARN[/yellow]"
+        else:
+            status = "[red]FAIL[/red]"
+        tbl.add_row(c.name, status)
     console.print(tbl)
 
 
@@ -251,6 +270,29 @@ def teardown(
             help="Also delete the S3 gateway VPC endpoint. Default keeps it in place for future refreshes.",
         ),
     ] = False,
+    snapshot: Annotated[
+        bool,
+        typer.Option(
+            "--snapshot",
+            help="Take a final cluster snapshot (gp-people-db-{date}-{env}-final) before deleting, "
+            "kept until manually removed. Default skips it.",
+        ),
+    ] = False,
+    keep_ssm: Annotated[
+        bool,
+        typer.Option(
+            "--keep-ssm",
+            help="Keep the dated connection-string SSM parameter (for a restore-from-snapshot). "
+            "Default deletes it.",
+        ),
+    ] = False,
+    keep_param_groups: Annotated[
+        bool,
+        typer.Option(
+            "--keep-param-groups",
+            help="Keep the cluster's load/serve DB parameter groups. Default deletes them.",
+        ),
+    ] = False,
 ) -> None:
     """Delete loader-created resources for a run_date. Dry-run by default."""
     from loader.people_api.steps import teardown as step
@@ -262,6 +304,9 @@ def teardown(
         confirm=confirm,
         delete_s3=delete_s3,
         delete_vpce=delete_vpce,
+        snapshot=snapshot,
+        keep_ssm=keep_ssm,
+        keep_param_groups=keep_param_groups,
     )
 
 

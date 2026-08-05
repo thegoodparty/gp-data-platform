@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "GoodParty.org data loader: generic Databricks -> S3 -> RDS pipeline harness, plus the people-API consumer as its first concrete pipeline."
 requires-python = ">=3.14"
 dependencies = [
-    "boto3>=1.43.56",
+    "boto3>=1.43.62",
     "psycopg[binary,pool]>=3.3.4",
-    "databricks-sdk>=0.122.0",
+    "databricks-sdk>=0.123.0",
     "pydantic>=2.8",
     "typer>=0.27.0",
     "structlog>=26.1.0",
@@ -20,8 +20,8 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-mock>=3.14",
-    "ruff>=0.16.0",
-    "ty==0.0.63",
+    "ruff>=0.16.1",
+    "ty==0.0.65",
     "pre-commit>=4.6.1",
     "moto[rds,ec2]>=5.2.2",
 ]

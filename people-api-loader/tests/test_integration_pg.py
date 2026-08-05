@@ -74,6 +74,7 @@ _DDL_NAMES = (
     '    "State" text NOT NULL,\n'
     '    "FirstName" text,\n'
     '    "LastName" text,\n'
+    '    "Parties_Description" text,\n'
     '    "hf_most_important_policy_item" text\n'
     ");"
 )
@@ -308,8 +309,9 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
             _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
         _exec(cur, 'ANALYZE public."Voter"')
 
-    # Build the committed extras (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree, 1 plain
-    # b-tree) via the exact partitioned path build_indexes.run uses: parent ON ONLY, then a child
+    # Build the committed extras (3 trigram GIN — first/last name lower() + Parties_Description,
+    # 2 lower() b-tree, 1 multicolumn b-tree, 1 plain b-tree) via the exact partitioned path
+    # build_indexes.run uses: parent ON ONLY, then a child
     # per state attached. The spatial GiST index on "geom" is excluded here — it needs postgis and
     # the generated column, which this names-only fixture doesn't set up (it's covered by the
     # build_indexes unit tests instead).

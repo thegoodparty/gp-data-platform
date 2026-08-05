@@ -6,15 +6,20 @@ Runs, PER TABLE in the unload manifest (Voter, District, DistrictStats, District
    table (District, DistrictStats), within ±10% of the unload baseline (did COPY load everything
    that was unloaded).
 2. prod_row_counts_within_tolerance — the same ±10% shape against the inspect-prod baseline
-   (sanity: refresh magnitude vs the current Present cluster). Fails closed if inspect-prod hasn't
-   run for this run_date, or if the REQUIRED Voter baseline is somehow missing. An optional table
-   absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" — see
-   schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped
-   instead — there's no magnitude baseline to sanity-check.
+   (sanity: refresh magnitude vs the current Present cluster). WARN-ONLY (does not block handoff):
+   it compares against the PREVIOUS serving cluster, so a legitimate L2 change (a voter-roll purge)
+   reads as a shortfall; the fatal load-integrity gate is row_counts_match_databricks above. An
+   optional table absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" —
+   see schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped.
 3. schema_diff_clean — new columns equal prod columns, modulo the partition column and any
    loader-added columns (schema_spec.LOADER_ADDED_COLUMNS, e.g. Voter."geom"), which are intended
    divergences. Skipped (not failed) when prod has no such table at all (same DistrictStats case:
    nothing to diff against).
+3b. schema_types_match — every column present on BOTH new and prod has the SAME type (udt_name),
+   modulo schema_spec.ACCEPTED_TYPE_DIVERGENCES (e.g. District.state). This is the guardrail for
+   the class of bug where emit_ddl takes a Databricks mart type instead of the Prisma serving
+   contract type (an election flag shipped as boolean, a ZIP as integer); it fails the run rather
+   than leaving the mismatch for functional tests. Same skip-when-absent behavior as schema_diff.
 4. index_constraint_diff_clean — every prod index present on new (trivially passes when prod has
    no indexes for an absent table).
 
@@ -44,7 +49,12 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.schema_spec import LOADER_ADDED_COLUMNS, is_partitioned, partition_column
+from loader.people_api.schema.schema_spec import (
+    ACCEPTED_TYPE_DIVERGENCES,
+    LOADER_ADDED_COLUMNS,
+    is_partitioned,
+    partition_column,
+)
 from loader.people_api.schema.unload_sql import BUCKETS_OUTPUT_KEYS
 
 log = get_logger(__name__)
@@ -305,6 +315,60 @@ def _check_schema_diff(
     )
 
 
+def _column_types(conn, table: str) -> dict[str, str]:
+    # udt_name (int4/text/bool/float8/timestamp/timestamptz/uuid/<enum name>) discriminates the
+    # cases that bit us — int/double/text, timestamp vs timestamptz, text vs uuid, text vs enum —
+    # more precisely than data_type (which collapses every enum to 'USER-DEFINED').
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT column_name, udt_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name=%s",
+            (table,),
+        )
+        return {r[0]: r[1] for r in cur.fetchall()}
+
+
+def _check_schema_types(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
+    """Every shared column's TYPE on the new cluster matches prod (the Prisma serving contract).
+
+    The counterpart to _check_schema_diff (which compares column NAMES): emit_ddl types columns
+    from the Databricks mart unless schema_spec overrides them, so a missing override silently
+    ships the wrong type (e.g. an election flag as boolean, a ZIP as integer). This fails the run
+    on any such drift instead of leaving it for functional tests. Only columns present on BOTH are
+    compared (name drift is _check_schema_diff's job); ACCEPTED_TYPE_DIVERGENCES are skipped.
+    """
+    name = f"schema_types_match:{table}"
+    try:
+        with connect_prod(cfg) as prod_conn:
+            prod_types = _column_types(prod_conn, table)
+    except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
+        log.error("validate.prod_unreachable", check=name, error=str(e))
+        return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
+    if not prod_types:
+        # Table absent from prod (e.g. DistrictStats) — nothing to diff against, like _check_schema_diff.
+        log.warning("validate.schema_types.skip", table=table, reason="table absent from prod")
+        return ValidationCheck(name=name, passed=True, details={"skipped": "table absent from prod"})
+    with connect_new(cfg, run_date, forward=forward) as conn:
+        new_types = _column_types(conn, table)
+    accepted = ACCEPTED_TYPE_DIVERGENCES.get(table, set())
+    mismatches = {
+        col: {"prod": prod_t, "new": new_types[col]}
+        for col, prod_t in prod_types.items()
+        if col not in accepted and col in new_types and new_types[col] != prod_t
+    }
+    return ValidationCheck(
+        name=name,
+        passed=not mismatches,
+        details={
+            "prod_cols": len(prod_types),
+            "mismatches": dict(sorted(mismatches.items())[:20]),
+            "accepted_divergences": sorted(accepted),
+        },
+    )
+
+
 def _check_indexes(
     cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
 ) -> ValidationCheck:
@@ -506,10 +570,17 @@ def _check_districtstats_buckets(
 
 
 def _to_markdown(manifest: ValidateManifest) -> str:
+    has_warnings = any(not c.passed and c.warn_only for c in manifest.checks)
+    if not manifest.all_passed:
+        status = "FAIL"
+    elif has_warnings:
+        status = "PASS (with warnings)"
+    else:
+        status = "PASS"
     lines: list[str] = [
         f"# Voter-DB Refresh Validation — {manifest.run_date}",
         "",
-        f"**Status:** {'PASS' if manifest.all_passed else 'FAIL'}",
+        f"**Status:** {status}",
         f"**Started:** {manifest.started_at.isoformat()}",
         f"**Finished:** {manifest.finished_at.isoformat() if manifest.finished_at else '—'}",
         "",
@@ -517,7 +588,8 @@ def _to_markdown(manifest: ValidateManifest) -> str:
         "",
     ]
     for c in manifest.checks:
-        lines.append(f"### {c.name} — {'PASS' if c.passed else 'FAIL'}")
+        status = "PASS" if c.passed else ("WARN" if c.warn_only else "FAIL")
+        lines.append(f"### {c.name} — {status}")
         lines.append("")
         for k, v in c.details.items():
             pretty = [*v[:10], "..."] if isinstance(v, list) and len(v) > 10 else v
@@ -565,8 +637,18 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
 
             checks: list[ValidationCheck] = [
                 *count_checks,
-                *_check_prod_row_counts(cfg, run_date, new_counts),
+                # A magnitude-tolerance shortfall is a WARNING, not a gate: it measures the refresh
+                # against the PREVIOUS serving cluster, so a legitimate L2 change (e.g. a voter-roll
+                # purge) reads as a shortfall. The hard load-integrity gate is
+                # row_counts_match_databricks (new cluster == the mart it was built from). But the
+                # fail-closed guards (missing inspect manifest / missing Voter baseline, which set an
+                # `error` detail) must STAY fatal — they signal the check couldn't run at all.
+                *(
+                    c.model_copy(update={"warn_only": True}) if "error" not in c.details else c
+                    for c in _check_prod_row_counts(cfg, run_date, new_counts)
+                ),
                 *[_check_schema_diff(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
+                *[_check_schema_types(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_indexes(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 *[_check_indexes_valid(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
                 _check_districtstats_buckets(cfg, run_date, forward=fwd),
@@ -590,7 +672,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     for c in checks:
         log.info("validate.check", name=c.name, passed=c.passed)
 
-    all_passed = all(c.passed for c in checks)
+    all_passed = all(c.passed for c in checks if not c.warn_only)
     # Write "failed" (not "complete") on a failed gate so the skip-guard does not
     # short-circuit a retry: an operator can re-run validate after fixing the data
     # without manually deleting the S3 manifest.
