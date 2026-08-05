@@ -70,7 +70,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["intermediate", "l2", "zip_code", "districts"],
     )
 
-    l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform_w_district_overrides")
+    l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # On incremental runs, identify zip codes with new voter records, then
     # recompute those zips against the full source population so voters_in_zip

@@ -28,7 +28,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     """
     Union all per-state Haystaq scores tables into a nationwide table.
 
-    This intentionally mirrors `int__l2_nationwide_uniform.py`:
+    This intentionally mirrors `int__l2_nationwide_uniform_raw_districts.py`:
     - explicit refs per state (literal `dbt.ref(...)`)
     - per-state incremental filtering by `loaded_at`
     """

@@ -61,7 +61,7 @@ with
             ) as block_geoid,
             lalvoterid,
             {{ get_l2_major_district_columns(use_backticks=true, cast_to_string=true) }}
-        from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
+        from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
 

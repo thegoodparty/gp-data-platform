@@ -8,7 +8,7 @@ select
     coalesce(
         voters.`City_Council_Commissioner_District`, assignments.l2_district_name
     ) as `City_Council_Commissioner_District`
-from {{ ref("int__l2_nationwide_uniform") }} as voters
+from {{ ref("int__l2_nationwide_uniform_raw_districts") }} as voters
 left join
     {{ ref("l2_manual_district_assignments") }} as assignments
     on assignments.l2_district_type = 'City_Council_Commissioner_District'

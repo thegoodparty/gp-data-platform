@@ -1,7 +1,7 @@
 -- Two assignment rows of the same district type must not both match one voter.
 -- The match tuple is sparse (null means "do not constrain"), so distinct rows
 -- can still overlap -- a county-wide row and a precinct row in that county both
--- match the precinct's voters. int__l2_nationwide_uniform_w_district_overrides
+-- match the precinct's voters. int__l2_nationwide_uniform
 -- left-joins per district type, so an overlap fans the voter file out and
 -- inflates every downstream count and export. Rows identical on the full tuple
 -- are excluded here; unique_combination_of_columns on the seed covers those.

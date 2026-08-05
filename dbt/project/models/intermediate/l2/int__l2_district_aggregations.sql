@@ -37,7 +37,7 @@ with
                                 use_backticks=true, cast_to_string=true
                             )
                         }}
-                    from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
+                    from {{ ref("int__l2_nationwide_uniform") }}
                     where
                         loaded_at > coalesce(
                             (select max(loaded_at) from {{ this }}), '1900-01-01'
@@ -62,7 +62,7 @@ with
             votertelephones_landlineformatted,
             loaded_at,
             {{ get_l2_district_columns(use_backticks=true, cast_to_string=true) }}
-        from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
+        from {{ ref("int__l2_nationwide_uniform") }}
     ),
     l2_data_districts as (
         select
@@ -137,7 +137,7 @@ with
     states_with_new_data as (
         {% if is_incremental() %}
             select distinct state_postal_code
-            from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }}
+            from {{ ref("int__l2_nationwide_uniform") }}
             where
                 loaded_at > coalesce(
                     (
@@ -178,7 +178,7 @@ with
                 end
             ) as unique_landlines,
             max(l2.loaded_at) as loaded_at
-        from {{ ref("int__l2_nationwide_uniform_w_district_overrides") }} l2
+        from {{ ref("int__l2_nationwide_uniform") }} l2
         {% if is_incremental() %}
             inner join
                 states_with_new_data s on l2.state_postal_code = s.state_postal_code

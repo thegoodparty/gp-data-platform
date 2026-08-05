@@ -76,8 +76,12 @@ models:
               - district_type
               - district_name
 
-  - name: int__l2_nationwide_uniform
-    description: "Combined uniform voter file data from all states"
+  - name: int__l2_nationwide_uniform_raw_districts
+    description: >
+      Combined uniform voter file data from all states, carrying L2's district
+      columns exactly as delivered. Consumers should read
+      int__l2_nationwide_uniform instead, which layers the manual district
+      assignments on top.
     columns:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
@@ -86,14 +90,13 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
-  - name: int__l2_nationwide_uniform_w_district_overrides
+  - name: int__l2_nationwide_uniform
     description: >
-      The voter file with districts L2 does not carry filled in from the
+      The voter file consumers read: int__l2_nationwide_uniform_raw_districts
+      with districts L2 does not carry filled in from the
       l2_manual_district_assignments seed. A view, so seed edits take effect
-      without rebuilding the voter file. Every consumer of the voter file reads
-      this rather than int__l2_nationwide_uniform, so the assignments reach both
-      the election-api district/officepicker models and the people-api voter
-      export.
+      without rebuilding the voter file, and so every existing consumer picks up
+      the assignments without repointing.
 
   - name: int__voter_turnout_lgbm_inference
     description: >

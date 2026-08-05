@@ -93,7 +93,8 @@ seeds:
     description: >
       Assigns voters to a district L2 does not carry, keyed on a sparse match
       tuple where a null column means "do not constrain". Applied by
-      int__l2_nationwide_uniform_w_district_overrides, which coalesces the
+      int__l2_nationwide_uniform, the view over
+      int__l2_nationwide_uniform_raw_districts that coalesces the
       assignment into the named district column so L2 stays authoritative
       wherever it supplies a value. Editing this seed does not bump voter
       loaded_at, so the loaded_at-incremental consumers

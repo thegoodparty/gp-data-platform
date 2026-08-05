@@ -612,7 +612,7 @@ def model(dbt, session):
     # load-bearing model_version (part of the election-api id). Fail loudly on disagreement.
     model_family = _assert_consistent_model_family(model_families)
 
-    l2 = dbt.ref("int__l2_nationwide_uniform_w_district_overrides")
+    l2 = dbt.ref("int__l2_nationwide_uniform")
     if state_allowlist:
         l2 = l2.filter(col("state_postal_code").isin(sorted(state_allowlist)))
     l2.createOrReplaceTempView("_l2")
