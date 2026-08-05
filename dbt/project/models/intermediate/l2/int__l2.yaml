@@ -146,6 +146,30 @@ models:
               arguments:
                 min_value: 0
                 inclusive: true
+      - name: ballots_projected_lower
+        description: >
+          Lower prediction bound (p25) on projected ballots. Applies the per-model
+          variance-stabilised residual model to the district's implied predicted rate
+          (see the turnout_prediction_intervals notebook):
+          round(clip(pred_rate + bias + q25*sqrt(p*(1-p)), 0, 1) * district_voters).
+          Always populated for this model (params are required at load).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: ballots_projected_upper
+        description: >
+          Upper prediction bound (p95) on projected ballots, the risk-relevant band for
+          win-number planning (turnout coming in above projection). Same formula as
+          ballots_projected_lower with q95. Always >= ballots_projected_lower.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: model_version
         description: "model_family value (load-bearing - part of the election-api projected_turnout id)."
         tests:

@@ -302,6 +302,24 @@ models:
         description: The projected turnout
         tests:
           - not_null
+      - name: projected_turnout_lower
+        description: >
+          Lower prediction bound (p25) on projected turnout. NULL for legacy static
+          feeds, which carry no interval (left NULL rather than coalesced to 0).
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: projected_turnout_upper
+        description: >
+          Upper prediction bound (p95) on projected turnout, the risk-relevant band
+          for win-number planning. NULL for legacy static feeds.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

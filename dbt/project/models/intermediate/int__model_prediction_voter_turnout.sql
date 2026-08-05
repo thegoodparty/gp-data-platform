@@ -147,7 +147,9 @@ with
             election_year,
             election_code,
             model_version,
-            inference_at
+            inference_at,
+            ballots_projected_lower,
+            ballots_projected_upper
         from {{ ref("int__voter_turnout_lgbm_inference") }}
         qualify
             row_number() over (
@@ -158,20 +160,30 @@ with
             = 1
     ),
     legacy_union as (
-        select *
-        from odd_year_projections
-        union all
-        select *
-        from even_year_projections_pre_2026
-        union all
-        select *
-        from projections_2026_v2
-        union all
-        select *
-        from projections_2027
-        union all
-        select *
-        from projections_2028
+        -- Legacy static feeds carry no prediction interval; emit NULL bounds so the
+        -- column set and ordering match the lgbm projections for the position-based
+        -- union all below (appended last on both sides to keep positions aligned).
+        select
+            legacy_projections.*,
+            cast(null as double) as ballots_projected_lower,
+            cast(null as double) as ballots_projected_upper
+        from
+            (
+                select *
+                from odd_year_projections
+                union all
+                select *
+                from even_year_projections_pre_2026
+                union all
+                select *
+                from projections_2026_v2
+                union all
+                select *
+                from projections_2027
+                union all
+                select *
+                from projections_2028
+            ) as legacy_projections
     )
 
 -- The lgbm model owns every natural key it emits; legacy fills the rest
