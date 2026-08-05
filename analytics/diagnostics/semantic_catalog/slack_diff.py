@@ -31,16 +31,19 @@ def changed_metric_names(before: list[MetricRecord], after: list[MetricRecord]) 
 
 
 def diff_records(before: list[MetricRecord], after: list[MetricRecord]) -> list[str]:
+    # Definition TEXT is deliberately not rendered anywhere in the thread: the
+    # definitions run long and buried the lifecycle signal. The thread reports
+    # WHICH metric changed and how; the PR diff is where you read the wording.
     a, b = _by_name(before), _by_name(after)
     lines: list[str] = []
     for name in sorted(b.keys() - a.keys()):
-        lines.append(f"• added: {name} — {b[name].definition}")
+        lines.append(f"• added: {name}")
     for name in sorted(a.keys() - b.keys()):
-        lines.append(f"• removed: {name} — {a[name].definition}")
+        lines.append(f"• removed: {name}")
     for name in sorted(a.keys() & b.keys()):
         old, new = a[name], b[name]
         if old.definition != new.definition:
-            lines.append(f"• changed: {name}\n    before: {old.definition}\n    after:  {new.definition}")
+            lines.append(f"• changed: {name} (definition updated)")
         if old.ratified != new.ratified:
             lines.append(f"• ratified: {name} — {old.ratified or 'pending'} → {new.ratified or 'pending'}")
         if old.retired != new.retired:
