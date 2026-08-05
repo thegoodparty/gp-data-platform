@@ -68,6 +68,7 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     assert win_names == {
         "win_users",
         "win_activated_users",
+        "win_active_candidates_30d",
         "goodparty_win_rate",
         "goodparty_cumulative_wins",
     }
