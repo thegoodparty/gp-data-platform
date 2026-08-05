@@ -125,6 +125,14 @@ def load_people_api():
     # partition scans on default stats. A bare ANALYZE covers every leaf partition; run last so
     # it reflects the fully loaded + resized cluster.
     analyze = _step("analyze", "analyze")
+    # Serving cutover: copy this run's connection string into the single serving parameter
+    # (people-db-connection-string-{env}), label the new version `build-{date}`, and move the
+    # `live` pointer people-api reads onto it. Runs last, after resize + analyze, so `live` only
+    # ever moves to a cluster on its serving class with fresh planner stats; promote itself refuses
+    # unless validate passed. people-api revalidates `:live` every ~5 min, so this is the cutover.
+    # promote touches only S3 + SSM (no cluster mutation), so it is deliberately NOT an upstream of
+    # scale_down_on_failure — a promote failure leaves the already-resized serving cluster intact.
+    promote = _step("promote", "promote")
     # Cost guard: a failed/aborted run after provision strands whatever writer instance class was
     # in effect (up to db.r8g.48xlarge post build_indexes, the same box validate now runs its heavy
     # per-state counts against) because `resize` never runs. Fires (trigger_rule=one_failed) if any
@@ -143,7 +151,7 @@ def load_people_api():
     # across resize — so correctness is identical either order. resize is then the clean final step.
     inspect_prod >> dbt_test_voter_gate >> [unload, provision]
     [unload, provision] >> create_schema
-    create_schema >> copy >> build_indexes >> validate >> resize >> analyze
+    create_schema >> copy >> build_indexes >> validate >> resize >> analyze >> promote
     # The guard's upstreams must include EVERY task after which a cluster can exist, including
     # `unload` (which runs parallel to provision) and `validate` (which now runs on the scaled-up
     # writer before resize — a validate failure must flip it to serverless, not strand it).

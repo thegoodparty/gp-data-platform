@@ -61,10 +61,6 @@ with suppress_logging("airflow"):
     # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
     _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
 
-_PROMOTE_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "promote_people_api.py")
-with suppress_logging("airflow"):
-    _PROMOTE_DAG = DagBag(dag_folder=_PROMOTE_DAG_FILE).dags.get("promote_people_api")
-
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -96,8 +92,9 @@ def test_dag_retries(dag_id, dag, fileloc):
 
 def test_load_people_api_sequence():
     """The loader DAG gates unload/provision on the dbt test and ends build_indexes -> validate ->
-    resize: validate runs BEFORE resize so its heavy per-state counts run on the big index instance,
-    not the small post-resize serving box.
+    resize -> analyze -> promote: validate runs BEFORE resize so its heavy per-state counts run on
+    the big index instance, and promote (the serving cutover) is the automated final step, after
+    resize + analyze, so `live` only ever moves to a resized cluster with fresh stats.
     """
     assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
@@ -106,6 +103,10 @@ def test_load_people_api_sequence():
     assert "validate" in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
     # resize must not be upstream of validate anymore (the old order is fully gone).
     assert "resize" not in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+    # promote is the automated final cutover: downstream of analyze, and it is the sink (no task
+    # depends on it).
+    assert "analyze" in {t.task_id for t in _LOADER_DAG.get_task("promote").upstream_list}
+    assert _LOADER_DAG.get_task("promote").downstream_list == []
 
 
 def test_load_people_api_scale_down_on_failure():
@@ -131,12 +132,7 @@ def test_load_people_api_scale_down_on_failure():
         "resize",
         "analyze",
     }
+    # promote runs after resize (cluster already serving-ready); a promote failure must NOT scale
+    # the writer down, so promote is deliberately not a scale_down upstream.
+    assert "promote" not in upstream_ids
     assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
-
-
-def test_promote_people_api_is_manual_only():
-    """The serving cutover is a separate, gated DAG: it must NEVER schedule itself (schedule=None
-    so it only runs on a manual trigger) and is just the single `promote` step."""
-    assert _PROMOTE_DAG is not None, f"promote_people_api failed to load from {_PROMOTE_DAG_FILE}"
-    assert _PROMOTE_DAG.schedule is None, "cutover DAG must be manual-trigger only (schedule=None)"
-    assert {t.task_id for t in _PROMOTE_DAG.tasks} == {"promote"}

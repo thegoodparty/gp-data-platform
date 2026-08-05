@@ -267,9 +267,10 @@ def label_ssm_parameter_version(cfg: BaseLoaderConfig, name: str, version: int, 
     """Attach version label(s) to a specific SSM parameter version.
 
     A version label is the human-readable anchor for which refresh a serving-parameter version
-    came from (traceability + rollback). A label lives on exactly one version at a time, so
-    re-applying an existing label moves it. SSM rejects labels that begin with a digit or with
-    `aws`/`ssm`, so a bare date stamp is invalid — callers prefix it (e.g. `refresh-<date>`).
+    came from (traceability + rollback), or a moving pointer to the version being served. A label
+    lives on exactly one version at a time, so re-applying an existing label moves it (this is how
+    the serving `live` pointer is advanced). SSM rejects labels that begin with a digit or with
+    `aws`/`ssm`, so a bare date stamp is invalid — callers prefix it (e.g. `build-<date>`).
     """
     ssm(cfg).label_parameter_version(Name=name, ParameterVersion=version, Labels=labels)
 

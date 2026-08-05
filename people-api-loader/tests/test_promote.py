@@ -1,5 +1,5 @@
-"""promote: manual serving cutover — copy the run's conn string into the single serving
-parameter, label the new version `refresh-{date}`, and refuse unless validate passed."""
+"""promote: serving cutover — copy the run's conn string into the single serving parameter, label
+the new version `build-{date}` and move the `live` pointer to it, and refuse unless validate passed."""
 
 from __future__ import annotations
 
@@ -56,13 +56,14 @@ def test_promote_puts_serving_param_and_labels_version(monkeypatch: pytest.Monke
     # Reads the dated param provision wrote, writes the un-dated serving param.
     assert calls["get"] == "people-db-connection-string-prod-20260728"
     assert calls["put"] == ("people-db-connection-string-prod", "postgresql://serving")
-    # Labels the exact version the put produced; the label is date-stamped but prefixed
-    # (a bare digit-leading label is rejected by SSM).
-    assert calls["label"] == ("people-db-connection-string-prod", 7, ["refresh-20260728"])
+    # Labels the exact version the put produced: the per-refresh anchor `build-{date}` (prefixed,
+    # since a bare digit-leading label is rejected by SSM) and the moving `live` pointer. Applying
+    # `live` here moves it off the prior version — that is the cutover.
+    assert calls["label"] == ("people-db-connection-string-prod", 7, ["build-20260728", "live"])
     assert manifest.status == "complete"
     assert manifest.serving_param == "people-db-connection-string-prod"
     assert manifest.version == 7
-    assert manifest.label == "refresh-20260728"
+    assert manifest.labels == ["build-20260728", "live"]
 
 
 def test_promote_refuses_without_green_validate(monkeypatch: pytest.MonkeyPatch) -> None:
