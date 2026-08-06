@@ -94,6 +94,7 @@ VOTER_COLUMN_LIST: list = [
     "VoterParties_Change_Changed_Party",
     "Voter_Status",
     "Voter_Status_UpdatedAt",
+    "Voter_Turnout_Probability",
     "VoterTelephones_CellConfidenceCode",
     "VoterTelephones_CellPhoneFormatted",
     "VoterTelephones_LandlineConfidenceCode",

@@ -30,6 +30,10 @@ the two failure modes the unit tests can't:
    integrity gate now fails the prep step outright if any md link inside an
    arm doesn't resolve, so a prepped arm can't reach a run with one.)
 
+Both probes passed 2026-07-24: judge on the smoke batch graded 2/2 with no
+failures, and a full-arm headless run of q01 (batch `probe-skill`) invoked
+analytics-process + win-analytics-knowledge with zero permission denials.
+
 ## No-decision gates
 
 **The current harness must not produce decision-bearing verdicts.** Calibration
@@ -51,9 +55,13 @@ closed:
    an answer actually used) is deferred to its own follow-up ticket under
    DATA-2142; the interim is the noninteractive contract plus the
    pre-first-batch skill-engagement probe (checklist item 2 above).
-4. No evidence artifacts or execution metadata — source checks are transcript
-   greps, judge output is not persisted with provenance, and rule 3 overhead
-   claims have no token/cost data behind them. Gate: ClickUp 86ajmykh4.
+4. Evidence artifacts and execution metadata — partially closed 2026-07-24:
+   run_matrix now records per-run cost/tokens/turns into state.json (surfaced
+   as scores.csv columns and a per-arm cost section in report.md), and judge
+   verdicts persist to `<run_id>.judge.json` with model, key id, and answer
+   hash (reused on regrade; `--rejudge` forces). Still open under ClickUp
+   86ajmykh4: per-check evidence records (source checks are still transcript
+   greps) and the immutable BatchConfig bundle.
 5. Protocol items (randomized/paired schedule, rule 2 effect size, rule 3
    non-inferiority margin, holdout enforcement, frozen snapshot) are
    unimplemented — verdicts are pre-registered directionally but not yet
@@ -88,6 +96,32 @@ lag the layers under test:
 After the branch merges, the default (`main`) is correct and the flag can be
 dropped.
 
+## Ablation arms (post-hoc, 2026-07-25 — exploratory, not pre-registered)
+
+The 2026-07-25 batch showed the process layer went un-invoked in 20/24 full
+runs (skill loaded 4/24, reviewer agents dispatched 1/72), so full-vs-knowledge
+measured routing, not efficacy. Three additional arms force engagement via an
+arm-root `PROCESS_MANDATE.md` (written by prep_arms, layer `mandate`; the floor
+carries an inert pointer to it):
+
+- `forced_full` — knowledge + process docs + reviewer agents + mandate to use all of it
+- `knowledge_docs` — knowledge + process docs only (mandate: follow stages, no reviewers)
+- `knowledge_reviewers` — knowledge + reviewer agents only (mandate: dispatch both on the draft)
+
+Cancellation logic: if any process component helps and another cancels it, at
+least one component arm must deviate from both knowledge and forced_full —
+split a component further only when that pattern shows up. Build and run them
+explicitly (they are never built or run by default):
+
+    uv run python diagnostics/quality_bench/prep_arms.py --arms forced_full knowledge_docs knowledge_reviewers
+    uv run python diagnostics/quality_bench/run_matrix.py --batch <date>-ablation \
+        --arms forced_full knowledge_docs knowledge_reviewers \
+        --questions q03_win_pit q04_win_denominator q05_serve_metric q06_serve_overlap q07_serve_denominator \
+        --reps 6
+
+Report ablation results as exploratory alongside (never inside) the
+pre-registered three-arm verdict.
+
 ## Invocation
 
 Three CLIs in this directory (`prep_arms.py`, `run_matrix.py`, `grade.py`)
@@ -108,6 +142,15 @@ from `analytics/` — no `PYTHONPATH` fiddling or `-m` invocation needed.
 
 Outputs: `results/<batch>/scores.csv`, `results/<batch>/report.md` (gitignored).
 Resume: rerunning run_matrix with the same --batch skips completed runs.
+
+Before trusting a batch verdict, run the isolation spot-check (no-decision
+gate 2 interim) and record acceptance in writing on the ticket:
+
+    uv run python diagnostics/quality_bench/spot_check.py --batch 2026-07-20
+
+It scans every run transcript for filesystem access outside the run's own
+dir/HOME/tmp/system prefixes and exits 1 with per-run flag lines if any need
+review. Flags are review items, not verdicts.
 
 The real-batch default model is `claude-fable-5` (both `run_matrix.py` and
 `grade.py --judge` default to it). A smoke run can use a cheaper `--model`

@@ -39,20 +39,45 @@ def test_from_env_requires_s3_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_from_env_db_conn_param_defaults_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOADER_DB_CONN_PARAM", raising=False)
-    monkeypatch.setenv("LOADER_ENV", "qa")
+    monkeypatch.setenv("ENVIRONMENT", "qa")
     assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-qa"
 
 
-def test_from_env_db_conn_param_defaults_to_dev(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ("LOADER_DB_CONN_PARAM", "LOADER_ENV"):
+def test_from_env_requires_environment_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ENVIRONMENT has no silent default: an unset value on prod is exactly how prod ran
+    # as dev, so from_env() must fail fast rather than fall back.
+    for var in ("LOADER_DB_CONN_PARAM", "ENVIRONMENT"):
         monkeypatch.delenv(var, raising=False)
-    assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-dev"
+    with pytest.raises(RuntimeError, match="ENVIRONMENT is not set"):
+        LoaderConfig.from_env()
 
 
 def test_from_env_db_conn_param_full_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LOADER_ENV", "prod")
+    monkeypatch.setenv("ENVIRONMENT", "prod")
     monkeypatch.setenv("LOADER_DB_CONN_PARAM", "custom/param/name")
     assert LoaderConfig.from_env().db_conn_param == "custom/param/name"
+
+
+def test_environment_var_drives_conn_param_tag_and_cluster_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A single ENVIRONMENT var keys the SSM connection-string param, the Environment
+    # tag on loader-created resources, and the dated cluster identifiers, so they can
+    # never drift out of sync.
+    monkeypatch.delenv("LOADER_DB_CONN_PARAM", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    cfg = LoaderConfig.from_env()
+    assert cfg.db_conn_param == "people-db-connection-string-prod"
+    assert cfg.tags["Environment"] == "prod"
+    assert cfg.new_cluster_id("20260707") == "gp-people-db-20260707-prod"
+
+
+def test_unrecognized_environment_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A typo must fail loudly, not silently build a wrong SSM param / tag that later
+    # surfaces as an opaque AccessDenied.
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="not a recognized deployment environment"):
+        LoaderConfig.from_env()
 
 
 def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,14 +86,14 @@ def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch)
     # unless the dated identifiers carry the env. The conn param is already env-scoped; these four
     # must match. Convention: gp-people-db-{date}-{env}[-role].
     monkeypatch.setenv("LOADER_S3_BUCKET", "gp-people-loader-us-west-2")
-    monkeypatch.setenv("LOADER_ENV", "dev")
+    monkeypatch.setenv("ENVIRONMENT", "dev")
     cfg = LoaderConfig.from_env()
     assert cfg.new_cluster_id("20260707") == "gp-people-db-20260707-dev"
     assert cfg.new_writer_instance_id("20260707") == "gp-people-db-20260707-dev-writer"
     assert cfg.new_load_param_group("20260707") == "gp-people-db-20260707-dev-load"
     assert cfg.new_serve_param_group("20260707") == "gp-people-db-20260707-dev-serve"
     # prod uses the same builders with a different env, so the names cannot collide.
-    monkeypatch.setenv("LOADER_ENV", "prod")
+    monkeypatch.setenv("ENVIRONMENT", "prod")
     assert LoaderConfig.from_env().new_cluster_id("20260707") == "gp-people-db-20260707-prod"
 
 

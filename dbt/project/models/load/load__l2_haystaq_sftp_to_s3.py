@@ -241,6 +241,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
+        # Stateful sync log: a full refresh re-lists SFTP and keeps a row only for states with a
+        # brand-new file, silently dropping the accumulated history for every other state (and
+        # orphaning their downstream source tables). Pin full_refresh off so --full-refresh, incl.
+        # the on-merge state:modified+ build, can never wipe it.
+        full_refresh=False,
         tags=["l2", "haystaq", "sftp", "s3", "load"],
     )
 

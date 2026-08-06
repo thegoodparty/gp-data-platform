@@ -15,6 +15,7 @@ with
             ('pro_upgrade_complete'),
             ('Voter Outreach - Campaign Completed'),
             ('Dashboard - Candidate Dashboard Viewed'),
+            ('Dashboard - Campaign Plan Viewed'),
             ('Serve Onboarding - Getting Started Viewed'),
             ('Serve Onboarding - Constituency Profile Viewed'),
             ('Serve Onboarding - Poll Value Props Viewed'),

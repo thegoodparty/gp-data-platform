@@ -5,6 +5,9 @@ warehouse. Everything you need to connect is below. Answer the question you are
 given; do not ask clarifying questions (no user is present) — resolve ambiguity
 yourself and state every resolution in the assumptions ledger.
 
+If a `PROCESS_MANDATE.md` exists at the repo root, read it before anything else
+and follow it; its instructions are mandatory.
+
 ## Databricks access
 
 Auth is already configured on this machine (Databricks CLI profile). Run SQL
@@ -180,9 +183,10 @@ or query `goodparty_data_catalog.information_schema.columns`.
 | m_people_api__district | VIEW | 6 |
 | m_people_api__districtstats | MANAGED | 5 |
 | m_people_api__districtvoter | MANAGED | 7 |
-| m_people_api__voter | MANAGED | 353 |
+| m_people_api__voter | MANAGED | 354 |
 | metricflow_time_spine | MANAGED | 1 |
 | nicknames | MANAGED | 3 |
+| seed_civics_election_2025_position_nullouts | MANAGED | 6 |
 | serve_agent_voters_columns | MANAGED | 6 |
 | snapshot__hubspot_api_companies | MANAGED | 534 |
 | snapshot__hubspot_api_contacts | MANAGED | 893 |

@@ -28,6 +28,7 @@ from loader.core.manifest.io import (
 from loader.core.manifest.models import ManifestBase, Status
 
 __all__ = [
+    "AnalyzeManifest",
     "CopyManifest",
     "CopyTableResult",
     "IndexManifest",
@@ -153,9 +154,17 @@ class ResizeManifest(ManifestBase):
     deletion_protection: bool
 
 
+class AnalyzeManifest(ManifestBase):
+    step: Literal["analyze"] = "analyze"
+    # public base tables + leaf partitions with fresh manual-ANALYZE stats after the run.
+    tables_analyzed: int
+
+
 class ValidationCheck(BaseModel):
     name: str
     passed: bool
+    # A failing warn_only check is surfaced (WARN) but does NOT set all_passed=False / block handoff.
+    warn_only: bool = False
     details: dict = Field(default_factory=dict)
 
 

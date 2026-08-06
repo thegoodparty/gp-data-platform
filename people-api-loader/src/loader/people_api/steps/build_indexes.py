@@ -1,4 +1,4 @@
-"""Step 5 — build the PK + indexes on the unified Voter table, then ANALYZE (DATA-1853).
+"""Step 5 — build the PK + indexes on the unified Voter table, then VACUUM (ANALYZE).
 
 Reads the PK, the LALVOTERID unique, and the plain indexes from `schema_spec`
 (the pg_catalog-sourced `_serving_seed`) and applies them to the LIST-partitioned
@@ -98,8 +98,12 @@ def _apply_session(cur: psycopg.Cursor) -> None:
 _GEOM_TABLE = "Voter"
 _ADD_GEOM_COLUMN_SQL = (
     f'ALTER TABLE public."{_GEOM_TABLE}" ADD COLUMN IF NOT EXISTS "geom" geometry(Point, 4326) '
-    'GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint("Residence_Addresses_Longitude", '
-    '"Residence_Addresses_Latitude"), 4326)) STORED'
+    # lat/long are TEXT in the serving schema (they match the Prisma contract); ST_MakePoint needs
+    # float8, and Postgres has no implicit text->float8 cast. copy leaves a missing value as '' (not
+    # NULL) in a TEXT column, and ''::float8 errors, so NULLIF('') first — a missing coordinate then
+    # yields a NULL geom rather than failing the generated-column evaluation for the whole table.
+    "GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(NULLIF(\"Residence_Addresses_Longitude\", '')::float8, "
+    "NULLIF(\"Residence_Addresses_Latitude\", '')::float8), 4326)) STORED"
 )
 
 
@@ -297,10 +301,20 @@ def _order_children_largest_first(
     return sorted(units, key=lambda u: partition_bytes.get(u[1], 0), reverse=True)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None) -> None:
+def _vacuum_analyze(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> None:
+    """VACUUM (ANALYZE) `table`, subsuming a plain ANALYZE.
+
+    A freshly bulk-loaded table has an empty visibility map, so `count(*)` and index-only scans fall
+    back to full heap scans. `VACUUM` sets the visibility map (enabling index-only scans); `ANALYZE`
+    refreshes planner stats. `VACUUM` requires autocommit (it cannot run inside a transaction block);
+    `connect_new` defaults to `autocommit=True`, which this relies on — do not pass `autocommit=False`
+    here.
+    """
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
-        cur.execute(f'ANALYZE public."{table}"')  # ty: ignore[no-matching-overload]
-        log.info("indexes.analyzed", table=table)
+        cur.execute(f'VACUUM (ANALYZE) public."{table}"')  # ty: ignore[no-matching-overload]
+        log.info("indexes.vacuum_analyzed", table=table)
 
 
 def _l2type_coverage(
@@ -525,8 +539,13 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
                 # 2. Flat table: plain indexes build directly on the table (no partitions to walk).
                 _build_in_parallel(_create_plain_flat, plain_idxs)
 
-            # 3. ANALYZE this table.
-            _analyze(cfg, run_date, table, forward=fwd)
+            # 3. VACUUM (ANALYZE) this table: on a partitioned parent (Voter) the VACUUM recurses to
+            #    every leaf partition and sets its visibility map (so serving-side count(*) /
+            #    index-only scans skip the full heap scan a freshly bulk-loaded partition would
+            #    otherwise force). The parent-level ANALYZE refreshes only the parent's inheritance
+            #    stats, NOT each leaf partition's per-column stats — the final `analyze` step (a
+            #    database-wide ANALYZE) covers those.
+            _vacuum_analyze(cfg, run_date, table, forward=fwd)
 
             analyzed_tables.append(table)
             constraints_added.extend(p.constraint for p in pks)

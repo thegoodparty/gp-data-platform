@@ -91,6 +91,10 @@ PERFORMANCE_PERCENTAGE_COLUMNS = [
 # leading zeros are preserved (e.g. a New Jersey ZIP 08731 is not stored as 8731).
 IDENTIFIER_STRING_COLUMNS = [
     "Residence_Addresses_Zip",
+    "Voters_FIPS",
+    "Residence_Addresses_ZipPlus4",
+    "Mailing_Addresses_Zip",
+    "Mailing_Addresses_ZipPlus4",
     "Precinct",
     "State_House_District",
     "State_Legislative_District",

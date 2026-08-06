@@ -17,13 +17,13 @@ canaries:
   - layer: knowledge
     source: analytics/lib/serve_analysis.py
     phrase: "Implements the **broad Serve engagement** definition"
-  - layer: process
+  - layer: process-docs
     source: .claude/skills/analytics-process/SKILL.md
     phrase: "route the executed analysis through the two adversarial reviewer agents"
-  - layer: process
+  - layer: reviewers
     source: .claude/agents/product-data-scientist.md
     phrase: "from a methodological-rigor perspective"
-  - layer: process
+  - layer: reviewers
     source: .claude/agents/product-manager.md
     phrase: "from a usefulness and clarity perspective"
   - layer: knowledge

@@ -69,11 +69,14 @@ mandatory_sources:
 
 # Confidently-wrong claims observed/anticipated during the gold run:
 # gating the count on the stored onboarding flags, which are new-flow-blind
-# post-2026-05-07 (any such filter is wrong by construction), and reading a
-# creation timestamp column that does not exist on users_win_base.
+# post-2026-05-07 (any such filter is wrong by construction). A tripwire on
+# the nonexistent users_win_base.user_created_at column was DROPPED 2026-07-25
+# (#671 rule): correct answers quote the gotcha doc naming that column as
+# nonexistent, so the bare-name pattern is negation-blind — 2 false positives
+# on judge-clean runs in the 2026-07-25 batch, and a run actually using the
+# column cannot produce numbers at all.
 severity1_patterns:
   - '(?i)where\s+(not\s+)?(is_onboarded|has_completed_onboarding_flow)'
-  - 'users_win_base\.user_created_at'
 
 # Names must exactly match required_resolutions keys: check_assumptions and
 # check_resolutions read the same answer-ledger fork names (grading.py).

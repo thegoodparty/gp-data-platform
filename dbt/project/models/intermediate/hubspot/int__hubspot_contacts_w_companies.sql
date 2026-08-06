@@ -1,33 +1,36 @@
+-- Incremental key is contact_id alone (the output grain: ranked_matches keeps a
+-- single row per contact_id). gp_candidacy_id is a hash of mutable contact
+-- fields, so including it in the key would orphan the prior row -- leaving a
+-- stale company_id-null row -- whenever a contact's identity changes, e.g. when
+-- a company association enriches the contact.
 {{
     config(
         materialized="incremental",
-        unique_key=["contact_id", "gp_candidacy_id"],
+        unique_key="contact_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
 }}
 
 with
-    extracted_engagements as (
-        select distinct
-            tbl_companies.id as company_id,
-            regexp_extract(
-                tbl_engagements.associations_companyids, '\\[(\\d+)\\]', 1
-            ) as company_id_association,
-            regexp_extract(
-                tbl_engagements.associations_contactids, '\\[(\\d+)\\]', 1
-            ) as contact_id_association
-        from {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
-        left join
-            {{ ref("stg_airbyte_source__hubspot_api_engagements") }} as tbl_engagements
-            on tbl_companies.id
-            = regexp_extract(tbl_engagements.associations_companyids, '\\[(\\d+)\\]', 1)
-        where tbl_companies.id is not null
+    contact_company_pairs as (
+        -- HubSpot's real contact->company association, already synced as an
+        -- array on the contact. Explode to one row per (contact, company);
+        -- ranked_matches below collapses multi-company contacts back to one.
+        select
+            tbl_contacts.id as contact_id, explode(tbl_contacts.companies) as company_id
+        from {{ ref("int__hubspot_contacts") }} as tbl_contacts
+        where tbl_contacts.companies is not null
     ),
     joined_data as (
         select
             tbl_contacts.id as contact_id,
-            tbl_companies.id as company_id,
+            -- Carry the association's company_id from the contact side, not the
+            -- enrichment join: HubSpot can associate a company that never synced
+            -- into the companies source, and sourcing from tbl_companies.id would
+            -- null out (drop) that real association. Enrichment fields below stay
+            -- null when the company row is absent, which is accurate.
+            tbl_pairs.company_id as company_id,
             {{
                 generate_salted_uuid(
                     fields=[
@@ -181,7 +184,8 @@ with
             tbl_contacts.created_at,
             tbl_contacts.updated_at,
             coalesce(
-                tbl_gp_db_campaign.details:dob::string, tbl_contacts.birth_date
+                try_cast(tbl_gp_db_campaign.details:dob::string as date),
+                tbl_contacts.birth_date
             ) as birth_date,
             tbl_gp_db_campaign.details:dob::string as birth_date_gp_db,
             coalesce(
@@ -201,8 +205,6 @@ with
                 tbl_companies.verified_candidates
             ) as verified_candidate,
             coalesce(tbl_contacts.is_pledged, tbl_companies.is_pledged) as is_pledged,
-            tbl_engagements.company_id_association,
-            tbl_engagements.contact_id_association,
             tbl_gp_db_campaign.id as product_campaign_id,
 
             -- assessments
@@ -229,11 +231,10 @@ with
 
         from {{ ref("int__hubspot_contacts") }} as tbl_contacts
         left join
-            extracted_engagements as tbl_engagements
-            on tbl_contacts.id = tbl_engagements.contact_id_association
+            contact_company_pairs as tbl_pairs on tbl_contacts.id = tbl_pairs.contact_id
         left join
             {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
-            on tbl_companies.id = tbl_engagements.company_id_association
+            on tbl_companies.id = tbl_pairs.company_id
         left join
             {{ ref("clean_states") }} as tbl_states_company
             on trim(upper(tbl_companies.state)) = tbl_states_company.state_raw
@@ -253,10 +254,7 @@ with
             row_number() over (
                 partition by contact_id
                 order by email_match desc, name_match desc, updated_at desc
-            ) as row_rank,
-            row_number() over (
-                partition by gp_candidacy_id order by updated_at desc
-            ) as row_rank_gp_candidacy_id
+            ) as row_rank
         from joined_data
     )
 
@@ -322,12 +320,14 @@ select
     instagram_handle_gp_db,
     population,
     email_contacts,
-    company_id_association,
-    contact_id_association,
     email_match,
     name_match,
     win_number,
     win_number_model,
     product_campaign_id
+-- One row per contact (best company match). Dedup to the candidacy grain
+-- happens in the downstream candidacy/candidate marts, which each re-rank by
+-- gp_candidacy_id; deduping here too would silently drop a contact whenever two
+-- distinct contacts hash to the same gp_candidacy_id.
 from ranked_matches
-where 1 = 1 and row_rank = 1 and row_rank_gp_candidacy_id = 1
+where row_rank = 1

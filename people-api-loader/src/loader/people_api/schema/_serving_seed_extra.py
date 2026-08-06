@@ -10,13 +10,16 @@ from __future__ import annotations
 
 from loader.people_api.schema.index_specs import IndexDef
 
-# people-api name-search indexes, carried here because prisma migrations don't run on
-# loader-built clusters. lower() expressions must match people-api's emitted SQL exactly or the
-# planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%'
-# uses them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
-# from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves the
-# substring path no b-tree can. pg_trgm is installed by create_schema and build_indexes (each step
-# is independently re-runnable).
+# Serving-only performance indexes, carried here because they don't come from a prisma migration
+# that runs on loader-built clusters. Two families:
+#   1. people-api name-search (first/last name): lower() expressions must match people-api's emitted
+#      SQL exactly or the planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%' uses
+#      them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
+#      from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves
+#      the substring path no b-tree can.
+#   2. party-registration substring filter (Parties_Description): a trgm GIN serving the gp-api
+#      contacts ILIKE audience filter (see the IndexDef comment below).
+# pg_trgm is installed by create_schema and build_indexes (each step is independently re-runnable).
 EXTRA_INDEXES: list[IndexDef] = [
     IndexDef(
         table="Voter",
@@ -58,6 +61,24 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=['lower("LastName")'],
         where=None,
     ),
+    # Party-registration substring filter. gp-api compiles a party audience to
+    # `"Parties_Description" ILIKE '%<substring>%'` (case-insensitive, ORed per rule —
+    # gp-api/src/peopleDb/utils/filters.sql.util.ts). The generated seed only carries a
+    # plain b-tree on this column (Voter_Parties_Description_idx), which a substring ILIKE
+    # can't use, so the contacts count/overlap-count/list-detail aggregates fall back to a
+    # full Voter scan and hit the app's statement-timeout fence. A trgm GIN on the raw column
+    # serves ILIKE directly (pg_trgm handles the case-folding), the same substring path the
+    # name-search trgm indexes above serve. On the raw column, not lower(), to match the
+    # emitted SQL exactly. Carried here (not the generated seed) because it doesn't yet exist
+    # on the extraction-source cluster; build_indexes re-issues it on every rebuild.
+    IndexDef(
+        table="Voter",
+        name="Voter_Parties_Description_trgm_idx",
+        sql='CREATE INDEX "Voter_Parties_Description_trgm_idx" ON public."Voter" USING gin ("Parties_Description" gin_trgm_ops);',
+        unique=False,
+        columns=["Parties_Description"],
+        where=None,
+    ),
     # Geospatial lookups on the residence coordinates. GiST is the standard PostGIS point index:
     # fast to build in bulk and fast to probe (unlike BRIN, which needs spatially-sorted data). The
     # "geom" column it indexes is created by build_indexes (postgis + the generated column) before
@@ -76,6 +97,35 @@ EXTRA_INDEXES: list[IndexDef] = [
         sql='CREATE INDEX "Voter_hf_most_important_policy_item_idx" ON public."Voter" USING btree ("hf_most_important_policy_item");',
         unique=False,
         columns=["hf_most_important_policy_item"],
+        where=None,
+    ),
+    # DistrictVoter district lookups. The generated seed carries only the PK
+    # btree(district_id, voter_id, "State"); a `WHERE district_id = X [AND "State" = 'S']` scan can
+    # use it (district_id leads) but reads ~130x more index pages than a dedicated narrow index —
+    # ~83k buffers vs ~640 for a single ~700k-member district (measured). The wide PK can't
+    # deduplicate (every entry has a distinct voter_id); over a district's rows a narrow index shares
+    # one district_id, so btree dedup collapses it to a tiny posting list. Invisible warm (all cache
+    # hits) and to the planner (it costs both alike), but it drives cold / pool-pressure district
+    # timeouts. Both families, deliberately:
+    #   - (district_id, "State"): the one the planner actually picks for the app's queries, which
+    #     always carry the district's "State" — a plain (district_id) loses to the PK there because
+    #     the PK also contains "State". "State" is constant within a LIST partition, so this still
+    #     dedups (~430 MB).
+    #   - (district_id): covers any district_id-only pattern not carrying "State".
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_State_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_State_idx" ON public."DistrictVoter" USING btree (district_id, "State");',
+        unique=False,
+        columns=["district_id", "State"],
+        where=None,
+    ),
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_idx" ON public."DistrictVoter" USING btree (district_id);',
+        unique=False,
+        columns=["district_id"],
         where=None,
     ),
 ]

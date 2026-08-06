@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
 from airflow.providers.standard.operators.bash import BashOperator
-from airflow.sdk import dag
+from airflow.sdk import Param, dag
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -97,6 +97,23 @@ def _step(
     is_paused_upon_creation=True,
     default_args={"retries": 3, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader"],
+    # Surfaced in the manual-trigger form so the operator makes a conscious choice each run,
+    # rather than a forgettable deployment-wide env var. Default checked = normal, tagged behavior;
+    # @monthly scheduled runs use that default. Uncheck it on a manual trigger to omit the tag.
+    params={
+        "set_ssm_env_tag": Param(
+            True,
+            type="boolean",
+            title="Tag the connection-string SSM parameter with Environment",
+            description=(
+                "Leave checked for normal runs: provision tags "
+                "people-db-connection-string-{env}-{date} with Environment. Uncheck as a bring-up "
+                "escape hatch to write it WITHOUT the Environment tag, so a human role denied by "
+                "ResourceTag/Environment=prod can read the connection string. RDS resources always "
+                "get the full tag set."
+            ),
+        ),
+    },
 )
 def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
@@ -113,12 +130,24 @@ def load_people_api():
         timeout=1800,
     )
     unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only loader step that reaches Databricks
-    provision = _step("provision", "provision")
+    # The trigger param drives a provision CLI flag (not an env var): when unchecked it renders
+    # --no-ssm-env-tag for this run only, so provision omits the Environment tag on the SSM param.
+    provision = _step(
+        "provision",
+        "provision",
+        extra_args="{% if not params.set_ssm_env_tag %}--no-ssm-env-tag{% endif %}",
+    )
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")
     build_indexes = _step("build_indexes", "build-indexes")
     validate = _step("validate", "validate")
     resize = _step("resize", "resize")
+    # Final step: a database-wide ANALYZE. build_indexes' per-parent VACUUM (ANALYZE) sets the
+    # leaf partitions' visibility maps but leaves their per-partition planner stats empty
+    # (parent-level ANALYZE only does the parent's inheritance stats), so the planner serves
+    # partition scans on default stats. A bare ANALYZE covers every leaf partition; run last so
+    # it reflects the fully loaded + resized cluster.
+    analyze = _step("analyze", "analyze")
     # Cost guard: a failed/aborted run after provision strands whatever writer instance class was
     # in effect (up to db.r8g.48xlarge post build_indexes, the same box validate now runs its heavy
     # per-state counts against) because `resize` never runs. Fires (trigger_rule=one_failed) if any
@@ -137,7 +166,7 @@ def load_people_api():
     # across resize — so correctness is identical either order. resize is then the clean final step.
     inspect_prod >> dbt_test_voter_gate >> [unload, provision]
     [unload, provision] >> create_schema
-    create_schema >> copy >> build_indexes >> validate >> resize
+    create_schema >> copy >> build_indexes >> validate >> resize >> analyze
     # The guard's upstreams must include EVERY task after which a cluster can exist, including
     # `unload` (which runs parallel to provision) and `validate` (which now runs on the scaled-up
     # writer before resize — a validate failure must flip it to serverless, not strand it).
@@ -145,7 +174,16 @@ def load_people_api():
     # succeeds, the downstream tasks go UPSTREAM_FAILED (which does NOT satisfy one_failed), so
     # unload (and every other task below) must feed the guard directly or the stranded cluster is
     # missed.
-    [provision, unload, create_schema, copy, build_indexes, validate, resize] >> scale_down_on_failure
+    [
+        provision,
+        unload,
+        create_schema,
+        copy,
+        build_indexes,
+        validate,
+        resize,
+        analyze,
+    ] >> scale_down_on_failure
 
 
 load_people_api()

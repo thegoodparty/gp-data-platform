@@ -13,6 +13,7 @@ fetched and decrypted at connect time. Nothing connection-related lives in this 
 
 from __future__ import annotations
 
+import urllib.parse
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
@@ -21,11 +22,45 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from loader.core.aws import get_ssm_parameter
+from loader.core.log import get_logger
 from loader.people_api.bastion import open_tunnel
 from loader.people_api.config import LoaderConfig
 
 if TYPE_CHECKING:
     from psycopg import Connection
+
+log = get_logger(__name__)
+
+# libpq has no `schema` connection parameter — the search_path form is
+# `options=-csearch_path=` — so a stray `?schema=` in an SSM connection string makes psycopg
+# raise an opaque "invalid URI query parameter" error. The loader's Present-cluster baseline
+# reads the default (public) schema, so such params are dropped rather than honored.
+_UNSUPPORTED_QUERY_KEYS = frozenset({"schema"})
+
+
+def _conn_str(cfg: LoaderConfig, param_name: str) -> str:
+    """Fetch an SSM connection string, dropping any libpq-unsupported query params.
+
+    Postgres URLs (`postgresql://…?schema=green`) are re-emitted without the unsupported keys;
+    keyword=value strings and URLs without those keys are returned unchanged.
+    """
+    conn_str = get_ssm_parameter(cfg, param_name)
+    parts = urllib.parse.urlsplit(conn_str)
+    if not parts.scheme.startswith("postgres") or not parts.query:
+        return conn_str
+    pairs = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    kept = [(k, v) for k, v in pairs if k not in _UNSUPPORTED_QUERY_KEYS]
+    if len(kept) == len(pairs):
+        return conn_str
+    log.warning(
+        "db.dropped_unsupported_conn_params",
+        param=param_name,
+        dropped=sorted({k for k, _ in pairs if k in _UNSUPPORTED_QUERY_KEYS}),
+    )
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(kept), parts.fragment)
+    )
+
 
 # TCP keepalives so a dropped connection (e.g. a severed bastion tunnel) surfaces as an error
 # in ~1 min rather than hanging indefinitely on a response that never arrives. connect_timeout
@@ -65,7 +100,14 @@ def _connect(
     bastion would otherwise each open their own tunnel and flood sshd MaxStartups; sharing one
     forward multiplexes them as channels on a single SSH transport. Ignored when no bastion.
     """
-    conninfo = make_conninfo(get_ssm_parameter(cfg, param_name), **_KEEPALIVE_KW)
+    # Enforce TLS for the loader's OWN connections: the dated connection-string params no longer
+    # embed sslmode (consumers set their own), but the master password lives in the URL, so default
+    # to `require` when the string specifies no sslmode. Never override a stricter one already set
+    # (e.g. a verify-* on the Present-cluster param), and psycopg still validates the RDS host's SNI
+    # through the tunnel below.
+    conn_str = _conn_str(cfg, param_name)
+    tls_kw = {} if "sslmode" in conninfo_to_dict(conn_str) else {"sslmode": "require"}
+    conninfo = make_conninfo(conn_str, **tls_kw, **_KEEPALIVE_KW)
     if not cfg.bastion_enabled:
         # Direct: the SSM connection string, plus the keepalive params baked in above.
         with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:
@@ -100,7 +142,7 @@ def open_new_tunnel(cfg: LoaderConfig, run_date: str) -> Iterator[tuple[str, int
     if not cfg.bastion_enabled:
         yield None
         return
-    parts = conninfo_to_dict(make_conninfo(get_ssm_parameter(cfg, cfg.new_conn_param(run_date))))
+    parts = conninfo_to_dict(make_conninfo(_conn_str(cfg, cfg.new_conn_param(run_date))))
     target_host = str(parts.get("host") or "")
     target_port = int(parts.get("port") or 5432)
     with open_tunnel(cfg, target_host, target_port) as fwd:

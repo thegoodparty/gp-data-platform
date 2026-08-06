@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
@@ -73,6 +74,7 @@ _DDL_NAMES = (
     '    "State" text NOT NULL,\n'
     '    "FirstName" text,\n'
     '    "LastName" text,\n'
+    '    "Parties_Description" text,\n'
     '    "hf_most_important_policy_item" text\n'
     ");"
 )
@@ -307,8 +309,9 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
             _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
         _exec(cur, 'ANALYZE public."Voter"')
 
-    # Build the committed extras (2 trigram GIN, 2 lower() b-tree, 1 multicolumn b-tree, 1 plain
-    # b-tree) via the exact partitioned path build_indexes.run uses: parent ON ONLY, then a child
+    # Build the committed extras (3 trigram GIN — first/last name lower() + Parties_Description,
+    # 2 lower() b-tree, 1 multicolumn b-tree, 1 plain b-tree) via the exact partitioned path
+    # build_indexes.run uses: parent ON ONLY, then a child
     # per state attached. The spatial GiST index on "geom" is excluded here — it needs postgis and
     # the generated column, which this names-only fixture doesn't set up (it's covered by the
     # build_indexes unit tests instead).
@@ -405,3 +408,39 @@ def test_state_column_is_a_real_usstate_enum(pg_conn: psycopg.Connection) -> Non
     # the enum), not merely by the partition's implicit CHECK.
     with pg_conn.cursor() as cur, pytest.raises(psycopg.errors.InvalidTextRepresentation):
         _exec(cur, insert, (str(uuid.uuid4()), "ZZ"))
+
+
+def test_vacuum_analyze_runs_under_autocommit(
+    pg_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_indexes._vacuum_analyze` must execute `VACUUM (ANALYZE)` against a real connection.
+
+    VACUUM has a hard requirement — it cannot run inside a transaction block — so this guards the
+    reliance on `connect_new` defaulting to autocommit. `pg_conn` is autocommit=True, mirroring
+    that default. Also asserts the ANALYZE side effect (planner stats populated) landed.
+    """
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."VacTgt" CASCADE')
+        _exec(cur, 'CREATE TABLE public."VacTgt" (k int)')
+        _exec(cur, 'INSERT INTO public."VacTgt" (k) VALUES (1), (2), (3)')
+
+    # Spy on connect_new so we also enforce that _vacuum_analyze does NOT override the autocommit
+    # default to False — otherwise VACUUM would raise "cannot run inside a transaction block" in
+    # prod, and yielding the (always-autocommit) pg_conn would hide that.
+    captured_kwargs: list[dict[str, object]] = []
+
+    @contextmanager
+    def spy_connect_new(*args: object, **kwargs: object) -> Iterator[psycopg.Connection]:
+        captured_kwargs.append(dict(kwargs))
+        yield pg_conn
+
+    monkeypatch.setattr(build_indexes, "connect_new", spy_connect_new)
+    build_indexes._vacuum_analyze(_CFG, "20260609", "VacTgt")
+
+    # _vacuum_analyze must rely on connect_new's autocommit default, never force autocommit=False.
+    assert captured_kwargs, "connect_new was not called"
+    assert all(kw.get("autocommit", True) is True for kw in captured_kwargs), captured_kwargs
+
+    # VACUUM sets reltuples to the exact live-tuple count; ANALYZE alone only estimates.
+    with pg_conn.cursor() as cur:
+        assert _scalar(cur, "SELECT reltuples FROM pg_class WHERE relname='VacTgt'") == 3

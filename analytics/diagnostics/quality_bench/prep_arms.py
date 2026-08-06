@@ -39,6 +39,8 @@ except ImportError:  # bare `python prep_arms.py`: diagnostics/ isn't on sys.pat
     from quality_bench.bank import ARMS
 
 # Treatment layers: repo-relative paths exported verbatim from --ref.
+# The original "process" layer split into process-docs + reviewers on
+# 2026-07-25 for the ablation arms; full = both, so its file set is unchanged.
 LAYERS: dict[str, list[str]] = {
     "knowledge": [
         ".claude/skills/win-analytics-knowledge",
@@ -46,18 +48,62 @@ LAYERS: dict[str, list[str]] = {
         "analytics/lib/win_analysis.py",
         "analytics/lib/serve_analysis.py",
     ],
-    "process": [
+    "process-docs": [
         ".claude/skills/analytics-process",
+    ],
+    "reviewers": [
         ".claude/agents/product-data-scientist.md",
         ".claude/agents/product-manager.md",
     ],
 }
 # code-critic (repo review) and data-matching are deliberately NOT layers:
 # they are not part of the pre-registered treatment.
+#
+# bare/knowledge/full are the pre-registered DATA-2164 arms. The remaining
+# arms are the post-hoc 2026-07-25 ablation (exploratory, label as such in
+# reporting): the first batch showed the process layer went un-invoked in
+# 20/24 full runs, so these arms carry a PROCESS_MANDATE.md (written below,
+# part of the treatment) that forces engagement, isolating docs vs reviewers.
 ARM_LAYERS: dict[str, list[str]] = {
     "bare": [],
     "knowledge": ["knowledge"],
-    "full": ["knowledge", "process"],
+    "full": ["knowledge", "process-docs", "reviewers"],
+    "forced_full": ["knowledge", "process-docs", "reviewers"],
+    "knowledge_docs": ["knowledge", "process-docs"],
+    "knowledge_reviewers": ["knowledge", "reviewers"],
+}
+
+_MANDATE_HEADER = """\
+# Process mandate (mandatory)
+
+These instructions apply to EVERY question in this environment, even ones that
+look like quick lookups. Do not skip a step because the question appears simple.
+"""
+MANDATES: dict[str, str] = {
+    "forced_full": _MANDATE_HEADER
+    + """
+1. Load the `analytics-process` skill BEFORE running any query, and follow its
+   stages: framing before querying, methodology defaults, execution.
+2. Before finalizing, dispatch BOTH reviewer agents — `product-data-scientist`
+   and `product-manager` — on your draft answer (numbers and method), and
+   address their feedback in the final answer (state what changed, or why not).
+""",
+    "knowledge_docs": _MANDATE_HEADER
+    + """
+1. Load the `analytics-process` skill BEFORE running any query, and follow its
+   stages: framing before querying, methodology defaults, execution.
+2. The reviewer agents are NOT available in this environment. Skip any reviewer
+   dispatch the skill calls for and note it as unavailable; run every other
+   stage yourself.
+""",
+    "knowledge_reviewers": _MANDATE_HEADER
+    + """
+1. Scope and execute the analysis with your own methodology (no process skill
+   ships in this environment).
+2. Before finalizing, dispatch BOTH reviewer agents — `product-data-scientist`
+   and `product-manager` — on your draft answer (numbers and method), and
+   address their feedback in the final answer (state what changed, or why not).
+""",
 }
 SUBSTRATE_EXPORTS = ["analytics/lib/databricks_conn.py"]
 
@@ -178,6 +224,9 @@ def prep_arm(
     for layer in ARM_LAYERS[arm]:
         for extracted in _export_paths(repo_root, dest, ref, LAYERS[layer]):
             layer_of[extracted] = layer
+    if arm in MANDATES:
+        (dest / "PROCESS_MANDATE.md").write_text(MANDATES[arm])
+        layer_of["PROCESS_MANDATE.md"] = "mandate"
     # Sync before the manifest so uv.lock (dependency resolution) is part of
     # run provenance: a re-prep that resolves different deps changes the
     # manifest, and run_matrix's arms_sha256 gate then refuses to mix it into
@@ -198,6 +247,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-sync", action="store_true", help="skip `uv sync` in each arm (tests/CI; runs need synced arms)"
     )
+    parser.add_argument(
+        "--arms",
+        nargs="*",
+        default=None,
+        choices=sorted(ARM_LAYERS),
+        help="arms to build (default: the pre-registered bare/knowledge/full; name the ablation arms explicitly)",
+    )
     args = parser.parse_args()
     here = Path(__file__).parent
     repo_root = here.parents[2]
@@ -207,7 +263,12 @@ if __name__ == "__main__":
     failures += [f"floor: {f}" for f in integrity.check_text_leakage(floor_text, set(), canaries)]
     if failures:
         raise SystemExit("pre-prep integrity failed:\n" + "\n".join(failures))
-    for arm in ARMS:
+    # nargs="*" makes a bare `--arms` an empty list; that's a user error, not a
+    # request for the defaults.
+    arms = args.arms if args.arms is not None else ARMS
+    if not arms:
+        parser.error("--arms requires at least one arm name; omit the flag to build the default arms")
+    for arm in arms:
         path = prep_arm(arm, repo_root, args.arms_root, floor_text, ref=args.ref, sync=not args.no_sync)
         arm_failures = integrity.check_links(path)
         arm_failures += integrity.check_arm_leakage(path, set(ARM_LAYERS[arm]), canaries)

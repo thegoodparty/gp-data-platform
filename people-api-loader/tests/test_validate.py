@@ -206,6 +206,7 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_schema_types", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: bad)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
@@ -238,6 +239,7 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
+        "_check_schema_types",
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",
@@ -249,6 +251,84 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
     manifest = step.run(_CFG, "20260609")
     assert manifest.all_passed is True
     assert manifest.status == "complete"
+
+
+def test_run_prod_row_count_mismatch_is_warn_only_not_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A prod-comparison shortfall (e.g. a legitimate L2 voter-roll purge) must WARN, not block
+    # handoff: it is marked warn_only, excluded from all_passed, and the run still completes.
+    unload = _unload_all_tables()
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
+    monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
+    ok = step.ValidationCheck(name="x", passed=True, details={})
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    prod_fail = step.ValidationCheck(name="prod_row_counts_within_tolerance:Voter", passed=False, details={})
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [prod_fail])
+    for name in (
+        "_check_schema_diff",
+        "_check_schema_types",
+        "_check_indexes",
+        "_check_indexes_valid",
+        "_check_districtstats_buckets",
+        "_check_index_usage",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
+        monkeypatch.setattr(step, name, lambda *a, **k: ok)
+
+    manifest = step.run(_CFG, "20260609")
+
+    assert manifest.all_passed is True  # the failing prod check does not block
+    assert manifest.status == "complete"
+    prod = next(c for c in manifest.checks if c.name == "prod_row_counts_within_tolerance:Voter")
+    assert prod.passed is False and prod.warn_only is True
+
+
+def test_run_prod_fail_closed_guard_stays_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The fail-closed prod guards (missing inspect manifest / Voter baseline, which set an `error`
+    # detail) must NOT be downgraded to warn-only — they signal the check couldn't run and must block.
+    unload = _unload_all_tables()
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
+    monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
+    ok = step.ValidationCheck(name="x", passed=True, details={})
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    fail_closed = step.ValidationCheck(
+        name="prod_row_counts_within_tolerance:Voter",
+        passed=False,
+        details={"error": "no completed inspect manifest for this run_date"},
+    )
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [fail_closed])
+    for name in (
+        "_check_schema_diff",
+        "_check_schema_types",
+        "_check_indexes",
+        "_check_indexes_valid",
+        "_check_districtstats_buckets",
+        "_check_index_usage",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
+        monkeypatch.setattr(step, name, lambda *a, **k: ok)
+
+    manifest = step.run(_CFG, "20260609")
+
+    assert manifest.all_passed is False  # missing baseline still blocks handoff
+    assert manifest.status == "failed"
+    prod = next(c for c in manifest.checks if c.name == "prod_row_counts_within_tolerance:Voter")
+    assert prod.warn_only is False
 
 
 def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -275,6 +355,7 @@ def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPa
     ok = step.ValidationCheck(name="x", passed=True, details={})
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_schema_types", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
@@ -308,9 +389,13 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
     schema_tables: list[str] = []
+    types_tables: list[str] = []
     index_tables: list[str] = []
     monkeypatch.setattr(
         step, "_check_schema_diff", lambda cfg, rd, table, **k: (schema_tables.append(table), ok)[1]
+    )
+    monkeypatch.setattr(
+        step, "_check_schema_types", lambda cfg, rd, table, **k: (types_tables.append(table), ok)[1]
     )
     monkeypatch.setattr(
         step, "_check_indexes", lambda cfg, rd, table, **k: (index_tables.append(table), ok)[1]
@@ -320,6 +405,7 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert types_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
 
 
@@ -398,6 +484,20 @@ def test_check_schema_diff_loader_added_geom_allowed(monkeypatch: pytest.MonkeyP
     assert "geom" in check.details["allowed_extra"]
 
 
+def test_check_schema_diff_hf_policy_column_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # hf_most_important_policy_item is a mart column the serving schema gained while the prod
+    # baseline still predates it — an intended divergence registered in LOADER_ADDED_COLUMNS,
+    # so it must NOT read as drift (this is what made validate's schema-diff fail on the first
+    # refresh that added it).
+    prod = [("col_a",), ("col_b",)]
+    new = [*prod, ("hf_most_important_policy_item",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert "hf_most_important_policy_item" in check.details["allowed_extra"]
+
+
 def test_check_schema_diff_non_partition_extra_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only the partition column is a free pass; any other extra column still fails.
     prod = [("district_id",), ("voter_id",), ("created_at",), ("updated_at",)]
@@ -428,6 +528,77 @@ def test_check_schema_diff_skips_table_absent_from_prod(monkeypatch: pytest.Monk
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([])))
     check = step._check_schema_diff(_CFG, "20260609", "DistrictStats")
     assert check.name == "schema_diff_clean:DistrictStats"
+    assert check.passed is True
+    assert "skipped" in check.details
+
+
+# --- _check_schema_types ---
+
+
+def test_check_schema_types_match_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    cols = [("id", "uuid"), ("General_2024", "text"), ("Age_Int", "int4")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(cols)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(cols)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.name == "schema_types_match:Voter"
+    assert check.passed is True
+    assert check.details["mismatches"] == {}
+
+
+def test_check_schema_types_mismatch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The exact bug class: prod (Prisma contract) is text, the new cluster took the mart's type.
+    prod = [("General_2024", "text"), ("Residence_Addresses_ZipPlus4", "text")]
+    new = [("General_2024", "bool"), ("Residence_Addresses_ZipPlus4", "int4")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is False
+    assert check.details["mismatches"]["General_2024"] == {"prod": "text", "new": "bool"}
+    assert "Residence_Addresses_ZipPlus4" in check.details["mismatches"]
+
+
+def test_check_schema_types_accepted_divergence_not_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A registered ACCEPTED_TYPE_DIVERGENCES column is skipped even when its type differs. Patch in a
+    # synthetic entry to exercise the mechanism; the real registry is guarded by
+    # test_accepted_type_divergences_pins_voter_state below.
+    monkeypatch.setattr(step, "ACCEPTED_TYPE_DIVERGENCES", {"Voter": {"legacy_col"}})
+    prod = [("legacy_col", "text"), ("id", "uuid")]
+    new = [("legacy_col", "int4"), ("id", "uuid")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert check.details["accepted_divergences"] == ["legacy_col"]
+    assert "legacy_col" not in check.details["mismatches"]
+
+
+def test_accepted_type_divergences_pins_voter_state() -> None:
+    # Voter.State is served as the USState enum while the prod baseline is still text; the entry must
+    # stay in the real registry or schema_types_match:Voter hard-fails every load.
+    from loader.people_api.schema.schema_spec import ACCEPTED_TYPE_DIVERGENCES
+
+    assert "State" in ACCEPTED_TYPE_DIVERGENCES.get("Voter", set())
+
+
+def test_check_schema_types_ignores_column_absent_from_new(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A prod column missing from the new cluster is _check_schema_diff's concern, not this check.
+    prod = [("id", "uuid"), ("extra_prod_only", "text")]
+    new = [("id", "uuid")]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is True
+
+
+def test_check_schema_types_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    check = step._check_schema_types(_CFG, "20260609", "Voter")
+    assert check.passed is False and "error_reading_prod" in check.details
+
+
+def test_check_schema_types_skips_table_absent_from_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([])))
+    check = step._check_schema_types(_CFG, "20260609", "DistrictStats")
     assert check.passed is True
     assert "skipped" in check.details
 
@@ -709,6 +880,7 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
+        "_check_schema_types",
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",

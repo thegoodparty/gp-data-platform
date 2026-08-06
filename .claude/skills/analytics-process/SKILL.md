@@ -14,15 +14,21 @@ work*, not *what is true about the data*.
 
 An index, not the specification: each step's operational detail lives in its reference doc,
 and the stage/actor/gate topology lives in [`references/pipeline.md`](references/pipeline.md),
-the single description of the pipeline flow. Two legibility conventions are always on —
-announce each step transition with a one-line stage banner, and each cleared checkpoint with a
-gate receipt; formats and stock why-clauses live in `pipeline.md` ("Legibility").
+the single description of the pipeline flow. Three legibility conventions are always on —
+seed a `TodoWrite` list at the start of a run with the staged to-do items the runbook names —
+**frame**, **approve framing** (hard gate), **execute**, **results checkpoint** (hard gate),
+**review**, **calibrate** — and flip each to `in_progress`/`completed` as you advance (the
+pinned tree is the at-a-glance progress view, and the two hard gates are items so they can't be
+skipped);
+announce each step transition with a one-line stage banner; and mark each cleared checkpoint
+with a gate receipt. Banner/receipt formats and stock why-clauses live in `pipeline.md`
+("Legibility").
 
 1. **Clarify and scope (framing).** Run the framing routine ([`references/framing.md`](references/framing.md)) in your own context — it converses with the user. No execution code until the human approves the framing.
 2. **Find sources.** Resolve every concept through the knowledge skill, and verify named tables/columns/events against the live catalog — docs drift.
 3. **Produce the brief.** The framing output is a structured brief per [`references/brief-schema.md`](references/brief-schema.md), the framing→execution contract.
 4. **Execute.** Build the working set once, then slice every cut from it in pandas — the discipline is in [`references/methodology.md`](references/methodology.md); the product's defaults, cohort tables, and working-set column caveats are in the product knowledge skill's `methodology_defaults.md`.
-5. **Review.** After the results checkpoint, route the executed analysis through the two adversarial reviewer agents; the gate and dispatch rules are in `pipeline.md`.
+5. **Review.** After the results checkpoint, route the executed analysis through the two adversarial reviewer agents; the gate and dispatch rules are in `pipeline.md`. The reviewers are gate-dependent: dispatched without the human checkpoint they rubber-stamp the draft's frame and launder wrong numbers into confident ones (2026-07 ablation, quality bench), so never wire them into unattended runs.
 6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)), ending with the candidates-ledger read-back it requires. Pruning happens via **consolidation mode**, detailed in the same doc.
 
 ## Reusable analysis patterns

@@ -3,7 +3,10 @@
 -- filters these rows out.
 --
 -- Invalid reasons:
--- null_name_or_state: first_name, last_name, or state is null/empty
+-- null_name_or_state: first_name, last_name, or state is null/empty. The state
+-- check strips non-alphabetic characters first, mirroring the staging model's
+-- normalization: column-shifted rows arrive with a ZIP code in the state cell,
+-- which is non-empty raw but normalizes to '' and so is no state at all.
 --
 with
     source as (
@@ -27,7 +30,7 @@ with
                 when
                     nullif(trim(first_name), '') is null
                     or nullif(trim(last_name), '') is null
-                    or nullif(trim(state), '') is null
+                    or nullif(trim(regexp_replace(state, '[^A-Za-z ]', '')), '') is null
                 then 'null_name_or_state'
             end as invalid_reason
         from source

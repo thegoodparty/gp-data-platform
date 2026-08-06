@@ -6,10 +6,11 @@
     )
 }}
 
--- win_number is structurally null on the election_api race mart: BallotReady
+-- win_number is null in practice on the election_api race mart: BallotReady
 -- supplies no win number, and the only values that ever existed are HubSpot
--- archive rows for 2023-2025 elections, which the mart's date window
--- excludes. So the win_number_effective the campaign-strategy-context
+-- archive rows for 2023-2025 elections, which rarely resolve to a
+-- BallotReady race id even now that the six-year window makes their races
+-- eligible. So the win_number_effective the campaign-strategy-context
 -- endpoint serves is always win_number_estimate, and that estimate is null
 -- whenever a race has no positive Projected_Turnout for its election year.
 --

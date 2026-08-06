@@ -147,6 +147,9 @@ models:
         description: "HubSpot ID of the contact from the source system"
         tests:
           - not_null
+          # One row per contact is the model's grain and the incremental merge
+          # key; this guards the row_rank dedup against silently fanning out.
+          - unique
       - name: gp_candidacy_id
         description: "GoodParty Candidacy ID of the contact"
         tests:
@@ -156,12 +159,6 @@ models:
         description: "Indicates whether the candidate has been verified"
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
-    tests:
-    - dbt_utils.unique_combination_of_columns:
-        arguments:
-          combination_of_columns:
-            - contact_id
-            - gp_candidacy_id
 
   - name: int__hubspot_companies_archive_2025
     description: >

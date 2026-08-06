@@ -258,6 +258,10 @@ def model(dbt, session) -> DataFrame:
     # Get references to required models
     candidacies: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
 
+    # Upcoming general-stage rosters the S3 feed omits but the BallotReady API
+    # race object carries; fetch parties for those candidacies too.
+    upcoming_ids: DataFrame = dbt.ref("int__ballotready_upcoming_candidacy_ids")
+
     # Check for incremental run
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
@@ -271,6 +275,18 @@ def model(dbt, session) -> DataFrame:
         if max_updated_at:
             # Filter source to only process records updated since last run
             candidacies = candidacies.filter(candidacies["candidacy_updated_at"] >= max_updated_at)
+            # Fetch an upcoming candidacy when its race changed since the last
+            # run, or when it is not yet stored (first-time backfill of the gap).
+            existing_ids = existing_table.select(col("candidacy_id").alias("existing_id"))
+            upcoming_ids = (
+                upcoming_ids.join(
+                    existing_ids,
+                    upcoming_ids["br_candidacy_id"] == existing_ids["existing_id"],
+                    "left",
+                )
+                .filter((col("race_updated_at") >= max_updated_at) | col("existing_id").isNull())
+                .select("br_candidacy_id")
+            )
             logging.info(f"INFO: Filtered to candidacies updated since {max_updated_at}")
         else:
             # Fallback to 30-day window if no max_updated_at found
@@ -282,9 +298,17 @@ def model(dbt, session) -> DataFrame:
     else:
         logging.info("INFO: Running in full refresh mode")
 
+    # Union the S3 worklist with the upcoming API-race roster into a single
+    # deduplicated set of candidacy ids to fetch parties for.
+    candidacy_ids = (
+        candidacies.select(col("br_candidacy_id").cast("integer").alias("candidacy_id"))
+        .unionByName(upcoming_ids.select(col("br_candidacy_id").cast("integer").alias("candidacy_id")))
+        .distinct()
+    )
+
     # Trigger a cache to ensure filters above are applied before making API calls
-    candidacies.cache()
-    candidacies_count = candidacies.count()
+    candidacy_ids.cache()
+    candidacies_count = candidacy_ids.count()
 
     # If no records to process after filtering, return early
     if candidacies_count == 0 and dbt.is_incremental:
@@ -306,8 +330,8 @@ def model(dbt, session) -> DataFrame:
     # Process candidacies using the pandas UDF for parallel processing
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
-    # Create a DataFrame with just candidacy_ids for processing
-    party = candidacies.select(col("br_candidacy_id").cast("integer").alias("candidacy_id"))
+    # Candidacy ids to process (union of S3 + upcoming API-race roster)
+    party = candidacy_ids
 
     # Apply the pandas UDF to get parties for each candidacy
     get_candidacy_parties = _get_candidacy_parties_token(ce_api_token)

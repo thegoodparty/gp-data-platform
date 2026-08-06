@@ -11,6 +11,49 @@ amended: |
   (15,824, mostly pre-2025 cycles, incl. ~290 current Pros) - the framing-time
   ~3.8k sizing had only covered the 2025-26 gap windows.
 
+  2026-07-23, stakeholder follow-up round (owner-approved in chat):
+  QA - activated/Pro mutual-exclusivity + subset question: answered from the
+    cross-tab plus a lifetime-grain cross-tab, an evidence-channel split of
+    activated-not-Pro users, and an activation-month era breakdown to detect
+    a 2025->2026 shift in Pro gating on outreach (calendar-time, not
+    election-bucket, since product changes land in calendar time).
+  QB - reframed as the conditioning-chain question: the cited "60.1% W+1
+    retention" resolved to OKR O2 KR1 "Win W+1 Retention (ICP users, 8-14d
+    after activation)" (June 2026 All Hands deck; Amplitude chart owc6mfnp:
+    start event = Voter Outreach - All custom event, segment = Win ICP
+    cohort, retention event = Viewed path=/dashboard). It conditions on
+    activated ICP users by construction.
+  QC - Bryan's Pro->activated ratio added as a standing third table, both
+    lifetime and at-election semantics, with a ratio column also added to
+    the cross-tab. Output switched to stdout-only (owner decision
+    2026-07-23): the dated CSV files were never viewed or committed, so the
+    script prints tables + footnotes instead of writing files.
+  QD - exhaustive Pro-date provenance sweep: information_schema sweep of all
+    gp_api_db_* and stripe_api_* tables + JSON blob probes. No product-DB
+    Pro-upgrade timestamp column exists; campaign.details carries
+    proUpgradeSlackNotifiedAt (151 campaigns, ~2026-05+) and subscriptionId
+    (direct Stripe ID join; rescues only 18 of the 716 undatable Pros).
+    698 current Pros remain dark across all five evidence channels
+    (Stripe-email, Stripe-subid, Amplitude, HubSpot, slack-notified key),
+    concentrated in accounts created 2025-01..2025-07; 590 orphan livemode
+    Stripe subscriptions (no email/ID match to any account) bound the
+    email-mismatch share of that darkness; the remainder is consistent with
+    comped/manual grants. Stripe events (checkout.session.completed,
+    customer.subscription.created) exist from 2025-08-25 only.
+  Product-code check (omni repo): Pro gating on outreach never loosened -
+  it tightened (UI Pro gate on text/robocall/door-knocking/phone-banking
+  since 2025-06-24; voter file since >=2024-08; server-side Pro checks
+  added 2025-10 and 2026-05/06; social posts are the only free channel).
+  The free-texts offer (5,000) is granted ON first Pro upgrade
+  (has_free_texts_offer, freeTextsOfferRedeemedAt 2026-01+), so it is a
+  first-Pro proxy, NOT a free-tier outreach path. details.isProUpdatedAt
+  (last isPro transition, written on every setIsPro incl. cancels; feeds
+  HubSpot pro_upgrade_date) covers 597/1,296 current Pros but rescues only
+  23 of the ~700 dark ones. Era trend in evidence coverage reflects
+  instrumentation/billing-model changes (Amplitude milestone 2025-05-29+,
+  Stripe events 2025-08-25+, P2P self-serve pay-per-send 2025-09), not a
+  gating change.
+
 decision:
   what_action: |
     Report top-line Win adoption figures (accounts created/registered, activated,

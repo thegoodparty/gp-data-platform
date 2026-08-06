@@ -13,7 +13,8 @@ These apply by default to Serve-product analyses. Document deviations in your pr
 | Decision | Default |
 |---|---|
 | Unit of analysis | User (`user_id`); Serve has no candidacy-version grain |
-| Canonical population | `users_serve_base` filtered `is_serve_user` (1,869 as of 2026-07; currently 1:1 with `eo_activated_at IS NOT NULL`) |
+| Canonical population | `users_serve_base` filtered `is_serve_user` (1,869 as of 2026-07, a figure that still includes internal accounts; currently 1:1 with `eo_activated_at IS NOT NULL`) |
+| Population counts | Any reported count of Serve users excludes `@goodparty.org` accounts (staff/test), same convention as Win. `is_serve_user` alone retains them — apply the email exclusion on top. |
 | Engagement definition | **Broad Serve engagement** (below) is the analysis default; poll-anchored series (`users_serve_activity` MAU, `is_active_eo`) are continuity-only |
 | Outcome | People Served (decision level); retention on broad engagement (per user); re-election parked until officeholder data lands |
 | Engagement time-scope | Events at `event_time >= eo_activated_at` — pre-activation activity is campaigning (Win), not serving; ~all Serve users are also Win candidates |

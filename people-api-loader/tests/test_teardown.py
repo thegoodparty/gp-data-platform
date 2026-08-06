@@ -42,12 +42,26 @@ class FakeRds:
         pg_error: str = "DBParameterGroupNotFound",
         modify_error: str | None = None,
         delete_creating_once: bool = False,
+        snapshot_exists: bool = False,
+        cluster_absent: bool = False,
+        deletion_protection: bool = True,
     ) -> None:
         self.calls: list[str] = []
+        self.delete_cluster_kwargs: dict[str, Any] = {}  # last delete_db_cluster kwargs
+        # delete_db_cluster with FinalDBSnapshotIdentifier raises AlreadyExists (prior-retire snapshot).
+        self._snapshot_exists = snapshot_exists
         self._missing = missing or set()  # ops that should raise NotFound
         self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
         self._modify_error = modify_error  # error code modify_db_cluster raises (e.g. bad state)
         self._delete_creating_once = delete_creating_once  # 1st delete raises creating-state, then ok
+        self._cluster_absent = cluster_absent  # describe raises NotFound (already retired)
+        self._deletion_protection = deletion_protection  # DeletionProtection reported by describe
+
+    def describe_db_clusters(self, **kw: Any) -> dict:
+        # A read, deliberately kept out of `calls` (which tracks mutating ops the tests assert order on).
+        if self._cluster_absent:
+            raise _err("DBClusterNotFoundFault")
+        return {"DBClusters": [{"DeletionProtection": self._deletion_protection, "Status": "available"}]}
 
     def delete_db_instance(self, **kw: Any) -> None:
         self.calls.append("delete_instance")
@@ -63,6 +77,9 @@ class FakeRds:
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append("delete_cluster")
+        self.delete_cluster_kwargs = kw
+        if self._snapshot_exists and "FinalDBSnapshotIdentifier" in kw:
+            raise _err("DBClusterSnapshotAlreadyExistsFault")
         if self._delete_creating_once and self.calls.count("delete_cluster") == 1:
             raise _err("InvalidDBClusterStateFault")
         if "cluster" in self._missing:
@@ -169,14 +186,45 @@ def test_teardown_waits_then_deletes_creating_cluster(monkeypatch: pytest.Monkey
 
 
 def test_teardown_idempotent_on_missing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Cluster was never created: modify/delete both raise DBClusterNotFoundFault, which the
-    # guards must swallow so teardown stays idempotent (covers the cluster-not-found branch).
+    # Race: describe still sees the cluster, but it's deleted before the mutating calls land, so
+    # modify/delete raise DBClusterNotFoundFault. The guards must swallow that so teardown stays
+    # idempotent (covers the cluster-not-found branch on the mutating calls).
     rds_client, ssm_client = FakeRds(missing={"cluster"}), FakeSsm()
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_instance" in rds_client.calls
     assert ssm_client.deleted == ["people-db-connection-string-dev-20260616"]
+
+
+def test_teardown_skips_compute_when_cluster_already_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Re-running a completed retire: describe-first finds the cluster gone. The compute-deletion
+    # block must be skipped entirely — issuing modify_db_cluster on a deleted cluster comes back
+    # AccessDenied (the tag-scoped rds:ModifyDBCluster grant can't match a tag-less deleted
+    # cluster), not DBClusterNotFound, so it would escape the guards. The remaining cleanup (SSM,
+    # here) still runs so a half-finished prior teardown converges.
+    rds_client, ssm_client = FakeRds(cluster_absent=True), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)  # must not raise
+    # No compute mutation attempted (that's what would have hit AccessDenied); the fall-through
+    # cleanup of the other artifacts still runs.
+    assert "delete_instance" not in rds_client.calls
+    assert "disable_protection" not in rds_client.calls
+    assert "delete_cluster" not in rds_client.calls
+    assert ssm_client.deleted == ["people-db-connection-string-dev-20260616"]
+
+
+def test_teardown_skips_protection_disable_when_already_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A failed build left on serverless never reached resize, so its cluster is already
+    # unprotected. teardown must skip the (unnecessary, tag-scoped) modify_db_cluster and go
+    # straight to deleting the cluster.
+    rds_client, ssm_client = FakeRds(deletion_protection=False), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)
+    assert "disable_protection" not in rds_client.calls  # protection already off; no modify
+    assert rds_client.calls == ["delete_instance", "delete_cluster", "delete_pg", "delete_pg"]
 
 
 class _FakePaginator:
@@ -224,3 +272,52 @@ def test_delete_s3_prefix_raises_on_partial_failure(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(step, "s3", lambda cfg: s3_client)
     with pytest.raises(RuntimeError, match="partial failure"):
         step._delete_s3_prefix(_CFG, "20260616")
+
+
+def test_teardown_snapshot_takes_final_cluster_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    # --snapshot deletes the cluster with a kept final snapshot instead of SkipFinalSnapshot.
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, snapshot=True)
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is False
+    assert rds_client.delete_cluster_kwargs["FinalDBSnapshotIdentifier"] == "gp-people-db-20260616-final"
+
+
+def test_teardown_no_snapshot_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is True
+    assert "FinalDBSnapshotIdentifier" not in rds_client.delete_cluster_kwargs
+
+
+def test_teardown_keep_ssm_leaves_conn_param(monkeypatch: pytest.MonkeyPatch) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, keep_ssm=True)
+    assert ssm_client.deleted == []  # SSM connection-string param kept for a restore
+
+
+def test_teardown_keep_param_groups_skips_delete_but_still_tears_down_compute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rds_client, ssm_client = FakeRds(), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, keep_param_groups=True)
+    assert "delete_pg" not in rds_client.calls  # param groups kept
+    assert "delete_cluster" in rds_client.calls  # compute is still torn down
+
+
+def test_teardown_snapshot_reuses_existing_snapshot_on_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Re-running the retire when the final snapshot already exists must NOT crash and must NOT
+    # replace the snapshot: the delete falls back to SkipFinalSnapshot, reusing the restore point.
+    rds_client, ssm_client = FakeRds(snapshot_exists=True), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True, snapshot=True)  # must not raise
+    assert rds_client.calls.count("delete_cluster") == 2  # snapshot attempt, then reuse fallback
+    assert rds_client.delete_cluster_kwargs["SkipFinalSnapshot"] is True  # last call reused the snapshot

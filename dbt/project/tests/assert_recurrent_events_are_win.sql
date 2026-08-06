@@ -12,7 +12,8 @@ with
     recurrent_events(event_type) as (
         values
             ('Voter Outreach - Campaign Completed'),
-            ('Dashboard - Candidate Dashboard Viewed')
+            ('Dashboard - Candidate Dashboard Viewed'),
+            ('Dashboard - Campaign Plan Viewed')
     )
 
 select event_type, {{ amplitude_event_family("event_type") }} as family

@@ -243,21 +243,48 @@ def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True)
         return _ssm_cache[key]
 
 
-def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> None:
+def put_ssm_parameter(
+    cfg: BaseLoaderConfig,
+    name: str,
+    value: str,
+    *,
+    secure: bool = True,
+    tags: list[dict[str, str]] | None = None,
+) -> None:
     """Write (create or overwrite) an SSM Parameter Store value; SecureString by default.
 
-    The parameter is tagged with the loader's Environment tags so IAM policies scoped by
-    `aws:ResourceTag/Environment` (the loader's permissions boundary) allow subsequent
-    Get/Describe. SSM forbids combining `Tags` with `Overwrite` in one call, so we
-    create-with-tags first and fall back to overwrite + re-tag if it already exists.
+    The parameter is tagged with the loader's resource tags for consistency. The loader's own
+    Get/Put on this parameter is authorized by parameter NAME (the `loader-s3-ssm` role policy
+    scopes `people-db-connection-string-{env}[-date]` by ARN, with no tag condition and no
+    permissions boundary), NOT by the `Environment` tag — so omitting `Environment` via `tags`
+    does not affect the loader's access; it only removes the tag a human role's
+    `ResourceTag/Environment` deny keys on. Pass `tags` to override the set; defaults to
+    `cfg.tags_as_aws()`.
+
+    SSM forbids combining `Tags` with `Overwrite`, so a create-with-tags is tried first. If the
+    parameter already exists it is deleted and recreated with `tags` — NOT overwrite + re-tag,
+    because `add_tags_to_resource` only upserts keys and never removes them, so a tag intentionally
+    dropped from `tags` (e.g. `Environment`) would linger. Delete + recreate enforces the exact set,
+    and needs only the `ssm:DeleteParameter`/`PutParameter` the loader role already has (it has no
+    `ssm:RemoveTagsFromResource`). The existing value is captured before the delete and restored
+    (value only) if the recreate fails, so a transient error never leaves the parameter missing —
+    which would otherwise strand provision's reuse branch on `ParameterNotFound`.
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
+    param_tags = cfg.tags_as_aws() if tags is None else tags
     try:
-        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=cfg.tags_as_aws())
+        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
     except client.exceptions.ParameterAlreadyExists:
-        client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
-        client.add_tags_to_resource(ResourceType="Parameter", ResourceId=name, Tags=cfg.tags_as_aws())
+        old_value = client.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+        client.delete_parameter(Name=name)
+        try:
+            client.put_parameter(Name=name, Value=value, Type=param_type, Tags=param_tags)
+        except Exception:
+            # Best-effort restore so the param is never left missing. Value only (Overwrite forbids
+            # Tags); the caller can retry put_ssm_parameter to reach the intended tag state.
+            client.put_parameter(Name=name, Value=old_value, Type=param_type, Overwrite=True)
+            raise
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:

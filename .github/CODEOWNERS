@@ -1,0 +1,4 @@
+# Governed semantic-layer definitions. Both groups are auto-requested as
+# reviewers on any change to a sem_*.yml. This is advisory (a soft gate): it
+# requests review, it does not block merge. See the semantic-layer SOP.
+/dbt/project/models/**/sem_*.yml  @thegoodparty/semantic-layer-data @thegoodparty/semantic-layer-business
