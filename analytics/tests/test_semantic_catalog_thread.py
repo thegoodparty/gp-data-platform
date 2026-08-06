@@ -62,7 +62,9 @@ def test_draft_is_silent():
 def test_bootstrap_anchor_on_open_pr_without_state():
     plan = reconcile(None, NO_APPROVALS, _ctx(), MENTIONS)
     assert plan.anchor_text is not None
-    assert "• `win_users` — Distinct users with an activated Win account" in plan.anchor_text
+    # Names only: definition text is deliberately excluded from the thread.
+    assert "• `win_users`" in plan.anchor_text
+    assert "Distinct users with an activated Win account" not in plan.anchor_text
     assert "<@U1>" in plan.anchor_text
     assert plan.new_state is not None and plan.new_state.announced == {"data": None, "business": None}
 

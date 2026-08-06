@@ -70,10 +70,11 @@ class Plan:
 
 
 def render_anchor(ctx: PRContext, mention_by_team: dict[str, str]) -> str:
-    # One bullet per metric with its one-line definition, matching the merge
-    # message's "name — definition" copy so the thread reads consistently.
+    # Names only, no definition text: definitions run long and made the anchor
+    # hard to scan. Reviewers read the wording in the PR diff. Matches the merge
+    # message, which also names metrics without quoting them.
     if ctx.metrics:
-        metric_lines = [f"• `{n}` — {d}" if d else f"• `{n}`" for n, d in ctx.metrics]
+        metric_lines = [f"• `{n}`" for n, _ in ctx.metrics]
         metrics_block = "Metrics:\n" + "\n".join(metric_lines)
     else:
         metrics_block = "Metrics: (see PR diff)"

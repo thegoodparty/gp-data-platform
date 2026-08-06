@@ -48,7 +48,7 @@ repos:
     # job (default pre-commit stage), so CI is not duplicated — each directory's
     # own workflow is the CI coverage. Each hook runs the suite in that
     # directory's environment, so that env must be set up locally first
-    # (`uv sync` / `poetry install` / `pip install ...`). `files:` means a push
+    # (`uv sync`, or `pip install ...` for `airflow/astro`). `files:` means a push
     # only runs the suites for directories it actually touched.
     -   id: pytest-people-api-loader
         name: people-api-loader tests (pre-push)

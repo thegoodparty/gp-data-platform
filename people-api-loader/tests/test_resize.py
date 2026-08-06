@@ -28,6 +28,21 @@ _CFG = cast(
     ),
 )
 
+# Dev config: LOADER_SERVE_INSTANCE_CLASS=db.serverless makes resize leave the writer on
+# Serverless v2 (using the scale-down ACU band) instead of a provisioned serve class, so a dev
+# cluster idles cheap after a successful build.
+_CFG_SERVERLESS = cast(
+    LoaderConfig,
+    SimpleNamespace(
+        serve_instance_class="db.serverless",
+        scale_down_min_acu=0.5,
+        scale_down_max_acu=128.0,
+        new_cluster_id=lambda rd: f"gp-people-db-{rd}",
+        new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-writer",
+        new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
+    ),
+)
+
 
 class _FakeWaiter:
     def wait(self, **kwargs: object) -> None:
@@ -116,6 +131,45 @@ def test_resize_applies_provisioned_class_and_writes_manifest(monkeypatch: pytes
     assert by["modify_instance"]["ApplyImmediately"] is True
     # Post-resize smoke check: a trivial SELECT 1 against the resized cluster, run after the
     # reboot settles and before the manifest is written.
+    assert executed_sql(conn) == ["SELECT 1"]
+
+
+def test_resize_applies_serverless_class_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Dev serve class db.serverless: resize must flip the writer to Serverless v2 (not call
+    # flip_writer_to_provisioned with "db.serverless", which RDS would reject) and set the cluster's
+    # ServerlessV2 scaling config from the scale-down ACU band. The reboot + serve lockdown + smoke
+    # check still run, same as the provisioned path.
+    monkeypatch.setattr(aws.time, "sleep", lambda *a, **k: None)
+    rds_client = FakeRds(
+        describe_sequence=[
+            {"DBInstanceClass": "db.serverless", "DBInstanceStatus": "available", "PendingModifiedValues": {}}
+        ]
+    )
+    captured: dict = {}
+    conn = FakeConn().queue_result((1,))
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+
+    manifest = step.run(_CFG_SERVERLESS, "20260616")
+
+    assert manifest.status == "complete"
+    assert manifest.final_instance_class == "db.serverless"
+    assert manifest.backup_retention_days == 14 and manifest.deletion_protection is True
+    # Two modify_db_cluster calls: resize's own lockdown (param group/backup/deletion protection)
+    # AND flip_writer_to_serverless's ServerlessV2 scaling config.
+    cluster_calls = [kw for op, kw in rds_client.calls if op == "modify_cluster"]
+    assert len(cluster_calls) == 2
+    lockdown = next(kw for kw in cluster_calls if "DBClusterParameterGroupName" in kw)
+    assert lockdown["DBClusterParameterGroupName"] == "gp-people-db-20260616-serve"
+    assert lockdown["BackupRetentionPeriod"] == 14
+    assert lockdown["DeletionProtection"] is True
+    scaling = next(kw for kw in cluster_calls if "ServerlessV2ScalingConfiguration" in kw)
+    assert scaling["ServerlessV2ScalingConfiguration"] == {"MinCapacity": 0.5, "MaxCapacity": 128.0}
+    by = dict(rds_client.calls)
+    assert by["modify_instance"]["DBInstanceClass"] == "db.serverless"
+    assert by["modify_instance"]["ApplyImmediately"] is True
     assert executed_sql(conn) == ["SELECT 1"]
 
 

@@ -16,7 +16,7 @@ def test_real_repo_parses_without_error():
     records = parse_semantic_tree(cli.SEM_ROOTS)
     names = {r.name for r in records}
     # The four metrics that exist today must all parse.
-    assert {"win_users", "active_serve_users", "goodparty_win_rate", "goodparty_cumulative_wins"} <= names
+    assert {"win_users", "activated_serve_users", "goodparty_win_rate", "goodparty_cumulative_wins"} <= names
 
 
 def test_write_then_check_is_idempotent(tmp_path):
@@ -68,11 +68,12 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     assert win_names == {
         "win_users",
         "win_activated_users",
+        "win_active_candidates_30d",
         "goodparty_win_rate",
         "goodparty_cumulative_wins",
     }
-    assert serve_names == {"active_serve_users", "serve_users"}
-    assert "active_serve_users" not in win_names
+    assert serve_names == {"activated_serve_users", "serve_users"}
+    assert "activated_serve_users" not in win_names
 
 
 def test_records_by_target_raises_on_unmapped_sem_file():
