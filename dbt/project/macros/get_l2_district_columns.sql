@@ -186,6 +186,7 @@
         "`Port_District`",
         "`Port_SubDistrict`",
         "`Power_District`",
+        "`Proposed_District`",
         "`Public_Airport_District`",
         "`Public_Regulation_Commission`",
         "`Public_Service_Commission_District`",
