@@ -454,7 +454,7 @@ with
     ),
     voter_propensity as (
         select `LALVOTERID`, `prob_vote`
-        from {{ ref("stg_model_predictions__voter_turnout_scores_20260730") }}
+        from {{ ref("int__voter_turnout_lgbm_voter_scores") }}
     ),
     /*
         Note that here we need to list each column individually since we need to
