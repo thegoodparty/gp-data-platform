@@ -16,8 +16,8 @@ models:
         - int__civics_candidacy_stage_2025.sql (LEFT JOIN, archive)
         - int__civics_election_stage_2025.sql (FROM, archive)
         - mban_candidacy_election_results.sql (INNER JOIN — evaluate deprecation)
-      Also consider removing the 5 older unused snapshot staging models:
-        - stg_model_predictions__candidacy_ddhq_matches_2025{0826,0909,0916,1016,1112}
+      Also consider removing the 4 older unused snapshot staging models:
+        - stg_model_predictions__candidacy_ddhq_matches_2025{0826,0909,0916,1112}
     columns:
       - name: gp_candidacy_id
         description: Unique identifier for the candidacy in the HubSpot data.
