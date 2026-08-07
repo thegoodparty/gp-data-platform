@@ -72,7 +72,7 @@ def test_records_by_target_routes_each_metric_to_its_skill():
         "goodparty_win_rate",
         "goodparty_cumulative_wins",
     }
-    assert serve_names == {"activated_serve_users"}
+    assert serve_names == {"activated_serve_users", "serve_users"}
     assert "activated_serve_users" not in win_names
 
 
