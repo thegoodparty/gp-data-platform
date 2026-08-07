@@ -75,6 +75,22 @@ models:
         tests:
           - not_null
           - unique
+    data_tests:
+      # Earliest guard on name drift; other district types have a legitimate unresolvable tail.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: >
+              is_matched and l2_district_type in (
+                'State_House_District',
+                'State_Senate_District',
+                'State_Legislative_District',
+                'US_Congressional_District'
+              )
 
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions

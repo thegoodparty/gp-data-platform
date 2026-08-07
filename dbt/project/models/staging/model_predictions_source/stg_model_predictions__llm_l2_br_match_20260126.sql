@@ -8,7 +8,8 @@ with
             id,
             br_database_id,
             state,
-            l2_district_name,
+            -- The snapshot is not self-consistent: 365 rows carry L2's padded form.
+            ltrim('0', l2_district_name) as l2_district_name,
             l2_district_type,
             is_matched,
             llm_reason,
