@@ -224,6 +224,65 @@ seeds:
                 from {{ ref('m_election_api__race') }}
               )
 
+  - name: br_position_place_overrides
+    description: >
+      Points a BallotReady position geography at the Place it should resolve to,
+      for geographies BallotReady carries on a position but publishes no Place
+      row for. int__enhanced_race resolves place by geo_id and
+      m_election_api__race inner-joins the place mart (Race.placeId is a
+      required FK and supplies the race slug), so a position whose geography has
+      no Place loses every one of its races and the office becomes unselectable
+      in the picker. Keyed at geography grain rather than position, so every
+      position sharing the geography is fixed by one row, including ones
+      BallotReady adds later.
+    config:
+      column_types:
+        position_geo_id: string
+        place_geo_id: string
+    columns:
+      - name: position_geo_id
+        description: geo_id BallotReady puts on the position
+        data_tests:
+          - not_null
+      - name: position_mtfcc
+        description: >
+          MTFCC BallotReady puts on the position. Part of the key because a
+          geo_id is only unique within an MTFCC.
+        data_tests:
+          - not_null
+      - name: place_geo_id
+        description: geo_id of the Place the position's races should resolve to
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_place')
+                field: geo_id
+      - name: place_name
+        description: Name of that place (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - position_geo_id
+              - position_mtfcc
+      # The override is a silent no-op if it never reaches the race grain, so
+      # assert the races it targets actually carry a place.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              position_geo_id in (
+                select position_geo_id
+                from {{ ref('int__enhanced_race') }}
+                where place_id is not null
+              )
+
   - name: icp_normalized_position_names
     description: >
       BallotReady normalized position names that qualify for ICP flags.
