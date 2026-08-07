@@ -16,12 +16,21 @@ def _lower(names: Iterable[str]) -> set[str]:
     return {n.lower() for n in names}
 
 
+def is_bot(login: str) -> bool:
+    """GitHub appends [bot] to every App account's login."""
+    return login.lower().endswith("[bot]")
+
+
 def evaluate(
     approver_logins: Iterable[str],
     data_members: Iterable[str],
     business_members: Iterable[str],
 ) -> dict[str, bool]:
-    approvers = _lower(approver_logins)
+    # Bots are excluded explicitly, not merely by never being team members
+    # (DATA-2249). delegate-reviewer[bot] approves nearly every governed PR, so
+    # adding a bot to a review team for any reason would otherwise make the
+    # two-group gate satisfiable with no human sign-off at all.
+    approvers = _lower(login for login in approver_logins if not is_bot(login))
     return {
         "data": bool(approvers & _lower(data_members)),
         "business": bool(approvers & _lower(business_members)),

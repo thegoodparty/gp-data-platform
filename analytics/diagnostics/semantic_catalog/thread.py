@@ -160,6 +160,7 @@ from semantic_catalog.parser import parse_semantic_tree  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+RATIFICATIONS_RELPATH = Path("analytics/diagnostics/semantic_catalog/config/ratifications.yml")
 PKG = Path(__file__).parent
 TEAM_SLUG = {"data": "semantic-layer-data", "business": "semantic-layer-business"}
 
@@ -186,7 +187,16 @@ def _changed_metrics(
     narrow by, so the fallback below would otherwise name the whole catalog.
     """
     after = parse_semantic_tree([DBT_MODELS])
-    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    # The before side reads the base tree's OWN sidecar; see cli._before_after.
+    before = (
+        parse_semantic_tree(
+            [base_dir / "dbt/project/models"],
+            ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+            legacy_ratified=True,
+        )
+        if base_dir
+        else []
+    )
     definitions = {r.name: r.definition for r in before}
     definitions.update({r.name: r.definition for r in after})
 

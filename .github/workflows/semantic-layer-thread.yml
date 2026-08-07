@@ -32,6 +32,12 @@ jobs:
       SLACK_CHANNEL_ID: C08K22X9ZNH
     steps:
       - name: Gate on governed files (cheap, before any setup)
+        # Deliberately NOT widened to the ratification sidecar (DATA-2249),
+        # unlike the publish and composition-check workflows. The anchor
+        # @-mentions both review groups, so threading a bookkeeping PR would
+        # move to Slack exactly the reviewer noise the sidecar removes from
+        # GitHub. A sidecar-only merge posts its summary top-level, which is
+        # the documented permanent fallback.
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
