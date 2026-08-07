@@ -30,6 +30,17 @@ activated_serve_users:
   definition_sha: '5e87555'
   approved_by_pr: 765
 
+win_activated_users:
+  # Coverage completed across two PRs. The business group approved #708 on
+  # 2026-07-29, but no data-group approval existed, so the 2026-07-28 date that
+  # #708 carried was unbacked and DATA-2249 dropped it to pending. The data
+  # group approved #776 on 2026-08-07, which is what this records: that PR
+  # carried the metric's sidecar entry precisely so the missing approval could
+  # land on it. The definition itself is unchanged since #708.
+  ratified: 2026-08-07
+  definition_sha: '595940c'
+  approved_by_pr: 776
+
 win_active_candidates_30d:
   # Approved by both groups on #760 and merged, but never recorded: the failure
   # that prompted DATA-2249.
@@ -44,15 +55,6 @@ win_users:
   definition_sha: '865d003'
   approved_by_pr: 749
 
-# win_activated_users is deliberately absent, so it reads pending.
-#
-# Its 2026-07-28 date was unbacked: only the business group approved #708
-# (delegate-reviewer[bot] also approved, and bot approvals do not count). This
-# PR is the vehicle for the missing data-group approval. Once a data-group
-# reviewer who is not the author of #708 approves this PR, uncomment the block
-# below with the approval date and this PR's number.
-#
-# win_activated_users:
-#   ratified: <UTC date this PR is approved>
-#   definition_sha: '595940c'
-#   approved_by_pr: <this PR>
+# goodparty_win_rate and goodparty_cumulative_wins are deliberately absent, so
+# they read pending. Both were added pre-epic in #471 with a data-group approval
+# only, and no business-group approval exists for either definition.
