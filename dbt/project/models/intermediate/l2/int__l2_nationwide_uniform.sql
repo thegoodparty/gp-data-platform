@@ -20,7 +20,14 @@ with
     )
 
 -- Strip L2's padding here so every consumer agrees on a district's name and id.
+-- Every district column, not just the six that pad today: a no-op on the rest,
+-- and nothing to keep in sync when L2 starts padding a new one.
 select
     assigned.* except ({{ get_l2_district_columns() }}),
-    {{ strip_l2_district_zero_padding_projection("assigned") }}
+    {% for column in get_l2_district_columns(use_backticks=false).split(",") | map(
+        "trim"
+    ) -%}
+        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`
+        {%- if not loop.last %},{% endif %}
+    {% endfor %}
 from assigned
