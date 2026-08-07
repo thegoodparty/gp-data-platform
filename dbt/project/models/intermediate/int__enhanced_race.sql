@@ -1,12 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
 with
     election_frequencies as (
         select tbl_pos.database_id, e.databaseid as pe_frequency_database_id
@@ -129,13 +120,6 @@ with
             {{ ref("br_position_place_overrides") }} as tbl_place_override
             on tbl_position.geo_id = tbl_place_override.position_geo_id
             and tbl_position.mtfcc = tbl_place_override.position_mtfcc
-        {% if is_incremental() %}
-            -- Re-emit overridden races every run so seed edits propagate without
-            -- a full refresh; their BR updated_at predates the watermark.
-            where
-                tbl_race.updated_at > (select max(updated_at) from {{ this }})
-                or tbl_place_override.place_geo_id is not null
-        {% endif %}
     ),
     race_w_place as (
         select
