@@ -7,7 +7,7 @@ with
             ballots_projected,
             state,
             office_type as district_type,
-            office_name as district_name,
+            {{ strip_l2_district_zero_padding("office_name") }} as district_name,
             election_year,
             election_code,
             model_version,

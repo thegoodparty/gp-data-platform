@@ -8,7 +8,8 @@ with
             {{ adapter.quote("election_year") }},
             {{ adapter.quote("election_code") }},
             {{ adapter.quote("district_type") }},
-            {{ adapter.quote("district_name") }},
+            {{ strip_l2_district_zero_padding(adapter.quote("district_name")) }}
+            as district_name,
             {{ adapter.quote("ballots_projected") }},
             {{ adapter.quote("model_version") }},
             {{ adapter.quote("inference_at") }}
