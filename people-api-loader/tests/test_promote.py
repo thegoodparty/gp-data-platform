@@ -60,7 +60,7 @@ def test_promote_overwrites_serving_param_and_labels_version(monkeypatch: pytest
     # The cutover: overwrite the un-dated serving param to a new latest version.
     assert calls["put"] == ("people-db-connection-string-prod", "postgresql://serving")
     # Best-effort `build-{date}` label on that exact version (prefixed — a digit-leading label is
-    # rejected by SSM). No `live` pointer: people-api reads the latest version.
+    # rejected by SSM). people-api reads the parameter's latest version, so the overwrite is the cutover.
     assert calls["label"] == ("people-db-connection-string-prod", 7, ["build-20260728"])
     assert manifest.status == "complete"
     assert manifest.serving_param == "people-db-connection-string-prod"
