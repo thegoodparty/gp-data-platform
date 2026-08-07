@@ -22,7 +22,7 @@ All models materialize as tables in the `mart_civics` schema.
 
 ## Key Concepts
 
-- **Post-ER ids** (`gp_candidate_id`, `gp_candidacy_id`, `gp_election_stage_id`) are cluster-derived: each is the salted hash of its entity-resolution cluster's earliest member (by source-native `first_seen_at`), shared by all co-members; records outside any cluster mint from themselves. `gp_candidate_id` equals `gp_person_id` on 2026+ rows (2025 archive rows keep HubSpot-derived ids). See the id derivation section in `dbt/project/CLAUDE.md`.
+- **Post-ER ids** (`gp_candidate_id`, `gp_candidacy_id`, `gp_election_stage_id`) are cluster-derived: each is the salted hash of its entity-resolution cluster's earliest member (by source-native `first_seen_at`), shared by all co-members; records outside any cluster mint from themselves. `gp_candidate_id` equals `gp_person_id` on 2026+ rows (2025 archive rows keep HubSpot-derived ids). See the id derivation section in `dbt/project/AGENTS.md`.
 - **Candidate** = a person. **Candidacy** = a person running for a specific office in a specific year.
 - A candidate can have many candidacies. A candidacy belongs to exactly one election.
 - **Candidacy Stage** = results for one candidacy in one election phase (primary, general, etc.)

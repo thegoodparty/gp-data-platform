@@ -43,6 +43,15 @@ repos:
 
 -   repo: local
     hooks:
+    # AGENTS.md is the source of truth; CLAUDE.md is a symlink to it. Reads the
+    # git index, so it also catches a CLAUDE.md staged as a regular file.
+    -   id: agents-md-sync
+        name: AGENTS.md is the source of truth
+        entry: bash ai-rules/scripts/agents-md-sync.sh --check
+        language: system
+        files: (^|/)(CLAUDE|AGENTS)\.md$
+        pass_filenames: false
+
     # Per-directory test suites, gated by which files changed, run on push only.
     # The pre-push stage keeps them OUT of the CI `pre-commit run --all-files`
     # job (default pre-commit stage), so CI is not duplicated — each directory's

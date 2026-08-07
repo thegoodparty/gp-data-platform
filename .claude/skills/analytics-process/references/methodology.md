@@ -34,7 +34,7 @@ For multi-week scout projects with reusable inventory, create the full structure
 
 ```
 analytics/projects/<project_name>/
-  CLAUDE.md          (optional, project-local AI guidance)
+  AGENTS.md          (optional, project-local AI guidance)
   INVENTORY.md       (gitignored locally; durable home is the ClickUp product-analytics doc)
   SESSION_NOTES.md   (gitignored, local-only running journal)
   notebooks/
@@ -119,8 +119,8 @@ A scout / analysis is "done" when:
 Product-specific source pointers (contributing project scouts, authoritative dbt model docs) live in the product's `methodology_defaults.md`.
 
 **Conventions:**
-- `CLAUDE.md` (repo root) — multi-venv reality + don't-disable-pre-commit rules.
-- `dbt/project/CLAUDE.md` — dbt-development conventions (do not invoke dbt through the subproject env; use `dbt show --inline`; branch / commit naming; etc.).
+- `AGENTS.md` (repo root) — multi-venv reality + don't-disable-pre-commit rules.
+- `dbt/project/AGENTS.md` — dbt-development conventions (do not invoke dbt through the subproject env; use `dbt show --inline`; branch / commit naming; etc.).
 - `ai-rules/` (submodule) — broader AI-assisted-development rules.
 
 **External tickets / documentation:**

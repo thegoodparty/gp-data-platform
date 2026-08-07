@@ -16,7 +16,10 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
+      # submodules: the agents-md-sync hook runs a script from the ai-rules submodule.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python
         uses: actions/setup-python@v5

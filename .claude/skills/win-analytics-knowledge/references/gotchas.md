@@ -50,4 +50,4 @@ The as-of dates are at month granularity on purpose (no false precision). A futu
 ## Cross-references
 
 - Domain docs own the full explanations: [sources.md](sources.md), [joins.md](joins.md), [outcomes.md](outcomes.md), [engagement.md](engagement.md), [viability.md](viability.md), [segmentation.md](segmentation.md).
-- The repo-root `CLAUDE.md` owns the environment/pre-commit traps.
+- The repo-root `AGENTS.md` owns the environment/pre-commit traps.

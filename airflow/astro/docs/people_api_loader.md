@@ -235,5 +235,5 @@ come from SSM SecureStrings, never an env-var password.
 ## References
 
 - TDD (DATA-1735) sections 4.4, 4.5, 4.10, 7, 9.3 (bastion + BashOperator decisions)
-- `people-api-loader/` CLI and `people-api-loader/CLAUDE.md`
+- `people-api-loader/` CLI and `people-api-loader/AGENTS.md`
 - Related: DATA-1905 (S3 bucket + rds-s3-import role), DATA-1906 (voter gate), DATA-1855 (cutover)

@@ -41,7 +41,7 @@ For most Win analyses, start with one of these:
 
 ### Civics mart structure (5-table model)
 
-Per `dbt/project/CLAUDE.md`:
+Per `dbt/project/AGENTS.md`:
 
 1. **`candidate`** — one row per unique person.
 2. **`candidacy`** — one row per (candidate × position × election year). Use this as the primary outcomes table.

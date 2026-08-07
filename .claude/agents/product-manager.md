@@ -50,4 +50,4 @@ If you have no concerns at a level, say so explicitly rather than padding. If th
 
 ## Context supplied at invocation
 
-The invocation prompt will supply project-specific framing (product, cadence, intended audience, where the output lands) and the product's reviewer doc pointers. Read the named plan / CLAUDE.md / model files before forming your assessment, and load the docs the dispatch names — the product knowledge skill's docs for your role plus the process skill's `methodology.md` — rather than every doc. The pipeline topology (where your review sits) is in the process skill's `pipeline.md`.
+The invocation prompt will supply project-specific framing (product, cadence, intended audience, where the output lands) and the product's reviewer doc pointers. Read the named plan / AGENTS.md / model files before forming your assessment, and load the docs the dispatch names — the product knowledge skill's docs for your role plus the process skill's `methodology.md` — rather than every doc. The pipeline topology (where your review sits) is in the process skill's `pipeline.md`.
