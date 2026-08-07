@@ -475,6 +475,11 @@ with
     --
     -- FALSE means BR shows a term covering election day held by someone else.
     -- A position with no covering term stays NULL: unknown, not challenger.
+    --
+    -- A NULL term_end_date reads as "no scheduled end, still serving" and so
+    -- covers election day. A NULL term_start_date carries no such reading -
+    -- assuming the term began before every election day would backdate the
+    -- holder over cycles they may not have served - so those terms are dropped.
     incumbency as (
         select
             ced.gp_candidacy_id,
