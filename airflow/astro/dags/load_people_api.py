@@ -148,12 +148,12 @@ def load_people_api():
     # partition scans on default stats. A bare ANALYZE covers every leaf partition; run last so
     # it reflects the fully loaded + resized cluster.
     analyze = _step("analyze", "analyze")
-    # Serving cutover: copy this run's connection string into the single serving parameter
-    # (people-db-connection-string-{env}), label the new version `build-{date}`, and move the
-    # `live` pointer people-api reads onto it. Runs last, after resize + analyze, so `live` only
-    # ever moves to a cluster on its serving class with fresh planner stats; promote itself refuses
-    # unless validate passed. people-api revalidates `:live` every ~5 min, so this is the cutover.
-    # promote touches only S3 + SSM (no cluster mutation), so it is deliberately NOT an upstream of
+    # Serving cutover: overwrite the single serving parameter (people-db-connection-string-{env})
+    # with this run's connection string, creating a new latest version that people-api reads (it
+    # revalidates every ~5 min); the new version also gets a best-effort `build-{date}` bookkeeping
+    # label. Runs last, after resize + analyze, so serving only ever moves to a cluster on its
+    # serving class with fresh planner stats; promote itself refuses unless validate passed. promote
+    # touches only S3 + SSM (no cluster mutation), so it is deliberately NOT an upstream of
     # scale_down_on_failure — a promote failure leaves the already-resized serving cluster intact.
     promote = _step("promote", "promote")
     # Cost guard: a failed/aborted run after provision strands whatever writer instance class was

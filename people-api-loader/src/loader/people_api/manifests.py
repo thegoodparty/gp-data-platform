@@ -165,9 +165,9 @@ class PromoteManifest(ManifestBase):
     step: Literal["promote"] = "promote"
     # The single serving parameter this cutover wrote (people-db-connection-string-{env}).
     serving_param: str
-    # The SSM version this write produced and the labels pinned to it: the per-refresh anchor
-    # `build-{run_date}` (traceability + rollback target) and the moving `live` pointer people-api
-    # reads. `live` is moved onto this version by the write, so it records the cutover.
+    # The new SSM version this write produced (people-api reads the parameter's latest version) and
+    # the labels that actually stuck on it — the per-refresh `build-{run_date}` anchor, or empty if
+    # labeling was rejected (labels are best-effort bookkeeping; the overwrite is the real cutover).
     version: int
     labels: list[str]
 

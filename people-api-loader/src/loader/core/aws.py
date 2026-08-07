@@ -298,24 +298,29 @@ def overwrite_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str) -> int
     set.
 
     This is the serving-cutover write: `promote` overwrites the single serving parameter so each
-    refresh is a new version it can label `build-{date}` and move `live` onto, and rollback can
-    move `live` back to a prior version's label. Tags are left untouched (Overwrite forbids Tags,
-    and the serving parameter's access is by ARN, not tag). Returns the new version.
+    refresh is a new latest version (which people-api reads) that it can label `build-{date}`, and
+    rollback is an operator writing a prior connection string back as a new version. Tags are left
+    untouched (Overwrite forbids Tags, and the serving parameter's access is by ARN, not tag).
+    Returns the new version.
     """
     resp = ssm(cfg).put_parameter(Name=name, Value=value, Type="SecureString", Overwrite=True)
     return int(resp["Version"])
 
 
-def label_ssm_parameter_version(cfg: BaseLoaderConfig, name: str, version: int, labels: list[str]) -> None:
-    """Attach version label(s) to a specific SSM parameter version.
+def label_ssm_parameter_version(
+    cfg: BaseLoaderConfig, name: str, version: int, labels: list[str]
+) -> list[str]:
+    """Attach version label(s) to a specific SSM parameter version; returns the rejected labels.
 
-    A version label is the human-readable anchor for which refresh a serving-parameter version
-    came from (traceability + rollback), or a moving pointer to the version being served. A label
-    lives on exactly one version at a time, so re-applying an existing label moves it (this is how
-    the serving `live` pointer is advanced). SSM rejects labels that begin with a digit or with
-    `aws`/`ssm`, so a bare date stamp is invalid — callers prefix it (e.g. `build-<date>`).
+    A version label is a human-readable anchor for which refresh a serving-parameter version came
+    from (traceability + a named version to roll back to). A label lives on exactly one version at
+    a time, so re-applying an existing label moves it. SSM caps a single version at 10 labels and
+    rejects labels that begin with a digit or with `aws`/`ssm` (callers prefix a date stamp, e.g.
+    `build-<date>`); rejected labels come back in the response's `InvalidLabels` WITHOUT raising, so
+    the returned list lets a caller treat labeling as best-effort.
     """
-    ssm(cfg).label_parameter_version(Name=name, ParameterVersion=version, Labels=labels)
+    resp = ssm(cfg).label_parameter_version(Name=name, ParameterVersion=version, Labels=labels)
+    return resp.get("InvalidLabels", [])
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:

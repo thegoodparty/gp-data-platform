@@ -200,7 +200,7 @@ def analyze(run_date: RunDateArg) -> None:
 
 @app.command()
 def promote(run_date: RunDateArg) -> None:
-    """Serving cutover — write this run's connection string to the serving param and move `live`."""
+    """Serving cutover — overwrite the serving param to this run's connection string (new latest)."""
     from loader.people_api.steps import promote as step
 
     cfg = _setup(run_date)
