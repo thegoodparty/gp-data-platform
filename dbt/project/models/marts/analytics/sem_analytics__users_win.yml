@@ -55,7 +55,6 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
-        ratified: 2026-08-03
 
   - name: win_active_candidates_30d
     label: Win Active Candidates 30d
@@ -91,4 +90,3 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
-        ratified: 2026-07-28

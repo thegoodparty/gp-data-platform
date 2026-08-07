@@ -9,7 +9,12 @@ name: semantic-layer-publish
 on:
   push:
     branches: [main]
-    paths: ['dbt/project/models/**/sem_*.yml']
+    # The ratification sidecar is included: since DATA-2249 a sign-off is
+    # recorded there, not in the sem_*.yml, so a sem-only filter would let the
+    # pending-to-dated edge merge unannounced and fire no Sigma build task.
+    paths:
+      - 'dbt/project/models/**/sem_*.yml'
+      - 'analytics/diagnostics/semantic_catalog/config/ratifications.yml'
 
 permissions:
   contents: read

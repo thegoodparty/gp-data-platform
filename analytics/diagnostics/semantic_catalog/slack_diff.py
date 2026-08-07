@@ -46,6 +46,14 @@ def diff_records(before: list[MetricRecord], after: list[MetricRecord]) -> list[
             lines.append(f"• changed: {name} (definition updated)")
         if old.ratified != new.ratified:
             lines.append(f"• ratified: {name} — {old.ratified or 'pending'} → {new.ratified or 'pending'}")
+        if old.ratified_stale != new.ratified_stale:
+            # Staleness can flip with no other field moving: correcting a
+            # mis-pasted definition_sha is a sidecar-only edit. Without this
+            # branch the anchor counts the metric as changed while the summary
+            # shows no bullet for it, which is exactly the silence DATA-2249
+            # exists to remove.
+            state = "stale (definition changed since ratification)" if new.ratified_stale else "current"
+            lines.append(f"• ratification: {name} — sign-off now {state}")
         if old.retired != new.retired:
             lines.append(f"• retired: {name} — {old.retired or 'active'} → {new.retired or 'active'}")
         if old.owner != new.owner:
