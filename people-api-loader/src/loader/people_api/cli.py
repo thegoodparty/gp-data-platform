@@ -198,6 +198,15 @@ def analyze(run_date: RunDateArg) -> None:
     step.run(cfg, run_date)
 
 
+@app.command()
+def promote(run_date: RunDateArg) -> None:
+    """Serving cutover — overwrite the serving param to this run's connection string (new latest)."""
+    from loader.people_api.steps import promote as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
 @app.command(name="scale-down")
 def scale_down(run_date: RunDateArg) -> None:
     """Failure cost guard — flip the writer to db.serverless (keeps the cluster + data)."""
@@ -315,6 +324,7 @@ def status(run_date: RunDateArg) -> None:
         CopyManifest,
         IndexManifest,
         InspectManifest,
+        PromoteManifest,
         ProvisionManifest,
         ResizeManifest,
         SchemaManifest,
@@ -332,6 +342,7 @@ def status(run_date: RunDateArg) -> None:
         ("validate", ValidateManifest),
         ("resize", ResizeManifest),
         ("analyze", AnalyzeManifest),
+        ("promote", PromoteManifest),
     ]
     tbl = Table(title=f"Run {run_date} — step status")
     tbl.add_column("Step")
