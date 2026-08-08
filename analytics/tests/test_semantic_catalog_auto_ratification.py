@@ -14,7 +14,7 @@ def _review(login, state="APPROVED", at="2026-08-05T00:00:00Z"):
     return {"login": login, "state": state, "submitted_at": at}
 
 
-def _rec(name, definition="def", ratified=None, stale=False, retired=None):
+def _rec(name, definition="def", ratified=None, stale=False, retired=None, owner=None):
     return MetricRecord(
         name=name,
         label=name,
@@ -23,7 +23,7 @@ def _rec(name, definition="def", ratified=None, stale=False, retired=None):
         source="ref('m')",
         dimensions=(),
         filter=None,
-        owner=None,
+        owner=owner,
         ratified=ratified,
         detail_doc=None,
         retired=retired,
@@ -77,6 +77,26 @@ def test_superseded_approval_does_not_count():
     assert completion_date(reviews, DATA, BIZ) is None
 
 
+def test_changes_requested_is_superseded_by_a_later_approval():
+    # The other direction of "latest review counts": address feedback and
+    # re-approve, and the earlier rejection must not keep the group uncovered.
+    reviews = [
+        _review("amanda847"),
+        _review("danpelota", state="CHANGES_REQUESTED", at="2026-08-05T01:00:00Z"),
+        _review("danpelota", at="2026-08-05T02:00:00Z"),
+    ]
+    assert completion_date(reviews, DATA, BIZ) == "2026-08-05"
+
+
+def test_bot_listed_as_a_group_member_still_cannot_complete_coverage():
+    # "Bot accounts never count toward a group, even if listed as a member":
+    # a misconfigured team roster containing a bot login must not let the
+    # bot's own approval satisfy that group.
+    reviews = [_review("amanda847"), _review("delegate-reviewer[bot]")]
+    data_with_bot_as_member = [*DATA, "delegate-reviewer[bot]"]
+    assert completion_date(reviews, data_with_bot_as_member, BIZ) is None
+
+
 # --- what a merge earns ------------------------------------------------------
 
 
@@ -118,6 +138,33 @@ def test_stale_sign_off_is_re_earned_on_the_new_definition():
 def test_retired_metric_earns_nothing():
     after = [_rec("m", retired="2026-08-01")]
     assert ratifications.ratified_by_merge([], after, "2026-08-07", 800) == {}
+
+
+def test_untouched_stale_metric_in_a_touched_file_earns_nothing():
+    # Staleness can predate this merge entirely (an earlier hand-edit changed
+    # the definition without a re-ratification). The file-mates rule applies
+    # just as much to a stale bystander as to a pending one: no movement in
+    # THIS merge means this PR's reviewers never saw it.
+    before = [
+        _rec("edited", definition="old"),
+        _rec("stale_bystander", ratified="2026-08-01", stale=True),
+    ]
+    after = [
+        _rec("edited", definition="new"),
+        _rec("stale_bystander", ratified="2026-08-01", stale=True),
+    ]
+    earned = ratifications.ratified_by_merge(before, after, "2026-08-07", 800)
+    assert set(earned) == {"edited"}
+
+
+def test_metadata_only_change_does_not_earn_a_sign_off():
+    # owner/detail_doc are deliberately excluded from FINGERPRINT_FIELDS, so
+    # editing only owner is not "the definition moved" -- no one reviewed a
+    # changed definition, so a pending metric touched only this way earns
+    # nothing.
+    before = [_rec("m", owner="alice")]
+    after = [_rec("m", owner="bob")]
+    assert ratifications.ratified_by_merge(before, after, "2026-08-07", 800) == {}
 
 
 # --- writing it into the sidecar --------------------------------------------
@@ -190,3 +237,35 @@ def test_upsert_writes_an_all_digit_hash_quoted(tmp_path):
     # Unquoted, YAML reads it as an integer and the leading zero is gone.
     out = ratifications.upsert(EXISTING, "win_users", _sign_off(sha="0123456"))
     assert _loaded(tmp_path, out)["win_users"].definition_sha == "0123456"
+
+
+def test_upsert_into_an_empty_file_creates_a_single_loadable_entry(tmp_path):
+    # The very first ratification ever: no sidecar content exists yet.
+    out = ratifications.upsert("", "m", _sign_off())
+    assert _loaded(tmp_path, out) == {"m": ratifications.Ratification("2026-08-07", "abc1234", 800)}
+
+
+def test_upsert_with_a_note_adds_a_comment_that_survives_the_round_trip(tmp_path):
+    # Comments are load-bearing: a note passed alongside a brand-new entry
+    # must both appear in the text and not break parsing.
+    out = ratifications.upsert(EXISTING, "win_users", _sign_off(), note="Approved in #800.")
+    assert "# Approved in #800." in out
+    assert _loaded(tmp_path, out)["win_users"] == ratifications.Ratification("2026-08-07", "abc1234", 800)
+
+
+def test_upsert_writes_a_missing_pr_number_as_yaml_null(tmp_path):
+    # approved_by_pr is optional on Ratification (a hand-authored entry may
+    # lack a PR). Writing the bare word `None` would round-trip through
+    # load() as the STRING "None", not Python None, silently corrupting the
+    # type `load()` and the rest of the code expect.
+    sign_off = ratifications.Ratification("2026-08-07", "abc1234", None)
+    out = ratifications.upsert("", "m", sign_off)
+    assert _loaded(tmp_path, out)["m"].approved_by_pr is None
+
+
+def test_upsert_editing_to_a_missing_pr_number_writes_null(tmp_path):
+    # Same bug, the other code path: rewriting an existing field line rather
+    # than composing a brand-new block.
+    text = "m:\n  ratified: 2026-08-01\n  definition_sha: 'aaaaaaa'\n  approved_by_pr: 100\n"
+    out = ratifications.upsert(text, "m", ratifications.Ratification("2026-08-07", "abc1234", None))
+    assert _loaded(tmp_path, out)["m"].approved_by_pr is None

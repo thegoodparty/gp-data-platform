@@ -167,7 +167,11 @@ def _field_line(key: str, sign_off: Ratification) -> str:
     if key == "definition_sha":
         # Always quoted: an all-digit hash left bare reads back as an integer.
         return f"  definition_sha: '{sign_off.definition_sha}'\n"
-    return f"  approved_by_pr: {sign_off.approved_by_pr}\n"
+    # `null`, not the bare word None: PyYAML has no notion of Python's None
+    # literal, so `approved_by_pr: None` would read back as the STRING "None"
+    # rather than as a missing PR number.
+    pr = sign_off.approved_by_pr if sign_off.approved_by_pr is not None else "null"
+    return f"  approved_by_pr: {pr}\n"
 
 
 def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
