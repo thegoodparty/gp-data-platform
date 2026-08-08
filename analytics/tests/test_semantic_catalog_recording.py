@@ -81,3 +81,37 @@ def test_manifest_carries_what_the_pr_body_needs():
 def test_manifest_is_empty_when_nothing_was_earned():
     got = recording.manifest({}, [], None, 800)
     assert got["metrics"] == []
+
+
+def test_pr_body_names_each_metric_and_the_source_pr():
+    body = recording.pr_body(
+        {
+            "pr": 800,
+            "date": "2026-08-07",
+            "metrics": [{"name": "serve_users", "label": "Serve Users", "definition_sha": "abc1234"}],
+        },
+        repo="thegoodparty/gp-data-platform",
+    )
+    assert "serve_users" in body
+    assert "2026-08-07" in body
+    assert "thegoodparty/gp-data-platform/pull/800" in body
+
+
+def test_pr_body_explains_what_the_approver_is_agreeing_to():
+    body = recording.pr_body({"pr": 800, "date": "2026-08-07", "metrics": []}, repo="o/r")
+    assert "date matches" in body.lower()
+
+
+def test_pr_body_carries_no_em_dash_or_emoji():
+    # DATA-2211 copy rule, and this text is machine-generated so nothing else
+    # catches a violation.
+    body = recording.pr_body(
+        {
+            "pr": 800,
+            "date": "2026-08-07",
+            "metrics": [{"name": "m", "label": "M", "definition_sha": "abc1234"}],
+        },
+        repo="o/r",
+    )
+    assert "—" not in body
+    assert all(ord(ch) < 0x2190 for ch in body)

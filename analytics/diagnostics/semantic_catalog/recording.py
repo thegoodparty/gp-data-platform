@@ -49,3 +49,39 @@ def manifest(
             for name in sorted(earned)
         ],
     }
+
+
+_BODY = """\
+## What
+
+Records the ratification for {count}, earned by [#{pr}](https://github.com/{repo}/pull/{pr}).
+
+| Metric | Ratified | Definition fingerprint |
+|---|---|---|
+{rows}
+
+## Why this is safe to approve on its own
+
+Both review groups approved #{pr}, so the definition itself is already ratified.
+The date recorded here, {date}, is when the second group's approval landed. All
+you are agreeing to is that the date matches the approval record on that PR.
+
+CODEOWNERS does not cover the ratification sidecar, so this PR re-requests no
+review team. Recording a sign-off is bookkeeping, and it should not re-tag the
+people who already gave it.
+
+## How this was produced
+
+Opened automatically by the semantic-layer publish job on the merge of #{pr}.
+The fingerprint is computed from the merged definition, so if the definition
+changes later without a new sign-off, every catalog projection will render this
+date as stale.
+"""
+
+
+def pr_body(manifest: dict, repo: str) -> str:
+    """Render the body of the PR that carries an earned ratification record."""
+    metrics = manifest["metrics"]
+    count = f"{len(metrics)} metric" + ("s" if len(metrics) != 1 else "")
+    rows = "\n".join(f"| `{m['name']}` | {manifest['date']} | `{m['definition_sha']}` |" for m in metrics)
+    return _BODY.format(count=count, pr=manifest["pr"], repo=repo, date=manifest["date"], rows=rows)
