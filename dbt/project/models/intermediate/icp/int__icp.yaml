@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: int__icp_offices
-    description: "ICP offices with voter counts per district (state, district type, and district name)"
+    description: "ICP offices with voter counts and census population per district (state, district type, and district name)"
     columns:
       - name: br_database_position_id
         description: "BallotReady database position ID"
@@ -37,6 +37,17 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: district_population
+        description: >
+          Census constituents in the district, from int__district_population.
+          Carried for sizing and market analysis; no ICP gate reads it. Null
+          where the district's type falls outside the census substrate's curated
+          type set, so it is not yet a drop-in replacement for voter_count.
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+              row_condition: "district_population is not null"
       - name: voter_count
         description: "Number of voters in the district"
         tests:
