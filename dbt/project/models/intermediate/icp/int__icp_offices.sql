@@ -8,10 +8,20 @@ with
     ),
 
     l2_match as (
-        select * from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        -- the substrate normalizes district names (case, whitespace, trailing
+        -- "(EST.)"); the match snapshot does not, so carry a normalized copy for
+        -- the population join. The voter join stays on the raw name, which is
+        -- what int__l2_district_aggregations keys on.
+        select
+            *,
+            {{ normalize_l2_district_name("l2_district_name") }}
+            as normalized_district_name
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
     ),
 
     district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
+
+    district_pop as (select * from {{ ref("int__district_population") }}),
 
     icp_position_names as (
         select name, serve_eligible, win_effective_date
@@ -28,6 +38,11 @@ select
     l2_match.l2_district_type,
     l2_match.is_matched,
     district_counts.voter_count,
+    -- census constituents for the same district. Carried for sizing and market
+    -- analysis; no ICP gate reads it yet. Null where the district's type is
+    -- outside the census substrate's curated type set, so it is not a
+    -- drop-in replacement for voter_count today.
+    district_pop.district_population,
     position.is_judicial,
     position.is_appointed,
     position.updated_at,
@@ -89,5 +104,11 @@ left join
     on l2_match.l2_district_name = district_counts.district_name
     and l2_match.l2_district_type = district_counts.district_type
     and position.state = district_counts.state_postal_code
+
+left join
+    district_pop
+    on l2_match.normalized_district_name = district_pop.district_name
+    and l2_match.l2_district_type = district_pop.district_type
+    and position.state = district_pop.state_postal_code
 
 left join icp_position_names on normalized_position.name = icp_position_names.name
