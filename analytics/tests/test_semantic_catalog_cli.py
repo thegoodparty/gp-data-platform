@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from semantic_catalog import cli
@@ -241,3 +242,106 @@ def test_reply_created_invokes_reply_in_thread(tmp_path, monkeypatch):
     assert seen["channel"] == "C999"
     assert seen["thread_ts"] == "1699.1"
     assert seen["tasks"][0]["metric"] == "win_users"
+
+
+def _reviews_file(tmp_path, reviews):
+    p = tmp_path / "reviews.json"
+    p.write_text(json.dumps(reviews))
+    return p
+
+
+def _isolated_sidecar(tmp_path, monkeypatch, body=""):
+    """Point the generator at a throwaway sidecar so tests never touch the repo's."""
+    sidecar = tmp_path / "ratifications.yml"
+    sidecar.write_text(body)
+    monkeypatch.setattr(cli.ratifications, "DEFAULT_PATH", sidecar)
+    return sidecar
+
+
+def test_record_writes_nothing_when_a_review_group_is_missing(tmp_path, monkeypatch, capsys):
+    sidecar = _isolated_sidecar(tmp_path, monkeypatch)
+    reviews = _reviews_file(
+        tmp_path,
+        [{"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"}],
+    )
+    out = tmp_path / "recorded.json"
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(reviews),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--emit-recorded",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert sidecar.read_text() == "", "an uncovered merge must record nothing"
+    assert json.loads(out.read_text())["metrics"] == []
+    assert "coverage incomplete" in capsys.readouterr().out.lower()
+
+
+def test_record_writes_nothing_when_the_merge_changed_no_definition(tmp_path, monkeypatch, capsys):
+    # Both groups approved, but every metric is already ratified and untouched,
+    # so the merge earned nothing.
+    _isolated_sidecar(tmp_path, monkeypatch)
+    reviews = _reviews_file(
+        tmp_path,
+        [
+            {"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"},
+            {"login": "danpelota", "state": "APPROVED", "submitted_at": "2026-08-07T11:00:00Z"},
+        ],
+    )
+    out = tmp_path / "recorded.json"
+    # No --base-dir, so `before` is empty and every current metric looks new;
+    # guard against that by pointing base-dir at the real tree (identical to HEAD).
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(reviews),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--base-dir",
+            str(REPO_ROOT),
+            "--emit-recorded",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert json.loads(out.read_text())["metrics"] == []
+
+
+def test_record_emits_the_pr_body_only_when_something_was_earned(tmp_path, monkeypatch):
+    _isolated_sidecar(tmp_path, monkeypatch)
+    reviews = _reviews_file(
+        tmp_path, [{"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"}]
+    )
+    body = tmp_path / "body.md"
+    cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(reviews),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--emit-recorded",
+            str(tmp_path / "recorded.json"),
+            "--emit-pr-body",
+            str(body),
+        ]
+    )
+    assert not body.exists(), "no PR body when there is no PR to open"
