@@ -18,6 +18,15 @@ safe inside the blocking catalog-freshness gate.
 MetricRecord: records are compared whole to build the Slack change diff, so a
 provenance-only edit would report the metric as changed with no diff line able
 to explain why.
+
+`upsert`'s optional `note` is written as a comment line prefixed with
+`AUTO_NOTE_PREFIX` ("auto-recorded: "), so the hook's own provenance note can
+be told apart from a human's hand-written reasoning in the same block. On the
+edit path (a metric whose sign-off went stale and is being re-earned) `upsert`
+strips any prior line carrying that prefix before writing the fresh one, so
+re-recording replaces the note instead of accumulating a second one; a human
+comment lacking the prefix is left untouched. A later module, `recording.py`,
+relies on this exact prefix constant to write its own auto-generated notes.
 """
 
 from __future__ import annotations
@@ -160,6 +169,14 @@ def ratified_by_merge(
 
 _WRITTEN_FIELDS = ("ratified", "definition_sha", "approved_by_pr")
 
+# Marks a comment line `upsert` wrote itself, as opposed to a human's reasoning
+# typed into the same block. Greppable and stable on purpose: `recording.py`
+# writes a note on every sign-off a merge earns, including a re-earned stale
+# one that already has a block, and needs to replace its own prior note there
+# without disturbing whatever a human wrote alongside it.
+AUTO_NOTE_PREFIX = "auto-recorded: "
+_AUTO_NOTE_RE = re.compile(rf"^\s{{2}}#\s*{re.escape(AUTO_NOTE_PREFIX)}")
+
 
 def _field_line(key: str, sign_off: Ratification) -> str:
     if key == "ratified":
@@ -190,7 +207,7 @@ def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
     if start is None:
         block = f"{name}:\n"
         if note:
-            block += f"  # {note}\n"
+            block += f"  # {AUTO_NOTE_PREFIX}{note}\n"
         block += "".join(_field_line(k, sign_off) for k in _WRITTEN_FIELDS)
         separator = "" if text.endswith("\n\n") or not text else "\n"
         return text + separator + block
@@ -208,8 +225,19 @@ def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
                 continue
             seen.add(key)
             rewritten.append(_field_line(key, sign_off))
+        elif _AUTO_NOTE_RE.match(line):
+            # Drop a prior auto-note so re-recording replaces it rather than
+            # accumulating a second one. A human's comment doesn't carry this
+            # prefix, so it never matches here and is left in `rewritten` as-is.
+            continue
         else:
             rewritten.append(line)
+
+    if note:
+        # rewritten[0] is always the block's own header line (`lines[start]`
+        # copied verbatim, since the loop above runs over lines[start:end]),
+        # so the note goes right after it -- inside the block, not above it.
+        rewritten.insert(1, f"  # {AUTO_NOTE_PREFIX}{note}\n")
 
     missing = [k for k in _WRITTEN_FIELDS if k not in seen]
     if missing:

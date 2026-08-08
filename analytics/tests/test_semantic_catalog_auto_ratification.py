@@ -220,6 +220,18 @@ def test_upsert_edits_an_existing_entry_in_place_without_duplicating_the_key(tmp
     )
 
 
+def test_upsert_editing_an_entry_preserves_an_unrelated_trailing_comment_block(tmp_path):
+    # The edit path's block-end detection sweeps trailing comments (and blank
+    # lines) after the last rewritten field into the block being edited. It is
+    # correct today only because nothing in the rewrite loop touches a line
+    # that doesn't match a written field or the auto-note prefix -- a
+    # regression here would silently drop or reorder someone else's sidecar
+    # comment. Compare byte for byte, not just substring-contains.
+    trailing = EXISTING[EXISTING.index("\n# win_activated_users") :]
+    out = ratifications.upsert(EXISTING, "activated_serve_users", _sign_off(pr=900))
+    assert out.endswith(trailing)
+
+
 def test_upsert_adds_a_field_the_existing_entry_lacks(tmp_path):
     text = "m:\n  ratified: 2026-08-01\n  definition_sha: 'aaaaaaa'\n"
     out = ratifications.upsert(text, "m", _sign_off())
@@ -247,10 +259,44 @@ def test_upsert_into_an_empty_file_creates_a_single_loadable_entry(tmp_path):
 
 def test_upsert_with_a_note_adds_a_comment_that_survives_the_round_trip(tmp_path):
     # Comments are load-bearing: a note passed alongside a brand-new entry
-    # must both appear in the text and not break parsing.
+    # must both appear in the text, tagged with the auto-note prefix so
+    # recording.py can find and replace its own notes later, and not break
+    # parsing.
     out = ratifications.upsert(EXISTING, "win_users", _sign_off(), note="Approved in #800.")
-    assert "# Approved in #800." in out
+    assert f"# {ratifications.AUTO_NOTE_PREFIX}Approved in #800." in out
     assert _loaded(tmp_path, out)["win_users"] == ratifications.Ratification("2026-08-07", "abc1234", 800)
+
+
+def test_upsert_with_a_note_lands_on_an_edit(tmp_path):
+    # A re-earned stale sign-off already has a block, so it takes the edit
+    # path -- the note must not be silently dropped there.
+    text = "m:\n  ratified: 2026-08-01\n  definition_sha: 'aaaaaaa'\n  approved_by_pr: 100\n"
+    out = ratifications.upsert(text, "m", _sign_off(pr=200), note="Re-earned in #900.")
+    assert f"# {ratifications.AUTO_NOTE_PREFIX}Re-earned in #900." in out
+    assert _loaded(tmp_path, out)["m"] == ratifications.Ratification("2026-08-07", "abc1234", 200)
+
+
+def test_upsert_with_a_note_replaces_the_prior_auto_note_on_re_edit(tmp_path):
+    # Re-recording must not accumulate a second auto-note each time a metric
+    # goes stale and gets re-earned.
+    text = "m:\n  ratified: 2026-08-01\n  definition_sha: 'aaaaaaa'\n  approved_by_pr: 100\n"
+    once = ratifications.upsert(text, "m", _sign_off(pr=200), note="First re-earn, PR #900.")
+    twice = ratifications.upsert(once, "m", _sign_off(pr=300), note="Second re-earn, PR #901.")
+    assert twice.count(ratifications.AUTO_NOTE_PREFIX) == 1
+    assert "First re-earn" not in twice
+    assert f"# {ratifications.AUTO_NOTE_PREFIX}Second re-earn, PR #901." in twice
+    assert _loaded(tmp_path, twice)["m"].approved_by_pr == 300
+
+
+def test_upsert_with_a_note_leaves_a_human_comment_in_the_same_block_untouched(tmp_path):
+    # The auto-note and a human's hand-written reasoning must coexist: only
+    # the prefixed line is ours to replace.
+    out = ratifications.upsert(
+        EXISTING, "activated_serve_users", _sign_off(pr=900), note="Re-earned in #900."
+    )
+    assert "Both groups approved #765" in out
+    assert f"# {ratifications.AUTO_NOTE_PREFIX}Re-earned in #900." in out
+    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr == 900
 
 
 def test_upsert_writes_a_missing_pr_number_as_yaml_null(tmp_path):
