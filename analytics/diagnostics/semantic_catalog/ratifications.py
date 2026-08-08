@@ -122,6 +122,101 @@ def apply(records: list[MetricRecord], sign_offs: dict[str, Ratification]) -> li
     return out
 
 
+def ratified_by_merge(
+    before: list[MetricRecord],
+    after: list[MetricRecord],
+    date: str,
+    pr_number: int,
+) -> dict[str, Ratification]:
+    """Sign-offs a merge earns, given that both review groups approved its PR.
+
+    A metric qualifies only when it has no trustworthy sign-off already (pending
+    or stale) AND its definition actually moved in this merge, judged by
+    fingerprint against the base, or it is new. Without the second condition a
+    PR editing one metric would ratify every other pending metric that happens
+    to live in the same file, which reviewers never looked at.
+
+    Deliberately conservative: a PR that changes only `owner` or `detail_doc` on
+    a pending metric earns nothing, because no definition was put in front of
+    anyone.
+    """
+    prev = {r.name: r for r in before}
+    earned: dict[str, Ratification] = {}
+    for rec in after:
+        if rec.retired:
+            continue
+        if rec.ratified and not rec.ratified_stale:
+            continue
+        old = prev.get(rec.name)
+        if old is not None and definition_sha(old) == definition_sha(rec):
+            continue
+        earned[rec.name] = Ratification(
+            ratified=date,
+            definition_sha=definition_sha(rec),
+            approved_by_pr=pr_number,
+        )
+    return earned
+
+
+_WRITTEN_FIELDS = ("ratified", "definition_sha", "approved_by_pr")
+
+
+def _field_line(key: str, sign_off: Ratification) -> str:
+    if key == "ratified":
+        return f"  ratified: {sign_off.ratified}\n"
+    if key == "definition_sha":
+        # Always quoted: an all-digit hash left bare reads back as an integer.
+        return f"  definition_sha: '{sign_off.definition_sha}'\n"
+    return f"  approved_by_pr: {sign_off.approved_by_pr}\n"
+
+
+def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
+    """Write one entry into the sidecar's TEXT, leaving every other byte alone.
+
+    Deliberately not a YAML round-trip. This file carries the reasoning behind
+    each sign-off in comments, and dumping the parsed document would delete all
+    of it. An existing entry is edited field by field, which matters because a
+    metric whose sign-off went stale already has a block here; appending a
+    second one would produce a duplicate key that YAML resolves silently to the
+    last occurrence.
+    """
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}:\s*$", line)), None)
+
+    if start is None:
+        block = f"{name}:\n"
+        if note:
+            block += f"  # {note}\n"
+        block += "".join(_field_line(k, sign_off) for k in _WRITTEN_FIELDS)
+        separator = "" if text.endswith("\n\n") or not text else "\n"
+        return text + separator + block
+
+    # The block runs to the next top-level key, ignoring comments and indented lines.
+    end = next((j for j in range(start + 1, len(lines)) if re.match(r"^[^\s#]", lines[j])), len(lines))
+
+    rewritten: list[str] = []
+    seen: set[str] = set()
+    for line in lines[start:end]:
+        match = re.match(r"^\s{2}(\w+):", line)
+        key = match.group(1) if match else None
+        if key in _WRITTEN_FIELDS:
+            if key in seen:
+                continue
+            seen.add(key)
+            rewritten.append(_field_line(key, sign_off))
+        else:
+            rewritten.append(line)
+
+    missing = [k for k in _WRITTEN_FIELDS if k not in seen]
+    if missing:
+        # Insert after the last field written, so new keys land inside the block
+        # rather than after any trailing blank line.
+        last = max(i for i, line in enumerate(rewritten) if re.match(r"^\s{2}\w+:", line))
+        rewritten[last + 1 : last + 1] = [_field_line(k, sign_off) for k in missing]
+
+    return "".join(lines[:start] + rewritten + lines[end:])
+
+
 def orphaned_keys(records: list[MetricRecord], sign_offs: dict[str, Ratification]) -> list[str]:
     """Sidecar keys matching no metric: a typo, or a metric renamed without its entry."""
     names = {rec.name for rec in records}

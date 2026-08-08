@@ -37,6 +37,54 @@ def evaluate(
     }
 
 
+def _latest_per_reviewer(reviews: list[dict]) -> list[dict]:
+    """One review per login, the most recent, so a superseded verdict cannot count."""
+    latest: dict[str, dict] = {}
+    for review in reviews:
+        login = review["login"]
+        if login not in latest or review["submitted_at"] > latest[login]["submitted_at"]:
+            latest[login] = review
+    return list(latest.values())
+
+
+def completed_at(
+    reviews: list[dict],
+    data_members: Iterable[str],
+    business_members: Iterable[str],
+) -> str | None:
+    """When coverage completed: the moment the SECOND group's first approval landed.
+
+    This is the date a ratification records. It is deliberately not "now" and not
+    the date someone typed a line: `win_users` was recorded as 2026-08-03, the day
+    it was authored, when coverage actually completed 2026-08-04.
+
+    Returns an ISO-8601 UTC timestamp, or None if either group is uncovered.
+    Each review is {"login", "state", "submitted_at"}.
+    """
+    approvals = [
+        r for r in _latest_per_reviewer(reviews) if r["state"] == "APPROVED" and not is_bot(r["login"])
+    ]
+    first_per_group: list[str] = []
+    for members in (data_members, business_members):
+        lowered = _lower(members)
+        stamps = sorted(r["submitted_at"] for r in approvals if r["login"].lower() in lowered)
+        if not stamps:
+            return None
+        first_per_group.append(stamps[0])
+    # Coverage is complete only once BOTH groups are in, so the later one wins.
+    return max(first_per_group)
+
+
+def completion_date(
+    reviews: list[dict],
+    data_members: Iterable[str],
+    business_members: Iterable[str],
+) -> str | None:
+    """`completed_at` as the UTC calendar date, which is what the sidecar stores."""
+    stamp = completed_at(reviews, data_members, business_members)
+    return stamp[:10] if stamp else None
+
+
 def _split_env(value: str | None) -> list[str]:
     if not value:
         return []
