@@ -1,3 +1,4 @@
+import pytest
 from semantic_catalog import ratifications, recording
 from semantic_catalog.records import MetricRecord
 
@@ -102,9 +103,11 @@ def test_pr_body_explains_what_the_approver_is_agreeing_to():
     assert "date matches" in body.lower()
 
 
-def test_pr_body_carries_no_em_dash_or_emoji():
+def test_pr_body_is_pure_ascii():
     # DATA-2211 copy rule, and this text is machine-generated so nothing else
-    # catches a violation.
+    # catches a violation. Pure ASCII is the actual constraint: it rules out
+    # em dash, en dash, curly quotes, ellipsis, and emoji in one assertion,
+    # unlike a codepoint ceiling that some of those slip under.
     body = recording.pr_body(
         {
             "pr": 800,
@@ -113,5 +116,19 @@ def test_pr_body_carries_no_em_dash_or_emoji():
         },
         repo="o/r",
     )
-    assert "—" not in body
-    assert all(ord(ch) < 0x2190 for ch in body)
+    assert body.isascii()
+
+
+def test_pr_body_raises_when_date_is_none():
+    # A bad write must fail loudly, not degrade into a body that reads
+    # "The date recorded here, None, is when the second group's approval
+    # landed."
+    with pytest.raises(ValueError):
+        recording.pr_body(
+            {
+                "pr": 800,
+                "date": None,
+                "metrics": [{"name": "m", "label": "M", "definition_sha": "abc1234"}],
+            },
+            repo="o/r",
+        )

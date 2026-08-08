@@ -81,6 +81,12 @@ date as stale.
 
 def pr_body(manifest: dict, repo: str) -> str:
     """Render the body of the PR that carries an earned ratification record."""
+    if manifest["date"] is None:
+        raise ValueError(
+            "pr_body requires a date: manifest['date'] is None, which means no "
+            "ratification was actually earned. Rendering a PR body would silently "
+            "surface 'None' instead of failing loudly on a bad write."
+        )
     metrics = manifest["metrics"]
     count = f"{len(metrics)} metric" + ("s" if len(metrics) != 1 else "")
     rows = "\n".join(f"| `{m['name']}` | {manifest['date']} | `{m['definition_sha']}` |" for m in metrics)
