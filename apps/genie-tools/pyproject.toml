@@ -5,7 +5,7 @@ description = "Export-only Databricks Genie config utilities"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "databricks-sdk>=0.123.0,<1.0.0",
+    "databricks-sdk>=0.125.0,<1.0.0",
 ]
 
 [project.scripts]
