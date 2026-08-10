@@ -2735,6 +2735,23 @@ models:
               config:
                 where: "icp_voter_count is not null"
 
+      - name: district_population
+        description: >
+          Census population of the matched district: the constituents the
+          officeholder serves, as opposed to icp_voter_count's registered
+          voters. Voter-block allocated from the 2020 decennial frame, so it
+          carries the substrate's documented zero-voter-block undercount and is
+          fractional by design (round for display). No ICP gate reads it.
+          NULL when the position has no matched L2 district, and also when its
+          district type falls outside the census substrate's curated type set,
+          so a NULL here does not imply a NULL icp_voter_count.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "district_population is not null"
+
       - name: is_win_icp
         description: >
           Whether this position meets the Win ICP criteria (office type and
