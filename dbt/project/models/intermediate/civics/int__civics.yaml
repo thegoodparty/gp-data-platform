@@ -3894,6 +3894,59 @@ models:
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
 
+  - name: int__district_population
+    description: >
+      The local-district rollup of the substrate: one row per
+      (state_postal_code, district_type, district_name), a pure GROUP BY over
+      int__district_census_allocation. Because the substrate conserves mass per
+      (block, district_type), district_population is the
+      block-population-weighted district total, and it is fractional by design.
+      Local (curated substrate) types only; statewide rows use a different
+      population basis (exact whole-state census including zero-voter blocks)
+      and live in district_census_stats, which unions this rollup with that
+      branch. Extracted out of that mart so district-grain consumers in the
+      intermediate layer can join population without an intermediate model
+      reading a mart. Read one district_type at a time: each type independently
+      tiles the country, so summing across types double-counts.
+    columns:
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: L2 district column name (the curated substrate subset)
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name
+        data_tests:
+          - not_null
+      - name: district_population
+        description: >
+          Census population allocated to the district (fractional by design;
+          round for display). Voter-block allocated, so it carries the
+          substrate's documented zero-voter-block undercount.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: n_census_blocks
+        description: Distinct census blocks contributing to the district
+        data_tests:
+          - not_null
+      - name: registered_voters
+        description: L2 registered voters in the district, summed over its blocks
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_population_unique_key
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
   - name: int__serve_block_coverage
     description: >
       The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
