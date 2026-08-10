@@ -24,11 +24,11 @@ select
     icp.is_matched as is_l2_matched,
     icp.voter_count as icp_voter_count,
 
-    -- Census constituents for the same district. Keeps the canonical name it
-    -- carries everywhere else (int__district_population, district_census_stats)
-    -- rather than an icp_ prefix, since the population is a property of the
-    -- district and no ICP gate reads it.
-    icp.district_population,
+    -- Census constituents for the same district. No icp_ prefix: the population is a
+    -- property of the district and no ICP gate reads it. Rounded here because the
+    -- allocation is only fractional upstream to keep mass conservation exact; the
+    -- unrounded value stays on int__district_population.
+    cast(round(icp.district_population) as bigint) as district_population,
 
     -- ICP eligibility flags (position-level, not date-gated)
     icp.icp_office_win as is_win_icp,
