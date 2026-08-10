@@ -24,6 +24,12 @@ select
     icp.is_matched as is_l2_matched,
     icp.voter_count as icp_voter_count,
 
+    -- Census constituents for the same district. Keeps the canonical name it
+    -- carries everywhere else (int__district_population, district_census_stats)
+    -- rather than an icp_ prefix, since the population is a property of the
+    -- district and no ICP gate reads it.
+    icp.district_population,
+
     -- ICP eligibility flags (position-level, not date-gated)
     icp.icp_office_win as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
