@@ -75,6 +75,26 @@ models:
         tests:
           - not_null
           - unique
+      - name: is_matched
+        description: >
+          Whether the model resolved this position to an L2 district. This is the
+          only predicate for match state: do not infer it from the district
+          columns being populated.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: l2_district_type
+        description: >
+          L2 district column name, null when is_matched is false. The raw snapshot
+          spells no-match as the literal NOT_MATCHED here; staging nulls it so the
+          column cannot be mistaken for a real district.
+      - name: l2_district_name
+        description: >
+          L2 district name, null when is_matched is false. Zero padding is stripped
+          (the snapshot is not self-consistent about it) and the NOT_MATCHED
+          sentinel is nulled.
     data_tests:
       # Earliest guard on name drift; other district types have a legitimate unresolvable tail.
       - l2_district_tuple_exists:
