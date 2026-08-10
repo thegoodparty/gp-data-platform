@@ -269,6 +269,10 @@ def put_ssm_parameter(
     `ssm:RemoveTagsFromResource`). The existing value is captured before the delete and restored
     (value only) if the recreate fails, so a transient error never leaves the parameter missing —
     which would otherwise strand provision's reuse branch on `ParameterNotFound`.
+
+    NOTE: delete + recreate resets the parameter's version numbering and drops all version labels,
+    so this must NOT be used on the serving parameter `promote` maintains — use
+    `overwrite_ssm_parameter` there, which adds a version and preserves history + labels.
     """
     client = ssm(cfg)
     param_type = "SecureString" if secure else "String"
@@ -285,6 +289,38 @@ def put_ssm_parameter(
             # Tags); the caller can retry put_ssm_parameter to reach the intended tag state.
             client.put_parameter(Name=name, Value=old_value, Type=param_type, Overwrite=True)
             raise
+
+
+def overwrite_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str) -> int:
+    """Overwrite an existing SecureString parameter's value, creating a NEW version and preserving
+    the parameter's version history and labels — unlike `put_ssm_parameter`, which delete+recreates
+    an existing parameter (resetting version numbering and dropping labels) to enforce an exact tag
+    set.
+
+    This is the serving-cutover write: `promote` overwrites the single serving parameter so each
+    refresh is a new latest version (which people-api reads) that it can label `build-{date}`, and
+    rollback is an operator writing a prior connection string back as a new version. Tags are left
+    untouched (Overwrite forbids Tags, and the serving parameter's access is by ARN, not tag).
+    Returns the new version.
+    """
+    resp = ssm(cfg).put_parameter(Name=name, Value=value, Type="SecureString", Overwrite=True)
+    return int(resp["Version"])
+
+
+def label_ssm_parameter_version(
+    cfg: BaseLoaderConfig, name: str, version: int, labels: list[str]
+) -> list[str]:
+    """Attach version label(s) to a specific SSM parameter version; returns the rejected labels.
+
+    A version label is a human-readable anchor for which refresh a serving-parameter version came
+    from (traceability + a named version to roll back to). A label lives on exactly one version at
+    a time, so re-applying an existing label moves it. SSM caps a single version at 10 labels and
+    rejects labels that begin with a digit or with `aws`/`ssm` (callers prefix a date stamp, e.g.
+    `build-<date>`); rejected labels come back in the response's `InvalidLabels` WITHOUT raising, so
+    the returned list lets a caller treat labeling as best-effort.
+    """
+    resp = ssm(cfg).label_parameter_version(Name=name, ParameterVersion=version, Labels=labels)
+    return resp.get("InvalidLabels", [])
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
