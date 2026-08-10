@@ -28,7 +28,13 @@ select
     -- carries everywhere else (int__district_population, district_census_stats)
     -- rather than an icp_ prefix, since the population is a property of the
     -- district and no ICP gate reads it.
-    icp.district_population,
+    --
+    -- Rounded to a whole person: the allocation is fractional upstream so that
+    -- allocations sum exactly to block population (the mass-conservation
+    -- invariant the rollups and binding tests rely on), but a leaf mart column
+    -- that reads as a count of people should not carry a fractional tail. The
+    -- exact value stays available on int__district_population.
+    cast(round(icp.district_population) as bigint) as district_population,
 
     -- ICP eligibility flags (position-level, not date-gated)
     icp.icp_office_win as is_win_icp,
