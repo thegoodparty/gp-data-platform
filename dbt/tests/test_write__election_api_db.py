@@ -86,7 +86,7 @@ def test_every_zip_is_strict():
 
 
 def test_load_loop_table_set_is_pinned():
-    """The load loop writes exactly the nine tables, in FK-dependency
+    """The load loop writes exactly the eight tables, in FK-dependency
     order, with each table's DataFrame and upsert query aligned by name."""
     call = _zip_by_first_list(_writer_tree(), EXPECTED_LOAD_TABLES)
     assert len(call.args) == 3, "load loop zips (tables, dataframes, upsert queries)"
