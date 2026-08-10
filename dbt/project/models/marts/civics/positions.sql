@@ -24,16 +24,10 @@ select
     icp.is_matched as is_l2_matched,
     icp.voter_count as icp_voter_count,
 
-    -- Census constituents for the same district. Keeps the canonical name it
-    -- carries everywhere else (int__district_population, district_census_stats)
-    -- rather than an icp_ prefix, since the population is a property of the
-    -- district and no ICP gate reads it.
-    --
-    -- Rounded to a whole person: the allocation is fractional upstream so that
-    -- allocations sum exactly to block population (the mass-conservation
-    -- invariant the rollups and binding tests rely on), but a leaf mart column
-    -- that reads as a count of people should not carry a fractional tail. The
-    -- exact value stays available on int__district_population.
+    -- Census constituents for the same district. No icp_ prefix: the population is a
+    -- property of the district and no ICP gate reads it. Rounded here because the
+    -- allocation is only fractional upstream to keep mass conservation exact; the
+    -- unrounded value stays on int__district_population.
     cast(round(icp.district_population) as bigint) as district_population,
 
     -- ICP eligibility flags (position-level, not date-gated)

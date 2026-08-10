@@ -49,7 +49,13 @@ models:
                 min_value: 0
               row_condition: "district_population is not null"
       - name: voter_count
-        description: "Number of voters in the district"
+        description: >
+          L2 registered voters in the matched district, and the input to all
+          three ICP gates. Resolved on the exact district name first, falling
+          back to the normalized name (case, whitespace, trailing "(EST.)") when
+          the exact name finds nothing, since the match snapshot carries naming
+          drift the aggregations table does not. NULL only where neither
+          spelling resolves, which leaves the ICP gates NULL rather than false.
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:

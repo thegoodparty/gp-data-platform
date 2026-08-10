@@ -10,8 +10,7 @@ with
     l2_match as (
         -- the substrate normalizes district names (case, whitespace, trailing
         -- "(EST.)"); the match snapshot does not, so carry a normalized copy for
-        -- the population join. The voter join stays on the raw name, which is
-        -- what int__l2_district_aggregations keys on.
+        -- the population join and the voter-count fallback below.
         select
             *,
             {{ normalize_l2_district_name("l2_district_name") }}
@@ -19,7 +18,35 @@ with
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
     ),
 
-    district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
+    -- aliased on both lookups: a bare voter_count on either would shadow the
+    -- coalesced select alias the gates read, silently gating on the exact name only.
+    district_counts as (
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            voter_count as voter_count_exact
+        from {{ ref("int__l2_district_aggregations") }}
+    ),
+
+    -- Fallback keyed on the normalized name: the match snapshot carries L2's
+    -- "(EST.)" and whitespace drift, so the exact join above misses and leaves the
+    -- position unsized with null ICP gates.
+    --
+    -- max() not sum(): 7 keys nationwide have two raw spellings of one district, so
+    -- summing double counts its voters. Deduping also keeps this join 1:1.
+    district_counts_normalized as (
+        select
+            state_postal_code,
+            district_type,
+            {{ normalize_l2_district_name("district_name") }} as district_name,
+            max(voter_count) as voter_count_normalized
+        from {{ ref("int__l2_district_aggregations") }}
+        group by
+            state_postal_code,
+            district_type,
+            {{ normalize_l2_district_name("district_name") }}
+    ),
 
     district_pop as (select * from {{ ref("int__district_population") }}),
 
@@ -37,7 +64,12 @@ select
     l2_match.l2_district_name,
     l2_match.l2_district_type,
     l2_match.is_matched,
-    district_counts.voter_count,
+    -- exact name first, normalized only as a fallback, so no already-sized position
+    -- changes value
+    coalesce(
+        district_counts.voter_count_exact,
+        district_counts_normalized.voter_count_normalized
+    ) as voter_count,
     -- census constituents for the same district. Carried for sizing and market
     -- analysis; no ICP gate reads it yet. Null where the district's type is
     -- outside the census substrate's curated type set, so it is not a
@@ -53,9 +85,9 @@ select
             or position.is_appointed
             or icp_position_names.name is null
         then false
-        when district_counts.voter_count is null
+        when voter_count is null
         then null
-        when district_counts.voter_count not between 500 and 100000
+        when voter_count not between 500 and 100000
         then false
         else true
     end as icp_office_win,
@@ -67,9 +99,9 @@ select
             or icp_position_names.name is null
             or not icp_position_names.serve_eligible
         then false
-        when district_counts.voter_count is null
+        when voter_count is null
         then null
-        when district_counts.voter_count not between 1000 and 100000
+        when voter_count not between 1000 and 100000
         then false
         else true
     end as icp_office_serve,
@@ -82,9 +114,9 @@ select
             or position.is_appointed
             or icp_position_names.name is null
         then false
-        when district_counts.voter_count is null
+        when voter_count is null
         then null
-        when district_counts.voter_count <= 100000
+        when voter_count <= 100000
         then false
         else true
     end as icp_win_supersize,
@@ -104,6 +136,12 @@ left join
     on l2_match.l2_district_name = district_counts.district_name
     and l2_match.l2_district_type = district_counts.district_type
     and position.state = district_counts.state_postal_code
+
+left join
+    district_counts_normalized
+    on l2_match.normalized_district_name = district_counts_normalized.district_name
+    and l2_match.l2_district_type = district_counts_normalized.district_type
+    and position.state = district_counts_normalized.state_postal_code
 
 left join
     district_pop
