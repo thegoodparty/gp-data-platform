@@ -629,8 +629,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     person_df: DataFrame = dbt.ref("m_election_api__person")
     officeholder_df: DataFrame = dbt.ref("m_election_api__office_holder")
 
-    # the election_date window is owned entirely by m_election_api__race; the
-    # writer loads whatever the mart emits
+    # Race is delivered by the sync_election_api swap, not this writer; the
+    # election_date window is still owned by m_election_api__race upstream of
+    # every mart loaded here.
 
     # Implement incremental logic if this is an incremental run
     if dbt.is_incremental:
