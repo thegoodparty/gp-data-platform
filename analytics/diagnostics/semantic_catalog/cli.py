@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from semantic_catalog import lifecycle as lc_mod
-from semantic_catalog import sigma_tasks
+from semantic_catalog import ratifications, sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.clickup_page import render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -36,6 +36,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
 SEM_ROOTS = [DBT_MODELS]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
+# Repo-relative path to the ratification sidecar, used to locate the BEFORE
+# side's copy inside a base worktree. The sidecar sits under analytics/, not in
+# the dbt tree, so it has to be resolved separately from SEM_ROOTS.
+RATIFICATIONS_RELPATH = Path("analytics/diagnostics/semantic_catalog/config/ratifications.yml")
 
 # Each skill owns one canonical_metrics.md. The generated region is projected
 # PER SKILL so a product's cheat sheet lists only its own metrics, and each
@@ -107,9 +111,24 @@ def _lifecycles(records: list[MetricRecord]) -> dict[str, Lifecycle]:
 
 
 def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[MetricRecord]]:
-    """Records as of HEAD (after) and as of the merge base (before, empty if none)."""
+    """Records as of HEAD (after) and as of the merge base (before, empty if none).
+
+    The before side reads the base tree's OWN sidecar. Letting it fall back to
+    the current one would make every ratification compare equal to itself, so a
+    pending to dated change would vanish from the Slack summary and fire no
+    Sigma build task. A base commit predating the sidecar simply has no file,
+    which loads as "nothing ratified yet".
+    """
     after = parse_semantic_tree(SEM_ROOTS)
-    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    before = (
+        parse_semantic_tree(
+            [base_dir / "dbt/project/models"],
+            ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+            legacy_ratified=True,
+        )
+        if base_dir
+        else []
+    )
     return before, after
 
 
@@ -119,13 +138,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--fingerprints", action="store_true")
     parser.add_argument("--sync-sigma-tasks", action="store_true")
+    parser.add_argument("--emit-created", type=Path)
+    parser.add_argument("--reply-created", type=Path)
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
     args = parser.parse_args(argv)
 
-    records = parse_semantic_tree(SEM_ROOTS)
+    try:
+        records = parse_semantic_tree(SEM_ROOTS)
+    except ValueError as exc:
+        # A malformed sidecar or a stray config.meta.ratified: report it as the
+        # config error it is, so --check fails the PR with a readable message
+        # rather than an uncaught traceback.
+        print(f"semantic layer config error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.fingerprints:
+        # What an author copies into the sidecar when recording a sign-off.
+        # Printed quoted, because the sidecar requires quotes: an all-digit
+        # hash left bare would be read back as an integer.
+        for rec in records:
+            print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
+        return 0
 
     if args.check:
         grouped = records_by_target(records)
@@ -164,12 +201,40 @@ def main(argv: list[str] | None = None) -> int:
             print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
             return 0
         cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        assignee_id = cfg.get("default_assignee_id")
+        assignee_ids = (int(assignee_id),) if assignee_id else ()
         # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
         before, after = _before_after(args.base_dir)
         client = ClickUpClient(token)
-        result = sigma_tasks.sync(client, cfg["list_id"], cfg["build_key_field_id"], before, after)
-        print(f"created {len(result.created)}: {', '.join(result.created) or '(none)'}")
+        result = sigma_tasks.sync(
+            client, cfg["list_id"], cfg["build_key_field_id"], before, after, assignee_ids=assignee_ids
+        )
+        created_names = [c.metric_name for c in result.created]
+        print(f"created {len(created_names)}: {', '.join(created_names) or '(none)'}")
         print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
+        if args.emit_created:
+            # The workflow reads this to post one threaded Slack reply per created task.
+            args.emit_created.write_text(
+                json.dumps(
+                    [{"metric": c.metric_name, "task_id": c.task_id, "url": c.url} for c in result.created]
+                )
+            )
+        return 0
+
+    if args.reply_created:
+        # Secrets stay in the environment, never on the command line.
+        token = os.environ.get("SLACK_APP_BOT_TOKEN")
+        thread_ts = os.environ.get("SLACK_TS")
+        channel = os.environ.get("SLACK_CHANNEL_ID")
+        if not token or not thread_ts or not channel:
+            print("SLACK_APP_BOT_TOKEN/SLACK_TS/SLACK_CHANNEL_ID not all set; skipping thread replies.")
+            return 0
+        if not args.reply_created.exists():
+            print(f"{args.reply_created} not found; skipping thread replies.")
+            return 0
+        tasks = json.loads(args.reply_created.read_text())
+        slack_reply.reply_in_thread(token, channel, thread_ts, tasks)
+        print(f"posted {len(tasks)} thread repl{'y' if len(tasks) == 1 else 'ies'}")
         return 0
 
     return 0

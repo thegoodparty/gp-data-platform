@@ -35,6 +35,7 @@ __all__ = [
     "IndexSpec",
     "InspectManifest",
     "ManifestBase",
+    "PromoteManifest",
     "ProvisionManifest",
     "ResizeManifest",
     "SchemaManifest",
@@ -158,6 +159,17 @@ class AnalyzeManifest(ManifestBase):
     step: Literal["analyze"] = "analyze"
     # public base tables + leaf partitions with fresh manual-ANALYZE stats after the run.
     tables_analyzed: int
+
+
+class PromoteManifest(ManifestBase):
+    step: Literal["promote"] = "promote"
+    # The single serving parameter this cutover wrote (people-db-connection-string-{env}).
+    serving_param: str
+    # The new SSM version this write produced (people-api reads the parameter's latest version) and
+    # the labels that actually stuck on it — the per-refresh `build-{run_date}` anchor, or empty if
+    # labeling was rejected (labels are best-effort bookkeeping; the overwrite is the real cutover).
+    version: int
+    labels: list[str]
 
 
 class ValidationCheck(BaseModel):

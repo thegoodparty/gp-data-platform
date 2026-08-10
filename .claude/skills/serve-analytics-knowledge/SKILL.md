@@ -17,7 +17,7 @@ addition through the calibration pass.
 
 ## How to resolve a concept
 
-1. **Check the canonical registry first.** Open [`references/canonical_metrics.md`](references/canonical_metrics.md). If the concept is there, use that governed one-line definition and follow its "owns detail" link. The registry is the governed layer — do not redefine a metric that already has a row.
+1. **Resolve governed status via the semantic layer first.** The definition and its `owner` live in `dbt/project/models/**/sem_*.yml` `config.meta`; the **`ratified` date lives in `analytics/diagnostics/semantic_catalog/config/ratifications.yml`**, keyed by metric name (a metric absent from that file is pending). Together they are the first-line source of truth for governed status. Then open [`references/canonical_metrics.md`](references/canonical_metrics.md) as the projected registry; note it can lag both. If the concept is governed, use that definition and follow its "owns detail" link. Do not redefine a metric that is already governed.
 2. **If it's not canonical, route by domain** using the table below, then open that one doc.
 3. **Verify against the live catalog.** The live `goodparty_data_catalog` (or the model SQL) is ground truth, not these docs — docs drift, and this skill is young. Confirm any named table/column/event before relying on it. The verification protocol lives in the process skill's `methodology.md`.
 

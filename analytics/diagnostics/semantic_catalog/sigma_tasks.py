@@ -19,11 +19,18 @@ def build_key(rec: MetricRecord) -> str:
     return f"{rec.name}@{rec.ratified}"
 
 
+def task_url(task_id: str) -> str:
+    """Web link for a created ClickUp task (what we post back into the Slack thread)."""
+    return f"https://app.clickup.com/t/{task_id}"
+
+
 @dataclass(frozen=True)
 class TaskPayload:
     name: str
     markdown_description: str
     build_key: str
+    # ClickUp user ids to assign on creation. Empty tuple => leave unassigned.
+    assignee_ids: tuple[int, ...] = ()
 
 
 _DESCRIPTION = """\
@@ -42,7 +49,7 @@ Build key: {build_key}
 """
 
 
-def task_payload(rec: MetricRecord) -> TaskPayload:
+def task_payload(rec: MetricRecord, assignee_ids: tuple[int, ...] = ()) -> TaskPayload:
     # label and definition are echoed verbatim from config; the no-em-dash/no-emoji copy
     # rule is enforced upstream at the governance layer (see DATA-2211).
     key = build_key(rec)
@@ -55,22 +62,36 @@ def task_payload(rec: MetricRecord) -> TaskPayload:
             build_key=key,
         ),
         build_key=key,
+        assignee_ids=assignee_ids,
     )
 
 
-def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
-    """Metrics whose ratified date is set in `after` and differs from `before`.
+def _effective_ratified(rec: MetricRecord) -> str | None:
+    """The sign-off a build task may trust, or None if there is none to trust.
 
-    Excludes still-pending and retired metrics. A brand-new metric that arrives
-    already ratified counts as newly ratified.
+    A stale date certifies a definition that has since changed, so it counts as
+    no sign-off at all (DATA-2249). Otherwise this task would tell someone to
+    build a definition nobody approved, and the task text renders the date with
+    no stale marker, so the catalog's warning would not travel with it.
+    """
+    return None if rec.ratified_stale else rec.ratified
+
+
+def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
+    """Metrics whose trustworthy ratified date is set in `after` and differs from `before`.
+
+    Excludes still-pending, stale and retired metrics. A brand-new metric that
+    arrives already ratified counts as newly ratified. Because staleness is part
+    of the comparison, correcting a fingerprint fires the task the stale entry
+    never got, even though the date itself did not move.
     """
     prev = {r.name: r for r in before}
     out: list[MetricRecord] = []
     for rec in after:
-        if rec.retired or not rec.ratified:
+        if rec.retired or _effective_ratified(rec) is None:
             continue
         old = prev.get(rec.name)
-        if old is None or old.ratified != rec.ratified:
+        if old is None or _effective_ratified(old) != _effective_ratified(rec):
             out.append(rec)
     return out
 
@@ -82,8 +103,17 @@ class ClickUpTaskClient(Protocol):
 
 
 @dataclass(frozen=True)
+class CreatedTask:
+    """A ClickUp task this run created, with the link we post into the Slack thread."""
+
+    metric_name: str
+    task_id: str
+    url: str
+
+
+@dataclass(frozen=True)
 class SyncResult:
-    created: tuple[str, ...]
+    created: tuple[CreatedTask, ...]
     skipped: tuple[str, ...]
 
 
@@ -93,16 +123,18 @@ def sync(
     field_id: str,
     before: list[MetricRecord],
     after: list[MetricRecord],
+    assignee_ids: tuple[int, ...] = (),
 ) -> SyncResult:
     """Create one ClickUp task per newly-ratified metric, skipping any that
-    already exist in ClickUp (keyed on the build key custom field)."""
-    created: list[str] = []
+    already exist in ClickUp (keyed on the build key custom field). New tasks
+    are assigned to assignee_ids."""
+    created: list[CreatedTask] = []
     skipped: list[str] = []
     for rec in newly_ratified(before, after):
         key = build_key(rec)
         if client.find_task_by_build_key(list_id, field_id, key) is not None:
             skipped.append(rec.name)
             continue
-        client.create_task(list_id, task_payload(rec), field_id)
-        created.append(rec.name)
+        task_id = client.create_task(list_id, task_payload(rec, assignee_ids), field_id)
+        created.append(CreatedTask(metric_name=rec.name, task_id=task_id, url=task_url(task_id)))
     return SyncResult(created=tuple(created), skipped=tuple(skipped))

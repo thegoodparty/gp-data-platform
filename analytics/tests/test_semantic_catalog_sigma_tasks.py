@@ -2,7 +2,7 @@ from semantic_catalog import sigma_tasks
 from semantic_catalog.records import MetricRecord
 
 
-def _rec(name, ratified=None, retired=None, definition="def"):
+def _rec(name, ratified=None, retired=None, definition="def", stale=False):
     return MetricRecord(
         name=name,
         label=name.replace("_", " ").title(),
@@ -17,6 +17,7 @@ def _rec(name, ratified=None, retired=None, definition="def"):
         retired=retired,
         yaml_file="sem_analytics__users_serve.yml",
         kind="metric",
+        ratified_stale=stale,
     )
 
 
@@ -42,6 +43,24 @@ def test_newly_ratified_fires_again_on_new_ratified_date():
 def test_newly_ratified_treats_brand_new_ratified_metric_as_new():
     before = []
     after = [_rec("m", ratified="2026-07-28")]
+    assert [r.name for r in sigma_tasks.newly_ratified(before, after)] == ["m"]
+
+
+def test_newly_ratified_ignores_a_stale_sign_off():
+    # A date whose fingerprint no longer matches certifies a definition that has
+    # since changed. Firing here would tell someone to build a definition nobody
+    # approved, and the task text renders the date with no stale marker, so the
+    # catalog's warning would not travel with it.
+    before = [_rec("m", ratified="2026-07-28")]
+    after = [_rec("m", ratified="2026-08-15", stale=True)]
+    assert sigma_tasks.newly_ratified(before, after) == []
+
+
+def test_newly_ratified_fires_when_a_stale_fingerprint_is_corrected():
+    # The date does not move here; only the fingerprint is repaired. The task
+    # the stale entry never got has to arrive now, or it never would.
+    before = [_rec("m", ratified="2026-08-15", stale=True)]
+    after = [_rec("m", ratified="2026-08-15")]
     assert [r.name for r in sigma_tasks.newly_ratified(before, after)] == ["m"]
 
 
@@ -72,17 +91,32 @@ def test_task_payload_shape():
     assert "—" not in p.name and "—" not in p.markdown_description
 
 
+def test_task_payload_defaults_to_no_assignees():
+    p = sigma_tasks.task_payload(_rec("m", ratified="2026-07-28"))
+    assert p.assignee_ids == ()
+
+
+def test_task_payload_carries_assignee_ids():
+    p = sigma_tasks.task_payload(_rec("m", ratified="2026-07-28"), assignee_ids=(111975138,))
+    assert p.assignee_ids == (111975138,)
+
+
+def test_task_url_builds_clickup_web_link():
+    assert sigma_tasks.task_url("abc123") == "https://app.clickup.com/t/abc123"
+
+
 class _FakeClient:
     def __init__(self, existing_keys=()):
         self.existing = set(existing_keys)
-        self.created = []
+        self.created = []  # records each TaskPayload passed to create_task
 
     def find_task_by_build_key(self, list_id, field_id, build_key):
         return "existing-id" if build_key in self.existing else None
 
     def create_task(self, list_id, payload, field_id):
-        self.created.append(payload.build_key)
-        return "new-id"
+        self.created.append(payload)
+        # Deterministic id derived from the build key so url assertions are stable.
+        return f"id-{payload.build_key}"
 
 
 def test_sync_creates_task_for_newly_ratified():
@@ -90,9 +124,26 @@ def test_sync_creates_task_for_newly_ratified():
     result = sigma_tasks.sync(
         client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
     )
-    assert client.created == ["m@2026-07-28"]
-    assert result.created == ("m",)
+    assert [p.build_key for p in client.created] == ["m@2026-07-28"]
+    assert len(result.created) == 1
+    task = result.created[0]
+    assert task.metric_name == "m"
+    assert task.task_id == "id-m@2026-07-28"
+    assert task.url == "https://app.clickup.com/t/id-m@2026-07-28"
     assert result.skipped == ()
+
+
+def test_sync_passes_assignee_ids_through_to_the_payload():
+    client = _FakeClient()
+    sigma_tasks.sync(
+        client,
+        "901",
+        "field1",
+        [_rec("m", ratified=None)],
+        [_rec("m", ratified="2026-07-28")],
+        assignee_ids=(111975138,),
+    )
+    assert client.created[0].assignee_ids == (111975138,)
 
 
 def test_sync_is_idempotent_when_task_already_exists():

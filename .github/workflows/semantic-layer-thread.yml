@@ -1,0 +1,96 @@
+name: semantic-layer-thread
+# DATA-2218: keep the #data-alignment governance thread in sync with the PR
+# lifecycle (anchor at open, approval/dismissal replies, closed/reopened).
+# The merge + Sigma replies stay in semantic-layer-publish.yml.
+#
+# pull_request_review does NOT support paths: filtering, so the cheap gate
+# step below checks the PR's changed files before installing anything. The
+# pull_request trigger is left unfiltered too so both event families take the
+# identical path (one filter, in one place).
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: write   # marker comment create/update
+
+# One reconcile at a time per PR: simultaneous events (e.g. open + instant
+# review) would otherwise race the marker read-modify-write.
+concurrency:
+  group: sem-thread-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    # Drafts are silent by design (anchor posts at ready_for_review).
+    if: ${{ github.event.pull_request.draft == false }}
+    env:
+      SLACK_CHANNEL_ID: C08K22X9ZNH
+    steps:
+      - name: Gate on governed files (cheap, before any setup)
+        # Deliberately NOT widened to the ratification sidecar (DATA-2249),
+        # unlike the publish and composition-check workflows. The anchor
+        # @-mentions both review groups, so threading a bookkeeping PR would
+        # move to Slack exactly the reviewer noise the sidecar removes from
+        # GitHub. A sidecar-only merge posts its summary top-level, which is
+        # the documented permanent fallback.
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
+            | grep -Eq '^dbt/project/models/(.+/)?sem_[^/]+\.yml$'; then
+            echo "governed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "governed=false" >> "$GITHUB_OUTPUT"
+            echo "No governed sem_*.yml touched; skipping."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.governed == 'true'
+        with:
+          # head sha, not the merge ref: it exists for closed PRs too, and the
+          # anchor diff should show what reviewers see on the branch.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        if: steps.gate.outputs.governed == 'true'
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        if: steps.gate.outputs.governed == 'true'
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Prepare base tree for the anchor's metric diff
+        if: steps.gate.outputs.governed == 'true'
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            git worktree add --detach /tmp/base "$BASE"
+          fi
+      - name: Reconcile governance thread
+        if: steps.gate.outputs.governed == 'true'
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+          ORG_READ_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -d /tmp/base ]; then
+            uv run python -m semantic_catalog.thread --event-path "$GITHUB_EVENT_PATH" --base-dir /tmp/base
+          else
+            uv run python -m semantic_catalog.thread --event-path "$GITHUB_EVENT_PATH"
+          fi
+      - name: Clean up base tree
+        if: always()
+        run: git worktree remove --force /tmp/base || true

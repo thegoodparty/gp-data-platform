@@ -55,3 +55,38 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
+
+  - name: win_active_candidates_30d
+    label: Win Active Candidates 30d
+    description: >
+      Count of Win-product users who viewed the candidate dashboard in the
+      trailing 30 days: the Active Candidates OKR. Definition owned by
+      users_win_base.is_active_candidate_30d, which is anchored on the
+      2-event dashboard-view union; the legacy single-event anchor died
+      in-data 2026-06-13 and made the flag read FALSE for every user until
+      the union repair landed. The window is evaluated against
+      current_date() in the mart, so this metric is as-of-run-time and
+      cannot be sliced historically by registered_at.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__is_active_candidate_30d') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md
+
+  - name: win_activated_users
+    label: Win Activated Users
+    description: >
+      Count of Win-product users who have activated: sent at least one voter
+      outreach campaign (first_campaign_sent_at is not null). The activated
+      slice of win_users; the Activated Candidates OKR.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__is_activated') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md

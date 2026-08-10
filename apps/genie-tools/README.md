@@ -23,9 +23,8 @@ That means it will use your existing Databricks auth configuration, for example:
 
 No custom auth handling is built into this tool.
 
-In this repo, the most reliable way to run the tool is to use the existing Poetry
-environment from `dbt/project` and a Databricks CLI profile stored in
-`~/.databrickscfg`.
+In this repo, the most reliable way to run the tool is to use its own uv
+environment and a Databricks CLI profile stored in `~/.databrickscfg`.
 
 Example auth checks:
 
@@ -45,16 +44,15 @@ From the repo root:
 python3 -m pip install -e apps/genie-tools
 ```
 
-For this repo, an already-working option is:
+For this repo, the preferred option is the subproject's own uv environment:
 
 ```bash
-export REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT/dbt/project"
-eval "$(poetry env activate)"
-export PYTHONPATH="$REPO_ROOT/apps/genie-tools/src"
+cd "$(git rev-parse --show-toplevel)/apps/genie-tools"
+uv sync
 ```
 
-That reuses the existing Poetry environment, which already includes `databricks-sdk`.
+`uv sync` installs `databricks-sdk` from `uv.lock`, and `uv run` puts the package
+on the path without any `PYTHONPATH` juggling.
 
 ## Local Env File
 
@@ -106,20 +104,18 @@ Using the local env file:
 
 ```bash
 export REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT/dbt/project"
-eval "$(poetry env activate)"
+cd "$REPO_ROOT/apps/genie-tools"
 set -a
-source "$REPO_ROOT/apps/genie-tools/.env.local"
+source .env.local
 set +a
-export PYTHONPATH="$REPO_ROOT/apps/genie-tools/src"
 
-python -m genie_tools.cli export \
+uv run python -m genie_tools.cli export \
   --space-id "$GENIE_TOOLS_SPACE_ID" \
   --out-dir "$REPO_ROOT/$GENIE_TOOLS_OUT_DIR" \
   --write-redacted \
   --write-metadata
 
-python -m genie_tools.cli validate \
+uv run python -m genie_tools.cli validate \
   --file "$REPO_ROOT/$GENIE_TOOLS_OUT_DIR/normalized/$GENIE_TOOLS_SPACE_ID.json"
 ```
 

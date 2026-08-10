@@ -32,19 +32,19 @@ brew install git
 git --version    # confirm 2.4x or newer
 ```
 
-Pre-commit hooks and `poetry run git` both invoke whichever `git` is first on your `PATH` — there's only one git installation; `poetry run` just makes the poetry env available to hook subprocesses (so the pytest hook can find `pyspark`/`airflow`).
+Pre-commit hooks and `uv run git` both invoke whichever `git` is first on your `PATH` — there's only one git installation; `uv run` just makes the project env available to hook subprocesses (so the pytest hook can find `pyspark`/`airflow`).
 
 ### Using Python locally
 
 To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.
 
-The environment is managed by [`poetry`](https://python-poetry.org/docs/#installing-with-pipx), which is installed via [`pipx`](https://pipx.pypa.io/stable/installation/).
+Environments are managed by [`uv`](https://docs.astral.sh/uv/getting-started/installation/). Each subproject with a `pyproject.toml` has its own `uv.lock` and its own virtualenv — this repo does not have a single shared environment.
 
-Enter the subdirectory of development and run `poetry install` where there is a `pyproject.toml` to install dependencies. To [activate the environment](https://python-poetry.org/docs/managing-environments/#bash-csh-zsh), run `eval $(poetry env activate)`, and `deactivate` to deactivate. Dependencies can be added with `poetry add <package>`.
+Enter the subdirectory of development and run `uv sync` to install dependencies exactly as locked. Run commands inside that environment with `uv run <command>` (for example `uv run pytest`); no separate activation step is needed. Dependencies can be added with `uv add <package>`, which updates both `pyproject.toml` and `uv.lock`.
 
-For integration with VS Code, use the output path from `poetry env info --executable` when selecting the Python interpreter. For example on Mac:
+For integration with VS Code, select the interpreter at `.venv/bin/python` inside the subproject directory. For example:
 ```shell
-/Users/my_user_name/Library/Caches/pypoetry/virtualenvs/dbt-goodparty-gN6X-qpi-py3.12/bin/python
+dbt/.venv/bin/python
 ```
 
 ### Pre-commit Hooks
@@ -58,8 +58,7 @@ To set up pre-commit:
 1. Install dependencies (includes pre-commit as a dev dependency):
 ```bash
 cd dbt
-poetry install
-eval $(poetry env activate)
+uv sync
 ```
 
 2. Install the git hooks:

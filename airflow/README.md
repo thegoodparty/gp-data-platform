@@ -30,8 +30,13 @@ curl -sSL install.astronomer.io | sudo bash -s
 
 ## Getting Started
 
-### Step 0: Activate local python environment with poetry
-The current version of astro used in project is 3.0-7, as defined in `astro/Dockerfile`. The release notes can be found [here](https://www.astronomer.io/docs/astro/runtime-release-notes#astro-runtime-30-7), which list Airflow 3.0.4 as the included package over python 3.12. Packages for the development environment are defined in `pyproject.toml`.
+### Step 0: Set up the local python environment with uv
+The current version of astro used in project is 3.0-7, as defined in `astro/Dockerfile`. The release notes can be found [here](https://www.astronomer.io/docs/astro/runtime-release-notes#astro-runtime-30-7), which list Airflow 3.0.4 as the included package over python 3.12. Packages for the development environment are defined in `pyproject.toml` and locked in `uv.lock`. Install them with:
+
+```bash
+cd airflow
+uv sync
+```
 
 ### Step 1: Use the Existing Astro Project
 

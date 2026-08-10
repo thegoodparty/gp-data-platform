@@ -22,4 +22,4 @@ Start a product-analytics session on the right path: refine the question to an a
 
 - Databricks auth / token-refresh error → the profile's OAuth token is stale; run `databricks auth login --profile <profile>` to refresh. Also confirm `DATABRICKS_HTTP_PATH` is set.
 - The orchestrator jumps straight to an answer → it skipped framing; restart from step 2 and seed the to-do list.
-- A concept resolves to several candidate metrics → resolve it through the product knowledge skill's `canonical_metrics.md`, which is the governed registry.
+- A concept resolves to several candidate metrics → resolve it through the product knowledge skill; check `dbt/project/models/**/sem_*.yml` `config.meta` first for the governed definition and owner, and `analytics/diagnostics/semantic_catalog/config/ratifications.yml` for the ratified date (absent means pending); `canonical_metrics.md` is a generated projection of both that can lag them.
