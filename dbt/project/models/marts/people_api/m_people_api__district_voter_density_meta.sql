@@ -57,8 +57,10 @@ with
             {{ ref("int__people_api__voter_h3") }} as voter_h3
             on voter_h3.voter_id = district_voter.voter_id
         lateral view
-            explode(map(7, voter_h3.h3_r7, 8, voter_h3.h3_r8, 9, voter_h3.h3_r9))
-            as resolution, h3_index
+            explode(
+                map(7, voter_h3.h3_r7, 8, voter_h3.h3_r8, 9, voter_h3.h3_r9)
+            ) as resolution,
+            h3_index
     ),
 
     -- Per (district, resolution): total voters and geocoded voters. One row per
@@ -117,5 +119,11 @@ select
     base.state,
     current_timestamp() as updated_at
 from base
-left join rendered on base.district_id = rendered.district_id and base.resolution = rendered.resolution
-left join suppressed on base.district_id = suppressed.district_id and base.resolution = suppressed.resolution
+left join
+    rendered
+    on base.district_id = rendered.district_id
+    and base.resolution = rendered.resolution
+left join
+    suppressed
+    on base.district_id = suppressed.district_id
+    and base.resolution = suppressed.resolution

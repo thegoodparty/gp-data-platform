@@ -58,18 +58,16 @@ with
     -- rows so one grouping handles every resolution. h3_index is the H3 BIGINT
     -- id here; it is converted to the opaque string only on final output.
     exploded as (
-        select
-            district_voter.district_id,
-            district_voter.state,
-            resolution,
-            h3_index
+        select district_voter.district_id, district_voter.state, resolution, h3_index
         from district_voter
         inner join
             {{ ref("int__people_api__voter_h3") }} as voter_h3
             on voter_h3.voter_id = district_voter.voter_id
         lateral view
-            explode(map(7, voter_h3.h3_r7, 8, voter_h3.h3_r8, 9, voter_h3.h3_r9))
-            as resolution, h3_index
+            explode(
+                map(7, voter_h3.h3_r7, 8, voter_h3.h3_r8, 9, voter_h3.h3_r9)
+            ) as resolution,
+            h3_index
         where h3_index is not null
     ),
 
@@ -106,10 +104,12 @@ select
     district_id,
     resolution,
     h3_h3tostring(h3_index) as h3_index,
-    cast(split(regexp_extract(centroid_wkt, 'POINT\\(([^)]+)\\)', 1), ' ')[1] as double)
-        as lat,
-    cast(split(regexp_extract(centroid_wkt, 'POINT\\(([^)]+)\\)', 1), ' ')[0] as double)
-        as lng,
+    cast(
+        split(regexp_extract(centroid_wkt, 'POINT\\(([^)]+)\\)', 1), ' ')[1] as double
+    ) as lat,
+    cast(
+        split(regexp_extract(centroid_wkt, 'POINT\\(([^)]+)\\)', 1), ' ')[0] as double
+    ) as lng,
     voter_count,
     state,
     current_timestamp() as updated_at
