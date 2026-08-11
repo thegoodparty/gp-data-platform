@@ -303,11 +303,11 @@ def _extract_and_load_w_params(
 
         except Exception as e:
             logging.error(f"Error processing state {state_id} ({haystaq_kind}): {e!s}")
-            error_details = traceback.format_exc()
-            logging.error(f"Full exception details:\n{error_details}")
-            raise Exception(
-                f"Error processing state {state_id} ({haystaq_kind}): {e!s}\nFull traceback:\n{error_details}"
-            ) from e
+            logging.error(f"Full exception details:\n{traceback.format_exc()}")
+            # Re-raise unwrapped: the caller prefixes state/kind onto str(e) for
+            # the end-of-run summary, and wrapping here would duplicate that
+            # context and stuff the whole traceback into the summary line.
+            raise
         finally:
             if sftp_client is not None:
                 sftp_client.close()
