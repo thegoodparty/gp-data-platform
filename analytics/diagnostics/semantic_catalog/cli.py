@@ -161,9 +161,16 @@ def _record(args, records: list[MetricRecord]) -> int:
         print("no base tree to diff against; recording nothing.")
     else:
         before, after = _before_after(args.base_dir)
-        earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
-        if not earned:
-            print("no metric was newly ratified by this merge.")
+        if not before:
+            # A base tree that parses to zero metrics is either the wrong path or
+            # a commit predating the semantic layer. Both leave every metric
+            # looking new, which is the same bystander hazard as having no base
+            # at all, so refuse here too rather than trust an empty diff.
+            print("base tree parsed no metrics; recording nothing.")
+        else:
+            earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
+            if not earned:
+                print("no metric was newly ratified by this merge.")
 
     if earned:
         sidecar = ratifications.DEFAULT_PATH

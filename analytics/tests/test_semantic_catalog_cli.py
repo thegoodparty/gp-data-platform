@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import yaml
 from semantic_catalog import cli
 from semantic_catalog.parser import parse_semantic_tree
 
@@ -284,6 +285,146 @@ def test_record_writes_nothing_when_a_review_group_is_missing(tmp_path, monkeypa
     assert sidecar.read_text() == "", "an uncovered merge must record nothing"
     assert json.loads(out.read_text())["metrics"] == []
     assert "coverage incomplete" in capsys.readouterr().out.lower()
+
+
+def _base_tree_with_moved_definition(tmp_path, metric: str):
+    """A base worktree identical to HEAD except that `metric`'s definition moved.
+
+    Copies only the sem_*.yml files, preserving their paths under the base, which
+    is all `parse_semantic_tree` walks. The point is a base where exactly one
+    metric's fingerprint differs, so `ratified_by_merge` earns exactly that one
+    and every other pending metric is correctly left alone.
+    """
+    base = tmp_path / "base"
+    moved = False
+    for root in cli.SEM_ROOTS:
+        for src in root.rglob("sem_*.yml"):
+            dest = base / src.relative_to(REPO_ROOT)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            doc = yaml.safe_load(src.read_text())
+            for entry in (doc or {}).get("metrics", []) or []:
+                if entry.get("name") == metric:
+                    # `description` is a fingerprint field. A YAML comment would
+                    # not do: the fingerprint is computed from parsed values.
+                    entry["description"] = (
+                        f"{entry.get('description', '')} Base-tree wording, since superseded."
+                    )
+                    moved = True
+            dest.write_text(yaml.safe_dump(doc, sort_keys=False))
+    assert moved, f"{metric} not found in any sem_*.yml, so the base tree is not actually different"
+    return base
+
+
+def _both_groups_approved(tmp_path):
+    return _reviews_file(
+        tmp_path,
+        [
+            {"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"},
+            {"login": "danpelota", "state": "APPROVED", "submitted_at": "2026-08-07T11:00:00Z"},
+        ],
+    )
+
+
+def test_record_writes_the_earned_sign_off_and_self_verifies(tmp_path, monkeypatch, capsys):
+    # The only test that reaches the `if earned:` branch: sidecar write, catalog
+    # regeneration and the self-verify block that is the sole integrity check on
+    # the bot's own output, since catalog-freshness cannot run on its PR.
+    sidecar = _isolated_sidecar(tmp_path, monkeypatch)
+    written_targets = []
+    monkeypatch.setattr(cli, "write_region", lambda target, recs: written_targets.append(target))
+    base = _base_tree_with_moved_definition(tmp_path, "goodparty_win_rate")
+    out = tmp_path / "recorded.json"
+    body = tmp_path / "body.md"
+
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(_both_groups_approved(tmp_path)),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--base-dir",
+            str(base),
+            "--emit-recorded",
+            str(out),
+            "--emit-pr-body",
+            str(body),
+        ]
+    )
+
+    assert rc == 0, "a clean record must not red-fail the publish job"
+    text = sidecar.read_text()
+    assert "goodparty_win_rate:" in text
+    assert "ratified: 2026-08-07" in text, "the date is when the SECOND group approved"
+    assert "approved_by_pr: 800" in text
+    assert "goodparty_cumulative_wins" not in text, "a bystander in the same file must not be signed off"
+    manifest = json.loads(out.read_text())
+    assert [m["name"] for m in manifest["metrics"]] == ["goodparty_win_rate"]
+    assert body.exists(), "an earned sign-off must render a PR body to open with"
+    assert written_targets, "the catalog projections must be regenerated in the same pass"
+    assert "recorded 1" in capsys.readouterr().out
+
+
+def test_record_fails_loudly_when_its_own_write_does_not_read_back(tmp_path, monkeypatch, capsys):
+    # Self-verify is the only check the bot's output gets, so a write that does
+    # not read back as freshly ratified must exit 1, not pass quietly.
+    _isolated_sidecar(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli, "write_region", lambda target, recs: None)
+    # Silently drop the write: the sidecar keeps its old contents, so the metric
+    # still reads pending on the re-parse.
+    monkeypatch.setattr(cli.recording, "apply", lambda text, earned, pr: text)
+    base = _base_tree_with_moved_definition(tmp_path, "goodparty_win_rate")
+
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(_both_groups_approved(tmp_path)),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--base-dir",
+            str(base),
+        ]
+    )
+
+    assert rc == 1
+    assert "does not read as freshly ratified" in capsys.readouterr().err
+
+
+def test_record_writes_nothing_when_the_base_tree_parses_no_metrics(tmp_path, monkeypatch, capsys):
+    # A base dir that exists but holds no sem files parses to zero metrics, which
+    # would make every pending metric look new. Same hazard as no base at all.
+    sidecar = _isolated_sidecar(tmp_path, monkeypatch)
+    empty_base = tmp_path / "empty-base"
+    empty_base.mkdir()
+
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(_both_groups_approved(tmp_path)),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--base-dir",
+            str(empty_base),
+        ]
+    )
+
+    assert rc == 0
+    assert sidecar.read_text() == ""
+    assert "parsed no metrics" in capsys.readouterr().out
 
 
 def test_record_writes_nothing_without_a_base_tree(tmp_path, monkeypatch, capsys):
