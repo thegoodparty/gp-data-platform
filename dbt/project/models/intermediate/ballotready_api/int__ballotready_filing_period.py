@@ -301,17 +301,25 @@ def model(dbt, session) -> DataFrame:
         leading_edge_count = leading_edge_ids.count()
 
         # Backlog: ids that races reference but that never landed here, whether a race
-        # was skipped by the watermark above or its batch failed. Newest ids first, since
-        # those carry the deadlines for current cycles. Spend whatever budget is left.
+        # was skipped by the watermark above or its batch failed. The leading edge is
+        # subtracted too, so the budget below buys ids this run was not already going to
+        # fetch. Newest ids first, since those carry the deadlines for current cycles.
         backlog_ids = referenced_ids.join(
             existing_table.select("database_id"), on="database_id", how="left_anti"
-        )
+        ).join(leading_edge_ids, on="database_id", how="left_anti")
         headroom = max(max_ids_per_run - leading_edge_count, 0)
+        if headroom == 0:
+            logging.warning(
+                f"Leading edge of {leading_edge_count} ids fills max_ids_per_run "
+                f"({max_ids_per_run}); the backlog makes no progress this run"
+            )
         logging.info(f"Leading edge: {leading_edge_count} ids, backlog budget this run: {headroom} ids")
 
+        # Both sides are distinct and the anti-join above makes them disjoint, so the
+        # union needs no further dedup.
         filing_periods: DataFrame = leading_edge_ids.unionByName(
             backlog_ids.orderBy(col("database_id").desc()).limit(headroom)
-        ).distinct()
+        )
     else:
         filing_periods = referenced_ids.orderBy(col("database_id").desc()).limit(max_ids_per_run)
 

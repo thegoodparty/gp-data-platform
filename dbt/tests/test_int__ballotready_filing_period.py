@@ -4,7 +4,9 @@ Races reference filing periods by id only, so a dropped id costs us the filing
 deadline for every race pointing at it, silently. Two properties are pinned here
 because both were previously violated in ways that only showed up as coverage
 decay: a node the API cannot resolve must not cost its 200-id batch, and a
-transient HTTP failure must be retried rather than abandoned.
+transient HTTP failure must be retried rather than abandoned. A third pins the
+normalized record against its declared Spark schema, since a field whose pandas
+dtype cannot reach its Spark type would fail only on the cluster.
 
 The module is imported by path (it lives under project/models/, not on the
 package path) and only its pure helpers are exercised — the pandas UDF and
@@ -12,6 +14,7 @@ model() need a Spark session and Databricks secrets.
 """
 
 import importlib.util
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -64,8 +67,13 @@ class _FakeResponse:
         return self._payload
 
     def raise_for_status(self) -> None:
+        # `response=self` matters: the handler routes on `e.response.status_code`, so a
+        # response-less HTTPError would test the None fallback rather than the status.
         if self.status_code >= 400:
-            raise requests.exceptions.HTTPError(f"status {self.status_code}")
+            raise requests.exceptions.HTTPError(
+                f"status {self.status_code}",
+                response=self,  # type: ignore[arg-type]
+            )
 
 
 @pytest.fixture(autouse=True)
@@ -107,6 +115,39 @@ def test_normalize_coerces_id_and_dates():
     assert record["endOn"] == pd.Timestamp("2026-03-06")
     assert record["createdAt"] == pd.Timestamp("2025-01-02T03:04:05Z")
     assert record["updatedAt"] == pd.Timestamp("2025-06-07T08:09:10Z")
+
+
+def test_normalized_record_survives_conversion_to_the_declared_schema():
+    """`start_on`/`end_on` are DateType while the record carries pd.Timestamp.
+
+    Pandas UDF results cross Arrow on the way back to Spark, so the declared struct is
+    what the normalized frame has to satisfy. Asserting Python-level equality alone would
+    not catch a field whose pandas dtype cannot reach its Spark type, so this converts a
+    real frame against the real schema.
+    """
+    pa = pytest.importorskip("pyarrow")
+
+    spark_to_arrow = {
+        "TimestampType()": pa.timestamp("us"),
+        "IntegerType()": pa.int32(),
+        "StringType()": pa.string(),
+        "DateType()": pa.date32(),
+    }
+    frame = pd.DataFrame(
+        [mod._normalize_filing_period(_node()), mod._normalize_filing_period(_node(databaseId=2))]
+    )
+    schema = pa.schema(
+        [
+            pa.field(field.name, spark_to_arrow[repr(field.dataType)])
+            for field in mod.filing_period_schema.fields
+        ]
+    )
+
+    table = pa.Table.from_pandas(frame, schema=schema, preserve_index=False)
+
+    assert table.column("startOn").to_pylist()[0] == date(2026, 1, 2)
+    assert table.column("endOn").to_pylist()[0] == date(2026, 3, 6)
+    assert table.column("databaseId").to_pylist() == [12345, 2]
 
 
 def test_normalize_keeps_a_period_with_no_dates():
@@ -192,13 +233,28 @@ def test_batch_raises_after_exhausting_attempts(monkeypatch: pytest.MonkeyPatch)
     assert len(calls) == 3
 
 
-def test_batch_stops_retrying_a_non_retryable_status(monkeypatch: pytest.MonkeyPatch):
-    calls = _patch_post(monkeypatch, [_FakeResponse({}, status_code=403)])
+@pytest.mark.parametrize("status_code", [401, 403, 404])
+def test_batch_stops_retrying_a_non_retryable_status(monkeypatch: pytest.MonkeyPatch, status_code: int):
+    """A credential or missing-resource problem will not improve by asking again."""
+    calls = _patch_post(monkeypatch, [_FakeResponse({}, status_code=status_code)])
 
     with pytest.raises(RuntimeError):
         mod._get_filing_periods_batch([9], "token")
 
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("status_code", sorted(mod._RETRYABLE_STATUS_CODES))
+def test_batch_exhausts_attempts_on_a_persistent_retryable_status(
+    monkeypatch: pytest.MonkeyPatch, status_code: int
+):
+    """The counterpart to the test above: these statuses are worth all three attempts."""
+    calls = _patch_post(monkeypatch, [_FakeResponse({}, status_code=status_code)])
+
+    with pytest.raises(RuntimeError):
+        mod._get_filing_periods_batch([9], "token", max_attempts=3)
+
+    assert len(calls) == 3
 
 
 def test_batch_returns_empty_when_graphql_reports_errors(monkeypatch: pytest.MonkeyPatch):
