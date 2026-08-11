@@ -484,6 +484,11 @@ with
             cp.gp_candidacy_id,
             max(
                 case
+                    -- Vacancy terms keep the prior holder's name, so they must
+                    -- never satisfy the name arm. They still count as coverage
+                    -- below, which is what makes an empty seat read FALSE.
+                    when t.is_vacant
+                    then 0
                     when
                         t.gp_person_id = cp.gp_person_id
                         or (
