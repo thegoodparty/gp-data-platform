@@ -30,6 +30,22 @@ activated_serve_users:
   definition_sha: '5e87555'
   approved_by_pr: 765
 
+# serve_users is DELIBERATELY COMMENTED OUT until this PR is approved, so the
+# recorded date can be the real one. Its definition merged in #764 with only a
+# bot approval, so neither review group has ever signed it off, and the
+# auto-ratification hook cannot fill this in: it earns a sign-off only when a
+# definition MOVES in the merge, and this one is unchanged since #764.
+#
+# BEFORE MERGING: uncomment the three lines and set `ratified` to the UTC date
+# the SECOND group approved this PR. The fingerprint below is precomputed from
+# the merged definition and needs no change. #776 merged with an entry left
+# commented out and needed follow-up #777 to record it; do not repeat that.
+#
+# serve_users:
+#   ratified: <UTC date the second review group approved this PR>
+#   definition_sha: '0b06710'
+#   approved_by_pr: <this PR>
+
 win_activated_users:
   # Coverage completed across two PRs. The business group approved #708 on
   # 2026-07-29, but no data-group approval existed, so the 2026-07-28 date that
