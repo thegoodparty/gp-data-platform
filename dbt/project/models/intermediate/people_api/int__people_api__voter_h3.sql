@@ -1,8 +1,7 @@
 {{
     config(
         materialized="table",
-        on_schema_change="fail",
-        tags=["intermediate", "people_api", "voter_h3", "voter_density"],
+        tags=["intermediate", "people_api", "voter_h3", "voter_density", "monthly"],
     )
 }}
 

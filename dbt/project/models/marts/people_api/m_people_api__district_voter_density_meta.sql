@@ -19,8 +19,13 @@ Column semantics are documented in m_people_api.yaml.
 */
 {{
     config(
-        on_schema_change="fail",
-        tags=["mart", "people_api", "district_voter_density_meta", "voter_density"],
+        tags=[
+            "mart",
+            "people_api",
+            "district_voter_density_meta",
+            "voter_density",
+            "monthly",
+        ],
     )
 }}
 

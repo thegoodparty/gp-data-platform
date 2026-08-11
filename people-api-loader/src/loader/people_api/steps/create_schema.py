@@ -1,12 +1,11 @@
 """Step 3 — create all serving tables on the new cluster (ClickUp DATA-2100).
 
-Applies `CREATE TABLE` DDL for Voter, DistrictVoter, District, and DistrictStats,
-extracted from the committed, generated `target_schema.sql` (from `loader emit-ddl`;
-tables only — indexes/PK are deferred to build-indexes), after installing the
-aws_s3/aws_commons extensions and the public."USState" enum (Voter/DistrictVoter/
-District's State columns are typed against it). Voter and DistrictVoter are
-LIST-partitioned by "State" (one child partition per USState); District and
-DistrictStats are plain flat tables.
+Applies `CREATE TABLE` DDL for every table in `TABLE_SPECS`, extracted from the
+committed, generated `target_schema.sql` (from `loader emit-ddl`; tables only —
+indexes/PK are deferred to build-indexes), after installing the aws_s3/aws_commons
+extensions and the public."USState" enum (the State columns are typed against it).
+Voter and DistrictVoter are LIST-partitioned by "State" (one child partition per
+USState); the rest are plain flat tables.
 
 Also creates a `green` compatibility schema with a pass-through view over each
 public table, so people-api (which references `green.<table>`) works unchanged

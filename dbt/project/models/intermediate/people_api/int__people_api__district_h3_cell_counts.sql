@@ -1,12 +1,12 @@
 {{
     config(
         materialized="table",
-        on_schema_change="fail",
         tags=[
             "intermediate",
             "people_api",
             "district_h3_cell_counts",
             "voter_density",
+            "monthly",
         ],
     )
 }}
