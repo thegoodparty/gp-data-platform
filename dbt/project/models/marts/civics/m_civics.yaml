@@ -511,17 +511,21 @@ models:
           Whether the candidate already holds the position they are running
           for. TechSpeed's enrichment where it covered the candidacy;
           otherwise derived from BallotReady office-holder terms, matching the
-          candidate's canonical person id to a term on the same position that
-          covers election day.
+          candidate to a term on the same position that covers election day.
+          The match is on canonical person id, or on first+last name, which
+          the position and term window make near-deterministic. The name arm
+          compensates for a person-resolution gap and is expected to be
+          removed once entity resolution links these records.
 
           FALSE means BallotReady shows the seat held by someone else on
-          election day. NULL means the position has no office-holder term
-          covering that date, so incumbency is unknown rather than false.
-          Known misses: appointed or mid-term-succeeded officials whose term
-          dates do not straddle election day, and candidates entity resolution
-          has not linked to their office-holder record (mostly product
-          sign-ups with no BallotReady candidacy yet). Both miss toward
-          "challenger", never toward a false incumbent.
+          election day, and is only asserted for candidacies whose person
+          resolves. NULL means either the position has no office-holder term
+          covering that date or the candidate could not be identified, so
+          incumbency is unknown rather than false. Known misses: appointed or
+          mid-term-succeeded officials whose term dates do not straddle
+          election day, and name variants such as nicknames or changed
+          surnames. Both miss toward "challenger" rather than toward a false
+          incumbent.
         data_tests:
           - accepted_values:
               arguments:

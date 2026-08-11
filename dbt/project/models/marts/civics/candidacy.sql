@@ -460,6 +460,14 @@ with
     -- candidacy feed carries no incumbency field and TS (the only source that
     -- ever did) is retired, so without this 2026 is almost entirely unlabeled.
     --
+    -- Matched on the canonical person id, or on first+last name. The name arm
+    -- compensates for a person-resolution gap: product sign-ups are routinely
+    -- not linked to their BR office-holder record, and it supplies 30% of the
+    -- incumbent flags on the 2026 product base. Position and term window pin
+    -- the comparison to that seat's few holders, which is what makes bare name
+    -- equality safe here; a 10-case audit found no collisions. Drop the name
+    -- arm once person resolution links these records.
+    --
     -- FALSE means BR shows a term covering election day held by someone else,
     -- so it is only assertable once we know who the candidate is. A position
     -- with no covering term, or a candidacy with no resolved person, stays
@@ -472,9 +480,21 @@ with
     incumbency as (
         select
             cp.gp_candidacy_id,
-            max(case when t.gp_person_id = cp.gp_person_id then 1 else 0 end)
+            max(
+                case
+                    when
+                        t.gp_person_id = cp.gp_person_id
+                        or (
+                            lower(trim(t.first_name)) = lower(trim(p.first_name))
+                            and lower(trim(t.last_name)) = lower(trim(p.last_name))
+                        )
+                    then 1
+                    else 0
+                end
+            )
             = 1 as is_incumbent
         from candidacy_person as cp
+        left join {{ ref("people") }} as p on cp.gp_person_id = p.gp_person_id
         join
             {{ ref("elected_official_terms") }} as t
             on cp.br_position_database_id = t.br_position_id
