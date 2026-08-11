@@ -17,7 +17,7 @@ on:
       - 'analytics/diagnostics/semantic_catalog/config/ratifications.yml'
 
 permissions:
-  contents: read
+  contents: write        # open the ratification PR branch (never pushes to main)
   pull-requests: write   # DATA-2218: update the thread marker's merged flag
 
 jobs:
@@ -175,6 +175,36 @@ jobs:
         run: |
           set -euo pipefail
           uv run python -m semantic_catalog.thread --mark-merged --pr "$PR_NUM"
+      - name: Record the ratifications this merge earned
+        # Writes the sidecar + regenerated catalog into the WORKING TREE only.
+        # The next step's Sigma sync re-parses that tree, so a build task is
+        # created on THIS merge rather than waiting on the ratification PR.
+        # Placed after the thread marker update, not straight after the Slack
+        # post: this step exits 1 on a self-verification failure, and between
+        # those two steps that would leave the thread unmarked and make a re-run
+        # double-post the merge summary.
+        if: ${{ env.PR_NUM != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+            set -euo pipefail
+            if [ -z "${GH_TOKEN:-}" ]; then
+              echo "ORG_READ_TOKEN not provisioned; skipping ratification recording."
+              exit 0
+            fi
+            gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
+              --jq '[.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}]' > /tmp/reviews.json
+            DATA=$(gh api orgs/thegoodparty/teams/semantic-layer-data/members --jq '[.[].login] | join(",")')
+            BIZ=$(gh api orgs/thegoodparty/teams/semantic-layer-business/members --jq '[.[].login] | join(",")')
+            ARGS=(--record-ratifications --reviews /tmp/reviews.json \
+                  --data-members "$DATA" --business-members "$BIZ" \
+                  --pr-number "$PR_NUM" \
+                  --emit-recorded /tmp/recorded.json --emit-pr-body /tmp/ratify-body.md)
+            if [ -d /tmp/base ]; then ARGS+=(--base-dir /tmp/base); fi
+            uv run python -m semantic_catalog.cli "${ARGS[@]}"
       - name: Create Sigma build tasks for newly ratified metrics
         working-directory: analytics
         env:
@@ -205,6 +235,39 @@ jobs:
         run: |
           set -euo pipefail
           uv run python -m semantic_catalog.cli --reply-created /tmp/created_tasks.json
+      - name: Open the ratification PR
+        # Branch is keyed on the source PR so a workflow re-run updates the same
+        # branch in place instead of opening a rival PR. Never pushes to main.
+        if: ${{ env.PR_NUM != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+            if [ ! -s /tmp/recorded.json ]; then
+              echo "nothing recorded; no PR to open."
+              exit 0
+            fi
+            COUNT=$(python3 -c 'import json;print(len(json.load(open("/tmp/recorded.json"))["metrics"]))')
+            if [ "$COUNT" = "0" ]; then
+              echo "nothing recorded; no PR to open."
+              exit 0
+            fi
+            BRANCH="auto/ratify-pr-${PR_NUM}"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add analytics/diagnostics/semantic_catalog/config/ratifications.yml \
+                    '.claude/skills/*/references/canonical_metrics.md'
+            git commit -m "Record the ratifications earned by #${PR_NUM}"
+            git fetch origin "$BRANCH" || true
+            git push --force-with-lease origin "$BRANCH"
+            if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // ""')" ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Record the ratifications earned by #${PR_NUM}" \
+                --body-file /tmp/ratify-body.md
+            else
+              echo "PR for $BRANCH already open; branch updated in place."
+            fi
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true
