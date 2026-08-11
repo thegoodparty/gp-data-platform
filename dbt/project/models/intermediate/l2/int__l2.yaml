@@ -175,6 +175,91 @@ models:
               - election_code
               - model_version
 
+  - name: int__voter_turnout_lgbm_voter_scores
+    description: >
+      Nationwide PER-VOTER turnout probabilities from the LightGBM turnout model,
+      scoring each voter as a precinct-of-1. One row per LALVOTERID for the current
+      year's November election; drives people-api Voter_Status. Incremental (merge on
+      LALVOTERID): scheduled runs score only voters not already present, so they never
+      rescore the full ~218M-row universe; a full refresh rescores everyone with the
+      current @production model. The projection year, model, and lag window all derive
+      automatically (current year and the most recent vote-history year in L2), so the
+      table turns the page on Jan 1 given an annual full refresh. Per-voter
+      probabilities skew low by construction (out-of-distribution vs the
+      precinct-trained model) but aggregate back to the precinct projections.
+    config:
+      # Monthly, matching the L2 refresh cadence: a full build scores ~218M rows and
+      # takes hours, and new registrations only arrive with an L2 load, so a shorter
+      # cadence would burn cluster time without changing the output.
+      tags: ["monthly"]
+      meta:
+        # Most recent year L2 has COMPLETE vote history. Manually maintained (the
+        # same knob the district model uses); bump it when L2 gains a new complete
+        # year. Not auto-detected: L2 pre-provisions empty future vote-history
+        # columns, so column presence is not data presence.
+        max_vote_history_year: "{{ var('max_vote_history_year', 2025) }}"
+        # Derived at run time when left blank: inference_year = current calendar year;
+        # model_slug / election_code = that year's November election. Overrides for backfills.
+        voter_turnout_inference_year: "{{ var('voter_turnout_inference_year', '') }}"
+        voter_turnout_model_slug: "{{ var('voter_turnout_model_slug', '') }}"
+        voter_turnout_election_code: "{{ var('voter_turnout_election_code', '') }}"
+        # Schema holding the @production registered models.
+        voter_turnout_models_schema: "{{ var('voter_turnout_models_schema', 'model_predictions') }}"
+        # Schema holding turnout_historical_precincts (promoted alongside the models).
+        voter_turnout_precincts_schema: "{{ var('voter_turnout_precincts_schema', 'model_predictions') }}"
+        # UC Volume the booster is staged to for executor-side reads (USER_ISOLATION
+        # cluster: no sparkContext broadcast). PROD reuses the existing dbt.object_storage
+        # scratch volume (dbt Cloud SP already has WRITE); it holds a transient booster, not data.
+        voter_turnout_booster_volume: "{{ var('voter_turnout_booster_volume', '/Volumes/goodparty_data_catalog/dbt/object_storage') }}"
+        # DEV-ONLY: comma/space list like "WY" to score a subset without a full run.
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns:
+      - name: LALVOTERID
+        description: "L2 voter id; join key to m_people_api__voter. One row per voter."
+        tests:
+          - not_null
+          - unique
+      - name: prob_vote
+        description: "Modeled turnout probability in [0, 1] for the 2026 General."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+      - name: prediction
+        description: "Binary vote/no-vote label = 1.0 when prob_vote >= 0.5, else 0.0."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: election_year
+        description: "Election year scored."
+        tests:
+          - not_null
+      - name: election_code
+        description: "Election stage scored (General for the shipped grain)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Local_or_Municipal", "Primary"]
+      - name: model_version
+        description: "model_family value read from the @production registered-model tag."
+        tests:
+          - not_null
+      - name: state
+        description: >
+          State postal code. The full-nationwide set is asserted so a partial
+          (allowlisted) build fails loudly.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
