@@ -165,7 +165,7 @@ def _stub_tree(monkeypatch, by_root):
     """Stub parse_semantic_tree, keyed by whether the root is the base worktree."""
     from semantic_catalog import thread as thread_mod
 
-    def fake(roots):
+    def fake(roots, ratifications_path=None, legacy_ratified=False):
         return by_root["before" if "basetree" in str(roots[0]) else "after"]
 
     monkeypatch.setattr(thread_mod, "parse_semantic_tree", fake)

@@ -2,7 +2,14 @@ name: semantic-layer-composition-check
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ['dbt/project/models/**/sem_*.yml']
+    # The ratification sidecar is included for the catalog-freshness job below:
+    # since DATA-2249 a sidecar-only PR moves the Ratified column in both
+    # canonical_metrics.md projections, and that blocking gate has to run or the
+    # projection can go stale unchecked. The composition job then also runs on
+    # bookkeeping PRs; it only prints coverage, so this costs nothing.
+    paths:
+      - 'dbt/project/models/**/sem_*.yml'
+      - 'analytics/diagnostics/semantic_catalog/config/ratifications.yml'
 
 permissions:
   contents: read

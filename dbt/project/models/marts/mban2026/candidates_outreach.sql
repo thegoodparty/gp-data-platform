@@ -28,7 +28,7 @@ with
     l2_districts as (
         select name, state, l2_district_name, l2_district_type
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-        where l2_district_type != 'NOT_MATCHED'
+        where is_matched
         qualify
             row_number() over (partition by name, state order by l2_district_name) = 1
     )

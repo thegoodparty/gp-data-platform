@@ -1,0 +1,2 @@
+position_geo_id,position_mtfcc,place_geo_id,place_name,reason
+2612000,G5420,2622000,Detroit,"BallotReady publishes no Place for the Detroit Public Schools Community District geography, so every race for its board lost its place FK and was dropped from the race mart. The district is coterminous with the city of Detroit (https://detroitk12.org)"

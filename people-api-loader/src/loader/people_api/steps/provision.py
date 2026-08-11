@@ -226,8 +226,7 @@ def run(cfg: LoaderConfig, run_date: str, *, set_ssm_env_tag: bool = True) -> Pr
         # psycopg connections default to `prefer` (TLS when the server offers it, as RDS does).
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
-            f"postgresql://{cfg.db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}"
+            f"postgresql://{cfg.db_user}:{quote(password, safe='')}@{endpoint}:{cfg.db_port}/{cfg.db_name}"
         )
         try:
             # SSM-scoped tags: identical to the resource tags unless set_ssm_env_tag is False, which

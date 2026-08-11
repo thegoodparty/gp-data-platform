@@ -1,16 +1,33 @@
 -- To assign a district L2 does not carry, add rows to
 -- l2_manual_district_assignments. L2 stays authoritative wherever it supplies a
 -- value.
+with
+    assigned as (
+        select
+            voters.* except (`City_Council_Commissioner_District`),
+            coalesce(
+                voters.`City_Council_Commissioner_District`,
+                assignments.l2_district_name
+            ) as `City_Council_Commissioner_District`
+        from {{ ref("int__l2_nationwide_uniform_raw_districts") }} as voters
+        left join
+            {{ ref("l2_manual_district_assignments") }} as assignments
+            on assignments.l2_district_type = 'City_Council_Commissioner_District'
+            and assignments.state = voters.state_postal_code
+            and (assignments.county is null or assignments.county = voters.county)
+            and (assignments.city is null or assignments.city = voters.city)
+            and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    )
+
+-- Strip L2's padding here so every consumer agrees on a district's name and id.
+-- Every district column, not just the six that pad today: a no-op on the rest,
+-- and nothing to keep in sync when L2 starts padding a new one.
 select
-    voters.* except (`City_Council_Commissioner_District`),
-    coalesce(
-        voters.`City_Council_Commissioner_District`, assignments.l2_district_name
-    ) as `City_Council_Commissioner_District`
-from {{ ref("int__l2_nationwide_uniform_raw_districts") }} as voters
-left join
-    {{ ref("l2_manual_district_assignments") }} as assignments
-    on assignments.l2_district_type = 'City_Council_Commissioner_District'
-    and assignments.state = voters.state_postal_code
-    and (assignments.county is null or assignments.county = voters.county)
-    and (assignments.city is null or assignments.city = voters.city)
-    and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    assigned.* except ({{ get_l2_district_columns() }}),
+    {% for column in get_l2_district_columns(use_backticks=false).split(",") | map(
+        "trim"
+    ) -%}
+        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`
+        {%- if not loop.last %},{% endif %}
+    {% endfor %}
+from assigned

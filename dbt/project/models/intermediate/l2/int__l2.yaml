@@ -75,6 +75,13 @@ models:
               - state_postal_code
               - district_type
               - district_name
+      # A district absent from the mart is never minted an id, so it binds no voters.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('m_election_api__district')
+            state_column: state_postal_code
+            district_type_column: district_type
+            district_name_column: district_name
 
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"

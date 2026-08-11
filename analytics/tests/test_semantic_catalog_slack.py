@@ -42,6 +42,26 @@ def test_diff_detects_ratification():
     assert "ratified" in lines.lower() and "2026-07-24" in lines
 
 
+def test_diff_reports_a_stale_only_transition():
+    # Correcting a mis-pasted definition_sha is a sidecar-only edit: staleness
+    # flips with no other field moving. changed_metric_names counts the metric
+    # as changed (whole-record equality), so the summary has to say why or the
+    # anchor and the body disagree.
+    before = [_rec("a", "d", ratified="2026-07-24", ratified_stale=True)]
+    after = [_rec("a", "d", ratified="2026-07-24")]
+    assert changed_metric_names(before, after) == ["a"]
+    lines = "\n".join(diff_records(before, after))
+    assert lines == "• ratification: a — sign-off now current"
+
+
+def test_diff_reports_a_sign_off_going_stale():
+    before = [_rec("a", "d", ratified="2026-07-24")]
+    after = [_rec("a", "old def", ratified="2026-07-24", ratified_stale=True)]
+    lines = "\n".join(diff_records(before, after))
+    assert "• changed: a (definition updated)" in lines
+    assert "sign-off now stale" in lines
+
+
 def test_message_flags_incomplete_review():
     msg = render_message([], [_rec("a", "d")], "http://pr/1", {"data": True, "business": False})
     assert "http://pr/1" in msg

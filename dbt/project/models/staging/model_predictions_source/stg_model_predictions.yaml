@@ -1,23 +1,7 @@
 models:
 
-  - name: stg_model_predictions__candidacy_br_matches_20251204
-    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
-        data_tests:
-          - not_null
-
-  - name: stg_model_predictions__candidacy_br_matches_prenov2025_20251205
-    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
-        data_tests:
-          - not_null
-
   - name: stg_model_predictions__candidacy_ddhq_matches_20250826
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -25,7 +9,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20250909
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -33,7 +17,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20250916
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -41,7 +25,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251016
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -49,7 +33,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251112
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -57,7 +41,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251202
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -91,22 +75,42 @@ models:
         tests:
           - not_null
           - unique
-
-  - name: stg_model_predictions__manual_llm_election_results_20251208
-    description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
+      - name: is_matched
+        description: >
+          Whether the model resolved this position to an L2 district. This is the
+          only predicate for match state: do not infer it from the district
+          columns being populated.
         data_tests:
           - not_null
-      - name: manual_llm_general_election_result
-        description: Manual LLM general election result
-      - name: manual_llm_election_decision_result_page
-        description: Manual LLM election decision result page
-      - name: manual_llm_votes_received
-        description: Manual LLM votes received
-      - name: manual_llm_votes_in_race
-        description: Manual LLM votes in race
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: l2_district_type
+        description: >
+          L2 district column name, null when is_matched is false. The raw snapshot
+          spells no-match as the literal NOT_MATCHED here; staging nulls it so the
+          column cannot be mistaken for a real district.
+      - name: l2_district_name
+        description: >
+          L2 district name, null when is_matched is false. Zero padding is stripped
+          (the snapshot is not self-consistent about it) and the NOT_MATCHED
+          sentinel is nulled.
+    data_tests:
+      # Earliest guard on name drift; other district types have a legitimate unresolvable tail.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: >
+              is_matched and l2_district_type in (
+                'State_House_District',
+                'State_Senate_District',
+                'State_Legislative_District',
+                'US_Congressional_District'
+              )
 
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions

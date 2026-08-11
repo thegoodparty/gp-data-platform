@@ -13,7 +13,7 @@ diagram + reader explainer), passed in from the repo template.
 from __future__ import annotations
 
 from semantic_catalog.lifecycle import Lifecycle
-from semantic_catalog.records import MetricRecord
+from semantic_catalog.records import MetricRecord, ratified_cell
 
 CATALOG_BEGIN = "<!-- catalog:begin -->"
 CATALOG_END = "<!-- catalog:end -->"
@@ -54,12 +54,9 @@ def _catalog(records: list[MetricRecord], lifecycles: dict[str, Lifecycle]) -> s
     for rec in records:
         lc = lifecycles.get(rec.yaml_file)
         detail = f"[{_cell(rec.detail_doc)}]({_cell(rec.detail_doc)})" if rec.detail_doc else ""
-        ratified = rec.ratified or "pending"
-        if rec.retired:
-            ratified = f"{ratified} (retired {rec.retired})"
         rows.append(
             f"| {_cell(rec.label)} | {_cell(rec.definition)} | {rec.metric_type} | {_cell(rec.source)} "
-            f"| {_cell(rec.owner or '')} | {_cell(ratified)} | {_lifecycle_cell(lc)} | {detail} |"
+            f"| {_cell(rec.owner or '')} | {_cell(ratified_cell(rec))} | {_lifecycle_cell(lc)} | {detail} |"
         )
     return f"{CATALOG_BEGIN}\n" + "\n".join(rows) + f"\n{CATALOG_END}"
 

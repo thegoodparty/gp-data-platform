@@ -92,8 +92,9 @@ def test_dag_retries(dag_id, dag, fileloc):
 
 def test_load_people_api_sequence():
     """The loader DAG gates unload/provision on the dbt test and ends build_indexes -> validate ->
-    resize: validate runs BEFORE resize so its heavy per-state counts run on the big index instance,
-    not the small post-resize serving box.
+    resize -> analyze -> promote: validate runs BEFORE resize so its heavy per-state counts run on
+    the big index instance, and promote (the serving cutover) is the automated final step, after
+    resize + analyze, so `live` only ever moves to a resized cluster with fresh stats.
     """
     assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
@@ -102,6 +103,10 @@ def test_load_people_api_sequence():
     assert "validate" in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
     # resize must not be upstream of validate anymore (the old order is fully gone).
     assert "resize" not in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+    # promote is the automated final cutover: downstream of analyze, and it is the sink (no task
+    # depends on it).
+    assert "analyze" in {t.task_id for t in _LOADER_DAG.get_task("promote").upstream_list}
+    assert _LOADER_DAG.get_task("promote").downstream_list == []
 
 
 def test_load_people_api_scale_down_on_failure():
@@ -127,4 +132,7 @@ def test_load_people_api_scale_down_on_failure():
         "resize",
         "analyze",
     }
+    # promote runs after resize (cluster already serving-ready); a promote failure must NOT scale
+    # the writer down, so promote is deliberately not a scale_down upstream.
+    assert "promote" not in upstream_ids
     assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}

@@ -409,8 +409,9 @@ models:
         gp_api only (PD-native):
           product_campaign_id, is_pledged, is_verified,
           verification_status_reason
-        TS > BR (gp_api/DDHQ excluded):
-          is_incumbent
+        TS, then derived from BR office-holder terms (gp_api/DDHQ excluded):
+          is_incumbent (no provider supplies this for 2026; see the column
+          description for the derivation)
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
@@ -506,7 +507,25 @@ models:
         description: Candidate's political party
 
       - name: is_incumbent
-        description: Whether the candidate is the incumbent
+        description: >
+          Whether the candidate already holds the position they are running
+          for. TechSpeed's enrichment where it covered the candidacy;
+          otherwise derived from BallotReady office-holder terms, matching the
+          candidate to a term on the same position that covers election day.
+          The match is on canonical person id, or on first+last name, which
+          the position and term window make near-deterministic. The name arm
+          compensates for a person-resolution gap and is expected to be
+          removed once entity resolution links these records.
+
+          FALSE means BallotReady shows the seat on election day either held
+          by someone else or vacant, and is only asserted for candidacies
+          whose person resolves. NULL means either the position has no
+          office-holder term covering that date or the candidate could not be
+          identified, so incumbency is unknown rather than false. Known misses: appointed or
+          mid-term-succeeded officials whose term dates do not straddle
+          election day, and name variants such as nicknames or changed
+          surnames. Both miss toward "challenger" rather than toward a false
+          incumbent.
         data_tests:
           - accepted_values:
               arguments:
@@ -2734,6 +2753,28 @@ models:
                 min_value: 0
               config:
                 where: "icp_voter_count is not null"
+
+      - name: district_population
+        description: >
+          Census population of the matched district: the constituents the
+          officeholder serves, as opposed to icp_voter_count's registered
+          voters. A whole-person count, rounded from the exact allocation on
+          int__district_population, which stays fractional so that allocations
+          sum exactly to block population. Still an estimate: voter-block
+          allocated from the 2020 decennial frame, so it carries the substrate's
+          documented zero-voter-block undercount. No ICP gate reads it.
+          NULL when the position has no matched L2 district, and also when its
+          district type falls outside the census substrate's curated type set,
+          so a NULL here does not imply a NULL icp_voter_count.
+          Do not sum across rows to get a population total: districts overlap
+          and each district type independently tiles the country, so the sum
+          double-counts. Use people_served for a deduplicated total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "district_population is not null"
 
       - name: is_win_icp
         description: >
