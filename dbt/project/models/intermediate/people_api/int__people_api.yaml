@@ -15,6 +15,9 @@ models:
         data_type: uuid
         data_tests:
           - not_null
+      - name: h3_r6
+        description: H3 cell id (BIGINT) at resolution 6
+        data_type: bigint
       - name: h3_r7
         description: H3 cell id (BIGINT) at resolution 7
         data_type: bigint

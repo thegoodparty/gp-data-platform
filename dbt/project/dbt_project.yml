@@ -31,8 +31,13 @@ vars:
   # disclosed K, and the guardrail test cannot drift apart.
   voter_density_k: 10
   # The H3 resolutions binned and published. Coarser = larger hexagons, which
-  # survive suppression in sparse districts but lose detail in dense ones.
-  voter_density_h3_resolutions: [7, 8, 9]
+  # survive suppression in sparse districts but lose detail in dense ones. r6 is
+  # carried for sparse rural districts, where the finer cells suppress almost
+  # entirely; note it improves them without fully rescuing the sparsest, which
+  # still fall short of a usable coverage floor and should hide the map.
+  # Each added resolution costs another fan-out pass over the district-voter
+  # bridge in int__people_api__district_h3_cell_counts.
+  voter_density_h3_resolutions: [6, 7, 8, 9]
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
