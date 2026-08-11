@@ -122,6 +122,7 @@ DISTRICT_COLUMNS = [
     "Health_District",
     "High_School_District",
     "High_School_SubDistrict",
+    "Hospital_District",
     "Hospital_SubDistrict",
     "Improvement_Landowner_District",
     "Independent_Fire_District",
