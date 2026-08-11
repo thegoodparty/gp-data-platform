@@ -71,6 +71,14 @@ lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-
 some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
 flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`. When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)). For the filing-deadline arm, use `election_stage.filing_period_end_on` joined via `candidacy_stage.gp_election_stage_id`; this column is 2026+ only (NULL for <=2025 — use the election-date arm alone for the archive half).
 
+**Historical filing deadlines (pre-2026).** `election_stage.filing_period_end_on` is 2026+ only, but
+the general filing deadline for earlier cycles is recoverable from BR raw staging:
+`stg_airbyte_source__ballotready_api_race` (filter `NOT is_primary AND NOT is_runoff AND NOT is_recall`),
+explode `filing_periods`, join `int__ballotready_filing_period.end_on`, election via
+`race.election.databaseId`, keyed by `race.position.databaseid × election_day`. Coverage at the
+general-race grain is partial and cycle-dependent (as of 2026-08: 72% of 2024 races, 50% of 2025, 40% of
+2026) — always carry a deadline-missing flag. (Recipe from DATA-2202, promoted via DATA-2225.)
+
 ## Event-lifecycle assets (omni repo)
 
 For when an event was added or retired in code, its current lifecycle status, or what
