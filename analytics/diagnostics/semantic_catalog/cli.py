@@ -15,8 +15,8 @@ from pathlib import Path
 
 import yaml
 
+from semantic_catalog import composition, ratifications, recording, sigma_tasks, slack_reply
 from semantic_catalog import lifecycle as lc_mod
-from semantic_catalog import ratifications, sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -132,6 +132,75 @@ def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[Metri
     return before, after
 
 
+def _record(args, records: list[MetricRecord]) -> int:
+    """Record the sign-offs this merge earned, if both groups approved it.
+
+    Writes into the WORKING TREE only. The publish workflow commits the result
+    to a branch and opens a PR; nothing here pushes to main. The Sigma step runs
+    after this one and re-parses the same working tree, which is how a build
+    task gets created on the definition PR's merge instead of waiting for the
+    ratification PR to land.
+    """
+    reviews = json.loads(args.reviews.read_text()) if args.reviews else []
+    date = composition.completion_date(
+        reviews,
+        [m for m in args.data_members.split(",") if m],
+        [m for m in args.business_members.split(",") if m],
+    )
+    earned: dict[str, ratifications.Ratification] = {}
+
+    if date is None:
+        print("review coverage incomplete; recording nothing.")
+    elif args.base_dir is None or not args.base_dir.is_dir():
+        # Without a base tree there is nothing to compare fingerprints against,
+        # so `before` is empty and EVERY pending metric looks newly earned:
+        # bystanders sharing a file with the reviewed metric would collect a
+        # sign-off nobody gave. A missing base is not evidence of approval, so
+        # record nothing. The workflow only passes --base-dir when /tmp/base
+        # exists, which is the path this guards.
+        print("no base tree to diff against; recording nothing.")
+    else:
+        before, after = _before_after(args.base_dir)
+        if not before:
+            # A base tree that parses to zero metrics is either the wrong path or
+            # a commit predating the semantic layer. Both leave every metric
+            # looking new, which is the same bystander hazard as having no base
+            # at all, so refuse here too rather than trust an empty diff.
+            print("base tree parsed no metrics; recording nothing.")
+        else:
+            earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
+            if not earned:
+                print("no metric was newly ratified by this merge.")
+
+    if earned:
+        sidecar = ratifications.DEFAULT_PATH
+        sidecar.write_text(recording.apply(sidecar.read_text(), earned, args.pr_number))
+        records = parse_semantic_tree(SEM_ROOTS)
+        for target, recs in records_by_target(records).items():
+            write_region(target, recs)
+
+        # Self-verify. catalog-freshness cannot run on a PR opened with the
+        # default token, so this is the only check the bot's own output gets.
+        by_name = {r.name: r for r in records}
+        for name in earned:
+            rec = by_name.get(name)
+            if rec is None or rec.ratified != date or rec.ratified_stale:
+                print(f"recorded {name} but it does not read as freshly ratified; aborting.", file=sys.stderr)
+                return 1
+        print(f"recorded {len(earned)}: {', '.join(sorted(earned))}")
+
+    if args.emit_recorded:
+        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, date, args.pr_number)))
+    if args.emit_pr_body and earned:
+        args.emit_pr_body.write_text(
+            recording.pr_body(
+                recording.manifest(earned, records, date, args.pr_number),
+                repo=os.environ.get("GITHUB_REPOSITORY", "thegoodparty/gp-data-platform"),
+            )
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="semantic_catalog")
     parser.add_argument("--check", action="store_true")
@@ -145,6 +214,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
+    parser.add_argument("--record-ratifications", action="store_true")
+    parser.add_argument("--reviews", type=Path)
+    parser.add_argument("--data-members", type=str, default="")
+    parser.add_argument("--business-members", type=str, default="")
+    parser.add_argument("--pr-number", type=int, default=0)
+    parser.add_argument("--emit-recorded", type=Path)
+    parser.add_argument("--emit-pr-body", type=Path)
     args = parser.parse_args(argv)
 
     try:
@@ -163,6 +239,9 @@ def main(argv: list[str] | None = None) -> int:
         for rec in records:
             print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
         return 0
+
+    if args.record_ratifications:
+        return _record(args, records)
 
     if args.check:
         grouped = records_by_target(records)
