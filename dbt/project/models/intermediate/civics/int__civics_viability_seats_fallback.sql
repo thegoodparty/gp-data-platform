@@ -1,6 +1,8 @@
--- Seats fallback for the viability scorer: candidacies whose election link
--- cannot supply seats_available get a BallotReady-derived seat count keyed on
--- the candidacy's br_position_database_id. Fail-closed by design: rows on the
+-- Seats fallback for the viability scorer: a BallotReady-derived seat count,
+-- keyed on the candidacy's br_position_database_id, for every keyed candidacy
+-- that clears the trust gates. The scorer consumes it only where the election
+-- link supplies no usable seats_available, so most rows here are shadowed by
+-- native election seats and never read. Fail-closed by design: rows on the
 -- curated archive nullout seed, rows whose office type contradicts the
 -- position crosswalk, and positions whose same-date races disagree on seats
 -- produce NO row rather than a guess. seats_source records the tier:
@@ -14,6 +16,7 @@ with
     keyed_candidacies as (
         select
             gp_candidacy_id,
+            gp_election_id,
             br_position_database_id,
             general_election_date,
             -- Office type recomputed from the candidacy's office-name string.
@@ -30,7 +33,10 @@ with
     ),
 
     nullouts as (
-        select br_position_database_id, cast(election_date as date) as election_date
+        select
+            gp_election_id,
+            br_position_database_id,
+            cast(election_date as date) as election_date
         from {{ ref("seed_civics_election_2025_position_nullouts") }}
     ),
 
@@ -42,17 +48,27 @@ with
     trusted as (
         select keyed_candidacies.*
         from keyed_candidacies
+        -- Two keys into the same nullout seed, and either match rejects. The
+        -- seed's own tested key is gp_election_id, so it rejects the curated
+        -- rows directly. The position + date proxy is kept because it
+        -- additionally reaches candidacies with no election link at all -- 70%
+        -- of the coverage gap has no gp_election_id, which the election-id key
+        -- can never touch. Both fail closed.
         left join
             nullouts
             on keyed_candidacies.br_position_database_id
             = nullouts.br_position_database_id
             and keyed_candidacies.general_election_date = nullouts.election_date
         left join
+            nullouts as nullouts_by_election
+            on keyed_candidacies.gp_election_id = nullouts_by_election.gp_election_id
+        left join
             crosswalk
             on keyed_candidacies.br_position_database_id
             = crosswalk.br_position_database_id
         where
             nullouts.br_position_database_id is null
+            and nullouts_by_election.gp_election_id is null
             and not (
                 crosswalk.crosswalk_office_type is not null
                 and keyed_candidacies.name_office_type is not null

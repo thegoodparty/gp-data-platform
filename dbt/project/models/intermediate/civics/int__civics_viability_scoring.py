@@ -14,7 +14,7 @@ Waterfall (best available wins via COALESCE):
 
 Seats fall back to a trust-gated BallotReady lookup
 (int__civics_viability_seats_fallback) when the election link supplies none;
-position-tier fallback seats feed multi_seat only.
+fallback seats (both tiers) feed multi_seat only.
 
 Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
