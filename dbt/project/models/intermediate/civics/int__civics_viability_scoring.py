@@ -12,6 +12,10 @@ Waterfall (best available wins via COALESCE):
   4. ViabilityNoIncumbency        — drops open_seat + is_incumbent
   5. ViabilityNoCandidateDataHS   — most resilient to missingness: multi_seat, partisan_contest, is_unexpired, office_type_woe, state_woe, level_woe
 
+Seats fall back to a trust-gated BallotReady lookup
+(int__civics_viability_seats_fallback) when the election link supplies none;
+position-tier fallback seats feed multi_seat only.
+
 Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
 """
@@ -100,6 +104,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     candidacy = dbt.ref("candidacy")
     election = dbt.ref("election")
+    seats_fallback = dbt.ref("int__civics_viability_seats_fallback").select(
+        col("gp_candidacy_id"),
+        col("fallback_seats"),
+    )
 
     # bring in state, seats_available, and number_of_opponents fallback from election table
     # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
@@ -119,8 +127,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .agg(count("*").alias("n_candidates_mart"))
     )
 
-    df = candidacy.join(election_fields, on="gp_election_id", how="left").join(
-        n_candidates_per_election, on="gp_election_id", how="left"
+    df = (
+        candidacy.join(election_fields, on="gp_election_id", how="left")
+        .join(n_candidates_per_election, on="gp_election_id", how="left")
+        .join(seats_fallback, on="gp_candidacy_id", how="left")
     )
 
     df = (
@@ -131,6 +141,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
             when(col("seats_available").isNull(), None)
             .when(col("seats_available") == 0, None)
             .otherwise(col("seats_available").cast("int")),
+        )
+        # Fallback seats answer only "is this a multi-seat office/race" -- they
+        # must not reach n_seats/log_n_losers, whose candidate count is
+        # per-election grain and can span positions (inflated opponent counts).
+        .withColumn(
+            "n_seats_for_multi",
+            coalesce(col("n_seats"), col("fallback_seats").cast("int")),
         )
         # n_candidates: trust mart count when > 1, else fall back to election column, else null
         .withColumn(
@@ -147,7 +164,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # derived features
         .withColumn(
             "multi_seat",
-            when(col("n_seats").isNull(), None).when(col("n_seats") > 1, lit(1)).otherwise(lit(0)),
+            when(col("n_seats_for_multi").isNull(), None)
+            .when(col("n_seats_for_multi") > 1, lit(1))
+            .otherwise(lit(0)),
         )
         .withColumn(
             "partisan_contest",
