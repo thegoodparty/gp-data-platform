@@ -2,10 +2,11 @@
 
 > **⚠ HIGH PRIORITY — the semantic layer supersedes this table.** Where a concept exists in the
 > dbt semantic layer (`dbt/project/models/**/sem_*.yml`), that model's `config.meta` is the source
-> of truth, including its `ratified:` date, and **overrides this projected table, which can lag the
-> yml**. Check `sem_*.yml` as a first-class step *before* trusting a `Ratified` value here. This
-> projection is regenerated from the yml and can be stale between regenerations (observed 2026-08 on
-> the Serve catalog).
+> of truth for the definition and owner, and `analytics/diagnostics/semantic_catalog/config/ratifications.yml`
+> is the source of truth for the `ratified:` date (a metric absent from that file is pending). Both
+> **override this projected table, which can lag them**. Check them as a first-class step *before*
+> trusting a `Ratified` value here. This projection is regenerated from both and can be stale
+> between regenerations (observed 2026-08 on the Serve catalog).
 
 The single governed answer for each Win-product concept. **Resolve a concept here first**;
 follow the "owns detail" link for the full definition's caveats, coverage, and query patterns.
@@ -48,7 +49,7 @@ a domain doc.
 |---|---|---|---|---|
 | **GoodParty Cumulative Wins** | Running total of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. Accumulates all time, so each period shows the cumulative win count to date. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
 | **GoodParty Win Rate** | Count of gp_api-sourced candidacy stages flagged as won for 2026 elections whose stage date has already passed. | ref('candidacy_stage') | [outcomes.md](outcomes.md) | pending |
-| **Win Activated Users** | Count of Win-product users who have activated: sent at least one voter outreach campaign (first_campaign_sent_at is not null). The activated slice of win_users; the Activated Candidates OKR. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-07-28 |
-| **Win Active Candidates 30d** | Count of Win-product users who viewed the candidate dashboard in the trailing 30 days: the Active Candidates OKR. Definition owned by users_win_base.is_active_candidate_30d, which is anchored on the 2-event dashboard-view union; the legacy single-event anchor died in-data 2026-06-13 and made the flag read FALSE for every user until the union repair landed. The window is evaluated against current_date() in the mart, so this metric is as-of-run-time and cannot be sliced historically by registered_at. | ref('users_win_base') | [engagement.md](engagement.md) | pending |
-| **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-08-03 |
+| **Win Activated Users** | Count of Win-product users who have activated: sent at least one voter outreach campaign (first_campaign_sent_at is not null). The activated slice of win_users; the Activated Candidates OKR. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-08-07 |
+| **Win Active Candidates 30d** | Count of Win-product users who viewed the candidate dashboard in the trailing 30 days: the Active Candidates OKR. Definition owned by users_win_base.is_active_candidate_30d, which is anchored on the 2-event dashboard-view union; the legacy single-event anchor died in-data 2026-06-13 and made the flag read FALSE for every user until the union repair landed. The window is evaluated against current_date() in the mart, so this metric is as-of-run-time and cannot be sliced historically by registered_at. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-08-05 |
+| **Win Users** | Count of Win-product users. Slice or filter by the engagement dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at query time. | ref('users_win_base') | [engagement.md](engagement.md) | 2026-08-04 |
 <!-- semantic-catalog:end -->

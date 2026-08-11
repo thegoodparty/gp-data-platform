@@ -767,10 +767,12 @@ models:
           - is_uuid
       - name: slug
         description: >
-          slugify(first_name-last_name). Cosmetic URL prefix; NOT NULL but not
-          unique in the API (the trailing UUID disambiguates).
+          slugify(first_name-last_name) with an 8-hex suffix from the person id.
+          The /people/<slug> URL resolves on slug alone, so it is globally
+          unique. If uniqueness ever fails, widen the suffix beyond 8 hex.
         tests:
           - not_null
+          - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
 

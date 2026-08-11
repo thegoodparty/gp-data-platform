@@ -18,6 +18,19 @@ def test_case_insensitive_logins():
     assert cov["data"] is True
 
 
+def test_bot_approval_never_counts_even_as_a_team_member():
+    # delegate-reviewer[bot] approves nearly every governed PR. Excluding bots
+    # explicitly, rather than relying on them never being added to a team,
+    # keeps the two-group gate from becoming satisfiable by automation alone.
+    cov = evaluate({"delegate-reviewer[bot]"}, {"delegate-reviewer[bot]", "alice"}, {"charlie"})
+    assert cov == {"data": False, "business": False}
+
+
+def test_human_approval_alongside_a_bot_still_counts():
+    cov = evaluate({"delegate-reviewer[bot]", "alice"}, {"alice"}, {"charlie"})
+    assert cov["data"] is True
+
+
 def test_main_prints_coverage_json(capsys, monkeypatch):
     monkeypatch.setenv("APPROVERS", "Alice,charlie")
     monkeypatch.setenv("DATA", "alice,bob")

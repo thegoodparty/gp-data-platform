@@ -2735,6 +2735,28 @@ models:
               config:
                 where: "icp_voter_count is not null"
 
+      - name: district_population
+        description: >
+          Census population of the matched district: the constituents the
+          officeholder serves, as opposed to icp_voter_count's registered
+          voters. A whole-person count, rounded from the exact allocation on
+          int__district_population, which stays fractional so that allocations
+          sum exactly to block population. Still an estimate: voter-block
+          allocated from the 2020 decennial frame, so it carries the substrate's
+          documented zero-voter-block undercount. No ICP gate reads it.
+          NULL when the position has no matched L2 district, and also when its
+          district type falls outside the census substrate's curated type set,
+          so a NULL here does not imply a NULL icp_voter_count.
+          Do not sum across rows to get a population total: districts overlap
+          and each district type independently tiles the country, so the sum
+          double-counts. Use people_served for a deduplicated total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "district_population is not null"
+
       - name: is_win_icp
         description: >
           Whether this position meets the Win ICP criteria (office type and

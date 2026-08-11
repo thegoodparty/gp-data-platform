@@ -2,10 +2,10 @@
 
 > **⚠ HIGH PRIORITY — the semantic layer supersedes this table.** Where a concept exists in the
 > dbt semantic layer (`dbt/project/models/**/sem_*.yml`), that model's `config.meta` is the source
-> of truth, including its `ratified:` date, and **overrides this projected table, which can lag the
-> yml**. Check `sem_*.yml` as a first-class step *before* trusting a `Ratified` value here. Known
-> drift (2026-08): `active_serve_users` was ratified `2026-07-28` in `sem_analytics__users_serve.yml`
-> while this projection still read `pending` — regenerate the catalog projection to reconcile.
+> of truth for the definition and owner, and `analytics/diagnostics/semantic_catalog/config/ratifications.yml`
+> is the source of truth for the `ratified:` date (a metric absent from that file is pending). Both
+> **override this projected table, which can lag them**. Check them as a first-class step *before*
+> trusting a `Ratified` value here.
 
 The single governed answer for each Serve-product concept. **Resolve a concept here first**;
 follow the "owns detail" link for the full definition's caveats, coverage, and query patterns.
@@ -42,5 +42,5 @@ in office is parked until officeholder data lands in civics.
 <!-- semantic-catalog:begin -->
 | Concept | Governed definition (one line) | Source | Owns detail | Ratified |
 |---|---|---|---|---|
-| **Activated Serve Users** | Count of Serve users who have passed the activation gate: ever sent an SMS poll AND ever pledged. Excludes internal accounts. Definition owned by int__serve_active_user, surfaced through users_serve_base; the gold membership view users_serve_active exposes the same population for direct dashboard reads. Named "activated", not "active", because both components are lifetime-ever flags with no recency window. The count is monotonically non-decreasing and cannot detect churn, so it does NOT answer "how many Serve users are active now". Use the trailing-window Serve activity metric for that. Time series bucket by onboarding-completion date (the metric's aggregation time is first_sms_poll_sent_at), not by pledge or account registration date. | ref('users_serve_base') | [sources.md](sources.md) | 2026-07-28 |
+| **Activated Serve Users** | Count of Serve users who have passed the activation gate: ever sent an SMS poll AND ever pledged. Excludes internal accounts. Definition owned by int__serve_active_user, surfaced through users_serve_base; the gold membership view users_serve_active exposes the same population for direct dashboard reads. Named "activated", not "active", because both components are lifetime-ever flags with no recency window. The count is monotonically non-decreasing and cannot detect churn, so it does NOT answer "how many Serve users are active now". Use the trailing-window Serve activity metric for that. Time series bucket by onboarding-completion date (the metric's aggregation time is first_sms_poll_sent_at), not by pledge or account registration date. | ref('users_serve_base') | [sources.md](sources.md) | 2026-08-05 |
 <!-- semantic-catalog:end -->

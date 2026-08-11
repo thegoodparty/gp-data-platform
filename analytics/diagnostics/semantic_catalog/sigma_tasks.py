@@ -66,19 +66,32 @@ def task_payload(rec: MetricRecord, assignee_ids: tuple[int, ...] = ()) -> TaskP
     )
 
 
-def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
-    """Metrics whose ratified date is set in `after` and differs from `before`.
+def _effective_ratified(rec: MetricRecord) -> str | None:
+    """The sign-off a build task may trust, or None if there is none to trust.
 
-    Excludes still-pending and retired metrics. A brand-new metric that arrives
-    already ratified counts as newly ratified.
+    A stale date certifies a definition that has since changed, so it counts as
+    no sign-off at all (DATA-2249). Otherwise this task would tell someone to
+    build a definition nobody approved, and the task text renders the date with
+    no stale marker, so the catalog's warning would not travel with it.
+    """
+    return None if rec.ratified_stale else rec.ratified
+
+
+def newly_ratified(before: list[MetricRecord], after: list[MetricRecord]) -> list[MetricRecord]:
+    """Metrics whose trustworthy ratified date is set in `after` and differs from `before`.
+
+    Excludes still-pending, stale and retired metrics. A brand-new metric that
+    arrives already ratified counts as newly ratified. Because staleness is part
+    of the comparison, correcting a fingerprint fires the task the stale entry
+    never got, even though the date itself did not move.
     """
     prev = {r.name: r for r in before}
     out: list[MetricRecord] = []
     for rec in after:
-        if rec.retired or not rec.ratified:
+        if rec.retired or _effective_ratified(rec) is None:
             continue
         old = prev.get(rec.name)
-        if old is None or old.ratified != rec.ratified:
+        if old is None or _effective_ratified(old) != _effective_ratified(rec):
             out.append(rec)
     return out
 

@@ -75,8 +75,15 @@ models:
               - state_postal_code
               - district_type
               - district_name
+      # A district absent from the mart is never minted an id, so it binds no voters.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('m_election_api__district')
+            state_column: state_postal_code
+            district_type_column: district_type
+            district_name_column: district_name
 
-  - name: int__l2_nationwide_uniform
+  - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
     columns:
       - name: state_postal_code
@@ -85,6 +92,9 @@ models:
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+
+  - name: int__l2_nationwide_uniform
+    description: "The voter file, with l2_manual_district_assignments applied"
 
   - name: int__voter_turnout_lgbm_inference
     description: >
