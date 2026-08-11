@@ -5,14 +5,16 @@ Per table, a pipeline:
 
 1. Drops and recreates `staging."<Target>_new"` with the same column shape as
    the live `public."<Target>"` table (no indexes — fast bulk-insert).
-2. Streams the source mart from Databricks into the staging table.
+2. Streams the source mart from Databricks into the staging table. The
+   column list is the live table's own columns (see `staging_columns`), so
+   the mart must publish matching names and types.
 3. Adds the PK, indexes, and FK constraints (canonical Prisma names suffixed
    with `_new`), all generated from the spec's declarative index/FK defs.
    Cross-table FKs reference the sibling STAGING table, never the live one,
    so the staging set is self-contained: it validates against its own
    vintage and never blocks or follows a live table.
 4. Runs quality checks against the staging table (generic count /
-   column-contract / id-overlap / NULL-probe gates plus per-table extras).
+   id-overlap / NULL-probe gates plus per-table extras).
 
 Then ONE transaction swaps the entire set: for each table, the live table is
 renamed aside (`<Target>_old`) and the staging table renamed in, with every
@@ -32,7 +34,7 @@ predictably across all three schemas.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -149,8 +151,8 @@ class QualityGate:
     # table whose ids external consumers may hold. None skips the check
     # (tables whose ids legitimately re-mint, e.g. model-version keyed).
     min_id_overlap: float | None = None
-    # Live columns the loader deliberately does not supply (Prisma-owned
-    # columns whose defaults carry them, e.g. Person.is_pledged).
+    # Live columns excluded from the load (Prisma-owned; their Postgres
+    # defaults carry them, e.g. Person.is_pledged).
     db_owned_columns: frozenset[str] = frozenset()
     # Belt-and-braces NULL probes over the staged rows.
     not_null_columns: tuple[str, ...] = ()
@@ -172,26 +174,25 @@ def check_counts(loaded_count: int, prior_count: int, gate: QualityGate, table: 
         )
 
 
-def check_column_contract(
-    live_columns: set[str], loader_columns: set[str], gate: QualityGate, table: str
-) -> None:
-    """Pure schema-contract gate: fails closed if live grew a column the
-    loader does not supply (a Prisma migration landing ahead of the loader —
-    a swap would reset it wholesale), or if the loader supplies a column live
-    lacks (drift; the load would already have failed, this is the proof)."""
-    unknown = live_columns - loader_columns - gate.db_owned_columns
-    missing = loader_columns - live_columns
-    if unknown:
-        raise ValueError(
-            f"live {table} has columns the loader does not supply: "
-            f"{sorted(unknown)}; a swap would reset them. Extend the column "
-            f"list or allowlist in db_owned_columns"
+def staging_columns(conn, spec: TableSyncSpec, exclude: frozenset[str] = frozenset()) -> list[str]:
+    """Ordered column names of the staging clone (which mirrors the live
+    table). The loader selects exactly these from the mart, so dbt must
+    publish matching names and types; `exclude` holds the db-owned columns
+    whose Postgres defaults carry them."""
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = %s "
+            "ORDER BY ordinal_position",
+            (spec.staging_schema, spec.new_table),
         )
-    if missing:
-        raise ValueError(
-            f"loader supplies columns live {table} lacks: {sorted(missing)}; "
-            f"schema drift, refusing to swap"
-        )
+        columns = [r[0] for r in cur.fetchall() if r[0] not in exclude]
+    finally:
+        cur.close()
+    if not columns:
+        raise ValueError(f"no columns found for {spec.staging_schema}.{spec.new_table}")
+    return columns
 
 
 def run_quality_checks(
@@ -199,22 +200,12 @@ def run_quality_checks(
     spec: TableSyncSpec,
     gate: QualityGate,
     loaded_count: int,
-    loader_columns: Sequence[str],
 ) -> None:
     """Gather gate inputs from Postgres and apply the pure checks."""
     cur = conn.cursor()
     try:
         prior_exists, prior_count = prior_live_state(cur, spec)
         check_counts(loaded_count, prior_count if prior_exists else 0, gate, spec.target_table)
-
-        if prior_exists:
-            cur.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_schema = %s AND table_name = %s",
-                (spec.target_schema, spec.target_table),
-            )
-            live_columns = {r[0] for r in cur.fetchall()}
-            check_column_contract(live_columns, set(loader_columns), gate, spec.target_table)
 
         if gate.min_id_overlap is not None and prior_count > 0:
             cur.execute(
@@ -299,15 +290,13 @@ def bulk_insert_from_databricks(
     spec: TableSyncSpec,
     source_query: str,
     target_columns: Sequence[str],
-    transform_row: Callable[[tuple], tuple] | None = None,
     batch_size: int = 5000,
     partition_column: str | None = None,
 ) -> int:
     """Stream `source_query` from Databricks into `staging.<table>_new` in batches.
 
-    `transform_row` runs once per source row; if provided, the returned tuple
-    must align with `target_columns`. If absent, source rows pass through
-    unchanged (must already match `target_columns`).
+    Source rows pass through unchanged, so the query's column order must
+    match `target_columns`.
 
     `partition_column`, if set, reads one distinct value at a time over a single
     Databricks connection (see `read_databricks_partitioned`), so peak worker
@@ -331,9 +320,7 @@ def bulk_insert_from_databricks(
         for batch in batches:
             # Normalize numpy values (ARRAY columns, and any scalars inside
             # them) to native Python so psycopg2 can adapt them.
-            rows = [
-                tuple(_pg_adaptable(v) for v in (transform_row(r) if transform_row else r)) for r in batch
-            ]
+            rows = [tuple(_pg_adaptable(v) for v in r) for r in batch]
             if not rows:
                 continue
             psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)

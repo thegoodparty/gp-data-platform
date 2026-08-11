@@ -6,7 +6,12 @@
 with
     persons as (select id from {{ ref("m_election_api__person") }}),
 
-    positions as (select id, br_database_id from {{ ref("m_election_api__position") }}),
+    -- br_database_id back to numeric: the election-api mart publishes it as
+    -- string, but terms join on the numeric BR id
+    positions as (
+        select id, cast(br_database_id as bigint) as br_database_id
+        from {{ ref("m_election_api__position") }}
+    ),
 
     -- Term fields the civics mart doesn't carry; staging carries one row per
     -- br_office_holder_id (unique-tested), and the qualify guards the join
@@ -41,6 +46,10 @@ with
 
 select
     terms.gp_elected_official_term_id as id,
+    -- build timestamps: the table is swap-replaced wholesale each run, same
+    -- semantics as the legacy writer's per-run now() stamps
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at,
     terms.br_office_holder_id,
     terms.position_name,
     terms.normalized_position_name,

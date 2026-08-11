@@ -149,7 +149,7 @@ left join
     on tbl_stage.gp_election_id = tbl_civics.gp_election_id
 left join
     {{ ref("m_election_api__position") }} as tbl_position
-    on tbl_race.br_position_database_id = tbl_position.br_database_id
+    on cast(tbl_race.br_position_database_id as string) = tbl_position.br_database_id
 left join
     {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
     on tbl_race.br_database_id = filing_overrides.br_database_id

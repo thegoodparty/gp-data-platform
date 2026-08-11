@@ -440,6 +440,15 @@ models:
       Grain: One row per (zip_code, position_id, election_date). Positions
       without zip coverage will have a null zip_code.
     columns:
+      - name: id
+        description: >
+          Deterministic UUID on the natural key (zip_code, position_id,
+          election_date); primary key in the election-api ZipToPosition
+          table, stable across daily rebuilds.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
       - name: position_id
         description: >
           Election API position UUID. Foreign key to m_election_api__position.
