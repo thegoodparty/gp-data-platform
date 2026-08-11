@@ -11,53 +11,79 @@ from dbt.project.models.load.load__l2_haystaq_sftp_to_s3 import (
 
 
 class TestResolvePickupAction:
+    PREFIX = "l2_data/from_sftp_server/Haystaq/prod/AZ/flags/"
     S3_KEYS: ClassVar[list[str]] = [
         "l2_data/from_sftp_server/Haystaq/prod/AZ/flags/az_haystaqdnaflags_20260520.tab",
     ]
 
     def test_downloads_when_tab_not_in_s3(self):
-        action = _resolve_pickup_action(
+        action, matched = _resolve_pickup_action(
             tab_file_name="az_haystaqdnaflags_20260601.tab",
+            s3_state_prefix=self.PREFIX,
             s3_keys=self.S3_KEYS,
             logged_file_names=set(),
         )
         assert action == "download"
+        assert matched is None
 
     def test_skips_when_tab_in_s3_and_logged(self):
-        action = _resolve_pickup_action(
+        action, matched = _resolve_pickup_action(
             tab_file_name="az_haystaqdnaflags_20260520.tab",
+            s3_state_prefix=self.PREFIX,
             s3_keys=self.S3_KEYS,
             logged_file_names={"az_haystaqdnaflags_20260520.tab"},
         )
         assert action == "skip"
+        assert matched == "az_haystaqdnaflags_20260520.tab"
 
     def test_self_heals_when_tab_in_s3_but_never_logged(self):
         # The May 2026 incident: a run died after uploading to S3 but before
         # appending its sync-log rows, so the file looked "done" forever.
-        action = _resolve_pickup_action(
+        action, matched = _resolve_pickup_action(
             tab_file_name="az_haystaqdnaflags_20260520.tab",
+            s3_state_prefix=self.PREFIX,
             s3_keys=self.S3_KEYS,
             logged_file_names=set(),
         )
         assert action == "self_heal"
+        assert matched == "az_haystaqdnaflags_20260520.tab"
 
-    def test_matching_is_case_insensitive(self):
-        action = _resolve_pickup_action(
+    def test_matching_is_case_insensitive_but_returns_exact_s3_spelling(self):
+        # S3 GETs are case-sensitive: the caller must log the spelling that
+        # actually exists in S3, not the SFTP-derived one it searched with.
+        action, matched = _resolve_pickup_action(
             tab_file_name="AZ_HaystaqDnaFlags_20260520.TAB",
+            s3_state_prefix=self.PREFIX,
             s3_keys=self.S3_KEYS,
-            logged_file_names={"AZ_haystaqdnaflags_20260520.tab"},
+            logged_file_names=set(),
         )
-        assert action == "skip"
+        assert action == "self_heal"
+        assert matched == "az_haystaqdnaflags_20260520.tab"
+
+    def test_matched_name_preserves_nesting_under_the_state_prefix(self):
+        # Downstream builds its read path as prefix + logged name, so the
+        # matched name must be the key's suffix after the prefix, not its
+        # basename.
+        action, matched = _resolve_pickup_action(
+            tab_file_name="az_haystaqdnaflags_20260520.tab",
+            s3_state_prefix=self.PREFIX,
+            s3_keys=[f"{self.PREFIX}nested/az_haystaqdnaflags_20260520.tab"],
+            logged_file_names=set(),
+        )
+        assert action == "self_heal"
+        assert matched == "nested/az_haystaqdnaflags_20260520.tab"
 
     def test_does_not_match_tab_name_suffix_of_other_file(self):
         # "…/az_haystaqdnaflags_20260520.tab" must not satisfy a lookup for
         # "flags_20260520.tab"; only a full path segment counts.
-        action = _resolve_pickup_action(
+        action, matched = _resolve_pickup_action(
             tab_file_name="flags_20260520.tab",
+            s3_state_prefix=self.PREFIX,
             s3_keys=self.S3_KEYS,
             logged_file_names=set(),
         )
         assert action == "download"
+        assert matched is None
 
 
 class TestLocateExtractedTab:
@@ -166,10 +192,16 @@ class TestFinalizeLoadDetails:
         details = [{"state_id": "AZ", "load_details": _details_for("AZ", "flags")}]
         assert _finalize_load_details(details, failures=[]) is details
 
-    def test_raises_summary_naming_each_failed_state(self):
-        with pytest.raises(
-            RuntimeError, match=r"2 state extraction\(s\) failed.*MI \(flags\).*WI \(scores\)"
-        ):
+    def test_partial_failure_still_returns_successful_details(self):
+        # A persistently failing state must not starve the others: successful
+        # states' rows persist this run instead of being discarded by a raise.
+        details = [{"state_id": "AZ", "load_details": _details_for("AZ", "flags")}]
+        assert _finalize_load_details(details, failures=["MI (flags): extracted tab not found"]) is details
+
+    def test_raises_only_when_every_extraction_failed(self):
+        # Nothing succeeded means nothing would be lost by failing the run, and
+        # a total wipeout (e.g. SFTP outage) should be loud, not a green no-op.
+        with pytest.raises(RuntimeError, match=r"all 2 extraction\(s\) failed.*MI \(flags\).*WI \(scores\)"):
             _finalize_load_details(
                 [],
                 failures=["MI (flags): extracted tab not found", "WI (scores): boom"],

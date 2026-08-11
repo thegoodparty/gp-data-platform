@@ -77,22 +77,33 @@ def _select_latest_zip_file(file_list: list[str], file_pattern: re.Pattern) -> s
 
 def _resolve_pickup_action(
     tab_file_name: str,
+    s3_state_prefix: str,
     s3_keys: list[str],
     logged_file_names: set[str],
-) -> Literal["download", "self_heal", "skip"]:
+) -> tuple[Literal["download", "self_heal", "skip"], str | None]:
     """
     Decide how to handle the latest SFTP file. "In S3" alone is not proof of
     completion: a run that dies after uploading but before its sync-log append
     leaves the file in S3 with no log row, and the downstream Databricks load
     only consumes logged files. Such orphans must be re-logged ("self_heal"),
     not skipped.
+
+    Returns (action, matched_file_name). Matching is case-insensitive, but the
+    returned name is the S3 key's exact suffix after `s3_state_prefix`: S3 GETs
+    are case-sensitive and downstream reads prefix + logged name verbatim, so
+    only the spelling that actually exists in S3 may be logged.
     """
     tab_lower = tab_file_name.lower()
-    if not any(key.lower().endswith(f"/{tab_lower}") for key in s3_keys):
-        return "download"
-    if tab_lower in {name.lower() for name in logged_file_names}:
-        return "skip"
-    return "self_heal"
+    matched_key = next(
+        (key for key in s3_keys if key.lower().endswith(f"/{tab_lower}")),
+        None,
+    )
+    if matched_key is None:
+        return "download", None
+    matched_file_name = matched_key[len(s3_state_prefix) :]
+    if matched_file_name.lower() in {name.lower() for name in logged_file_names}:
+        return "skip", matched_file_name
+    return "self_heal", matched_file_name
 
 
 def _locate_extracted_tab(extracted_names: list[str], temp_dir: str) -> str | None:
@@ -141,12 +152,20 @@ def _collect_load_details(
 
 def _finalize_load_details(details: list[dict[str, Any]], failures: list[str]) -> list[dict[str, Any]]:
     """
-    Fail loudly when any state failed. The raise discards this run's log rows,
-    but nothing is lost: completed uploads sit in S3 unlogged and the next
-    run's self-heal path re-logs them without re-downloading.
+    Persist partial progress; fail only on a total wipeout. Raising on any
+    failure would discard every successful row, so one persistently bad state
+    could starve the other states' log rows indefinitely. When at least one
+    extraction succeeded, log the failures and return the successes (failed
+    states retry next run: their files are re-pulled or self-healed). When
+    every extraction failed, something systemic broke (e.g. SFTP outage);
+    there is nothing to persist, so fail the run loudly.
     """
+    if failures and not details:
+        raise RuntimeError(f"all {len(failures)} extraction(s) failed: {'; '.join(failures)}")
     if failures:
-        raise RuntimeError(f"{len(failures)} state extraction(s) failed: {'; '.join(failures)}")
+        logging.error(
+            f"{len(failures)} state extraction(s) failed and will retry next run: {'; '.join(failures)}"
+        )
     return details
 
 
@@ -213,18 +232,22 @@ def _extract_and_load_w_params(
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/{haystaq_kind}/"
             s3_file_list = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_state_prefix)
             s3_keys = [f["Key"] for f in s3_file_list.get("Contents", [])]
-            action = _resolve_pickup_action(tab_file_name, s3_keys, logged_file_names)
+            action, matched_file_name = _resolve_pickup_action(
+                tab_file_name, s3_state_prefix, s3_keys, logged_file_names
+            )
             if action == "skip":
-                logging.info(f"{haystaq_kind} file already in S3 and logged for {state_id}: {tab_file_name}")
+                logging.info(
+                    f"{haystaq_kind} file already in S3 and logged for {state_id}: {matched_file_name}"
+                )
                 return EMPTY_LOAD_DETAILS
             if action == "self_heal":
                 logging.warning(
                     f"{haystaq_kind} file for {state_id} is in S3 but has no sync-log row "
-                    f"(a prior run died before logging it); re-logging without re-download: {tab_file_name}"
+                    f"(a prior run died before logging it); re-logging without re-download: {matched_file_name}"
                 )
                 return {
                     "state_id": state_id,
-                    "source_file_names": [tab_file_name],
+                    "source_file_names": [matched_file_name],
                     "source_zip_file": source_zip_file_name,
                     "loaded_at": datetime.now(),
                     "s3_state_prefix": s3_state_prefix,
@@ -277,10 +300,15 @@ def _extract_and_load_w_params(
 
                 extracted_tab_name = os.path.basename(local_tab_path)
                 if extracted_tab_name.lower() != tab_file_name.lower():
+                    # Upload under the zip-derived name regardless: every future
+                    # run derives that name from the SFTP listing to decide
+                    # skip/self-heal, so uploading the extracted spelling would
+                    # never be found again and the file would re-download and
+                    # re-log on every run.
                     logging.warning(
-                        f"Extracted tab name {extracted_tab_name} does not match expected {tab_file_name}; uploading extracted name."
+                        f"Extracted tab name {extracted_tab_name} does not match expected "
+                        f"{tab_file_name}; uploading under the expected name."
                     )
-                    tab_file_name = extracted_tab_name
 
                 s3_key = f"{s3_state_prefix}{tab_file_name}"
                 s3_client.upload_file(Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key)
