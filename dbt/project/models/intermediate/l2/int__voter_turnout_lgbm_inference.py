@@ -496,12 +496,22 @@ def _build_district_projection_sql(interval_params):
             "(CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate) "
             "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
         )
-        # Floor each bound at 3 ballots, matching the point-estimate floor (DATA-2015 /
-        # PR #598: GREATEST(ROUND(...), 3)). All three of point/lower/upper are floored the
-        # same way so the lower <= point <= upper ordering is preserved (GREATEST is
-        # monotonic); flooring only the point could leave upper < point for a tiny district.
-        lower_expr = f"GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) * a.district_voters), 3)"
-        upper_expr = f"GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) * a.district_voters), 3)"
+        # Floor each bound at 3 ballots like the point estimate, then ENCLOSE the point:
+        # wrap the rate-space bound with LEAST/GREATEST against the same point expression.
+        # In-domain this is a no-op (the quantiles straddle zero, so the formula bound
+        # already sits beyond the point). At saturation, pred_rate is clamped to 1 above,
+        # which caps the rate-space bound at district_voters while the raw point
+        # (projected_raw) can legitimately exceed it — without enclosing, that flips
+        # upper below the point instead of collapsing the band onto it.
+        point_expr = "GREATEST(ROUND(a.projected_raw), 3)"
+        lower_expr = (
+            f"LEAST(GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) "
+            f"* a.district_voters), 3), {point_expr})"
+        )
+        upper_expr = (
+            f"GREATEST(GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) "
+            f"* a.district_voters), 3), {point_expr})"
+        )
     else:
         params_cte = ""
         join_sql = ""
@@ -532,7 +542,13 @@ def _build_district_projection_sql(interval_params):
         _with_rate AS (
             SELECT
                 *,
-                CASE WHEN district_voters > 0 THEN projected_raw / district_voters END AS pred_rate
+                -- Clamp the scaler INPUT: a saturated or above-domain point (raw slop,
+                -- not the physical-domain guard at the prediction site) would otherwise
+                -- push pred_rate outside [0,1] and hand w() a negative product under the
+                -- SQRT, which is NaN — and NaN beats every value in Spark's GREATEST.
+                CASE WHEN district_voters > 0
+                     THEN LEAST(GREATEST(projected_raw / district_voters, 0), 1)
+                END AS pred_rate
             FROM _district_agg
         )
         SELECT
@@ -541,6 +557,7 @@ def _build_district_projection_sql(interval_params):
             a.state,
             a.district_type,
             a.district_name,
+            a.model_slug,
             GREATEST(ROUND(a.projected_raw), 3)  AS ballots_projected,
             {lower_expr}  AS ballots_projected_lower,
             {upper_expr}  AS ballots_projected_upper,
@@ -610,7 +627,31 @@ def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inferenc
             x[c] = pd.to_numeric(x[c], errors="coerce")
 
     result = pdf[["State", "County", "Precinct", "n_voters"]].copy()
-    result["p_hat"] = booster._Booster.predict(x.to_numpy(dtype=float, na_value=np.nan))
+    preds = np.asarray(booster._Booster.predict(x.to_numpy(dtype=float, na_value=np.nan)))
+    # one prediction per input row: a scalar or mis-shaped result would
+    # otherwise broadcast across every precinct via the pandas assignment
+    if preds.shape != (len(pdf),):
+        raise ValueError(
+            f"{model_slug} returned predictions of shape {preds.shape} "
+            f"for {len(pdf)} precinct rows; refusing to emit."
+        )
+    if not np.isfinite(preds).all():
+        bad = int((~np.isfinite(preds)).sum())
+        raise ValueError(
+            f"{model_slug} produced {bad} non-finite precinct predictions; "
+            f"refusing to emit (a NULL/NaN prediction would otherwise be "
+            f"silently floored downstream)."
+        )
+    # Catches catastrophic garbage (e.g. a rate regression emitting -5) that finiteness
+    # alone misses. The slack band is far beyond any legitimate slop so it cannot false-fail.
+    if ((preds < -1.0) | (preds > 2.0)).any():
+        bad = int(((preds < -1.0) | (preds > 2.0)).sum())
+        raise ValueError(
+            f"{model_slug} produced {bad} predictions far outside the rate "
+            f"domain [0, 1]; refusing to emit (rates a whole unit out of "
+            f"domain are corruption, not regression slop)."
+        )
+    result["p_hat"] = preds
     result["model_slug"] = model_slug
     result["model_family"] = model_version
     result["inference_year"] = inference_year

@@ -6,6 +6,8 @@ the helpers directly from the dbt Python model file, which is why `import mlflow
 must stay inside `model()` (the dbt test env has pyspark + pandas, not mlflow).
 """
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -225,6 +227,27 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
     assert {"State", "County", "Precinct", "n_voters"}.issubset(out.columns)
 
 
+def test_predict_precinct_rejects_non_finite_predictions_and_checks_shape():
+    """A NaN prediction must fail loudly at the source: Spark GREATEST skips
+    NULLs, so a NULL/NaN prediction downstream would launder into a
+    plausible-looking floored row instead of failing."""
+    booster = MagicMock()
+    booster.feature_name_ = ["f1"]
+    booster._Booster.predict.return_value = np.array([float("nan")])
+    pdf = pd.DataFrame({"State": ["AL"], "County": ["X"], "Precinct": ["1"], "n_voters": [10.0], "f1": [1.0]})
+    with pytest.raises(ValueError, match="non-finite"):
+        _predict_precinct(pdf, booster, {}, "midterm", "fam", 2026)
+    # a mis-shaped result must fail, not broadcast across precincts
+    booster._Booster.predict.return_value = np.array([0.4, 0.5])
+    with pytest.raises(ValueError, match="shape"):
+        _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    # sane path: one prediction per input row, correct output shape
+    booster._Booster.predict.return_value = np.array([0.42])
+    out = _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    assert len(out) == len(pdf)
+    assert out.loc[0, "p_hat"] == 0.42
+
+
 def test_select_cat_map_path_returns_single_match():
     only = "/tmp/model/tmpAbC_categorical_feature_map.json"
     assert _select_cat_map_path([only]) == only
@@ -341,6 +364,7 @@ def test_projection_sql_carries_model_slug_and_district_voters():
     # ballots_projected = round of the p_hat-weighted sum, floored at 3 (DATA-2015 / #598).
     assert "GREATEST(ROUND(a.projected_raw), 3)" in sql
     assert "AS ballots_projected" in sql
+    assert "a.model_slug," in sql  # exposed in the final SELECT as provenance
 
 
 def test_projection_sql_emits_lower_and_upper_bound_columns():
@@ -356,21 +380,40 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
     assert "* a.district_voters" in sql
     assert "ip.bias" not in sql
     assert "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug" in sql
-    # both bounds are floored at 3 (matching the point-estimate floor), preserving
-    # lower <= point <= upper. Two bound columns each end with "* a.district_voters), 3)".
+    # both bounds float their own rate-space floor at 3, matching the point-estimate
+    # floor: each bound formula contains "* a.district_voters), 3)" once, now followed by
+    # the enclose-the-point wrap (see test_projection_sql_clamps_scaler_input_and_encloses_the_point).
     assert sql.count("* a.district_voters), 3)") == 2
 
 
 def test_projection_sql_floors_point_and_both_bounds_at_3():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
-    # point + lower + upper all wrapped in GREATEST(..., 3) so tiny districts never report
-    # below 3 and the ordering invariant survives the floor.
+    # point + lower + upper are each floored at 3 so tiny districts never report below 3.
+    # ">=" not "==": the point expression is also reused inside both bounds' enclose-the-point
+    # wrap (see test_projection_sql_clamps_scaler_input_and_encloses_the_point), so the count
+    # runs higher than one-per-column.
     assert "GREATEST(ROUND(a.projected_raw), 3)" in sql
-    assert sql.count("), 3)") >= 3  # point + lower + upper
+    assert sql.count("), 3)") >= 3  # point + lower + upper, at least
     # the no-params branch must NOT floor NULL bounds into 3.
     null_sql = _build_district_projection_sql({})
     assert "GREATEST(CAST(NULL" not in null_sql
     assert "GREATEST(ROUND(a.projected_raw), 3)" in null_sql  # point still floored
+
+
+def test_projection_sql_clamps_scaler_input_and_encloses_the_point():
+    """Two out-of-domain hazards from regression slop: (1) a rate outside
+    [0,1] makes sqrt of a negative, and NaN beats every number in Spark's
+    GREATEST — a NaN bound would ship; (2) a saturated rate zeroes the
+    scaler, capping the rate-space bound below an above-domain point, which
+    would fail ordering on legitimate behavior. So the scaler INPUT is
+    clamped, and each bound ENCLOSES the point by construction (LEAST /
+    GREATEST with the point) — a no-op whenever the prediction is in-domain,
+    because the quantiles strictly straddle zero."""
+    sql = _build_district_projection_sql(_INTERVAL_PARAMS)
+    assert "LEAST(GREATEST(projected_raw / district_voters, 0), 1)" in sql
+    # bounds wrap the point: LEAST(lower-formula, point) / GREATEST(upper-formula, point)
+    assert sql.count("GREATEST(ROUND(a.projected_raw), 3)") >= 3  # point expr reused in both wraps
+    assert "LEAST(" in sql and "AS ballots_projected_lower" in sql
 
 
 def test_projection_sql_embeds_lower_upper_params_per_slug():
@@ -392,3 +435,4 @@ def test_projection_sql_without_params_emits_null_bounds():
     assert "AS ballots_projected_upper" in sql
     assert "_interval_params" not in sql
     assert "ROUND(a.projected_raw)" in sql
+    assert "a.model_slug," in sql
