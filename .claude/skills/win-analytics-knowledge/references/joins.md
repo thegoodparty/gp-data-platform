@@ -109,7 +109,7 @@ For user-level analyses, collapse with explicit handling of "which candidacy rep
 ## Cross-references
 
 - [sources.md](sources.md) — what each table is and when to start there.
-- [viability.md](viability.md) — the forward-stable viability join rationale.
+- [viability.md](viability.md) — the canonical viability read and join rationale.
 - [outcomes.md](outcomes.md) — the PMF/CSAT survey join in context.
 - [gotchas.md](gotchas.md) — the `hubspot_id` company-vs-contact trap and multi-cycle traps.
 - the data-matching skill (when installed) — matching external tables to ICP flags by email / race ID / position ID.
