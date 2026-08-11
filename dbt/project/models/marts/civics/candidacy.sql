@@ -460,8 +460,10 @@ with
     -- candidacy feed carries no incumbency field and TS (the only source that
     -- ever did) is retired, so without this 2026 is almost entirely unlabeled.
     --
-    -- FALSE means BR shows a term covering election day held by someone else.
-    -- A position with no covering term stays NULL: unknown, not challenger.
+    -- FALSE means BR shows a term covering election day held by someone else,
+    -- so it is only assertable once we know who the candidate is. A position
+    -- with no covering term, or a candidacy with no resolved person, stays
+    -- NULL: unknown, not challenger.
     --
     -- A NULL term_end_date reads as "no scheduled end, still serving" and so
     -- covers election day. A NULL term_start_date carries no such reading -
@@ -478,6 +480,7 @@ with
             on cp.br_position_database_id = t.br_position_id
             and t.term_start_date <= cp.election_day
             and (t.term_end_date is null or t.term_end_date >= cp.election_day)
+        where cp.gp_person_id is not null
         group by cp.gp_candidacy_id
     )
 
