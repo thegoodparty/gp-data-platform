@@ -1,4 +1,4 @@
-"""Tests for election-api sync utilities (bulk_insert_from_databricks)."""
+"""Tests for election-api sync utilities (bulk insert and quality gates)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -6,11 +6,54 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from include.custom_functions import election_api_utils
-from include.custom_functions.election_api_utils import bulk_insert_from_databricks
+from include.custom_functions.election_api_utils import (
+    QualityGate,
+    bulk_insert_from_databricks,
+    check_column_contract,
+    check_counts,
+)
 
 
 def _spec():
     return SimpleNamespace(staging_schema="staging", new_table="ZipToPosition_new")
+
+
+class TestQualityGates:
+    """Pure pre-swap gate logic (the swap is destructive; these fail it closed)."""
+
+    GATE = QualityGate(cold_start_floor=100_000)
+
+    def test_counts_pass_on_healthy_ratio(self):
+        check_counts(950_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_refuse_coverage_collapse(self):
+        with pytest.raises(ValueError, match="ratio"):
+            check_counts(400_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_boundary_ratio_passes(self):
+        check_counts(500_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_cold_start_floor(self):
+        with pytest.raises(ValueError, match="cold-start"):
+            check_counts(99_999, 0, self.GATE, "Race")
+        check_counts(100_000, 0, self.GATE, "Race")
+
+    def test_contract_passes_when_shapes_match(self):
+        check_column_contract({"id", "name"}, {"id", "name"}, self.GATE, "Race")
+
+    def test_contract_refuses_unknown_live_column(self):
+        """A Prisma migration landing ahead of the loader: a swap would reset
+        the new column wholesale."""
+        with pytest.raises(ValueError, match="does not supply"):
+            check_column_contract({"id", "name", "new_col"}, {"id", "name"}, self.GATE, "Race")
+
+    def test_contract_allows_db_owned_columns(self):
+        gate = QualityGate(cold_start_floor=1, db_owned_columns=frozenset({"is_pledged"}))
+        check_column_contract({"id", "is_pledged"}, {"id"}, gate, "Person")
+
+    def test_contract_refuses_missing_live_column(self):
+        with pytest.raises(ValueError, match="lacks"):
+            check_column_contract({"id"}, {"id", "dropped_col"}, self.GATE, "Race")
 
 
 def _gen(batches):

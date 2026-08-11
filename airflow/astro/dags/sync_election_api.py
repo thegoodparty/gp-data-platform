@@ -1,48 +1,48 @@
 """
 ## Sync election-api marts from Databricks to PostgreSQL
 
-Builds and atomically swaps every election-api Postgres table from its dbt
-mart in Databricks. Each table is one task group with the same lifecycle:
+Builds a complete staging copy of every election-api Postgres table from its
+dbt mart in Databricks, then swaps the entire set into place in one atomic
+transaction. Each table is one task group with the same build lifecycle:
 
 1. **build_staging** — drop & recreate `staging."<Table>_new"` LIKE the live
    target (no indexes — fast bulk-insert).
 2. **load_staging** — stream the source mart from Databricks into staging.
 3. **build_indexes_and_fk** — add PK, indexes, and FK constraints, generated
-   from the table's declarative spec.
+   from the table's declarative spec. Cross-table FKs reference the sibling
+   STAGING table, so the staging set is self-contained and validates against
+   its own vintage.
 4. **quality_checks** — gate the swap on generic count / column-contract /
-   NULL-probe floors plus optional per-table extras.
-5. **swap** — atomic rename swap (`_new` -> live, live -> `_old`) with all
-   indexes and constraints renamed to canonical Prisma names, and inbound
-   child FKs re-pointed in the same transaction. A leftover `_old` from a
-   run that crashed before drop_old is pre-dropped in the same transaction,
-   so a crashed run never wedges subsequent ones.
-6. **drop_old** — drop the renamed-aside `_old` table.
+   id-overlap / NULL-probe floors plus optional per-table extras.
+
+Once every table's quality gate is green, a single **swap** task renames the
+whole set in atomically (live -> `_old`, `_new` -> live, all indexes and
+constraints renamed to canonical Prisma names; constraints follow their
+tables through the renames, so the fresh vintage's FKs arrive pointing at
+fresh siblings and the old vintage's leave with it). No child rows are ever
+mutated and the API only ever sees one complete, referentially consistent
+vintage. **drop_old** then drops the renamed-aside set. Leftover `_old`
+tables from a crashed run are pre-dropped inside the swap transaction, so a
+crashed run never wedges subsequent ones.
 
 The shared lifecycle lives in
 `include/custom_functions/election_api_utils.py`; each table below is a
 declarative `MartSync` entry (spec, columns, gate, FK parents) consumed by a
-single task-group factory.
+single task-group factory. The only cross-group ordering is
+`parent.build_indexes_and_fk >> child.build_indexes_and_fk`: a staging FK
+needs the referenced staging table loaded with its PK in place. Loads run in
+parallel.
 
-Cross-table FKs order the groups: a child's staging FK references the LIVE
-parent table, so the constraint must be created only after the parent's swap
-cycle has fully completed (otherwise it would follow the old parent through
-the rename and wedge the parent's drop_old). The wiring at the bottom adds
-two edges per FK: `parent.drop_old >> child.build_indexes_and_fk`, and
-`child.build_staging >> parent.swap` — the latter because a staging table
-left over from a prior run (rehearsal mode, or a run that died before its
-swap) still carries that FK, and the parent's swap would wedge on it unless
-build_staging has dropped it first. Loads still run in parallel.
-
-The eight tables migrated off the legacy dbt writer
-(`dbt/project/models/write/write__election_api_db.py`) — Place, District,
-Issue, Person, Position, Candidacy, OfficeHolder, Stance — are gated behind
-the `election_api_writer_tables_swap_enabled` Variable (rehearsal mode until
-it is exactly "true"): every night while disabled is a full dress rehearsal
-(staging built, loaded, indexed, gated; only the swap is withheld). Flip the
-Variable only after the legacy writer job is paused — the two paths write
-the same tables. Upsert-by-id delivery can never delete, so superseded rows
-strand in the API (DATA-2015); the swap replaces each table wholesale so the
-API always matches the Databricks mart.
+The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
+mode unless it is exactly "true"): every night while disabled is a full
+dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
+only the swap is withheld. NOTE that rehearsal freezes ALL tables, including
+the five that already swapped nightly before the writer migration, so keep
+the rehearsal window short. Flip the Variable only after the legacy dbt
+writer (`dbt/project/models/write/write__election_api_db.py`) is paused —
+the two paths write the same eight tables. Upsert-by-id delivery can never
+delete, so superseded rows strand in the API; the swap replaces each table
+wholesale so the API always matches the Databricks mart.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -56,9 +56,8 @@ API always matches the Databricks mart.
 - `election_api_bastion_conn_id` (optional) — SSH bastion to tunnel through.
   Defaults to `gp_bastion_host`. Set to an empty string for local dev on VPN
   where the Postgres host is reachable directly.
-- `election_api_writer_tables_swap_enabled` — cutover switch for the eight
-  tables migrated from the legacy dbt writer. Anything but "true" is
-  rehearsal mode.
+- `election_api_swap_enabled` — cutover switch for the set-wise swap.
+  Anything but "true" is rehearsal mode (no table is swapped).
 
 The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
 points at `dbt_staging` for in-flight dbt build artifacts). The election-api
@@ -93,14 +92,13 @@ from datetime import UTC, date, datetime, timedelta
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
     ForeignKey,
-    InboundForeignKey,
     Index,
     QualityGate,
     TableSyncSpec,
     apply_ddl,
     bulk_insert_from_databricks,
     create_staging_table,
-    drop_old_table,
+    drop_old_tables,
     run_quality_checks,
     swap_staging_into_target,
 )
@@ -112,7 +110,7 @@ t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
-SWAP_GATE_VARIABLE = "election_api_writer_tables_swap_enabled"
+SWAP_GATE_VARIABLE = "election_api_swap_enabled"
 
 # Memory note: load_staging streams a mart into Postgres, but
 # bulk_insert_from_databricks reads one partition at a time over a single
@@ -156,11 +154,10 @@ class MartSync:
     partition_column: str | None = None
     # Extra per-table checks run after the generic gate: (conn, spec, loaded).
     extra_checks: Callable[..., None] | None = None
-    # group_ids of swapped parents whose live tables this table's staging FKs
-    # reference; wired as parent.drop_old >> this.build_indexes_and_fk.
+    # group_ids of the tables this table's staging FKs reference; wired as
+    # parent.build_indexes_and_fk >> this.build_indexes_and_fk (the FK add
+    # needs the referenced staging table loaded with its PK in place).
     parents: tuple[str, ...] = ()
-    # Rehearsal-gate the swap behind SWAP_GATE_VARIABLE (writer-migrated tables).
-    swap_gated: bool = False
 
     @property
     def insert_columns(self) -> tuple[str, ...]:
@@ -192,7 +189,8 @@ def _prepend_timestamps(row: tuple) -> tuple:
 
 def _position_transform_row(row: tuple) -> tuple:
     """br_database_id is bigint in the mart but text in Postgres."""
-    return (row[0], str(row[1]), *row[2:])
+    br_database_id = str(row[1]) if row[1] is not None else None
+    return (row[0], br_database_id, *row[2:])
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +265,12 @@ def _race_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
 # Table declarations
 # ---------------------------------------------------------------------------
 
+# Staged-vs-live id overlap floor for the Prisma-graph tables, whose minted
+# ids are deterministic and may be held by external consumers. 0.90 leaves
+# headroom for the first enabled run, which prunes rows the legacy writer
+# could never delete (District's residue alone is ~4% of live).
+_GRAPH_ID_OVERLAP = 0.90
+
 ZTP_SOURCE_COLUMNS = (
     "position_id",
     "name",
@@ -294,13 +298,6 @@ TABLES: tuple[MartSync, ...] = (
                 Index("Place_geoid_key", "(geoid)", unique=True),
             ),
             fkeys=(ForeignKey("Place_parent_id_fkey", "parent_id", "Place"),),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Race",
-                    constraint_name="Race_place_id_fkey",
-                    child_column="place_id",
-                ),
-            ),
         ),
         source_model="m_election_api__place",
         source_columns=(
@@ -322,8 +319,7 @@ TABLES: tuple[MartSync, ...] = (
             "home_value",
             "parent_id",
         ),
-        gate=QualityGate(cold_start_floor=40_000),
-        swap_gated=True,
+        gate=QualityGate(cold_start_floor=40_000, min_id_overlap=_GRAPH_ID_OVERLAP),
     ),
     MartSync(
         group_id="district",
@@ -334,25 +330,6 @@ TABLES: tuple[MartSync, ...] = (
                     "District_state_l2_district_type_l2_district_name_key",
                     "(state, l2_district_type, l2_district_name)",
                     unique=True,
-                ),
-            ),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Position",
-                    constraint_name="Position_district_id_fkey",
-                    child_column="district_id",
-                ),
-                InboundForeignKey(
-                    child_table="Projected_Turnout",
-                    constraint_name="Projected_Turnout_district_id_fkey",
-                    child_column="district_id",
-                    on_clause="ON UPDATE CASCADE ON DELETE RESTRICT",
-                ),
-                InboundForeignKey(
-                    child_table="DistrictTopIssue",
-                    constraint_name="DistrictTopIssue_district_id_fkey",
-                    child_column="district_id",
-                    on_clause="ON UPDATE CASCADE ON DELETE RESTRICT",
                 ),
             ),
         ),
@@ -368,23 +345,14 @@ TABLES: tuple[MartSync, ...] = (
             "unique_cellphones",
             "unique_landlines",
         ),
-        gate=QualityGate(cold_start_floor=100_000),
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         partition_column="state",
-        swap_gated=True,
     ),
     MartSync(
         group_id="issue",
         spec=TableSyncSpec(
             target_table="Issue",
             fkeys=(ForeignKey("Issue_parent_id_fkey", "parent_id", "Issue"),),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Stance",
-                    constraint_name="Stance_issue_id_fkey",
-                    child_column="issue_id",
-                    on_clause="ON UPDATE CASCADE ON DELETE RESTRICT",
-                ),
-            ),
         ),
         source_model="m_election_api__issue",
         source_columns=(
@@ -398,8 +366,7 @@ TABLES: tuple[MartSync, ...] = (
             "parent_id",
         ),
         # The BR issue taxonomy is ~20 rows; the ratio gate does the real work.
-        gate=QualityGate(cold_start_floor=10),
-        swap_gated=True,
+        gate=QualityGate(cold_start_floor=10, min_id_overlap=_GRAPH_ID_OVERLAP),
     ),
     MartSync(
         group_id="person",
@@ -408,21 +375,6 @@ TABLES: tuple[MartSync, ...] = (
             indexes=(
                 Index("Person_slug_idx", "(slug)"),
                 Index("Person_gp_api_user_id_idx", "(gp_api_user_id)"),
-            ),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Candidacy",
-                    constraint_name="Candidacy_person_id_fkey",
-                    child_column="person_id",
-                ),
-                # OfficeHolder.person_id is NOT NULL: orphans are deleted (the
-                # FK's own ON DELETE action), not nulled.
-                InboundForeignKey(
-                    child_table="OfficeHolder",
-                    constraint_name="OfficeHolder_person_id_fkey",
-                    child_column="person_id",
-                    on_clause="ON UPDATE CASCADE ON DELETE CASCADE",
-                ),
             ),
         ),
         source_model="m_election_api__person",
@@ -481,9 +433,9 @@ TABLES: tuple[MartSync, ...] = (
         # when their ETL lands, the mart must start supplying them.
         gate=QualityGate(
             cold_start_floor=200_000,
+            min_id_overlap=_GRAPH_ID_OVERLAP,
             db_owned_columns=frozenset({"is_pledged", "gp_api_user_id"}),
         ),
-        swap_gated=True,
     ),
     MartSync(
         group_id="position",
@@ -491,24 +443,6 @@ TABLES: tuple[MartSync, ...] = (
             target_table="Position",
             indexes=(Index("Position_br_position_id_key", "(br_position_id)", unique=True),),
             fkeys=(ForeignKey("Position_district_id_fkey", "district_id", "District"),),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Race",
-                    constraint_name="Race_position_id_fkey",
-                    child_column="position_id",
-                ),
-                InboundForeignKey(
-                    child_table="ZipToPosition",
-                    constraint_name="ZipToPosition_position_id_fkey",
-                    child_column="position_id",
-                    on_clause="ON UPDATE CASCADE ON DELETE RESTRICT",
-                ),
-                InboundForeignKey(
-                    child_table="OfficeHolder",
-                    constraint_name="OfficeHolder_position_id_fkey",
-                    child_column="position_id",
-                ),
-            ),
         ),
         source_model="m_election_api__position",
         # The mart also emits created_at/updated_at; live Position carries no
@@ -527,9 +461,8 @@ TABLES: tuple[MartSync, ...] = (
         ),
         transform_row=_position_transform_row,
         partition_column="state",
-        gate=QualityGate(cold_start_floor=200_000),
+        gate=QualityGate(cold_start_floor=200_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("district",),
-        swap_gated=True,
     ),
     MartSync(
         group_id="race",
@@ -544,13 +477,6 @@ TABLES: tuple[MartSync, ...] = (
             fkeys=(
                 ForeignKey("Race_place_id_fkey", "place_id", "Place"),
                 ForeignKey("Race_position_id_fkey", "position_id", "Position"),
-            ),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Candidacy",
-                    constraint_name="Candidacy_race_id_fkey",
-                    child_column="race_id",
-                ),
             ),
         ),
         source_model="m_election_api__race",
@@ -597,7 +523,7 @@ TABLES: tuple[MartSync, ...] = (
         # from the arrow-backed connector; the loader normalizes them to
         # Python lists for psycopg2.
         partition_column="state",
-        gate=QualityGate(cold_start_floor=100_000),
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         extra_checks=_race_extra_checks,
         parents=("place", "position"),
     ),
@@ -613,13 +539,6 @@ TABLES: tuple[MartSync, ...] = (
             fkeys=(
                 ForeignKey("Candidacy_person_id_fkey", "person_id", "Person"),
                 ForeignKey("Candidacy_race_id_fkey", "race_id", "Race"),
-            ),
-            inbound_fkeys=(
-                InboundForeignKey(
-                    child_table="Stance",
-                    constraint_name="Stance_candidacy_id_fkey",
-                    child_column="candidacy_id",
-                ),
             ),
         ),
         source_model="m_election_api__candidacy",
@@ -650,9 +569,8 @@ TABLES: tuple[MartSync, ...] = (
             "person_id",
         ),
         partition_column="state",
-        gate=QualityGate(cold_start_floor=150_000),
+        gate=QualityGate(cold_start_floor=150_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("person", "race"),
-        swap_gated=True,
     ),
     MartSync(
         group_id="office_holder",
@@ -742,9 +660,8 @@ TABLES: tuple[MartSync, ...] = (
         ),
         transform_row=_prepend_timestamps,
         partition_column="state",
-        gate=QualityGate(cold_start_floor=100_000),
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("person", "position"),
-        swap_gated=True,
     ),
     MartSync(
         group_id="stance",
@@ -772,9 +689,8 @@ TABLES: tuple[MartSync, ...] = (
             "candidacy_id",
         ),
         partition_column="issue_id",
-        gate=QualityGate(cold_start_floor=50_000),
+        gate=QualityGate(cold_start_floor=50_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("issue", "candidacy"),
-        swap_gated=True,
     ),
     MartSync(
         group_id="zip_to_position",
@@ -806,8 +722,8 @@ TABLES: tuple[MartSync, ...] = (
         source_columns=ZTP_SOURCE_COLUMNS,
         target_columns=ZTP_TARGET_COLUMNS,
         transform_row=_ztp_transform_row,
-        # Statewide coverage (DATA-1986) added ~260k rows; read one state at a
-        # time so the worker's peak memory stays bounded as the mart grows.
+        # Statewide coverage added ~260k rows; read one state at a time so
+        # the worker's peak memory stays bounded as the mart grows.
         partition_column="state",
         gate=QualityGate(cold_start_floor=1_000, db_owned_columns=frozenset({"created_at"})),
         extra_checks=_ztp_extra_checks,
@@ -910,6 +826,8 @@ TABLES: tuple[MartSync, ...] = (
             "district_id",
         ),
         partition_column="election_year",
+        # No id-overlap floor: rows legitimately re-key on model-version
+        # supersessions.
         gate=QualityGate(
             cold_start_floor=100_000,
             not_null_columns=("district_id", "election_year", "election_code"),
@@ -926,9 +844,9 @@ TABLES: tuple[MartSync, ...] = (
 
 
 def _build_group(table: MartSync) -> dict:
-    """One build->load->index->gate[->cutover]->swap->drop_old task group.
+    """One build->load->index->gate task group for a table's staging copy.
 
-    Returns handles to the tasks that participate in cross-group FK wiring.
+    Returns handles to the tasks that participate in cross-group wiring.
     """
     spec = table.spec
     handles: dict = {}
@@ -969,43 +887,13 @@ def _build_group(table: MartSync) -> dict:
                 if table.extra_checks:
                     table.extra_checks(conn, spec, loaded_count)
 
-        @task.short_circuit
-        def cutover_enabled() -> bool:
-            # Placed AFTER quality_checks so every night while disabled is a
-            # full dress rehearsal: staging built, loaded, indexed, gated;
-            # only the swap is withheld.
-            enabled = _swap_enabled(Variable.get(SWAP_GATE_VARIABLE, default="false"))
-            if not enabled:
-                t_log.info(
-                    "%s swap disabled (rehearsal mode); staging left for parity checks",
-                    spec.target_table,
-                )
-            return enabled
-
-        @task
-        def swap() -> None:
-            with _open_pg() as conn:
-                swap_staging_into_target(conn, spec)
-
-        @task
-        def drop_old() -> None:
-            with _open_pg() as conn:
-                drop_old_table(conn, spec)
-
         s = build_staging()
         loaded = load_staging()
         idx = build_indexes_and_fk()
         qc = quality_checks(loaded)
-        sw = swap()
-        do = drop_old()
-        if table.swap_gated:
-            s >> loaded >> idx >> qc >> cutover_enabled() >> sw >> do
-        else:
-            s >> loaded >> idx >> qc >> sw >> do
-        handles["build_staging"] = s
+        s >> loaded >> idx >> qc
         handles["build_indexes_and_fk"] = idx
-        handles["swap"] = sw
-        handles["drop_old"] = do
+        handles["quality_checks"] = qc
 
     group()
     return handles
@@ -1028,16 +916,37 @@ def _build_group(table: MartSync) -> dict:
 )
 def sync_election_api():
     handles = {table.group_id: _build_group(table) for table in TABLES}
+    # A staging FK validates against the referenced staging table, so the
+    # parent must be loaded with its PK in place first. (Self-references need
+    # no edge: the PK lands in the same transaction, before the FK.)
     for table in TABLES:
         for parent in table.parents:
-            # The child's staging FK must be created against the FRESH live
-            # parent, after the parent's full swap cycle.
-            handles[parent]["drop_old"] >> handles[table.group_id]["build_indexes_and_fk"]
-            # A staging table left over from a prior run (rehearsal mode, or a
-            # run that died before its swap) still carries an FK to the live
-            # parent; the parent's swap would wedge on it, so it must wait for
-            # build_staging to have dropped and recreated the child's staging.
-            handles[table.group_id]["build_staging"] >> handles[parent]["swap"]
+            handles[parent]["build_indexes_and_fk"] >> handles[table.group_id]["build_indexes_and_fk"]
+
+    @task.short_circuit
+    def cutover_enabled() -> bool:
+        # Placed AFTER every quality gate so a disabled night is a full dress
+        # rehearsal: all staging built, loaded, indexed, gated; only the swap
+        # is withheld.
+        enabled = _swap_enabled(Variable.get(SWAP_GATE_VARIABLE, default="false"))
+        if not enabled:
+            t_log.info("Swap disabled (rehearsal mode); staging left for parity checks")
+        return enabled
+
+    @task
+    def swap() -> None:
+        with _open_pg() as conn:
+            swap_staging_into_target(conn, [table.spec for table in TABLES])
+
+    @task
+    def drop_old() -> None:
+        with _open_pg() as conn:
+            drop_old_tables(conn, [table.spec for table in TABLES])
+
+    gate = cutover_enabled()
+    for table in TABLES:
+        handles[table.group_id]["quality_checks"] >> gate
+    gate >> swap() >> drop_old()
 
 
 sync_election_api()

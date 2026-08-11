@@ -14,6 +14,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Captured before the stubbing below poisons sys.modules, so the array
+# adaptation test exercises the real adapter regardless of collection order.
+from psycopg2.extensions import adapt as psycopg2_adapt
+
 # Stub external modules so the DAG file can be imported in any environment.
 _STUBS = (
     "airflow",
@@ -59,21 +63,6 @@ def test_parents_match_fkey_references():
             table_to_group[fk.ref_table] for fk in t.spec.fkeys if fk.ref_table != t.spec.target_table
         }
         assert referenced_groups == set(t.parents), t.group_id
-
-
-def test_inbound_fkeys_declared_on_both_sides():
-    """A child's outbound FK to a swapped parent must appear in that parent's
-    inbound_fkeys (same constraint name), or the parent's swap will wedge on
-    the live child's constraint."""
-    by_table = {t.spec.target_table: t for t in TABLES}
-    for child in TABLES:
-        for fk in child.spec.fkeys:
-            if fk.ref_table == child.spec.target_table:
-                continue  # self-refs ride along with the table's own renames
-            parent = by_table[fk.ref_table]
-            assert fk.name in {
-                ifk.constraint_name for ifk in parent.spec.inbound_fkeys
-            }, f"{parent.group_id} must re-point {fk.name}"
 
 
 def test_transform_target_alignment():
@@ -140,6 +129,8 @@ def test_position_transform_stringifies_br_database_id():
     psycopg2 would ship an int literal that Postgres refuses to assign."""
     out = _position_transform_row(("id-1", 8437291, "br-pos", "CA"))
     assert out == ("id-1", "8437291", "br-pos", "CA")
+    # NULL must stay NULL, not become the string "None"
+    assert _position_transform_row(("id-1", None, "br-pos", "CA"))[1] is None
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +170,5 @@ def test_psycopg2_adapts_python_lists_to_postgres_arrays():
     """Array round-trips (Race frequency int[], Candidacy urls text[]): the
     arrow-backed connector returns numpy arrays, the loader normalizes them
     to Python lists, and those lists must adapt to ARRAY literals."""
-    from psycopg2.extensions import adapt
-
-    assert adapt([1, 2]).getquoted() == b"ARRAY[1,2]"
-    assert adapt(["a", "b"]).getquoted() == b"ARRAY['a','b']"
+    assert psycopg2_adapt([1, 2]).getquoted() == b"ARRAY[1,2]"
+    assert psycopg2_adapt(["a", "b"]).getquoted() == b"ARRAY['a','b']"
