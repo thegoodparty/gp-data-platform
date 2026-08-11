@@ -107,6 +107,6 @@ If Astronomer upgrades the runtime, update the tag in the `Dockerfile` to match.
 ## Adding Dependencies
 
 1. Add the Python package to `requirements.txt`
-2. Add the matching pinned version to `airflow/pyproject.toml` (used by the local poetry dev environment)
+2. Add the matching pinned version to `airflow/pyproject.toml` (used by the local uv dev environment)
 3. For OS-level dependencies, add to `packages.txt`
 4. Test locally with `astro dev start` to verify the image builds

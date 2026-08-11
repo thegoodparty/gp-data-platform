@@ -120,7 +120,7 @@ Product-specific source pointers (contributing project scouts, authoritative dbt
 
 **Conventions:**
 - `CLAUDE.md` (repo root) — multi-venv reality + don't-disable-pre-commit rules.
-- `dbt/project/CLAUDE.md` — dbt-development conventions (do not invoke dbt via poetry; use `dbt show --inline`; branch / commit naming; etc.).
+- `dbt/project/CLAUDE.md` — dbt-development conventions (do not invoke dbt through the subproject env; use `dbt show --inline`; branch / commit naming; etc.).
 - `ai-rules/` (submodule) — broader AI-assisted-development rules.
 
 **External tickets / documentation:**

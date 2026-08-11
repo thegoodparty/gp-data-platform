@@ -17,8 +17,7 @@ import yaml
 
 from semantic_catalog import lifecycle as lc_mod
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
-from semantic_catalog import sigma_tasks
-from semantic_catalog import sigma_tasks, slack_reply
+from semantic_catalog import ratifications, sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
@@ -37,6 +36,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
 SEM_ROOTS = [DBT_MODELS]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
+# Repo-relative path to the ratification sidecar, used to locate the BEFORE
+# side's copy inside a base worktree. The sidecar sits under analytics/, not in
+# the dbt tree, so it has to be resolved separately from SEM_ROOTS.
+RATIFICATIONS_RELPATH = Path("analytics/diagnostics/semantic_catalog/config/ratifications.yml")
 
 # Each skill owns one canonical_metrics.md. The generated region is projected
 # PER SKILL so a product's cheat sheet lists only its own metrics, and each
@@ -108,9 +111,24 @@ def _lifecycles(records: list[MetricRecord]) -> dict[str, Lifecycle]:
 
 
 def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[MetricRecord]]:
-    """Records as of HEAD (after) and as of the merge base (before, empty if none)."""
+    """Records as of HEAD (after) and as of the merge base (before, empty if none).
+
+    The before side reads the base tree's OWN sidecar. Letting it fall back to
+    the current one would make every ratification compare equal to itself, so a
+    pending to dated change would vanish from the Slack summary and fire no
+    Sigma build task. A base commit predating the sidecar simply has no file,
+    which loads as "nothing ratified yet".
+    """
     after = parse_semantic_tree(SEM_ROOTS)
-    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    before = (
+        parse_semantic_tree(
+            [base_dir / "dbt/project/models"],
+            ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+            legacy_ratified=True,
+        )
+        if base_dir
+        else []
+    )
     return before, after
 
 
@@ -120,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--fingerprints", action="store_true")
     parser.add_argument("--sync-sigma-tasks", action="store_true")
     parser.add_argument("--emit-created", type=Path)
     parser.add_argument("--reply-created", type=Path)
@@ -128,7 +147,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--coverage", type=str, default="")
     args = parser.parse_args(argv)
 
-    records = parse_semantic_tree(SEM_ROOTS)
+    try:
+        records = parse_semantic_tree(SEM_ROOTS)
+    except ValueError as exc:
+        # A malformed sidecar or a stray config.meta.ratified: report it as the
+        # config error it is, so --check fails the PR with a readable message
+        # rather than an uncaught traceback.
+        print(f"semantic layer config error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.fingerprints:
+        # What an author copies into the sidecar when recording a sign-off.
+        # Printed quoted, because the sidecar requires quotes: an all-digit
+        # hash left bare would be read back as an integer.
+        for rec in records:
+            print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
+        return 0
 
     if args.check:
         grouped = records_by_target(records)

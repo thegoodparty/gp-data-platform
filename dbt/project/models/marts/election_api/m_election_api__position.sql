@@ -34,11 +34,18 @@ with
             and coalesce(tbl_override.l2_district_name, tbl_match.l2_district_name)
             = tbl_district.l2_district_name
         where
-            tbl_match.l2_district_name not in (
-                'County Committee Female Member',
-                'County Committee Male Member',
-                'President of the United States',
-                'Vice President of the United States'
+            -- null-safe: an unmatched row carries a null district name, which is not
+            -- one of these non-office names. Bare NOT IN evaluates to NULL there and
+            -- would drop the row, silently discarding any override that exists to
+            -- give that very position a district.
+            (
+                tbl_match.l2_district_name is null
+                or tbl_match.l2_district_name not in (
+                    'County Committee Female Member',
+                    'County Committee Male Member',
+                    'President of the United States',
+                    'Vice President of the United States'
+                )
             )
             and tbl_district.id is not null
             and (

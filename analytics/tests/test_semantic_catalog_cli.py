@@ -16,7 +16,7 @@ def test_real_repo_parses_without_error():
     records = parse_semantic_tree(cli.SEM_ROOTS)
     names = {r.name for r in records}
     # The four metrics that exist today must all parse.
-    assert {"win_users", "active_serve_users", "goodparty_win_rate", "goodparty_cumulative_wins"} <= names
+    assert {"win_users", "activated_serve_users", "goodparty_win_rate", "goodparty_cumulative_wins"} <= names
 
 
 def test_write_then_check_is_idempotent(tmp_path):
@@ -26,6 +26,58 @@ def test_write_then_check_is_idempotent(tmp_path):
     records = parse_semantic_tree(cli.SEM_ROOTS)
     cli.write_region(target, records)
     assert cli.region_is_current(target, records) is True
+
+
+def _base_worktree(tmp_path, sidecar_body):
+    """A minimal base tree: the fixture sem file plus its own ratification sidecar."""
+    import shutil
+
+    models = tmp_path / "dbt" / "project" / "models"
+    models.mkdir(parents=True)
+    fixture = Path(__file__).parent / "fixtures" / "semantic_catalog" / "sem_fixture__users_demo.yml"
+    shutil.copy(fixture, models / fixture.name)
+    sidecar = tmp_path / cli.RATIFICATIONS_RELPATH
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_text(sidecar_body)
+    return tmp_path
+
+
+def test_before_side_reads_the_base_trees_own_sidecar(tmp_path):
+    # The load-bearing wiring: the sidecar lives outside the dbt tree, so the
+    # before side has to resolve it inside the base worktree. Reading the
+    # CURRENT sidecar instead would make every ratification compare equal to
+    # itself, erasing the pending-to-dated edge from the Slack summary and
+    # firing no Sigma build task.
+    base = _base_worktree(tmp_path, "activated_users:\n  ratified: 2026-01-01\n  definition_sha: '0000000'\n")
+    before, _ = cli._before_after(base)
+    assert {r.name: r.ratified for r in before}["activated_users"] == "2026-01-01"
+
+
+def test_before_side_is_all_pending_when_the_base_predates_the_sidecar(tmp_path):
+    # Base commits older than DATA-2249 have no sidecar at all; that has to load
+    # as "nothing ratified yet" rather than raise.
+    base = _base_worktree(tmp_path, "")
+    (base / cli.RATIFICATIONS_RELPATH).unlink()
+    before, _ = cli._before_after(base)
+    assert before and all(r.ratified is None for r in before)
+
+
+def test_check_reports_a_bad_sidecar_as_a_config_error(tmp_path, monkeypatch, capsys):
+    bad = tmp_path / "ratifications.yml"
+    bad.write_text("no_such_metric:\n  ratified: 2026-08-05\n  definition_sha: '0000000'\n")
+    monkeypatch.setattr(cli.ratifications, "DEFAULT_PATH", bad)
+    rc = cli.main(["--check"])
+    assert rc == 1
+    assert "config error" in capsys.readouterr().err
+
+
+def test_fingerprints_prints_quoted_hashes(capsys):
+    # Quoted because the sidecar demands quotes: an all-digit hash left bare
+    # would be read back as an integer.
+    rc = cli.main(["--fingerprints"])
+    assert rc == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("win_users: '") and line.endswith("'") for line in lines)
 
 
 def test_emit_slack_writes_rendered_message(tmp_path):
@@ -43,8 +95,7 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert rc == 0
     text = out.read_text()
     assert "http://pr/1" in text
-    assert "incomplete" in text.lower()
-    assert "business" in text.lower()
+    assert ":warning: review coverage: data ✓ · business ✗" in text
 
 
 def test_emit_clickup_strips_catalog_markers(tmp_path):
@@ -82,11 +133,12 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     assert win_names == {
         "win_users",
         "win_activated_users",
+        "win_active_candidates_30d",
         "goodparty_win_rate",
         "goodparty_cumulative_wins",
     }
-    assert serve_names == {"active_serve_users"}
-    assert "active_serve_users" not in win_names
+    assert serve_names == {"activated_serve_users"}
+    assert "activated_serve_users" not in win_names
 
 
 def test_records_by_target_raises_on_unmapped_sem_file():
