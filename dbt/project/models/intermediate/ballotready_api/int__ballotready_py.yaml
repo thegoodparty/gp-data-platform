@@ -75,25 +75,43 @@ models:
 
   - name: int__ballotready_filing_period
     description: >
-      This model retrieves and processes filing period data from the CivicEngine API.
-      It contains filing period information for political candidates, including their endorsements
-      from various organizations.
+      Filing period records (candidate filing window start and end dates) fetched by id
+      from the CivicEngine API. Races reference filing periods by id only, so this table
+      is the lookup that turns a race into a filing deadline.
+
+      Each run fetches the ids referenced by recently updated races, then spends whatever
+      is left of `max_ids_per_run` on the backlog of referenced ids that are not here yet,
+      newest ids first since those carry the deadlines for current cycles. The recently
+      updated races are never capped away, so the fetch set is always a superset of what
+      the race watermark alone would have selected.
+
+      Because an id that fails to resolve simply stays absent, the next run picks it up
+      again and coverage converges over successive runs. Raise the bound with
+      `--vars '{br_filing_period_max_ids_per_run: 250000}'` to close a large backlog
+      faster, at the cost of a longer run on the shared cluster.
     config:
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         owner: "Data Engineering Team"
         contains_pii: false
+        max_ids_per_run: "{{ var('br_filing_period_max_ids_per_run', 100000) }}"
     columns:
       - name: database_id
-        description: "Unique identifier for the normalized position in the CivicEngine database"
+        description: "Unique identifier for the filing period in the CivicEngine database"
         tests:
           - not_null
           - unique
       - name: id
-        description: "Encoded identifier for the normalized position in the CivicEngine system"
+        description: "Encoded identifier for the filing period in the CivicEngine system"
         tests:
           - not_null
           - unique
+      - name: start_on
+        description: "First day of the filing window"
+      - name: end_on
+        description: "Last day of the filing window, i.e. the filing deadline"
+      - name: type
+        description: "CivicEngine filing period type"
 
   - name: int__ballotready_geofence
     description: >
