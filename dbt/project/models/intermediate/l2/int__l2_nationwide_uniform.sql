@@ -7,8 +7,10 @@ with
     council_assigned as (
         select
             voters.* except (`City_Council_Commissioner_District`),
+            -- nullif: some state files load blanks as '' rather than null; a blank
+            -- is absence, not an L2-supplied value, so it must not beat the seed.
             coalesce(
-                voters.`City_Council_Commissioner_District`,
+                nullif(voters.`City_Council_Commissioner_District`, ''),
                 assignments.l2_district_name
             ) as `City_Council_Commissioner_District`
         from {{ ref("int__l2_nationwide_uniform_raw_districts") }} as voters
@@ -25,7 +27,7 @@ with
         select
             voters.* except (`Hospital_District`),
             coalesce(
-                voters.`Hospital_District`, assignments.l2_district_name
+                nullif(voters.`Hospital_District`, ''), assignments.l2_district_name
             ) as `Hospital_District`
         from council_assigned as voters
         left join
