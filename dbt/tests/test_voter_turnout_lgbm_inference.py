@@ -230,7 +230,9 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
 def test_predict_precinct_rejects_non_finite_predictions_and_checks_shape():
     """A NaN prediction must fail loudly at the source: Spark GREATEST skips
     NULLs, so a NULL/NaN prediction downstream would launder into a
-    plausible-looking floored row instead of failing."""
+    plausible-looking floored row instead of failing. Also pins the wide
+    physical-domain envelope (catastrophic garbage like -5, which finiteness
+    alone would miss) and its strict-inequality boundary at -1.0 / 2.0."""
     booster = MagicMock()
     booster.feature_name_ = ["f1"]
     booster._Booster.predict.return_value = np.array([float("nan")])
@@ -241,6 +243,20 @@ def test_predict_precinct_rejects_non_finite_predictions_and_checks_shape():
     booster._Booster.predict.return_value = np.array([0.4, 0.5])
     with pytest.raises(ValueError, match="shape"):
         _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    # far outside the rate domain must fail loudly, both below 0 and above 1
+    booster._Booster.predict.return_value = np.array([-5.0])
+    with pytest.raises(ValueError, match="domain"):
+        _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    booster._Booster.predict.return_value = np.array([3.0])
+    with pytest.raises(ValueError, match="domain"):
+        _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    # the envelope is strict (< / >), so the boundary values themselves pass through
+    booster._Booster.predict.return_value = np.array([-1.0])
+    out = _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    assert out.loc[0, "p_hat"] == -1.0
+    booster._Booster.predict.return_value = np.array([2.0])
+    out = _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
+    assert out.loc[0, "p_hat"] == 2.0
     # sane path: one prediction per input row, correct output shape
     booster._Booster.predict.return_value = np.array([0.42])
     out = _predict_precinct(pdf.copy(), booster, {}, "midterm", "fam", 2026)
