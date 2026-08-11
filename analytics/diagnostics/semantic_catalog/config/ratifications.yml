@@ -30,21 +30,31 @@ activated_serve_users:
   definition_sha: '5e87555'
   approved_by_pr: 765
 
-# serve_users is DELIBERATELY COMMENTED OUT until this PR is approved, so the
-# recorded date can be the real one. Its definition merged in #764 with only a
-# bot approval, so neither review group has ever signed it off, and the
-# auto-ratification hook cannot fill this in: it earns a sign-off only when a
-# definition MOVES in the merge, and this one is unchanged since #764.
+# serve_users is PENDING and stays commented out until both review groups have
+# actually approved, so the recorded date can be the real one.
 #
-# BEFORE MERGING: uncomment the three lines and set `ratified` to the UTC date
-# the SECOND group approved this PR. The fingerprint below is precomputed from
-# the merged definition and needs no change. #776 merged with an entry left
-# commented out and needed follow-up #777 to record it; do not repeat that.
+# Its definition merged in #764 with only a bot approval, so neither group has
+# ever signed it off. The auto-ratification hook cannot fill this in either: it
+# earns a sign-off only where a definition MOVED in the merge, and this one is
+# unchanged since #764.
+#
+# History, because this keeps going wrong: #776 merged with its entry left
+# commented out and needed follow-up #777 to record it. #800 then merged on a
+# `delegate-reviewer[bot]` approval alone, with no human sign-off and this entry
+# still inert. The bot satisfies GitHub's reviewDecision but is excluded from
+# coverage by composition.evaluate, so a bot-only merge records nothing.
+#
+# COMPLETION ORDER, and it only works in this order:
+#   1. One approval from semantic-layer-data, one from semantic-layer-business.
+#      The PR author cannot supply either one.
+#   2. Uncomment the three lines below, set `ratified` to the UTC date the
+#      SECOND group approved, set approved_by_pr to that PR.
+#   3. Only then take the PR out of draft and merge.
 #
 # serve_users:
-#   ratified: <UTC date the second review group approved this PR>
+#   ratified: <UTC date the second review group approved>
 #   definition_sha: '0b06710'
-#   approved_by_pr: <this PR>
+#   approved_by_pr: <that PR>
 
 win_activated_users:
   # Coverage completed across two PRs. The business group approved #708 on
