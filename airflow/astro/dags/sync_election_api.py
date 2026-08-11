@@ -376,6 +376,9 @@ TABLES: tuple[MartSync, ...] = (
         # Statewide coverage added ~260k rows; read one state at a time so
         # the worker's peak memory stays bounded as the mart grows.
         partition_column="state",
+        # No id-overlap floor: nothing references ZipToPosition ids (PK only;
+        # the API reads by zip/position), and this change re-mints them (the
+        # mart now derives them from the natural key).
         gate=QualityGate(cold_start_floor=1_000, db_owned_columns=frozenset({"created_at"})),
         extra_checks=_ztp_extra_checks,
         parents=("position",),
