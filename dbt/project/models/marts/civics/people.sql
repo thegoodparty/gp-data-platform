@@ -110,26 +110,6 @@ with
             = 1
     ),
 
-    -- BR party is not on the identity model; pull one representative party per
-    -- br_candidate_id from the candidacy feed, ranked current-cycle-first to match
-    -- how int__ballotready_candidate_identity picks its representative row.
-    br_party as (
-        select
-            cast(br_candidate_id as string) as br_candidate_id,
-            {{ parse_party_affiliation("parties") }} as party
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where br_candidate_id is not null and parties is not null
-        qualify
-            row_number() over (
-                partition by br_candidate_id
-                order by
-                    (election_day >= '2026-01-01') desc,
-                    coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
-                    parties asc
-            )
-            = 1
-    ),
-
     br_attrs as (
         select
             r.gp_person_id,
@@ -138,12 +118,11 @@ with
             nullif(trim(bi.id_email), '') as email,
             nullif(trim(bi.id_phone), '') as phone,
             nullif(trim(bi.id_state), '') as state,
-            bp.party
+            {{ parse_party_affiliation("bi.id_party") }} as party
         from records as r
         inner join
             {{ ref("int__ballotready_candidate_identity") }} as bi
             on cast(bi.br_candidate_id as string) = r.source_id
-        left join br_party as bp on bp.br_candidate_id = r.source_id
         where r.source_name = 'ballotready'
         qualify
             row_number() over (

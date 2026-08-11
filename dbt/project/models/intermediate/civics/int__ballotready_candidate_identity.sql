@@ -1,4 +1,4 @@
--- Canonical BallotReady candidate name/contact per br_candidate_id: one
+-- Canonical BallotReady candidate name/contact/party per br_candidate_id: one
 -- deterministic representative row, since S3 email/name/phone vary across a
 -- person's candidacy rows. Feeds the person mart's display attributes only.
 -- All election years: is_candidate is flagged all-time, so a date filter here
@@ -18,8 +18,6 @@ with
         where database_id is not null
     ),
 
-    -- One representative row per person: current-cycle race first, then freshest.
-    -- The date preference keeps existing current-cycle identities unchanged.
     ranked as (
         select
             br_candidate_id,
@@ -28,10 +26,10 @@ with
             state,
             email as s3_email,
             phone,
+            parties,
             row_number() over (
                 partition by br_candidate_id
                 order by
-                    (election_day >= '2026-01-01') desc,
                     coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
                     email asc nulls last,
                     phone asc nulls last
@@ -49,7 +47,8 @@ select
     -- Prefer the representative row's S3 email, fall back to the API person
     -- email, matching the coalesce(email, api_email) the consumers used before.
     coalesce(ranked.s3_email, person_emails.api_email) as id_email,
-    ranked.phone as id_phone
+    ranked.phone as id_phone,
+    ranked.parties as id_party
 from ranked
 left join person_emails on ranked.br_candidate_id = person_emails.person_database_id
 where ranked.rn = 1
