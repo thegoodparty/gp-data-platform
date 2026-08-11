@@ -431,10 +431,18 @@ with
     ),
 
     -- gp_person_id: min over the person reached by HubSpot contact, product
-    -- campaign -> user, and the candidacy's stage rows.
+    -- campaign -> user, and the candidacy's stage rows. Carries the contest
+    -- date and position alongside it for the incumbency test below.
     candidacy_person as (
         select
             d.gp_candidacy_id,
+            d.br_position_database_id,
+            coalesce(
+                d.general_election_date,
+                d.primary_election_date,
+                d.general_runoff_election_date,
+                d.primary_runoff_election_date
+            ) as election_day,
             least(hp.gp_person_id, gpp.gp_person_id, sp.gp_person_id) as gp_person_id
         from deduplicated as d
         left join
@@ -447,31 +455,10 @@ with
         left join stage_person as sp on sp.gp_candidacy_id = d.gp_candidacy_id
     ),
 
-    -- The date the seat is contested, used to test whether a term is current.
-    candidacy_election_day as (
-        select
-            gp_candidacy_id,
-            br_position_database_id,
-            coalesce(
-                general_election_date,
-                primary_election_date,
-                general_runoff_election_date,
-                primary_runoff_election_date
-            ) as election_day
-        from deduplicated
-    ),
-
     -- Incumbency reconstructed from BR office-holder terms: does this candidate
     -- already hold the position they are running for on election day? The BR
     -- candidacy feed carries no incumbency field and TS (the only source that
     -- ever did) is retired, so without this 2026 is almost entirely unlabeled.
-    --
-    -- Matched on the canonical person id OR on first+last name. Position and
-    -- term window already narrow the comparison to that seat's handful of
-    -- holders, so name equality is near-deterministic there; it carries most of
-    -- the recall because ER has linked only a small share of product users to
-    -- their BR office-holder record (53 of 222 engaged 2026 matches come from
-    -- the person id).
     --
     -- FALSE means BR shows a term covering election day held by someone else.
     -- A position with no covering term stays NULL: unknown, not challenger.
@@ -482,29 +469,16 @@ with
     -- holder over cycles they may not have served - so those terms are dropped.
     incumbency as (
         select
-            ced.gp_candidacy_id,
-            max(
-                case
-                    when
-                        t.gp_person_id = cp.gp_person_id
-                        or (
-                            lower(trim(t.first_name)) = lower(trim(p.first_name))
-                            and lower(trim(t.last_name)) = lower(trim(p.last_name))
-                        )
-                    then 1
-                    else 0
-                end
-            )
+            cp.gp_candidacy_id,
+            max(case when t.gp_person_id = cp.gp_person_id then 1 else 0 end)
             = 1 as is_incumbent
-        from candidacy_election_day as ced
-        join candidacy_person as cp on ced.gp_candidacy_id = cp.gp_candidacy_id
-        left join {{ ref("people") }} as p on cp.gp_person_id = p.gp_person_id
+        from candidacy_person as cp
         join
             {{ ref("elected_official_terms") }} as t
-            on ced.br_position_database_id = t.br_position_id
-            and t.term_start_date <= ced.election_day
-            and (t.term_end_date is null or t.term_end_date >= ced.election_day)
-        group by ced.gp_candidacy_id
+            on cp.br_position_database_id = t.br_position_id
+            and t.term_start_date <= cp.election_day
+            and (t.term_end_date is null or t.term_end_date >= cp.election_day)
+        group by cp.gp_candidacy_id
     )
 
 select
