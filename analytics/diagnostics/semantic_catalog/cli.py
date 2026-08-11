@@ -16,9 +16,9 @@ from pathlib import Path
 import yaml
 
 from semantic_catalog import lifecycle as lc_mod
-from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog import ratifications, sigma_tasks, slack_reply
 from semantic_catalog.clickup_client import ClickUpClient
+from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
 from semantic_catalog.parser import parse_semantic_tree

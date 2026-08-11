@@ -109,6 +109,8 @@ def test_emit_clickup_strips_catalog_markers(tmp_path):
     assert "catalog:begin" not in text and "catalog:end" not in text
     # The governance flow renders as a table (ClickUp mangles ASCII code blocks).
     assert "## How governance works" in text
+    assert "| Stage |" in text
+    assert "```" not in text.split("## How governance works")[1]
 
 
 def test_region_is_current_false_on_half_marked_file(tmp_path):
