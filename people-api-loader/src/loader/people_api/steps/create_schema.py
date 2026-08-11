@@ -1,4 +1,4 @@
-"""Step 3 — create all four serving tables on the new cluster (ClickUp DATA-2100).
+"""Step 3 — create all serving tables on the new cluster (ClickUp DATA-2100).
 
 Applies `CREATE TABLE` DDL for Voter, DistrictVoter, District, and DistrictStats,
 extracted from the committed, generated `target_schema.sql` (from `loader emit-ddl`;

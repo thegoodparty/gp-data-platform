@@ -264,19 +264,17 @@ models:
       packages/people-api/docs/voter-density-heatmap-handoff.md §3.2 / §7.
     columns:
       - name: district_id
+        # No relationships test: district_id comes straight from the bridge, which
+        # already asserts this FK, and re-checking it here is a full join of this
+        # table against a view that re-executes m_election_api__district.
         description: Unique identifier for a district (== District.id, salted-uuid)
         data_type: uuid
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('m_people_api__district')
-                field: id
       - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
         description: H3 resolution of this row
         data_type: integer
-        data_tests:
-          - not_null
       - name: h3_index
         description: H3 cell index as an opaque string (h3_h3tostring)
         data_type: string
@@ -299,7 +297,7 @@ models:
           - not_null
           - dbt_utils.accepted_range:
               arguments:
-                min_value: "{{ var('voter_density_k', 10) }}"
+                min_value: "{{ var('voter_density_k') }}"
                 inclusive: true
       - name: state
         description: Two-letter state postal code (loaded into the "State" USState enum)
@@ -307,10 +305,9 @@ models:
         data_tests:
           - not_null
       - name: updated_at
+        # No not_null: the value is current_timestamp().
         description: Mart run time
         data_type: timestamp
-        data_tests:
-          - not_null
     data_tests:
       - unique_combination_sampled:
           arguments:
@@ -329,19 +326,15 @@ models:
       whether to render the map and to draw the legend. See handoff §3.3 / §7.
     columns:
       - name: district_id
+        # No relationships test: see the density mart's district_id note.
         description: Unique identifier for a district (== District.id)
         data_type: uuid
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('m_people_api__district')
-                field: id
       - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
         description: H3 resolution of this row
         data_type: integer
-        data_tests:
-          - not_null
       - name: coverage
         description: rendered_voters / total_voters ∈ [0, 1]
         data_type: double
@@ -358,7 +351,10 @@ models:
         data_tests:
           - not_null
       - name: total_voters
-        description: District voters at this resolution grain
+        description: >
+          The district's voters. Identical across resolutions (a voter's H3 cell
+          exists at every resolution or at none); published per resolution because
+          the app reads it keyed by (district, resolution) alongside coverage.
         data_type: integer
         data_tests:
           - not_null
