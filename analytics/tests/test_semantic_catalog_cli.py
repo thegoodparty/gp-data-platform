@@ -98,6 +98,21 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert ":warning: review coverage: data ✓ · business ✗" in text
 
 
+def test_emit_clickup_strips_catalog_markers(tmp_path):
+    # Markers exist for splice-based updates; the ClickUp publish is a full
+    # replace, and ClickUp glues a trailing HTML comment onto the next heading,
+    # so the emitted page must not carry them.
+    out = tmp_path / "page.md"
+    rc = cli.main(["--emit-clickup", str(out)])
+    assert rc == 0
+    text = out.read_text()
+    assert "catalog:begin" not in text and "catalog:end" not in text
+    # The governance flow renders as a table (ClickUp mangles ASCII code blocks).
+    assert "## How governance works" in text
+    assert "| Stage |" in text
+    assert "```" not in text.split("## How governance works")[1]
+
+
 def test_region_is_current_false_on_half_marked_file(tmp_path):
     # One marker present (corrupt/merge-conflict): --check should treat the
     # file as stale (return False), not crash with an uncaught ValueError.
