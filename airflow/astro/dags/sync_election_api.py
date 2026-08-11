@@ -61,10 +61,11 @@ so the API always matches the Databricks mart.
   where the Postgres host is reachable directly.
 - `election_api_swap_enabled` — cutover switch for the set-wise swap.
   Anything but "true" is rehearsal mode (no table is swapped).
-
-The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
-points at `dbt_staging` for in-flight dbt build artifacts). The election-api
-sync reads the production-quality version of the marts in both dev and prod.
+- `election_api_source_schema` (optional) — Databricks schema holding the
+  marts. Defaults to `dbt`, the canonical production-quality build, in both
+  dev and prod (deliberately not `databricks_dbt_schema`, which points at
+  `dbt_staging` for in-flight artifacts). Override on a dev deployment to
+  test unmerged mart changes end to end from a development schema.
 
 ### Deploy model:
 - `main` → `astro-prod`. `astro-dev`'s branch mapping is set manually in the
@@ -103,7 +104,6 @@ from pendulum import duration
 t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
-DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
 
 # Memory note: load_staging streams a mart into Postgres, but
@@ -478,13 +478,14 @@ def _build_group(table: MartSync) -> dict:
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
+            schema = Variable.get("election_api_source_schema", default="dbt")
             with _open_pg() as conn:
                 # The live table's own columns drive the load: dbt must
                 # publish matching names and types, and db-owned columns are
                 # left to their Postgres defaults.
                 columns = staging_columns(conn, spec, exclude=table.gate.db_owned_columns)
                 col_list = ", ".join(f"`{c}`" for c in columns)
-                query = f"SELECT {col_list} " f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`.`{table.source_model}`"
+                query = f"SELECT {col_list} " f"FROM `{catalog}`.`{schema}`.`{table.source_model}`"
                 return bulk_insert_from_databricks(
                     conn,
                     spec,
