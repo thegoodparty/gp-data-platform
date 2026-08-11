@@ -30,21 +30,31 @@ activated_serve_users:
   definition_sha: '5e87555'
   approved_by_pr: 765
 
-# serve_users is DELIBERATELY COMMENTED OUT until this PR is approved, so the
-# recorded date can be the real one. Its definition merged in #764 with only a
-# bot approval, so neither review group has ever signed it off, and the
-# auto-ratification hook cannot fill this in: it earns a sign-off only when a
-# definition MOVES in the merge, and this one is unchanged since #764.
-#
-# BEFORE MERGING: uncomment the three lines and set `ratified` to the UTC date
-# the SECOND group approved this PR. The fingerprint below is precomputed from
-# the merged definition and needs no change. #776 merged with an entry left
-# commented out and needed follow-up #777 to record it; do not repeat that.
-#
-# serve_users:
-#   ratified: <UTC date the second review group approved this PR>
-#   definition_sha: '0b06710'
-#   approved_by_pr: <this PR>
+serve_users:
+  # Ratified on #801, which exists to carry this sign-off: the definition merged
+  # in #764 with only a bot approval, so neither review group had ever signed it
+  # off, and the auto-ratification hook cannot record it (it earns a sign-off
+  # only where a definition MOVED in the merge, and this one is unchanged).
+  #
+  # VERIFY THIS DATE BEFORE MERGING. It was written on 2026-08-11, when #801 was
+  # prepared, which is authorship and not approval. If the second group's
+  # approval lands on a later day this line is wrong by that much. Run, from
+  # analytics/ with PYTHONPATH=diagnostics, to get the real date from the review
+  # record:
+  #
+  #   gh api repos/thegoodparty/gp-data-platform/pulls/801/reviews --paginate \
+  #     --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+  #     | jq -s '.' > /tmp/r801.json
+  #   uv run python -c "import json;from semantic_catalog import composition as c;\
+  #   print(c.completion_date(json.load(open('/tmp/r801.json')),\
+  #   'danpelota,datawithtristan,swain,hhkarimi,sanjayr1'.split(','),\
+  #   'swain,amanda847,audrey-gp,JoeGoodParty2'.split(',')))"
+  #
+  # It prints None while coverage is incomplete, which is itself the signal that
+  # this must not merge yet.
+  ratified: 2026-08-11
+  definition_sha: '0b06710'
+  approved_by_pr: 801
 
 win_activated_users:
   # Coverage completed across two PRs. The business group approved #708 on
