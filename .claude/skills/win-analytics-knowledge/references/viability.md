@@ -5,29 +5,38 @@ for **Viability Score 2.0** defined in [canonical_metrics.md](canonical_metrics.
 
 ## Quick reference
 
-- **Business context:** the politics-team electoral-viability-for-winning score — how likely a candidate is to win their race, used to stratify by race difficulty.
-- **Entity grain:** one score per candidacy (`gp_candidacy_id`), keyed upstream by `techspeed_candidate_code`.
-- **Standard hygiene filter:** a row is scored only if **every** model feature is populated; missing one → NULL rating.
+- **Business context:** the electoral-viability-for-winning score — how likely a candidate is to
+  win their race, used to stratify analyses by race difficulty. Not a lead-routing score
+  (deliberately excluded from lead scoring).
+- **Source of truth:** `mart_civics.candidacy_scored` — columns `viability_score` (0.0–5.0) and
+  `score_viability_automated` (5-band label). One row per `gp_candidacy_id`, same grain and
+  row set as `candidacy`.
+- **Never read `candidacy.viability_score`.** It is the archive-only gap-filler that feeds
+  `candidacy_scored`'s coalesce (~1.1% of Nov-2025 rows, as of 2026-08). Analyst reads belong on
+  `candidacy_scored`; `users_win_candidacy` and `leads_win_candidacy` already surface it.
+- **Producer:** `int__civics_viability_scoring` (dbt Python model) — a 5-model MLflow waterfall
+  scoring every candidacy the features allow; per-row provenance columns `scoring_model` and
+  `model_version` live on this intermediate (not on the mart).
 
 ## Routing triggers
 
-- IF you need the governed definition / bands → [canonical_metrics.md](canonical_metrics.md) (full threshold table below).
-- IF you need a join path that survives a mart rebuild → join `int__techspeed_viability_scoring` via `techspeed_candidate_code`, NOT `candidacy.viability_score` (see Code/data discrepancy).
-- IF you're bucketing for stratification → use the 5-band label or bimodal-aware quintiles, NOT deciles (see Score distribution).
-- IF you're plotting calibration → flag the leakage risk below.
+- IF you need the governed definition / bands → [canonical_metrics.md](canonical_metrics.md).
+- IF you need viability on a Win population → `users_win_candidacy.viability_score` (already
+  reads `candidacy_scored`), or join `candidacy_scored` via `product_campaign_id` +
+  election-date; see [joins.md](joins.md).
+- IF you're stratifying → use the 5-band label. The distribution is NOT bimodal under the
+  waterfall scorer (see Score distribution); deciles remain a poor choice because mass
+  concentrates unevenly across bands.
+- IF coverage looks low in your population → check the seats gate below before assuming the
+  score is missing at random. Missingness is structural, not random.
 
 ## What it is
 
-**Viability Score 2.0 is the politics-team electoral-viability-for-winning score** — produced internally by `int__techspeed_viability_scoring.py` (`dbt/project/models/intermediate/techspeed_to_hubspot/`) using an MLflow-registered sklearn classifier:
+An MLflow-registered logistic model family (`goodparty_data_catalog.model_predictions.*`),
+trained by the research team, wrapped by the scorer as `round(5 * P(win), 2)`:
 
-```
-goodparty_data_catalog.model_predictions.ViabilityWithOpponentData
-```
-
-NOT a BR-sourced field. NOT a lead-routing scorer. The model wraps `predict_proba` and surfaces two columns:
-
-- **`viability_rating_2_0`** — `round(5 * probability_of_winning, 2)`. Range 0.0 to 5.0.
-- **`score_viability_automated`** — 5-band categorical label. The bands below mirror the model code (`int__techspeed_viability_scoring.py`, the `score_viability_automated` CASE); that code is the source of truth if the thresholds ever change:
+- **`viability_score`** — 0.0 to 5.0.
+- **`score_viability_automated`** — 5-band label:
 
 | Band | Threshold |
 |---|---|
@@ -37,72 +46,88 @@ NOT a BR-sourced field. NOT a lead-routing scorer. The model wraps `predict_prob
 | `Likely to Win` | `3.0 – < 4.0` |
 | `Frontrunner` | `≥ 4.0` |
 
-## Features (model inputs)
+## The waterfall (which model scores a row)
 
-- `is_incumbent` (bool)
-- `open_seat` (bool)
-- `multi_seat` (0/1)
-- `partisan_contest` (0/1)
-- `is_unexpired` (always False in this pipeline)
-- `log_n_losers` — `log(n_candidates - n_seats)` floored at `log(0.001)` for uncontested
-- `state_woe`, `level_woe`, `office_type_woe` — Weight-of-Evidence-encoded categoricals (encodings in `goodparty_data_catalog.model_predictions.viability_br_{state,level,office_type}_woe`)
+Best available wins via coalesce; `scoring_model` on the intermediate records the winner:
 
-**A row gets a score only if EVERY feature is populated.** Missing one feature → NULL rating. This is why BR-only candidacies are spotty — BR doesn't supply `n_seats`, `is_incumbent`, or `n_candidates` for all rows.
-
-## Where the score lives (3 distinct tables)
-
-| Table | Key | Coverage | Use |
+| # | Model | Drops | Notes |
 |---|---|---|---|
-| `goodparty_data_catalog.dbt.int__techspeed_viability_scoring` | `techspeed_candidate_code` | ~99.7% rated | Model output. **Forward-stable join path.** |
-| `goodparty_data_catalog.dbt.stg_model_predictions__viability_scores` | HubSpot company `id` | 100% rated | Separate scoring run (HubSpot-keyed features). Used by `int__civics_candidacy_2025` for the 2025 archive. |
-| `goodparty_data_catalog.mart_civics.candidacy.viability_score` | `gp_candidacy_id` | Varies by source bucket (see below) | The mart-level field surfaced into `users_win_candidacy`. |
+| 1 | `viabilitywithopponentdata` | — (all 9 features) | Strongest; needs incumbency, open-seat, opponent count |
+| 2 | `viabilitywithoutopenseat` | `open_seat` | |
+| 3 | `viabilitynoopponentdata` | `open_seat`, `log_n_losers` | Still needs `is_incumbent` |
+| 4 | `viabilitynoincumbency` | `open_seat`, `is_incumbent` | Still needs `log_n_losers` |
+| 5 | `viabilitynocandidatedatahs` | all candidate-level features | Weakest; race/office features only |
 
-## Coverage in `mart_civics.candidacy` by source bucket
+Features: `multi_seat`, `partisan_contest`, `is_unexpired` (hardcoded false), `office_type_woe`,
+`state_woe`, `level_woe`, `is_incumbent`, `open_seat`, `log_n_losers`. The WoE lookups map
+unknown/NULL categories to `Other`, `partisan_contest` defaults, so **the only feature that can
+hard-block a score is `multi_seat`** — derived from `election.seats_available`, with a
+trust-gated BallotReady fallback (`int__civics_viability_seats_fallback`, race-then-position
+tiers) where the election link supplies none. A row with neither source → no score from ANY
+model. Fallback-seated rows compute `multi_seat` only (no opponent count), so they score via
+the no-opponent-data models. Scores are heterogeneous in fidelity: on Nov-2025, model 1 averages ~3.1
+while model 5 averages ~1.5 — slice by `scoring_model` when comparing subpopulations whose
+model mix differs.
 
-| source bucket | coverage % |
-|---|---:|
-| 2026+ TS-only (no BR match) | ~97.8% |
-| 2026+ BR-matched (TS+BR) | ~56.3% |
-| 2025 archive (HubSpot) | ~4.4% |
-| 2026+ gp_api-only | 0% |
-| 2026+ ddhq-only | 0% |
+## Coverage (as of 2026-08)
 
-For Win-filtered analyses (joining through `users_win_candidacy`), coverage drops further to ~13% — Win users come in via `gp_api` and only get a score if the ER crosswalk lands them on a TS or TS+BR candidacy.
+Coverage is gated by the candidacy→election link and `seats_available`:
 
-## Score distribution is bimodal
+| Population | Coverage |
+|---|---|
+| Nov-2025 candidacies, `candidacy_scored` | ~80% |
+| Nov-2025 Win campaigns with a result (via `users_win_candidacy`) | ~96% post seats-fill (was ~63%); check `scoring_model` and the fallback's `seats_source` before treating filled rows like full-model scores |
+| Legacy `candidacy.viability_score`, Nov-2025 | ~1.1% (do not use) |
+| Candidacies linked to an election with `seats_available > 0` | ~100% |
 
-86% of scored candidates land in `Frontrunner` or `No Chance`; only 14% in the three middle bands. Consistent with a model dominated by incumbency + opponent-count features. **Don't bucket into deciles for stratification — use the 5-band label or quintiles aligned to the bimodal shape.**
+The residual missing mass is structural: candidacies with no BallotReady route at all (no
+position key, or trust-gate rejects). The fallback recomputes from BR staging every run, so
+fills track BR data improvements automatically.
+
+## Score distribution (as of 2026-08, waterfall scorer)
+
+No Chance 26% / Unlikely 23% / Has a Chance 18% / Likely to Win 5% / Frontrunner 27%. The old
+"86% in the extremes" bimodality claim described the retired TechSpeed-era scorer — under the
+waterfall the middle bands carry real mass, but unevenly (`Likely to Win` is thin). Stratify on
+the 5-band label; avoid deciles.
 
 ## Gotchas
 
-### ⚠ Code/data discrepancy (flag for the data platform team)
-
-The current SQL files for `int__civics_candidacy_ballotready.sql` and `int__civics_candidacy_techspeed.sql` (both in main) hardcode `cast(null as float) as viability_score`. Yet the prod intermediate tables have scores populated. Two possible explanations:
-
-1. The prod intermediate hasn't been rebuilt since the null hardcode landed (2026-02-09, commit `61120ab1`). A future rebuild would drop ~58k scores from the mart.
-2. There's an unobserved code path (notebook, Airflow job, hand-merge) populating the score post-hoc.
-
-**Forward-stable analysis pattern:** join `int__techspeed_viability_scoring` directly via `techspeed_candidate_code` instead of relying on `candidacy.viability_score`. (Symptom table: [gotchas.md](gotchas.md).)
-
-### Calibration leakage risk
-
-`int__techspeed_viability_scoring` is materialized as a `table` and re-computes on each `dbt run`. No historical snapshot. If the MLflow model is retrained against post-election data, calibration on 2025 outcomes is potentially contaminated. Flag this on any calibration plot.
+- **Legacy column trap:** `candidacy.viability_score` is not the score. It survives only as
+  `candidacy_scored`'s archive gap-filler.
+- **Scores drift between builds:** the scorer loads the LATEST registered MLflow version of each
+  model and the WoE tables are mutable lookups, so a rebuild can shift scores without any dbt
+  change. Pin analyses to a snapshot date; `model_version` on the intermediate records what ran.
+- **Training vintage / leakage:** model 1 trained 2025-09-30, model 5 trained 2025-06-06 (MLflow
+  registry runs) — both pre-date the Nov-2025 elections, so Nov-2025 outcome analyses controlled
+  on viability are leakage-safe against those artifacts. Re-verify vintage before using the score
+  as a control on later cycles (a retrain could postdate them).
+- **Model-mix heterogeneity:** populations that differ in link quality differ in scoring model.
+  Report the `scoring_model` mix whenever comparing viability across cohorts.
 
 ## Common query patterns
 
-### Back-scoring NULL rows
+Win campaigns with viability (the join `users_win_candidacy` already implements):
 
-Even where `viability_score` is NULL, the underlying features are partially available:
-- `is_incumbent` (TS-sourced; sparse on BR-only)
-- `is_open_seat` (BR > TS > DDHQ)
-- `is_partisan`
-- `n_seats` / `n_candidates`: reconstructible from `candidacy_stage` counts per `gp_election_stage_id`
-- WoE encodings: stable lookup tables
+```sql
+select c.campaign_id, cs.viability_score, cs.score_viability_automated
+from mart_analytics.campaigns c
+left join mart_civics.candidacy_scored cs
+  on c.campaign_id = cs.product_campaign_id
+ and (c.election_date = cs.general_election_date or c.election_date is null)
+```
 
-In principle, the score can be back-scored for additional candidacies by joining feature rows against the existing MLflow model.
+Provenance-aware read (which model produced each score):
+
+```sql
+select cs.gp_candidacy_id, cs.viability_score, sc.scoring_model, sc.model_version
+from mart_civics.candidacy_scored cs
+left join dbt.int__civics_viability_scoring sc using (gp_candidacy_id)
+```
 
 ## Cross-references
 
 - [canonical_metrics.md](canonical_metrics.md) — governed definition + bands.
-- [joins.md](joins.md) — the forward-stable `techspeed_candidate_code` join.
-- [segmentation.md](segmentation.md) — viability as a stratification dimension alongside ICP/office.
+- [joins.md](joins.md) — campaign→candidacy join mechanics.
+- [segmentation.md](segmentation.md) — viability as a stratification dimension.
+- [outcomes.md](outcomes.md) — the outcome definitions viability-controlled reads pair with.
