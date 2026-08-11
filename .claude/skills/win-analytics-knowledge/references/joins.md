@@ -80,6 +80,9 @@ c.campaign_id = candidacy_scored.product_campaign_id
 and (c.election_date = candidacy_scored.general_election_date or c.election_date is null)
 ```
 `users_win_candidacy` already implements this join; prefer reading it directly. See [viability.md](viability.md).
+Caution: when `c.election_date` is null the join matches on `campaign_id` alone, so it can fan out
+to several candidacies or attribute a score from the wrong cycle; `users_win_candidacy` internalizes
+the dedupe.
 
 **Candidacy → ICP / L2 district context:**
 ```

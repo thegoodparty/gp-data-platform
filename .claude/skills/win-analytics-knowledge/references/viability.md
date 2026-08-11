@@ -69,9 +69,16 @@ the no-opponent-data models. Scores are heterogeneous in fidelity: on Nov-2025, 
 while model 5 averages ~1.5 — slice by `scoring_model` when comparing subpopulations whose
 model mix differs.
 
+The fallback relation is wider than its consumption: it holds a row for every trust-passing
+candidacy with a BallotReady position key, and most of those are shadowed by native
+`election.seats_available` and never read. To isolate the rows the scorer actually used, restrict
+to candidacies whose election has `seats_available` null or `<= 0` — reading `seats_source` across
+the whole relation overstates the fallback's footprint.
+
 ## Coverage (as of 2026-08)
 
-Coverage is gated by the candidacy→election link and `seats_available`:
+Coverage is gated by `seats_available` — from the candidacy→election link, or from the
+BallotReady fallback where that link supplies none:
 
 | Population | Coverage |
 |---|---|
