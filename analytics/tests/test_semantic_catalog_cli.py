@@ -286,6 +286,71 @@ def test_record_writes_nothing_when_a_review_group_is_missing(tmp_path, monkeypa
     assert "coverage incomplete" in capsys.readouterr().out.lower()
 
 
+def test_record_writes_nothing_without_a_base_tree(tmp_path, monkeypatch, capsys):
+    # Both groups approved, so coverage is complete, but with no base tree there
+    # is no way to tell which definition moved. Recording anyway would sign off
+    # every pending metric, including bystanders nobody reviewed.
+    sidecar = _isolated_sidecar(tmp_path, monkeypatch)
+    reviews = _reviews_file(
+        tmp_path,
+        [
+            {"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"},
+            {"login": "danpelota", "state": "APPROVED", "submitted_at": "2026-08-07T11:00:00Z"},
+        ],
+    )
+    out = tmp_path / "recorded.json"
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(reviews),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--emit-recorded",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert sidecar.read_text() == "", "no base tree must record nothing"
+    assert json.loads(out.read_text())["metrics"] == []
+    assert "no base tree" in capsys.readouterr().out.lower()
+
+
+def test_record_writes_nothing_when_a_base_dir_is_missing_on_disk(tmp_path, monkeypatch, capsys):
+    # A --base-dir that does not exist parses as an empty tree, which is the same
+    # bystander hazard as omitting it entirely.
+    sidecar = _isolated_sidecar(tmp_path, monkeypatch)
+    reviews = _reviews_file(
+        tmp_path,
+        [
+            {"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"},
+            {"login": "danpelota", "state": "APPROVED", "submitted_at": "2026-08-07T11:00:00Z"},
+        ],
+    )
+    rc = cli.main(
+        [
+            "--record-ratifications",
+            "--reviews",
+            str(reviews),
+            "--data-members",
+            "danpelota",
+            "--business-members",
+            "amanda847",
+            "--pr-number",
+            "800",
+            "--base-dir",
+            str(tmp_path / "does-not-exist"),
+        ]
+    )
+    assert rc == 0
+    assert sidecar.read_text() == ""
+    assert "no base tree" in capsys.readouterr().out.lower()
+
+
 def test_record_writes_nothing_when_the_merge_changed_no_definition(tmp_path, monkeypatch, capsys):
     # Both groups approved, but every metric is already ratified and untouched,
     # so the merge earned nothing.

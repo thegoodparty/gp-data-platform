@@ -195,8 +195,13 @@ jobs:
               echo "ORG_READ_TOKEN not provisioned; skipping ratification recording."
               exit 0
             fi
+            # --paginate emits ONE ARRAY PER PAGE, so a PR with more than 30
+            # reviews would write `[...]\n[...]` and break json.loads. Emit one
+            # object per line and slurp them into a single array instead.
+            # (`gh --slurp` is not usable here: it is rejected with --jq.)
             gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
-              --jq '[.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}]' > /tmp/reviews.json
+              --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+              | jq -s '.' > /tmp/reviews.json
             DATA=$(gh api orgs/thegoodparty/teams/semantic-layer-data/members --jq '[.[].login] | join(",")')
             BIZ=$(gh api orgs/thegoodparty/teams/semantic-layer-business/members --jq '[.[].login] | join(",")')
             ARGS=(--record-ratifications --reviews /tmp/reviews.json \

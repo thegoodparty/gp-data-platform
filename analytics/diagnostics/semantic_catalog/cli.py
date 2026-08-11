@@ -151,6 +151,14 @@ def _record(args, records: list[MetricRecord]) -> int:
 
     if date is None:
         print("review coverage incomplete; recording nothing.")
+    elif args.base_dir is None or not args.base_dir.is_dir():
+        # Without a base tree there is nothing to compare fingerprints against,
+        # so `before` is empty and EVERY pending metric looks newly earned:
+        # bystanders sharing a file with the reviewed metric would collect a
+        # sign-off nobody gave. A missing base is not evidence of approval, so
+        # record nothing. The workflow only passes --base-dir when /tmp/base
+        # exists, which is the path this guards.
+        print("no base tree to diff against; recording nothing.")
     else:
         before, after = _before_after(args.base_dir)
         earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
