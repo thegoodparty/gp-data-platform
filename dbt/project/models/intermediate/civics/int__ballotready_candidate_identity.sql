@@ -1,8 +1,6 @@
--- Canonical BallotReady candidate identity inputs, one row per br_candidate_id.
--- Picks one deterministic identity value per br_candidate_id so consumers hash
--- identical gp_candidate_id inputs; otherwise a person resolves to different
--- ids and gets orphaned from their candidacies (S3 email/name/phone vary across
--- a person's candidacy rows).
+-- Canonical BallotReady candidate name/contact per br_candidate_id: one
+-- deterministic representative row, since S3 email/name/phone vary across a
+-- person's candidacy rows. Feeds the person mart's display attributes only.
 -- All election years: is_candidate is flagged all-time, so a date filter here
 -- left older candidates nameless and dropped them from the public profiles.
 with

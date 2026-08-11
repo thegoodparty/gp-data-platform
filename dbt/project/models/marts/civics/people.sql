@@ -162,13 +162,9 @@ with
             nullif(trim(o.first_name), '') as first_name,
             nullif(trim(o.last_name), '') as last_name,
             nullif(trim(o.state), '') as state,
-            nullif(
-                trim(get(filter(o.contacts, x -> x.email is not null), 0).email), ''
-            ) as email,
-            nullif(
-                trim(get(filter(o.contacts, x -> x.phone is not null), 0).phone), ''
-            ) as phone,
-            {{ parse_party_affiliation("array_join(o.party_names, ',')") }} as party
+            nullif(trim(o.email), '') as email,
+            nullif(trim(o.phone), '') as phone,
+            {{ parse_party_affiliation("get(o.party_names, 0)") }} as party
         from records as r
         inner join
             {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }} as o
