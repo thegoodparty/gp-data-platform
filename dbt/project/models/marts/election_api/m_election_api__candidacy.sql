@@ -195,7 +195,10 @@ with
                 partition by slug order by updated_at desc, br_database_id desc
             )
             = 1
-    )
+    ),
+    -- guarded person link: gp_candidate_id only counts as person_id when the
+    -- API actually serves that person (the person mart scopes to named people)
+    api_person as (select id as person_id from {{ ref("m_election_api__person") }})
 
 select
     id,
@@ -221,5 +224,7 @@ select
     website_url,
     is_incumbent,
     slug,
-    race_id
+    race_id,
+    api_person.person_id
 from deduped_candidacy
+left join api_person on deduped_candidacy.gp_candidate_id = api_person.person_id

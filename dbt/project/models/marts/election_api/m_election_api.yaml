@@ -46,6 +46,16 @@ models:
               config:
                 warn_if: ">10"
                 error_if: ">1000"
+      - name: person_id
+        description: >
+          Person UUID for the election-api Candidacy.person_id FK. Equal to
+          gp_candidate_id when that person is served by
+          m_election_api__person, else null, so the FK always resolves.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
