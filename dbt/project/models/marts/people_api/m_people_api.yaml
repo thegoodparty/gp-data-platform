@@ -345,31 +345,38 @@ models:
                 min_value: 0
                 max_value: 1
                 inclusive: true
+      # AUDIT-ONLY from here down (except state, which the loader maps to the
+      # serving enum). The serve query selects `coverage` and nothing else, so
+      # these columns exist to explain a coverage number without a warehouse
+      # query. Do not assume the app depends on them.
       - name: min_cell_count
-        description: The K (voter_density_k) used for this build
+        description: >
+          AUDIT. The K (voter_density_k) applied to this build, published so the
+          disclosed threshold travels with the data.
         data_type: integer
         data_tests:
           - not_null
       - name: total_voters
         description: >
-          The district's voters. Identical across resolutions (a voter's H3 cell
-          exists at every resolution or at none); published per resolution because
-          the app reads it keyed by (district, resolution) alongside coverage.
+          AUDIT. The district's voters, the coverage denominator. Identical across
+          resolutions: a voter's H3 cell exists at every resolution or at none.
         data_type: integer
         data_tests:
           - not_null
       - name: geocoded_voters
-        description: Voters with a usable H3 at this resolution
+        description: >
+          AUDIT. Voters with a usable H3. Also resolution-invariant, since the
+          binning filter does not vary by resolution.
         data_type: integer
         data_tests:
           - not_null
       - name: rendered_voters
-        description: Sum of voter_count over non-suppressed cells
+        description: AUDIT. Sum of voter_count over non-suppressed cells.
         data_type: integer
         data_tests:
           - not_null
       - name: suppressed_cells
-        description: Cells dropped by K-anonymity suppression
+        description: AUDIT. Cells dropped by K-anonymity suppression.
         data_type: integer
         data_tests:
           - not_null
@@ -379,10 +386,9 @@ models:
         data_tests:
           - not_null
       - name: updated_at
+        # No not_null: the value is current_timestamp().
         description: Mart run time
         data_type: timestamp
-        data_tests:
-          - not_null
     data_tests:
       - unique_combination_sampled:
           arguments:
@@ -392,3 +398,14 @@ models:
             sample_size: 100000
           config:
             severity: error
+      # Suppression accounting. Rendered voters come from cells that survived K,
+      # which are a subset of the geocoded voters, which are a subset of the
+      # district's voters. Pure arithmetic, so it cannot false-positive, and it is
+      # the check that catches a coverage numerator and denominator drifting onto
+      # different populations.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: rendered_voters <= geocoded_voters
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: geocoded_voters <= total_voters
