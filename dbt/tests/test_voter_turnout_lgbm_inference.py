@@ -264,20 +264,18 @@ def test_read_model_family_tag_raises_when_missing_or_empty(tags):
 
 # ── Prediction intervals: params tag reader + projection SQL builder ──────────
 def test_read_interval_params_tag_returns_parsed_dict():
-    tags = {"prediction_interval_params": '{"q25":-0.0144,"q75":0.0111,"q841":0.0236,"q95":0.0695}'}
+    tags = {
+        "prediction_interval_params": '{"q25":-0.0144,"q75":0.0111,"q841":0.0236,"q95":0.0695,"scaler":"binom"}'
+    }
     params = _read_interval_params_tag(tags, "some.model.name")
     assert params["q25"] == -0.0144
     assert params["q95"] == 0.0695
-    assert params["scaler"] == "binom"  # default when the tag omits it
 
 
-def test_read_interval_params_tag_scaler_default_and_validation():
+def test_read_interval_params_tag_accepts_taper_top_scaler():
     base = '{"q25":-0.04,"q75":0.03,"q841":0.06,"q95":0.14%s}'
-    assert _read_interval_params_tag({"prediction_interval_params": base % ""}, "m")["scaler"] == "binom"
     got = _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"taper_top"'}, "m")
     assert got["scaler"] == "taper_top"
-    with pytest.raises(ValueError):  # unknown scaler is rejected, not silently used
-        _read_interval_params_tag({"prediction_interval_params": base % ',"scaler":"bogus"'}, "m")
 
 
 @pytest.mark.parametrize(
@@ -295,6 +293,30 @@ def test_read_interval_params_tag_scaler_default_and_validation():
 def test_read_interval_params_tag_raises_when_missing_malformed_or_incomplete(tags):
     with pytest.raises(ValueError):
         _read_interval_params_tag(tags, "some.model.name")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"q25":"-0.01","q95":0.05,"scaler":"binom"}',  # string quantile
+        '{"q25":-0.01,"q95":"0.05","scaler":"binom"}',  # string quantile (upper)
+        '{"q25":true,"q95":0.05,"scaler":"binom"}',  # bool is not a quantile
+        '{"q25":null,"q95":0.05,"scaler":"binom"}',  # null is not a quantile
+        '{"q25":NaN,"q95":0.05,"scaler":"binom"}',  # non-finite (json.loads accepts NaN)
+        '{"q25":-0.01,"q95":Infinity,"scaler":"binom"}',  # non-finite upper
+        '{"q25":0.01,"q95":0.05,"scaler":"binom"}',  # q25 > 0: interval excludes the point
+        '{"q25":-0.05,"q95":-0.01,"scaler":"binom"}',  # q95 < 0: same, from above
+        '{"q25":0,"q95":0.05,"scaler":"binom"}',  # zero quantile: band edge collapses
+        '{"q25":-0.01,"q95":0.05}',  # scaler now REQUIRED (live tags all carry it)
+        '{"q25":-0.01,"q95":0.05,"scaler":"bogus"}',  # unknown scaler stays rejected
+        "null",  # non-object JSON must be a ValueError, not an incidental TypeError
+        "3.5",
+        '["q25","q95"]',
+    ],
+)
+def test_read_interval_params_tag_rejects_invalid_contracts(raw):
+    with pytest.raises(ValueError):
+        _read_interval_params_tag({"prediction_interval_params": raw}, "m")
 
 
 _INTERVAL_PARAMS = {

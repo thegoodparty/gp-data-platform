@@ -35,6 +35,7 @@ without Spark/MLflow; `model()` executes them. `import mlflow` is deferred into
 
 import glob
 import json
+import math
 import os
 import re
 import tempfile
@@ -681,20 +682,42 @@ def _read_interval_params_tag(model_version_tags, registered_model_name):
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} is not valid JSON: {raw!r}"
         ) from e
+    if not isinstance(params, dict):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} is not a JSON " f"object: {params!r}"
+        )
     missing = {"q25", "q95"} - set(params)
     if missing:
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} is missing keys "
             f"{sorted(missing)}: {params}"
         )
-    # Residual-spread scaler travels with the params so the shape stays locked to the fit.
-    # Default 'binom' (sqrt(p*(1-p))) when absent; the low-turnout local models set
-    # 'taper_top' (sqrt(1-p)). Reject unknown values rather than silently mis-shape the band.
-    scaler = params.setdefault("scaler", "binom")
+    for key in ("q25", "q95"):
+        value = params[key]
+        # bool is an int subclass; a boolean quantile is always a data error.
+        if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+            raise ValueError(
+                f"prediction_interval_params on {registered_model_name} has a "
+                f"non-numeric or non-finite {key}: {value!r}"
+            )
+    # The quantiles must strictly straddle zero so the point always sits inside
+    # its own interval with a real band on both sides (the bias-era
+    # detached-band bug, fixed upstream, stays fixed).
+    if not (params["q25"] < 0 < params["q95"]):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} has quantiles "
+            f"that do not straddle zero: q25={params['q25']}, q95={params['q95']}"
+        )
+    # The scaler shapes the band; defaulting it silently would mis-shape the
+    # low-turnout local models. Every live tag carries it; require it. Which
+    # scaler belongs to which slug is deliberately NOT pinned here: the tag
+    # travels with the model version and is the source of truth; a refit may
+    # legitimately change a model's scaler.
+    scaler = params.get("scaler")
     if scaler not in ("binom", "taper_top"):
         raise ValueError(
-            f"prediction_interval_params on {registered_model_name} has unknown scaler "
-            f"{scaler!r} (expected 'binom' or 'taper_top')."
+            f"prediction_interval_params on {registered_model_name} has missing or "
+            f"unknown scaler {scaler!r} (expected 'binom' or 'taper_top')."
         )
     return params
 
@@ -745,10 +768,16 @@ def model(dbt, session):
         # version, not the registered-model tag set.
         prod_version = client.get_model_version_by_alias(full_name, "production")
         interval_params[slug] = _read_interval_params_tag(prod_version.tags, full_name)
+        # Resolve the alias exactly once: download the same numeric version the
+        # params were read from, so a mid-run promotion cannot pair one
+        # booster with another version's quantiles. Log the resolved version:
+        # the run log is the durable record of exactly which boosters built
+        # this table (model_version stamps the family, not the MLflow version).
+        print(f"resolved {full_name}@production -> version {prod_version.version}")
+        model_uri = f"models:/{full_name}/{prod_version.version}"
         # Download the @production model once, then load it and resolve its categorical feature
         # map. The map is logged under model/ (so it travels with copy_model_version) but with
         # a tmp-prefixed filename, so glob for it rather than assume a fixed artifact path.
-        model_uri = f"models:/{full_name}@production"
         with tempfile.TemporaryDirectory() as tmp:
             model_dir = mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=tmp)
             models[slug] = mlflow.lightgbm.load_model(model_dir)
