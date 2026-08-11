@@ -238,6 +238,15 @@ def test_upsert_adds_a_field_the_existing_entry_lacks(tmp_path):
     assert _loaded(tmp_path, out)["m"].approved_by_pr == 800
 
 
+def test_upsert_fills_in_a_block_that_has_only_comments(tmp_path):
+    # A header with no field lines gives the insert point nothing to anchor on.
+    # It has to fall back to the header itself rather than raise on an empty max().
+    text = "m:\n  # hand-written note, no fields yet\n"
+    out = ratifications.upsert(text, "m", _sign_off())
+    assert _loaded(tmp_path, out)["m"] == ratifications.Ratification("2026-08-07", "abc1234", 800)
+    assert "# hand-written note, no fields yet" in out, "the human's comment survives"
+
+
 def test_upsert_never_matches_a_commented_out_key(tmp_path):
     text = "# win_activated_users:\n#   ratified: <date>\n"
     out = ratifications.upsert(text, "win_activated_users", _sign_off())

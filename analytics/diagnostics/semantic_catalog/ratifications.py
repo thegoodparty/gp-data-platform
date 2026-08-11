@@ -242,8 +242,11 @@ def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
     missing = [k for k in _WRITTEN_FIELDS if k not in seen]
     if missing:
         # Insert after the last field written, so new keys land inside the block
-        # rather than after any trailing blank line.
-        last = max(i for i, line in enumerate(rewritten) if re.match(r"^\s{2}\w+:", line))
+        # rather than after any trailing blank line. A block carrying only
+        # comments has no field line to anchor on, so fall back to index 0,
+        # which is always this block's own header.
+        field_lines = [i for i, line in enumerate(rewritten) if re.match(r"^\s{2}\w+:", line)]
+        last = max(field_lines) if field_lines else 0
         rewritten[last + 1 : last + 1] = [_field_line(k, sign_off) for k in missing]
 
     return "".join(lines[:start] + rewritten + lines[end:])
