@@ -1,14 +1,13 @@
 -- Canonical BallotReady candidate identity inputs, one row per br_candidate_id.
--- Picks one deterministic identity value per br_candidate_id so both consumers
--- (int__civics_candidate_ballotready, int__civics_candidacy_ballotready) hash
+-- Picks one deterministic identity value per br_candidate_id so consumers hash
 -- identical gp_candidate_id inputs; otherwise a person resolves to different
 -- ids and gets orphaned from their candidacies (S3 email/name/phone vary across
 -- a person's candidacy rows).
+-- All election years: is_candidate is flagged all-time, so a date filter here
+-- left older candidates nameless and dropped them from the public profiles.
 with
     candidacies as (
-        select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where election_day >= '2026-01-01'
+        select * from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
     ),
 
     -- Per-person API email (keyed by br_candidate_id); used as the fallback
@@ -21,12 +20,8 @@ with
         where database_id is not null
     ),
 
-    -- One coherent representative candidacy row per person: the most recently
-    -- updated, with deterministic email/phone tie-breaks (mirrors the ordering
-    -- int__civics_candidate_ballotready used for its dedup). Taking a single
-    -- row keeps the identity fields internally consistent and uses the person's
-    -- freshest contact info, rather than a per-column min() that could stitch
-    -- together values from different candidacy rows.
+    -- One representative row per person: current-cycle race first, then freshest.
+    -- The date preference keeps existing current-cycle identities unchanged.
     ranked as (
         select
             br_candidate_id,
@@ -38,6 +33,7 @@ with
             row_number() over (
                 partition by br_candidate_id
                 order by
+                    (election_day >= '2026-01-01') desc,
                     coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
                     email asc nulls last,
                     phone asc nulls last

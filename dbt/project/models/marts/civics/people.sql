@@ -1,7 +1,8 @@
 -- Canonical person mart. One row per gp_person_id. Identifier columns are
 -- scalar only when the group carries exactly one value for that source; the
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
--- gp_api > HubSpot > BR > TS > TS officeholder > DDHQ for contact fields,
+-- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder > DDHQ for
+-- contact fields,
 -- BR > others for civic fields. Role flags derive from the member records,
 -- not from a stored status, so they stay re-derivable on every run.
 with
@@ -110,22 +111,19 @@ with
     ),
 
     -- BR party is not on the identity model; pull one representative party per
-    -- br_candidate_id from the candidacy feed, gated to the same 2026+ window
-    -- as int__ballotready_candidate_identity so party stays consistent with
-    -- the identity-model contact fields it rides alongside.
+    -- br_candidate_id from the candidacy feed, ranked current-cycle-first to match
+    -- how int__ballotready_candidate_identity picks its representative row.
     br_party as (
         select
             cast(br_candidate_id as string) as br_candidate_id,
             {{ parse_party_affiliation("parties") }} as party
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where
-            br_candidate_id is not null
-            and parties is not null
-            and election_day >= '2026-01-01'
+        where br_candidate_id is not null and parties is not null
         qualify
             row_number() over (
                 partition by br_candidate_id
                 order by
+                    (election_day >= '2026-01-01') desc,
                     coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
                     parties asc
             )
@@ -151,6 +149,39 @@ with
             row_number() over (
                 partition by r.gp_person_id
                 order by r.first_seen_at asc nulls last, r.source_id
+            )
+            = 1
+    ),
+
+    -- BR office-holder attributes: the candidacy-derived identity model misses
+    -- anyone whose BR presence is a term rather than a race, so without this
+    -- tier those officeholders carry no name and drop out of the person profiles.
+    br_officeholder_attrs as (
+        select
+            r.gp_person_id,
+            nullif(trim(o.first_name), '') as first_name,
+            nullif(trim(o.last_name), '') as last_name,
+            nullif(trim(o.state), '') as state,
+            nullif(
+                trim(get(filter(o.contacts, x -> x.email is not null), 0).email), ''
+            ) as email,
+            nullif(
+                trim(get(filter(o.contacts, x -> x.phone is not null), 0).phone), ''
+            ) as phone,
+            {{ parse_party_affiliation("array_join(o.party_names, ',')") }} as party
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }} as o
+            on cast(o.br_candidate_id as string) = r.source_id
+        where r.source_name = 'ballotready'
+        qualify
+            row_number() over (
+                partition by r.gp_person_id
+                order by
+                    r.first_seen_at asc nulls last,
+                    r.source_id,
+                    o.office_holder_updated_at desc nulls last,
+                    o.br_office_holder_id desc
             )
             = 1
     ),
@@ -306,11 +337,13 @@ select
     ids.ddhq_candidate_id,
     ids.ts_candidate_code,
 
-    -- Contact attributes: gp_api > HubSpot > BR > TS > TS officeholder > DDHQ.
+    -- Contact attributes: gp_api > HubSpot > BR > BR officeholder > TS > TS
+    -- officeholder > DDHQ.
     coalesce(
         ga.first_name,
         ha.first_name,
         ba.first_name,
+        boa.first_name,
         ta.first_name,
         toa.first_name,
         da.first_name
@@ -319,16 +352,17 @@ select
         ga.last_name,
         ha.last_name,
         ba.last_name,
+        boa.last_name,
         ta.last_name,
         toa.last_name,
         da.last_name
     ) as last_name,
-    coalesce(ga.email, ha.email, ba.email, ta.email, toa.email) as email,
-    coalesce(ga.phone, ha.phone, ba.phone, ta.phone, toa.phone) as phone,
+    coalesce(ga.email, ha.email, ba.email, boa.email, ta.email, toa.email) as email,
+    coalesce(ga.phone, ha.phone, ba.phone, boa.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
-    coalesce(ba.state, ha.state, ta.state, toa.state, da.state) as state,
-    coalesce(ba.party, ha.party, ta.party, toa.party, da.party) as party,
+    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state, da.state) as state,
+    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party, da.party) as party,
 
     pb.first_seen_at,
     pb.group_size,
@@ -342,6 +376,7 @@ left join roles using (gp_person_id)
 left join gp_api_attrs as ga using (gp_person_id)
 left join hubspot_attrs as ha using (gp_person_id)
 left join br_attrs as ba using (gp_person_id)
+left join br_officeholder_attrs as boa using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
 left join ts_officeholder_attrs as toa using (gp_person_id)
 left join ddhq_attrs as da using (gp_person_id)
