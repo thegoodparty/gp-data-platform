@@ -65,10 +65,15 @@ jobs:
           if [ -n "$PR" ]; then
             # Count only each reviewer's LATEST review, so a superseded or
             # dismissed approval no longer counts as current coverage.
-            APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" \
-              --jq 'group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").user.login) | join(",")')
-            DATA=$(gh api "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '[.[].login] | join(",")')
-            BIZ=$(gh api "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '[.[].login] | join(",")')
+            # Every call here paginates, and every aggregation happens AFTER the
+            # pages are collapsed. Grouping inside --jq would group per page, so
+            # "latest review per reviewer" would silently become "latest per
+            # reviewer per page" once a PR passes 30 reviews.
+            APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+              --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+              | jq -rs 'group_by(.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").login) | join(",")')
+            DATA=$(gh api --paginate "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '.[].login' | paste -sd, -)
+            BIZ=$(gh api --paginate "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '.[].login' | paste -sd, -)
             COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
               uv run python -m semantic_catalog.composition)
             PR_URL="https://github.com/$REPO/pull/$PR"
@@ -202,8 +207,11 @@ jobs:
             gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
               --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
               | jq -s '.' > /tmp/reviews.json
-            DATA=$(gh api orgs/thegoodparty/teams/semantic-layer-data/members --jq '[.[].login] | join(",")')
-            BIZ=$(gh api orgs/thegoodparty/teams/semantic-layer-business/members --jq '[.[].login] | join(",")')
+            # Paginated for the same reason as the reviews call above: a member
+            # past position 30 would be missing from the list, could never match
+            # an approver, and coverage would read as incomplete forever.
+            DATA=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-data/members --jq '.[].login' | paste -sd, -)
+            BIZ=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-business/members --jq '.[].login' | paste -sd, -)
             ARGS=(--record-ratifications --reviews /tmp/reviews.json \
                   --data-members "$DATA" --business-members "$BIZ" \
                   --pr-number "$PR_NUM" \
