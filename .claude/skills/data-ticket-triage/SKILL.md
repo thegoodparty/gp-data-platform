@@ -50,7 +50,7 @@ One row nationwide is a data-entry gap and takes a seeded override. Thousands cl
 
 ## 3. Read the consuming application when the mart looks fine
 
-If the mart has the data and the product still does not show it, the filter is in the app. The product monorepo is checked out at `~/projects/gp-data-parent/omni/packages/`:
+If the mart has the data and the product still does not show it, the filter is in the app. The product monorepo is the `omni` repository: https://github.com/thegoodparty/omni
 
 | Package | What it tells you |
 |---|---|
@@ -61,13 +61,11 @@ If the mart has the data and the product still does not show it, the filter is i
 | `contracts`, `gp-sdk`, `nest-common` | Shared types and clients. |
 | `runbooks` | Operational procedures. |
 
-Read-only. Never edit these from a data-platform ticket.
+Read-only. Never edit these from a data-platform ticket without user confirmation first.
 
 Two things worth checking every time: the service may read a *different* table than the ticket names (e.g. it uses one table only to collect IDs, then reads the real rows from another), and it may apply an env-var threshold or a `>= today` window that silently excludes the record. Both change the diagnosis.
 
-There is also a standalone `election-api` checkout under `~/projects/gp-data-parent/` — it is stale. Use the one in `omni`.
-
-Prod Postgres (`psql service=electiondb`) is VPC-only and will time out locally. `psql service=electiondb-dev` works. The dbt marts are the source of truth for what the writer will publish, so a mart query is usually sufficient evidence without touching Postgres at all.
+The dbt marts are the source of truth for what the writer will publish, so a mart query is usually sufficient evidence without touching Postgres at all.
 
 ## 4. Choose the smallest fix
 
