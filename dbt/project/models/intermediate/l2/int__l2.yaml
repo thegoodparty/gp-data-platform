@@ -96,12 +96,13 @@ models:
   - name: int__l2_nationwide_uniform
     description: "The voter file, with l2_manual_district_assignments applied"
 
-  - name: int__voter_turnout_lgbm_inference
+  - name: int__voter_turnout_inference
     description: >
-      Nationwide district-level voter-turnout projections from the LightGBM
-      models (DATA-2015). One row per (state, district_type, district_name,
-      election_year, election_code). Replaces the per-state inference models.
-      Projections are known to skew high (calibration caveat from research).
+      Nationwide district-level voter-turnout projections from the registered
+      turnout models. One row per (state, district_type, district_name,
+      election_year, election_code). model_version records the model family
+      that produced each row, so the underlying model can be swapped without
+      renaming anything.
     config:
       meta:
         # Most recent year of L2 vote history present (drives the feature window).

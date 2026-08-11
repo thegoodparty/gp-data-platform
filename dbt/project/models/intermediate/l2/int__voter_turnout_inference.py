@@ -1,4 +1,4 @@
-"""Nationwide voter-turnout LightGBM inference (DATA-2015).
+"""Nationwide voter-turnout model inference.
 
 ONE dbt Python model that replaces the research branch's 51 per-state models +
 Jinja macro. Reads int__l2_nationwide_uniform, aggregates to precinct grain,
@@ -451,11 +451,17 @@ def _build_district_projection_sql(interval_params):
     interval_params maps model_slug -> {q25, q95, scaler, ...}. Bounds are the
     variance-stabilised residual model fit per slug in the turnout_prediction_intervals
     notebook (raw-standardized residual quantiles, no constant bias term). For each
-    district we take the model's implied predicted rate,
-    pred_rate = ballots_projected / district_voters, and apply
+    district we take the model's implied predicted rate, with the scaler input
+    clamped to [0,1]: pred_rate = clip(ballots_projected / district_voters, 0, 1).
+    Then apply
 
-        bound_rate  = clip(pred_rate + q * w(pred_rate), 0, 1)
-        bound_votes = greatest(round(bound_rate * district_voters), 3)
+        bound_rate    = clip(pred_rate + q * w(pred_rate), 0, 1)
+        bound_ballots = greatest(round(bound_rate * district_voters), 3)
+
+    floored at 3 like the point estimate, then enclosed against it: LEAST(bound_ballots,
+    point) for the lower bound and GREATEST(bound_ballots, point) for the upper, where
+    point = greatest(round(ballots_projected), 3) — so saturation can never invert the
+    band.
 
     with q = q25 for the lower bound and q = q95 for the upper, and w() a per-model
     residual-spread scaler:
@@ -496,8 +502,9 @@ def _build_district_projection_sql(interval_params):
             "(CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate) "
             "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
         )
-        # Floor each bound at 3 ballots like the point estimate, then ENCLOSE the point:
-        # wrap the rate-space bound with LEAST/GREATEST against the same point expression.
+        # Floor each bound at 3 ballots, matching the point-estimate floor, then ENCLOSE
+        # the point: wrap the rate-space bound with LEAST/GREATEST against the same point
+        # expression.
         # In-domain this is a no-op (the quantiles straddle zero, so the formula bound
         # already sits beyond the point). At saturation, pred_rate is clamped to 1 above,
         # which caps the rate-space bound at district_voters while the raw point

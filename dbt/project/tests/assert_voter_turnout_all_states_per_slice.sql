@@ -16,11 +16,11 @@ with
     ),
     slices as (
         select distinct election_year, election_code
-        from {{ ref("int__voter_turnout_lgbm_inference") }}
+        from {{ ref("int__voter_turnout_inference") }}
     ),
     observed as (
         select distinct election_year, election_code, state
-        from {{ ref("int__voter_turnout_lgbm_inference") }}
+        from {{ ref("int__voter_turnout_inference") }}
     )
 select s.election_year, s.election_code, e.state as missing_state
 from slices as s

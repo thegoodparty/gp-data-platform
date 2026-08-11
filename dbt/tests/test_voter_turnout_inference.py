@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
-from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import (
+from dbt.project.models.intermediate.l2.int__voter_turnout_inference import (
     _OPP_STATES_SQL,
     _SLUG_ELECTION_CODE,
     _assert_consistent_model_family,
@@ -377,7 +377,8 @@ def test_projection_sql_carries_model_slug_and_district_voters():
     assert "SUM(p.n_voters)" in sql
     assert "AS district_voters" in sql
     assert "m.district_type, m.district_name, p.model_slug, p.model_family" in sql
-    # ballots_projected = round of the p_hat-weighted sum, floored at 3 (DATA-2015 / #598).
+    # ballots_projected = round of the p_hat-weighted sum, floored at 3 (matches the
+    # point-estimate floor).
     assert "GREATEST(ROUND(a.projected_raw), 3)" in sql
     assert "AS ballots_projected" in sql
     assert "a.model_slug," in sql  # exposed in the final SELECT as provenance
