@@ -517,11 +517,11 @@ models:
           compensates for a person-resolution gap and is expected to be
           removed once entity resolution links these records.
 
-          FALSE means BallotReady shows the seat held by someone else on
-          election day, and is only asserted for candidacies whose person
-          resolves. NULL means either the position has no office-holder term
-          covering that date or the candidate could not be identified, so
-          incumbency is unknown rather than false. Known misses: appointed or
+          FALSE means BallotReady shows the seat on election day either held
+          by someone else or vacant, and is only asserted for candidacies
+          whose person resolves. NULL means either the position has no
+          office-holder term covering that date or the candidate could not be
+          identified, so incumbency is unknown rather than false. Known misses: appointed or
           mid-term-succeeded officials whose term dates do not straddle
           election day, and name variants such as nicknames or changed
           surnames. Both miss toward "challenger" rather than toward a false

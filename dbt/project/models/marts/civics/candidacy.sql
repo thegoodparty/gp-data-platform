@@ -468,10 +468,12 @@ with
     -- equality safe here; a 10-case audit found no collisions. Drop the name
     -- arm once person resolution links these records.
     --
-    -- FALSE means BR shows a term covering election day held by someone else,
-    -- so it is only assertable once we know who the candidate is. A position
-    -- with no covering term, or a candidacy with no resolved person, stays
-    -- NULL: unknown, not challenger.
+    -- FALSE means BR shows the seat on election day in someone else's hands,
+    -- or vacant (a vacancy term carries no person, and nobody is the incumbent
+    -- of an empty seat). Either way this candidate does not hold it. It is only
+    -- assertable once we know who the candidate is, so a candidacy with no
+    -- resolved person, like a position with no covering term, stays NULL:
+    -- unknown, not challenger.
     --
     -- A NULL term_end_date reads as "no scheduled end, still serving" and so
     -- covers election day. A NULL term_start_date carries no such reading -
