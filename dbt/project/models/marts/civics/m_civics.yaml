@@ -409,8 +409,9 @@ models:
         gp_api only (PD-native):
           product_campaign_id, is_pledged, is_verified,
           verification_status_reason
-        TS > BR (gp_api/DDHQ excluded):
-          is_incumbent
+        TS, then derived from BR office-holder terms (gp_api/DDHQ excluded):
+          is_incumbent (no provider supplies this for 2026; see the column
+          description for the derivation)
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
@@ -506,7 +507,25 @@ models:
         description: Candidate's political party
 
       - name: is_incumbent
-        description: Whether the candidate is the incumbent
+        description: >
+          Whether the candidate already holds the position they are running
+          for. TechSpeed's enrichment where it covered the candidacy;
+          otherwise derived from BallotReady office-holder terms, matching the
+          candidate to a term on the same position that covers election day.
+          The match is on canonical person id, or on first+last name, which
+          the position and term window make near-deterministic. The name arm
+          compensates for a person-resolution gap and is expected to be
+          removed once entity resolution links these records.
+
+          FALSE means BallotReady shows the seat on election day either held
+          by someone else or vacant, and is only asserted for candidacies
+          whose person resolves. NULL means either the position has no
+          office-holder term covering that date or the candidate could not be
+          identified, so incumbency is unknown rather than false. Known misses: appointed or
+          mid-term-succeeded officials whose term dates do not straddle
+          election day, and name variants such as nicknames or changed
+          surnames. Both miss toward "challenger" rather than toward a false
+          incumbent.
         data_tests:
           - accepted_values:
               arguments:
