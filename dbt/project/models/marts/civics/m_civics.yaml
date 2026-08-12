@@ -2883,10 +2883,11 @@ models:
               # even though the same macro alone or piped through a filter
               # renders fine. set/do (same idiom the macro itself uses)
               # avoids the binary-operator/list-literal AST shape that
-              # triggers it.
+              # triggers it. `| list` copies before .append so this doesn't
+              # mutate the macro's own list literal.
               name: district_census_stats_district_type_accepted_values
               arguments:
-                values: "{% set l = get_l2_district_types(scope='allocated') %}{% do l.append('State') %}{{ l }}"
+                values: "{% set l = get_l2_district_types(scope='allocated') | list %}{% do l.append('State') %}{{ l }}"
       - name: district_name
         description: >
           Normalized L2 district name (normalize_l2_district_name). NOT unique across
