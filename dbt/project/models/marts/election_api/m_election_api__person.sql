@@ -96,9 +96,10 @@ with
 
     -- The API contract is "pledged on any candidacy", so roll the candidacy
     -- flag up to person grain. Keyed on gp_person_id, not gp_candidate_id: the
-    -- two agree on 2026+ rows, but 2025 archive candidacies carry a
-    -- HubSpot-derived gp_candidate_id that would never match a person, dropping
-    -- their pledges. The group by keeps this one row per person.
+    -- two ids agree only on candidate_id_source = 'gp_api' rows (2026+), while
+    -- every pre-2026 archive row carries its legacy source id, which never
+    -- matches a person. Joining on gp_candidate_id would therefore resolve 8.7k
+    -- of 35.4k pledged people. The group by keeps this one row per person.
     pledged as (
         select gp_person_id, bool_or(coalesce(is_pledged, false)) as is_pledged
         from {{ ref("candidacy") }}
