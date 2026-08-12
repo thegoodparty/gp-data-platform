@@ -10,6 +10,8 @@ from include.custom_functions.election_api_utils import (
     QualityGate,
     bulk_insert_from_databricks,
     check_counts,
+    check_id_overlap,
+    check_nulls,
 )
 
 
@@ -36,6 +38,24 @@ class TestQualityGates:
         with pytest.raises(ValueError, match="cold-start"):
             check_counts(99_999, 0, self.GATE, "Race")
         check_counts(100_000, 0, self.GATE, "Race")
+
+    def test_id_overlap_refuses_wholesale_rekey(self):
+        gate = QualityGate(cold_start_floor=100_000, min_id_overlap=0.90)
+        check_id_overlap(900, 1_000, gate, "Person")  # exactly at the floor passes
+        with pytest.raises(ValueError, match="re-key"):
+            check_id_overlap(899, 1_000, gate, "Person")
+
+    def test_id_overlap_skipped_where_ids_re_mint(self):
+        """ZipToPosition and Projected_Turnout declare no floor because their
+        ids legitimately re-mint, so even zero overlap must pass. A floor added
+        there would refuse every run."""
+        check_id_overlap(0, 1_000, QualityGate(cold_start_floor=1_000), "ZipToPosition")
+
+    def test_nulls_refuse_when_probe_finds_any(self):
+        gate = QualityGate(cold_start_floor=100_000, not_null_columns=("is_local",))
+        check_nulls(0, gate, "DistrictTopIssue")
+        with pytest.raises(ValueError, match="is_local"):
+            check_nulls(1, gate, "DistrictTopIssue")
 
 
 def _gen(batches):

@@ -149,6 +149,29 @@ def check_counts(loaded_count: int, prior_count: int, gate: QualityGate, table: 
         )
 
 
+def check_id_overlap(overlap: int, prior_count: int, gate: QualityGate, table: str) -> None:
+    """Pure id-overlap gate: too few shared ids means the staged set re-keyed
+    wholesale rather than refreshed. No declared floor skips the check, since
+    some tables' ids legitimately re-mint."""
+    if gate.min_id_overlap is None or prior_count <= 0:
+        return
+    if overlap / prior_count < gate.min_id_overlap:
+        raise ValueError(
+            f"{table}: staged id overlap {overlap}/{prior_count} "
+            f"below floor {gate.min_id_overlap}; wholesale re-key "
+            f"suspected — refusing to swap"
+        )
+
+
+def check_nulls(null_rows: int, gate: QualityGate, table: str) -> None:
+    """Pure NULL probe over the staged rows."""
+    if null_rows > 0:
+        raise ValueError(
+            f"{table}: {null_rows} staging rows have a NULL "
+            f"in {list(gate.not_null_columns)} — refusing to swap"
+        )
+
+
 def staging_columns(conn, spec: TableSyncSpec, exclude: frozenset[str] = frozenset()) -> list[str]:
     """Ordered column names of the staging clone (which mirrors the live
     table). The loader selects exactly these from the mart, so dbt must
@@ -179,9 +202,13 @@ def run_quality_checks(
     """Gather gate inputs from Postgres and apply the pure checks."""
     cur = conn.cursor()
     try:
-        prior_exists, prior_count = prior_live_state(cur, spec)
-        check_counts(loaded_count, prior_count if prior_exists else 0, gate, spec.target_table)
+        # prior_count is 0 when the live table is absent, which check_counts
+        # reads as a cold start.
+        _, prior_count = prior_live_state(cur, spec)
+        check_counts(loaded_count, prior_count, gate, spec.target_table)
 
+        # Guard the query, not just the check: the join is expensive on the
+        # large tables and pointless without a declared floor.
         if gate.min_id_overlap is not None and prior_count > 0:
             cur.execute(
                 f'SELECT count(stg."{spec.pk_column}") '
@@ -189,25 +216,14 @@ def run_quality_checks(
                 f'JOIN "{spec.staging_schema}"."{spec.new_table}" stg '
                 f'ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
             )
-            overlap = cur.fetchone()[0]
-            if overlap / prior_count < gate.min_id_overlap:
-                raise ValueError(
-                    f"{spec.target_table}: staged id overlap {overlap}/{prior_count} "
-                    f"below floor {gate.min_id_overlap}; wholesale re-key "
-                    f"suspected — refusing to swap"
-                )
+            check_id_overlap(cur.fetchone()[0], prior_count, gate, spec.target_table)
 
         if gate.not_null_columns:
             predicate = " OR ".join(f'"{c}" IS NULL' for c in gate.not_null_columns)
             cur.execute(
                 f'SELECT count(*) FROM "{spec.staging_schema}"."{spec.new_table}" ' f"WHERE {predicate}"
             )
-            null_rows = cur.fetchone()[0]
-            if null_rows > 0:
-                raise ValueError(
-                    f"{spec.target_table}: {null_rows} staging rows have a NULL "
-                    f"in {list(gate.not_null_columns)} — refusing to swap"
-                )
+            check_nulls(cur.fetchone()[0], gate, spec.target_table)
         logger.info(
             "Quality checks passed for %s: %d rows (prior %d)",
             spec.target_table,
