@@ -7,7 +7,7 @@ the Astro runtime installed.
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # Captured before the stubbing below poisons sys.modules, so the array
 # adaptation test exercises the real adapter regardless of collection order.
@@ -32,8 +32,7 @@ _STUBS = (
 for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
-from dags.sync_election_api import TABLES, _apply_overlap_override  # noqa: E402
-from include.custom_functions.election_api_utils import QualityGate  # noqa: E402
+from dags.sync_election_api import TABLES  # noqa: E402
 
 
 def test_parents_match_fkey_references():
@@ -47,16 +46,6 @@ def test_parents_match_fkey_references():
             table_to_group[fk.ref_table] for fk in t.spec.fkeys if fk.ref_table != t.spec.target_table
         }
         assert referenced_groups == set(t.parents), t.group_id
-
-
-def test_overlap_override_leaves_undeclared_floors_alone():
-    """The override exists for dev rehearsals against a live table of another
-    id vintage. It must not add a re-key check to a table whose ids
-    legitimately re-mint (ZipToPosition, Projected_Turnout)."""
-    with patch("dags.sync_election_api.Variable.get", return_value="0.5"):
-        assert _apply_overlap_override(QualityGate(cold_start_floor=1)).min_id_overlap is None
-        declared = QualityGate(cold_start_floor=1, min_id_overlap=0.9)
-        assert _apply_overlap_override(declared).min_id_overlap == 0.5
 
 
 def test_psycopg2_adapts_python_lists_to_postgres_arrays():

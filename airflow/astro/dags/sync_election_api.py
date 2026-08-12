@@ -61,10 +61,6 @@ so the API always matches the Databricks mart.
   where the Postgres host is reachable directly.
 - `election_api_swap_enabled` — cutover switch for the set-wise swap.
   Anything but "true" is rehearsal mode (no table is swapped).
-- `election_api_min_id_overlap` (optional) — overrides the staged-vs-live id
-  overlap floor on the tables that declare one. For dev rehearsals whose live
-  tables hold a different id vintage than the mart mints; leave unset in prod
-  to keep each table's declared floor.
 - `election_api_source_schema` (optional) — Databricks schema holding the
   marts. Defaults to `dbt`, the canonical production-quality build, in both
   dev and prod (deliberately not `databricks_dbt_schema`, which points at
@@ -85,7 +81,7 @@ so the API always matches the Databricks mart.
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
@@ -109,7 +105,6 @@ t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
-ID_OVERLAP_VARIABLE = "election_api_min_id_overlap"
 
 # Memory note: load_staging streams a mart into Postgres, but
 # bulk_insert_from_databricks reads one partition at a time over a single
@@ -128,18 +123,6 @@ def _open_pg():
         bastion_conn_id=bastion or None,
         pg_conn_id=PG_CONN_ID,
     )
-
-
-def _apply_overlap_override(gate: QualityGate) -> QualityGate:
-    """Apply the `election_api_min_id_overlap` override to a declared floor.
-
-    Gates that declare no floor keep none, so the override cannot add a
-    re-key check to a table whose ids legitimately re-mint.
-    """
-    override = Variable.get(ID_OVERLAP_VARIABLE, default="").strip()
-    if not override or gate.min_id_overlap is None:
-        return gate
-    return replace(gate, min_id_overlap=float(override))
 
 
 @dataclass(frozen=True)
@@ -521,9 +504,8 @@ def _build_group(table: MartSync) -> dict:
 
         @task
         def quality_checks(loaded_count: int) -> None:
-            gate = _apply_overlap_override(table.gate)
             with _open_pg() as conn:
-                run_quality_checks(conn, spec, gate, loaded_count)
+                run_quality_checks(conn, spec, table.gate, loaded_count)
                 if table.extra_checks:
                     table.extra_checks(conn, spec, loaded_count)
 
