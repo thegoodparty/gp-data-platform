@@ -4,10 +4,9 @@ models:
   - name: int__people_api__voter_h3
     description: >
       Voter → H3 binning for the voter-density heat map. Parses each voter's
-      residence lat/lng and bins to H3 at the published resolutions (one column
-      per resolution). Downstream m_people_api__district_voter_density explodes
-      these columns, joins to the district↔voter bridge, aggregates, and
-      K-suppresses. See packages/people-api/docs/voter-density-heatmap-handoff.md §3.1.
+      residence lat/lng and bins to H3 at the resolutions in the
+      voter_density_h3_resolutions var, one column per resolution. One row per
+      geocoded voter.
     columns:
       - name: voter_id
         description: >
@@ -16,24 +15,9 @@ models:
         data_type: uuid
         data_tests:
           - not_null
-          - unique
-      - name: lalvoterid
-        description: Raw L2 voter id (kept for Phase-0 analysis)
-        data_type: string
-      - name: state
-        description: Two-letter state postal code
-        data_type: string
-      - name: lat
-        description: Parsed residence latitude (try_cast; US-in-bounds)
-        data_type: double
-      - name: lng
-        description: Parsed residence longitude (try_cast; US-in-bounds)
-        data_type: double
-      - name: latlong_accuracy
-        description: >
-          L2 Residence_Addresses_LatLongAccuracy (rooftop / interpolated /
-          zip-centroid) — feeds the Phase-0 accuracy distribution (handoff §6.2).
-        data_type: string
+      - name: h3_r6
+        description: H3 cell id (BIGINT) at resolution 6
+        data_type: bigint
       - name: h3_r7
         description: H3 cell id (BIGINT) at resolution 7
         data_type: bigint
@@ -43,3 +27,51 @@ models:
       - name: h3_r9
         description: H3 cell id (BIGINT) at resolution 9
         data_type: bigint
+    data_tests:
+      # Sampled rather than a full `unique`: this is voter-file grain (~200M rows),
+      # and voter_id is m_people_api__voter.id, which already carries `unique`.
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+            sample_size: 100000
+          config:
+            severity: error
+
+  - name: int__people_api__district_h3_cell_counts
+    description: >
+      Pre-suppression H3 cell counts per district — the shared input to both
+      voter-density marts, so the district↔voter join and the resolution fan-out
+      run once for the feature rather than once per mart. h3_index is NULL for a
+      district's non-geocoded voters, which is what lets the meta mart derive
+      total_voters, geocoded_voters and suppressed_cells from this table alone.
+    columns:
+      - name: district_id
+        description: District identifier, sourced from the bridge and never re-minted.
+        data_type: uuid
+        data_tests:
+          - not_null
+      - name: resolution
+        description: H3 resolution of this row.
+        data_type: int
+        data_tests:
+          - not_null
+      - name: h3_index
+        description: >
+          H3 cell id (BIGINT) at `resolution`, or NULL for the district's
+          non-geocoded voters. NULL rows never produce a published cell.
+        data_type: bigint
+      - name: state
+        description: Two-letter state postal code.
+        data_type: string
+      - name: voter_count
+        description: >
+          Voters in this cell BEFORE K-suppression. Deliberately pre-suppression;
+          consumers apply the voter_density_k threshold themselves.
+        data_type: bigint
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true

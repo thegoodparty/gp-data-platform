@@ -2,8 +2,8 @@
 
 Design and operational reference for the DAG that refreshes the People API serving database
 on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks. The loader builds
-four tables: `Voter` and `DistrictVoter` (partitioned by State), and `District` and
-`DistrictStats` (flat).
+every table in `TABLE_SPECS`: `Voter` and `DistrictVoter` (partitioned by State), and the
+rest flat.
 
 Tickets: DATA-1913 (DAG orchestration) and DATA-2100 (District family), epic DATA-1640 (People API
 data-loading revamp). Latest work is on the active feature branch (currently
@@ -25,7 +25,7 @@ already exists.
 ## Serving schema (`public`, not the Prisma `green` schema)
 
 The loader builds every table into the `public` schema — the data-platform serving replica — not the
-Prisma `green` OLTP schema. The people-api Prisma models declare all four tables `@@schema("green")`,
+Prisma `green` OLTP schema. The people-api Prisma models declare all of these tables `@@schema("green")`,
 and prod's `green.District` carries a `@@unique([type, name, state])` that the loader does **not**
 reproduce. `extract-serving-structure` and every step scope to `nspname='public'`, so
 `_serving_seed.py` mirrors the `public` replica (verified byte-identical to prod on 2026-07-16, so it
@@ -53,9 +53,9 @@ structure — none of which change across `resize` — so correctness is identic
 | `dbt_test_voter_gate` | Run the DATA-1906 voter tests in dbt Cloud (`DbtCloudRunJobOperator`, `steps_override=["dbt test --select m_people_api__voter"]`). Runs locally-in-dbt-Cloud because dbt cannot run on the image's Python 3.14. Always runs (no manifest). |
 | `unload` | Export the voter marts per state to S3 (Databricks Statement Execution API, SQL warehouse only). |
 | `provision` | Create a fresh Aurora cluster + writer on the **copy-phase** instance class, empty cluster parameter groups, connection string to SSM. Reuses the shared S3 gateway VPC endpoint. |
-| `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
+| `create_schema` | Apply CREATE TABLE statements from the committed snapshot for every specced table: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
 | `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
-| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `VACUUM (ANALYZE)` all tables — a freshly bulk-loaded table has an empty visibility map, so this sets it (enabling index-only scans and letting serving-side `count(*)` avoid a full heap scan) in the same pass that refreshes planner stats. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
+| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for every specced table: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `VACUUM (ANALYZE)` all tables — a freshly bulk-loaded table has an empty visibility map, so this sets it (enabling index-only scans and letting serving-side `count(*)` avoid a full heap scan) in the same pass that refreshes planner stats. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
 | `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Runs on the still-scaled-up index instance (before `resize`). Failure halts the DAG. |
 | `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. Finishes with a lightweight post-resize smoke check (`SELECT 1` against the resized cluster) confirming it's reachable. |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`validate`→`resize`. On any post-provision failure (including a `validate` failure, which now runs on the scaled-up writer before `resize`) it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |

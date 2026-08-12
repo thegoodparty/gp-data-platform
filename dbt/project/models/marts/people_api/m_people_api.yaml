@@ -264,19 +264,17 @@ models:
       packages/people-api/docs/voter-density-heatmap-handoff.md §3.2 / §7.
     columns:
       - name: district_id
+        # No relationships test: district_id comes straight from the bridge, which
+        # already asserts this FK, and re-checking it here is a full join of this
+        # table against a view that re-executes m_election_api__district.
         description: Unique identifier for a district (== District.id, salted-uuid)
         data_type: uuid
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('m_people_api__district')
-                field: id
       - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
         description: H3 resolution of this row
         data_type: integer
-        data_tests:
-          - not_null
       - name: h3_index
         description: H3 cell index as an opaque string (h3_h3tostring)
         data_type: string
@@ -299,7 +297,7 @@ models:
           - not_null
           - dbt_utils.accepted_range:
               arguments:
-                min_value: "{{ var('voter_density_k', 10) }}"
+                min_value: "{{ var('voter_density_k') }}"
                 inclusive: true
       - name: state
         description: Two-letter state postal code (loaded into the "State" USState enum)
@@ -307,10 +305,9 @@ models:
         data_tests:
           - not_null
       - name: updated_at
+        # No not_null: the value is current_timestamp().
         description: Mart run time
         data_type: timestamp
-        data_tests:
-          - not_null
     data_tests:
       - unique_combination_sampled:
           arguments:
@@ -329,19 +326,15 @@ models:
       whether to render the map and to draw the legend. See handoff §3.3 / §7.
     columns:
       - name: district_id
+        # No relationships test: see the density mart's district_id note.
         description: Unique identifier for a district (== District.id)
         data_type: uuid
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('m_people_api__district')
-                field: id
       - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
         description: H3 resolution of this row
         data_type: integer
-        data_tests:
-          - not_null
       - name: coverage
         description: rendered_voters / total_voters ∈ [0, 1]
         data_type: double
@@ -352,28 +345,38 @@ models:
                 min_value: 0
                 max_value: 1
                 inclusive: true
+      # AUDIT-ONLY from here down (except state, which the loader maps to the
+      # serving enum). The serve query selects `coverage` and nothing else, so
+      # these columns exist to explain a coverage number without a warehouse
+      # query. Do not assume the app depends on them.
       - name: min_cell_count
-        description: The K (voter_density_k) used for this build
+        description: >
+          AUDIT. The K (voter_density_k) applied to this build, published so the
+          disclosed threshold travels with the data.
         data_type: integer
         data_tests:
           - not_null
       - name: total_voters
-        description: District voters at this resolution grain
+        description: >
+          AUDIT. The district's voters, the coverage denominator. Identical across
+          resolutions: a voter's H3 cell exists at every resolution or at none.
         data_type: integer
         data_tests:
           - not_null
       - name: geocoded_voters
-        description: Voters with a usable H3 at this resolution
+        description: >
+          AUDIT. Voters with a usable H3. Also resolution-invariant, since the
+          binning filter does not vary by resolution.
         data_type: integer
         data_tests:
           - not_null
       - name: rendered_voters
-        description: Sum of voter_count over non-suppressed cells
+        description: AUDIT. Sum of voter_count over non-suppressed cells.
         data_type: integer
         data_tests:
           - not_null
       - name: suppressed_cells
-        description: Cells dropped by K-anonymity suppression
+        description: AUDIT. Cells dropped by K-anonymity suppression.
         data_type: integer
         data_tests:
           - not_null
@@ -383,10 +386,9 @@ models:
         data_tests:
           - not_null
       - name: updated_at
+        # No not_null: the value is current_timestamp().
         description: Mart run time
         data_type: timestamp
-        data_tests:
-          - not_null
     data_tests:
       - unique_combination_sampled:
           arguments:
@@ -396,3 +398,14 @@ models:
             sample_size: 100000
           config:
             severity: error
+      # Suppression accounting. Rendered voters come from cells that survived K,
+      # which are a subset of the geocoded voters, which are a subset of the
+      # district's voters. Pure arithmetic, so it cannot false-positive, and it is
+      # the check that catches a coverage numerator and denominator drifting onto
+      # different populations.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: rendered_voters <= geocoded_voters
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: geocoded_voters <= total_voters
