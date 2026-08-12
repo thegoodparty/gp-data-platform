@@ -3,6 +3,10 @@
 -- Zero-cell district canary at the coarsest published resolution. A district whose
 -- every cell falls below K publishes nothing and the app hides the map.
 --
+-- The 0.25 ceiling below monitors BUILD HEALTH. It is not the app's render/hide
+-- floor — that is a product knob living app-side, keyed on the meta mart's
+-- `coverage` column, and nothing here constrains it.
+--
 -- Checked ONLY at the coarsest resolution, deliberately. Renderability tracks voter
 -- density, not district size: a compact 59-voter town keeps 91% of its voters at
 -- r8, while a spread-out 21k-voter county fails there. So it is the genuinely
@@ -14,8 +18,8 @@
 --
 -- Reads the coarsest resolution present rather than a hardcoded one, so it keeps
 -- working when the resolution list changes. The 0.25 ceiling is deliberately loose:
--- a random 816-district national sample put the true share under 2% at the coarsest
--- resolution. Tighten it once the first prod populate confirms that.
+-- a full build measured 962 of 124,732 districts (0.77%) empty at r6, so this fires
+-- only on a gross regression, which is the point of a canary.
 with
     coarsest as (
         select min(resolution) as resolution

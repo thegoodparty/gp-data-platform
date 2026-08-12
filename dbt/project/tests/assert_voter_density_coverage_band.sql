@@ -2,9 +2,13 @@
 
 -- Coverage band canary at the coarsest published resolution. Larger hexagons
 -- gather more voters per cell, so fewer cells fall below K and most districts
--- should retain nearly all their voters at the coarsest resolution. A random
--- 816-district national sample put over 90% of districts at or above 0.90 coverage
--- there.
+-- should retain nearly all their voters at the coarsest resolution. A full build
+-- measured a median coverage of 0.997 at r6 over 124,732 districts (0.991 at r7,
+-- 0.962 at r8, 0.853 at r9).
+--
+-- The 0.90 below monitors BUILD HEALTH. It is not the app's render/hide floor —
+-- that is a product knob living app-side, keyed on this same `coverage` column, and
+-- nothing here constrains it.
 --
 -- Warn if the median drops below 0.90. A median that low means the typical
 -- district lost a tenth of its voters to suppression even at the most forgiving
