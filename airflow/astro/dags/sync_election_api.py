@@ -277,7 +277,22 @@ TABLES: tuple[MartSync, ...] = (
         source_model="m_election_api__race",
         # ~1M rows; one state at a time bounds worker memory.
         partition_column="state",
-        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        # The projection columns deploy ahead of their data: the migration adds
+        # them nullable, the loader leaves them alone, and the delivery step
+        # drops them from this allowlist once the mart publishes them.
+        gate=QualityGate(
+            cold_start_floor=100_000,
+            min_id_overlap=_GRAPH_ID_OVERLAP,
+            db_owned_columns=frozenset(
+                {
+                    "projected_turnout",
+                    "projected_turnout_lower",
+                    "projected_turnout_upper",
+                    "election_code",
+                    "inference_at",
+                }
+            ),
+        ),
         parents=("place", "position"),
     ),
     MartSync(

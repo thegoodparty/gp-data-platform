@@ -26,7 +26,7 @@ the analyst workflow and patterns, see the **analytics-process** skill.
 | IDs, join keys, join recipes (user→outcome, survey 2-hop, viability) | [`references/joins.md`](references/joins.md) | join `hs_contact_id` to `users_win_candidacy.hubspot_id` (company id) |
 | Win/loss outcome, vote share, self-reported outcome, PMF / satisfaction | [`references/outcomes.md`](references/outcomes.md) | use `candidacy_result` for binary win/loss |
 | Engagement / activation metrics, the Amplitude event landscape, onboarding flow versions, UTM | [`references/engagement.md`](references/engagement.md) | use `is_onboarded` / `has_completed_onboarding_flow` across the 2026-05-07 cutover |
-| Viability Score 2.0 — definition, bands, coverage, calibration | [`references/viability.md`](references/viability.md) | bucket into deciles (the score is bimodal) |
+| Viability Score 2.0 — definition, bands, coverage, calibration | [`references/viability.md`](references/viability.md) | bucket into deciles (band mass is uneven; see viability.md) |
 | Slicing dimensions (office, level, state, party, Pro, ICP) | [`references/segmentation.md`](references/segmentation.md) | **filter** on `icp_office_win` (slice instead) |
 | Win's analysis defaults (resolved scoping, default cohorts, the working-set builder + its column caveats, reviewer doc pointers) | [`references/methodology_defaults.md`](references/methodology_defaults.md) | use the builder's `onboarded` column as the canonical Onboarded cohort |
 | A symptom you're seeing / a recurring trap | [`references/gotchas.md`](references/gotchas.md) | restate a fact the symptom table points elsewhere for |
