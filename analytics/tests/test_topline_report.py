@@ -8,6 +8,7 @@ _MODULE_PATH = (
     Path(__file__).resolve().parents[1] / "projects" / "win_topline_reporting" / "topline_report.py"
 )
 _spec = importlib.util.spec_from_file_location("topline_report", _MODULE_PATH)
+assert _spec is not None and _spec.loader is not None
 topline_report = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(topline_report)
 
