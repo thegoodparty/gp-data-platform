@@ -1731,6 +1731,7 @@ models:
           config:
             # wide catastrophic-breakage guard on the ACTIVE local North Star
             # (count_once, de-duplicated, below the ~14.1M additive per_district);
-            # headline HELD pending a follow-up, so this is only a breakage guard.
+            # headline HELD until the census-direct population backtest validates it,
+            # so this is only a breakage guard.
             where: "cohort = 'active' and metric_variant = 'count_once' and office_type = 'all'"
             severity: warn
