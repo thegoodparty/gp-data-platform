@@ -277,7 +277,8 @@ def model(dbt, session) -> DataFrame:
     if not ce_api_token:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
-    # a run fetches at most this many ids, so no single run monopolizes the cluster
+    # How far an *incremental* run walks the backlog, so no single run monopolizes the
+    # cluster. It deliberately does not bound a full refresh — see the else branch below.
     max_ids_per_run = int(dbt.config.meta_get("max_ids_per_run", 100_000))
 
     # get unique filing period ids from race
@@ -321,7 +322,12 @@ def model(dbt, session) -> DataFrame:
             backlog_ids.orderBy(col("database_id").desc()).limit(headroom)
         )
     else:
-        filing_periods = referenced_ids.orderBy(col("database_id").desc()).limit(max_ids_per_run)
+        # A full refresh replaces the table, so it has to fetch every referenced id.
+        # `max_ids_per_run` bounds how far an incremental run walks the backlog; applying
+        # it here instead truncates the table to the newest ids and drops everything
+        # already stored, which is a silent, large data loss rather than a slow run.
+        logging.info("Full refresh: fetching every referenced id, uncapped")
+        filing_periods = referenced_ids
 
     # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
     filing_periods.cache()
