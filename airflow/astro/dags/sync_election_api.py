@@ -468,9 +468,18 @@ RACE_COLUMNS = [
 ]
 
 # Live columns Prisma owns that the loader deliberately does not supply.
-# Empty today; the projection-columns step will extend it when those columns
-# deploy ahead of their data.
-RACE_DB_OWNED_COLUMNS: frozenset[str] = frozenset()
+# The projection columns deploy ahead of their data: the migration adds them
+# as nullable, the gate tolerates them here (each nightly swap leaves them
+# NULL), and the delivery step moves them into RACE_COLUMNS.
+RACE_DB_OWNED_COLUMNS: frozenset[str] = frozenset(
+    {
+        "projected_turnout",
+        "projected_turnout_lower",
+        "projected_turnout_upper",
+        "election_code",
+        "inference_at",
+    }
+)
 
 
 def _race_constraint_ddl() -> list[str]:
