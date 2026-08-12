@@ -1322,9 +1322,16 @@ models:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')
                 field: id
       - name: contact_email
-        description: Email address of the respondent
+        description: >
+          Email address of the respondent; null when the survey was
+          submitted without an associated contact.
         data_tests:
-          - not_null
+          # Same rationale as hs_contact_id above: an unattributed response
+          # has no contact to source an email from, so a null here must not
+          # block the build.
+          - not_null:
+              config:
+                severity: warn
       - name: icp_win
         description: >
           Whether the respondent's office qualifies for the Win ICP. Sourced

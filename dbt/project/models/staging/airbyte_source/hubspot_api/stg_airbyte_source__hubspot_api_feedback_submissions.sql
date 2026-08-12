@@ -14,9 +14,12 @@ select
     properties:hs_content::string as response_content,
     properties:hs_submission_url::string as submission_url,
 
-    -- contact details (denormalized from HubSpot)
-    properties:hs_contact_id::string as hs_contact_id,
-    properties:hs_contact_email_rollup::string as contact_email,
+    -- contact details (denormalized from HubSpot). A submission can lose its
+    -- associated contact (e.g. deleted/merged in HubSpot) after the fact, which
+    -- blanks these rollup properties to '' rather than null; nullif keeps
+    -- "no linked contact" honestly null instead of an empty string.
+    nullif(properties:hs_contact_id::string, '') as hs_contact_id,
+    nullif(properties:hs_contact_email_rollup::string, '') as contact_email,
     properties:hs_contact_firstname::string as contact_first_name,
     properties:hs_contact_lastname::string as contact_last_name,
 
