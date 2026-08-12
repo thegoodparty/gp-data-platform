@@ -4,9 +4,9 @@
 -- normalized district_name) with the L2 voter count in that intersection
 -- (voters_in_block_district) and the per-(block, type) voter total
 -- (voters_in_block). The block-grain twin of int__zip_code_to_l2_district and
--- the input to int__district_census_allocation (the substrate).
+-- the input to int__district_census_allocation (the allocation).
 --
--- UNPIVOTs the curated substrate district columns
+-- UNPIVOTs the curated allocated district columns
 -- (get_l2_district_columns, scope='allocated') -- the cohort-occupied office-bearing types.
 -- District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
@@ -83,7 +83,7 @@ select
     bd.district_type,
     bd.district_name,
     bd.voters_in_block_district,
-    -- per-(block, district_type) denominator for the substrate's split fraction
+    -- per-(block, district_type) denominator for the allocation's split fraction
     sum(bd.voters_in_block_district) over (
         partition by bd.block_geoid, bd.district_type
     ) as voters_in_block,

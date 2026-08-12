@@ -3606,8 +3606,8 @@ models:
   - name: int__serve_district_resolution
     description: >
       Resolves each serve org to its L2 district: the serve-cohort entry point
-      onto the District/Census substrate (a downstream consumer; election-api
-      quarantined here, not in the substrate). Part of the Constituents Served
+      onto the district population allocation (a downstream consumer; election-api
+      quarantined here, not in the allocation). Part of the Constituents Served
       pipeline
       (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
       organization_type = 'serve'), resolved to the L2 district the official
@@ -3789,7 +3789,7 @@ models:
 
   - name: int__district_census_allocation
     description: >
-      THE SUBSTRATE (DATA-1992, epic DATA-1359). One row per (census block,
+      THE DISTRICT POPULATION ALLOCATION (DATA-1992, epic DATA-1359). One row per (census block,
       district_type, normalized district_name) with the 2020 decennial
       population allocated to that district in that block: allocated_population
       = pct_of_geo * block_population, where pct_of_geo is the within-(block,
@@ -3817,7 +3817,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (the curated substrate subset)
+        description: L2 district column name (the curated allocated type set)
         data_tests:
           - not_null
       - name: district_name
@@ -3896,12 +3896,12 @@ models:
 
   - name: int__district_population
     description: >
-      The local-district rollup of the substrate: one row per
+      The local-district rollup of the allocation: one row per
       (state_postal_code, district_type, district_name), a pure GROUP BY over
-      int__district_census_allocation. Because the substrate conserves mass per
+      int__district_census_allocation. Because the allocation conserves mass per
       (block, district_type), district_population is the
       block-population-weighted district total, and it is fractional by design.
-      Local (curated substrate) types only; statewide rows use a different
+      Local (curated allocated) types only; statewide rows use a different
       population basis (exact whole-state census including zero-voter blocks)
       and live in district_census_stats, which unions this rollup with that
       branch. Extracted out of that mart so district-grain consumers in the
@@ -3914,7 +3914,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (the curated substrate subset)
+        description: L2 district column name (the curated allocated type set)
         data_tests:
           - not_null
       - name: district_name
@@ -3925,7 +3925,7 @@ models:
         description: >
           Census population allocated to the district (fractional by design;
           round for display). Voter-block allocated, so it carries the
-          substrate's documented zero-voter-block undercount.
+          allocation's documented zero-voter-block undercount.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -3954,12 +3954,12 @@ models:
       voters; people_served reads it as count-once(set) = sum(served_voters /
       total_voters * block_population) over served blocks. Count-once is a
       distinct-PERSON union across overlapping district types, which the counts-only
-      substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
+      allocation cannot produce (cross-type voter dedup needs voter IDs), so this model
       scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
       TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
-      district types as the substrate (get_l2_major_district_columns), so count-once <=
+      district types as the allocation (get_l2_district_columns, scope='allocated'), so count-once <=
       count-multiple holds. served_set is 'all' (served by any cohort district) or one
-      of the substrate's L2 district types; statewide officials are read from the exact T5
+      of the allocation's L2 district types; statewide officials are read from the exact T5
       'State' rows in people_served, not here. served_voters_active is the same count
       restricted to the active cohort (in_people_served_cohort on the resolver); active
       <= all block-for-block.
@@ -3995,7 +3995,7 @@ models:
                 inclusive: true
       - name: total_voters
         description: >
-          Distinct voters in this block carrying >=1 of the substrate's district values
+          Distinct voters in this block carrying >=1 of the allocation's district values
           (the count-once denominator; ~= the block's total voters since County covers
           essentially all)
         data_tests:

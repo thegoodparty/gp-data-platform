@@ -7,15 +7,15 @@
 -- State_House_District's null share to 73%, which is invisible in a headline number and
 -- glaring here.
 --
--- Scoped to (state, type) pairs the substrate actually covers. Types outside the
--- curated substrate subset are 100% null by design, not by breakage, so including them
+-- Scoped to (state, type) pairs the allocation actually covers. Types outside the
+-- curated allocated type set are 100% null by design, not by breakage, so including them
 -- would make the test meaningless.
 --
 -- Threshold: 35%. The worst covered type today is City_School_District at 13.9% over 41
 -- qualifying types, so this clears real drift while still tripping on a padding-class
 -- regression. Raise it only with the measurement that justifies it.
 with
-    substrate_covered as (
+    allocation_covered as (
         select distinct state_postal_code as state, district_type
         from {{ ref("int__district_population") }}
     ),
@@ -24,9 +24,9 @@ with
         select icp.l2_district_type, icp.district_population
         from {{ ref("int__icp_offices") }} as icp
         join
-            substrate_covered
-            on substrate_covered.state = icp.state
-            and substrate_covered.district_type = icp.l2_district_type
+            allocation_covered
+            on allocation_covered.state = icp.state
+            and allocation_covered.district_type = icp.l2_district_type
         where
             icp.is_matched
             and not coalesce(icp.is_judicial, false)

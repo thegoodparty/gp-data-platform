@@ -1,4 +1,4 @@
--- int__district_census_allocation: THE SUBSTRATE. One row per
+-- int__district_census_allocation: THE DISTRICT POPULATION ALLOCATION. One row per
 -- (census block, district_type, normalized district_name) carrying the 2020
 -- decennial census population allocated to that district within that block.
 -- The split fraction is the within-(block, district_type) L2 voter share

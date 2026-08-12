@@ -8,7 +8,7 @@ with
     ),
 
     l2_match as (
-        -- the substrate normalizes district names (case, whitespace, trailing
+        -- the allocation normalizes district names (case, whitespace, trailing
         -- "(EST.)"); the match snapshot does not, so carry a normalized copy for
         -- the population join and the voter-count fallback below.
         select
@@ -72,7 +72,7 @@ select
     ) as voter_count,
     -- census constituents for the same district. Carried for sizing and market
     -- analysis; no ICP gate reads it yet. Null where the district's type is
-    -- outside the census substrate's curated type set, so it is not a
+    -- outside the allocation's curated type set, so it is not a
     -- drop-in replacement for voter_count today.
     district_pop.district_population,
     position.is_judicial,
