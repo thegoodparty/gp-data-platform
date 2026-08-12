@@ -12,6 +12,10 @@
                       (Precinct). The two accepted_values tests on district_type
                       read this list, so it is the single source of truth.
 
+    Holding both lists in one macro couples the two consumer sets: editing
+    either scope's list marks the other scope's downstream models
+    state:modified, not just its own.
+
     Args:
         scope (str): 'all' or 'allocated'.
 

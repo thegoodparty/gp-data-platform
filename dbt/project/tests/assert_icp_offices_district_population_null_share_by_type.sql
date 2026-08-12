@@ -12,7 +12,12 @@
 -- them
 -- would make the test meaningless.
 --
--- Threshold: 35%. The worst covered type today is City_School_District at 13.9% over 41
+-- The denominator here is every matched, non-judicial, non-appointed office
+-- (Win and Serve), not Serve-ICP alone -- don't read a type's null share as a
+-- Serve coverage gap.
+--
+-- Threshold: 35%. The worst covered type today is Multi_township_Assessor at 29.1%
+-- over 48
 -- qualifying types, so this clears real drift while still tripping on a padding-class
 -- regression. Raise it only with the measurement that justifies it.
 with
