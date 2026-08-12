@@ -7,7 +7,7 @@
 -- the input to int__district_census_allocation (the substrate).
 --
 -- UNPIVOTs the curated substrate district columns
--- (get_l2_major_district_columns) -- the cohort-occupied office-bearing types.
+-- (get_l2_district_columns, scope='allocated') -- the cohort-occupied office-bearing types.
 -- District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
 -- normalized_district_name (L2 "(EST.)"/whitespace drift between snapshots).

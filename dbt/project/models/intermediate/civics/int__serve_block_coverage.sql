@@ -14,7 +14,7 @@
 -- because the ~230M-row unpivot is heavy.
 --
 -- Scoped to the SAME district types as the substrate
--- (get_l2_major_district_columns),
+-- (get_l2_district_columns, scope='allocated'),
 -- so count-once <= count-multiple holds for the substrate's curated type set. state is
 -- derived from the block's geoid FIPS prefix (the substrate's rule), matching the
 -- substrate block-for-block; the '06'=6 numeric coercion is proven (the merged
