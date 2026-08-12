@@ -1,4 +1,4 @@
--- int__voter_turnout_lgbm_inference builds ONE opp_{year} opportunity flag
+-- int__voter_turnout_inference builds ONE opp_{year} opportunity flag
 -- per year from EITHER AnyElection_{year} OR OtherElection_{year} rows. That collapse
 -- is prefix-safe only because the opportunity source obeys the L2 parity invariant:
 -- AnyElection rows are odd-year-only and OtherElection rows are even-year-only
@@ -10,7 +10,7 @@
 -- The table is loaded outside dbt (promoted alongside the model versions), so it is
 -- addressed directly; the schema mirrors the model's PROD default
 -- (voter_turnout_precincts_schema = model_predictions).
--- depends_on: {{ ref("int__voter_turnout_lgbm_inference") }}
+-- depends_on: {{ ref("int__voter_turnout_inference") }}
 with
     parity_violations as (
         select election_year_str, count(*) as rows

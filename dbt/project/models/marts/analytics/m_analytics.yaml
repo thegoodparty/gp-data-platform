@@ -1307,9 +1307,16 @@ models:
         data_tests:
           - not_null
       - name: hs_contact_id
-        description: HubSpot contact ID of the respondent
+        description: >
+          HubSpot contact ID of the respondent; null when the survey was
+          submitted without an associated contact.
         data_tests:
-          - not_null
+          # Unattributed responses are a real and expected outcome for a web
+          # survey, so a null here must not block the build. Severity warn keeps
+          # a rise in unattributed submissions visible without failing prod.
+          - not_null:
+              config:
+                severity: warn
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')
@@ -1509,9 +1516,15 @@ models:
                 min_value: 1
                 max_value: 5
       - name: hs_contact_id
-        description: HubSpot contact ID of the respondent
+        description: >
+          HubSpot contact ID of the respondent; null when the survey was
+          submitted without an associated contact.
         data_tests:
-          - not_null
+          # Same rationale as the PMF survey mart: unattributed web-survey
+          # responses are expected, so surface them rather than blocking.
+          - not_null:
+              config:
+                severity: warn
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')

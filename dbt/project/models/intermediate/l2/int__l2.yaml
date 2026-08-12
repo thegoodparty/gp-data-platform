@@ -96,12 +96,13 @@ models:
   - name: int__l2_nationwide_uniform
     description: "The voter file, with l2_manual_district_assignments applied"
 
-  - name: int__voter_turnout_lgbm_inference
+  - name: int__voter_turnout_inference
     description: >
-      Nationwide district-level voter-turnout projections from the LightGBM
-      models. One row per (state, district_type, district_name,
-      election_year, election_code). Replaces the per-state inference models.
-      Projections are known to skew high (calibration caveat from research).
+      Nationwide district-level voter-turnout projections from the registered
+      turnout models. One row per (state, district_type, district_name,
+      election_year, election_code). model_version records the model family
+      that produced each row, so the underlying model can be swapped without
+      renaming anything.
     config:
       meta:
         # Most recent year of L2 vote history present (drives the feature window).
@@ -150,12 +151,46 @@ models:
         tests:
           - not_null
       - name: ballots_projected
-        description: "Projected ballots = round(sum(p_hat * n_voters)) over the district's precincts."
+        description: >
+          Projected ballots = round(sum(p_hat * n_voters)) over the district's
+          precincts, floored at 3 ballots (the serving floor; bounds share it).
         tests:
+          - not_null
           - dbt_utils.accepted_range:
               arguments:
-                min_value: 0
+                min_value: 3
                 inclusive: true
+      - name: ballots_projected_lower
+        description: >
+          Lower prediction bound (p25). Applies the per-model residual
+          quantile at the district's implied predicted rate:
+          round(clip(pred_rate + q25 * w(pred_rate), 0, 1) * district_voters),
+          floored at 3 with the point. w is sqrt(p*(1-p)) for 'binom' models
+          and sqrt(1-p) for 'taper_top' (low-turnout local) models. Always
+          populated: params are required at load and predictions are asserted
+          finite at source.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: ballots_projected_upper
+        description: >
+          Upper prediction bound (p95), the risk-relevant band for win-number
+          planning. Same construction as ballots_projected_lower with q95.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: model_slug
+        description: >
+          Registered-model slug that produced the row (provenance; the
+          election_code is derived from it at prediction time).
+        tests:
+          - not_null
       - name: model_version
         description: "model_family value (load-bearing - part of the election-api projected_turnout id)."
         tests:
@@ -174,6 +209,12 @@ models:
               - election_year
               - election_code
               - model_version
+      - dbt_utils.expression_is_true:
+          name: voter_turnout_inference_bounds_ordering
+          arguments:
+            expression: >
+              ballots_projected_lower <= ballots_projected
+              and ballots_projected <= ballots_projected_upper
 
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"

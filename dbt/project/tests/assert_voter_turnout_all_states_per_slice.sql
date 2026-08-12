@@ -1,6 +1,6 @@
--- Every (election_year, election_code) slice of the nationwide turnout
--- inference must cover every state (50 + DC). The column-level distinct-values test
--- on `state` checks the table as a whole, which would miss one slice losing states
+-- Every (election_year, election_code) slice of the nationwide turnout inference
+-- must cover every state (50 + DC). The column-level distinct-values test on
+-- `state` checks the table as a whole, which would miss one slice losing states
 -- while another keeps them (e.g. a partial per-year rebuild). Full coverage per slice
 -- is the contract: the model intentionally predicts for every precinct (hypothetical
 -- turnout semantics — see the model docstring; research decision 2026-07-07).
@@ -14,14 +14,11 @@ with
             {%- endif %}
         {% endfor %}
     ),
-    slices as (
-        select distinct election_year, election_code
-        from {{ ref("int__voter_turnout_lgbm_inference") }}
-    ),
     observed as (
         select distinct election_year, election_code, state
-        from {{ ref("int__voter_turnout_lgbm_inference") }}
-    )
+        from {{ ref("int__voter_turnout_inference") }}
+    ),
+    slices as (select distinct election_year, election_code from observed)
 select s.election_year, s.election_code, e.state as missing_state
 from slices as s
 cross join expected_states as e
