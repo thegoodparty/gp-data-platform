@@ -92,6 +92,18 @@ with
                 partition by br_candidate_id order by office_holder_updated_at desc
             )
             = 1
+    ),
+
+    -- The API contract is "pledged on any candidacy", so roll the candidacy
+    -- flag up to person grain. Keyed on gp_person_id, not gp_candidate_id: the
+    -- two agree on 2026+ rows, but 2025 archive candidacies carry a
+    -- HubSpot-derived gp_candidate_id that would never match a person, dropping
+    -- their pledges. The group by keeps this one row per person.
+    pledged as (
+        select gp_person_id, bool_or(coalesce(is_pledged, false)) as is_pledged
+        from {{ ref("candidacy") }}
+        where gp_person_id is not null
+        group by gp_person_id
     )
 
 select
@@ -123,9 +135,14 @@ select
     people.phone,
     br_person.degrees,
     br_person.experiences,
-    people.state
+    people.state,
+    -- NOT NULL in the API, so emit false rather than null for the unpledged.
+    coalesce(pledged.is_pledged, false) as is_pledged,
+    -- Digit string, not a uuid: the gp-api User.id is a numeric autoincrement.
+    people.gp_api_user_id
 from public_people as people
 left join br_person on people.br_person_id_int = br_person.database_id
 left join
     office_holder_person as office_holder
     on people.br_person_id_int = office_holder.br_candidate_id
+left join pledged on people.gp_person_id = pledged.gp_person_id

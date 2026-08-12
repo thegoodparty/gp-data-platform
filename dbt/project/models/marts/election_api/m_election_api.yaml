@@ -775,6 +775,21 @@ models:
           - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
+      - name: is_pledged
+        description: >
+          Whether the person took the GoodParty pledge on any candidacy, rolled
+          up from candidacy.is_pledged on gp_person_id. The API column is NOT
+          NULL DEFAULT false, so the unpledged must be false, never null.
+        tests:
+          - not_null
+      - name: gp_api_user_id
+        description: >
+          gp-api User.id for this person, carried from people.gp_api_user_id.
+          A digit string, not a uuid (the gp-api id is a numeric autoincrement).
+          gp-api reads it to set its own User.person_id, which is what unlocks
+          the public profile editor. Null when the person has no gp-api user, or
+          when the person's cluster maps to more than one gp-api user (people
+          only makes the id scalar when it is unambiguous).
 
   - name: m_election_api__office_holder
     description: >
