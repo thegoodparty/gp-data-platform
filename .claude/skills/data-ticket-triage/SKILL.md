@@ -132,21 +132,9 @@ Run the affected mart too, not just the model you edited, and confirm the record
 
 ## 7. Open the PR and clear review
 
-```bash
-pre-commit run --files <changed files>   # sqlfmt will reformat; re-run until clean
-```
+Use the **`pull-request` skill** for this step — it covers the pre-commit gate, triggering the delegate reviewer, judging its findings, and reporting approval with CI state.
 
-PR body: root cause, the fix and why it is shaped that way, and a verification section with the actual numbers. If a generalized process would help future tickets of this class, propose it in the PR description. Otherwise keep it short.
-
-Then the review loop:
-
-```bash
-gh pr comment <n> --body "delegate review"
-```
-
-`claude[bot]` posts a generic "comment `@claude review`" notice on open — that is not the reviewer and does not need action. Wait for `delegate-reviewer[bot]`.
-
-On requested changes, be judicious. Make the fix if it is real; comment declining with a reason if it is picky or an unlikely corner case. Do not overengineer to satisfy it. Then comment `delegate review` again and repeat until it approves.
+Two things specific to a ticket PR: the body leads with the root cause, the fix and why it is shaped that way, and a verification section with the actual numbers from step 6. And if a generalized process would help future tickets of this class, propose it in the PR description. Otherwise keep it short.
 
 ## dbt Cloud CLI gotchas
 
