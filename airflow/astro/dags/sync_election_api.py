@@ -548,7 +548,9 @@ def _build_group(table: MartSync) -> dict:
     catchup=False,
     default_args={
         "owner": "Data Engineering Team",
-        "retries": 3,
+        # Two attempts: a step that fails twice is not a transient network
+        # blip, and a fast red run surfaces it instead of burying it in retries.
+        "retries": 1,
         "retry_delay": duration(seconds=30),
     },
     tags=["election_api", "postgres"],
