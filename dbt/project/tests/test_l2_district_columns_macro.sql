@@ -20,10 +20,9 @@ with
         select
             'allocated_subset_of_all' as check_name,
             {{
-                get_l2_district_types(scope="allocated")
-                | reject("in", get_l2_district_types())
-                | list
-                | length
+                get_l2_district_types(scope="allocated") | reject(
+                    "in", get_l2_district_types()
+                ) | list | length
             }} as actual,
             0 as expected
 

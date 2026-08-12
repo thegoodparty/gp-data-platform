@@ -8,7 +8,8 @@
 -- glaring here.
 --
 -- Scoped to (state, type) pairs the allocation actually covers. Types outside the
--- curated allocated type set are 100% null by design, not by breakage, so including them
+-- curated allocated type set are 100% null by design, not by breakage, so including
+-- them
 -- would make the test meaningless.
 --
 -- Threshold: 35%. The worst covered type today is City_School_District at 13.9% over 41

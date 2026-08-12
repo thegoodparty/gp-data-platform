@@ -60,7 +60,11 @@ with
                 cast(residence_addresses_complete_census_geocode as string), 15, '0'
             ) as block_geoid,
             lalvoterid,
-            {{ get_l2_district_columns(scope="allocated", use_backticks=true, cast_to_string=true) }}
+            {{
+                get_l2_district_columns(
+                    scope="allocated", use_backticks=true, cast_to_string=true
+                )
+            }}
         from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
@@ -73,15 +77,21 @@ with
             {{ normalize_l2_district_name("district_value") }} as district_name
         from
             l2 unpivot (
-                district_value for district_column_name
-                in ({{ get_l2_district_columns(scope="allocated", use_backticks=false) }})
+                district_value for district_column_name in (
+                    {{
+                        get_l2_district_columns(
+                            scope="allocated", use_backticks=false
+                        )
+                    }}
+                )
             )
         where
             district_value is not null
             and trim(district_value) != ''
             -- drop values that normalize to empty (e.g. a bare "(EST.)"), mirroring
             -- int__l2_block_district_map so the voter grain (and thus total_voters)
-            -- stays identical to the allocation across refreshes (verified 0-diff today)
+            -- stays identical to the allocation across refreshes (verified 0-diff
+            -- today)
             and trim({{ normalize_l2_district_name("district_value") }}) != ''
     ),
 

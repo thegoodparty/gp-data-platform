@@ -328,7 +328,9 @@
 {% endmacro %}
 
 
-{% macro get_l2_district_columns(scope="all", use_backticks=true, cast_to_string=false) %}
+{% macro get_l2_district_columns(
+    scope="all", use_backticks=true, cast_to_string=false
+) %}
     {#-
     The same list as SQL text for SELECT or UNPIVOT.
 

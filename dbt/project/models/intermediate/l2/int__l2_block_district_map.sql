@@ -7,7 +7,8 @@
 -- the input to int__district_census_allocation (the allocation).
 --
 -- UNPIVOTs the curated allocated district columns
--- (get_l2_district_columns, scope='allocated') -- the cohort-occupied office-bearing types.
+-- (get_l2_district_columns, scope='allocated') -- the cohort-occupied office-bearing
+-- types.
 -- District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
 -- normalized_district_name (L2 "(EST.)"/whitespace drift between snapshots).
@@ -34,7 +35,11 @@ with
             ) as block_geoid,
             lalvoterid,
             loaded_at,
-            {{ get_l2_district_columns(scope="allocated", use_backticks=true, cast_to_string=true) }}
+            {{
+                get_l2_district_columns(
+                    scope="allocated", use_backticks=true, cast_to_string=true
+                )
+            }}
         from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
@@ -48,8 +53,13 @@ with
             {{ normalize_l2_district_name("district_value") }} as district_name
         from
             l2 unpivot (
-                district_value for district_column_name
-                in ({{ get_l2_district_columns(scope="allocated", use_backticks=false) }})
+                district_value for district_column_name in (
+                    {{
+                        get_l2_district_columns(
+                            scope="allocated", use_backticks=false
+                        )
+                    }}
+                )
             )
         where
             district_value is not null

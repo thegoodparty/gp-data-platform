@@ -4,7 +4,8 @@
 -- nationwide, PLUS one clearly-flagged statewide row per state (50 + DC).
 --
 -- Local rows come from int__district_population, the rollup of
--- int__district_census_allocation (THE DISTRICT POPULATION ALLOCATION). The allocation already
+-- int__district_census_allocation (THE DISTRICT POPULATION ALLOCATION). The
+-- allocation already
 -- conserves mass (allocations sum to block population per (block, type)), so
 -- district_population = sum(allocated_population) is the block-population-weighted
 -- district total. It is FRACTIONAL by design (exact mass conservation; round for
