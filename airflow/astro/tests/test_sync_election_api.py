@@ -36,6 +36,7 @@ from dags.sync_election_api import (  # noqa: E402
     EOS_COLUMNS,
     PT_COLUMNS,
     RACE_COLUMNS,
+    RACE_DB_OWNED_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _pt_quality_gate,
@@ -181,6 +182,24 @@ def test_race_columns_match_prisma_shape():
     # round-trip the loader comment documents.
     assert RACE_COLUMNS[0] == "id"
     assert {"frequency", "position_names"} <= set(RACE_COLUMNS)
+
+
+def test_race_projection_columns_bridge():
+    """The projection columns deploy to live Race ahead of their data: the
+    gate must tolerate them as live-extra (each nightly swap leaves them
+    NULL until the loader delivers them), and they must not be
+    loader-supplied yet. NB the migration itself must not land mid-run:
+    staging is LIKE-cloned from live at run start, so a mid-run migration
+    is silently undone by that night's swap."""
+    expected = {
+        "projected_turnout",
+        "projected_turnout_lower",
+        "projected_turnout_upper",
+        "election_code",
+        "inference_at",
+    }
+    assert expected == RACE_DB_OWNED_COLUMNS
+    assert expected.isdisjoint(set(RACE_COLUMNS))
 
 
 def test_pt_quality_gate_refuses_duplicate_keys():
