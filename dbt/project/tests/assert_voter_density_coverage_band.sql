@@ -2,9 +2,9 @@
 
 -- Coverage band canary at the coarsest published resolution. Larger hexagons
 -- gather more voters per cell, so fewer cells fall below K and most districts
--- should retain nearly all their voters at the coarsest resolution. A stratified
--- 36-district sample across 6 district types measured a median coverage of about
--- 0.99 there, with the single worst district at 0.61.
+-- should retain nearly all their voters at the coarsest resolution. A random
+-- 816-district national sample put over 90% of districts at or above 0.90 coverage
+-- there.
 --
 -- Warn if the median drops below 0.90. A median that low means the typical
 -- district lost a tenth of its voters to suppression even at the most forgiving

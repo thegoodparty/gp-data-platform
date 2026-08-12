@@ -3,20 +3,19 @@
 -- Zero-cell district canary at the coarsest published resolution. A district whose
 -- every cell falls below K publishes nothing and the app hides the map.
 --
--- Checked ONLY at the coarsest resolution, deliberately. At the finest resolution
--- a large share of districts legitimately publish nothing: roughly 46% of
--- non-State districts hold under 2k voters, and the finest cells are small enough
--- that most of those suppress entirely. A threshold spanning all resolutions would
--- either warn on every run from day one or have to be set so loose it detects
--- nothing. The coarsest resolution is the one where a healthy build should have
--- very few empty districts, so it is where an empty result is actually a signal.
+-- Checked ONLY at the coarsest resolution, deliberately. Renderability tracks voter
+-- density, not district size: a compact 59-voter town keeps 91% of its voters at
+-- r8, while a spread-out 21k-voter county fails there. So it is the genuinely
+-- sparse districts that suppress entirely at the finest resolution, and a threshold
+-- spanning all resolutions would have to be set so loose it detects nothing. At the
+-- coarsest resolution a healthy build should have very few empty districts, so an
+-- empty result there points at the district-voter join, the H3 binning, or the K
+-- predicate rather than at geography.
 --
 -- Reads the coarsest resolution present rather than a hardcoded one, so it keeps
--- working when the resolution list changes. The 0.25 ceiling is still a
--- provisional bound to tighten once the first prod populate gives a baseline; a
--- regression in the district-voter join, the H3 binning, or the K predicate shows
--- up here as most districts publishing nothing even at the most forgiving
--- resolution.
+-- working when the resolution list changes. The 0.25 ceiling is deliberately loose:
+-- a random 816-district national sample put the true share under 2% at the coarsest
+-- resolution. Tighten it once the first prod populate confirms that.
 with
     coarsest as (
         select min(resolution) as resolution
