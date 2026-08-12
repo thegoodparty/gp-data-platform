@@ -34,7 +34,7 @@ with
             ) as block_geoid,
             lalvoterid,
             loaded_at,
-            {{ get_l2_major_district_columns(use_backticks=true, cast_to_string=true) }}
+            {{ get_l2_district_columns(scope="allocated", use_backticks=true, cast_to_string=true) }}
         from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
@@ -49,7 +49,7 @@ with
         from
             l2 unpivot (
                 district_value for district_column_name
-                in ({{ get_l2_major_district_columns(use_backticks=false) }})
+                in ({{ get_l2_district_columns(scope="allocated", use_backticks=false) }})
             )
         where
             district_value is not null
