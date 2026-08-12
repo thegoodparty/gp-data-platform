@@ -2,6 +2,26 @@ brief_id: win-topline-election-buckets
 created: 2026-07-22
 author: framing routine (refined with tristan)
 amended: |
+  2026-08-03, all-hands re-run round (owner-approved in chat; three forks
+  resolved via AskUserQuestion + one follow-up):
+  - Buckets: keep last round's cuts (summer_2025, november_2025, y2026) for the
+    whole deck; Amanda's "pre-Nov 2025" phrasing is served by summer_2025.
+  - Pro-dating: run on the 2026-07-24 new logic ('Account - Pro Subscription
+    Confirmed/Canceled' channel + cancel gate), with the per-bucket restatement
+    delta shown. Staged local edits committed for reproducibility.
+  - Retention signal: define weekly "active" as a voter-outreach campaign send
+    ('Voter Outreach - Campaign Completed'), the SAME event as is_activated, so
+    the curve does not redefine engagement and sidesteps the dead dashboard-view
+    event (in-data gap after 2026-06-13).
+  - NEW deliverable: Win signup-anchored classic retention curves (net-new,
+    see retention_curve: below). Win-only per Amanda's framing; no Serve curve.
+  - Adjunct pulls (see adjunct_deliverables: below): Serve Users # (warehouse),
+    Serve waitlist # (HubSpot, Amanda pulls, external), Win W+1 retention % & #
+    (governed OKR chart owc6mfnp, not this script).
+  - Semantic layer: nothing ratified yet (all sem_* metrics project as pending);
+    figures are consistent with the pending definitions, which point at the same
+    marts. No headline can be labeled "ratified" this round.
+
   2026-07-22, after the two-reviewer pass (owner-approved fix sets): anchored
   activation column added; Pro evidence layer split (stripe/fallback) added;
   y2026 bucket split into held/upcoming at run date; past_due excluded from
@@ -54,6 +74,27 @@ amended: |
   Stripe events 2025-08-25+, P2P self-serve pay-per-send 2025-09), not a
   gating change.
 
+  2026-07-24, Pro-dating channel round (owner-approved in chat; two forks
+  resolved via AskUserQuestion: report-only scope, cancel gating on):
+  colleague tip surfaced two server-side Segment events (gp-api) landing in
+  Amplitude. 'Account - Pro Subscription Confirmed' (added 2025-06-27, omni
+  PR #319) fires on Stripe checkout AND on admin isPro=true grants
+  (paymentMethod='admin', price=0) - the admin path dates the comped grants
+  QD left dark: it rescues ~196 of the ~777 previously undatable current
+  Pros (all paymentMethod='admin'), dropping undatable from ~55-57% to
+  ~42%. In-data 2025-07-07..2026-04-13; live in code but silent since April
+  (possible instrumentation break, footnoted; residual darkness =
+  pre-2025-06-27 grants + post-2026-04-13 grants + billing-email mismatch).
+  'Account - Pro Subscription Canceled' (added 2025-09-17, code-retired
+  2026-07-13 omni PR #732, historical signal only) now gates the non-Stripe
+  fallback: Pro-at-D requires an upgrade signal <= D with no cancel event
+  after that signal and <= D; a later upgrade signal re-qualifies. V2
+  checkout events (Pro Upgrade - Success Viewed, 2026-06-17+) add only ~2
+  users - not included. pro_at_election is NOT 1:1 comparable with the
+  2026-07-22/23 runs; this run prints a per-bucket delta vs the prior
+  logic. dbt milestone-model change (int__amplitude_user_milestones)
+  deliberately out of scope - separate follow-up.
+
 decision:
   what_action: |
     Report top-line Win adoption figures (accounts created/registered, activated,
@@ -90,7 +131,11 @@ population:
     dbt.stg_airbyte_source__stripe_api_subscriptions + _customers (Pro tenure
     intervals, joined by lowercased email, livemode only, status !=
     incomplete_expired); dbt.int__amplitude_user_milestones
-    .pro_upgrade_completed_at (secondary Pro-upgrade timing evidence).
+    .pro_upgrade_completed_at (secondary Pro-upgrade timing evidence);
+    dbt.stg_airbyte_source__amplitude_api_events, event_types 'Account - Pro
+    Subscription Confirmed' (4th upgrade-signal channel, incl. admin/comped
+    grants) and 'Account - Pro Subscription Canceled' (fallback cancel gate)
+    - 2026-07-24 amendment.
 
 data_provenance:
   schema_status: prod
@@ -127,9 +172,13 @@ target:
     (3) pro_at_election - evidence-only point-in-time Pro at
         D = LEAST(bucket_date, run date), layered: users with Stripe history
         judged by an interval covering D (open-ended intervals count only
-        while status='active'); users without Stripe fall back to any upgrade
-        signal (Amplitude milestone, HubSpot pro_upgrade_date) on or before D.
-        The fallback layer is churn-blind (overcount channel); the
+        while status='active'); users without Stripe fall back to the latest
+        upgrade signal (Amplitude milestone, HubSpot pro_upgrade_date, or
+        'Account - Pro Subscription Confirmed' - 2026-07-24 amendment) on or
+        before D, gated by 'Account - Pro Subscription Canceled': no cancel
+        event after that signal and on or before D (a later upgrade signal
+        re-qualifies). The fallback layer remains churn-blind for users with
+        no cancel event (Canceled exists 2025-09-17..2026-07-13 only); the
         pro_at_stripe / pro_at_fallback split columns expose it.
     (4) pro_today - users_win_candidacy.is_pro reference column, so the
         ~716 current-Pro users with no timing evidence stay visible.
@@ -211,9 +260,14 @@ known_concerns:
     Re-runs restate history slightly (as-of flags, bucket migration for
     multi-candidacy users, held/upcoming migration as elections pass).
   - |
-    pro_at_election is evidence-only and undercounts: 716 of 1,301 current-Pro
-    users (55%) have no timing signal in Stripe/Amplitude/HubSpot; pro_today
-    reference column keeps them visible.
+    pro_at_election is evidence-only and undercounts: after the 2026-07-24
+    channel addition (~196 admin/comped Pros rescued by 'Account - Pro
+    Subscription Confirmed'), ~42% of current-Pro users still have no timing
+    signal in any channel (pre-2025-06-27 grants, post-2026-04-13 grants
+    while the event is silent, billing-email mismatch); pro_today reference
+    column keeps them visible. The Confirmed event is live in code but
+    silent in-data since 2026-04-13 - possible instrumentation break, so
+    coverage will not improve for newer admin grants until that is resolved.
   - |
     Stripe join is by lowercased email; product-vs-Stripe email mismatches
     lose evidence. HubSpot pro dates near-empty (23 users) - included but
@@ -244,6 +298,98 @@ execution_notes:
     - |
       3. Report the dropped dated-outside-buckets user count (footnote).
     - |
-      4. Report pro_at_election evidence-layer overlap (Stripe vs Amplitude).
+      4. Report pro_at_election evidence-layer overlap (Stripe vs Amplitude,
+      incl. the 'Account - Pro Subscription Confirmed' channel).
     - |
       5. Reconcile: bucket totals + dropped = era population total.
+    - |
+      6. Report the count of non-Stripe users whose fallback Pro-at-D was
+      gated off by a cancel event (2026-07-24 amendment).
+
+retention_curve:
+  added: 2026-08-03
+  question: |
+    For activated Win users, what share remain active in each week after
+    signup, cohorted by their election date? Classic signup-anchored
+    retention curve (Amanda's framing).
+  type: descriptive
+  population: |
+    Activated Win users only (is_activated / first_campaign_sent_at not null).
+    Same universe/hygiene as the funnel report (latest-version, non-demo,
+    excl. @goodparty.org).
+  anchor: |
+    Signup week = date_trunc('week', user_created_at). X-axis = weeks since
+    signup (week 0 = signup week).
+  active_definition: |
+    A user is "active" in week w iff they sent >=1 voter-outreach campaign
+    ('Voter Outreach - Campaign Completed') that week. Source spine:
+    int__amplitude_win_activity_weekly.campaigns_sent > 0 (user x week grain,
+    active weeks only). This is the SAME event as is_activated - the curve
+    reuses the activation signal rather than redefining engagement. The
+    dashboard-view side of that table is deliberately NOT used (dead in-data
+    after 2026-06-13).
+  cohorts: |
+    By election-date bin:
+    - summer_2025 (single cohort; already tight)
+    - november_2025 (single cohort; already tight)
+    - y2026 binned by election MONTH, collapsing any month with <30 activated
+      users up to its quarter (or merging adjacent) so we get a few clean
+      curves, not one-per-date. Binning chosen empirically from the 2026
+      election-date distribution of activated users, queried first. N<30 bins
+      flagged per the binning convention; the 2026 curves are labeled
+      "so far" (young cohort, short/right-censored).
+  methodology_guards: |
+    - Right-censor incomplete trailing weeks (only fully-elapsed weeks count).
+    - Respect the 2025-06-23 instrumentation floor; cohorts whose window opens
+      before it are left-censored - gate or flag.
+    - Observability-start join off the weekly table's first-active week to
+      avoid the "no row = dormant vs not-yet-observable" ambiguity.
+    - Pair the closed-cohort curve with an open fixed-denominator sanity view
+      (analytics-process SKILL.md line 41); the closed curve is the headline.
+  reuse: |
+    Weekly spine int__amplitude_win_activity_weekly; Wilson helper +
+    working-set patterns in analytics/lib/win_analysis.py; censoring/denominator
+    guards adapted from win_power_users.py::election_anchored_curve (that helper
+    is election-anchored reverse; this curve is signup-anchored forward, so the
+    week-offset logic is re-authored, guards reused). Prior design reference:
+    analytics/ad_hoc/archive/2026-06-02_win_retention_curve_brief.yaml
+    (notebook was never committed).
+  deliverable: |
+    Curve chart image(s) per cohort group + a companion table giving # and %
+    active at each week horizon, so the curve is not picture-only.
+  known_concerns:
+    - |
+      "Activated only" + signup-anchored: activation lands ~59% >14d after
+      signup, so early post-signup weeks read low by construction (users had
+      not activated yet). This is a real shape (time-to-first-activity then
+      retention), not a bug - annotate it so it is not misread as poor
+      retention.
+    - |
+      Election-date grain: election dates are per-candidacy on
+      users_win_candidacy; use the same most-recent-candidacy dedup as the
+      funnel so a user maps to one cohort.
+
+adjunct_deliverables:
+  serve_users_count:
+    source: |
+      mart_analytics.users_serve_base, COUNT(DISTINCT user_id) WHERE
+      is_serve_user AND email NOT ILIKE '%@goodparty.org'. is_serve_user is
+      currently 1:1 with eo_activated_at IS NOT NULL (data-state fact, may
+      diverge). Serve metric definitions are PENDING ratification - caveat it.
+    note: |
+      A Serve activation RATE is not requested and would read ~100% today
+      (activation == serve-user by construction). Report the count only.
+  serve_waitlist_count:
+    source: |
+      HubSpot only (contact property is_on_serve_waitlist; also
+      serve_eo_waitlist/_date). Contact-grain, not user_id-grain. NOT in any
+      Serve mart. Amanda pulls this externally - deck placeholder on our side.
+      Treat as CRM/operational data per org data-handling rules.
+  win_w1_retention:
+    source: |
+      Governed OKR O2 KR1, Amplitude chart owc6mfnp: start = ce 'Voter Outreach
+      - All', return = Viewed path=/dashboard, segment = Win ICP cohort,
+      8-14d window. Conditions on activated ICP users by construction. Pull the
+      % and the activated-ICP denominator N (and retained N). This is a single
+      governed point metric, explicitly SEPARATE from the retention_curve above
+      - do not let the two be read against each other.
