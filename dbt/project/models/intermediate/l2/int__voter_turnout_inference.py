@@ -231,14 +231,11 @@ def _opp_view_sql(op_years, catalog, precincts_schema):
     'model_predictions' (it must be promoted there alongside the models; it currently
     exists only in sandbox, which is not a sanctioned prod source). Dev may override.
     """
+    year_conds = {y: f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in op_years}
     opp_col_exprs = ", ".join(
-        f"MAX(CASE WHEN election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}') "
-        f"THEN 1 ELSE 0 END) AS opp_{y}"
-        for y in op_years
+        f"MAX(CASE WHEN {cond} THEN 1 ELSE 0 END) AS opp_{y}" for y, cond in year_conds.items()
     )
-    year_filter = " OR ".join(
-        f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in op_years
-    )
+    year_filter = " OR ".join(year_conds.values())
     return f"""
         SELECT State, County, Precinct, {opp_col_exprs}
         FROM {catalog}.{precincts_schema}.turnout_historical_precincts
@@ -587,10 +584,10 @@ def _parse_state_allowlist(raw):
     return allowlist or None
 
 
-def _check_lgbm_version(registered_model_name, client):
+def _check_lgbm_version(registered_model_name, tags):
     import lightgbm as lgb
 
-    tag = client.get_registered_model(registered_model_name).tags.get("lightgbm_version")
+    tag = (tags or {}).get("lightgbm_version")
     if not tag:
         print(f"WARNING: lightgbm_version tag not set on {registered_model_name}. Skipping check.")
         return
@@ -732,7 +729,7 @@ def _read_interval_params_tag(model_version_tags, registered_model_name):
         ) from e
     if not isinstance(params, dict):
         raise ValueError(
-            f"prediction_interval_params on {registered_model_name} is not a JSON " f"object: {params!r}"
+            f"prediction_interval_params on {registered_model_name} is not a JSON object: {params!r}"
         )
     missing = {"q25", "q95"} - set(params)
     if missing:
@@ -802,13 +799,13 @@ def model(dbt, session):
     models, cat_maps, model_families, interval_params = {}, {}, {}, {}
     for slug in needed_slugs:
         full_name = f"{catalog}.{models_schema}.voter_turnout_model_{slug}"
-        _check_lgbm_version(full_name, client)
         # model_family is the load-bearing model_version stamped on every row (part of the
         # election-api id). Read it from the registered-model tag set at promotion, NOT a run
         # artifact: the validated retrains carry no model_family.json, and a tag travels with
         # the model (survives copy_model_version) and is version-agnostic. Read per slug so an
         # inconsistent promotion is caught below, not silently stamped from one slug.
         registered = client.get_registered_model(full_name)
+        _check_lgbm_version(full_name, registered.tags)
         model_families[slug] = _read_model_family_tag(registered.tags, full_name)
         # Prediction-interval params (bias + empirical residual quantiles) are a model-VERSION
         # tag on the @production version, so they stay locked to the exact booster they were
@@ -880,23 +877,7 @@ def model(dbt, session):
                 if not pd.api.types.is_numeric_dtype(pred_pdf[c]):
                     pred_pdf[c] = pred_pdf[c].astype(object)
 
-            pred_dfs.append(
-                session.createDataFrame(
-                    pred_pdf[
-                        [
-                            "State",
-                            "County",
-                            "Precinct",
-                            "n_voters",
-                            "p_hat",
-                            "model_slug",
-                            "model_family",
-                            "inference_year",
-                            "election_code",
-                        ]
-                    ]
-                )
-            )
+            pred_dfs.append(session.createDataFrame(pred_pdf))
 
     # Union ALL per-(year, slug) precinct predictions into ONE view, then aggregate ONCE.
     # Do NOT append per-slug aggregations that each read a reused "_precinct_preds" view:
