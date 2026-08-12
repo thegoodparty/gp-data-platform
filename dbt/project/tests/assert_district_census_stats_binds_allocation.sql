@@ -1,4 +1,4 @@
--- Binding contract (DATA-1994): every NON-statewide district_census_stats row must
+-- Binding contract: every NON-statewide district_census_stats row must
 -- equal the direct allocation rollup -- population within float tolerance; voters and
 -- distinct-block count exactly -- AND the non-statewide row-set must match the
 -- allocation's distinct districts (full outer catches either side missing). Statewide

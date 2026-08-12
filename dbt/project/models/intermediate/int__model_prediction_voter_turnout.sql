@@ -6,7 +6,7 @@
     )
 }}
 
--- Full-refresh table (DATA-2015): the LightGBM model is authoritative for every
+-- Full-refresh table: the LightGBM model is authoritative for every
 -- natural key it emits; the legacy static feeds supply everything else
 -- (Consolidated_General, pre-2026) via the anti-join carve below.
 -- It is materialized as a table (not incremental) because the carve only determines

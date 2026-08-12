@@ -3,7 +3,7 @@ version: 2
 models:
   - name: int__gp_ai_election_match
     description: >
-      DEPRECATED (DATA-1834): Frozen snapshot of DDHQ-HubSpot AI election match
+      DEPRECATED: Frozen snapshot of DDHQ-HubSpot AI election match
       results from Dec 2, 2025. Previously a Python model that fetched parquet from
       S3 via the gp-ai API. Splink modelling replaces this pipeline going forward.
       Kept as a SQL passthrough for backward compatibility with 5 downstream consumers.

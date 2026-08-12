@@ -686,7 +686,7 @@ models:
           Opponent count for the race (number_of_candidates - 1 from the
           TechSpeed source), stored as a string to match the BR/DDHQ/2025
           election models and the scorer's parsing. Null when the source count
-          is missing, non-numeric, or < 1. DATA-1938: previously hardcoded
+          is missing, non-numeric, or < 1. Previously hardcoded
           null, which forced solo-ingested TechSpeed candidacies onto the
           weaker viabilitynoopponentdata fallback in
           int__civics_viability_scoring.
@@ -709,7 +709,7 @@ models:
           - not_null
 
     data_tests:
-      # Well-formedness of the DATA-1938 opponent count: null or a non-negative
+      # Well-formedness of the opponent count: null or a non-negative
       # integer string (opponents = number_of_candidates - 1, so >= 0). Model
       # level rather than column level so the expression can reference the
       # column by name without the column-test macro prepending the column.
@@ -766,9 +766,9 @@ models:
           cluster, the mart's dedup keeps one and drops the other's natural
           keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               # Warn-severity: multi-TS-record Splink clusters keep one
               # ts_source_candidate_id in the mart row by design (cluster
@@ -1146,9 +1146,9 @@ models:
           candidate_ids into the same cluster, the mart's dedup keeps one
           and drops the other's natural keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1166,9 +1166,9 @@ models:
           as source_candidate_id, paired with it as DDHQ's compound natural
           key. Same warn-vs-error thresholds for the same reason.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -2619,7 +2619,7 @@ models:
   - name: int__civics_position_office_type
     description: >
       One row per BallotReady position with the canonical office_type, derived
-      from the normalized position name (DATA-1972). Source of office_type for
+      from the normalized position name. Source of office_type for
       positioned candidacies in the civics marts.
     columns:
       - name: br_position_database_id
@@ -3562,7 +3562,7 @@ models:
   - name: int__serve_active_user
     description: >
       The single source of truth for the "active serve user" behavioral
-      definition (epic DATA-1359), one row per user. A user is an active serve
+      definition, one row per user. A user is an active serve
       user when they completed Serve onboarding by sending an SMS poll AND have
       pledged. This is the behavioral half of the People Served cohort; the office
       half (Serve-ICP) and the internal-email exclusion are applied at
@@ -3608,8 +3608,7 @@ models:
       Resolves each serve org to its L2 district: the serve-cohort entry point
       onto the district population allocation (a downstream consumer; election-api
       quarantined here, not in the allocation). Part of the Constituents Served
-      pipeline
-      (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
+      pipeline. One row per serve org (organizations mart,
       organization_type = 'serve'), resolved to the L2 district the official
       serves: override-first through the org's election-api district record
       (coalesce(override_district_id, district_id), which bakes in the manual
@@ -3621,7 +3620,7 @@ models:
       is_statewide (reported separately downstream), and is_internal_email.
       Rows are never excluded here; pending cohort decisions are var-driven
       filters plus flags, and flagged rows flow through for downstream review.
-      Carries in_people_served_cohort (epic DATA-1359): the active People Served
+      Carries in_people_served_cohort: the active People Served
       cohort gate -- active serve user (int__serve_active_user) AND Serve-ICP
       office (int__icp_offices, a unique join) AND not internal email -- as a flag,
       never a row exclusion.
@@ -3789,7 +3788,7 @@ models:
 
   - name: int__district_census_allocation
     description: >
-      THE DISTRICT POPULATION ALLOCATION (DATA-1992, epic DATA-1359). One row per (census block,
+      THE DISTRICT POPULATION ALLOCATION. One row per (census block,
       district_type, normalized district_name) with the 2020 decennial
       population allocated to that district in that block: allocated_population
       = pct_of_geo * block_population, where pct_of_geo is the within-(block,
@@ -3949,7 +3948,7 @@ models:
 
   - name: int__serve_block_coverage
     description: >
-      The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
+      The count-once engine. One row per (census block,
       served_set) with the count of DISTINCT cohort-served voters and the block's total
       voters; people_served reads it as count-once(set) = sum(served_voters /
       total_voters * block_population) over served blocks. Count-once is a

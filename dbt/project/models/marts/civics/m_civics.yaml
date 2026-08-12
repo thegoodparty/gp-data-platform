@@ -564,7 +564,7 @@ models:
           int__civics_position_office_type (one office_type per BallotReady
           position, derived from the normalized position name) whenever the
           crosswalk classifies the position; otherwise the per-source value
-          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
+          (BallotReady preferred, then gp_api, then DDHQ) is kept.
 
       - name: candidacy_result
         description: >
@@ -717,14 +717,14 @@ models:
                 severity: warn
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                # Threshold raised post-DATA-1714 after the BR+TS candidacy
+                # Threshold raised after the BR+TS candidacy
                 # merge expanded the candidacy universe.
                 warn_if: ">200"
                 error_if: ">300"
 
       - name: viability_score
         description: >
-          INTERNAL (DATA-1938): the legacy/base viability value. The sales- and
+          INTERNAL: the legacy/base viability value. The sales- and
           Win-facing BROAD viability lives on candidacy_scored -- read it there,
           not here. This column stays because candidacy_scored coalesces it in as
           a gap-filler where the civics scorer could not score.
@@ -739,7 +739,7 @@ models:
 
       - name: score_viability_automated
         description: >
-          INTERNAL (DATA-1938): read the broad label on candidacy_scored, not
+          INTERNAL: read the broad label on candidacy_scored, not
           here (see viability_score above).
           String category paired with viability_score. Values: "No Chance"
           (score < 1), "Unlikely to Win" (1..2), "Has a Chance" (2..3),
@@ -811,7 +811,7 @@ models:
 
   - name: candidacy_scored
     description: >
-      The candidacy mart with broad civics viability layered on (DATA-1938).
+      The candidacy mart with broad civics viability layered on.
       This is the sales / Win-facing viability source: consumers read
       viability_score and score_viability_automated HERE, not on candidacy.
       Every non-viability column passes through from candidacy unchanged and in
@@ -1359,7 +1359,7 @@ models:
           int__civics_position_office_type (one office_type per BallotReady
           position, derived from the normalized position name) whenever the
           crosswalk classifies the position; otherwise the per-source value
-          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
+          (BallotReady preferred, then gp_api, then DDHQ) is kept.
 
       - name: state
         description: U.S. state for the election
@@ -1880,7 +1880,7 @@ models:
       source_systems is join-based: 'ballotready' is always present;
       'techspeed' is added when has_direct_ts_term_match = true.
 
-      gp-api attachment (DATA-1885): each BR term that the EO Splink bridge
+      gp-api attachment: each BR term that the EO Splink bridge
       attached to a gp-api elected_office record exposes
       `gp_api_elected_office_id`, `gp_api_user_id`, `gp_api_campaign_id`,
       `gp_api_organization_slug`, `hubspot_company_id`, and `days_to_sworn_in`.
@@ -2293,7 +2293,7 @@ models:
       contributed a person row; 'techspeed' present when clean TS data
       contributed.
 
-      gp-api integration (DATA-1885): the mart now full-outer-joins a third
+      gp-api integration: the mart now full-outer-joins a third
       provider (`int__civics_elected_official_gp_api_person`) on
       `gp_elected_official_id`, with gp_api adopting BR's canonical via the
       bridge for matched users. gp_api-only rows (Splink found no BR/TS
@@ -2821,7 +2821,7 @@ models:
   - name: district_census_stats
     description: >
       The universal district population reference AND the product-facing district-grain
-      surface (DATA-1359, DATA-2064): one row per district for every district of the
+      surface: one row per district for every district of the
       allocation's curated office-bearing types nationwide, plus one clearly-flagged
       statewide row per state (district_type='State'). A rollup of
       int__district_census_allocation (the allocation).
@@ -2836,8 +2836,8 @@ models:
       caller already holding the key (e.g. a newly-onboarding official with a known
       district but no official record) needs no other join.
 
-      Per-official lookup (replaces the deprecated official_constituents mart,
-      DATA-2064): filter int__serve_district_resolution to
+      Per-official lookup (replaces the deprecated official_constituents mart):
+      filter int__serve_district_resolution to
       resolution_path != 'unresolved' FIRST (unresolved rows carry null district keys --
       a product data gap, not a census miss), then join on
       (state, l2_district_type, normalized_district_name) =
@@ -2855,7 +2855,7 @@ models:
       district_population across types double-counts, and summing local + statewide
       mixes the two bases -- consumers wanting only local districts filter
       WHERE district_type <> 'State'. v1 is population only; ACS demographics and the
-      validated non-exact-assignment share are phase 2 (DATA-1991) and will append here
+      validated non-exact-assignment share are phase 2 and will append here
       at this same grain.
     data_tests:
       - dbt_utils.unique_combination_of_columns:

@@ -1,4 +1,4 @@
--- People Served cohort contract (epic DATA-1359). Guards three invariants that the
+-- People Served cohort contract. Guards three invariants that the
 -- ordering test and the warn-severity sanity bands cannot:
 -- (1) PRESENCE: each cohort ('all', 'active') must publish all four metric variants
 -- at office_type='all' (the North Star headline). A broken active join would

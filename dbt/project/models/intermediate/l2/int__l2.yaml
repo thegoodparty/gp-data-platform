@@ -99,7 +99,7 @@ models:
   - name: int__voter_turnout_lgbm_inference
     description: >
       Nationwide district-level voter-turnout projections from the LightGBM
-      models (DATA-2015). One row per (state, district_type, district_name,
+      models. One row per (state, district_type, district_name,
       election_year, election_code). Replaces the per-state inference models.
       Projections are known to skew high (calibration caveat from research).
     config:
@@ -358,7 +358,7 @@ models:
       district_name) with the L2 voter count in that intersection
       (voters_in_block_district) and the per-(block, district_type) voter total
       (voters_in_block). The block-grain map underlying the district population
-      allocation (DATA-1992; widened DATA-2013); UNPIVOTs the curated allocated district
+      allocation, widened once since its first version; UNPIVOTs the curated allocated district
       columns. Block grain is the source of truth for overlap (do NOT count by
       joining the district-level int__l2_district_aggregations on the
       normalized name - its key is non-unique and would fan out).
@@ -380,7 +380,7 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: district_type
-        description: "L2 district column name; the curated allocated type set (DATA-1992; widened DATA-2013)."
+        description: "L2 district column name; the curated allocated type set, widened once since its first version."
         tests:
           - not_null
           - accepted_values:

@@ -1,4 +1,4 @@
--- DATA-2015: int__voter_turnout_lgbm_inference builds ONE opp_{year} opportunity flag
+-- int__voter_turnout_lgbm_inference builds ONE opp_{year} opportunity flag
 -- per year from EITHER AnyElection_{year} OR OtherElection_{year} rows. That collapse
 -- is prefix-safe only because the opportunity source obeys the L2 parity invariant:
 -- AnyElection rows are odd-year-only and OtherElection rows are even-year-only

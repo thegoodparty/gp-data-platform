@@ -1,4 +1,4 @@
--- The People Served invariant (DATA-1993, epic DATA-1359): within every (cohort,
+-- The People Served invariant: within every (cohort,
 -- office_type), all four metric variants are PRESENT and count_once <=
 -- count_multiple_per_district <= per_seat <= per_org. count-once dedups people; each
 -- count-multiple variant can only re-count them (a per-district sum >= a distinct

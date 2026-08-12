@@ -1,4 +1,4 @@
--- DATA-1958: every l2_br_match_overrides row must surface in
+-- Every l2_br_match_overrides row must surface in
 -- m_election_api__position with the district the override specifies. Fails if
 -- an override is dropped (missing position or null district) or not honored
 -- (wrong district). Combo uniqueness and existence are tested separately in

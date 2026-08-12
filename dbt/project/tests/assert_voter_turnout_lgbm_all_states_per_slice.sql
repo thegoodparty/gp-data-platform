@@ -1,4 +1,4 @@
--- DATA-2015: every (election_year, election_code) slice of the nationwide turnout
+-- Every (election_year, election_code) slice of the nationwide turnout
 -- inference must cover every state (50 + DC). The column-level distinct-values test
 -- on `state` checks the table as a whole, which would miss one slice losing states
 -- while another keeps them (e.g. a partial per-year rebuild). Full coverage per slice
