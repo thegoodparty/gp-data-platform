@@ -2878,56 +2878,15 @@ models:
         data_tests:
           - not_null
           - accepted_values:
+              # `+ ['State']` in this kwarg makes dbt Cloud's native-kwarg
+              # renderer drop the macro from context ('...is undefined'),
+              # even though the same macro alone or piped through a filter
+              # renders fine. set/do (same idiom the macro itself uses)
+              # avoids the binary-operator/list-literal AST shape that
+              # triggers it.
+              name: district_census_stats_district_type_accepted_values
               arguments:
-                values:
-                  - County
-                  - US_Congressional_District
-                  - State_Senate_District
-                  - State_House_District
-                  - State_Legislative_District
-                  - City
-                  - Township
-                  - Town_District
-                  - Village
-                  - Borough
-                  - City_Council_Commissioner_District
-                  - City_Ward
-                  - County_Commissioner_District
-                  - County_Supervisorial_District
-                  - School_District
-                  - Unified_School_District
-                  - School_Board_District
-                  - Board_of_Education_District
-                  - City_School_District
-                  - Elementary_School_District
-                  - High_School_District
-                  - Fire_District
-                  - Community_College
-                  - Community_College_SubDistrict
-                  - County_Board_of_Education_District
-                  - School_Subdistrict
-                  - School_District_Vocational
-                  - Educational_Service_District
-                  - Learning_Community_Coordinating_Council_District
-                  - Town_Ward
-                  - Township_Ward
-                  - Community_Council_SubDistrict
-                  - County_Legislative_District
-                  - Judicial_Justice_of_the_Peace
-                  - Judicial_Superior_Court_District
-                  - Judicial_District_Court_District
-                  - Park_District
-                  - Library_District
-                  - Water_District
-                  - Water_SubDistrict
-                  - Sewer_District
-                  - Fire_Protection_District
-                  - Port_District
-                  - Conservation_District
-                  - Conservation_SubDistrict
-                  - Soil_and_Water_District
-                  - Aquatic_District
-                  - State
+                values: "{% set l = get_l2_district_types(scope='allocated') %}{% do l.append('State') %}{{ l }}"
       - name: district_name
         description: >
           Normalized L2 district name (normalize_l2_district_name). NOT unique across
