@@ -4018,6 +4018,68 @@ models:
           arguments:
             expression: "served_voters_active <= served_voters"
 
+  - name: int__civics_viability_seats_fallback
+    description: >
+      BallotReady-derived seat counts keyed on the candidacy's
+      br_position_database_id, holding a row for every keyed candidacy that
+      passes the trust gates. int__civics_viability_scoring consumes it only
+      where the candidacy's civics election link cannot supply seats_available
+      (no election row, or an election row without seats), so most rows here are
+      shadowed by native election seats and never read. Fail-closed: curated
+      archive nullouts, office-type contradictions against the position
+      crosswalk, and same-date races that disagree on seats yield no row rather
+      than a guess. Grain: zero or one row per gp_candidacy_id.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_seats
+        description: >
+          Seat count for the candidacy's race. Positive by construction: a zero
+          here would manufacture a single-seat feature downstream instead of
+          blocking the score.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: seats_source
+        description: >
+          Which BallotReady source supplied the count — race_exact (a clean race
+          on the candidacy's general election date, same-cycle data) or position
+          (the position's standing office capacity, not a count for any one
+          cycle). Both tiers are consumed for multi_seat only.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - race_exact
+                  - position
+      - name: matched_br_race_id
+        description: >
+          BallotReady race database id evidencing a race_exact count: one race of
+          the seats-agreeing set for the candidacy's position and general
+          election date (the min database id where several agree), and null on
+          the position tier. Provenance evidence, not a roster-safe race link —
+          it is NOT verified against the race's candidacy membership, so the
+          candidacy need not appear on this race.
+    data_tests:
+      # Provenance well-formedness: a matched race id appears exactly when the
+      # count came from the race tier. Model level so the expression can name
+      # both columns without the column-test macro prepending one.
+      - dbt_utils.expression_is_true:
+          name: viability_seats_fallback_race_id_iff_race_tier
+          arguments:
+            expression: "(seats_source = 'race_exact') = (matched_br_race_id is not null)"
+
   - name: int__civics_viability_scoring
     description: >
       Viability scores for all candidacies in the civics mart, produced by an
