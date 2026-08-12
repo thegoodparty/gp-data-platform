@@ -96,6 +96,9 @@ with
 
 select
     people.gp_person_id as id,
+    -- build timestamps: the table is swap-replaced wholesale each run
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at,
     people.br_person_id_int as br_person_id,
     -- Globally unique: the /people/<slug> URL resolves on slug alone (no
     -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
