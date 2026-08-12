@@ -96,8 +96,7 @@ with
 
 select
     people.gp_person_id as id,
-    -- build timestamps: the table is swap-replaced wholesale each run, same
-    -- semantics as the legacy writer's per-run now() stamps
+    -- build timestamps: the table is swap-replaced wholesale each run
     current_timestamp() as created_at,
     current_timestamp() as updated_at,
     people.br_person_id_int as br_person_id,

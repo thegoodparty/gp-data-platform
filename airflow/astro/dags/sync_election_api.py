@@ -41,11 +41,9 @@ parallel.
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
 dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
-only the swap is withheld. Rehearsal freezes ALL tables (the legacy dbt
-writer `write__election_api_db` is disabled in the same change), so keep the
-rehearsal window short. Upsert-by-id delivery could never delete, so
-superseded rows stranded in the API; the swap replaces each table wholesale
-so the API always matches the Databricks mart.
+only the swap is withheld. Rehearsal freezes ALL tables, since the legacy dbt
+writer `write__election_api_db` is disabled in the same change, so keep the
+rehearsal window short.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -68,15 +66,13 @@ so the API always matches the Databricks mart.
   test unmerged mart changes end to end from a development schema.
 
 ### Deploy model:
-- `main` → `astro-prod`. `astro-dev`'s branch mapping is set manually in the
-  Astro Cloud UI's Git Deploys settings. Astro's webhook fires on push events
-  to the mapped branch, so a branch-mapping change alone does not redeploy —
-  a subsequent push to the new branch (or a manual redeploy via the Astro UI)
-  is what triggers the sync.
-- The election-api Postgres schema is owned by the election-api repo. Prisma
-  migrations apply when election-api is deployed to the corresponding env,
-  not on PR merge alone. Check status via the `_prisma_migrations` table on
-  the target Postgres before kicking a sync that depends on new columns.
+Branch-to-deployment mapping lives in Astro's Git Deploys settings; see
+`airflow/astro/README.md`.
+
+The election-api Postgres schema is owned by the election-api repo. Prisma
+migrations apply when election-api is deployed to the corresponding env, not
+on PR merge alone. Check `_prisma_migrations` on the target Postgres before
+kicking a sync that depends on new columns.
 """
 
 import logging
@@ -105,11 +101,6 @@ t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
-
-# Memory note: load_staging streams a mart into Postgres, but
-# bulk_insert_from_databricks reads one partition at a time over a single
-# connection, so each task's peak memory is bounded to ~one partition (tens of
-# MB on top of the worker's shared base).
 
 
 def _open_pg():
@@ -192,7 +183,7 @@ def _pt_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
 # Staged-vs-live id overlap floor for the Prisma-graph tables, whose minted
 # ids are deterministic and may be held by external consumers. 0.90 leaves
 # headroom for the first enabled run, which prunes rows the legacy writer
-# could never delete (District's residue alone is ~4% of live).
+# could never delete.
 _GRAPH_ID_OVERLAP = 0.90
 
 TABLES: tuple[MartSync, ...] = (
@@ -284,9 +275,7 @@ TABLES: tuple[MartSync, ...] = (
             ),
         ),
         source_model="m_election_api__race",
-        # ~1M rows; one state at a time bounds worker memory. The int[]/text[]
-        # array columns arrive as numpy arrays from the arrow-backed
-        # connector; the loader normalizes them to Python lists for psycopg2.
+        # ~1M rows; one state at a time bounds worker memory.
         partition_column="state",
         gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("place", "position"),
@@ -530,8 +519,7 @@ def _build_group(table: MartSync) -> dict:
     catchup=False,
     default_args={
         "owner": "Data Engineering Team",
-        # Two attempts: a step that fails twice is not a transient network
-        # blip, and a fast red run surfaces it instead of burying it in retries.
+        # Two attempts: a step that fails twice is not a transient blip.
         "retries": 1,
         "retry_delay": duration(seconds=30),
     },
@@ -540,18 +528,14 @@ def _build_group(table: MartSync) -> dict:
 )
 def sync_election_api():
     handles = {table.group_id: _build_group(table) for table in TABLES}
-    # A staging FK validates against the referenced staging table, so the
-    # parent must be loaded with its PK in place first. (Self-references need
-    # no edge: the PK lands in the same transaction, before the FK.)
+    # Self-references need no edge: the PK lands in the same transaction,
+    # before the FK.
     for table in TABLES:
         for parent in table.parents:
             handles[parent]["build_indexes_and_fk"] >> handles[table.group_id]["build_indexes_and_fk"]
 
     @task.short_circuit
     def cutover_enabled() -> bool:
-        # Placed AFTER every quality gate so a disabled night is a full dress
-        # rehearsal: all staging built, loaded, indexed, gated; only the swap
-        # is withheld.
         enabled = Variable.get(SWAP_GATE_VARIABLE, default="false").strip().lower() == "true"
         if not enabled:
             t_log.info("Swap disabled (rehearsal mode); staging left for parity checks")

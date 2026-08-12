@@ -1,35 +1,10 @@
-"""Shared build-and-swap lifecycle for syncing Databricks marts into the
-election-api Postgres database.
+"""Steps of the build-and-swap lifecycle that syncs Databricks marts into the
+election-api Postgres database. The `sync_election_api` DAG docstring
+describes the pipeline these compose into.
 
-Per table, a pipeline:
-
-1. Drops and recreates `staging."<Target>_new"` with the same column shape as
-   the live `public."<Target>"` table (no indexes — fast bulk-insert).
-2. Streams the source mart from Databricks into the staging table. The
-   column list is the live table's own columns (see `staging_columns`), so
-   the mart must publish matching names and types.
-3. Adds the PK, indexes, and FK constraints (canonical Prisma names suffixed
-   with `_new`), all generated from the spec's declarative index/FK defs.
-   Cross-table FKs reference the sibling STAGING table, never the live one,
-   so the staging set is self-contained: it validates against its own
-   vintage and never blocks or follows a live table.
-4. Runs quality checks against the staging table (generic count /
-   id-overlap / NULL-probe gates plus per-table extras).
-
-Then ONE transaction swaps the entire set: for each table, the live table is
-renamed aside (`<Target>_old`) and the staging table renamed in, with every
-index and constraint renamed to its canonical Prisma name. Constraints track
-table identity through renames, so the staging-to-staging FKs arrive in
-public pointing at their fresh siblings, and the old set's FKs leave with
-the old tables — referential integrity holds within each vintage and no
-child row is ever mutated. A crash anywhere rolls the whole set back; the
-API only ever sees one complete vintage. Leftover `_old` tables from a run
-that crashed before drop_old are pre-dropped inside the same transaction, so
-a crashed run never wedges subsequent ones.
-
-Index/constraint names follow Prisma's convention (`<Table>_<col>_idx`,
+Index and constraint names follow Prisma's convention (`<Table>_<col>_idx`,
 `<Table>_pkey`, `<Table>_<col>_fkey`). Staging and archive variants insert
-`_new` / `_old` after the table prefix so the same canonical name maps
+`_new` / `_old` after the table prefix, so one canonical name maps
 predictably across all three schemas.
 """
 
@@ -247,10 +222,9 @@ def create_staging_table(conn, spec: TableSyncSpec) -> None:
     """Drop and recreate `staging.<table>_new` matching `public.<table>` columns.
 
     CASCADE, because sibling staging tables may hold FKs to this one from a
-    prior run. That drops the sibling's FK constraint (not the sibling); if
-    the sibling's own rebuild does not restore it, the swap fails closed on
-    the missing constraint rename rather than delivering a table without its
-    FK.
+    prior run. That drops the sibling's FK constraint, not the sibling; if the
+    sibling's rebuild does not restore it, the swap fails closed on the missing
+    constraint rename rather than shipping a table without its FK.
     """
     cur = conn.cursor()
     try:
@@ -272,12 +246,9 @@ def create_staging_table(conn, spec: TableSyncSpec) -> None:
 
 
 def _pg_adaptable(value: object) -> object:
-    """psycopg2 adapts native Python values, not numpy ones. The arrow-backed
-    connector returns ARRAY columns as numpy arrays: typed when dense,
-    object-dtype (numpy scalars and None inside) when mixed; whole-NULL arrays
-    arrive as None and pass through untouched. A null-bearing integer array
-    that arrow promotes to float64 still fails loudly at insert (int column,
-    float values) rather than loading corrupted values."""
+    """psycopg2 adapts native Python values, not numpy ones, and the arrow-backed
+    connector returns ARRAY columns as numpy arrays (nested numpy scalars when
+    mixed-dtype). Whole-NULL arrays arrive as None and pass through."""
     if isinstance(value, np.ndarray):
         return [_pg_adaptable(x) for x in value]
     if isinstance(value, np.generic):
@@ -299,12 +270,9 @@ def bulk_insert_from_databricks(
     match `target_columns`.
 
     `partition_column`, if set, reads one distinct value at a time over a single
-    Databricks connection (see `read_databricks_partitioned`), so peak worker
-    memory stays bounded to a single partition instead of buffering the whole
-    table — and without the per-partition connection churn that otherwise
-    accumulates and OOMs the worker. The single commit still lands after the
-    whole load, so a mid-load failure rolls it back and a retry starts from a
-    clean `<table>_new`.
+    Databricks connection (see `read_databricks_partitioned`), bounding peak
+    worker memory to one partition. The commit lands after the whole load, so a
+    mid-load failure rolls back and a retry starts from a clean `<table>_new`.
     """
     col_list = ", ".join(f'"{c}"' for c in target_columns)
     insert_sql = f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" ' f"({col_list}) VALUES %s"
@@ -318,8 +286,6 @@ def bulk_insert_from_databricks(
     cur = conn.cursor()
     try:
         for batch in batches:
-            # Normalize numpy values (ARRAY columns, and any scalars inside
-            # them) to native Python so psycopg2 can adapt them.
             rows = [tuple(_pg_adaptable(v) for v in r) for r in batch]
             if not rows:
                 continue
@@ -329,8 +295,6 @@ def bulk_insert_from_databricks(
                 logger.info("Inserted %d rows so far", total)
         conn.commit()
     except Exception:
-        # Discard partial inserts so a retry starts from a clean <table>_new
-        # (and the connection isn't left in an aborted-transaction state).
         conn.rollback()
         raise
     finally:
@@ -356,12 +320,11 @@ def apply_ddl(conn, statements: Sequence[str]) -> None:
 
 
 def prior_live_state(cur, spec: TableSyncSpec) -> tuple[bool, int]:
-    """to_regclass existence + row count of the live target (identifiers
-    double-quoted so mixed case survives).
+    """to_regclass existence + row count of the live target.
 
-    Both identifiers must be double-quoted in the regclass argument:
-    Postgres folds unquoted mixed-case to lowercase, so `public.Race` would
-    resolve to `public.race` and always return NULL.
+    Both identifiers must be double-quoted in the regclass argument: Postgres
+    folds unquoted mixed-case to lowercase, so `public.Race` would resolve to
+    `public.race` and always return NULL.
     """
     cur.execute(
         "SELECT to_regclass(%s)",
@@ -385,21 +348,14 @@ def swap_staging_into_target(
     """Atomic set-wise rename-swap: every spec's `_new` -> live, live -> `_old`,
     in ONE transaction.
 
-    All live targets are locked upfront in spec order (fixed order prevents
-    deadlocks between concurrent lockers), then each table is processed in
-    turn: pre-drop any leftover `_old` (CASCADE — leftover old tables may
-    hold FKs to each other), rename the live table and its indexes and
-    constraints to archive names, rename the staging table in with canonical
-    names. Constraints track table identity through renames, so the staging
-    set's internal FKs arrive pointing at the fresh siblings and the old
-    set's FKs leave with it. No child row is ever mutated. A crash anywhere
-    rolls the entire set back — the API only ever sees one complete vintage.
+    Live targets are locked upfront in spec order, a fixed order so concurrent
+    lockers cannot deadlock. Each table then pre-drops any leftover `_old`
+    (CASCADE, since old tables may hold FKs to each other), renames the live
+    table and its indexes and constraints aside, and renames the staging table
+    in with canonical names.
 
-    A leftover `_old` would otherwise collide with every rename (table name
-    and the `_old`-suffixed index/constraint names), failing each subsequent
-    run until someone dropped it by hand — and five consecutive failed runs
-    auto-pause the DAG. DDL is transactional, so a mid-swap failure rolls the
-    pre-drop back with the renames.
+    The pre-drop matters because a leftover `_old` collides with every rename
+    and wedges every subsequent run until dropped by hand.
     """
     cur = conn.cursor()
     try:

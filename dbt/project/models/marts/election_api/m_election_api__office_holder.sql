@@ -46,8 +46,7 @@ with
 
 select
     terms.gp_elected_official_term_id as id,
-    -- build timestamps: the table is swap-replaced wholesale each run, same
-    -- semantics as the legacy writer's per-run now() stamps
+    -- build timestamps: the table is swap-replaced wholesale each run
     current_timestamp() as created_at,
     current_timestamp() as updated_at,
     terms.br_office_holder_id,

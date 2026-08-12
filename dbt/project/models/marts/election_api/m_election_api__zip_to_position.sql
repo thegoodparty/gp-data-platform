@@ -115,9 +115,8 @@ with
             = 1
     )
 
--- id and updated_at satisfy the election-api ZipToPosition Postgres contract
--- (the loader requires mart columns to match the destination). The id is
--- deterministic on the natural key, so it is stable across daily rebuilds.
+-- id and updated_at satisfy the election-api ZipToPosition Postgres contract.
+-- The id is deterministic on the natural key, so it is stable across rebuilds.
 select
     {{
         generate_salted_uuid(
