@@ -77,7 +77,10 @@ the general filing deadline for earlier cycles is recoverable from BR raw stagin
 explode `filing_periods`, join `int__ballotready_filing_period.end_on`, election via
 `race.election.databaseId`, keyed by `race.position.databaseid × election_day`. Coverage at the
 general-race grain is partial and cycle-dependent (as of 2026-08: 72% of 2024 races, 50% of 2025, 40% of
-2026) — always carry a deadline-missing flag. (Recipe from DATA-2202, promoted via DATA-2225.)
+2026) — always carry a deadline-missing flag. (Recipe from DATA-2202, promoted via DATA-2225.) These
+figures predate DATA-2235 (`int__ballotready_filing_period` ingestion widened, merged 2026-08-12,
++39,797 ids recovered) — re-measure before citing; ~75% is a hard ceiling per that ticket (~7pp of the
+gap is a position+election_day join failure, not an ingestion gap).
 
 ## Event-lifecycle assets (omni repo)
 
