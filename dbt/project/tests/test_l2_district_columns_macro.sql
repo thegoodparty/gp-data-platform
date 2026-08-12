@@ -12,7 +12,7 @@ with
         select
             'allocated_list_size' as check_name,
             {{ get_l2_district_types(scope="allocated") | length }} as actual,
-            47 as expected
+            62 as expected
 
         union all
 
@@ -72,7 +72,7 @@ with
                 )
             )
             - 1 as actual,
-            47 as expected
+            62 as expected
     )
 
 select *

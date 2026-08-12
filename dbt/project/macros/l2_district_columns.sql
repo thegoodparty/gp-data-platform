@@ -298,6 +298,21 @@
         "Conservation_SubDistrict",
         "Soil_and_Water_District",
         "Aquatic_District",
+        "Police_District",
+        "Borough_Ward",
+        "District_Attorney",
+        "Multi_township_Assessor",
+        "Village_Ward",
+        "Judicial_District",
+        "Road_Maintenance_District",
+        "Judicial_Circuit_Court_District",
+        "Town_Council",
+        "Judicial_Municipal_Court_District",
+        "Special_Tax_District",
+        "Park_SubDistrict",
+        "Assessment_District",
+        "Election_Commissioner_District",
+        "Superintendent_of_Schools_District",
     ] -%}
     {%- if scope == "all" -%} {{ return(all_types) }}
     {%- elif scope == "allocated" -%} {{ return(allocated_types) }}
