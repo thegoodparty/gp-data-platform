@@ -34,7 +34,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="merge",
         unique_key="LALVOTERID",
         on_schema_change="append_new_columns",
-        auto_liquid_cluster=True,
+        # The prod table carries deliberate hierarchical liquid clustering
+        # (delta.liquid.hierarchicalClusteringColumns = voters_active,
+        # state_postal_code, set 2026-07-28 for serving-read performance).
+        # auto_liquid_cluster would issue ALTER TABLE CLUSTER BY AUTO, which
+        # Delta rejects against that property and fails the whole merge.
+        auto_liquid_cluster=False,
+        # A full refresh would rebuild without the retired vendor columns this
+        # table has accumulated (append_new_columns never drops), which the
+        # agent voter views still project by name, and would also wipe the
+        # clustering property above. Pin it off until the retired-column
+        # cleanup retargets the views first; that cleanup flips this
+        # deliberately.
+        full_refresh=False,
         tags=[
             "intermediate",
             "l2",
