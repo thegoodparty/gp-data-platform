@@ -75,6 +75,100 @@ def _select_latest_zip_file(file_list: list[str], file_pattern: re.Pattern) -> s
     return matches[0][0]
 
 
+def _resolve_pickup_action(
+    tab_file_name: str,
+    s3_state_prefix: str,
+    s3_keys: list[str],
+    logged_file_names: set[str],
+) -> tuple[Literal["download", "self_heal", "skip"], str | None]:
+    """
+    Decide how to handle the latest SFTP file. "In S3" alone is not proof of
+    completion: a run that dies after uploading but before its sync-log append
+    leaves the file in S3 with no log row, and the downstream Databricks load
+    only consumes logged files. Such orphans must be re-logged ("self_heal"),
+    not skipped.
+
+    Returns (action, matched_file_name). Matching is case-insensitive, but the
+    returned name is the S3 key's exact suffix after `s3_state_prefix`: S3 GETs
+    are case-sensitive and downstream reads prefix + logged name verbatim, so
+    only the spelling that actually exists in S3 may be logged.
+    """
+    tab_lower = tab_file_name.lower()
+    matched_key = next(
+        (key for key in s3_keys if key.lower().endswith(f"/{tab_lower}")),
+        None,
+    )
+    if matched_key is None:
+        return "download", None
+    matched_file_name = matched_key[len(s3_state_prefix) :]
+    if matched_file_name.lower() in {name.lower() for name in logged_file_names}:
+        return "skip", matched_file_name
+    return "self_heal", matched_file_name
+
+
+def _locate_extracted_tab(extracted_names: list[str], temp_dir: str) -> str | None:
+    """
+    Return the extracted `.tab`'s local path. None means the zip listed exactly
+    one tab but the file never materialized — seen with partial zips while the
+    vendor is mid-upload — which callers treat as retryable (a later run gets
+    the completed file). Any other member count is a contract violation and
+    raises.
+    """
+    tab_names = [name for name in extracted_names if name.lower().endswith(".tab")]
+    if len(tab_names) != 1:
+        raise ValueError(f"Expected 1 .tab in zip, got {len(tab_names)}: {tab_names}")
+
+    # `ZipFile.extractall` preserves any directory structure inside the zip, so
+    # the extracted file may not live at the root of `temp_dir`.
+    local_tab_path = os.path.join(temp_dir, tab_names[0])
+    if not os.path.isfile(local_tab_path):
+        return None
+    return local_tab_path
+
+
+def _collect_load_details(
+    state_ids: list[str],
+    extract_fns: dict[str, Callable[[str], dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    Run every state through every extractor, isolating failures so one bad
+    state cannot abort the rest (a mid-loop crash used to strand every
+    already-uploaded file unlogged). Returns (details, failures).
+    """
+    all_load_details: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for state_id in state_ids:
+        for kind, extract_fn in extract_fns.items():
+            try:
+                result = extract_fn(state_id)
+            except Exception as e:
+                logging.error(f"Extraction failed for state {state_id} ({kind}): {e!s}")
+                failures.append(f"{state_id} ({kind}): {e!s}")
+                continue
+            if result["state_id"] is not None:
+                all_load_details.append({"state_id": state_id, "load_details": result})
+    return all_load_details, failures
+
+
+def _finalize_load_details(details: list[dict[str, Any]], failures: list[str]) -> list[dict[str, Any]]:
+    """
+    Persist partial progress; fail only on a total wipeout. Raising on any
+    failure would discard every successful row, so one persistently bad state
+    could starve the other states' log rows indefinitely. When at least one
+    extraction succeeded, log the failures and return the successes (failed
+    states retry next run: their files are re-pulled or self-healed). When
+    every extraction failed, something systemic broke (e.g. SFTP outage);
+    there is nothing to persist, so fail the run loudly.
+    """
+    if failures and not details:
+        raise RuntimeError(f"all {len(failures)} extraction(s) failed: {'; '.join(failures)}")
+    if failures:
+        logging.error(
+            f"{len(failures)} state extraction(s) failed and will retry next run: {'; '.join(failures)}"
+        )
+    return details
+
+
 def _extract_and_load_w_params(
     sftp_host: str,
     sftp_port: int,
@@ -87,6 +181,7 @@ def _extract_and_load_w_params(
     databricks_volume_directory: str,
     remote_dir: str,
     haystaq_kind: Literal["flags", "scores"],
+    logged_file_names: set[str],
 ) -> Callable[[str], dict[str, Any]]:
     """
     Creates a function that downloads a single state's Haystaq zip from SFTP, extracts the `.tab`,
@@ -137,9 +232,26 @@ def _extract_and_load_w_params(
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/{haystaq_kind}/"
             s3_file_list = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_state_prefix)
             s3_keys = [f["Key"] for f in s3_file_list.get("Contents", [])]
-            if any(key.endswith(f"/{tab_file_name}") for key in s3_keys):
-                logging.info(f"{haystaq_kind} file already exists in S3 for {state_id}: {tab_file_name}")
+            action, matched_file_name = _resolve_pickup_action(
+                tab_file_name, s3_state_prefix, s3_keys, logged_file_names
+            )
+            if action == "skip":
+                logging.info(
+                    f"{haystaq_kind} file already in S3 and logged for {state_id}: {matched_file_name}"
+                )
                 return EMPTY_LOAD_DETAILS
+            if action == "self_heal":
+                logging.warning(
+                    f"{haystaq_kind} file for {state_id} is in S3 but has no sync-log row "
+                    f"(a prior run died before logging it); re-logging without re-download: {matched_file_name}"
+                )
+                return {
+                    "state_id": state_id,
+                    "source_file_names": [matched_file_name],
+                    "source_zip_file": source_zip_file_name,
+                    "loaded_at": datetime.now(),
+                    "s3_state_prefix": s3_state_prefix,
+                }
 
             full_zip_path = os.path.join(remote_dir, source_zip_file_name)
 
@@ -177,26 +289,26 @@ def _extract_and_load_w_params(
                     logging.error(f"Failed to extract {local_zip_path}. Skipping for now.")
                     return EMPTY_LOAD_DETAILS
 
-                # Expect exactly one .tab file
-                tab_names = [name for name in extracted_names if name.lower().endswith(".tab")]
-                if len(tab_names) != 1:
-                    raise ValueError(
-                        f"Expected 1 .tab in {source_zip_file_name}, got {len(tab_names)}: {tab_names}"
+                local_tab_path = _locate_extracted_tab(extracted_names, temp_dir)
+                if local_tab_path is None:
+                    # Zip was likely partial (vendor mid-upload); retry on a later run.
+                    logging.error(
+                        f"Extracted tab missing for {state_id} ({haystaq_kind}) from "
+                        f"{source_zip_file_name}. Skipping for now."
                     )
+                    return EMPTY_LOAD_DETAILS
 
-                extracted_tab_member = tab_names[0]
-                extracted_tab_name = os.path.basename(extracted_tab_member)
+                extracted_tab_name = os.path.basename(local_tab_path)
                 if extracted_tab_name.lower() != tab_file_name.lower():
+                    # Upload under the zip-derived name regardless: every future
+                    # run derives that name from the SFTP listing to decide
+                    # skip/self-heal, so uploading the extracted spelling would
+                    # never be found again and the file would re-download and
+                    # re-log on every run.
                     logging.warning(
-                        f"Extracted tab name {extracted_tab_name} does not match expected {tab_file_name}; uploading extracted name."
+                        f"Extracted tab name {extracted_tab_name} does not match expected "
+                        f"{tab_file_name}; uploading under the expected name."
                     )
-                    tab_file_name = extracted_tab_name
-
-                # `ZipFile.extractall` preserves any directory structure inside the zip, so the
-                # extracted file may not live at the root of `temp_dir`.
-                local_tab_path = os.path.join(temp_dir, extracted_tab_member)
-                if not os.path.isfile(local_tab_path):
-                    raise FileNotFoundError(f"Extracted tab file not found at {local_tab_path}")
 
                 s3_key = f"{s3_state_prefix}{tab_file_name}"
                 s3_client.upload_file(Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key)
@@ -219,11 +331,11 @@ def _extract_and_load_w_params(
 
         except Exception as e:
             logging.error(f"Error processing state {state_id} ({haystaq_kind}): {e!s}")
-            error_details = traceback.format_exc()
-            logging.error(f"Full exception details:\n{error_details}")
-            raise Exception(
-                f"Error processing state {state_id} ({haystaq_kind}): {e!s}\nFull traceback:\n{error_details}"
-            ) from e
+            logging.error(f"Full exception details:\n{traceback.format_exc()}")
+            # Re-raise unwrapped: the caller prefixes state/kind onto str(e) for
+            # the end-of-run summary, and wrapping here would duplicate that
+            # context and stuff the whole traceback into the summary line.
+            raise
         finally:
             if sftp_client is not None:
                 sftp_client.close()
@@ -291,6 +403,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
 
+    # "Already handled" must mean "logged", not merely "uploaded to S3" — the
+    # downstream Databricks load only consumes logged files. Read this model's
+    # own log so files stranded in S3 by an interrupted run get re-logged.
+    logged_file_names: set[str] = set()
+    if dbt.is_incremental:
+        logged_file_names = {
+            row.source_file_name.lower()
+            for row in session.table(f"{dbt.this}").select("source_file_name").collect()
+            if row.source_file_name is not None
+        }
+
     extract_flags = _extract_and_load_w_params(
         sftp_host=sftp_host,
         sftp_port=sftp_port,
@@ -303,6 +426,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         databricks_volume_directory=databricks_volume_directory,
         remote_dir=flags_remote_dir,
         haystaq_kind="flags",
+        logged_file_names=logged_file_names,
     )
 
     extract_scores = _extract_and_load_w_params(
@@ -317,17 +441,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         databricks_volume_directory=databricks_volume_directory,
         remote_dir=scores_remote_dir,
         haystaq_kind="scores",
+        logged_file_names=logged_file_names,
     )
 
-    all_load_details: list[dict[str, Any]] = []
-    for state_id in state_list:
-        flags_result = extract_flags(state_id)
-        if flags_result["state_id"] is not None:
-            all_load_details.append({"state_id": state_id, "load_details": flags_result})
-
-        scores_result = extract_scores(state_id)
-        if scores_result["state_id"] is not None:
-            all_load_details.append({"state_id": state_id, "load_details": scores_result})
+    all_load_details, failures = _collect_load_details(
+        state_ids=state_list,
+        extract_fns={"flags": extract_flags, "scores": extract_scores},
+    )
+    all_load_details = _finalize_load_details(all_load_details, failures)
 
     # schema matches `load__l2_sftp_to_s3`
     load_details_schema = StructType(
