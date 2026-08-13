@@ -42,9 +42,8 @@ parallel.
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
 dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
-only the swap is withheld. Rehearsal freezes ALL tables, since the legacy dbt
-writer `write__election_api_db` is disabled in the same change, so keep the
-rehearsal window short.
+only the swap is withheld. This DAG is the only writer to these tables, so
+rehearsal freezes ALL of them: keep the rehearsal window short.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.

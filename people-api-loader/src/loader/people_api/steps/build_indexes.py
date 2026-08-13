@@ -172,20 +172,11 @@ def _create_index(conn: psycopg.Connection, idx: IndexDef, *, partition_key: str
                 "partition key — this index needs manual handling"
             )
         # dict.fromkeys dedupes in case a future dump's unique already includes the partition key.
-        # NOTE (cutover): for a partitioned table, appending the partition key turns
-        # Voter_LALVOTERID_key into UNIQUE("LALVOTERID", "State"). The dbt write models upsert with
-        # ON CONFLICT ("LALVOTERID") against the single-column constraint, so at cutover
-        # they must change to ON CONFLICT ("LALVOTERID", "State") to match this index:
-        #   dbt/project/models/write/write__l2_databricks_to_gp_api.py:774
-        #   dbt/project/models/write/write__people_api_db.py:399
-        # Do NOT land those edits before the partitioned schema is the serving DB — the
-        # current DB still has the single-column unique and the composite target would
-        # break live upserts. See the PR body's cutover note.
-        # SIBLING NOTE (cutover): DistrictVoter is the same DATA-1855 divergence. Its PK
-        # (district_id, voter_id) becomes (district_id, voter_id, "State") on this partitioned
-        # table, so the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
-        # at cutover, not before — for the same reason the current DB carries the narrower key.
-        # A flat table (partition_key is None) appends nothing and keeps its real columns.
+        # Postgres requires the partition key in every unique index on a partitioned table, so
+        # Voter_LALVOTERID_key widens to UNIQUE("LALVOTERID", "State") and DistrictVoter's PK to
+        # (district_id, voter_id, "State"). These are wider than the seed dump's keys, which came
+        # from the un-partitioned serving DB. A flat table (partition_key is None) appends nothing
+        # and keeps its real columns.
         keyed = (
             _partition_keyed_columns(idx.columns, partition_key)
             if partition_key is not None
