@@ -43,7 +43,7 @@ with
             size(
                 split('{{ get_l2_district_columns() | replace("\n", " ") }}', ',')
             ) as actual,
-            230 as expected
+            231 as expected
 
         union all
 
