@@ -36,7 +36,8 @@ with
             u.zip as _user_zip,
             u.created_at as _user_created_at,
             p.name as _position_name,
-            p.br_database_id as _position_br_database_id,
+            -- back to numeric: the election-api mart publishes it as string
+            cast(p.br_database_id as bigint) as _position_br_database_id,
             c.details:office::string as _legacy_office,
             cast(
                 regexp_extract(

@@ -5,9 +5,8 @@ on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks. The lo
 every table in `TABLE_SPECS`: `Voter` and `DistrictVoter` (partitioned by State), and the
 rest flat.
 
-Tickets: DATA-1913 (DAG orchestration) and DATA-2100 (District family), epic DATA-1640 (People API
-data-loading revamp). Latest work is on the active feature branch (currently
-`feat/DATA-2100-district-family` / PR #607); this doc is updated there and merges to `main`.
+Tickets: DATA-1913 (DAG orchestration), DATA-2100 (District family), DATA-1855 (first prod cutover),
+and DATA-1914 (cutover/rollback runbook, below); epic DATA-1640 (People API data-loading revamp).
 
 ## What it does
 
@@ -38,13 +37,13 @@ not part of this loader.
 
 ```
 inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> copy
-             -> build_indexes -> validate -> resize
+             -> build_indexes -> validate -> resize -> analyze -> promote
 ```
 
 `validate` runs **before** `resize`: `resize` flips the writer down to the small serving instance
 class, and `validate`'s heavy per-state `count`/`GROUP BY` checks over ~227M rows are slow there.
 Running `validate` first reuses the big index instance `build_indexes` already scaled up, so it's
-fast; `resize` is then the clean final step. `validate` only checks row counts + schema/index
+fast; `resize` (then `analyze` and the `promote` cutover) is the clean tail. `validate` only checks row counts + schema/index
 structure — none of which change across `resize` — so correctness is identical either order.
 
 | Step | Purpose |
@@ -57,7 +56,9 @@ structure — none of which change across `resize` — so correctness is identic
 | `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
 | `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for every specced table: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `VACUUM (ANALYZE)` all tables — a freshly bulk-loaded table has an empty visibility map, so this sets it (enabling index-only scans and letting serving-side `count(*)` avoid a full heap scan) in the same pass that refreshes planner stats. Concurrent-builder count defaults to `LOADER_INDEX_PARALLELISM` (else 128). See below. |
 | `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Runs on the still-scaled-up index instance (before `resize`). Failure halts the DAG. |
-| `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.t4g.medium`), swap in the serve parameter group, bump backup retention, enable deletion protection. Finishes with a lightweight post-resize smoke check (`SELECT 1` against the resized cluster) confirming it's reachable. |
+| `resize` | Flip the writer down to the serving instance class (`serve_instance_class`, prod default `db.r6g.4xlarge`; dev sets `LOADER_SERVE_INSTANCE_CLASS=db.serverless`), swap in the serve parameter group, bump backup retention, enable deletion protection. Finishes with a lightweight post-resize smoke check (`SELECT 1` against the resized cluster) confirming it's reachable. |
+| `analyze` | Database-wide `ANALYZE` for fresh per-partition planner stats on the fully loaded, resized cluster (`build_indexes`'s `VACUUM (ANALYZE)` only set the parents' inheritance stats). |
+| `promote` | Serving cutover (final step). Overwrite the serving param `people-db-connection-string-<env>` with the run's connection string (a new latest version) + a best-effort `build-<date>` label; refuses unless `validate` passed. gp-api picks up the new latest within ~5 min. See "Cutover & rollback runbook". |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`validate`→`resize`. On any post-provision failure (including a `validate` failure, which now runs on the scaled-up writer before `resize`) it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
 ## Connectivity: bastion
@@ -79,7 +80,7 @@ I/O/WAL-bound. So the loader uses two instance classes and scales between them:
   provision, create_schema, copy.
 - `index_instance_class` = `db.r8g.48xlarge` (192 vCPU): `build_indexes` scales the writer up to
   this at its start (`_ensure_instance_class`), then `resize` flips down to `serve_instance_class`
-  (prod default `db.r6g.4xlarge`; dev `db.t4g.medium`) — a provisioned class, not Serverless v2.
+  (prod default `db.r6g.4xlarge`, a provisioned class; dev `db.serverless`).
 
 Overridable via `LOADER_LOAD_INSTANCE_CLASS` / `LOADER_INDEX_INSTANCE_CLASS` /
 `LOADER_SERVE_INSTANCE_CLASS`.
@@ -212,28 +213,54 @@ come from SSM SecureStrings, never an env-var password.
   (`https://<deployment>.pm.astronomer.run/<ns>/api/v2/dags/load_people_api/dagRuns/<run>/...`) with
   a short-TTL `astro deployment token create` bearer works when the web session JWT expires. The API
   `duration` field is stale for running tasks; read log timestamps.
-- **Teardown.** `resize` leaves a provisioned serving cluster (prod `db.r6g.4xlarge`, dev
-  `db.t4g.medium`); teardown is not in this DAG. Clean up abandoned run clusters
-  (`gp-people-db-<date>-<env>`) to avoid idle cost.
+- **Teardown.** Retiring a superseded or abandoned cluster is a separate manual DAG,
+  `teardown_people_api_cluster` (dry-run by default — uncheck "Dry run" to delete). It runs
+  `loader teardown --date <date> --snapshot ...`, leaving a `gp-people-db-<date>-<env>-final`
+  snapshot before deleting the compute. Never teardown the cluster currently serving (confirm the
+  live date via the runbook below) or one still needed as a rollback target.
 
-## Before merge
+## Cutover & rollback runbook
 
-- [ ] Repin the loader install in `astro/requirements.txt` from the active feature branch to `@main`
-  (or the merge-commit SHA / a tag). It tracks the current branch during review so pushes deploy to
-  astro-dev; freeze it only at merge. (Done for PR #607 — pinned to `@main`.)
-- [ ] Gate the merge on cutover readiness (DATA-1855). Merging swaps the canonical `load_people_api`
-  dag_id to the new train-deployment loader, and the partitioned schema diverges from the current
-  single-column Prisma model (the dbt write models' `ON CONFLICT` must move to
-  `("LALVOTERID", "State")` at cutover, not before).
-- [ ] Regenerate `_serving_seed.py` against current prod at cutover (verified byte-identical today, so
-  a no-op unless prod drifts — e.g. the DATA-1855 work adding District structure to `public`). Run
-  `extract-serving-structure` where the loader has prod access: the airflow SP on the worker
-  (SSM-allowed + bastion), or a local engineer on VPN via a direct DSN (the `EngineerAccess` SSO
-  identity is explicitly denied the SSM connection-string param). Then `ruff format` the file and
-  `git diff` — an empty diff means no drift.
+Procedure for making a loader-built cluster serve production, and rolling back (DATA-1914). Topology
+is above ("Serving schema", "Step sequence"); this is the operational procedure.
+
+**Serving pointer.** gp-api reads the single SSM SecureString `people-db-connection-string-<env>` at
+its **latest** version and revalidates every ~5 min, hot-swapping its Prisma client with no restart
+(`omni/packages/gp-api/src/peopleDb/peopleDbUrl.provider.ts`). There is no `live` label — latest
+wins. A cutover is overwriting that parameter; a rollback is overwriting it back.
+
+**Standard (automated) cutover.** `promote` (the DAG's final step) overwrites
+`people-db-connection-string-<env>` with the run's connection string — a new latest version — and
+best-effort-labels it `build-<date>`; it refuses unless the run's `validate` passed. gp-api serves
+the new cluster within ~5 min. Verify: the `promote` manifest exists and the serving param's latest
+version carries the `build-<date>` label.
+
+**Manual / re-promote.** `loader promote --date YYYYMMDD` promotes a specific already-validated
+cluster (idempotent; still gated on that date's green `validate`).
+
+**Rollback** is a manual admin action (the AWS admin group has write on the prod parameter). Since
+gp-api serves the latest version, roll back by writing the prior cluster's connection string back as
+a new version. The prior **cluster must still exist**, so never teardown a cluster until its
+successor is confirmed healthy.
+
+```
+# 1. read the target version's value (the build-<date> label selects it)
+aws ssm get-parameter --region us-west-2 \
+  --name "people-db-connection-string-prod:build-20260727" \
+  --with-decryption --query Parameter.Value --output text
+# 2. write it back as a new version (the cutover); gp-api reverts within ~5 min
+aws ssm put-parameter --region us-west-2 \
+  --name people-db-connection-string-prod --type SecureString \
+  --value "<value from step 1>" --overwrite
+```
+
+**Verify a cutover/rollback.** `aws ssm get-parameter --name people-db-connection-string-<env> --query Parameter.Version`,
+and `get-parameter-history ... --query 'Parameters[-1].Labels'` (the `build-<date>` label names the
+live cluster); confirm gp-api is healthy; spot-check a query on the new cluster; watch error rate
+before retiring the prior cluster (see Operations → Teardown).
 
 ## References
 
 - TDD (DATA-1735) sections 4.4, 4.5, 4.10, 7, 9.3 (bastion + BashOperator decisions)
 - `people-api-loader/` CLI and `people-api-loader/CLAUDE.md`
-- Related: DATA-1905 (S3 bucket + rds-s3-import role), DATA-1906 (voter gate), DATA-1855 (cutover)
+- Related: DATA-1905 (S3 bucket + rds-s3-import role), DATA-1906 (voter gate), DATA-1855 (first prod cutover, done), DATA-1914 (cutover/rollback runbook, above)

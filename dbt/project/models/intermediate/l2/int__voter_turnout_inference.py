@@ -1,4 +1,4 @@
-"""Nationwide voter-turnout LightGBM inference (DATA-2015).
+"""Nationwide voter-turnout model inference.
 
 ONE dbt Python model that replaces the research branch's 51 per-state models +
 Jinja macro. Reads int__l2_nationwide_uniform, aggregates to precinct grain,
@@ -35,6 +35,7 @@ without Spark/MLflow; `model()` executes them. `import mlflow` is deferred into
 
 import glob
 import json
+import math
 import os
 import re
 import tempfile
@@ -230,14 +231,11 @@ def _opp_view_sql(op_years, catalog, precincts_schema):
     'model_predictions' (it must be promoted there alongside the models; it currently
     exists only in sandbox, which is not a sanctioned prod source). Dev may override.
     """
+    year_conds = {y: f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in op_years}
     opp_col_exprs = ", ".join(
-        f"MAX(CASE WHEN election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}') "
-        f"THEN 1 ELSE 0 END) AS opp_{y}"
-        for y in op_years
+        f"MAX(CASE WHEN {cond} THEN 1 ELSE 0 END) AS opp_{y}" for y, cond in year_conds.items()
     )
-    year_filter = " OR ".join(
-        f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in op_years
-    )
+    year_filter = " OR ".join(year_conds.values())
     return f"""
         SELECT State, County, Precinct, {opp_col_exprs}
         FROM {catalog}.{precincts_schema}.turnout_historical_precincts
@@ -443,6 +441,137 @@ def _build_district_membership_sql(l2_col_set, district_types):
     """
 
 
+def _build_district_projection_sql(interval_params):
+    """Pure: final district-level projection SQL, including p25 (lower) / p95 (upper)
+    prediction-interval bounds.
+
+    interval_params maps model_slug -> {q25, q95, scaler, ...}. Bounds are the
+    variance-stabilised residual model fit per slug in the turnout_prediction_intervals
+    notebook (raw-standardized residual quantiles, no constant bias term). For each
+    district we take the model's implied predicted rate, with the scaler input
+    clamped to [0,1]: pred_rate = clip(ballots_projected / district_voters, 0, 1).
+    Then apply
+
+        bound_rate    = clip(pred_rate + q * w(pred_rate), 0, 1)
+        bound_ballots = greatest(round(bound_rate * district_voters), 3)
+
+    floored at 3 like the point estimate, then enclosed against it: LEAST(bound_ballots,
+    point) for the lower bound and GREATEST(bound_ballots, point) for the upper, where
+    point = greatest(round(ballots_projected), 3) — so saturation can never invert the
+    band.
+
+    with q = q25 for the lower bound and q = q95 for the upper, and w() a per-model
+    residual-spread scaler:
+      - 'binom'     -> sqrt(p*(1-p)): tapers to 0 at both 0% and 100% turnout.
+      - 'taper_top' -> sqrt(1-p): tapers only near 100%, staying wide at low turnout.
+    The low-turnout local models (off_year_local_lag2, even_year_local) use 'taper_top':
+    the binom shape collapses the band to ~0 at low turnout while the model's real error
+    there stays large and positive (small low-turnout jurisdictions surprise upward), so
+    binom badly under-covered the p95 upper bound (see the training runbook). 'headroom'
+    keeps the low-turnout band wide enough to cover that upside; the other three models
+    stay on 'binom'.
+
+    q25 < 0 < q95 for every model, so the point (q=0) always lies within [lower, upper].
+    The residual model was fit on eligible-weighted rates; inference uses the
+    registered-voter denominator (district_voters = SUM(n_voters), no eligibility gate) on
+    the deliberate assumption that today's L2 is the eligible-if-held-today universe
+    (research decision).
+
+    A LEFT JOIN to the params means a slug with no params yields NULL bounds rather than
+    dropping the ballots_projected row. Model routing guarantees (election_year,
+    election_code) -> a single slug, so carrying model_slug into the GROUP BY does not
+    change ballots_projected or the natural-key grain."""
+    if interval_params:
+        values = ",\n                ".join(
+            f"('{slug}', {p['q25']!r}, {p['q95']!r}, '{p['scaler']}')"
+            for slug, p in sorted(interval_params.items())
+        )
+        params_cte = f"""_interval_params AS (
+            SELECT * FROM (VALUES
+                {values}
+            ) AS t(model_slug, q_lower, q_upper, scaler)
+        ),
+        """
+        join_sql = "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug"
+        # Per-model residual-spread scaler w(pred_rate): 'taper_top' = sqrt(1-p) for the
+        # low-turnout local models, 'binom' = sqrt(p*(1-p)) otherwise.
+        w_expr = (
+            "(CASE WHEN ip.scaler = 'taper_top' THEN SQRT(1 - a.pred_rate) "
+            "ELSE SQRT(a.pred_rate * (1 - a.pred_rate)) END)"
+        )
+        # Floor each bound at 3 ballots, matching the point-estimate floor, then ENCLOSE
+        # the point: wrap the rate-space bound with LEAST/GREATEST against the same point
+        # expression.
+        # In-domain this is a no-op (the quantiles straddle zero, so the formula bound
+        # already sits beyond the point). At saturation, pred_rate is clamped to 1 above,
+        # which caps the rate-space bound at district_voters while the raw point
+        # (projected_raw) can legitimately exceed it — without enclosing, that flips
+        # upper below the point instead of collapsing the band onto it.
+        point_expr = "GREATEST(ROUND(a.projected_raw), 3)"
+        lower_expr = (
+            f"LEAST(GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * {w_expr}, 0), 1) "
+            f"* a.district_voters), 3), {point_expr})"
+        )
+        upper_expr = (
+            f"GREATEST(GREATEST(ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * {w_expr}, 0), 1) "
+            f"* a.district_voters), 3), {point_expr})"
+        )
+    else:
+        params_cte = ""
+        join_sql = ""
+        lower_expr = "CAST(NULL AS DOUBLE)"
+        upper_expr = "CAST(NULL AS DOUBLE)"
+
+    return f"""
+        WITH {params_cte}_district_agg AS (
+            SELECT
+                CAST(p.inference_year AS INT)    AS election_year,
+                p.election_code,
+                p.State                          AS state,
+                m.district_type,
+                m.district_name,
+                p.model_slug,
+                p.model_family                   AS model_version,
+                SUM(p.p_hat * p.n_voters)        AS projected_raw,
+                SUM(p.n_voters)                  AS district_voters
+            FROM _precinct_preds p
+            JOIN _membership m
+              ON  p.State    = m.State
+              AND p.County   = m.County
+              AND p.Precinct = m.Precinct
+            GROUP BY
+                p.inference_year, p.election_code, p.State,
+                m.district_type, m.district_name, p.model_slug, p.model_family
+        ),
+        _with_rate AS (
+            SELECT
+                *,
+                -- Clamp the scaler INPUT: a saturated or above-domain point (raw slop,
+                -- not the physical-domain guard at the prediction site) would otherwise
+                -- push pred_rate outside [0,1] and hand w() a negative product under the
+                -- SQRT, which is NaN — and NaN beats every value in Spark's GREATEST.
+                CASE WHEN district_voters > 0
+                     THEN LEAST(GREATEST(projected_raw / district_voters, 0), 1)
+                END AS pred_rate
+            FROM _district_agg
+        )
+        SELECT
+            a.election_year,
+            a.election_code,
+            a.state,
+            a.district_type,
+            a.district_name,
+            a.model_slug,
+            GREATEST(ROUND(a.projected_raw), 3)  AS ballots_projected,
+            {lower_expr}  AS ballots_projected_lower,
+            {upper_expr}  AS ballots_projected_upper,
+            a.model_version,
+            current_timestamp()     AS inference_at
+        FROM _with_rate a
+        {join_sql}
+    """
+
+
 def _parse_state_allowlist(raw):
     """DEV-ONLY iteration knob. NEVER set when building the wired int model."""
     if raw is None:
@@ -455,10 +584,10 @@ def _parse_state_allowlist(raw):
     return allowlist or None
 
 
-def _check_lgbm_version(registered_model_name, client):
+def _check_lgbm_version(registered_model_name, tags):
     import lightgbm as lgb
 
-    tag = client.get_registered_model(registered_model_name).tags.get("lightgbm_version")
+    tag = (tags or {}).get("lightgbm_version")
     if not tag:
         print(f"WARNING: lightgbm_version tag not set on {registered_model_name}. Skipping check.")
         return
@@ -502,7 +631,31 @@ def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inferenc
             x[c] = pd.to_numeric(x[c], errors="coerce")
 
     result = pdf[["State", "County", "Precinct", "n_voters"]].copy()
-    result["p_hat"] = booster._Booster.predict(x.to_numpy(dtype=float, na_value=np.nan))
+    preds = np.asarray(booster._Booster.predict(x.to_numpy(dtype=float, na_value=np.nan)))
+    # one prediction per input row: a scalar or mis-shaped result would
+    # otherwise broadcast across every precinct via the pandas assignment
+    if preds.shape != (len(pdf),):
+        raise ValueError(
+            f"{model_slug} returned predictions of shape {preds.shape} "
+            f"for {len(pdf)} precinct rows; refusing to emit."
+        )
+    if not np.isfinite(preds).all():
+        bad = int((~np.isfinite(preds)).sum())
+        raise ValueError(
+            f"{model_slug} produced {bad} non-finite precinct predictions; "
+            f"refusing to emit (a NULL/NaN prediction would otherwise be "
+            f"silently floored downstream)."
+        )
+    # Catches catastrophic garbage (e.g. a rate regression emitting -5) that finiteness
+    # alone misses. The slack band is far beyond any legitimate slop so it cannot false-fail.
+    if ((preds < -1.0) | (preds > 2.0)).any():
+        bad = int(((preds < -1.0) | (preds > 2.0)).sum())
+        raise ValueError(
+            f"{model_slug} produced {bad} predictions far outside the rate "
+            f"domain [0, 1]; refusing to emit (rates a whole unit out of "
+            f"domain are corruption, not regression slop)."
+        )
+    result["p_hat"] = preds
     result["model_slug"] = model_slug
     result["model_family"] = model_version
     result["inference_year"] = inference_year
@@ -553,6 +706,67 @@ def _read_model_family_tag(registered_model_tags, registered_model_name):
     return family
 
 
+def _read_interval_params_tag(model_version_tags, registered_model_name):
+    """Read the per-slug prediction-interval params (empirical residual quantiles) from
+    the @production model-VERSION tag set at promotion.
+
+    Stored as a JSON version tag (not a registered-model tag) so the params stay locked to
+    the exact booster they were fit against — a retrain must re-fit and re-tag. A missing
+    or malformed tag fails loudly rather than silently dropping the interval columns.
+    """
+    raw = (model_version_tags or {}).get("prediction_interval_params")
+    if not raw:
+        raise ValueError(
+            f"Registered model {registered_model_name} @production is missing the required "
+            f"'prediction_interval_params' version tag. Fit it in the turnout "
+            f"prediction-intervals notebook and set it at promotion."
+        )
+    try:
+        params = json.loads(raw)
+    except (ValueError, TypeError) as e:
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} is not valid JSON: {raw!r}"
+        ) from e
+    if not isinstance(params, dict):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} is not a JSON object: {params!r}"
+        )
+    missing = {"q25", "q95"} - set(params)
+    if missing:
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} is missing keys "
+            f"{sorted(missing)}: {params}"
+        )
+    for key in ("q25", "q95"):
+        value = params[key]
+        # bool is an int subclass; a boolean quantile is always a data error.
+        if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+            raise ValueError(
+                f"prediction_interval_params on {registered_model_name} has a "
+                f"non-numeric or non-finite {key}: {value!r}"
+            )
+    # The quantiles must strictly straddle zero so the point always sits inside
+    # its own interval with a real band on both sides (the bias-era
+    # detached-band bug, fixed upstream, stays fixed).
+    if not (params["q25"] < 0 < params["q95"]):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} has quantiles "
+            f"that do not straddle zero: q25={params['q25']}, q95={params['q95']}"
+        )
+    # The scaler shapes the band; defaulting it silently would mis-shape the
+    # low-turnout local models. Every live tag carries it; require it. Which
+    # scaler belongs to which slug is deliberately NOT pinned here: the tag
+    # travels with the model version and is the source of truth; a refit may
+    # legitimately change a model's scaler.
+    scaler = params.get("scaler")
+    if scaler not in ("binom", "taper_top"):
+        raise ValueError(
+            f"prediction_interval_params on {registered_model_name} has missing or "
+            f"unknown scaler {scaler!r} (expected 'binom' or 'taper_top')."
+        )
+    return params
+
+
 def model(dbt, session):
     import mlflow
     import mlflow.lightgbm
@@ -582,21 +796,33 @@ def model(dbt, session):
     client = mlflow.MlflowClient()
 
     needed_slugs = sorted({slug for y in inference_years for slug in _year_to_model_slugs(y)})
-    models, cat_maps, model_families = {}, {}, {}
+    models, cat_maps, model_families, interval_params = {}, {}, {}, {}
     for slug in needed_slugs:
         full_name = f"{catalog}.{models_schema}.voter_turnout_model_{slug}"
-        _check_lgbm_version(full_name, client)
         # model_family is the load-bearing model_version stamped on every row (part of the
         # election-api id). Read it from the registered-model tag set at promotion, NOT a run
         # artifact: the validated retrains carry no model_family.json, and a tag travels with
         # the model (survives copy_model_version) and is version-agnostic. Read per slug so an
         # inconsistent promotion is caught below, not silently stamped from one slug.
         registered = client.get_registered_model(full_name)
+        _check_lgbm_version(full_name, registered.tags)
         model_families[slug] = _read_model_family_tag(registered.tags, full_name)
+        # Prediction-interval params (bias + empirical residual quantiles) are a model-VERSION
+        # tag on the @production version, so they stay locked to the exact booster they were
+        # fit against (a retrain must re-fit + re-tag). Read them off the resolved production
+        # version, not the registered-model tag set.
+        prod_version = client.get_model_version_by_alias(full_name, "production")
+        interval_params[slug] = _read_interval_params_tag(prod_version.tags, full_name)
+        # Resolve the alias exactly once: download the same numeric version the
+        # params were read from, so a mid-run promotion cannot pair one
+        # booster with another version's quantiles. Log the resolved version:
+        # the run log is the durable record of exactly which boosters built
+        # this table (model_version stamps the family, not the MLflow version).
+        print(f"resolved {full_name}@production -> version {prod_version.version}")
+        model_uri = f"models:/{full_name}/{prod_version.version}"
         # Download the @production model once, then load it and resolve its categorical feature
         # map. The map is logged under model/ (so it travels with copy_model_version) but with
         # a tmp-prefixed filename, so glob for it rather than assume a fixed artifact path.
-        model_uri = f"models:/{full_name}@production"
         with tempfile.TemporaryDirectory() as tmp:
             model_dir = mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=tmp)
             models[slug] = mlflow.lightgbm.load_model(model_dir)
@@ -651,23 +877,7 @@ def model(dbt, session):
                 if not pd.api.types.is_numeric_dtype(pred_pdf[c]):
                     pred_pdf[c] = pred_pdf[c].astype(object)
 
-            pred_dfs.append(
-                session.createDataFrame(
-                    pred_pdf[
-                        [
-                            "State",
-                            "County",
-                            "Precinct",
-                            "n_voters",
-                            "p_hat",
-                            "model_slug",
-                            "model_family",
-                            "inference_year",
-                            "election_code",
-                        ]
-                    ]
-                )
-            )
+            pred_dfs.append(session.createDataFrame(pred_pdf))
 
     # Union ALL per-(year, slug) precinct predictions into ONE view, then aggregate ONCE.
     # Do NOT append per-slug aggregations that each read a reused "_precinct_preds" view:
@@ -675,24 +885,4 @@ def model(dbt, session):
     # see the LAST iteration's view — collapsing all years/slugs to the final one and
     # duplicating it. The unique-combination test on this model guards that regression.
     reduce(lambda a, b: a.unionByName(b), pred_dfs).createOrReplaceTempView("_precinct_preds")
-    return session.sql(
-        """
-        SELECT
-            CAST(p.inference_year AS INT)    AS election_year,
-            p.election_code,
-            p.State                          AS state,
-            m.district_type,
-            m.district_name,
-            ROUND(SUM(p.p_hat * p.n_voters)) AS ballots_projected,
-            p.model_family                   AS model_version,
-            current_timestamp()              AS inference_at
-        FROM _precinct_preds p
-        JOIN _membership m
-          ON  p.State    = m.State
-          AND p.County   = m.County
-          AND p.Precinct = m.Precinct
-        GROUP BY
-            p.inference_year, p.election_code, p.State,
-            m.district_type, m.district_name, p.model_family
-        """
-    )
+    return session.sql(_build_district_projection_sql(interval_params))

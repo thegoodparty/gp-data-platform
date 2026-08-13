@@ -46,6 +46,16 @@ models:
               config:
                 warn_if: ">10"
                 error_if: ">1000"
+      - name: person_id
+        description: >
+          Person UUID for the election-api Candidacy.person_id FK. Equal to
+          gp_candidate_id when that person is served by
+          m_election_api__person, else null, so the FK always resolves.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
@@ -310,7 +320,7 @@ models:
               - election_year
               - election_code
               - model_version
-      # API invariant (DATA-2015): the election-api consumer (projectedTurnout.service.ts
+      # API invariant: the election-api consumer (projectedTurnout.service.ts
       # findFirst/getMany) does NOT disambiguate model_version, so there must be exactly one
       # row per (district_id, election_year, election_code). The table materialization
       # rebuilds from int__model_prediction_voter_turnout every run, so this only fails if
@@ -430,6 +440,15 @@ models:
       Grain: One row per (zip_code, position_id, election_date). Positions
       without zip coverage will have a null zip_code.
     columns:
+      - name: id
+        description: >
+          Deterministic UUID on the natural key (zip_code, position_id,
+          election_date); primary key in the election-api ZipToPosition
+          table, stable across daily rebuilds.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
       - name: position_id
         description: >
           Election API position UUID. Foreign key to m_election_api__position.
@@ -775,6 +794,21 @@ models:
           - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
+      - name: is_pledged
+        description: >
+          Whether the person took the GoodParty pledge on any candidacy, rolled
+          up from candidacy.is_pledged on gp_person_id. The API column is NOT
+          NULL DEFAULT false, so the unpledged must be false, never null.
+        tests:
+          - not_null
+      - name: gp_api_user_id
+        description: >
+          gp-api User.id for this person, carried from people.gp_api_user_id.
+          A digit string, not a uuid (the gp-api id is a numeric autoincrement).
+          gp-api reads it to set its own User.person_id, which is what unlocks
+          the public profile editor. Null when the person has no gp-api user, or
+          when the person's cluster maps to more than one gp-api user (people
+          only makes the id scalar when it is unambiguous).
 
   - name: m_election_api__office_holder
     description: >

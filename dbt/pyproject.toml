@@ -25,6 +25,9 @@ dependencies = [
 dev = [
     "pytest>=9.1.1,<10.0.0",
     "mypy>=2.3.0",
+    # The serialization layer pandas UDFs actually cross. Lets tests assert that a
+    # normalized record survives the conversion to its declared Spark schema.
+    "pyarrow>=21.0.0",
 ]
 
 [tool.uv]

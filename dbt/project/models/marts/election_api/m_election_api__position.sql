@@ -170,7 +170,9 @@ with
 -- election, so consumers gate per-race if they need that.
 select
     all_positions.id,
-    all_positions.br_database_id,
+    -- string to match the election-api Postgres contract (Position.br_database_id
+    -- is text); consumers joining numerically cast back explicitly
+    cast(all_positions.br_database_id as string) as br_database_id,
     all_positions.br_position_id,
     all_positions.name,
     all_positions.state,

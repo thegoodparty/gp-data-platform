@@ -1,4 +1,4 @@
--- Drift guard for DATA-1945: every event_type that int__amplitude_user_milestones
+-- Drift guard: every event_type that int__amplitude_user_milestones
 -- aggregates must classify to a real (non-'other') family in the single-source
 -- taxonomy. Classification is checked directly through the amplitude_event_family
 -- macro (not via the materialized model), so this guards the pattern logic itself

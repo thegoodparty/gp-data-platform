@@ -70,23 +70,38 @@ def test_newly_ratified_excludes_pending_and_retired():
     assert sigma_tasks.newly_ratified(before, after) == []
 
 
-def test_build_key_is_name_at_ratified_date():
-    assert (
-        sigma_tasks.build_key(_rec("active_serve_users", ratified="2026-07-28"))
-        == "active_serve_users@2026-07-28"
-    )
+def test_build_key_is_name_at_definition_fingerprint():
+    from semantic_catalog import ratifications
+
+    rec = _rec("activated_serve_users", ratified="2026-07-28")
+    assert sigma_tasks.build_key(rec) == f"activated_serve_users@{ratifications.definition_sha(rec)}"
+
+
+def test_build_key_is_stable_when_only_the_date_is_corrected():
+    # The whole point: re-dating a metric must not mint a rival build task for
+    # work already done. Three of those landed on an assignee after DATA-2249.
+    early = _rec("win_users", ratified="2026-08-03")
+    corrected = _rec("win_users", ratified="2026-08-04")
+    assert sigma_tasks.build_key(early) == sigma_tasks.build_key(corrected)
+
+
+def test_build_key_changes_when_the_definition_changes():
+    # A real redefinition IS new build work, so it must still get a task.
+    old = _rec("win_users", ratified="2026-08-04", definition="old meaning")
+    new = _rec("win_users", ratified="2026-08-04", definition="new meaning")
+    assert sigma_tasks.build_key(old) != sigma_tasks.build_key(new)
 
 
 def test_task_payload_shape():
-    p = sigma_tasks.task_payload(
-        _rec("active_serve_users", ratified="2026-07-28", definition="count of active serve users")
-    )
-    assert p.build_key == "active_serve_users@2026-07-28"
+    rec = _rec("active_serve_users", ratified="2026-07-28", definition="count of active serve users")
+    p = sigma_tasks.task_payload(rec)
+    expected_key = sigma_tasks.build_key(rec)
+    assert p.build_key == expected_key
     assert "active_serve_users" in p.name
     assert p.name.startswith("Build in Sigma:")
     assert "count of active serve users" in p.markdown_description
     assert "2026-07-28" in p.markdown_description
-    assert "active_serve_users@2026-07-28" in p.markdown_description
+    assert expected_key in p.markdown_description
     # Org copy rule: no em dashes, no emoji in generated copy.
     assert "—" not in p.name and "—" not in p.markdown_description
 
@@ -121,15 +136,15 @@ class _FakeClient:
 
 def test_sync_creates_task_for_newly_ratified():
     client = _FakeClient()
-    result = sigma_tasks.sync(
-        client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
-    )
-    assert [p.build_key for p in client.created] == ["m@2026-07-28"]
+    after = [_rec("m", ratified="2026-07-28")]
+    result = sigma_tasks.sync(client, "901", "field1", [_rec("m", ratified=None)], after)
+    expected_key = sigma_tasks.build_key(after[0])
+    assert [p.build_key for p in client.created] == [expected_key]
     assert len(result.created) == 1
     task = result.created[0]
     assert task.metric_name == "m"
-    assert task.task_id == "id-m@2026-07-28"
-    assert task.url == "https://app.clickup.com/t/id-m@2026-07-28"
+    assert task.task_id == f"id-{expected_key}"
+    assert task.url == f"https://app.clickup.com/t/id-{expected_key}"
     assert result.skipped == ()
 
 
@@ -148,10 +163,9 @@ def test_sync_passes_assignee_ids_through_to_the_payload():
 
 def test_sync_is_idempotent_when_task_already_exists():
     # Same transition seen again on a workflow re-run: ClickUp already has the task.
-    client = _FakeClient(existing_keys={"m@2026-07-28"})
-    result = sigma_tasks.sync(
-        client, "901", "field1", [_rec("m", ratified=None)], [_rec("m", ratified="2026-07-28")]
-    )
+    after = [_rec("m", ratified="2026-07-28")]
+    client = _FakeClient(existing_keys={sigma_tasks.build_key(after[0])})
+    result = sigma_tasks.sync(client, "901", "field1", [_rec("m", ratified=None)], after)
     assert client.created == []
     assert result.created == ()
     assert result.skipped == ("m",)

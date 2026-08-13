@@ -11,12 +11,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from semantic_catalog import ratifications
 from semantic_catalog.records import MetricRecord
 
 
 def build_key(rec: MetricRecord) -> str:
-    """Dedupe key: metric name plus the ratified date it was shipped under."""
-    return f"{rec.name}@{rec.ratified}"
+    """Dedupe key: metric name plus the fingerprint of the definition to build.
+
+    Keyed on the DEFINITION, not on the ratified date. What someone has to build
+    in Sigma follows from what the metric means; correcting a date changes
+    nothing about the work. Keying on the date minted a rival task every time a
+    date moved, and DATA-2249's reconciliation produced three of them in two
+    days, each landing on an assignee for work already finished. A genuine
+    definition change still yields a new fingerprint, so it still yields a task.
+    """
+    return f"{rec.name}@{ratifications.definition_sha(rec)}"
 
 
 def task_url(task_id: str) -> str:

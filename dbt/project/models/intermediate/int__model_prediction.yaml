@@ -38,7 +38,7 @@ models:
             - election_year
             - election_code
             - model_version
-    # API invariant (DATA-2015): exactly one row per natural key, regardless of
+    # API invariant: exactly one row per natural key, regardless of
     # model_version. The election-api consumer (projectedTurnout.service.ts) does
     # not disambiguate model_version, so a second version per (district, year, code)
     # would double-serve. This fails loudly if the carve/supersession ever regresses.

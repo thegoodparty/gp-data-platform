@@ -409,8 +409,9 @@ models:
         gp_api only (PD-native):
           product_campaign_id, is_pledged, is_verified,
           verification_status_reason
-        TS > BR (gp_api/DDHQ excluded):
-          is_incumbent
+        TS, then derived from BR office-holder terms (gp_api/DDHQ excluded):
+          is_incumbent (no provider supplies this for 2026; see the column
+          description for the derivation)
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
@@ -506,7 +507,25 @@ models:
         description: Candidate's political party
 
       - name: is_incumbent
-        description: Whether the candidate is the incumbent
+        description: >
+          Whether the candidate already holds the position they are running
+          for. TechSpeed's enrichment where it covered the candidacy;
+          otherwise derived from BallotReady office-holder terms, matching the
+          candidate to a term on the same position that covers election day.
+          The match is on canonical person id, or on first+last name, which
+          the position and term window make near-deterministic. The name arm
+          compensates for a person-resolution gap and is expected to be
+          removed once entity resolution links these records.
+
+          FALSE means BallotReady shows the seat on election day either held
+          by someone else or vacant, and is only asserted for candidacies
+          whose person resolves. NULL means either the position has no
+          office-holder term covering that date or the candidate could not be
+          identified, so incumbency is unknown rather than false. Known misses: appointed or
+          mid-term-succeeded officials whose term dates do not straddle
+          election day, and name variants such as nicknames or changed
+          surnames. Both miss toward "challenger" rather than toward a false
+          incumbent.
         data_tests:
           - accepted_values:
               arguments:
@@ -545,7 +564,7 @@ models:
           int__civics_position_office_type (one office_type per BallotReady
           position, derived from the normalized position name) whenever the
           crosswalk classifies the position; otherwise the per-source value
-          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
+          (BallotReady preferred, then gp_api, then DDHQ) is kept.
 
       - name: candidacy_result
         description: >
@@ -698,14 +717,14 @@ models:
                 severity: warn
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                # Threshold raised post-DATA-1714 after the BR+TS candidacy
+                # Threshold raised after the BR+TS candidacy
                 # merge expanded the candidacy universe.
                 warn_if: ">200"
                 error_if: ">300"
 
       - name: viability_score
         description: >
-          INTERNAL (DATA-1938): the legacy/base viability value. The sales- and
+          INTERNAL: the legacy/base viability value. The sales- and
           Win-facing BROAD viability lives on candidacy_scored -- read it there,
           not here. This column stays because candidacy_scored coalesces it in as
           a gap-filler where the civics scorer could not score.
@@ -720,7 +739,7 @@ models:
 
       - name: score_viability_automated
         description: >
-          INTERNAL (DATA-1938): read the broad label on candidacy_scored, not
+          INTERNAL: read the broad label on candidacy_scored, not
           here (see viability_score above).
           String category paired with viability_score. Values: "No Chance"
           (score < 1), "Unlikely to Win" (1..2), "Has a Chance" (2..3),
@@ -792,7 +811,7 @@ models:
 
   - name: candidacy_scored
     description: >
-      The candidacy mart with broad civics viability layered on (DATA-1938).
+      The candidacy mart with broad civics viability layered on.
       This is the sales / Win-facing viability source: consumers read
       viability_score and score_viability_automated HERE, not on candidacy.
       Every non-viability column passes through from candidacy unchanged and in
@@ -1340,7 +1359,7 @@ models:
           int__civics_position_office_type (one office_type per BallotReady
           position, derived from the normalized position name) whenever the
           crosswalk classifies the position; otherwise the per-source value
-          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
+          (BallotReady preferred, then gp_api, then DDHQ) is kept.
 
       - name: state
         description: U.S. state for the election
@@ -1861,7 +1880,7 @@ models:
       source_systems is join-based: 'ballotready' is always present;
       'techspeed' is added when has_direct_ts_term_match = true.
 
-      gp-api attachment (DATA-1885): each BR term that the EO Splink bridge
+      gp-api attachment: each BR term that the EO Splink bridge
       attached to a gp-api elected_office record exposes
       `gp_api_elected_office_id`, `gp_api_user_id`, `gp_api_campaign_id`,
       `gp_api_organization_slug`, `hubspot_company_id`, and `days_to_sworn_in`.
@@ -2274,7 +2293,7 @@ models:
       contributed a person row; 'techspeed' present when clean TS data
       contributed.
 
-      gp-api integration (DATA-1885): the mart now full-outer-joins a third
+      gp-api integration: the mart now full-outer-joins a third
       provider (`int__civics_elected_official_gp_api_person`) on
       `gp_elected_official_id`, with gp_api adopting BR's canonical via the
       bridge for matched users. gp_api-only rows (Splink found no BR/TS
@@ -2742,10 +2761,10 @@ models:
           voters. A whole-person count, rounded from the exact allocation on
           int__district_population, which stays fractional so that allocations
           sum exactly to block population. Still an estimate: voter-block
-          allocated from the 2020 decennial frame, so it carries the substrate's
+          allocated from the 2020 decennial frame, so it carries the allocation's
           documented zero-voter-block undercount. No ICP gate reads it.
           NULL when the position has no matched L2 district, and also when its
-          district type falls outside the census substrate's curated type set,
+          district type falls outside the allocation's curated type set,
           so a NULL here does not imply a NULL icp_voter_count.
           Do not sum across rows to get a population total: districts overlap
           and each district type independently tiles the country, so the sum
@@ -2802,10 +2821,10 @@ models:
   - name: district_census_stats
     description: >
       The universal district population reference AND the product-facing district-grain
-      surface (DATA-1359, DATA-2064): one row per district for every district of the
-      substrate's curated office-bearing types nationwide, plus one clearly-flagged
+      surface: one row per district for every district of the
+      allocation's curated office-bearing types nationwide, plus one clearly-flagged
       statewide row per state (district_type='State'). A rollup of
-      int__district_census_allocation (the substrate).
+      int__district_census_allocation (the allocation).
 
       Grain: one row per (state_postal_code, district_type, district_name). The key is
       L2 vocabulary: district_name is the normalized L2 name (normalize_l2_district_name);
@@ -2817,8 +2836,8 @@ models:
       caller already holding the key (e.g. a newly-onboarding official with a known
       district but no official record) needs no other join.
 
-      Per-official lookup (replaces the deprecated official_constituents mart,
-      DATA-2064): filter int__serve_district_resolution to
+      Per-official lookup (replaces the deprecated official_constituents mart):
+      filter int__serve_district_resolution to
       resolution_path != 'unresolved' FIRST (unresolved rows carry null district keys --
       a product data gap, not a census miss), then join on
       (state, l2_district_type, normalized_district_name) =
@@ -2836,7 +2855,7 @@ models:
       district_population across types double-counts, and summing local + statewide
       mixes the two bases -- consumers wanting only local districts filter
       WHERE district_type <> 'State'. v1 is population only; ACS demographics and the
-      validated non-exact-assignment share are phase 2 (DATA-1991) and will append here
+      validated non-exact-assignment share are phase 2 and will append here
       at this same grain.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
@@ -2854,61 +2873,21 @@ models:
           - not_null
       - name: district_type
         description: >
-          L2 district-column type (one of the substrate's curated office-bearing types), or
+          L2 district-column type (one of the allocation's curated office-bearing types), or
           'State' for the synthetic statewide rows.
         data_tests:
           - not_null
           - accepted_values:
+              # `+ ['State']` in this kwarg makes dbt Cloud's native-kwarg
+              # renderer drop the macro from context ('...is undefined'),
+              # even though the same macro alone or piped through a filter
+              # renders fine. set/do (same idiom the macro itself uses)
+              # avoids the binary-operator/list-literal AST shape that
+              # triggers it. `| list` copies before .append so this doesn't
+              # mutate the macro's own list literal.
+              name: district_census_stats_district_type_accepted_values
               arguments:
-                values:
-                  - County
-                  - US_Congressional_District
-                  - State_Senate_District
-                  - State_House_District
-                  - State_Legislative_District
-                  - City
-                  - Township
-                  - Town_District
-                  - Village
-                  - Borough
-                  - City_Council_Commissioner_District
-                  - City_Ward
-                  - County_Commissioner_District
-                  - County_Supervisorial_District
-                  - School_District
-                  - Unified_School_District
-                  - School_Board_District
-                  - Board_of_Education_District
-                  - City_School_District
-                  - Elementary_School_District
-                  - High_School_District
-                  - Fire_District
-                  - Community_College
-                  - Community_College_SubDistrict
-                  - County_Board_of_Education_District
-                  - School_Subdistrict
-                  - School_District_Vocational
-                  - Educational_Service_District
-                  - Learning_Community_Coordinating_Council_District
-                  - Town_Ward
-                  - Township_Ward
-                  - Community_Council_SubDistrict
-                  - County_Legislative_District
-                  - Judicial_Justice_of_the_Peace
-                  - Judicial_Superior_Court_District
-                  - Judicial_District_Court_District
-                  - Park_District
-                  - Library_District
-                  - Water_District
-                  - Water_SubDistrict
-                  - Sewer_District
-                  - Fire_Protection_District
-                  - Port_District
-                  - Conservation_District
-                  - Conservation_SubDistrict
-                  - Soil_and_Water_District
-                  - Aquatic_District
-                  - State
+                values: "{% set l = get_l2_district_types(scope='allocated') | list %}{% do l.append('State') %}{{ l }}"
       - name: district_name
         description: >
           Normalized L2 district name (normalize_l2_district_name). NOT unique across
@@ -2918,7 +2897,7 @@ models:
           - not_null
       - name: district_population
         description: >
-          2020 census population of the district. Local rows: sum of the substrate's
+          2020 census population of the district. Local rows: sum of the allocation's
           block-population-weighted allocated_population (FRACTIONAL by design; round for
           display). Statewide rows: exact whole-state census population.
         data_tests:
@@ -2929,7 +2908,7 @@ models:
       - name: n_census_blocks
         description: >
           Census blocks composing the district. Local rows: voter-bearing blocks from the
-          substrate. Statewide rows: all census blocks in the state.
+          allocation. Statewide rows: all census blocks in the state.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -2938,7 +2917,7 @@ models:
       - name: registered_voters
         description: >
           L2 registered voters in the district (the voters-vs-constituents contrast Serve
-          shows). Local rows: sum of substrate voters_in_block_district. Statewide rows:
+          shows). Local rows: sum of allocation voters_in_block_district. Statewide rows:
           per-state sum of the per-block max voter count across types (equals the state's
           universal-County voter total).
         data_tests:

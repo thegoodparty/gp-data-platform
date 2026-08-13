@@ -77,7 +77,11 @@ with
             s.pmf_additional_feedback,
 
             -- respondent info (from submission)
-            s.hs_contact_id,
+            -- A web survey can be submitted without an associated HubSpot
+            -- contact; HubSpot emits '' rather than null for those. Normalise to
+            -- null so "unattributed" is explicit and the contact relationship
+            -- test skips the row instead of failing on an id that cannot exist.
+            nullif(s.hs_contact_id, '') as hs_contact_id,
             s.contact_email,
             s.contact_first_name,
             s.contact_last_name,

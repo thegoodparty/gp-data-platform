@@ -8,7 +8,7 @@
     - TS: pre-populated in upstream model
     - GP API: candidate_office is the product DB campaign_office (raw onboarding
       free-text), mapped here by map_office_type. NOTE: this free-text input is
-      why gp_api office_type is mostly 'Other'; DATA-1972 routes positioned rows
+      why gp_api office_type is mostly 'Other'; positioned rows route
       through int__civics_position_office_type instead.
 
   This macro normalizes those values into a consistent office_type.
