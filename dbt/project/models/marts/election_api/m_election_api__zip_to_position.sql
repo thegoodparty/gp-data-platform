@@ -115,13 +115,15 @@ with
             = 1
     )
 
--- id and updated_at satisfy the election-api ZipToPosition Postgres contract.
--- The id is deterministic on the natural key, so it is stable across rebuilds.
+-- id and the timestamps satisfy the election-api ZipToPosition Postgres
+-- contract. The id is deterministic on the natural key, so it is stable across
+-- rebuilds. The sync rebuilds the table every run, so created_at restates to
+-- the build time rather than tracking a first-seen date.
 select
     {{
         generate_salted_uuid(
             fields=["zip_code", "position_id", "election_date"],
             salt="zip_to_position",
         )
-    }} as id, current_timestamp() as updated_at, *
+    }} as id, current_timestamp() as created_at, current_timestamp() as updated_at, *
 from officepicker
