@@ -366,8 +366,7 @@
         {%- if not use_backticks -%} {%- do out.append(c) -%}
         {%- elif cast_to_string -%}
             {%- do out.append("cast(`" ~ c ~ "` as string) as `" ~ c ~ "`") -%}
-        {%- elif table_alias -%}
-            {%- do out.append(table_alias ~ ".`" ~ c ~ "`") -%}
+        {%- elif table_alias -%} {%- do out.append(table_alias ~ ".`" ~ c ~ "`") -%}
         {%- else -%} {%- do out.append("`" ~ c ~ "`") -%}
         {%- endif -%}
     {%- endfor -%}
