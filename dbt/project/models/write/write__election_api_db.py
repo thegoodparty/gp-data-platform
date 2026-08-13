@@ -194,7 +194,9 @@ PERSON_UPSERT_QUERY = """
         phone,
         degrees,
         experiences,
-        state
+        state,
+        is_pledged,
+        gp_api_user_id
     )
     SELECT
         id::uuid,
@@ -219,7 +221,9 @@ PERSON_UPSERT_QUERY = """
         phone,
         degrees::jsonb,
         experiences::jsonb,
-        state
+        state,
+        is_pledged,
+        gp_api_user_id
     FROM {staging_schema}."Person"
     ON CONFLICT (id) DO UPDATE SET
         updated_at = now(),
@@ -242,7 +246,9 @@ PERSON_UPSERT_QUERY = """
         phone = EXCLUDED.phone,
         degrees = EXCLUDED.degrees,
         experiences = EXCLUDED.experiences,
-        state = EXCLUDED.state
+        state = EXCLUDED.state,
+        is_pledged = EXCLUDED.is_pledged,
+        gp_api_user_id = EXCLUDED.gp_api_user_id
 """
 
 OFFICEHOLDER_UPSERT_QUERY = """
