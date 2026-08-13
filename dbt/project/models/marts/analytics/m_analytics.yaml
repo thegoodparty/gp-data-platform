@@ -582,8 +582,8 @@ models:
 
   - name: users_serve_active
     description: >
-      Canonical gold-layer membership view for "active serve users" (epic
-      DATA-1359): one row per user who completed Serve onboarding by sending
+      Canonical gold-layer membership view for "active serve users": one row
+      per user who completed Serve onboarding by sending
       an SMS poll AND has pledged. Thin projection of int__serve_active_user,
       which owns the definition; exists so dashboards read the definition
       from a gold schema (Sigma is losing staging/intermediate access).
@@ -674,7 +674,7 @@ models:
       - name: has_pledged
         description: >
           TRUE if the user owns at least one pledged campaign. From
-          int__serve_active_user (epic DATA-1359).
+          int__serve_active_user.
         data_tests:
           - not_null
 
@@ -1661,21 +1661,21 @@ models:
 
   - name: people_served
     description: >
-      The People Served metrics (DATA-1993, epic DATA-1359): one row per
+      The People Served metrics: one row per
       (cohort, metric_variant, office_type). cohort is 'all' (every resolved serve
       org) or 'active' (the active People Served cohort: in_people_served_cohort);
       'active' is the canonical North Star and BOTH are present, so BI consumers MUST
       filter or group by cohort -- omitting it double-counts. count_once is the
       distinct-person union (from int__serve_block_coverage); the count_multiple
-      variants are sums off the substrate via district_census_stats. Ordering holds
+      variants are sums off the allocation via district_census_stats. Ordering holds
       within every (cohort, office_type): count_once <=
       count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
-      cohort-wide North Star headline) or one of the substrate's L2 district types, PLUS 'State'
+      cohort-wide North Star headline) or one of the allocation's L2 district types, PLUS 'State'
       for statewide officials, which are read from the EXACT T5 'State' census totals and
       reported SEPARATELY (TDD 4.5) -- never folded into 'all'. Filter office_type !=
       'State' for the local reading, = 'State' for the statewide breakout. The live 'all'
       numbers include population from a few known wrong-scope matches (requires_review,
-      pending the DATA-1989 upstream overrides) -- those officials are flagged on
+      pending upstream overrides) -- those officials are flagged on
       int__serve_district_resolution; the conservative reading excludes them. Thin by design;
       variants may migrate to the dbt semantic layer.
     columns:
@@ -1744,6 +1744,7 @@ models:
           config:
             # wide catastrophic-breakage guard on the ACTIVE local North Star
             # (count_once, de-duplicated, below the ~14.1M additive per_district);
-            # headline HELD until DATA-2018, so this is only a breakage guard.
+            # headline HELD until the census-direct population backtest validates it,
+            # so this is only a breakage guard.
             where: "cohort = 'active' and metric_variant = 'count_once' and office_type = 'all'"
             severity: warn

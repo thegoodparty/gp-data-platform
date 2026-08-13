@@ -2813,7 +2813,7 @@ models:
 
   - name: serve_agent_voters
     description: >
-      De-identified voter dataset for the Serve product's AI agents (DATA-2003, TDD DATA-1977).
+      De-identified voter dataset for the Serve product's AI agents.
       One row per voter (a proxy for a constituent), sourced from
       int__l2_nationwide_uniform_w_haystaq (L2 national voter file + Haystaq issue models).
       Curated for analytical, aggregate queries by an AI agent serving an elected official's

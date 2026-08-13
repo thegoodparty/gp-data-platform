@@ -1,4 +1,4 @@
--- DATA-1986: statewide (district_type='State') coverage must be limited to
+-- Statewide (district_type='State') coverage must be limited to
 -- genuinely statewide, contestable offices — positions whose BR geography is
 -- the whole state (mtfcc='G4000') and that are not judicial retention seats.
 --

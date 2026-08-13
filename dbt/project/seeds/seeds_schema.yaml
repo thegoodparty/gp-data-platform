@@ -631,8 +631,8 @@ seeds:
 
   - name: seed_civics_election_2025_position_nullouts
     description: >
-      One-time resolution of 2025-archive br_position_database_id collisions
-      (DATA-1894). Each row is a gp_election_id whose br_position_database_id
+      One-time resolution of 2025-archive br_position_database_id collisions.
+      Each row is a gp_election_id whose br_position_database_id
       must be nulled in int__civics_election_2025 because the contest's office
       does not match the tagged BallotReady position (office_mismatch). The
       seed now carries office_mismatch rows only; same-office duplicate

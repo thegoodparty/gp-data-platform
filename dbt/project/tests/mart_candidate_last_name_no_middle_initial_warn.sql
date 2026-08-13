@@ -4,8 +4,8 @@
 -- regardless of which source contributed it. Source-agnostic on
 -- purpose: the TS-parser-specific test lives at
 -- tests/mart_candidate_techspeed_last_name_no_middle_initial.sql
--- (despite the filename, scoped to int__civics_candidate_techspeed
--- after DATA-1523), and this mart-level test surfaces cross-source
+-- (despite the filename, scoped to int__civics_candidate_techspeed),
+-- and this mart-level test surfaces cross-source
 -- consolidation issues that the parser-specific test can't see.
 --
 -- Excludes hubspot-only rows (the 2025 legacy archive is addressed by

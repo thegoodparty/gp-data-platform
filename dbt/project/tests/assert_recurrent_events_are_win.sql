@@ -1,4 +1,4 @@
--- Drift guard for DATA-1945: every event_type in the amplitude_event_is_recurrent
+-- Drift guard: every event_type in the amplitude_event_is_recurrent
 -- allowlist must resolve to a win_* family via amplitude_event_family. This is a
 -- static check (does not depend on the events appearing in the stream), and so
 -- complements the int__amplitude.yaml `is_win or not is_recurrent` invariant, which

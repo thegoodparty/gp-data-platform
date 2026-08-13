@@ -44,9 +44,7 @@ with
 -- and nothing to keep in sync when L2 starts padding a new one.
 select
     assigned.* except ({{ get_l2_district_columns() }}),
-    {% for column in get_l2_district_columns(use_backticks=false).split(",") | map(
-        "trim"
-    ) -%}
+    {% for column in get_l2_district_types() -%}
         ltrim('0', assigned.`{{ column }}`) as `{{ column }}`
         {%- if not loop.last %},{% endif %}
     {% endfor %}
