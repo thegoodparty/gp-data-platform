@@ -70,9 +70,11 @@ with
     -- which excludes November-general collisions, so the two branches are
     -- disjoint. The state that picks the calendar row is the resolved
     -- district's (override-corrected) state where a district exists, the
-    -- race's own state otherwise — the same state the projection join is
-    -- keyed by, so tag and join can never disagree about whose primary day
-    -- applies. model_election_code speaks the model-output vocabulary for
+    -- race's own state otherwise. Where a district exists that is the same
+    -- state the projection join is keyed by, so tag and join can never
+    -- disagree about whose primary day applies; a no-district race carries a
+    -- NULL join tuple that never matches, so only its tag is served.
+    -- model_election_code speaks the model-output vocabulary for
     -- the join; election_code lands the API's enum spelling on the race row.
     race_projection_key as (
         select
@@ -239,8 +241,9 @@ left join
     and tbl_projection_key.model_election_code = tbl_projection.election_code
 where
     -- serve races from 6 years past through 2 years out, so recently-passed and
-    -- historical races stay queryable. This is the sole election_date window for
-    -- the Race table; the sync DAG loads whatever the mart emits
+    -- historical races stay queryable. This window is duplicated in
+    -- race_projection_key above — keep the two predicates in sync. The nightly
+    -- race sync's staged swap delivers whatever the mart emits
     tbl_race.election_date
     between current_date() - interval '6 years' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
