@@ -9,7 +9,14 @@
                       office-bearing L2 district type that carries a Serve-ICP
                       office and has a clean L2 binding. Excludes synthetic
                       State/Country and types with no L2 column at all
-                      (Precinct). The two accepted_values tests on district_type
+                      (Precinct). Also excludes real L2 columns that carry no
+                      Serve-ICP office even when the manual-assignment seed
+                      writes to them, Hospital_District being the current case:
+                      they belong in scope='all' so the assignment still reaches
+                      voters, but allocating population to them would size
+                      districts no Serve org holds. Recheck the exclusion if a
+                      Serve-ICP office ever binds to one.
+                      The two accepted_values tests on district_type
                       read this list, so it is the single source of truth.
 
     Holding both lists in one macro couples the two consumer sets: editing
