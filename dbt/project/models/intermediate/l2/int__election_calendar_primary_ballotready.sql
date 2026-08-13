@@ -1,11 +1,11 @@
 -- Live-recomputed Primary date per (state, year), informed by BallotReady's
--- scheduled-election data and treated as authoritative for Primary in
--- m_election_api__election_calendar: this always reflects BallotReady's
--- CURRENT data, so an edit there (a corrected date, a newly scheduled state)
--- flows through to Election_Calendar on the next sync automatically -- no
--- script to re-run. BallotReady's election table changes rarely, so
--- recomputing this fully every run is cheap; there's no need for anything
--- fancier than "always trust the current query result."
+-- scheduled-election data and treated as authoritative for Primary in the
+-- race build: this always reflects BallotReady's CURRENT data, so an edit
+-- there (a corrected date, a newly scheduled state) flows through
+-- automatically on the next run -- no script to re-run. BallotReady's
+-- election table changes rarely, so recomputing this fully every run is
+-- cheap; there's no need for anything fancier than "always trust the
+-- current query result."
 --
 -- Even years only: `Primary` is specifically an even-year concept in this
 -- system (it exists to serve the even_year_primary turnout model). Odd-year
@@ -13,13 +13,8 @@
 -- calls them, so an odd-year "Primary"-named row here would be unused dead
 -- data at best and a confusing surprise match at worst.
 --
--- Rule (validated to 55/55 against L2 ground truth for every (state, year)
--- pair L2 could confirm as of 2024 + the 6 states L2 had already confirmed
--- for 2026, then re-checked against the FULL even-year L2 history back to
--- 2010: 198/202 matches, the only 4 misses being pre-2024 BallotReady data
--- gaps/naming quirks with no bearing on current years. Rejected alternatives:
--- max-race-count with no Wisconsin exception (53/55), and picking whichever
--- candidate falls closest to the November general day (51/55)):
+-- Rule (validated against L2 ground truth across even cycles back to 2010;
+-- full writeup on the original branch PR):
 --
 -- Filter to elections plausibly named as each state's Primary day, then per
 -- (state, year) the one with the MOST races wins -- except Wisconsin, which
