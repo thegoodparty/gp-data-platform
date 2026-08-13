@@ -156,7 +156,7 @@ left join
 where
     -- serve races from 6 years past through 2 years out, so recently-passed and
     -- historical races stay queryable. This is the sole election_date window for
-    -- the Race table; write__election_api_db.py loads whatever the mart emits
+    -- the Race table; the sync DAG loads whatever the mart emits
     tbl_race.election_date
     between current_date() - interval '6 years' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
