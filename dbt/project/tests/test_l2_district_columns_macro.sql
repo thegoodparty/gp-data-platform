@@ -5,7 +5,7 @@ with
         select
             'all_list_size' as check_name,
             {{ get_l2_district_types() | length }} as actual,
-            230 as expected
+            231 as expected
 
         union all
 
