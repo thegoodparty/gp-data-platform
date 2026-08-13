@@ -265,6 +265,15 @@ with
     -- otherwise let us pick a stage outcome that doesn't belong to this
     -- mart row. The equality predicates are NULL-tolerant: when either side
     -- lacks context (common for 2025 archive rows), the stage row is kept.
+    --
+    -- Also drops stage rows backed ONLY by gp_api: those record the campaign's
+    -- pledged (intended) race, not ballot evidence, so counting them as stage
+    -- advancement would show product signups as live general-election
+    -- candidates even after a lost primary. A row carrying any other source
+    -- (vendor or archive) keeps counting, and a NULL source_systems row is
+    -- kept -- fail open, like the context predicates above. The rows stay in
+    -- candidacy_stage itself (product linkage, person resolution); they are
+    -- only excluded from stage derivation here.
     candidacy_stages_in_context as (
         select
             cs.gp_candidacy_id,
@@ -289,7 +298,13 @@ with
                 or d.br_position_database_id is null
                 or es.br_position_id = d.br_position_database_id
             )
-        where cs.election_stage is not null
+        where
+            cs.election_stage is not null
+            and not coalesce(
+                array_size(cs.source_systems) = 1
+                and array_contains(cs.source_systems, 'gp_api'),
+                false
+            )
     ),
 
     -- Deepest stage the candidacy has REACHED. Unlike the decided rollup below,

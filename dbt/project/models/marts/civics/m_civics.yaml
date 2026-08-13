@@ -576,9 +576,13 @@ models:
           Ballot). 'Runoff' = currently in a runoff that has not been called.
           NULL when the outcome is not yet determined — the candidacy won an
           earlier stage and advanced (e.g. won the primary while the general is
-          pending), or the race structure is unknown. Falls back to the
-          provider-rolled outcome only when no in-context candidacy_stage row
-          exists (e.g. the 2025 HubSpot archive). KNOWN GAP: a jurisdiction where
+          pending), or the race structure is unknown. Derived from
+          evidence-backed stage rows only: a candidacy_stage row sourced solely
+          from gp_api records the campaign's pledged race (product-signup
+          intent, not a ballot appearance) and never contributes to the
+          outcome. Falls back to the provider-rolled outcome only when no
+          in-context evidence-backed candidacy_stage row exists (e.g. the 2025
+          HubSpot archive). KNOWN GAP: a jurisdiction where
           a majority at the primary wins the seat outright while a general is
           still scheduled reads NULL (not 'Won') until the general resolves
           (a known follow-up). To answer "did they win the seat / will they
@@ -627,12 +631,16 @@ models:
         description: >
           The deepest election stage the candidacy has REACHED in
           `candidacy_stage` — including a stage that has a row but no result yet
-          (an upcoming general, or a runoff not yet called). Funnel order:
-          primary < primary runoff < general < general runoff. Paired with
-          `latest_stage_result` (both columns are sourced from the same
-          `candidacy_stage` row), so this can be non-null while
+          (an upcoming general, or a runoff not yet called). Counts
+          evidence-backed rows only: a stage row sourced solely from gp_api
+          records the campaign's pledged (intended) race, not a ballot
+          appearance, and is excluded — so a product signup with no
+          vendor-confirmed stage row reads NULL here rather than 'general'.
+          Funnel order: primary < primary runoff < general < general runoff.
+          Paired with `latest_stage_result` (both columns are sourced from the
+          same `candidacy_stage` row), so this can be non-null while
           `latest_stage_result` is null when the reached stage is undecided.
-          Null only when no in-context stage row exists. Use
+          Null only when no in-context evidence-backed stage row exists. Use
           `general_election_result` for the common "did they win the general?"
           question; use this pair when funnel position itself matters.
         data_tests:
@@ -653,9 +661,10 @@ models:
       - name: latest_stage_result
         description: >
           The captured result at `latest_stage_reached`, sourced from the same
-          `candidacy_stage` row. Null when no stage row exists, or when the
-          deepest reached stage has not been decided yet (a reached-but-pending
-          stage).
+          `candidacy_stage` row (evidence-backed rows only — gp_api-only pledge
+          rows are excluded, as for `latest_stage_reached`). Null when no
+          evidence-backed stage row exists, or when the deepest reached stage
+          has not been decided yet (a reached-but-pending stage).
         data_tests:
           - accepted_values:
               arguments:
