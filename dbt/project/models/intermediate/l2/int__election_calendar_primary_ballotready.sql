@@ -58,10 +58,10 @@
 -- Election" row and never hit this branch.
 {% set wisconsin_states = "('WI')" %}
 
--- next_day(d, 'MON') returns the first Monday strictly after d, so
--- subtracting a day from Nov 1 first means a Nov-1-is-a-Monday year still
--- resolves to Nov 1 itself, not Nov 8.
-{% set computed_general_date_expr = "date_add(next_day(make_date(year(election_day), 11, 1) - interval 1 day, 'MON'), 1)" %}
+-- November-day derivation: see the november_general_election_day macro.
+{% set computed_general_date_expr = november_general_election_day(
+    "year(election_day)"
+) %}
 
 with
     candidates_no_presidential as (
