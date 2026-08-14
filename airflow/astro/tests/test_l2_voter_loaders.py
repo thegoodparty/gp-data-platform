@@ -65,11 +65,20 @@ class FakeAttributes:
 class FakeSFTPClient:
     """Stands in for paramiko: download() copies the payload to the local path."""
 
-    def __init__(self, payload: bytes = b"", listings: dict[str, list] | None = None):
+    def __init__(
+        self,
+        payload: bytes = b"",
+        listings: dict[str, list] | None = None,
+        missing: set[str] | None = None,
+    ):
         self.payload = payload
         self.listings = listings or {}
+        self.missing = missing or set()
 
     def listdir_attr(self, remote_dir):
+        if remote_dir in self.missing:
+            # What paramiko raises for SFTP_NO_SUCH_FILE.
+            raise FileNotFoundError(2, "No such file")
         return self.listings.get(remote_dir, [])
 
     def get(self, remotepath, localpath, **kwargs):
@@ -102,12 +111,24 @@ class TestListRemoteSources:
     EXPIRED_DIR = "/expired"
     EXPIRED_PATTERN = r"^Manual_ID_Omits\..*$"
 
-    def _list(self, listings):
+    def _list(self, listings, missing=None):
         return list_remote_sources(
-            FakeSFTPClient(listings=listings),
+            FakeSFTPClient(listings=listings, missing=missing),
             expired_dir=self.EXPIRED_DIR,
             expired_pattern=self.EXPIRED_PATTERN,
         )
+
+    def test_missing_expired_dir_does_not_block_the_archives(self):
+        """That path is operator-configured, so a wrong one must not cost us 51 states."""
+        sources = self._list(
+            {"/VMFiles": [FakeAttributes("VM2--MO--2026-08-03.zip")]}, missing={self.EXPIRED_DIR}
+        )
+        assert [s["folder"] for s in sources] == ["MO"]
+
+    def test_missing_archive_dir_raises(self):
+        """A fixed L2 directory disappearing is an alarm, not a quiet zero-work success."""
+        with pytest.raises(FileNotFoundError):
+            self._list({}, missing={"/VMFiles"})
 
     def test_both_archive_groups_and_the_expired_file(self):
         sources = self._list(

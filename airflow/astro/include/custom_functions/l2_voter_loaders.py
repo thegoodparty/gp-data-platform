@@ -133,7 +133,15 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
                 )
             )
 
-    for attributes, _ in list_matching(sftp_client, expired_dir, re.compile(expired_pattern)):
+    # This directory is operator-configured, so a wrong path should not block the state archives.
+    # The archive directories above are fixed, and their absence is a real alarm that still raises.
+    try:
+        expired = list_matching(sftp_client, expired_dir, re.compile(expired_pattern))
+    except FileNotFoundError:
+        logger.error(f"Expired-voter directory not found, skipping it: {expired_dir}")
+        expired = []
+
+    for attributes, _ in expired:
         # A plain file stages under its own name; a zip's contents are only knowable once opened.
         members = None if attributes.filename.lower().endswith(".zip") else [attributes.filename]
         sources.append(_source(expired_dir, attributes, EXPIRED_FOLDER, members))
