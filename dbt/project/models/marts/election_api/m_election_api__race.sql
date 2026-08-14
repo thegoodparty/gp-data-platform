@@ -157,8 +157,12 @@ select
     tbl_race.is_runoff,
     tbl_race.is_primary,
     tbl_race.partisan_type,
-    tbl_race.filing_date_start,
-    tbl_race.filing_date_end,
+    coalesce(
+        filing_date_overrides.filing_date_start, tbl_race.filing_date_start
+    ) as filing_date_start,
+    coalesce(
+        filing_date_overrides.filing_date_end, tbl_race.filing_date_end
+    ) as filing_date_end,
     tbl_race.employment_type,
     tbl_race.eligibility_requirements,
     tbl_race.salary,
@@ -225,6 +229,15 @@ left join
 left join
     {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
     on tbl_race.br_database_id = filing_overrides.br_database_id
+-- Filing windows are set by statute for a whole class of offices in a state, so
+-- the override is keyed at that grain rather than per race. BallotReady stores
+-- them per race and can populate a whole state's worth from a stale template.
+left join
+    {{ ref("election_api_race_filing_date_overrides") }} as filing_date_overrides
+    on tbl_race.state = filing_date_overrides.state
+    and cast(tbl_race.election_date as date) = filing_date_overrides.election_date
+    and tbl_race.position_level = filing_date_overrides.position_level
+    and tbl_race.partisan_type = filing_date_overrides.partisan_type
 inner join
     race_projection_key as tbl_projection_key on tbl_race.id = tbl_projection_key.id
 -- One projection row per (district, year, day type): the model output is
