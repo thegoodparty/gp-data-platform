@@ -156,8 +156,9 @@ def load_l2_voter_files():
 
         connection = connect_from_conn_id()
         try:
-            # Once per run, rather than ahead of every mapped load.
-            create_schema(connection, DATABRICKS_CATALOG, schema)
+            if not _is_dry_run():
+                # Once per run, rather than ahead of every mapped load.
+                create_schema(connection, DATABRICKS_CATALOG, schema)
             loaded_at = get_table_loaded_at(connection, DATABRICKS_CATALOG, schema)
         finally:
             connection.close()

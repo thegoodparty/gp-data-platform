@@ -205,9 +205,19 @@ def sync_source(
                 _upload(s3_client, bucket, key, handle, file_name)
             return [key]
 
+        members = source["members"]
+        if members is None:
+            # Every staged file becomes exactly one table, so a source that could expand to
+            # several would silently load only one of them. Fail this source alone: the state
+            # archives keep syncing, and the Databricks step still runs off S3.
+            raise ValueError(
+                f"{file_name} is an archive whose members cannot be derived from its name. "
+                "Only plain files are supported here; unpack it upstream or add it to "
+                "ARCHIVE_GROUPS with its member suffixes."
+            )
+
         with ZipFile(local_path) as zip_file:
             contents = [name for name in zip_file.namelist() if not name.endswith("/")]
-            members = source["members"] or contents
             missing = [member for member in members if member not in contents]
             if missing:
                 raise ValueError(f"{file_name} did not contain {missing}")

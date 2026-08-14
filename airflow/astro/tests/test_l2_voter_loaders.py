@@ -139,6 +139,19 @@ class TestSyncSource:
             written = s3_client.objects[f"staging/prod/MO/{member}"].decode()
             assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
 
+    def test_archive_with_underivable_members_fails_its_own_task(self, vm2_archive, tmp_path):
+        """Each staged file becomes one table, so a source that expands to several must not load."""
+        source = _source(members=None, file_name="omits.zip", folder=EXPIRED_FOLDER)
+        with pytest.raises(ValueError, match="cannot be derived from its name"):
+            sync_source(
+                sftp_client=FakeSFTPClient(vm2_archive),
+                s3_client=FakeS3Client(),
+                bucket="bucket",
+                prefix="staging/prod",
+                source=source,
+                staging_dir=str(tmp_path),
+            )
+
     def test_plain_file_is_copied_as_is(self, tmp_path):
         s3_client = FakeS3Client()
         source = _source(members=None, file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER)
