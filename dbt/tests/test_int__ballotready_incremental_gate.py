@@ -16,14 +16,14 @@ import pytest
 
 MODELS_DIR = Path(__file__).parent.parent / "project" / "models" / "intermediate" / "ballotready_api"
 
-# model name -> the staged-input column its incremental filter must gate on
+# model name -> the input columns its incremental filters must gate on
 GATE_COLUMNS = {
-    "int__ballotready_candidacy": "_airbyte_extracted_at",
-    "int__ballotready_person": "feed_extracted_at",
+    "int__ballotready_candidacy": {"_airbyte_extracted_at", "race_extracted_at"},
+    "int__ballotready_person": {"feed_extracted_at"},
 }
 
 # Vendor-clock columns that must never be the incremental watermark again.
-VENDOR_TIMESTAMP_COLUMNS = {"updated_at", "candidacy_updated_at"}
+VENDOR_TIMESTAMP_COLUMNS = {"updated_at", "candidacy_updated_at", "race_updated_at"}
 
 
 def _tree(model_name: str) -> ast.Module:
@@ -54,7 +54,8 @@ def _agg_dict_max_columns(tree: ast.Module) -> set[str]:
 
 
 def _gte_filter_columns(tree: ast.Module) -> set[str]:
-    """Columns compared with ``df["col"] >= ...`` (the incremental filter shape)."""
+    """Columns compared with ``df["col"] >= ...`` or ``col("col") >= ...``
+    (the two incremental filter shapes these models use)."""
     columns: set[str] = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Compare) and any(isinstance(op, ast.GtE) for op in node.ops)):
@@ -66,6 +67,15 @@ def _gte_filter_columns(tree: ast.Module) -> set[str]:
                 and isinstance(side.slice.value, str)
             ):
                 columns.add(side.slice.value)
+            if (
+                isinstance(side, ast.Call)
+                and isinstance(side.func, ast.Name)
+                and side.func.id == "col"
+                and side.args
+                and isinstance(side.args[0], ast.Constant)
+                and isinstance(side.args[0].value, str)
+            ):
+                columns.add(side.args[0].value)
     return columns
 
 
@@ -78,12 +88,12 @@ def test_cutoff_is_read_from_feed_extracted_at(model_name: str):
     assert not agg_columns & VENDOR_TIMESTAMP_COLUMNS
 
 
-@pytest.mark.parametrize(("model_name", "gate_column"), sorted(GATE_COLUMNS.items()))
-def test_incremental_filter_gates_on_ingest_time(model_name: str, gate_column: str):
-    """Every ``>=`` subscript filter compares the ingest column; vendor timestamps are out."""
+@pytest.mark.parametrize(("model_name", "gate_columns"), sorted(GATE_COLUMNS.items()))
+def test_incremental_filter_gates_on_ingest_time(model_name: str, gate_columns: set[str]):
+    """Every ``>=`` filter compares an ingest column; vendor timestamps are out."""
     filter_columns = _gte_filter_columns(_tree(model_name))
 
-    assert gate_column in filter_columns
+    assert gate_columns <= filter_columns
     assert not filter_columns & VENDOR_TIMESTAMP_COLUMNS
 
 

@@ -317,8 +317,11 @@ def model(dbt, session) -> DataFrame:
             candidacies_s3 = candidacies_s3.filter(
                 candidacies_s3["_airbyte_extracted_at"] >= max_feed_extracted_at
             )
-            # Fetch an upcoming candidacy when its race changed since the last
-            # run, or when it is not yet stored (first-time backfill of the gap).
+            # Fetch an upcoming candidacy when its race row was re-ingested
+            # since the last run, or when it is not yet stored (first-time
+            # backfill of the gap). The race side gates on its own ingest time
+            # too: the race stream's vendor timestamps can be backdated by
+            # backfills just like the candidacy feed's.
             existing_ids = existing_table.select(col("database_id").alias("existing_id"))
             upcoming_ids = (
                 upcoming_ids.join(
@@ -326,7 +329,7 @@ def model(dbt, session) -> DataFrame:
                     upcoming_ids["br_candidacy_id"] == existing_ids["existing_id"],
                     "left",
                 )
-                .filter((col("race_updated_at") >= max_feed_extracted_at) | col("existing_id").isNull())
+                .filter((col("race_extracted_at") >= max_feed_extracted_at) | col("existing_id").isNull())
                 .select("br_candidacy_id")
             )
         else:

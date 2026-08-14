@@ -3,6 +3,7 @@ import random
 import time
 from base64 import b64encode
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -355,6 +356,17 @@ def model(dbt, session) -> DataFrame:
 
         if max_feed_extracted_at:
             candidacy = candidacy.filter(candidacy["feed_extracted_at"] >= max_feed_extracted_at)
+        else:
+            # Empty-table incremental run (manual truncation, or a new
+            # environment where full-refresh has not run): bound the input to a
+            # 30-day ingest window instead of re-enriching every person ever,
+            # matching int__ballotready_candidacy. Full history recovery is a
+            # --full-refresh.
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            candidacy = candidacy.filter(candidacy["feed_extracted_at"] >= thirty_days_ago)
+            logging.info(
+                f"INFO: No feed cutoff found. Filtered to candidacies ingested since {thirty_days_ago}"
+            )
 
     # one row per person, carrying the newest feed ingest time across their candidacies
     person_ids = candidacy.groupBy("candidate_database_id").agg(

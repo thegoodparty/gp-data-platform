@@ -33,7 +33,14 @@ models:
               config:
                 severity: warn
       - name: race_updated_at
-        description: "updated_at of the race the candidacy belongs to; used to refetch changed rosters incrementally"
+        description: >
+          Vendor updated_at of the race the candidacy belongs to; still the roster refetch
+          gate in int__ballotready_party
+      - name: race_extracted_at
+        description: >
+          Airbyte ingest time of the race row carrying the candidacy; the roster refetch gate
+          in int__ballotready_candidacy. Ingest time is monotonic on our side, so a vendor race
+          backfill with backdated timestamps still triggers a refetch.
 
   - name: int__ballotready_candidacy
     description: >
