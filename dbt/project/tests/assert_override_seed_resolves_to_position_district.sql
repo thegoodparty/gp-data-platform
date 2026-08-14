@@ -1,4 +1,4 @@
--- DATA-1958: every l2_br_match_overrides row must surface in
+-- Every l2_br_match_overrides row must surface in
 -- m_election_api__position with the district the override specifies. Fails if
 -- an override is dropped (missing position or null district) or not honored
 -- (wrong district). Combo uniqueness and existence are tested separately in
@@ -16,7 +16,8 @@ with
 select e.br_database_id, e.expected_district_id, p.district_id as actual_district_id
 from override_expected as e
 left join
-    {{ ref("m_election_api__position") }} as p on e.br_database_id = p.br_database_id
+    {{ ref("m_election_api__position") }} as p
+    on e.br_database_id = cast(p.br_database_id as bigint)
 where
     p.br_database_id is null
     or p.district_id is null

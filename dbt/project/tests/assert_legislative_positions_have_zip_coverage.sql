@@ -9,7 +9,8 @@ with
             on district.id = position.district_id
         join
             {{ ref("election") }} as election
-            on election.br_position_database_id = position.br_database_id
+            on election.br_position_database_id
+            = cast(position.br_database_id as bigint)
         where
             district.l2_district_type in (
                 'State_House_District',

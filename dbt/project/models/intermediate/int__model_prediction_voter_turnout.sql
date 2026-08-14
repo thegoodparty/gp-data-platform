@@ -6,7 +6,7 @@
     )
 }}
 
--- Full-refresh table (DATA-2015): the LightGBM model is authoritative for every
+-- Full-refresh table: the LightGBM model is authoritative for every
 -- natural key it emits; the legacy static feeds supply everything else
 -- (Consolidated_General, pre-2026) via the anti-join carve below.
 -- It is materialized as a table (not incremental) because the carve only determines
@@ -148,7 +148,7 @@ with
             election_code,
             model_version,
             inference_at
-        from {{ ref("int__voter_turnout_lgbm_inference") }}
+        from {{ ref("int__voter_turnout_inference") }}
         qualify
             row_number() over (
                 partition by
@@ -179,7 +179,7 @@ with
 -- year/code) gives the same result as a year/code carve for a full nationwide run,
 -- but means a partial/accidental lgbm build can only suppress the exact keys it
 -- emitted — never nationwide coverage for a year/code. The all-states coverage test
--- on int__voter_turnout_lgbm_inference enforces fullness in prod.
+-- on int__voter_turnout_inference enforces fullness in prod.
 select *
 from lgbm_turnout_projections
 union all

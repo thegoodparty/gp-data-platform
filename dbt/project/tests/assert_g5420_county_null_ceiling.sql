@@ -1,4 +1,4 @@
--- DATA-1950 (G5420): NULL county rises BY DESIGN (~859 mart / ~3,183 intermediate
+-- (G5420): NULL county rises BY DESIGN (~859 mart / ~3,183 intermediate
 -- today).
 -- This caps a strip regression that over-nulls; it is NOT a "stays near today" guard.
 select count(*) as g5420_null_county

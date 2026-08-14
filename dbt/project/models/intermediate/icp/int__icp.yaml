@@ -41,7 +41,7 @@ models:
         description: >
           Census constituents in the district, from int__district_population.
           Carried for sizing and market analysis; no ICP gate reads it. Null
-          where the district's type falls outside the census substrate's curated
+          where the district's type falls outside the allocation's curated
           type set, so it is not yet a drop-in replacement for voter_count.
         tests:
           - dbt_expectations.expect_column_values_to_be_between:

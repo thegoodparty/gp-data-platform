@@ -92,10 +92,26 @@ with
                 partition by br_candidate_id order by office_holder_updated_at desc
             )
             = 1
+    ),
+
+    -- The API contract is "pledged on any candidacy", so roll the candidacy
+    -- flag up to person grain. Keyed on gp_person_id, not gp_candidate_id: the
+    -- two ids agree only on candidate_id_source = 'gp_api' rows (2026+), while
+    -- every pre-2026 archive row carries its legacy source id, which never
+    -- matches a person. Joining on gp_candidate_id would therefore resolve 8.7k
+    -- of 35.4k pledged people. The group by keeps this one row per person.
+    pledged as (
+        select gp_person_id, bool_or(coalesce(is_pledged, false)) as is_pledged
+        from {{ ref("candidacy") }}
+        where gp_person_id is not null
+        group by gp_person_id
     )
 
 select
     people.gp_person_id as id,
+    -- build timestamps: the table is swap-replaced wholesale each run
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at,
     people.br_person_id_int as br_person_id,
     -- Globally unique: the /people/<slug> URL resolves on slug alone (no
     -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
@@ -123,9 +139,14 @@ select
     people.phone,
     br_person.degrees,
     br_person.experiences,
-    people.state
+    people.state,
+    -- NOT NULL in the API, so emit false rather than null for the unpledged.
+    coalesce(pledged.is_pledged, false) as is_pledged,
+    -- Digit string, not a uuid: the gp-api User.id is a numeric autoincrement.
+    people.gp_api_user_id
 from public_people as people
 left join br_person on people.br_person_id_int = br_person.database_id
 left join
     office_holder_person as office_holder
     on people.br_person_id_int = office_holder.br_candidate_id
+left join pledged on people.gp_person_id = pledged.gp_person_id

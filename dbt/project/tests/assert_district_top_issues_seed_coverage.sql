@@ -1,5 +1,5 @@
 {#-
-    DATA-1903: assert every issue in the haystaq_issue_tags seed appears at
+    Assert every issue in the haystaq_issue_tags seed appears at
     least once in m_election_api__district_top_issues.
 
     The mart's compile-time issue column list lives inline in the model SQL

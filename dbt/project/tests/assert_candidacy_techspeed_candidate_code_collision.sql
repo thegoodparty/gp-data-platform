@@ -6,7 +6,7 @@
 -- sent_log.
 -- ~0.2% of codes collide today, and most apparent collisions are upstream
 -- entity-resolution
--- duplicates of one person (see .tickets/DATA-1523/46_layer1_models_design.md §11.1).
+-- duplicates of one person.
 -- Severity
 -- is warn until the ER duplicates are cleaned upstream; promote to error after that.
 {{ config(severity="warn") }}
