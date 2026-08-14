@@ -6,6 +6,11 @@
     )
 }}
 
+{% set serving_window_predicate %}
+tbl_race.election_date
+between current_date() - interval '6 years' and current_date() + interval '2 years'
+{% endset %}
+
 
 with
     -- Pre-aggregate civics.election_stage to one row per br_race_id. The
@@ -85,14 +90,8 @@ with
             case
                 when
                     year(tbl_race.election_date) % 2 = 0
-                    and cast(tbl_race.election_date as date) = date_add(
-                        next_day(
-                            make_date(year(tbl_race.election_date), 11, 1)
-                            - interval 1 day,
-                            'MON'
-                        ),
-                        1
-                    )
+                    and cast(tbl_race.election_date as date)
+                    = {{ november_general_election_day("year(tbl_race.election_date)") }}
                 then 'General'
                 when tbl_primary.state is not null
                 then 'Primary'
@@ -116,14 +115,12 @@ with
             on coalesce(tbl_district.state, tbl_race.state) = tbl_primary.state
             and cast(tbl_race.election_date as date) = tbl_primary.election_date
         where
-            -- same serving window as the main query (keep the two predicates in
-            -- sync): the base relation is a view over the full race graph, and
-            -- an unwindowed second traversal would roughly double the mart's
-            -- dominant nightly work on a common-subexpression gamble
-            tbl_race.election_date
-            between current_date()
-            - interval '6 years' and current_date()
-            + interval '2 years'
+            -- The window is defined once at the top of the file, so the two
+            -- uses cannot drift: the base relation is a view over the full
+            -- race graph, and an unwindowed second traversal would roughly
+            -- double the mart's dominant nightly work on a
+            -- common-subexpression gamble
+            {{ serving_window_predicate }}
     )
 
 select
@@ -254,11 +251,10 @@ left join
     and tbl_projection_key.model_election_code = tbl_projection.election_code
 where
     -- serve races from 6 years past through 2 years out, so recently-passed and
-    -- historical races stay queryable. This window is duplicated in
-    -- race_projection_key above — keep the two predicates in sync. The nightly
-    -- race sync's staged swap delivers whatever the mart emits
-    tbl_race.election_date
-    between current_date() - interval '6 years' and current_date() + interval '2 years'
+    -- historical races stay queryable. The window is defined once at the top
+    -- of the file. The nightly race sync's staged swap delivers whatever the
+    -- mart emits
+    {{ serving_window_predicate }}
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
     -- depends on; a Race with no matching Position can't serve the
     -- campaign-strategy-context endpoint (no projected_turnout, no district
