@@ -107,7 +107,11 @@ def _source(remote_dir: str, attributes, folder: str, members: list[str] | None)
         "members": members,
         # An SFTP server that omits the size costs us the disk precheck, not the transfer.
         "size_bytes": attributes.st_size or 0,
-        "modified_at": datetime.fromtimestamp(attributes.st_mtime or 0, tz=UTC).isoformat(),
+        # No mtime means no way to tell a stale copy from a current one, so the source is always
+        # re-transferred. Defaulting to the epoch instead would mark it permanently up to date.
+        "modified_at": (
+            datetime.fromtimestamp(attributes.st_mtime, tz=UTC).isoformat() if attributes.st_mtime else None
+        ),
     }
 
 
@@ -154,9 +158,9 @@ def plan_transfers(sources: list[dict], staged: dict[str, datetime]) -> list[dic
     """
     pending = []
     for source in sources:
-        if source["members"] is None:
-            # An archive whose members we cannot name without opening it. Re-syncing beats
-            # guessing from the folder, where an unrelated object would mask a new file.
+        # Members we cannot name, or no server timestamp to compare against: either way there is
+        # nothing to diff, so re-transfer rather than assume the staged copy is current.
+        if source["members"] is None or source["modified_at"] is None:
             pending.append(source)
             continue
         modified_at = datetime.fromisoformat(source["modified_at"])

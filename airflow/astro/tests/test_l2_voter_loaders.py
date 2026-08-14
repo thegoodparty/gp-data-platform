@@ -10,6 +10,7 @@ from include.custom_functions.l2_voter_loaders import (
     EXPIRED_FOLDER,
     build_load_statement,
     get_table_loaded_at,
+    list_remote_sources,
     load_table,
     plan_loads,
     plan_transfers,
@@ -49,11 +50,25 @@ def vm2_archive() -> bytes:
     return buffer.getvalue()
 
 
+MODIFIED_TS = MODIFIED.timestamp()
+
+
+class FakeAttributes:
+    def __init__(self, filename, st_size=1024, st_mtime=MODIFIED_TS):
+        self.filename = filename
+        self.st_size = st_size
+        self.st_mtime = st_mtime
+
+
 class FakeSFTPClient:
     """Stands in for paramiko: download() copies the payload to the local path."""
 
-    def __init__(self, payload: bytes):
+    def __init__(self, payload: bytes = b"", listings: dict[str, list] | None = None):
         self.payload = payload
+        self.listings = listings or {}
+
+    def listdir_attr(self, remote_dir):
+        return self.listings.get(remote_dir, [])
 
     def get(self, remotepath, localpath, **kwargs):
         with open(localpath, "wb") as handle:
@@ -79,6 +94,56 @@ def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
         "size_bytes": size,
         "modified_at": MODIFIED.isoformat(),
     }
+
+
+class TestListRemoteSources:
+    EXPIRED_DIR = "/expired"
+    EXPIRED_PATTERN = r"^Manual_ID_Omits\..*$"
+
+    def _list(self, listings):
+        return list_remote_sources(
+            FakeSFTPClient(listings=listings),
+            expired_dir=self.EXPIRED_DIR,
+            expired_pattern=self.EXPIRED_PATTERN,
+        )
+
+    def test_both_archive_groups_and_the_expired_file(self):
+        sources = self._list(
+            {
+                "/VM2Uniform": [FakeAttributes("VM2Uniform--MO--2026-08-03.zip")],
+                "/VMFiles": [FakeAttributes("VM2--MO--2026-08-03.zip")],
+                self.EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.tab")],
+            }
+        )
+
+        assert sorted((s["folder"], len(s["members"])) for s in sources) == [
+            ("EXPIRED", 1),
+            ("MO", 2),
+            ("MO", 4),
+        ]
+
+    def test_non_matching_names_are_ignored(self):
+        """A state L2 has pulled, and its scratch files, simply do not appear."""
+        assert (
+            self._list(
+                {
+                    "/VM2Uniform": [FakeAttributes("VM2Uniform--MO--2026-08-03.zip.tmp")],
+                    "/VMFiles": [FakeAttributes("readme.txt")],
+                }
+            )
+            == []
+        )
+
+    def test_expired_zip_has_no_derivable_members(self):
+        sources = self._list({self.EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.zip")]})
+        assert sources[0]["members"] is None
+
+    def test_missing_mtime_forces_a_transfer(self):
+        """The epoch would instead mark the source permanently up to date."""
+        sources = self._list({self.EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.tab", st_mtime=None)]})
+
+        assert sources[0]["modified_at"] is None
+        assert plan_transfers(sources, {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == sources
 
 
 class TestPlanTransfers:
