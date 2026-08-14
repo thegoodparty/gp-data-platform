@@ -11,7 +11,9 @@
 -- scorer consumes fallback seats for multi_seat ONLY (both tiers): its
 -- opponent count is per-election grain and can span positions, so fallback
 -- seats must not activate log_n_losers. The tier and matched race are kept
--- for provenance and the opponent-count follow-up.
+-- for provenance and the opponent-count follow-up. matched_br_race_id is a
+-- position+date min-pick and is NOT roster-verified -- never use it to
+-- select a roster.
 with
     keyed_candidacies as (
         select
@@ -51,7 +53,8 @@ with
         -- Two keys into the same nullout seed, and either match rejects. The
         -- seed's own tested key is gp_election_id, so it rejects the curated
         -- rows directly. The position + date proxy is kept because it
-        -- additionally reaches candidacies with no election link at all -- 70%
+        -- additionally reaches candidacies with no election link at all -- ~70%
+        -- (measured 2026-08-10)
         -- of the coverage gap has no gp_election_id, which the election-id key
         -- can never touch. Both fail closed.
         left join
