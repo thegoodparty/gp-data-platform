@@ -13,7 +13,9 @@
 -- * candidacy still present in the vendor's current export - a candidacy the
 -- vendor deleted is intentionally absent from the intermediate and must not
 -- warn. The window anchors on the newest delivered file, not wall clock, so
--- a delivery outage cannot empty the feed side and vacuously green the test;
+-- a delivery outage cannot empty the feed side and vacuously green the test.
+-- If no file timestamp parses at all, the exclusion fails open so a
+-- feed-wide format change warns loudly instead of greening silently;
 -- * synced at least 2 days ago - grace so rows landed after the latest
 -- nightly build don't false-warn.
 with
@@ -33,8 +35,11 @@ with
         cross join latest_export
         where
             (feed.election_day >= current_date() or feed.election_day is null)
-            and try_cast(feed._ab_source_file_last_modified as timestamp)
-            >= latest_export.latest_file_at - interval 14 days
+            and (
+                latest_export.latest_file_at is null
+                or try_cast(feed._ab_source_file_last_modified as timestamp)
+                >= latest_export.latest_file_at - interval 14 days
+            )
             and feed._airbyte_extracted_at <= current_timestamp() - interval 2 days
         -- one row per candidacy: the feed re-ships candidacies across weekly
         -- export files
