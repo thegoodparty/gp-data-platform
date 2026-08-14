@@ -8,7 +8,8 @@ from typing import Any
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, lit, pandas_udf
+from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -342,14 +343,23 @@ def model(dbt, session) -> DataFrame:
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
-        max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
-        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+        # Gate on the feed's ingest clock carried through the candidacy model:
+        # the old vendor-timestamp comparison stranded backfills the same way
+        # (see int__ballotready_candidacy). The column is absent until the
+        # first post-deploy full refresh; treat that as no cutoff.
+        if "feed_extracted_at" in existing_table.columns:
+            max_feed_row = existing_table.agg({"feed_extracted_at": "max"}).collect()[0]
+            max_feed_extracted_at = max_feed_row[0] if max_feed_row else None
+        else:
+            max_feed_extracted_at = None
 
-        if max_updated_at:
-            candidacy = candidacy.filter(candidacy["updated_at"] >= max_updated_at)
+        if max_feed_extracted_at:
+            candidacy = candidacy.filter(candidacy["feed_extracted_at"] >= max_feed_extracted_at)
 
-    # get distinct person IDs
-    person_ids = candidacy.select("candidate_database_id").distinct()
+    # one row per person, carrying the newest feed ingest time across their candidacies
+    person_ids = candidacy.groupBy("candidate_database_id").agg(
+        spark_max("feed_extracted_at").alias("feed_extracted_at")
+    )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if person_ids is empty, return empty DataFrame
@@ -378,6 +388,7 @@ def model(dbt, session) -> DataFrame:
             col("suffix"),
             col("updatedAt").alias("updated_at"),
             col("urls"),
+            lit(None).cast("timestamp").alias("feed_extracted_at"),
         )
         return empty_df
 
@@ -406,6 +417,7 @@ def model(dbt, session) -> DataFrame:
         col("person.suffix"),
         col("person.updatedAt").alias("updated_at"),
         col("person.urls"),
+        col("feed_extracted_at"),
     )
 
     # Trigger a cache to ensure these transformations are applied before the filter
