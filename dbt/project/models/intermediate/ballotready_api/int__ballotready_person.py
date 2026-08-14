@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, pandas_udf
+from pyspark.sql.functions import col, greatest, lit, pandas_udf
 from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import (
     ArrayType,
@@ -345,28 +345,53 @@ def model(dbt, session) -> DataFrame:
 
     # get persons
     candidacy: DataFrame = dbt.ref("int__ballotready_candidacy")
+    # The gate filters and the person-level rollup below all dereference the
+    # candidacy table's feed_extracted_at; against a pre-gate candidacy table
+    # that dies in Spark analysis with no hint at the fix, so refuse up front.
+    if "feed_extracted_at" not in candidacy.columns:
+        raise ValueError(
+            "int__ballotready_candidacy has no feed_extracted_at column, so the "
+            "incremental gate cannot run. Rebuild it with "
+            "`dbt run --select int__ballotready_candidacy --full-refresh` first."
+        )
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
+        # Refuse before any API work, like the candidacy model: without the
+        # stored cutoff column the run would enrich a wide slice and then die
+        # on on_schema_change="fail" at the merge anyway.
+        if "feed_extracted_at" not in existing_table.columns:
+            raise ValueError(
+                f"{dbt.this} has no feed_extracted_at column, so the incremental gate "
+                "cannot run. Rebuild the table with "
+                "`dbt run --select int__ballotready_person --full-refresh`."
+            )
         # Gate on the feed's ingest clock carried through the candidacy model:
         # the old vendor-timestamp comparison stranded backfills the same way
-        # (see int__ballotready_candidacy). The column is absent until the
-        # first post-deploy full refresh; treat that as no cutoff.
-        if "feed_extracted_at" in existing_table.columns:
-            max_feed_row = existing_table.agg({"feed_extracted_at": "max"}).collect()[0]
-            max_feed_extracted_at = max_feed_row[0] if max_feed_row else None
-        else:
-            max_feed_extracted_at = None
+        # (see int__ballotready_candidacy).
+        max_feed_row = existing_table.agg({"feed_extracted_at": "max"}).collect()[0]
+        max_feed_extracted_at = max_feed_row[0] if max_feed_row else None
 
         # Candidacies the feed never delivered (the upcoming-roster path) carry
-        # a null feed_extracted_at, and null >= cutoff is never true: without
-        # the isNull arm their persons would never be enriched. The set is
-        # scoped to upcoming races, so refreshing it every run stays cheap.
+        # a null feed_extracted_at, so the cutoff can never admit them. Admit
+        # them only for persons not stored yet: re-admitting every null-feed
+        # candidacy each run would re-enrich an ever-growing set nightly.
+        # Absence from the table also covers candidacies recovered with old
+        # ingest stamps (a candidacy-only full refresh) whose persons were
+        # never enriched.
+        existing_person_ids = existing_table.select(col("database_id").alias("stored_person_id"))
+        null_feed_candidacies = candidacy.filter(candidacy["feed_extracted_at"].isNull())
+        null_feed_candidacies = null_feed_candidacies.join(
+            existing_person_ids,
+            null_feed_candidacies["candidate_database_id"] == existing_person_ids["stored_person_id"],
+            "left_anti",
+        )
+
         if max_feed_extracted_at:
-            candidacy = candidacy.filter(
-                candidacy["feed_extracted_at"].isNull()
-                | (candidacy["feed_extracted_at"] >= max_feed_extracted_at)
-            )
+            # Strict ">" for the same reason as the candidacy model: the ingest
+            # stamp is batch-constant, so ">=" would re-admit the entire newest
+            # batch every run until the next file lands.
+            fresh_candidacies = candidacy.filter(candidacy["feed_extracted_at"] > max_feed_extracted_at)
         else:
             # Empty-table incremental run (manual truncation, or a new
             # environment where full-refresh has not run): bound the input to a
@@ -374,17 +399,38 @@ def model(dbt, session) -> DataFrame:
             # matching int__ballotready_candidacy. Full history recovery is a
             # --full-refresh.
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            candidacy = candidacy.filter(
-                candidacy["feed_extracted_at"].isNull() | (candidacy["feed_extracted_at"] >= thirty_days_ago)
-            )
+            fresh_candidacies = candidacy.filter(candidacy["feed_extracted_at"] >= thirty_days_ago)
             logging.info(
                 f"INFO: No feed cutoff found. Filtered to candidacies ingested since {thirty_days_ago}"
             )
+        candidacy = null_feed_candidacies.unionByName(fresh_candidacies)
 
     # one row per person, carrying the newest feed ingest time across their candidacies
     person_ids = candidacy.groupBy("candidate_database_id").agg(
         spark_max("feed_extracted_at").alias("feed_extracted_at")
     )
+
+    if dbt.is_incremental:
+        # The run's rollup only sees gate-admitted candidacies and the merge
+        # rewrites every column, so a person readmitted without their older
+        # feed-delivered candidacies would have the stored value nulled. Fold
+        # it back in; greatest() skips nulls, so this is max(run, stored).
+        stored_feed_times = existing_table.select(
+            col("database_id").alias("stored_database_id"),
+            col("feed_extracted_at").alias("stored_feed_extracted_at"),
+        )
+        person_ids = (
+            person_ids.join(
+                stored_feed_times,
+                person_ids["candidate_database_id"] == stored_feed_times["stored_database_id"],
+                "left",
+            )
+            .withColumn(
+                "feed_extracted_at",
+                greatest(col("feed_extracted_at"), col("stored_feed_extracted_at")),
+            )
+            .select("candidate_database_id", "feed_extracted_at")
+        )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if person_ids is empty, return empty DataFrame
