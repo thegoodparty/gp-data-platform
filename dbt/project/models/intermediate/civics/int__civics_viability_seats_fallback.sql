@@ -124,34 +124,29 @@ with
         where seats > 0
         qualify
             row_number() over (partition by database_id order by updated_at desc) = 1
-    ),
-
-    resolved as (
-        -- Race tier wins. Ambiguity (same-date races disagreeing on seats) is
-        -- fail-closed: those candidacies get NO row at all -- they must not
-        -- fall through to the position tier, which would silently pick a side.
-        select
-            gp_candidacy_id,
-            fallback_seats,
-            'race_exact' as seats_source,
-            cast(matched_br_race_id as string) as matched_br_race_id
-        from race_exact
-        where n_seat_values = 1
-
-        union all
-
-        select
-            trusted.gp_candidacy_id,
-            position_seats.seats as fallback_seats,
-            'position' as seats_source,
-            cast(null as string) as matched_br_race_id
-        from trusted
-        inner join
-            position_seats
-            on trusted.br_position_database_id = position_seats.br_position_database_id
-        left join race_exact on trusted.gp_candidacy_id = race_exact.gp_candidacy_id
-        where race_exact.gp_candidacy_id is null
     )
 
-select gp_candidacy_id, fallback_seats, seats_source, matched_br_race_id
-from resolved
+-- Race tier wins. Ambiguity (same-date races disagreeing on seats) is
+-- fail-closed: those candidacies get NO row at all -- they must not fall
+-- through to the position tier, which would silently pick a side.
+select
+    gp_candidacy_id,
+    fallback_seats,
+    'race_exact' as seats_source,
+    cast(matched_br_race_id as string) as matched_br_race_id
+from race_exact
+where n_seat_values = 1
+
+union all
+
+select
+    trusted.gp_candidacy_id,
+    position_seats.seats as fallback_seats,
+    'position' as seats_source,
+    cast(null as string) as matched_br_race_id
+from trusted
+inner join
+    position_seats
+    on trusted.br_position_database_id = position_seats.br_position_database_id
+left join race_exact on trusted.gp_candidacy_id = race_exact.gp_candidacy_id
+where race_exact.gp_candidacy_id is null
