@@ -358,8 +358,15 @@ def model(dbt, session) -> DataFrame:
         else:
             max_feed_extracted_at = None
 
+        # Candidacies the feed never delivered (the upcoming-roster path) carry
+        # a null feed_extracted_at, and null >= cutoff is never true: without
+        # the isNull arm their persons would never be enriched. The set is
+        # scoped to upcoming races, so refreshing it every run stays cheap.
         if max_feed_extracted_at:
-            candidacy = candidacy.filter(candidacy["feed_extracted_at"] >= max_feed_extracted_at)
+            candidacy = candidacy.filter(
+                candidacy["feed_extracted_at"].isNull()
+                | (candidacy["feed_extracted_at"] >= max_feed_extracted_at)
+            )
         else:
             # Empty-table incremental run (manual truncation, or a new
             # environment where full-refresh has not run): bound the input to a
@@ -367,7 +374,9 @@ def model(dbt, session) -> DataFrame:
             # matching int__ballotready_candidacy. Full history recovery is a
             # --full-refresh.
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            candidacy = candidacy.filter(candidacy["feed_extracted_at"] >= thirty_days_ago)
+            candidacy = candidacy.filter(
+                candidacy["feed_extracted_at"].isNull() | (candidacy["feed_extracted_at"] >= thirty_days_ago)
+            )
             logging.info(
                 f"INFO: No feed cutoff found. Filtered to candidacies ingested since {thirty_days_ago}"
             )
