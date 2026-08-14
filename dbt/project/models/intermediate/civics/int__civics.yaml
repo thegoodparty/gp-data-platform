@@ -4185,6 +4185,30 @@ models:
           Resolved model_predictions registered version of scoring_model for this
           row. Latest-version load is a moving pointer, so this records the exact
           version that scored the row for traceability and a code-pin rollback target.
+      - name: log_n_losers_source
+        description: >
+          Which source computed log_n_losers for this row -- the native
+          per-election pair or the roster fallback's same-race pair. Internal
+          provenance; null when the feature is unavailable; not surfaced on
+          candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - roster
+      - name: multi_seat_source
+        description: >
+          Which seat source won the multi_seat coalesce -- native election
+          seats, the position+date seats fallback, or the roster fallback's
+          race seats. Internal provenance; not surfaced on candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - seats_fallback
+                  - roster
       - name: updated_at
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
