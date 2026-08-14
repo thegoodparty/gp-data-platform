@@ -8,7 +8,8 @@
 --
 -- Scope is structural, not cosmetic:
 -- * upcoming elections only - past candidacies no longer matter to the
--- product;
+-- product. Null election days stay in scope: staging nulls far-future
+-- placeholder dates, so null means unknown, not past;
 -- * candidacy still present in the vendor's current export - a candidacy the
 -- vendor deleted is intentionally absent from the intermediate and must not
 -- warn. The window anchors on the newest delivered file, not wall clock, so
@@ -31,7 +32,7 @@ with
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }} as feed
         cross join latest_export
         where
-            feed.election_day >= current_date()
+            (feed.election_day >= current_date() or feed.election_day is null)
             and try_cast(feed._ab_source_file_last_modified as timestamp)
             >= latest_export.latest_file_at - interval 14 days
             and feed._airbyte_extracted_at <= current_timestamp() - interval 2 days
