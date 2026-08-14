@@ -117,18 +117,18 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
     """
     sources: list[dict] = []
     for name, spec in ARCHIVE_GROUPS.items():
-        for attributes in list_matching(sftp_client, spec["remote_dir"], _ARCHIVE_PATTERNS[name]):
+        for attributes, match in list_matching(sftp_client, spec["remote_dir"], _ARCHIVE_PATTERNS[name]):
             base = attributes.filename.removesuffix(".zip")
             sources.append(
                 _source(
                     remote_dir=spec["remote_dir"],
                     attributes=attributes,
-                    folder=_ARCHIVE_PATTERNS[name].match(attributes.filename)["folder"],
+                    folder=match["folder"],
                     members=[base + suffix for suffix in spec["members"]],
                 )
             )
 
-    for attributes in list_matching(sftp_client, expired_dir, re.compile(expired_pattern)):
+    for attributes, _ in list_matching(sftp_client, expired_dir, re.compile(expired_pattern)):
         # A plain file stages under its own name; a zip's contents are only knowable once opened.
         members = None if attributes.filename.lower().endswith(".zip") else [attributes.filename]
         sources.append(_source(expired_dir, attributes, EXPIRED_FOLDER, members))

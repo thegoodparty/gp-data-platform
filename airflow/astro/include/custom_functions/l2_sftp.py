@@ -44,13 +44,12 @@ def create_sftp_connection(
     raise Exception("Failed to establish SFTP connection after all retries")
 
 
-def list_matching(sftp_client: SFTPClient, remote_dir: str, pattern: re.Pattern) -> list[SFTPAttributes]:
-    """Attributes of the files in remote_dir whose names match pattern."""
-    return [
-        attributes
-        for attributes in sftp_client.listdir_attr(remote_dir)
-        if pattern.match(attributes.filename)
-    ]
+def list_matching(
+    sftp_client: SFTPClient, remote_dir: str, pattern: re.Pattern
+) -> list[tuple[SFTPAttributes, re.Match[str]]]:
+    """The files in remote_dir whose names match pattern, each with its match."""
+    matches = ((a, pattern.match(a.filename)) for a in sftp_client.listdir_attr(remote_dir))
+    return [(attributes, match) for attributes, match in matches if match is not None]
 
 
 def download(sftp_client: SFTPClient, remote_path: str, local_path: str) -> None:
