@@ -29,15 +29,20 @@ with
     -- for the upcoming election, and has been checked. A proposed value is not
     -- evidence of adoption (see the district_map_adoption seed), so this is the
     -- only route by which a proposed district becomes bindable.
-    adopted_proposed_congressional_states as (
-        select state
+    -- district_number is a sparse key: null means the decision covers every
+    -- district in the state, a value narrows it to that one. Adoption is a
+    -- state-wide legal fact, so state-level rows are the norm; per-district
+    -- rows exist to roll out districts as each is verified against the
+    -- enacted map, without holding the whole state back.
+    adopted_proposed_congressional as (
+        select state, cast(nullif(trim(district_number), '') as int) as district_number
         from {{ ref("district_map_adoption") }}
         where
             district_type = 'US_Congressional_District'
             and adopted_source = 'proposed'
             and is_verified
     ),
-    l2_data_districts as (
+    l2_data_districts_raw as (
         select distinct
             state_postal_code as state,
             district_column_name as l2_district_type,
@@ -47,19 +52,33 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false) }})
             )
+        where district_value is not null
+    ),
+    -- Proposed_District is heterogeneous: proposed congressional maps, MI's
+    -- proposed state senate, and local annexations. Only adopted congressional
+    -- values pass; everything else in the column is dropped rather than minted
+    -- as an inert row nothing should reach.
+    l2_data_districts as (
+        select raw.state, raw.l2_district_type, raw.l2_district_name
+        from l2_data_districts_raw as raw
         where
-            district_value is not null
-            -- Proposed_District is heterogeneous: proposed congressional maps,
-            -- MI's proposed state senate, and local annexations. Only adopted
-            -- congressional values pass; everything else in the column is
-            -- dropped rather than minted as an inert row nothing should reach.
-            and (
-                district_column_name != 'Proposed_District'
-                or (
-                    upper(district_value) like '%PROPOSED CONG DIST%'
-                    and state_postal_code
-                    in (select state from adopted_proposed_congressional_states)
-                )
+            raw.l2_district_type != 'Proposed_District'
+            or exists (
+                select 1
+                from adopted_proposed_congressional as adoption
+                where
+                    adoption.state = raw.state
+                    and upper(raw.l2_district_name) like '%PROPOSED CONG DIST%'
+                    and (
+                        adoption.district_number is null
+                        or adoption.district_number = cast(
+                            regexp_extract(
+                                upper(raw.l2_district_name),
+                                '^[0-9]{4} PROPOSED CONG DIST ([0-9]+)',
+                                1
+                            ) as int
+                        )
+                    )
             )
     ),
     -- State-level districts for statewide positions (Governor, US Senate, etc.)

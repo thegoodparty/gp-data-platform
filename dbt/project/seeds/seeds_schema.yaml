@@ -697,6 +697,9 @@ seeds:
       Editing this seed does not bump voter loaded_at, so the incremental
       consumers need a --full-refresh afterwards, same as
       l2_manual_district_assignments.
+    config:
+      column_types:
+        district_number: string
     columns:
       - name: state
         description: Two-letter state code the decision applies to.
@@ -713,6 +716,15 @@ seeds:
           - accepted_values:
               arguments:
                 values: ["US_Congressional_District"]
+      - name: district_number
+        description: >
+          Sparse key, same convention as l2_manual_district_assignments: empty
+          means the decision covers every district in the state, a value
+          narrows it to that district. Adoption is a state-wide legal fact so
+          empty is the norm. Per-district rows exist so a district can be
+          rolled out as it is verified against the enacted map without holding
+          the rest of the state back. A district left out simply behaves as it
+          does today rather than getting worse, so a partial rollout is safe.
       - name: adopted_source
         description: >
           current = the current typed column is the correct map for the
