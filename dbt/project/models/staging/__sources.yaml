@@ -463,6 +463,8 @@ sources:
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_de_vote_history_data_dictionary
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
+      - name: l2_s3_expired_voters
+        description: raw nationwide load of the L2 voter IDs flagged as expired, from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_demographic
         description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_demographic_data_dictionary
@@ -1177,17 +1179,6 @@ sources:
         description: raw data load for Wyoming Haystaq DNA flags
       - name: l2_s3_wy_haystaq_dna_scores
         description: raw data load for Wyoming Haystaq DNA scores
-
-
-  - name: airflow_source
-    schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA') }}"
-    description: Raw data loaded by Airflow DAGs into Databricks
-
-    tables:
-      - name: l2_expired_voters
-        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
-      - name: l2_expired_voters_loads
-        description: Load metadata for the l2_expired_voters DAG. One row per successful DAG run, written only after all batch inserts complete. Used by the DAG for idempotency checks.
 
 
   - name: model_predictions

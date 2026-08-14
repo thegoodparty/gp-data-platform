@@ -1,14 +1,16 @@
+"""SFTP helpers shared by the L2 DAGs."""
+
 import logging
-import os
 import re
 import time
-from datetime import UTC, datetime
-from zipfile import ZipFile
 
-import pandas as pd
 from paramiko import SFTPClient, Transport
+from paramiko.sftp_attr import SFTPAttributes
 
 logger = logging.getLogger("airflow.task")
+
+# paramiko reads 32 KiB per request, so an unprefetched download is round-trip bound.
+_PREFETCH_REQUESTS = 64
 
 
 def create_sftp_connection(
@@ -19,11 +21,7 @@ def create_sftp_connection(
     max_retries: int = 3,
     retry_delay: int = 5,
 ) -> tuple[Transport, SFTPClient]:
-    """
-    Creates an SFTP connection with retry logic and keep-alive settings.
-
-    Mirrors the pattern from dbt/project/models/load/load__l2_sftp_to_s3.py.
-    """
+    """Open an SFTP connection with keep-alive, retrying transient failures."""
     for attempt in range(max_retries):
         transport = None
         try:
@@ -46,116 +44,18 @@ def create_sftp_connection(
     raise Exception("Failed to establish SFTP connection after all retries")
 
 
-def download_expired_voter_files(
-    sftp_client: SFTPClient,
-    remote_dir: str,
-    file_pattern: str,
-    local_dir: str,
-    file_timestamps: dict[str, str] | None = None,
-) -> list[str]:
-    """
-    Lists files in remote_dir matching file_pattern, downloads them locally.
-    ZIP files are extracted; plain files (.tab, .csv) are kept as-is.
-
-    Args:
-        file_timestamps: Optional dict to populate with SFTP file modification
-            times (basename -> ISO 8601 UTC string).  Pass an empty dict to
-            collect timestamps; omit or pass None to skip.
-
-    Returns a list of local file paths for the downloaded/extracted files.
-    """
-    file_list = sftp_client.listdir(remote_dir)
-    pattern = re.compile(file_pattern)
-    matching_files = [f for f in file_list if pattern.match(f)]
-
-    if not matching_files:
-        logger.info(f"No files matching pattern '{file_pattern}' found in {remote_dir}")
-        return []
-
-    logger.info(f"Found {len(matching_files)} expired voter file(s): {matching_files}")
-
-    downloaded_paths: list[str] = []
-    for filename in matching_files:
-        remote_path = f"{remote_dir}/{filename}"
-        local_path = os.path.join(local_dir, filename)
-
-        # Capture SFTP file modification time before downloading
-        mtime_iso: str | None = None
-        if file_timestamps is not None:
-            stat = sftp_client.stat(remote_path)
-            mtime_iso = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat() if stat.st_mtime else None
-
-        logger.info(f"Downloading {remote_path}" + (f" (modified: {mtime_iso})" if mtime_iso else ""))
-        sftp_client.get(
-            remotepath=remote_path,
-            localpath=local_path,
-            max_concurrent_prefetch_requests=64,
-        )
-
-        if filename.lower().endswith(".zip"):
-            try:
-                with ZipFile(local_path, "r") as zf:
-                    zf.extractall(path=local_dir)
-                    for name in zf.namelist():
-                        if name.endswith("/"):
-                            continue
-                        downloaded_paths.append(os.path.join(local_dir, name))
-                        if file_timestamps is not None and mtime_iso:
-                            file_timestamps[os.path.basename(name)] = mtime_iso
-            except Exception as e:
-                logger.error(f"Failed to extract {local_path}: {e}")
-                raise
-            os.remove(local_path)
-        else:
-            downloaded_paths.append(local_path)
-            if file_timestamps is not None and mtime_iso:
-                file_timestamps[filename] = mtime_iso
-
-    return downloaded_paths
+def list_matching(sftp_client: SFTPClient, remote_dir: str, pattern: re.Pattern) -> list[SFTPAttributes]:
+    """Attributes of the files in remote_dir whose names match pattern."""
+    return [
+        attributes
+        for attributes in sftp_client.listdir_attr(remote_dir)
+        if pattern.match(attributes.filename)
+    ]
 
 
-def parse_expired_voter_ids(
-    file_paths: list[str],
-) -> list[str]:
-    """
-    Reads extracted file(s) and returns a deduplicated list of LALVOTERID strings.
-
-    Supports tab-delimited (.tab) and comma-delimited (.csv) files.
-    Column name matching is case-insensitive (e.g. ``LALVoterID`` → ``LALVOTERID``).
-
-    Args:
-        file_paths: List of local file paths to parse.
-    """
-    all_ids: list[str] = []
-
-    for file_path in file_paths:
-        if not os.path.isfile(file_path):
-            logger.warning(f"Skipping non-file path: {file_path}")
-            continue
-
-        delimiter = "\t" if file_path.endswith(".tab") else ","
-        try:
-            df = pd.read_csv(file_path, delimiter=delimiter, dtype=str)
-        except Exception as e:
-            logger.error(f"Failed to read {file_path}: {e}")
-            raise
-
-        # Normalise column names to uppercase for case-insensitive matching
-        df.columns = [c.upper() for c in df.columns]
-
-        if "LALVOTERID" not in df.columns:
-            logger.warning(
-                f"LALVOTERID column not found in {file_path}. " f"Available columns: {list(df.columns)}"
-            )
-            continue
-
-        # Drop rows with missing LALVOTERID
-        df = df[df["LALVOTERID"].notna() & (df["LALVOTERID"].str.strip() != "")]
-
-        ids = df["LALVOTERID"].str.strip().unique().tolist()
-        logger.info(f"Parsed {len(ids)} LALVOTERID(s) from {file_path}")
-        all_ids.extend(ids)
-
-    deduplicated = list(set(all_ids))
-    logger.info(f"Total unique expired LALVOTERIDs: {len(deduplicated)}")
-    return deduplicated
+def download(sftp_client: SFTPClient, remote_path: str, local_path: str) -> None:
+    sftp_client.get(
+        remotepath=remote_path,
+        localpath=local_path,
+        max_concurrent_prefetch_requests=_PREFETCH_REQUESTS,
+    )
