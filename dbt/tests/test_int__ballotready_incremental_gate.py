@@ -117,6 +117,27 @@ def test_cutoff_read_is_guarded_for_a_missing_column(model_name: str):
 
 
 @pytest.mark.parametrize("model_name", sorted(GATE_COLUMNS))
+def test_schema_change_fails_instead_of_silently_dropping_the_gate_column(model_name: str):
+    """on_schema_change defaults to "ignore", under which incremental merges
+    write only the target's existing columns: feed_extracted_at would never
+    land, and the missing-column fallback would become the permanent gate
+    without any signal. "fail" keeps the pre-full-refresh state loud."""
+    settings = [
+        keyword.value.value
+        for node in ast.walk(_tree(model_name))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "config"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "dbt"
+        for keyword in node.keywords
+        if keyword.arg == "on_schema_change" and isinstance(keyword.value, ast.Constant)
+    ]
+
+    assert settings == ["fail"], f"{model_name} must set on_schema_change='fail' in dbt.config"
+
+
+@pytest.mark.parametrize("model_name", sorted(GATE_COLUMNS))
 def test_output_carries_feed_extracted_at(model_name: str):
     """The gate only works if each run's output lands the column the next run reads."""
     aliased = any(

@@ -328,6 +328,10 @@ def model(dbt, session) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
+        # "ignore" (the default) would silently drop feed_extracted_at from
+        # incremental merges until a full refresh; fail loudly instead, like
+        # the sibling models.
+        on_schema_change="fail",
         tags=["intermediate", "ballotready", "person", "api", "pandas_udf"],
     )
 
