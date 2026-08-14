@@ -187,17 +187,31 @@ def sync_source(
     folder_prefix = f"{prefix}/{source['folder']}/"
     file_name = source["remote_path"].rsplit("/", 1)[-1]
     local_path = os.path.join(staging_dir, file_name)
+    members = source["members"]
+    size_bytes = source["size_bytes"]
+
+    # Checked before the download: every staged file becomes exactly one table, so a source that
+    # expanded into several would load only one of them. Failing this source alone leaves the
+    # state archives syncing and the Databricks step running off S3.
+    if members is None:
+        raise ValueError(
+            f"{file_name} is an archive whose members cannot be derived from its name. "
+            "Only plain files are supported here; unpack it upstream or add it to "
+            "ARCHIVE_GROUPS with its member suffixes."
+        )
 
     # Astro workers have a fixed 10 GiB of ephemeral storage, so a growing archive will one day
     # outgrow it. Fail with the numbers rather than filling the disk mid-download.
     free_bytes = shutil.disk_usage(staging_dir).free
-    if free_bytes < source["size_bytes"] * 1.1:
+    if not size_bytes:
+        logger.warning(f"{file_name} has no size on the server; skipping the disk-space check")
+    elif free_bytes < size_bytes * 1.1:
         raise ValueError(
-            f"{file_name} needs {source['size_bytes'] / 1024**3:.1f} GB but only "
+            f"{file_name} needs {size_bytes / 1024**3:.1f} GB but only "
             f"{free_bytes / 1024**3:.1f} GB is free on {staging_dir}"
         )
 
-    logger.info(f"Downloading {source['remote_path']} ({source['size_bytes'] / 1024**3:.2f} GB)")
+    logger.info(f"Downloading {source['remote_path']} ({size_bytes / 1024**3:.2f} GB)")
     download(sftp_client, source["remote_path"], local_path)
     try:
         if not file_name.lower().endswith(".zip"):
@@ -205,17 +219,6 @@ def sync_source(
             with open(local_path, "rb") as handle:
                 _upload(s3_client, bucket, key, handle, file_name)
             return [key]
-
-        members = source["members"]
-        if members is None:
-            # Every staged file becomes exactly one table, so a source that could expand to
-            # several would silently load only one of them. Fail this source alone: the state
-            # archives keep syncing, and the Databricks step still runs off S3.
-            raise ValueError(
-                f"{file_name} is an archive whose members cannot be derived from its name. "
-                "Only plain files are supported here; unpack it upstream or add it to "
-                "ARCHIVE_GROUPS with its member suffixes."
-            )
 
         with ZipFile(local_path) as zip_file:
             contents = [name for name in zip_file.namelist() if not name.endswith("/")]

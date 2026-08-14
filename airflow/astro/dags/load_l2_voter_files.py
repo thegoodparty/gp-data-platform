@@ -34,7 +34,8 @@ The SQL warehouse reads the staged files through Unity Catalog, so the staging p
 external location granted `READ FILES` to the Airflow service principal.
 
 **Params:**
-- `dry_run` — log both plans without copying or loading.
+- `dry_run` — log both plans and touch nothing. It does not read Databricks either, so the
+  table plan it prints is an upper bound: every staged file looks unloaded.
 
 The sync task downloads a whole archive before uploading it. Astro workers have a fixed 10 GiB of
 ephemeral storage that no worker type or queue setting can raise, and the largest archive is ~8 GB
@@ -154,14 +155,20 @@ def load_l2_voter_files():
             _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
         )
 
-        connection = connect_from_conn_id()
-        try:
-            if not _is_dry_run():
+        dry_run = _is_dry_run()
+        if dry_run:
+            # Keep a dry run usable where Databricks is unreachable. Without the table
+            # timestamps every staged file looks unloaded, so this is an upper bound.
+            t_log.info("dry_run: skipping the Databricks read; the plan below is an upper bound")
+            loaded_at: dict = {}
+        else:
+            connection = connect_from_conn_id()
+            try:
                 # Once per run, rather than ahead of every mapped load.
                 create_schema(connection, DATABRICKS_CATALOG, schema)
-            loaded_at = get_table_loaded_at(connection, DATABRICKS_CATALOG, schema)
-        finally:
-            connection.close()
+                loaded_at = get_table_loaded_at(connection, DATABRICKS_CATALOG, schema)
+            finally:
+                connection.close()
 
         pending = plan_loads(staged, loaded_at)
 
@@ -169,7 +176,7 @@ def load_l2_voter_files():
         for load_spec in pending:
             t_log.info(f"  {load_spec['table_name']} <- {load_spec['source_file_name']}")
 
-        return [] if _is_dry_run() else pending
+        return [] if dry_run else pending
 
     @task(max_active_tis_per_dag=8, execution_timeout=duration(hours=6))
     def load(table_load: dict) -> str:
