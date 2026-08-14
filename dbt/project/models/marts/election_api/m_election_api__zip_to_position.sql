@@ -63,7 +63,9 @@ with
     ),
 
     positions as (
-        select id as position_id, name, br_database_id
+        -- br_database_id back to numeric: the election-api mart publishes it
+        -- as string, but the election feed joins on the numeric BR id
+        select id as position_id, name, cast(br_database_id as bigint) as br_database_id
         from {{ ref("m_election_api__position") }}
         where district_id is not null
     ),
@@ -113,5 +115,15 @@ with
             = 1
     )
 
-select *
+-- id and the timestamps satisfy the election-api ZipToPosition Postgres
+-- contract. The id is deterministic on the natural key, so it is stable across
+-- rebuilds. The sync rebuilds the table every run, so created_at restates to
+-- the build time rather than tracking a first-seen date.
+select
+    {{
+        generate_salted_uuid(
+            fields=["zip_code", "position_id", "election_date"],
+            salt="zip_to_position",
+        )
+    }} as id, current_timestamp() as created_at, current_timestamp() as updated_at, *
 from officepicker

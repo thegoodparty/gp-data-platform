@@ -1,5 +1,5 @@
 -- dbt/project/tests/assert_g4110_same_name_collision_ceiling.sql
--- DATA-1950: (state, normalized city_ascii) groups spanning >1 county should stay
+-- (state, normalized city_ascii) groups spanning >1 county should stay
 -- near the measured ~226; a spike means normalization merged distinct names.
 with
     collisions as (

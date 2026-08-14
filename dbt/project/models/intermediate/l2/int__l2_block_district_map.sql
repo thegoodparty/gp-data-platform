@@ -4,10 +4,11 @@
 -- normalized district_name) with the L2 voter count in that intersection
 -- (voters_in_block_district) and the per-(block, type) voter total
 -- (voters_in_block). The block-grain twin of int__zip_code_to_l2_district and
--- the input to int__district_census_allocation (the substrate).
+-- the input to int__district_census_allocation (the allocation).
 --
--- UNPIVOTs the curated substrate district columns
--- (get_l2_major_district_columns) -- the cohort-occupied office-bearing types.
+-- UNPIVOTs the curated allocated district columns
+-- (get_l2_district_columns, scope='allocated') -- the office-bearing types
+-- carrying a Serve-ICP office with a clean L2 binding.
 -- District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
 -- normalized_district_name (L2 "(EST.)"/whitespace drift between snapshots).
@@ -34,7 +35,11 @@ with
             ) as block_geoid,
             lalvoterid,
             loaded_at,
-            {{ get_l2_major_district_columns(use_backticks=true, cast_to_string=true) }}
+            {{
+                get_l2_district_columns(
+                    scope="allocated", use_backticks=true, cast_to_string=true
+                )
+            }}
         from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
@@ -48,8 +53,13 @@ with
             {{ normalize_l2_district_name("district_value") }} as district_name
         from
             l2 unpivot (
-                district_value for district_column_name
-                in ({{ get_l2_major_district_columns(use_backticks=false) }})
+                district_value for district_column_name in (
+                    {{
+                        get_l2_district_columns(
+                            scope="allocated", use_backticks=false
+                        )
+                    }}
+                )
             )
         where
             district_value is not null
@@ -83,7 +93,7 @@ select
     bd.district_type,
     bd.district_name,
     bd.voters_in_block_district,
-    -- per-(block, district_type) denominator for the substrate's split fraction
+    -- per-(block, district_type) denominator for the allocation's split fraction
     sum(bd.voters_in_block_district) over (
         partition by bd.block_geoid, bd.district_type
     ) as voters_in_block,

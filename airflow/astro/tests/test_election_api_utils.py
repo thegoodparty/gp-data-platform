@@ -1,4 +1,4 @@
-"""Tests for election-api sync utilities (bulk_insert_from_databricks)."""
+"""Tests for election-api sync utilities (bulk insert and quality gates)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -6,11 +6,56 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from include.custom_functions import election_api_utils
-from include.custom_functions.election_api_utils import bulk_insert_from_databricks
+from include.custom_functions.election_api_utils import (
+    QualityGate,
+    bulk_insert_from_databricks,
+    check_counts,
+    check_id_overlap,
+    check_nulls,
+)
 
 
 def _spec():
     return SimpleNamespace(staging_schema="staging", new_table="ZipToPosition_new")
+
+
+class TestQualityGates:
+    """Pure pre-swap gate logic (the swap is destructive; these fail it closed)."""
+
+    GATE = QualityGate(cold_start_floor=100_000)
+
+    def test_counts_pass_on_healthy_ratio(self):
+        check_counts(950_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_refuse_coverage_collapse(self):
+        with pytest.raises(ValueError, match="ratio"):
+            check_counts(400_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_boundary_ratio_passes(self):
+        check_counts(500_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_cold_start_floor(self):
+        with pytest.raises(ValueError, match="cold-start"):
+            check_counts(99_999, 0, self.GATE, "Race")
+        check_counts(100_000, 0, self.GATE, "Race")
+
+    def test_id_overlap_refuses_wholesale_rekey(self):
+        gate = QualityGate(cold_start_floor=100_000, min_id_overlap=0.90)
+        check_id_overlap(900, 1_000, gate, "Person")  # exactly at the floor passes
+        with pytest.raises(ValueError, match="re-key"):
+            check_id_overlap(899, 1_000, gate, "Person")
+
+    def test_id_overlap_skipped_where_ids_re_mint(self):
+        """ZipToPosition and Projected_Turnout declare no floor because their
+        ids legitimately re-mint, so even zero overlap must pass. A floor added
+        there would refuse every run."""
+        check_id_overlap(0, 1_000, QualityGate(cold_start_floor=1_000), "ZipToPosition")
+
+    def test_nulls_refuse_when_probe_finds_any(self):
+        gate = QualityGate(cold_start_floor=100_000, not_null_columns=("is_local",))
+        check_nulls(0, gate, "DistrictTopIssue")
+        with pytest.raises(ValueError, match="is_local"):
+            check_nulls(1, gate, "DistrictTopIssue")
 
 
 def _gen(batches):

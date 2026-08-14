@@ -1,7 +1,7 @@
 -- Resolves each serve org to its L2 district (override-first via election-api,
--- LLM crosswalk fallback). The serve-cohort entry point onto the District/Census
--- substrate: a downstream consumer, so the election-api dependency is quarantined
--- here and never pulls into the substrate build.
+-- LLM crosswalk fallback). The serve-cohort entry point onto the district
+-- population allocation: a downstream consumer, so the election-api dependency is
+-- quarantined here and never pulls into the allocation build.
 --
 -- One row per serve org (organizations mart, organization_type = 'serve'):
 -- downstream models join the resolved (state, l2_district_type,

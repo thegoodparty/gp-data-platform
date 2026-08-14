@@ -4,7 +4,7 @@
 -- collide
 -- today, and most apparent collisions are upstream entity-resolution duplicates of
 -- one person
--- (see .tickets/DATA-1523/46_layer1_models_design.md §11.1). Severity is warn until
+-- Severity is warn until
 -- the ER
 -- duplicates are cleaned upstream; promote to error after that. (HubSpot leads are
 -- identity-grained, so this checks the code alone -- not code + year + stage like

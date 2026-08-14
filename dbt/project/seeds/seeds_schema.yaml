@@ -101,6 +101,10 @@ seeds:
       (int__zip_code_to_l2_district, m_election_api__district,
       int__l2_district_aggregations) need a --full-refresh afterwards;
       assert_manual_district_assignments_resolve.sql fails until they get one.
+      The people chain is gated the same way: rebuild m_people_api__voter (a
+      full-rebuild table) and --full-refresh m_people_api__districtvoter, or
+      the assignment reaches the people DB only when the state's next L2 load
+      bumps loaded_at.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.
     config:
@@ -627,8 +631,8 @@ seeds:
 
   - name: seed_civics_election_2025_position_nullouts
     description: >
-      One-time resolution of 2025-archive br_position_database_id collisions
-      (DATA-1894). Each row is a gp_election_id whose br_position_database_id
+      One-time resolution of 2025-archive br_position_database_id collisions.
+      Each row is a gp_election_id whose br_position_database_id
       must be nulled in int__civics_election_2025 because the contest's office
       does not match the tagged BallotReady position (office_mismatch). The
       seed now carries office_mismatch rows only; same-office duplicate

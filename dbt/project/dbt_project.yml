@@ -86,10 +86,6 @@ models:
       win_agents:
         +schema: mart_win_agents
         +materialized: view
-    write:
-      write__people_api_db:
-        # Disabled due to performance issues (timing out)
-        +enabled: false
     staging:
       airbyte_source:
         stripe_api:

@@ -128,6 +128,32 @@ hs AS (
     WHERE dbt_valid_to IS NULL
         AND COALESCE(properties_combined_pro_upgrade_date, properties_pro_upgrade_date)
             IS NOT NULL
+),
+sub_flags AS (
+    -- Server-side Segment events from gp-api (2026-07-24 amendment).
+    -- Confirmed fires on Stripe checkout AND on admin isPro grants
+    -- (paymentMethod='admin') — the only channel dating comped Pros; in-data
+    -- 2025-07-07..2026-04-13 (live in code, silent since April). Canceled
+    -- added 2025-09-17, code-retired 2026-07-13 (omni PR #732) — historical
+    -- gate only. Both pre-filtered to <= d_eval here (unlike amp/hs, which
+    -- are single-value milestones compared in pandas) so a post-D re-upgrade
+    -- or cancel can't leak into the at-D judgment.
+    SELECT
+        d.user_id,
+        MAX(CASE WHEN e.event_type = 'Account - Pro Subscription Confirmed'
+                 AND CAST(e.event_time AS DATE) <= d.d_eval
+            THEN CAST(e.event_time AS DATE) END) AS sub_confirmed_le_d,
+        MAX(CASE WHEN e.event_type = 'Account - Pro Subscription Canceled'
+                 AND CAST(e.event_time AS DATE) <= d.d_eval
+            THEN CAST(e.event_time AS DATE) END) AS sub_canceled_le_d
+    FROM dedup d
+    JOIN goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+        ON d.user_id = TRY_CAST(e.user_id AS BIGINT)
+    WHERE e.event_type IN (
+        'Account - Pro Subscription Confirmed',
+        'Account - Pro Subscription Canceled'
+    )
+    GROUP BY d.user_id
 )
 SELECT
     d.user_id,
@@ -141,12 +167,15 @@ SELECT
     COALESCE(sf.has_stripe, FALSE) AS has_stripe,
     COALESCE(sf.stripe_pro_at_d, FALSE) AS stripe_pro_at_d,
     a.amp_upgrade_date,
-    h.hs_upgrade_date
+    h.hs_upgrade_date,
+    sub.sub_confirmed_le_d,
+    sub.sub_canceled_le_d
 FROM dedup d
 LEFT JOIN base b ON d.user_id = b.user_id
 LEFT JOIN stripe_flags sf ON d.user_id = sf.user_id
 LEFT JOIN amp a ON d.user_id = a.user_id
 LEFT JOIN hs h ON d.hubspot_id = h.hubspot_id
+LEFT JOIN sub_flags sub ON d.user_id = sub.user_id
 """
 
 # --- Metric logic (pandas) ---------------------------------------------------
@@ -203,18 +232,52 @@ def build_working_flags(df: pd.DataFrame, asof: date) -> pd.DataFrame:
 
     d_eval = df["bucket_dt"].apply(lambda d: None if d is None else min(d, asof))
 
-    def _sig_by(row_idx: int, d: date | None) -> bool:
+    def _last_sig_by(row_idx: int, d: date | None, cols: tuple[str, ...]) -> date | None:
+        """Latest upgrade signal on or before d across the given channels.
+
+        sub_confirmed_le_d is already <= d_eval from SQL; amp/hs are raw
+        milestone dates compared here.
+        """
         if d is None:
-            return False
-        for col in ("amp_upgrade_date", "hs_upgrade_date"):
+            return None
+        best = None
+        for col in cols:
             v = df.at[row_idx, col]
-            if not pd.isna(v) and pd.Timestamp(v).date() <= d:
-                return True
-        return False
+            if not pd.isna(v):
+                vd = pd.Timestamp(v).date()
+                if vd <= d and (best is None or vd > best):
+                    best = vd
+        return best
+
+    legacy_channels = ("amp_upgrade_date", "hs_upgrade_date")
+    all_channels = (*legacy_channels, "sub_confirmed_le_d")
+
+    def _fallback(row_idx: int, d: date | None, cols: tuple[str, ...], gate: bool) -> bool:
+        """Non-Stripe fallback: latest upgrade signal <= d, optionally gated by
+        a cancel event after that signal (a later upgrade signal re-qualifies)."""
+        if df.at[row_idx, "has_stripe"]:
+            return False
+        sig = _last_sig_by(row_idx, d, cols)
+        if sig is None:
+            return False
+        if gate:
+            cancel = df.at[row_idx, "sub_canceled_le_d"]
+            if not pd.isna(cancel) and pd.Timestamp(cancel).date() > sig:
+                return False
+        return True
 
     df["pro_at_stripe"] = df["has_stripe"] & df["stripe_pro_at_d"] & d_eval.notna()
-    df["pro_at_fallback"] = [(not df.at[i, "has_stripe"]) and _sig_by(i, d) for i, d in d_eval.items()]
+    df["pro_at_fallback"] = [_fallback(i, d, all_channels, gate=True) for i, d in d_eval.items()]
     df["pro_at_election"] = df["pro_at_stripe"] | df["pro_at_fallback"]
+    # Prior logic (pre-2026-07-24: legacy channels, no cancel gate) kept for the
+    # delta table; drop once a reporting round has restated on the new logic.
+    df["pro_at_fallback_prev"] = [_fallback(i, d, legacy_channels, gate=False) for i, d in d_eval.items()]
+    df["pro_at_election_prev"] = df["pro_at_stripe"] | df["pro_at_fallback_prev"]
+    # Sanity #6: signal existed but a later cancel gated it off.
+    df["cancel_gated"] = [
+        _fallback(i, d, all_channels, gate=False) and not df.at[i, "pro_at_fallback"]
+        for i, d in d_eval.items()
+    ]
 
     fcs = pd.to_datetime(df["first_campaign_sent_date"], errors="coerce")
     df["activated_at_election"] = [
@@ -247,8 +310,10 @@ AT_ELECTION_COLS = [
 ]
 
 
-def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
-    """Return (report, crosstab, pro_activation, sanity). df must come from build_working_flags."""
+def build_report(
+    df: pd.DataFrame, asof: date
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    """Return (report, crosstab, pro_activation, delta, sanity). df must come from build_working_flags."""
     report_buckets = [
         b
         for name in BUCKETS
@@ -323,6 +388,26 @@ def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFra
         )
     pro_activation = pd.DataFrame(pa_rows).set_index("bucket")
 
+    # Delta vs the pre-2026-07-24 dating logic (legacy channels, no cancel
+    # gate), so the restatement is explicit in the round that introduces it.
+    delta_rows = []
+    for b in report_buckets:
+        if b == STRUCTURAL_NA_ROW:
+            continue
+        g = in_report[in_report["bucket"] == b]
+        prev, new = int(g["pro_at_election_prev"].sum()), int(g["pro_at_election"].sum())
+        delta_rows.append(
+            {
+                "bucket": b,
+                "pro_at_election_prev_logic": prev,
+                "pro_at_election_new_logic": new,
+                "delta": new - prev,
+                "added_by_confirmed_evt": int((g["pro_at_election"] & ~g["pro_at_election_prev"]).sum()),
+                "removed_by_cancel_gate": int((~g["pro_at_election"] & g["pro_at_election_prev"]).sum()),
+            }
+        )
+    delta = pd.DataFrame(delta_rows).set_index("bucket")
+
     dropped = int((df["bucket"] == "outside_buckets").sum())
     pre_era = int((df["bucket"] == "pre_era_no_date").sum())
     sanity = {
@@ -337,11 +422,21 @@ def build_report(df: pd.DataFrame, asof: date) -> tuple[pd.DataFrame, pd.DataFra
             "stripe_matched": int(df["has_stripe"].sum()),
             "amp_signal": int(df["amp_upgrade_date"].notna().sum()),
             "hs_signal": int(df["hs_upgrade_date"].notna().sum()),
+            "sub_confirmed_signal": int(df["sub_confirmed_le_d"].notna().sum()),
+            "sub_confirmed_only": int(
+                (
+                    df["sub_confirmed_le_d"].notna()
+                    & ~df["has_stripe"]
+                    & df["amp_upgrade_date"].isna()
+                    & df["hs_upgrade_date"].isna()
+                ).sum()
+            ),
         },
+        "cancel_gated_users": int(df["cancel_gated"].sum()),
         "reconciliation_ok": int(report.loc[report.index != "TOTAL", "accounts"].sum()) + dropped + pre_era
         == len(df),
     }
-    return report, crosstab, pro_activation, sanity
+    return report, crosstab, pro_activation, delta, sanity
 
 
 def csv_footer(sanity: dict) -> list[str]:
@@ -361,10 +456,16 @@ def csv_footer(sanity: dict) -> list[str]:
         "# activated_at_election / pro_at_election are anchored at "
         "min(election date, run date). pro_at_election is evidence-only: "
         "Stripe subscription interval covering the date (pro_at_stripe), "
-        "else an upgrade signal on or before it for users with no Stripe "
-        "history (pro_at_fallback, churn-blind). ~55% of today's Pro users "
-        "have no timing evidence, so pro_at_election undercounts; pro_today "
-        "is the as-of-run-date reference.",
+        "else the latest upgrade signal on or before it for users with no "
+        "Stripe history (pro_at_fallback; incl. admin/comped grants via the "
+        "'Account - Pro Subscription Confirmed' event, and gated by the "
+        "'Account - Pro Subscription Canceled' event where one exists). "
+        "~42% of today's Pro users still have no timing evidence "
+        "(pre-2025-06-27 grants; grants after 2026-04-13 while the Confirmed "
+        "event is silent in-data; billing-email mismatch), so "
+        "pro_at_election undercounts; pro_today is the as-of-run-date "
+        "reference. Restated 2026-07-24: not 1:1 comparable with earlier "
+        "runs (see the restatement table).",
         "# '-' = not defined for that row (no election date), not a measured "
         "zero. The dateless row's zero activated/Pro is genuine: these are "
         "signups that never set campaign details.",
@@ -381,7 +482,7 @@ def main() -> None:
     print(f"Working set: {len(raw):,} users\n")
 
     df = build_working_flags(raw, asof)
-    report, crosstab, pro_activation, sanity = build_report(df, asof)
+    report, crosstab, pro_activation, delta, sanity = build_report(df, asof)
     labels = display_labels(asof)
 
     print("=== Win top-line report, by general-election-date bucket ===")
@@ -390,6 +491,8 @@ def main() -> None:
     print(crosstab.rename(index=labels).to_string())
     print("\n=== Pro -> activated conversion (lifetime + at-election) ===")
     print(pro_activation.rename(index=labels).to_string())
+    print("\n=== pro_at_election: 2026-07-24 dating-logic restatement ===")
+    print(delta.rename(index=labels).to_string())
     print("\n=== Sanity checks (brief execution_notes 1-5) ===")
     for k, v in sanity.items():
         print(f"{k}: {v}")
