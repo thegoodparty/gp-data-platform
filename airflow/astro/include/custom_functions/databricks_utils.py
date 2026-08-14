@@ -1,6 +1,7 @@
 import logging
 import time
 from collections.abc import Generator
+from typing import NamedTuple
 
 from airflow.sdk import BaseHook, Variable
 from databricks import sql as databricks_sql
@@ -84,11 +85,27 @@ def get_databricks_connection(
     raise RuntimeError("Unreachable")
 
 
-def connect_from_conn_id(
-    databricks_conn_id_var: str = "databricks_conn_id",
-    use_cloud_fetch: bool = False,
-) -> Connection:
-    """Resolve the Databricks connection named by an Airflow Variable and connect to it."""
+class DatabricksCredentials(NamedTuple):
+    host: str
+    http_path: str
+    client_id: str
+    client_secret: str
+
+    def connect(self, use_cloud_fetch: bool = False) -> Connection:
+        return get_databricks_connection(
+            host=self.host,
+            http_path=self.http_path,
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            use_cloud_fetch=use_cloud_fetch,
+        )
+
+
+def resolve_conn_from_var(databricks_conn_id_var: str = "databricks_conn_id") -> DatabricksCredentials:
+    """The validated Databricks credentials named by an Airflow Variable.
+
+    Separate from connecting so a caller can validate eagerly and connect lazily.
+    """
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
 
@@ -99,13 +116,15 @@ def connect_from_conn_id(
             "host, login, password, or http_path (extra) field"
         )
 
-    return get_databricks_connection(
-        host=db_conn.host,
-        http_path=http_path,
-        client_id=db_conn.login,
-        client_secret=db_conn.password,
-        use_cloud_fetch=use_cloud_fetch,
-    )
+    return DatabricksCredentials(db_conn.host, http_path, db_conn.login, db_conn.password)
+
+
+def connect_from_conn_id(
+    databricks_conn_id_var: str = "databricks_conn_id",
+    use_cloud_fetch: bool = False,
+) -> Connection:
+    """Resolve the Databricks connection named by an Airflow Variable and connect to it."""
+    return resolve_conn_from_var(databricks_conn_id_var).connect(use_cloud_fetch=use_cloud_fetch)
 
 
 def read_databricks_table(
@@ -198,24 +217,12 @@ def read_databricks_partitioned(
     Yields lists of row tuples (same batch shape as read_databricks_table). The
     connection is closed when the generator is exhausted or closed.
     """
-    db_conn_id = Variable.get(databricks_conn_id_var)
-    db_conn = BaseHook.get_connection(db_conn_id)
-
-    http_path = db_conn.extra_dejson.get("http_path", "")
-    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
-        raise ValueError(
-            f"Databricks connection '{db_conn_id}' is missing a required "
-            "host, login, password, or http_path (extra) field"
-        )
+    # Validated here so a bad connection fails at call time, but connected inside the generator so
+    # a caller that never iterates opens nothing.
+    credentials = resolve_conn_from_var(databricks_conn_id_var)
 
     def _iter():
-        connection = get_databricks_connection(
-            host=db_conn.host,
-            http_path=http_path,
-            client_id=db_conn.login,
-            client_secret=db_conn.password,
-            use_cloud_fetch=use_cloud_fetch,
-        )
+        connection = credentials.connect(use_cloud_fetch=use_cloud_fetch)
         cursor = connection.cursor()
         try:
             execute_with_retry(
