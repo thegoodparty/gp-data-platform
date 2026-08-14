@@ -1,3 +1,10 @@
+-- Deliberate override (materialized as a table, not the directory default):
+-- several consumers read this per build -- the race mart's key CTE, this
+-- model's own tests, and downstream singular tests -- so a pinned snapshot
+-- keeps build-time and test-time reads coherent; as a view, every consumer
+-- would re-execute this derivation against live vendor data.
+{{ config(materialized="table") }}
+
 -- Live-recomputed Primary date per (state, year), informed by BallotReady's
 -- scheduled-election data and treated as authoritative for Primary in the
 -- race build: this always reflects BallotReady's CURRENT data, so an edit
@@ -75,6 +82,11 @@ with
             and race_count > 0
             and year(election_day) % 2 = 0
             and election_day != {{ computed_general_date_expr }}
+            -- A NULL-state vendor artifact (e.g. a national/party-level row)
+            -- would survive to both picked CTEs and duplicate through the
+            -- full outer join's non-null-safe key, failing the calendar's
+            -- own grain tests loudly over ignorable noise.
+            and state is not null
     ),
 
     candidates_with_presidential as (
@@ -94,6 +106,7 @@ with
             and race_count > 0
             and year(election_day) % 2 = 0
             and election_day != {{ computed_general_date_expr }}
+            and state is not null
     ),
 
     ranked_no_presidential as (

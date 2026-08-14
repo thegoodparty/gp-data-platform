@@ -484,6 +484,9 @@ models:
         description: State postal code
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
       - name: election_date
         description: The Primary date for this state/year, per BallotReady
         data_tests:
