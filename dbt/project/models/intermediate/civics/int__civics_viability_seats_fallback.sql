@@ -94,17 +94,7 @@ with
         inner join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
             on race.election.databaseid = election.database_id
-        where
-            -- Strict equality, not coalesce-to-false: a NULL flag is UNKNOWN
-            -- and fails closed. Verified 2026-08-10: all five flags are 100%
-            -- populated across staging, so this costs zero fills today and
-            -- guards against a future partial load.
-            race.is_disabled = false
-            and race.is_recall = false
-            and race.is_primary = false
-            and race.is_runoff = false
-            and race.is_unexpired = false
-            and race.seats > 0
+        where {{ clean_general_race_conditions("race") }}
     ),
 
     race_exact as (
