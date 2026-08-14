@@ -4079,6 +4079,59 @@ models:
           arguments:
             expression: "(seats_source = 'race_exact') = (matched_br_race_id is not null)"
 
+  - name: int__civics_viability_opponents_fallback
+    description: >
+      Opponent-count inputs for the viability scorer, selected by roster
+      membership: the candidacy's own BR candidacy ids (via candidacy_stage)
+      found inside the candidacies array of exactly one clean BallotReady
+      race (latest race version). Unlike the seats fallback's
+      matched_br_race_id (a position+date min-pick, not roster-verified),
+      roster_br_race_id is a race the candidacy provably belongs to.
+      Fail-closed: multi-race membership, office-type contradictions against
+      the roster race's position, and rosters smaller than two members yield
+      no row. The scorer consumes the count and seats as a same-race-row pair
+      for log_n_losers where the native computation is missing, and the seats
+      as the last multi_seat coalesce arm. Grain: zero or one row per
+      gp_candidacy_id. Town Council and City Council are treated as one
+      compatible municipal category in that gate.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_n_candidates
+        description: >
+          Member count of the roster (the candidacy itself included). At
+          least 2 by construction: a one-member roster is not evidence of an
+          uncontested race while BallotReady is still discovering the field.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2
+      - name: fallback_race_seats
+        description: >
+          Seat count of the same race row; pairs with fallback_n_candidates
+          so log_n_losers never mixes grains. Positive by construction via
+          the clean-race predicate.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: roster_br_race_id
+        description: >
+          The single clean race whose roster contains the candidacy.
+          Roster-verified provenance, safe to join for audits.
+        data_tests:
+          - not_null
+
   - name: int__civics_viability_scoring
     description: >
       Viability scores for all candidacies in the civics mart, produced by an
