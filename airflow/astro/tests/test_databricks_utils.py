@@ -6,10 +6,46 @@ import pytest
 from include.custom_functions import databricks_utils
 from include.custom_functions.databricks_utils import (
     _is_non_retryable_auth_error,
+    execute_with_retry,
     get_databricks_connection,
     read_databricks_partitioned,
     read_databricks_table,
 )
+
+
+class TestExecuteWithRetry:
+    """The classifier decides whether a failed statement is worth another 30s."""
+
+    def test_parameters_are_forwarded(self):
+        cursor = MagicMock()
+        execute_with_retry(cursor, "SELECT :x", parameters={"x": 1})
+        cursor.execute.assert_called_once_with("SELECT :x", {"x": 1})
+
+    def test_no_parameters_means_a_single_argument(self):
+        """The connector treats an explicit None differently from an omitted argument."""
+        cursor = MagicMock()
+        execute_with_retry(cursor, "SELECT 1")
+        cursor.execute.assert_called_once_with("SELECT 1")
+
+    def test_transient_error_is_retried(self):
+        cursor = MagicMock()
+        cursor.execute.side_effect = [Exception("status code 503"), None]
+        execute_with_retry(cursor, "SELECT 1", retry_delay=0)
+        assert cursor.execute.call_count == 2
+
+    def test_other_errors_are_not_retried(self):
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("TABLE_OR_VIEW_NOT_FOUND")
+        with pytest.raises(Exception, match="TABLE_OR_VIEW_NOT_FOUND"):
+            execute_with_retry(cursor, "SELECT 1", retry_delay=0)
+        assert cursor.execute.call_count == 1
+
+    def test_retries_are_bounded(self):
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("Service Unavailable")
+        with pytest.raises(Exception, match="Service Unavailable"):
+            execute_with_retry(cursor, "SELECT 1", max_retries=3, retry_delay=0)
+        assert cursor.execute.call_count == 3
 
 
 class TestIsNonRetryableAuthError:

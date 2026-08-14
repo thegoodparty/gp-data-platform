@@ -105,7 +105,8 @@ def _source(remote_dir: str, attributes, folder: str, members: list[str] | None)
         "folder": folder,
         "remote_path": f"{remote_dir}/{attributes.filename}",
         "members": members,
-        "size_bytes": attributes.st_size,
+        # An SFTP server that omits the size costs us the disk precheck, not the transfer.
+        "size_bytes": attributes.st_size or 0,
         "modified_at": datetime.fromtimestamp(attributes.st_mtime or 0, tz=UTC).isoformat(),
     }
 

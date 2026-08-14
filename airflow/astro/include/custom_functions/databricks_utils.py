@@ -160,7 +160,10 @@ def execute_with_retry(
     """Execute `query`, retrying transient 5xx errors (e.g. warehouse cold start)."""
     for attempt in range(max_retries):
         try:
-            cursor.execute(query, parameters) if parameters else cursor.execute(query)
+            if parameters:
+                cursor.execute(query, parameters)
+            else:
+                cursor.execute(query)
             return
         except Exception as e:
             msg = str(e)
