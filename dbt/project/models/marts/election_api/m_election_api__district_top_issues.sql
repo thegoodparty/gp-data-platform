@@ -1,9 +1,10 @@
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady
-    district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-    scoped to a single election cycle — districts with off-cycle offices are
-    included as well.
+    district match (`stg_model_predictions__llm_l2_br_match_20260126`), plus
+    any `Proposed_District` adopted per `m_election_api__district` (inherited
+    from that model's `district_map_adoption` gate). Not scoped to a single
+    election cycle — districts with off-cycle offices are included as well.
 
     Grain: up to one row per (district, issue) where the district has at
     least one voter with a non-null score for that issue. Spark UNPIVOT
@@ -115,6 +116,14 @@ with
         select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
         where m.is_matched
+        union
+        -- The match snapshot predates the proposed-district ingest, so adopted
+        -- proposed districts would score nothing. m_election_api__district is
+        -- already gated by district_map_adoption, so this inherits the gate
+        -- rather than re-stating it.
+        select distinct state as l2_state, l2_district_type, l2_district_name
+        from {{ ref("m_election_api__district") }}
+        where l2_district_type = 'Proposed_District'
     ),
 
     l2_voter_data as (
