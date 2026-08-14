@@ -84,6 +84,30 @@ def get_databricks_connection(
     raise RuntimeError("Unreachable")
 
 
+def connect_from_conn_id(
+    databricks_conn_id_var: str = "databricks_conn_id",
+    use_cloud_fetch: bool = False,
+) -> Connection:
+    """Resolve the Databricks connection named by an Airflow Variable and connect to it."""
+    db_conn_id = Variable.get(databricks_conn_id_var)
+    db_conn = BaseHook.get_connection(db_conn_id)
+
+    http_path = db_conn.extra_dejson.get("http_path", "")
+    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
+        raise ValueError(
+            f"Databricks connection '{db_conn_id}' is missing a required "
+            "host, login, password, or http_path (extra) field"
+        )
+
+    return get_databricks_connection(
+        host=db_conn.host,
+        http_path=http_path,
+        client_id=db_conn.login,
+        client_secret=db_conn.password,
+        use_cloud_fetch=use_cloud_fetch,
+    )
+
+
 def read_databricks_table(
     query: str,
     databricks_conn_id_var: str = "databricks_conn_id",
@@ -103,48 +127,11 @@ def read_databricks_table(
         (column_names, batch_iterator) — column_names is a list of strings,
         batch_iterator yields lists of row tuples.
     """
-    db_conn_id = Variable.get(databricks_conn_id_var)
-    db_conn = BaseHook.get_connection(db_conn_id)
-
-    http_path = db_conn.extra_dejson.get("http_path", "")
-    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
-        raise ValueError(
-            f"Databricks connection '{db_conn_id}' is missing a required "
-            "host, login, password, or http_path (extra) field"
-        )
-
-    connection = get_databricks_connection(
-        host=db_conn.host,
-        http_path=http_path,
-        client_id=db_conn.login,
-        client_secret=db_conn.password,
-        use_cloud_fetch=use_cloud_fetch,
-    )
+    connection = connect_from_conn_id(databricks_conn_id_var, use_cloud_fetch=use_cloud_fetch)
 
     try:
         cursor = connection.cursor()
-        # Retry transient 5xx errors (e.g. 503 during SQL warehouse cold start
-        # where the connect handshake succeeds but the first statement POST
-        # races the warehouse coming online).
-        max_retries = 6
-        retry_delay = 30
-        for attempt in range(max_retries):
-            try:
-                cursor.execute(query)
-                break
-            except Exception as e:
-                msg = str(e)
-                transient = "status code 5" in msg or "Service Unavailable" in msg
-                if not transient or attempt == max_retries - 1:
-                    raise
-                logger.warning(
-                    "Databricks execute attempt %d/%d hit transient error: %s. " "Retrying in %ds...",
-                    attempt + 1,
-                    max_retries,
-                    msg,
-                    retry_delay,
-                )
-                time.sleep(retry_delay)
+        execute_with_retry(cursor, query)
         if cursor.description is None:
             raise RuntimeError("Databricks cursor returned no description after execute")
         column_names = [desc[0] for desc in cursor.description]
@@ -167,11 +154,13 @@ def read_databricks_table(
     return column_names, _batch_iterator()
 
 
-def _execute_with_retry(cursor, query, max_retries: int = 6, retry_delay: int = 30) -> None:
+def execute_with_retry(
+    cursor, query, parameters: dict | None = None, max_retries: int = 6, retry_delay: int = 30
+) -> None:
     """Execute `query`, retrying transient 5xx errors (e.g. warehouse cold start)."""
     for attempt in range(max_retries):
         try:
-            cursor.execute(query)
+            cursor.execute(query, parameters) if parameters else cursor.execute(query)
             return
         except Exception as e:
             msg = str(e)
@@ -226,7 +215,7 @@ def read_databricks_partitioned(
         )
         cursor = connection.cursor()
         try:
-            _execute_with_retry(
+            execute_with_retry(
                 cursor, f"SELECT DISTINCT {partition_column} AS _pv FROM ({base_query}) AS _src"
             )
             values = [row[0] for row in cursor.fetchall()]
@@ -238,7 +227,7 @@ def read_databricks_partitioned(
                     predicate = f"_src.{partition_column} = '{escaped}'"
                 query = f"SELECT * FROM ({base_query}) AS _src WHERE {predicate}"
                 logger.info("Reading from Databricks: %s", query)
-                _execute_with_retry(cursor, query)
+                execute_with_retry(cursor, query)
                 while True:
                     batch = cursor.fetchmany(batch_size)
                     if not batch:

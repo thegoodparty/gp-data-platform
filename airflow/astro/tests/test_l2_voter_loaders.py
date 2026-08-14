@@ -6,8 +6,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from include.custom_functions.l2_voter_loaders import (
+    ARCHIVE_GROUPS,
     EXPIRED_FOLDER,
-    build_load_sql,
+    build_load_statement,
+    get_table_loaded_at,
+    load_table,
     plan_loads,
     plan_transfers,
     source_file_type,
@@ -72,7 +75,6 @@ def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
     return {
         "folder": folder,
         "remote_path": f"/VMFiles/{file_name}",
-        "file_name": file_name,
         "members": members,
         "size_bytes": size,
         "modified_at": MODIFIED.isoformat(),
@@ -93,11 +95,18 @@ class TestPlanTransfers:
         staged = {f"MO/{member}": STAGED for member in MEMBERS[:-1]}
         assert plan_transfers([_source(MEMBERS)], staged) == [_source(MEMBERS)]
 
-    def test_source_without_known_members_diffs_on_its_folder(self):
-        """The expired file's members aren't derivable from its name."""
-        expired = _source(members=None, file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER)
+    def test_plain_file_is_its_own_member(self):
+        """The expired file stages under its own name, so it diffs like any other source."""
+        expired = _source(
+            members=["Manual_ID_Omits.tab"], file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER
+        )
         assert plan_transfers([expired], {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == []
         assert plan_transfers([expired], {}) == [expired]
+
+    def test_unknown_members_always_resync(self):
+        """A zip whose contents we cannot name is re-synced rather than guessed from the folder."""
+        unknown = _source(members=None, file_name="omits.zip", folder=EXPIRED_FOLDER)
+        assert plan_transfers([unknown], {f"{EXPIRED_FOLDER}/anything.tab": STAGED}) == [unknown]
 
 
 class TestSyncSource:
@@ -165,6 +174,12 @@ class TestSourceFileType:
     def test_fillrate_is_not_a_voter_file(self):
         assert source_file_type("VM2--AL--2025-05-10-DEMOGRAPHIC-FillRate.tab") is None
 
+    def test_every_archive_member_is_classifiable(self):
+        """A member we stage but cannot classify would be uploaded and then never loaded."""
+        for name, spec in ARCHIVE_GROUPS.items():
+            for suffix in spec["members"]:
+                assert source_file_type(f"{name}--MO--2026-08-03{suffix}") is not None
+
 
 class TestPlanLoads:
     UNIFORM = "VM2Uniform--MO--2026-08-03.tab"
@@ -193,27 +208,89 @@ class TestPlanLoads:
         assert [load["table_name"] for load in plan_loads(staged, {})] == ["l2_s3_expired_voters"]
 
 
-class TestBuildLoadSql:
-    def _sql(self, source_file_name):
-        return build_load_sql(
+class TestBuildLoadStatement:
+    def _statement(self, source_file_name, table_name="t"):
+        return build_load_statement(
             "cat",
             "schema",
             "bucket",
             "staging/prod",
-            {"folder": "MO", "source_file_name": source_file_name, "table_name": "t"},
+            {"folder": "MO", "source_file_name": source_file_name, "table_name": table_name},
         )
 
     def test_tab_and_csv_get_their_own_delimiter(self):
-        assert "delimiter => '\\t'" in self._sql(MEMBERS[0])
-        assert "delimiter => ','" in self._sql(MEMBERS[1])
+        assert self._statement(MEMBERS[0])[1]["delimiter"] == "\t"
+        assert self._statement(MEMBERS[1])[1]["delimiter"] == ","
 
     def test_reads_every_column_as_a_string(self):
         """Leading zeros in ZIPs and similar codes only survive with inference off."""
-        sql = self._sql(MEMBERS[0])
+        sql, _ = self._statement(MEMBERS[0])
         assert "inferColumnTypes => false" in sql
         # read_files appends a rescued-data column the source tables have never carried.
         assert "EXCEPT (_rescued_data)" in sql
 
-    def test_refuses_a_name_it_cannot_vouch_for(self):
-        with pytest.raises(ValueError, match="Unsafe source file name"):
-            self._sql("evil'; drop table x; --.tab")
+    def test_path_is_bound_not_interpolated(self):
+        """A staged name reaches Databricks as data, so it cannot alter the statement."""
+        sql, parameters = self._statement("evil'; drop table x; --.tab")
+        assert "drop table" not in sql
+        assert parameters["path"] == "s3://bucket/staging/prod/MO/evil'; drop table x; --.tab"
+
+    def test_rejects_an_unsafe_identifier(self):
+        """Identifiers cannot be bound in DDL, so they are still validated."""
+        with pytest.raises(ValueError, match="Unsafe table name"):
+            self._statement(MEMBERS[0], table_name="t`; drop table x; --")
+
+
+class FakeCursor:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+        self.executed = []
+
+    def execute(self, query, parameters=None):
+        self.executed.append((query, parameters))
+
+    def fetchall(self):
+        return self.rows
+
+    def close(self):
+        pass
+
+
+class FakeConnection:
+    def __init__(self, rows=()):
+        self.cursor_obj = FakeCursor(rows)
+
+    def cursor(self):
+        return self.cursor_obj
+
+
+class TestGetTableLoadedAt:
+    def test_naive_timestamps_become_utc(self):
+        """The connector returns naive datetimes; comparing them to S3's aware ones would raise."""
+        connection = FakeConnection([("l2_s3_mo_uniform", datetime(2026, 8, 3, 20, 0))])
+        loaded_at = get_table_loaded_at(connection, "cat", "schema")
+
+        assert loaded_at["l2_s3_mo_uniform"].tzinfo is UTC
+        # The value must survive a comparison against an aware S3 timestamp.
+        assert loaded_at["l2_s3_mo_uniform"] < STAGED
+
+    def test_schema_is_bound(self):
+        connection = FakeConnection()
+        get_table_loaded_at(connection, "cat", "schema")
+
+        query, parameters = connection.cursor_obj.executed[0]
+        assert ":schema" in query
+        assert parameters == {"schema": "schema"}
+
+
+class TestLoadTable:
+    def test_returns_the_fully_qualified_name_and_binds_the_path(self):
+        connection = FakeConnection()
+        load = {"folder": "MO", "source_file_name": MEMBERS[0], "table_name": "l2_s3_mo_demographic"}
+
+        name = load_table(connection, "cat", "schema", "bucket", "staging/prod", load)
+
+        assert name == "cat.schema.l2_s3_mo_demographic"
+        query, parameters = connection.cursor_obj.executed[0]
+        assert "CREATE OR REPLACE TABLE `cat`.`schema`.`l2_s3_mo_demographic`" in query
+        assert parameters["path"].endswith(MEMBERS[0])

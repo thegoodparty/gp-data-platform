@@ -46,9 +46,10 @@ from tempfile import TemporaryDirectory
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import BaseHook, Param, Variable, dag, get_current_context, task
-from include.custom_functions.databricks_utils import get_databricks_connection
+from include.custom_functions.databricks_utils import connect_from_conn_id
 from include.custom_functions.l2_sftp import create_sftp_connection
 from include.custom_functions.l2_voter_loaders import (
+    create_schema,
     get_table_loaded_at,
     list_remote_sources,
     list_s3_objects,
@@ -75,16 +76,6 @@ def _sftp_connection():
     )
 
 
-def _databricks_connection():
-    conn = BaseHook.get_connection(Variable.get("databricks_conn_id"))
-    return get_databricks_connection(
-        host=conn.host,
-        http_path=conn.extra_dejson.get("http_path", ""),
-        client_id=conn.login,
-        client_secret=conn.password,
-    )
-
-
 def _s3_client():
     return S3Hook(aws_conn_id=AWS_CONN_ID).get_conn()
 
@@ -97,7 +88,6 @@ def _is_dry_run() -> bool:
     start_date=datetime(2026, 8, 14),
     schedule="0 8 * * *",
     max_active_runs=1,
-    max_active_tasks=16,
     doc_md=__doc__,
     catchup=False,
     default_args={
@@ -134,7 +124,9 @@ def load_l2_voter_files():
 
         return [] if _is_dry_run() else pending
 
-    @task(queue=SYNC_QUEUE, execution_timeout=duration(hours=6))
+    # max_active_tis_per_dag keeps the one-archive-per-worker invariant in code, where it is
+    # reviewable, rather than resting on the queue's concurrency setting alone.
+    @task(queue=SYNC_QUEUE, max_active_tis_per_dag=1, execution_timeout=duration(hours=6))
     def sync(source: dict) -> list[str]:
         """Copy one source file into S3."""
         transport, sftp_client = _sftp_connection()
@@ -162,8 +154,10 @@ def load_l2_voter_files():
             _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
         )
 
-        connection = _databricks_connection()
+        connection = connect_from_conn_id()
         try:
+            # Once per run, rather than ahead of every mapped load.
+            create_schema(connection, DATABRICKS_CATALOG, schema)
             loaded_at = get_table_loaded_at(connection, DATABRICKS_CATALOG, schema)
         finally:
             connection.close()
@@ -179,7 +173,7 @@ def load_l2_voter_files():
     @task(max_active_tis_per_dag=8, execution_timeout=duration(hours=6))
     def load(table_load: dict) -> str:
         """Rebuild one `l2_s3_*` table from its staged file."""
-        connection = _databricks_connection()
+        connection = connect_from_conn_id()
         try:
             return load_table(
                 connection=connection,

@@ -17,6 +17,7 @@ from zipfile import ZipFile
 
 import pandas as pd
 from boto3.s3.transfer import TransferConfig
+from include.custom_functions.databricks_utils import execute_with_retry
 from include.custom_functions.l2_sftp import download, list_matching
 from paramiko import SFTPClient
 
@@ -25,50 +26,38 @@ logger = logging.getLogger("airflow.task")
 EXPIRED_FOLDER = "EXPIRED"
 EXPIRED_TABLE = "l2_s3_expired_voters"
 
-# The per-state archives. Members are known from the archive name, so a run that died part way
-# is detectable without opening anything.
+# The per-state archives, keyed by the prefix L2 names them with. Each member suffix maps to the
+# file type that becomes the destination table's suffix, so the archive grammar is stated once:
+# the archive patterns and the staged-file patterns below are both derived from it.
+_STEM = r"--(?P<folder>[A-Z]{2})--\d{4}-\d{2}-\d{2}"
 ARCHIVE_GROUPS: dict[str, dict] = {
-    "uniform": {
+    "VM2Uniform": {
         "remote_dir": "/VM2Uniform",
-        "pattern": re.compile(r"^VM2Uniform--(?P<folder>[A-Z]{2})--\d{4}-\d{2}-\d{2}\.zip$"),
-        "members": ("{base}.tab", "{base}_DataDictionary.csv"),
+        "members": {".tab": "uniform", "_DataDictionary.csv": "uniform_data_dictionary"},
     },
-    "vm2": {
+    "VM2": {
         "remote_dir": "/VMFiles",
-        "pattern": re.compile(r"^VM2--(?P<folder>[A-Z]{2})--\d{4}-\d{2}-\d{2}\.zip$"),
-        "members": (
-            "{base}-DEMOGRAPHIC.tab",
-            "{base}-DEMOGRAPHIC_DataDictionary.csv",
-            "{base}-VOTEHISTORY.tab",
-            "{base}-VOTEHISTORY_DataDictionary.csv",
-        ),
+        "members": {
+            "-DEMOGRAPHIC.tab": "demographic",
+            "-DEMOGRAPHIC_DataDictionary.csv": "demographic_data_dictionary",
+            "-VOTEHISTORY.tab": "vote_history",
+            "-VOTEHISTORY_DataDictionary.csv": "vote_history_data_dictionary",
+        },
     },
 }
-
-_DATE = r"\d{4}-\d{2}-\d{2}"
-_SOURCE_FILE_TYPES: tuple[tuple[re.Pattern, str], ...] = (
-    (re.compile(rf"^VM2Uniform--[A-Z]{{2}}--{_DATE}\.tab$"), "uniform"),
-    (re.compile(rf"^VM2Uniform--[A-Z]{{2}}--{_DATE}_DataDictionary\.csv$"), "uniform_data_dictionary"),
-    (re.compile(rf"^VM2--[A-Z]{{2}}--{_DATE}-DEMOGRAPHIC\.tab$"), "demographic"),
-    (
-        re.compile(rf"^VM2--[A-Z]{{2}}--{_DATE}-DEMOGRAPHIC_DataDictionary\.csv$"),
-        "demographic_data_dictionary",
-    ),
-    (re.compile(rf"^VM2--[A-Z]{{2}}--{_DATE}-VOTEHISTORY\.tab$"), "vote_history"),
-    (
-        re.compile(rf"^VM2--[A-Z]{{2}}--{_DATE}-VOTEHISTORY_DataDictionary\.csv$"),
-        "vote_history_data_dictionary",
-    ),
+_ARCHIVE_PATTERNS = {name: re.compile(rf"^{name}{_STEM}\.zip$") for name in ARCHIVE_GROUPS}
+_SOURCE_FILE_TYPES: tuple[tuple[re.Pattern, str], ...] = tuple(
+    (re.compile(rf"^{name}{_STEM}{re.escape(suffix)}$"), file_type)
+    for name, spec in ARCHIVE_GROUPS.items()
+    for suffix, file_type in spec["members"].items()
 )
 _STATE_FOLDER = re.compile(r"^[A-Z]{2}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
-# Staged names reach a SQL string literal, so anything quoted or path-like is rejected.
-_SAFE_FILE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 # L2 pads its data dictionaries with a preamble and a trailing legend; VOTEHISTORY's is shorter.
 _DICTIONARY_HEADER_ROWS = 15
-_DICTIONARY_FOOTER_ROWS = {"VOTEHISTORY": 4}
-_DICTIONARY_DEFAULT_FOOTER_ROWS = 24
+_VOTEHISTORY_FOOTER_ROWS = 4
+_DEFAULT_FOOTER_ROWS = 24
 
 # 16 MiB parts stay under S3's 10,000-part ceiling for the largest members.
 _TRANSFER_CONFIG = TransferConfig(multipart_chunksize=16 * 1024 * 1024, max_concurrency=4)
@@ -102,10 +91,7 @@ def source_file_type(source_file_name: str) -> str | None:
 
 
 def _trim_data_dictionary(raw: bytes, member: str) -> bytes:
-    footer_rows = _DICTIONARY_DEFAULT_FOOTER_ROWS
-    for marker, rows in _DICTIONARY_FOOTER_ROWS.items():
-        if marker in member:
-            footer_rows = rows
+    footer_rows = _VOTEHISTORY_FOOTER_ROWS if "VOTEHISTORY" in member else _DEFAULT_FOOTER_ROWS
     frame = pd.read_csv(
         io.BytesIO(raw), skiprows=_DICTIONARY_HEADER_ROWS, skipfooter=footer_rows, engine="python"
     )
@@ -118,7 +104,6 @@ def _source(remote_dir: str, attributes, folder: str, members: list[str] | None)
     return {
         "folder": folder,
         "remote_path": f"{remote_dir}/{attributes.filename}",
-        "file_name": attributes.filename,
         "members": members,
         "size_bytes": attributes.st_size,
         "modified_at": datetime.fromtimestamp(attributes.st_mtime or 0, tz=UTC).isoformat(),
@@ -131,21 +116,22 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
     A state L2 has pulled while rebuilding is simply absent, not an error.
     """
     sources: list[dict] = []
-    for spec in ARCHIVE_GROUPS.values():
-        for attributes in list_matching(sftp_client, spec["remote_dir"], spec["pattern"]):
+    for name, spec in ARCHIVE_GROUPS.items():
+        for attributes in list_matching(sftp_client, spec["remote_dir"], _ARCHIVE_PATTERNS[name]):
             base = attributes.filename.removesuffix(".zip")
             sources.append(
                 _source(
                     remote_dir=spec["remote_dir"],
                     attributes=attributes,
-                    folder=spec["pattern"].match(attributes.filename)["folder"],
-                    members=[name.format(base=base) for name in spec["members"]],
+                    folder=_ARCHIVE_PATTERNS[name].match(attributes.filename)["folder"],
+                    members=[base + suffix for suffix in spec["members"]],
                 )
             )
 
     for attributes in list_matching(sftp_client, expired_dir, re.compile(expired_pattern)):
-        # The expired file's members aren't derivable from its name, so they're discovered on sync.
-        sources.append(_source(expired_dir, attributes, EXPIRED_FOLDER, members=None))
+        # A plain file stages under its own name; a zip's contents are only knowable once opened.
+        members = None if attributes.filename.lower().endswith(".zip") else [attributes.filename]
+        sources.append(_source(expired_dir, attributes, EXPIRED_FOLDER, members))
 
     return sorted(sources, key=lambda source: source["remote_path"])
 
@@ -163,17 +149,17 @@ def list_s3_objects(s3_client, bucket: str, prefix: str) -> dict[str, datetime]:
 def plan_transfers(sources: list[dict], staged: dict[str, datetime]) -> list[dict]:
     """The sources S3 is missing or holds an older copy of.
 
-    Where the members are known, requiring all of them retries a run that died mid-archive.
+    Requiring every member, not just one, retries a run that died mid-archive.
     """
     pending = []
     for source in sources:
+        if source["members"] is None:
+            # An archive whose members we cannot name without opening it. Re-syncing beats
+            # guessing from the folder, where an unrelated object would mask a new file.
+            pending.append(source)
+            continue
         modified_at = datetime.fromisoformat(source["modified_at"])
-        if source["members"] is not None:
-            staged_at = [staged.get(f"{source['folder']}/{member}") for member in source["members"]]
-        else:
-            staged_at = [
-                timestamp for key, timestamp in staged.items() if key.startswith(f"{source['folder']}/")
-            ] or [None]
+        staged_at = [staged.get(f"{source['folder']}/{member}") for member in source["members"]]
         if all(timestamp is not None and timestamp >= modified_at for timestamp in staged_at):
             continue
         pending.append(source)
@@ -198,33 +184,33 @@ def sync_source(
 ) -> list[str]:
     """Download one source file and upload it, or the members we keep, into `{prefix}/{folder}/`."""
     folder_prefix = f"{prefix}/{source['folder']}/"
-    local_path = os.path.join(staging_dir, source["file_name"])
+    file_name = source["remote_path"].rsplit("/", 1)[-1]
+    local_path = os.path.join(staging_dir, file_name)
 
     # Astro workers have a fixed 10 GiB of ephemeral storage, so a growing archive will one day
     # outgrow it. Fail with the numbers rather than filling the disk mid-download.
     free_bytes = shutil.disk_usage(staging_dir).free
     if free_bytes < source["size_bytes"] * 1.1:
         raise ValueError(
-            f"{source['file_name']} needs {source['size_bytes'] / 1024**3:.1f} GB but only "
+            f"{file_name} needs {source['size_bytes'] / 1024**3:.1f} GB but only "
             f"{free_bytes / 1024**3:.1f} GB is free on {staging_dir}"
         )
 
     logger.info(f"Downloading {source['remote_path']} ({source['size_bytes'] / 1024**3:.2f} GB)")
     download(sftp_client, source["remote_path"], local_path)
     try:
-        if not source["file_name"].lower().endswith(".zip"):
+        if not file_name.lower().endswith(".zip"):
+            key = f"{folder_prefix}{file_name}"
             with open(local_path, "rb") as handle:
-                _upload(
-                    s3_client, bucket, f"{folder_prefix}{source['file_name']}", handle, source["file_name"]
-                )
-            return [f"{folder_prefix}{source['file_name']}"]
+                _upload(s3_client, bucket, key, handle, file_name)
+            return [key]
 
         with ZipFile(local_path) as zip_file:
             contents = [name for name in zip_file.namelist() if not name.endswith("/")]
             members = source["members"] or contents
             missing = [member for member in members if member not in contents]
             if missing:
-                raise ValueError(f"{source['file_name']} did not contain {missing}")
+                raise ValueError(f"{file_name} did not contain {missing}")
 
             for member in members:
                 with zip_file.open(member) as handle:
@@ -247,8 +233,6 @@ def plan_loads(staged: dict[str, datetime], loaded_at: dict[str, datetime]) -> l
     latest: dict[str, tuple[str, str, datetime]] = {}
     for relative_key, staged_at in staged.items():
         folder, _, file_name = relative_key.partition("/")
-        if not _SAFE_FILE_NAME.match(file_name):
-            continue
         if folder == EXPIRED_FOLDER:
             table_name = EXPIRED_TABLE
         elif _STATE_FOLDER.match(folder) and (file_type := source_file_type(file_name)):
@@ -271,56 +255,74 @@ def _identifier(value: str, label: str) -> str:
     return value
 
 
-def build_load_sql(catalog: str, schema: str, bucket: str, prefix: str, load: dict) -> str:
-    """The CTAS that rebuilds one table from its staged file.
+def build_load_statement(
+    catalog: str, schema: str, bucket: str, prefix: str, load: dict
+) -> tuple[str, dict[str, str]]:
+    """The CTAS that rebuilds one table from its staged file, and its bound parameters.
+
+    The S3 path and delimiter are bound rather than interpolated. Identifiers cannot be bound in
+    DDL, but they are ours: the catalog and schema are config, and the table name is built from a
+    validated folder and a fixed type.
 
     Every column is read as a string: the raw files carry zero-padded codes (ZIPs, ZipPlus4, DPBC)
     that type inference coerces to int, dropping leading zeros before any model can see them.
     """
-    file_name = load["source_file_name"]
-    if not _SAFE_FILE_NAME.match(file_name):
-        raise ValueError(f"Unsafe source file name: {file_name!r}")
-
     table = (
         f"`{_identifier(catalog, 'catalog')}`"
         f".`{_identifier(schema, 'schema')}`"
         f".`{_identifier(load['table_name'], 'table name')}`"
     )
-    delimiter = "\\t" if file_name.endswith(".tab") else ","
-    s3_path = f"s3://{bucket}/{prefix}/{load['folder']}/{file_name}"
-    return (
+    file_name = load["source_file_name"]
+    sql = (
         f"CREATE OR REPLACE TABLE {table} "
         "CLUSTER BY AUTO "
         "AS SELECT * EXCEPT (_rescued_data), current_timestamp() AS loaded_at "
-        f"FROM read_files('{s3_path}', format => 'csv', delimiter => '{delimiter}', "
+        "FROM read_files(:path, format => 'csv', delimiter => :delimiter, "
         "header => true, inferColumnTypes => false)"
     )
+    parameters = {
+        "path": f"s3://{bucket}/{prefix}/{load['folder']}/{file_name}",
+        "delimiter": "\t" if file_name.endswith(".tab") else ",",
+    }
+    return sql, parameters
 
 
 def get_table_loaded_at(connection, catalog: str, schema: str) -> dict[str, datetime]:
     """When each table in the target schema was last rebuilt."""
     cursor = connection.cursor()
     try:
-        cursor.execute(
+        execute_with_retry(
+            cursor,
             f"SELECT table_name, last_altered FROM `{_identifier(catalog, 'catalog')}`"
-            f".information_schema.tables WHERE table_schema = '{_identifier(schema, 'schema')}'"
+            ".information_schema.tables WHERE table_schema = :schema",
+            parameters={"schema": schema},
         )
-        return {row[0]: row[1] for row in cursor.fetchall()}
+        # The connector returns TIMESTAMP as a naive datetime; last_altered is UTC. Without this
+        # the comparison against S3's aware LastModified raises TypeError.
+        return {row[0]: row[1].replace(tzinfo=UTC) for row in cursor.fetchall() if row[1] is not None}
+    finally:
+        cursor.close()
+
+
+def create_schema(connection, catalog: str, schema: str) -> None:
+    cursor = connection.cursor()
+    try:
+        execute_with_retry(
+            cursor,
+            f"CREATE SCHEMA IF NOT EXISTS `{_identifier(catalog, 'catalog')}`"
+            f".`{_identifier(schema, 'schema')}`",
+        )
     finally:
         cursor.close()
 
 
 def load_table(connection, catalog: str, schema: str, bucket: str, prefix: str, load: dict) -> str:
     """Rebuild one table from its staged file, returning its fully qualified name."""
-    sql = build_load_sql(catalog, schema, bucket, prefix, load)
-    logger.info(sql)
+    sql, parameters = build_load_statement(catalog, schema, bucket, prefix, load)
+    logger.info(f"{sql} -- {parameters}")
     cursor = connection.cursor()
     try:
-        cursor.execute(
-            f"CREATE SCHEMA IF NOT EXISTS `{_identifier(catalog, 'catalog')}`"
-            f".`{_identifier(schema, 'schema')}`"
-        )
-        cursor.execute(sql)
+        execute_with_retry(cursor, sql, parameters=parameters)
     finally:
         cursor.close()
     return f"{catalog}.{schema}.{load['table_name']}"
