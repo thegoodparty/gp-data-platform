@@ -275,8 +275,14 @@ class LoaderConfig(BaseLoaderConfig):
     def bastion_enabled(self) -> bool:
         return bool(self.bastion_host)
 
+    # Env-scoped for the same reason as the dated identifiers below, and more urgently: this prefix
+    # namespaces `_manifest/{step}.json`, and a step short-circuits when its manifest exists. Dev and
+    # prod share this bucket, so an un-scoped prefix let a same-date run in one env adopt the other's
+    # manifests and skip every step. Observed: a dev run consumed a prod run's manifests end to end
+    # and reported success having done nothing. The dangerous ordering is the reverse: prod skipping
+    # unload/copy while `provision` still builds a cluster, then promoting serving onto empty tables.
     def export_prefix(self, run_date: str) -> str:
-        return f"voter_export_{run_date}"
+        return f"voter_export_{run_date}_{self.db_env}"
 
     # Dated identifiers are env-scoped (gp-people-db-{date}-{env}[-role]). Dev and prod provision
     # into the same AWS account and `provision` is idempotent by name, so an un-scoped name would

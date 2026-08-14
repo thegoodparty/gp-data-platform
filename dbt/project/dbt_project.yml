@@ -99,14 +99,6 @@ models:
       win_agents:
         +schema: mart_win_agents
         +materialized: view
-    write:
-      write__people_api_db:
-        # Disabled due to performance issues (timing out)
-        +enabled: false
-      write__election_api_db:
-        # Superseded by the sync_election_api Airflow swap DAG; code removal
-        # is a follow-up once the cutover Variable is flipped.
-        +enabled: false
     staging:
       airbyte_source:
         stripe_api:

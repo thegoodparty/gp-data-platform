@@ -62,6 +62,68 @@ with
         from {{ ref("candidacy") }}
         where gp_election_id is not null
         group by gp_election_id
+    ),
+
+    -- Day type + projection key, derived together. The November rule is the
+    -- fixed federal expression (Tuesday after the first Monday in November,
+    -- even years); the state's primary day comes from the derived calendar,
+    -- which excludes November-general collisions, so the two branches are
+    -- disjoint. The state that picks the calendar row is the resolved
+    -- district's (override-corrected) state where a district exists, the
+    -- race's own state otherwise. Where a district exists that is the same
+    -- state the projection join is keyed by, so tag and join can never
+    -- disagree about whose primary day applies; a no-district race carries a
+    -- NULL join tuple that never matches, so only its tag is served.
+    -- model_election_code speaks the model-output vocabulary for
+    -- the join; election_code lands the API's enum spelling on the race row.
+    race_projection_key as (
+        select
+            tbl_race.id,
+            tbl_district.state as district_state,
+            tbl_district.l2_district_type,
+            tbl_district.l2_district_name,
+            case
+                when
+                    year(tbl_race.election_date) % 2 = 0
+                    and cast(tbl_race.election_date as date) = date_add(
+                        next_day(
+                            make_date(year(tbl_race.election_date), 11, 1)
+                            - interval 1 day,
+                            'MON'
+                        ),
+                        1
+                    )
+                then 'General'
+                when tbl_primary.state is not null
+                then 'Primary'
+                else 'Local_or_Municipal'
+            end as model_election_code,
+            case
+                when model_election_code = 'Local_or_Municipal'
+                then 'LocalOrMunicipal'
+                else model_election_code
+            end as election_code
+        from {{ ref("int__enhanced_race") }} as tbl_race
+        left join
+            {{ ref("m_election_api__position") }} as tbl_position
+            on cast(tbl_race.br_position_database_id as string)
+            = tbl_position.br_database_id
+        left join
+            {{ ref("m_election_api__district") }} as tbl_district
+            on tbl_position.district_id = tbl_district.id
+        left join
+            {{ ref("int__election_calendar_primary_ballotready") }} as tbl_primary
+            on coalesce(tbl_district.state, tbl_race.state) = tbl_primary.state
+            and cast(tbl_race.election_date as date) = tbl_primary.election_date
+        where
+            -- same serving window as the main query (keep the two predicates in
+            -- sync): the base relation is a view over the full race graph, and
+            -- an unwindowed second traversal would roughly double the mart's
+            -- dominant nightly work on a common-subexpression gamble
+            tbl_race.election_date
+            between current_date()
+            - interval '6 years' and current_date()
+            + interval '2 years'
     )
 
 select
@@ -134,7 +196,17 @@ select
     tbl_civics.is_partisan,
     tbl_civics.office_type,
     tbl_civics.official_office_name,
-    tbl_civics.office_level
+    tbl_civics.office_level,
+    tbl_projection_key.election_code,
+    -- Delivery contract: the Postgres projection columns are integers (same
+    -- as the legacy served table); cast at the landing site so the loader
+    -- never relies on implicit numeric coercion.
+    cast(tbl_projection.ballots_projected as int) as projected_turnout,
+    cast(tbl_projection.ballots_projected_lower as int) as projected_turnout_lower,
+    cast(tbl_projection.ballots_projected_upper as int) as projected_turnout_upper,
+    -- Freshness stamp: when the joined projection was produced. NULL exactly
+    -- where the projection columns are NULL (no projection joined).
+    tbl_projection.inference_at
 from {{ ref("int__enhanced_race") }} as tbl_race
 -- Inner join: a race whose place is absent from the place mart cannot be
 -- served (Race.placeId must resolve), and this is also where the race picks
@@ -153,10 +225,25 @@ left join
 left join
     {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
     on tbl_race.br_database_id = filing_overrides.br_database_id
+inner join
+    race_projection_key as tbl_projection_key on tbl_race.id = tbl_projection_key.id
+-- One projection row per (district, year, day type): the model output is
+-- unique on that key per model_version, and the build asserts a single
+-- model_version. Years outside the model's horizon and districts it does
+-- not cover simply do not join: those races carry NULL projections by
+-- design (no fallback, nothing invented).
+left join
+    {{ ref("int__voter_turnout_inference") }} as tbl_projection
+    on tbl_projection_key.district_state = tbl_projection.state
+    and tbl_projection_key.l2_district_type = tbl_projection.district_type
+    and tbl_projection_key.l2_district_name = tbl_projection.district_name
+    and year(tbl_race.election_date) = tbl_projection.election_year
+    and tbl_projection_key.model_election_code = tbl_projection.election_code
 where
     -- serve races from 6 years past through 2 years out, so recently-passed and
-    -- historical races stay queryable. This is the sole election_date window for
-    -- the Race table; write__election_api_db.py loads whatever the mart emits
+    -- historical races stay queryable. This window is duplicated in
+    -- race_projection_key above — keep the two predicates in sync. The nightly
+    -- race sync's staged swap delivers whatever the mart emits
     tbl_race.election_date
     between current_date() - interval '6 years' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
