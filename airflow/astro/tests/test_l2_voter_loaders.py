@@ -3,8 +3,10 @@
 import io
 import zipfile
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
+from include.custom_functions import l2_voter_loaders
 from include.custom_functions.l2_voter_loaders import (
     ARCHIVE_GROUPS,
     EXPIRED_FOLDER,
@@ -221,6 +223,31 @@ class TestSyncSource:
                 staging_dir=str(tmp_path),
             )
         assert not list(tmp_path.iterdir())
+
+    def test_refuses_an_archive_larger_than_the_free_space(self, monkeypatch, tmp_path):
+        """The precheck is what makes download-to-disk viable on a fixed 10 GiB worker."""
+        monkeypatch.setattr(l2_voter_loaders.shutil, "disk_usage", lambda _: SimpleNamespace(free=1_000_000))
+        with pytest.raises(ValueError, match="GB is free"):
+            sync_source(
+                sftp_client=FakeSFTPClient(b""),
+                s3_client=FakeS3Client(),
+                bucket="bucket",
+                prefix="staging/prod",
+                source=_source(MEMBERS, size=9_000_000_000),
+                staging_dir=str(tmp_path),
+            )
+        assert not list(tmp_path.iterdir())
+
+    def test_unknown_size_skips_the_check_rather_than_blocking(self, vm2_archive, tmp_path):
+        keys = sync_source(
+            sftp_client=FakeSFTPClient(vm2_archive),
+            s3_client=FakeS3Client(),
+            bucket="bucket",
+            prefix="staging/prod",
+            source=_source(MEMBERS, size=0),
+            staging_dir=str(tmp_path),
+        )
+        assert len(keys) == len(MEMBERS)
 
     def test_plain_file_is_copied_as_is(self, tmp_path):
         s3_client = FakeS3Client()
