@@ -130,6 +130,15 @@ class TestListRemoteSources:
         with pytest.raises(FileNotFoundError):
             self._list({}, missing={"/VMFiles"})
 
+    def test_invalid_expired_pattern_does_not_block_the_archives(self):
+        """The pattern is operator-configured too, so a typo must cost no more than the path does."""
+        sources = list_remote_sources(
+            FakeSFTPClient(listings={"/VMFiles": [FakeAttributes("VM2--MO--2026-08-03.zip")]}),
+            expired_dir=self.EXPIRED_DIR,
+            expired_pattern="[A-Z",
+        )
+        assert [s["folder"] for s in sources] == ["MO"]
+
     def test_both_archive_groups_and_the_expired_file(self):
         sources = self._list(
             {

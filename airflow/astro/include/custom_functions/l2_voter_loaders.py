@@ -133,12 +133,16 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
                 )
             )
 
-    # This directory is operator-configured, so a wrong path should not block the state archives.
-    # The archive directories above are fixed, and their absence is a real alarm that still raises.
+    # Both the directory and the pattern are operator-configured, so neither should be able to
+    # block the state archives. The archive directories above are fixed, and their absence stays
+    # a real alarm that raises.
     try:
         expired = list_matching(sftp_client, expired_dir, re.compile(expired_pattern))
     except FileNotFoundError:
         logger.error(f"Expired-voter directory not found, skipping it: {expired_dir}")
+        expired = []
+    except re.error as exc:
+        logger.error(f"Invalid expired-voter pattern, skipping it: {expired_pattern!r} ({exc})")
         expired = []
 
     for attributes, _ in expired:
