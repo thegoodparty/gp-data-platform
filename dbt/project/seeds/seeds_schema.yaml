@@ -674,3 +674,68 @@ seeds:
                 values: ["office_mismatch"]
       - name: br_position_name
         description: Human-readable BR position name (documentation only).
+
+  - name: district_map_adoption
+    description: >
+      Which map is legally in force for an upcoming election, per (state,
+      district type). L2 ships a proposed map in Proposed_District, but a
+      proposed value is not evidence of adoption: it can be rejected,
+      superseded, or struck down, and L2 lags on removing dead maps. Virginia
+      is the standing example, its remap was struck down in May 2026 and the
+      vendor still carries a proposal that moves half the state's voters.
+      So adoption is a human decision recorded here with a citation, never
+      inferred from the presence of a value.
+
+      m_election_api__district reads this seed and mints Proposed_District
+      rows only for states marked proposed AND is_verified, so an unadopted
+      or unchecked map never becomes bindable. Absence of a row means
+      current, which is conservative but not automatically right: for a
+      redistricted state, current is the stale map. Every state carrying a
+      proposed congressional value must therefore be listed explicitly, which
+      assert_proposed_cong_dist_seed_coverage enforces.
+
+      Editing this seed does not bump voter loaded_at, so the incremental
+      consumers need a --full-refresh afterwards, same as
+      l2_manual_district_assignments.
+    columns:
+      - name: state
+        description: Two-letter state code the decision applies to.
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: district_type
+        description: >
+          L2 district column the decision governs. Congressional is the only
+          type in scope today; state-legislative and municipal maps get their
+          own rows when those phases land.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["US_Congressional_District"]
+      - name: adopted_source
+        description: >
+          current = the current typed column is the correct map for the
+          upcoming election. proposed = L2's proposed value is the adopted
+          map. needs_boundary = the state redistricted but neither L2 column
+          holds the adopted map, so it cannot be resolved from L2 alone and
+          needs boundary data.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["current", "proposed", "needs_boundary"]
+      - name: is_verified
+        description: >
+          Whether someone confirmed L2's proposed value equals the legally
+          adopted map for this state. Only proposed AND is_verified states
+          mint bindable rows, so an unverified state stays on the current map
+          rather than going live on an unchecked one.
+        data_tests:
+          - not_null
+      - name: source_url
+        description: Citation for the adoption decision. Required, so a flip is auditable.
+        data_tests:
+          - not_null
+      - name: notes
+        description: Short prose on the map's legal status and any caveat.

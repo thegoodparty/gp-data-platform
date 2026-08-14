@@ -25,6 +25,18 @@ with
             where loaded_at >= (select max(updated_at) from {{ this }})
         {% endif %}
     ),
+    -- States whose L2 proposed congressional map is the one legally in force
+    -- for the upcoming election, and has been checked. A proposed value is not
+    -- evidence of adoption (see the district_map_adoption seed), so this is the
+    -- only route by which a proposed district becomes bindable.
+    adopted_proposed_congressional_states as (
+        select state
+        from {{ ref("district_map_adoption") }}
+        where
+            district_type = 'US_Congressional_District'
+            and adopted_source = 'proposed'
+            and is_verified
+    ),
     l2_data_districts as (
         select distinct
             state_postal_code as state,
@@ -35,7 +47,20 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false) }})
             )
-        where district_value is not null
+        where
+            district_value is not null
+            -- Proposed_District is heterogeneous: proposed congressional maps,
+            -- MI's proposed state senate, and local annexations. Only adopted
+            -- congressional values pass; everything else in the column is
+            -- dropped rather than minted as an inert row nothing should reach.
+            and (
+                district_column_name != 'Proposed_District'
+                or (
+                    upper(district_value) like '%PROPOSED CONG DIST%'
+                    and state_postal_code
+                    in (select state from adopted_proposed_congressional_states)
+                )
+            )
     ),
     -- State-level districts for statewide positions (Governor, US Senate, etc.)
     state_districts as (
