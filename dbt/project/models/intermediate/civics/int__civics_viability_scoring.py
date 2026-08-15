@@ -286,6 +286,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # null). Whitelist the values the withColumns above can actually produce
     # so a round-trip artifact lands back on a true null instead of leaking a
     # stray non-value string past the yml's accepted_values tests.
+    # This whitelist, the when-chains above, and the yml accepted_values must move together -- no shared constant.
     df_scored = df_scored.withColumn(
         "log_n_losers_source",
         when(col("log_n_losers_source").isin("native", "roster"), col("log_n_losers_source")),

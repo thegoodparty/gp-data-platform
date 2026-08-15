@@ -85,7 +85,7 @@ with
                         <> keyed_candidacies.name_office_type
                         -- Town and City council straddle one municipal-council
                         -- taxonomy line between the name mapping and the
-                        -- position crosswalk; the pair dominated keyless gate
+                        -- position crosswalk; the pair dominated the gate's
                         -- rejections while carrying no identity signal
                         -- (measured 2026-08-14). Compatible, not contradictory.
                         and not (
