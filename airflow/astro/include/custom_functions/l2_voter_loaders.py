@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+from contextlib import closing
 from datetime import UTC, datetime
 from zipfile import ZipFile
 
@@ -77,10 +78,14 @@ _MEMBER_PATTERNS: tuple[tuple[re.Pattern, str], ...] = tuple(
 _STATE_FOLDER = re.compile(r"^[A-Z]{2}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
 
-# L2 pads its data dictionaries with a preamble and a trailing legend; VOTEHISTORY's is shorter.
+# L2 pads its data dictionaries with a preamble and a trailing legend, keyed by the type the
+# registry classified the member as. A member type absent here is staged verbatim.
 _DICTIONARY_HEADER_ROWS = 15
-_VOTEHISTORY_FOOTER_ROWS = 4
-_DEFAULT_FOOTER_ROWS = 24
+_DICTIONARY_FOOTER_ROWS = {
+    "demographic_data_dictionary": 24,
+    "uniform_data_dictionary": 24,
+    "vote_history_data_dictionary": 4,
+}
 
 # 16 MiB parts stay under S3's 10,000-part ceiling for the largest members.
 _TRANSFER_CONFIG = TransferConfig(multipart_chunksize=16 * 1024 * 1024, max_concurrency=4)
@@ -108,13 +113,7 @@ def source_file_type(source_file_name: str) -> str | None:
     return None
 
 
-# --------------------------------------------------------------------------------------------
-# SFTP -> S3
-# --------------------------------------------------------------------------------------------
-
-
-def _trim_data_dictionary(raw: bytes, member: str) -> bytes:
-    footer_rows = _VOTEHISTORY_FOOTER_ROWS if "VOTEHISTORY" in member else _DEFAULT_FOOTER_ROWS
+def _trim_data_dictionary(raw: bytes, footer_rows: int) -> bytes:
     frame = pd.read_csv(
         io.BytesIO(raw), skiprows=_DICTIONARY_HEADER_ROWS, skipfooter=footer_rows, engine="python"
     )
@@ -164,6 +163,12 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
                     members=[stem + suffix for suffix in spec["members"]],
                 ),
             )
+        # Per group, so a stem that matches nothing is visible. The aggregate count cannot show
+        # it: an empty group looks the same as states L2 pulled while rebuilding.
+        if newest:
+            logger.info(f"{name}: {len(newest)} archive(s) in {spec['remote_dir']}")
+        else:
+            logger.warning(f"{name}: nothing matched in {spec['remote_dir']}")
         sources.extend(source for _, source in newest.values())
 
     # Both the directory and the pattern are operator-configured, so neither should be able to
@@ -223,12 +228,14 @@ def plan_transfers(sources: list[dict], staged: dict[str, datetime]) -> list[dic
     return pending
 
 
-def _upload(s3_client, bucket: str, key: str, handle, member: str) -> None:
+def _upload(s3_client, bucket: str, folder_prefix: str, member: str, handle) -> None:
+    key = f"{folder_prefix}{member}"
     logger.info(f"Uploading s3://{bucket}/{key}")
-    if member.endswith("_DataDictionary.csv"):
-        s3_client.put_object(Bucket=bucket, Key=key, Body=_trim_data_dictionary(handle.read(), member))
+    footer_rows = _DICTIONARY_FOOTER_ROWS.get(source_file_type(member) or "")
+    if footer_rows is None:
+        s3_client.upload_fileobj(handle, bucket, key, Config=_TRANSFER_CONFIG)
     else:
-        s3_client.upload_fileobj(_SequentialReader(handle), bucket, key, Config=_TRANSFER_CONFIG)
+        s3_client.put_object(Bucket=bucket, Key=key, Body=_trim_data_dictionary(handle.read(), footer_rows))
 
 
 def sync_source(
@@ -270,10 +277,10 @@ def sync_source(
     download(sftp_client, source["remote_path"], local_path)
     try:
         if not file_name.lower().endswith(".zip"):
-            key = f"{folder_prefix}{file_name}"
+            # A plain file is seekable, so boto3 uploads its parts concurrently.
             with open(local_path, "rb") as handle:
-                _upload(s3_client, bucket, key, handle, file_name)
-            return [key]
+                _upload(s3_client, bucket, folder_prefix, file_name, handle)
+            return [f"{folder_prefix}{file_name}"]
 
         with ZipFile(local_path) as zip_file:
             contents = [name for name in zip_file.namelist() if not name.endswith("/")]
@@ -283,15 +290,10 @@ def sync_source(
 
             for member in members:
                 with zip_file.open(member) as handle:
-                    _upload(s3_client, bucket, f"{folder_prefix}{member}", handle, member)
+                    _upload(s3_client, bucket, folder_prefix, member, _SequentialReader(handle))
             return [f"{folder_prefix}{member}" for member in members]
     finally:
         os.remove(local_path)
-
-
-# --------------------------------------------------------------------------------------------
-# S3 -> Databricks
-# --------------------------------------------------------------------------------------------
 
 
 def plan_loads(staged: dict[str, datetime], loaded_at: dict[str, datetime]) -> list[dict]:
@@ -300,6 +302,7 @@ def plan_loads(staged: dict[str, datetime], loaded_at: dict[str, datetime]) -> l
     S3 keeps every dated snapshot, so only the newest is a candidate.
     """
     latest: dict[str, tuple[str, str, datetime]] = {}
+    unclassified: list[str] = []
     for relative_key, staged_at in staged.items():
         folder, _, file_name = relative_key.partition("/")
         if folder == EXPIRED_FOLDER:
@@ -307,9 +310,15 @@ def plan_loads(staged: dict[str, datetime], loaded_at: dict[str, datetime]) -> l
         elif _STATE_FOLDER.match(folder) and (file_type := source_file_type(file_name)):
             table_name = f"l2_s3_{folder.lower()}_{file_type}"
         else:
+            unclassified.append(relative_key)
             continue
         if table_name not in latest or staged_at > latest[table_name][2]:
             latest[table_name] = (folder, file_name, staged_at)
+
+    # Staged but unclassifiable means it was uploaded and will never become a table, which is
+    # otherwise silent.
+    if unclassified:
+        logger.warning(f"{len(unclassified)} staged file(s) match no group: {sorted(unclassified)[:10]}")
 
     return [
         {"folder": folder, "source_file_name": file_name, "table_name": table_name}
@@ -354,8 +363,7 @@ def build_load_statement(
 
 def get_table_loaded_at(connection, catalog: str, schema: str) -> dict[str, datetime]:
     """When each table in the target schema was last rebuilt."""
-    cursor = connection.cursor()
-    try:
+    with closing(connection.cursor()) as cursor:
         execute_with_retry(
             cursor,
             f"SELECT table_name, last_altered FROM `{_identifier(catalog, 'catalog')}`"
@@ -365,29 +373,21 @@ def get_table_loaded_at(connection, catalog: str, schema: str) -> dict[str, date
         # The connector returns TIMESTAMP as a naive datetime; last_altered is UTC. Without this
         # the comparison against S3's aware LastModified raises TypeError.
         return {row[0]: row[1].replace(tzinfo=UTC) for row in cursor.fetchall() if row[1] is not None}
-    finally:
-        cursor.close()
 
 
 def create_schema(connection, catalog: str, schema: str) -> None:
-    cursor = connection.cursor()
-    try:
+    with closing(connection.cursor()) as cursor:
         execute_with_retry(
             cursor,
             f"CREATE SCHEMA IF NOT EXISTS `{_identifier(catalog, 'catalog')}`"
             f".`{_identifier(schema, 'schema')}`",
         )
-    finally:
-        cursor.close()
 
 
 def load_table(connection, catalog: str, schema: str, bucket: str, prefix: str, load: dict) -> str:
     """Rebuild one table from its staged file, returning its fully qualified name."""
     sql, parameters = build_load_statement(catalog, schema, bucket, prefix, load)
     logger.info(f"{sql} -- {parameters}")
-    cursor = connection.cursor()
-    try:
+    with closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, sql, parameters=parameters)
-    finally:
-        cursor.close()
     return f"{catalog}.{schema}.{load['table_name']}"

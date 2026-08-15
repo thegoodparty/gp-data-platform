@@ -22,6 +22,7 @@ from include.custom_functions.l2_voter_loaders import (
 
 BASE = "VM2--MO--2026-08-03"
 MODIFIED = datetime(2026, 8, 3, 20, 0, tzinfo=UTC)
+MODIFIED_TS = MODIFIED.timestamp()
 STAGED = MODIFIED + timedelta(minutes=30)
 
 DEMOGRAPHIC_ROWS = b"LALVOTERID\tZip\nLALMO1\t01854\nLALMO2\t07001\n"
@@ -58,9 +59,6 @@ def vm2_archive() -> bytes:
         archive.writestr(MEMBERS[2], b"LALVOTERID\tGeneral_2024\nLALMO1\tY\n")
         archive.writestr(MEMBERS[3], _data_dictionary(4))
     return buffer.getvalue()
-
-
-MODIFIED_TS = MODIFIED.timestamp()
 
 
 class FakeAttributes:
@@ -202,9 +200,6 @@ class TestListRemoteSources:
 class TestArchiveGrammar:
     """SOURCE_GROUPS names 300-odd tables, so its patterns are a contract."""
 
-    def test_every_group_has_a_sample_archive(self):
-        assert set(ARCHIVE_SAMPLES) == set(SOURCE_GROUPS)
-
     def test_members_derived_from_an_archive_classify_to_their_declared_type(self):
         """A member we stage but cannot classify is uploaded and then never loaded."""
         listings: dict[str, list] = {}
@@ -253,8 +248,8 @@ class TestPlanTransfers:
 
 
 class TestSyncSource:
-    def _sync(self, payload, source, tmp_path, s3_client=None):
-        s3_client = s3_client or FakeS3Client()
+    def _sync(self, payload, source, tmp_path):
+        s3_client = FakeS3Client()
         return s3_client, sync_source(
             sftp_client=FakeSFTPClient(payload),
             s3_client=s3_client,

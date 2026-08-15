@@ -45,7 +45,7 @@ this run, so it is unaffected by either.
 - `folders` — sync only these state codes, and/or `EXPIRED`. Empty means all.
 
 The sync task downloads a whole archive before uploading it. Astro workers have a fixed 10 GiB of
-ephemeral storage that no worker type or queue setting can raise, and the largest archive is ~8 GB
+ephemeral storage that no worker type or queue setting can raise, and the largest archive is ~7 GB
 compressed, so `SYNC_QUEUE` must be a queue with a concurrency of 1.
 """
 
@@ -73,7 +73,6 @@ t_log = logging.getLogger("airflow.task")
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
 AWS_CONN_ID = "aws_default"
-# One archive per worker's 10 GiB of ephemeral storage; see the module docstring.
 SYNC_QUEUE = "l2-voter-files"
 
 
@@ -86,6 +85,14 @@ def _sftp_connection():
 
 def _s3_client():
     return S3Hook(aws_conn_id=AWS_CONN_ID).get_conn()
+
+
+def _staging_location() -> tuple[str, str]:
+    return Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
+
+
+def _staged_objects() -> dict:
+    return list_s3_objects(_s3_client(), *_staging_location())
 
 
 def _param(name: str):
@@ -145,10 +152,7 @@ def load_l2_voter_files():
             transport.close()
 
         sources = _scoped(_scoped(sources, "groups", "group"), "folders", "folder")
-        staged = list_s3_objects(
-            _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
-        )
-        pending = plan_transfers(sources, staged)
+        pending = plan_transfers(sources, _staged_objects())
 
         t_log.info(f"L2 publishes {len(sources)} file(s); {len(pending)} to copy")
         for source in pending:
@@ -160,14 +164,15 @@ def load_l2_voter_files():
     @task(queue=SYNC_QUEUE, max_active_tis_per_dag=1, execution_timeout=duration(hours=6))
     def sync(source: dict) -> list[str]:
         """Copy one source file into S3."""
+        bucket, prefix = _staging_location()
         transport, sftp_client = _sftp_connection()
         try:
             with TemporaryDirectory(prefix="l2_voter_files_") as staging_dir:
                 return sync_source(
                     sftp_client=sftp_client,
                     s3_client=_s3_client(),
-                    bucket=Variable.get("l2_s3_bucket"),
-                    prefix=Variable.get("l2_voter_files_s3_prefix"),
+                    bucket=bucket,
+                    prefix=prefix,
                     source=source,
                     staging_dir=staging_dir,
                 )
@@ -181,9 +186,7 @@ def load_l2_voter_files():
     def plan_table_loads() -> list[dict]:
         """The staged files newer than the tables built from them."""
         schema = Variable.get("l2_voter_files_databricks_schema")
-        staged = list_s3_objects(
-            _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
-        )
+        staged = _staged_objects()
 
         dry_run = _param("dry_run")
         if dry_run:
@@ -211,14 +214,15 @@ def load_l2_voter_files():
     @task(max_active_tis_per_dag=8, execution_timeout=duration(hours=6))
     def load(table_load: dict) -> str:
         """Rebuild one `l2_s3_*` table from its staged file."""
+        bucket, prefix = _staging_location()
         connection = connect_from_conn_id()
         try:
             return load_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
                 schema=Variable.get("l2_voter_files_databricks_schema"),
-                bucket=Variable.get("l2_s3_bucket"),
-                prefix=Variable.get("l2_voter_files_s3_prefix"),
+                bucket=bucket,
+                prefix=prefix,
                 load=table_load,
             )
         finally:
