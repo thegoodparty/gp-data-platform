@@ -53,10 +53,10 @@ with
         -- Two keys into the same nullout seed, and either match rejects. The
         -- seed's own tested key is gp_election_id, so it rejects the curated
         -- rows directly. The position + date proxy is kept because it
-        -- additionally reaches candidacies with no election link at all -- ~70%
-        -- (measured 2026-08-10)
-        -- of the coverage gap has no gp_election_id, which the election-id key
-        -- can never touch. Both fail closed.
+        -- additionally reaches candidacies with no election link at all --
+        -- ~70% (measured 2026-08-10) of the coverage gap has no
+        -- gp_election_id, which the election-id key can never touch. Both fail
+        -- closed.
         left join
             nullouts
             on keyed_candidacies.br_position_database_id
