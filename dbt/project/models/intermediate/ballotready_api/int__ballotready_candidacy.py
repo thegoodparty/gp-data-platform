@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, current_date, greatest, lit, pandas_udf
+from pyspark.sql.functions import col, current_date, lit, pandas_udf
 from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import (
     ArrayType,
@@ -297,20 +297,15 @@ def model(dbt, session) -> DataFrame:
 
     # Upcoming general-stage rosters the S3 feed omits but the BallotReady API
     # race object carries. Seeding the worklist from both keeps those
-    # candidacies from being silently dropped before election-api.
-    upcoming_ids: DataFrame = dbt.ref("int__ballotready_upcoming_candidacy_ids")
+    # candidacies from being silently dropped before election-api. The roster
+    # arm has no feed stamp of its own: null feed_extracted_at means the feed
+    # has never delivered the candidacy.
+    upcoming_ids: DataFrame = dbt.ref("int__ballotready_upcoming_candidacy_ids").withColumn(
+        "feed_extracted_at", lit(None).cast("timestamp")
+    )
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
-        # Refuse before any API work: without the stored cutoff column the run
-        # would crawl the API and then die on on_schema_change="fail" at the
-        # merge anyway.
-        if "feed_extracted_at" not in existing_table.columns:
-            raise ValueError(
-                f"{dbt.this} has no feed_extracted_at column, so the incremental gate "
-                "cannot run. Rebuild the table with "
-                "`dbt run --select int__ballotready_candidacy --full-refresh`."
-            )
         # Cut over on our ingest clock, not the vendor's: backfilled files
         # carry old vendor timestamps, so a vendor-timestamp watermark skips
         # them forever, while ingest time is monotonic on our side.
@@ -332,20 +327,25 @@ def model(dbt, session) -> DataFrame:
             candidacies_s3 = candidacies_s3.filter(
                 (candidacies_s3["election_day"] >= current_date()) | candidacies_s3["election_day"].isNull()
             )
-            # Fetch an upcoming candidacy when its race row was re-ingested
-            # since the last run, or when it is not yet stored (first-time
-            # backfill of the gap). The race side gates on its own ingest time
-            # too: the race stream's vendor timestamps can be backdated by
-            # backfills just like the candidacy feed's.
-            existing_ids = existing_table.select(col("database_id").alias("existing_id"))
+            # Fetch an upcoming candidacy when its race changed since the last
+            # run, or when it is not yet stored (first-time backfill of the
+            # gap). The same join carries each stored row's feed_extracted_at:
+            # the merge rewrites every column, so a roster-only refetch must
+            # write the stored stamp back instead of nulling it.
+            max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
+            max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+            existing_rows = existing_table.select(
+                col("database_id").alias("existing_id"),
+                col("feed_extracted_at").alias("stored_feed_extracted_at"),
+            )
             upcoming_ids = (
                 upcoming_ids.join(
-                    existing_ids,
-                    upcoming_ids["br_candidacy_id"] == existing_ids["existing_id"],
+                    existing_rows,
+                    upcoming_ids["br_candidacy_id"] == existing_rows["existing_id"],
                     "left",
                 )
-                .filter((col("race_extracted_at") >= max_feed_extracted_at) | col("existing_id").isNull())
-                .select("br_candidacy_id")
+                .filter((col("race_updated_at") >= max_updated_at) | col("existing_id").isNull())
+                .select("br_candidacy_id", col("stored_feed_extracted_at").alias("feed_extracted_at"))
             )
         else:
             # Empty-table incremental run (manual truncation, or a new
@@ -358,44 +358,21 @@ def model(dbt, session) -> DataFrame:
             logging.info(f"INFO: No feed cutoff found. Filtered to files ingested since {thirty_days_ago}")
 
     # union both sources into a single deduplicated worklist of candidacy IDs,
-    # keeping each candidacy's newest feed ingest time (null for candidacies
-    # only an API race roster carries, which the feed gate never sees)
+    # keeping each candidacy's newest feed ingest time
     candidacy_ids = (
         candidacies_s3.select(
             col("br_candidacy_id").cast("int").alias("br_candidacy_id"),
             col("_airbyte_extracted_at").alias("feed_extracted_at"),
         )
         .unionByName(
-            upcoming_ids.select(col("br_candidacy_id").cast("int").alias("br_candidacy_id")).withColumn(
-                "feed_extracted_at", lit(None).cast("timestamp")
+            upcoming_ids.select(
+                col("br_candidacy_id").cast("int").alias("br_candidacy_id"),
+                col("feed_extracted_at"),
             )
         )
         .groupBy("br_candidacy_id")
         .agg(spark_max("feed_extracted_at").alias("feed_extracted_at"))
     )
-
-    if dbt.is_incremental:
-        # The roster arm contributes null ingest times and the merge rewrites
-        # every column, so a feed-delivered candidacy refetched via the roster
-        # alone would have its stored feed_extracted_at nulled. Fold the stored
-        # value back in: null must keep meaning "the feed has never delivered
-        # this candidacy". greatest() skips nulls, so this is max(run, stored).
-        stored_feed_times = existing_table.select(
-            col("database_id").alias("stored_database_id"),
-            col("feed_extracted_at").alias("stored_feed_extracted_at"),
-        )
-        candidacy_ids = (
-            candidacy_ids.join(
-                stored_feed_times,
-                candidacy_ids["br_candidacy_id"] == stored_feed_times["stored_database_id"],
-                "left",
-            )
-            .withColumn(
-                "feed_extracted_at",
-                greatest(col("feed_extracted_at"), col("stored_feed_extracted_at")),
-            )
-            .select("br_candidacy_id", "feed_extracted_at")
-        )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if candidacy_id is empty, return empty DataFrame

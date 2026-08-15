@@ -33,14 +33,7 @@ models:
               config:
                 severity: warn
       - name: race_updated_at
-        description: >
-          Vendor updated_at of the race the candidacy belongs to; still the roster refetch
-          gate in int__ballotready_party
-      - name: race_extracted_at
-        description: >
-          Airbyte ingest time of the race row carrying the candidacy; the roster refetch gate
-          in int__ballotready_candidacy. Ingest time is monotonic on our side, so a vendor race
-          backfill with backdated timestamps still triggers a refetch.
+        description: "updated_at of the race the candidacy belongs to; used to refetch changed rosters incrementally"
 
   - name: int__ballotready_candidacy
     description: >
@@ -63,11 +56,7 @@ models:
           - not_null
           - unique
       - name: feed_extracted_at
-        description: >
-          Airbyte ingest time of the candidacy's newest S3 feed row; the incremental cutoff.
-          Ingest time is monotonic on our side, so backfilled files clear the gate even when
-          their rows carry old vendor timestamps. Null for candidacies only an upcoming race
-          roster carries, since the feed never delivered them.
+        description: "Airbyte ingest time of the candidacy's newest S3 feed row; the incremental cutoff (null when the feed has never delivered the candidacy)"
 
   - name: int__ballotready_endorsement
     description: >
@@ -239,9 +228,7 @@ models:
           - not_null
           - unique
       - name: feed_extracted_at
-        description: >
-          Newest feed_extracted_at across the person's candidacies; the incremental cutoff
-          (same ingest-clock rationale as int__ballotready_candidacy)
+        description: "Newest feed_extracted_at across the person's candidacies; the incremental cutoff"
 
   - name: int__ballotready_position_election_frequency
     description: >

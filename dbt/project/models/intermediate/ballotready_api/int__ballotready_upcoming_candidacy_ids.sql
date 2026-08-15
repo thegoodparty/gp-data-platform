@@ -11,7 +11,6 @@ with
             database_id as race_database_id,
             election.databaseid as election_database_id,
             updated_at as race_updated_at,
-            _airbyte_extracted_at as race_extracted_at,
             candidacies
         from {{ ref("stg_airbyte_source__ballotready_api_race") }}
     ),
@@ -21,10 +20,7 @@ with
         where election_day >= current_date()
     ),
     exploded as (
-        select
-            api_race.race_updated_at,
-            api_race.race_extracted_at,
-            candidacy.databaseid as br_candidacy_id
+        select api_race.race_updated_at, candidacy.databaseid as br_candidacy_id
         from api_race
         inner join
             upcoming_elections
@@ -33,8 +29,7 @@ with
     )
 select
     cast(br_candidacy_id as int) as br_candidacy_id,
-    max(race_updated_at) as race_updated_at,
-    max(race_extracted_at) as race_extracted_at
+    max(race_updated_at) as race_updated_at
 from exploded
 where br_candidacy_id is not null
 group by cast(br_candidacy_id as int)
