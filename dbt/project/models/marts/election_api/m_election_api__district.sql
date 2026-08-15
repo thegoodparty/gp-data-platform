@@ -1,29 +1,14 @@
-{{
-    config(
-        materialized="incremental",
-        unique_key="id",
-        on_schema_change="fail",
-        auto_liquid_cluster=True,
-    )
-}}
-
 with
     turnout_districts as (
         select distinct
             state, district_type as l2_district_type, district_name as l2_district_name
         from {{ ref("int__model_prediction_voter_turnout") }}
-        {% if is_incremental() %}
-            where inference_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
     ),
     l2_data as (
         select
             state_postal_code,
             {{ get_l2_district_columns(use_backticks=true, cast_to_string=true) }}
         from {{ ref("int__l2_nationwide_uniform") }}
-        {% if is_incremental() %}
-            where loaded_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
     ),
     l2_data_districts as (
         select distinct
@@ -44,9 +29,6 @@ with
             'State' as l2_district_type,
             state_postal_code as l2_district_name
         from {{ ref("int__l2_nationwide_uniform") }}
-        {% if is_incremental() %}
-            where loaded_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
     ),
     unioned_w_id_districts as (
         select
@@ -89,9 +71,7 @@ with
 
 select
     districts.id,
-    {% if is_incremental() %} coalesce(existing.created_at, now()) as created_at,
-    {% else %} now() as created_at,
-    {% endif %}
+    now() as created_at,
     current_timestamp() as updated_at,
     districts.state,
     districts.l2_district_type,
@@ -107,17 +87,4 @@ select
 from districts
 left join
     {{ ref("int__l2_district_aggregations") }} as tbl_agg on districts.id = tbl_agg.id
-{% if is_incremental() %}
-    left join
-        {{ this }} as existing
-        on {{
-            generate_salted_uuid(
-                fields=[
-                    "districts.state",
-                    "districts.l2_district_type",
-                    "districts.l2_district_name",
-                ]
-            )
-        }} = existing.id
-{% endif %}
 qualify row_number() over (partition by districts.id order by updated_at desc) = 1

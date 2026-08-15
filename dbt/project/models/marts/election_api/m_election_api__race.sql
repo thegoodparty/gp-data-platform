@@ -1,12 +1,3 @@
-{{
-    config(
-        materialized="table",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
-
 with
     -- Pre-aggregate civics.election_stage to one row per br_race_id. The
     -- mart has known duplicates on br_race_id (TS-found-race sentinels like
