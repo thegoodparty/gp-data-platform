@@ -228,7 +228,7 @@ def plan_transfers(sources: list[dict], staged: dict[str, datetime]) -> list[dic
 def _upload(s3_client, bucket: str, folder_prefix: str, member: str, handle) -> None:
     key = f"{folder_prefix}{member}"
     logger.info(f"Uploading s3://{bucket}/{key}")
-    footer_rows = _DICTIONARY_FOOTER_ROWS.get(source_file_type(member))
+    footer_rows = _DICTIONARY_FOOTER_ROWS.get(source_file_type(member) or "")
     if footer_rows is None:
         s3_client.upload_fileobj(handle, bucket, key, Config=_TRANSFER_CONFIG)
     else:
