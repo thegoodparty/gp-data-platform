@@ -1,4 +1,4 @@
-"""SFTP helpers shared by the L2 DAGs."""
+"""Generic SFTP helpers: connect, list, download. Nothing here knows about a particular feed."""
 
 import logging
 import re

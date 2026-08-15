@@ -2,8 +2,8 @@
 ## Load L2 Voter Files
 
 Mirrors L2's files from SFTP into S3, then rebuilds the `l2_s3_*` source tables the dbt staging
-layer reads: the per-state VM2 and VM2Uniform archives plus the expired-ID file. Replaces the
-`load__l2_sftp_to_s3` and `load__l2_s3_to_databricks` dbt models and the `l2_expired_voters` DAG.
+layer reads: the per-state VM2, VM2Uniform and Haystaq issue-model archives plus the expired-ID
+file. Replaces the four `load__l2_*` dbt models and the `l2_expired_voters` DAG.
 
 1. **plan_sources** — the files L2 publishes, minus those already in S3
 2. **sync** (one task per file) — download it, upload it or the members we keep
@@ -13,6 +13,9 @@ layer reads: the per-state VM2 and VM2Uniform archives plus the expired-ID file.
 
 Both plans read live state, so a run that dies part way is retried by the next one and a night
 with no new files does nothing.
+
+Which files exist is declared in one place: `SOURCE_GROUPS` in `l2_voter_loaders`. A new feed on
+this server needs an entry there and nothing here.
 
 ### Configuration
 
@@ -33,9 +36,13 @@ with no new files does nothing.
 The SQL warehouse reads the staged files through Unity Catalog, so the staging prefix needs an
 external location granted `READ FILES` to the Airflow service principal.
 
-**Params:**
+**Params:** both scope the sync only. The table plan is driven by what S3 holds rather than by
+this run, so it is unaffected by either.
+
 - `dry_run` — log both plans and touch nothing. It does not read Databricks either, so the
   table plan it prints is an upper bound: every staged file looks unloaded.
+- `groups` — sync only these `SOURCE_GROUPS` names, and/or `EXPIRED`. Empty means all.
+- `folders` — sync only these state codes, and/or `EXPIRED`. Empty means all.
 
 The sync task downloads a whole archive before uploading it. Astro workers have a fixed 10 GiB of
 ephemeral storage that no worker type or queue setting can raise, and the largest archive is ~8 GB
@@ -48,8 +55,8 @@ from tempfile import TemporaryDirectory
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import BaseHook, Param, Variable, dag, get_current_context, task
 from include.custom_functions.databricks_utils import connect_from_conn_id
-from include.custom_functions.l2_sftp import create_sftp_connection
 from include.custom_functions.l2_voter_loaders import (
+    SOURCE_GROUPS,
     create_schema,
     get_table_loaded_at,
     list_remote_sources,
@@ -59,14 +66,14 @@ from include.custom_functions.l2_voter_loaders import (
     plan_transfers,
     sync_source,
 )
+from include.custom_functions.sftp_utils import create_sftp_connection
 from pendulum import datetime, duration
 
 t_log = logging.getLogger("airflow.task")
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
 AWS_CONN_ID = "aws_default"
-# Dedicated worker queue with a concurrency of 1: a worker's 10 GiB of ephemeral storage fits one
-# archive, so a second concurrent download on the same worker would exhaust it.
+# One archive per worker's 10 GiB of ephemeral storage; see the module docstring.
 SYNC_QUEUE = "l2-voter-files"
 
 
@@ -81,8 +88,17 @@ def _s3_client():
     return S3Hook(aws_conn_id=AWS_CONN_ID).get_conn()
 
 
-def _is_dry_run() -> bool:
-    return bool(get_current_context()["params"]["dry_run"])
+def _param(name: str):
+    return get_current_context()["params"][name]
+
+
+def _scoped(sources: list[dict], param: str, key: str) -> list[dict]:
+    """Narrow the sync to the values `param` names. Empty means all of them."""
+    wanted = set(_param(param))
+    if not wanted:
+        return sources
+    t_log.info(f"Limiting the sync to {param} {sorted(wanted)}")
+    return [source for source in sources if source[key] in wanted]
 
 
 @dag(
@@ -96,15 +112,27 @@ def _is_dry_run() -> bool:
         "retries": 2,
         "retry_delay": duration(minutes=5),
     },
-    params={"dry_run": Param(False, type="boolean", description="Log both plans without doing work")},
+    params={
+        "dry_run": Param(False, type="boolean", description="Log both plans without doing work"),
+        "groups": Param(
+            [],
+            type="array",
+            items={"type": "string"},
+            description=f"Sync only these groups — {', '.join(SOURCE_GROUPS)}, EXPIRED. Empty means all.",
+        ),
+        "folders": Param(
+            [],
+            type="array",
+            items={"type": "string"},
+            description="Sync only these folders — state codes and/or EXPIRED. Empty means all.",
+        ),
+    },
     is_paused_upon_creation=True,
 )
 def load_l2_voter_files():
     @task
     def plan_sources() -> list[dict]:
         """The files L2 publishes that S3 does not already hold."""
-        prefix = Variable.get("l2_voter_files_s3_prefix")
-
         transport, sftp_client = _sftp_connection()
         try:
             sources = list_remote_sources(
@@ -116,17 +144,19 @@ def load_l2_voter_files():
             sftp_client.close()
             transport.close()
 
-        staged = list_s3_objects(_s3_client(), Variable.get("l2_s3_bucket"), prefix)
+        sources = _scoped(_scoped(sources, "groups", "group"), "folders", "folder")
+        staged = list_s3_objects(
+            _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
+        )
         pending = plan_transfers(sources, staged)
 
         t_log.info(f"L2 publishes {len(sources)} file(s); {len(pending)} to copy")
         for source in pending:
             t_log.info(f"  {source['remote_path']} ({source['size_bytes'] / 1024**3:.2f} GB)")
 
-        return [] if _is_dry_run() else pending
+        return [] if _param("dry_run") else pending
 
-    # max_active_tis_per_dag keeps the one-archive-per-worker invariant in code, where it is
-    # reviewable, rather than resting on the queue's concurrency setting alone.
+    # max_active_tis_per_dag keeps one archive per worker even if the queue is reconfigured.
     @task(queue=SYNC_QUEUE, max_active_tis_per_dag=1, execution_timeout=duration(hours=6))
     def sync(source: dict) -> list[str]:
         """Copy one source file into S3."""
@@ -155,7 +185,7 @@ def load_l2_voter_files():
             _s3_client(), Variable.get("l2_s3_bucket"), Variable.get("l2_voter_files_s3_prefix")
         )
 
-        dry_run = _is_dry_run()
+        dry_run = _param("dry_run")
         if dry_run:
             # Keep a dry run usable where Databricks is unreachable. Without the table
             # timestamps every staged file looks unloaded, so this is an upper bound.

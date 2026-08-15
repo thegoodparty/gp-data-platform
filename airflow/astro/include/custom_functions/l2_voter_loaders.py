@@ -3,8 +3,8 @@
 Nothing is recorded between runs: the SFTP listing versus S3 decides what to copy, and S3 versus
 each table's last-altered time decides what to load.
 
-Staged files live at `{prefix}/{folder}/{file}`, where folder is a state for the voter archives
-and EXPIRED_FOLDER for the expired-ID file.
+Staged files live at `{prefix}/{folder}/{file}`, where folder is the state for the voter and
+Haystaq archives and EXPIRED_FOLDER for the expired-ID file.
 """
 
 import io
@@ -18,7 +18,7 @@ from zipfile import ZipFile
 import pandas as pd
 from boto3.s3.transfer import TransferConfig
 from include.custom_functions.databricks_utils import execute_with_retry
-from include.custom_functions.l2_sftp import download, list_matching
+from include.custom_functions.sftp_utils import download, list_matching
 from paramiko import SFTPClient
 
 logger = logging.getLogger("airflow.task")
@@ -26,17 +26,19 @@ logger = logging.getLogger("airflow.task")
 EXPIRED_FOLDER = "EXPIRED"
 EXPIRED_TABLE = "l2_s3_expired_voters"
 
-# The per-state archives, keyed by the prefix L2 names them with. Each member suffix maps to the
-# file type that becomes the destination table's suffix, so the archive grammar is stated once:
-# the archive patterns and the staged-file patterns below are both derived from it.
-_STEM = r"--(?P<folder>[A-Z]{2})--\d{4}-\d{2}-\d{2}"
-ARCHIVE_GROUPS: dict[str, dict] = {
-    "VM2Uniform": {
-        "remote_dir": "/VM2Uniform",
-        "members": {".tab": "uniform", "_DataDictionary.csv": "uniform_data_dictionary"},
-    },
+# One entry per family of files we mirror, stating that family's grammar once. `stem` captures the
+# state as `folder` and the publication as `version`; the archive is the stem plus
+# `archive_suffix`, each kept member is the stem plus a `members` key, and that member's value is
+# the file type, which is also the destination table's suffix. Everything below derives from this.
+_L2_STEM = r"--(?P<folder>[A-Z]{2})--(?P<version>\d{4}-\d{2}-\d{2})"
+# The server's two Haystaq directories hold the same files, so one covers both types.
+_HAYSTAQ_DIR = "/L2-Haystaq Issue Model Scores"
+
+SOURCE_GROUPS: dict[str, dict] = {
     "VM2": {
         "remote_dir": "/VMFiles",
+        "stem": rf"VM2{_L2_STEM}",
+        "archive_suffix": ".zip",
         "members": {
             "-DEMOGRAPHIC.tab": "demographic",
             "-DEMOGRAPHIC_DataDictionary.csv": "demographic_data_dictionary",
@@ -44,11 +46,32 @@ ARCHIVE_GROUPS: dict[str, dict] = {
             "-VOTEHISTORY_DataDictionary.csv": "vote_history_data_dictionary",
         },
     },
+    "VM2Uniform": {
+        "remote_dir": "/VM2Uniform",
+        "stem": rf"VM2Uniform{_L2_STEM}",
+        "archive_suffix": ".zip",
+        "members": {".tab": "uniform", "_DataDictionary.csv": "uniform_data_dictionary"},
+    },
+    "HaystaqFlags": {
+        "remote_dir": _HAYSTAQ_DIR,
+        "stem": r"(?P<folder>[a-z]{2})_haystaqdnaflags_(?P<version>\d{8})",
+        "archive_suffix": ".tab.zip",
+        "members": {".tab": "haystaq_dna_flags"},
+    },
+    "HaystaqScores": {
+        "remote_dir": _HAYSTAQ_DIR,
+        "stem": r"(?P<folder>[a-z]{2})_haystaqdnascores_(?P<version>\d{8})",
+        "archive_suffix": ".tab.zip",
+        "members": {".tab": "haystaq_dna_scores"},
+    },
 }
-_ARCHIVE_PATTERNS = {name: re.compile(rf"^{name}{_STEM}\.zip$") for name in ARCHIVE_GROUPS}
-_SOURCE_FILE_TYPES: tuple[tuple[re.Pattern, str], ...] = tuple(
-    (re.compile(rf"^{name}{_STEM}{re.escape(suffix)}$"), file_type)
-    for name, spec in ARCHIVE_GROUPS.items()
+_ARCHIVE_PATTERNS = {
+    name: re.compile(rf"^{spec['stem']}{re.escape(spec['archive_suffix'])}$")
+    for name, spec in SOURCE_GROUPS.items()
+}
+_MEMBER_PATTERNS: tuple[tuple[re.Pattern, str], ...] = tuple(
+    (re.compile(rf"^{spec['stem']}{re.escape(suffix)}$"), file_type)
+    for spec in SOURCE_GROUPS.values()
     for suffix, file_type in spec["members"].items()
 )
 _STATE_FOLDER = re.compile(r"^[A-Z]{2}$")
@@ -78,8 +101,8 @@ class _SequentialReader:
 
 
 def source_file_type(source_file_name: str) -> str | None:
-    """Classify a staged voter file, or None. Doubles as the destination table suffix."""
-    for pattern, file_type in _SOURCE_FILE_TYPES:
+    """Classify a staged file, or None. Doubles as the destination table suffix."""
+    for pattern, file_type in _MEMBER_PATTERNS:
         if pattern.match(source_file_name):
             return file_type
     return None
@@ -100,8 +123,9 @@ def _trim_data_dictionary(raw: bytes, member: str) -> bytes:
     return buffer.getvalue().encode()
 
 
-def _source(remote_dir: str, attributes, folder: str, members: list[str] | None) -> dict:
+def _source(group: str, remote_dir: str, attributes, folder: str, members: list[str] | None) -> dict:
     return {
+        "group": group,
         "folder": folder,
         "remote_path": f"{remote_dir}/{attributes.filename}",
         "members": members,
@@ -116,26 +140,34 @@ def _source(remote_dir: str, attributes, folder: str, members: list[str] | None)
 
 
 def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_pattern: str) -> list[dict]:
-    """Every L2 file we mirror: the per-state archives plus the expired-ID file.
+    """Every file we mirror: the newest per state of each group, plus the expired-ID file.
 
     A state L2 has pulled while rebuilding is simply absent, not an error.
     """
     sources: list[dict] = []
-    for name, spec in ARCHIVE_GROUPS.items():
+    for name, spec in SOURCE_GROUPS.items():
+        newest: dict[str, tuple[str, dict]] = {}
         for attributes, match in list_matching(sftp_client, spec["remote_dir"], _ARCHIVE_PATTERNS[name]):
-            base = attributes.filename.removesuffix(".zip")
-            sources.append(
+            folder = match["folder"].upper()
+            # Only the newest publication per state becomes a table, so transferring a superseded
+            # one the server still lists would be wasted bandwidth.
+            if folder in newest and match["version"] <= newest[folder][0]:
+                continue
+            stem = attributes.filename.removesuffix(spec["archive_suffix"])
+            newest[folder] = (
+                match["version"],
                 _source(
+                    group=name,
                     remote_dir=spec["remote_dir"],
                     attributes=attributes,
-                    folder=match["folder"],
-                    members=[base + suffix for suffix in spec["members"]],
-                )
+                    folder=folder,
+                    members=[stem + suffix for suffix in spec["members"]],
+                ),
             )
+        sources.extend(source for _, source in newest.values())
 
     # Both the directory and the pattern are operator-configured, so neither should be able to
-    # block the state archives. The archive directories above are fixed, and their absence stays
-    # a real alarm that raises.
+    # block the archive groups. Their directories are fixed, and their absence stays a real alarm.
     try:
         expired = list_matching(sftp_client, expired_dir, re.compile(expired_pattern))
     except FileNotFoundError:
@@ -148,7 +180,15 @@ def list_remote_sources(sftp_client: SFTPClient, expired_dir: str, expired_patte
     for attributes, _ in expired:
         # A plain file stages under its own name; a zip's contents are only knowable once opened.
         members = None if attributes.filename.lower().endswith(".zip") else [attributes.filename]
-        sources.append(_source(expired_dir, attributes, EXPIRED_FOLDER, members))
+        sources.append(
+            _source(
+                group=EXPIRED_FOLDER,
+                remote_dir=expired_dir,
+                attributes=attributes,
+                folder=EXPIRED_FOLDER,
+                members=members,
+            )
+        )
 
     return sorted(sources, key=lambda source: source["remote_path"])
 
@@ -199,25 +239,24 @@ def sync_source(
     source: dict,
     staging_dir: str,
 ) -> list[str]:
-    """Download one source file and upload it, or the members we keep, into `{prefix}/{folder}/`."""
+    """Download one source file and upload it, or the members we keep, into `{prefix}/{folder}/`.
+
+    Only the compressed archive touches disk; its members stream out of the zip into S3.
+    """
     folder_prefix = f"{prefix}/{source['folder']}/"
     file_name = source["remote_path"].rsplit("/", 1)[-1]
     local_path = os.path.join(staging_dir, file_name)
     members = source["members"]
     size_bytes = source["size_bytes"]
 
-    # Checked before the download: every staged file becomes exactly one table, so a source that
-    # expanded into several would load only one of them. Failing this source alone leaves the
-    # state archives syncing and the Databricks step running off S3.
+    # Refused before the download, so the daily retry costs nothing.
     if members is None:
         raise ValueError(
             f"{file_name} is an archive whose members cannot be derived from its name. "
             "Only plain files are supported here; unpack it upstream or add it to "
-            "ARCHIVE_GROUPS with its member suffixes."
+            "SOURCE_GROUPS with its member suffixes."
         )
 
-    # Astro workers have a fixed 10 GiB of ephemeral storage, so a growing archive will one day
-    # outgrow it. Fail with the numbers rather than filling the disk mid-download.
     free_bytes = shutil.disk_usage(staging_dir).free
     if not size_bytes:
         logger.warning(f"{file_name} has no size on the server; skipping the disk-space check")
@@ -290,12 +329,8 @@ def build_load_statement(
 ) -> tuple[str, dict[str, str]]:
     """The CTAS that rebuilds one table from its staged file, and its bound parameters.
 
-    The S3 path and delimiter are bound rather than interpolated. Identifiers cannot be bound in
-    DDL, but they are ours: the catalog and schema are config, and the table name is built from a
-    validated folder and a fixed type.
-
-    Every column is read as a string: the raw files carry zero-padded codes (ZIPs, ZipPlus4, DPBC)
-    that type inference coerces to int, dropping leading zeros before any model can see them.
+    Identifiers cannot be bound in DDL, so they are validated instead. Every column is read as a
+    string to keep the zero-padded codes L2 carries (ZIP, ZipPlus4, DPBC, FIPS) intact.
     """
     table = (
         f"`{_identifier(catalog, 'catalog')}`"

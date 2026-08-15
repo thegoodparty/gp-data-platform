@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from include.custom_functions import l2_voter_loaders
 from include.custom_functions.l2_voter_loaders import (
-    ARCHIVE_GROUPS,
     EXPIRED_FOLDER,
+    SOURCE_GROUPS,
     build_load_statement,
     get_table_loaded_at,
     list_remote_sources,
@@ -31,6 +31,14 @@ MEMBERS = [
     f"{BASE}-VOTEHISTORY.tab",
     f"{BASE}-VOTEHISTORY_DataDictionary.csv",
 ]
+
+# One real archive name per group. A group added without one fails the round-trip test below.
+ARCHIVE_SAMPLES = {
+    "VM2": f"{BASE}.zip",
+    "VM2Uniform": "VM2Uniform--MO--2026-08-03.zip",
+    "HaystaqFlags": "mo_haystaqdnaflags_20260520.tab.zip",
+    "HaystaqScores": "mo_haystaqdnascores_20260520.tab.zip",
+}
 
 
 def _data_dictionary(footer_rows: int) -> bytes:
@@ -97,8 +105,9 @@ class FakeS3Client:
         self.objects[Key] = fileobj.read()
 
 
-def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
+def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024, group="VM2"):
     return {
+        "group": group,
         "folder": folder,
         "remote_path": f"/VMFiles/{file_name}",
         "members": members,
@@ -166,6 +175,18 @@ class TestListRemoteSources:
             == []
         )
 
+    def test_only_the_newest_publication_per_state_is_listed(self):
+        """L2 leaves superseded archives in place, and only the newest ever becomes a table."""
+        sources = self._list(
+            {
+                "/VMFiles": [
+                    FakeAttributes("VM2--MO--2026-08-03.zip"),
+                    FakeAttributes("VM2--MO--2026-07-27.zip"),
+                ]
+            }
+        )
+        assert [s["remote_path"] for s in sources] == ["/VMFiles/VM2--MO--2026-08-03.zip"]
+
     def test_expired_zip_has_no_derivable_members(self):
         sources = self._list({self.EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.zip")]})
         assert sources[0]["members"] is None
@@ -178,6 +199,32 @@ class TestListRemoteSources:
         assert plan_transfers(sources, {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == sources
 
 
+class TestArchiveGrammar:
+    """SOURCE_GROUPS names 300-odd tables, so its patterns are a contract."""
+
+    def test_every_group_has_a_sample_archive(self):
+        assert set(ARCHIVE_SAMPLES) == set(SOURCE_GROUPS)
+
+    def test_members_derived_from_an_archive_classify_to_their_declared_type(self):
+        """A member we stage but cannot classify is uploaded and then never loaded."""
+        listings: dict[str, list] = {}
+        for group, file_name in ARCHIVE_SAMPLES.items():
+            listings.setdefault(SOURCE_GROUPS[group]["remote_dir"], []).append(FakeAttributes(file_name))
+        sources = list_remote_sources(
+            FakeSFTPClient(listings=listings), expired_dir="/expired", expired_pattern="^never$"
+        )
+
+        assert {source["group"] for source in sources} == set(SOURCE_GROUPS)
+        for source in sources:
+            # Haystaq spells the state lowercase; S3 and the table name want one spelling.
+            assert source["folder"] == "MO"
+            declared = list(SOURCE_GROUPS[source["group"]]["members"].values())
+            assert [source_file_type(member) for member in source["members"]] == declared
+
+    def test_fillrate_is_not_a_voter_file(self):
+        assert source_file_type("VM2--AL--2025-05-10-DEMOGRAPHIC-FillRate.tab") is None
+
+
 class TestPlanTransfers:
     """The diff is the whole idempotency story: no manifest, just S3 versus the SFTP listing."""
 
@@ -185,12 +232,11 @@ class TestPlanTransfers:
         staged = {f"MO/{member}": STAGED for member in MEMBERS}
         assert plan_transfers([_source(MEMBERS)], staged) == []
 
-    def test_unseen_source_is_pending(self):
-        assert plan_transfers([_source(MEMBERS)], {}) == [_source(MEMBERS)]
-
     def test_partially_staged_source_is_pending(self):
+        """Requiring every member is what resumes a run that died mid-archive."""
         staged = {f"MO/{member}": STAGED for member in MEMBERS[:-1]}
         assert plan_transfers([_source(MEMBERS)], staged) == [_source(MEMBERS)]
+        assert plan_transfers([_source(MEMBERS)], {}) == [_source(MEMBERS)]
 
     def test_plain_file_is_its_own_member(self):
         """The expired file stages under its own name, so it diffs like any other source."""
@@ -207,31 +253,23 @@ class TestPlanTransfers:
 
 
 class TestSyncSource:
-    def test_uploads_expected_members_and_skips_the_rest(self, vm2_archive, tmp_path):
-        s3_client = FakeS3Client()
-        keys = sync_source(
-            sftp_client=FakeSFTPClient(vm2_archive),
+    def _sync(self, payload, source, tmp_path, s3_client=None):
+        s3_client = s3_client or FakeS3Client()
+        return s3_client, sync_source(
+            sftp_client=FakeSFTPClient(payload),
             s3_client=s3_client,
             bucket="bucket",
             prefix="staging/prod",
-            source=_source(MEMBERS),
+            source=source,
             staging_dir=str(tmp_path),
         )
+
+    def test_uploads_expected_members_and_trims_the_dictionaries(self, vm2_archive, tmp_path):
+        """FillRate is in the zip and must not be staged; the dictionaries carry L2's legend."""
+        s3_client, keys = self._sync(vm2_archive, _source(MEMBERS), tmp_path)
 
         assert keys == [f"staging/prod/MO/{member}" for member in MEMBERS]
         assert s3_client.objects[f"staging/prod/MO/{MEMBERS[0]}"] == DEMOGRAPHIC_ROWS
-
-    def test_strips_dictionary_preamble_and_per_type_footer(self, vm2_archive, tmp_path):
-        s3_client = FakeS3Client()
-        sync_source(
-            sftp_client=FakeSFTPClient(vm2_archive),
-            s3_client=s3_client,
-            bucket="bucket",
-            prefix="staging/prod",
-            source=_source(MEMBERS),
-            staging_dir=str(tmp_path),
-        )
-
         for member in (MEMBERS[1], MEMBERS[3]):
             written = s3_client.objects[f"staging/prod/MO/{member}"].decode()
             assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
@@ -241,86 +279,30 @@ class TestSyncSource:
 
         The refusal precedes the download, so the daily retry costs nothing.
         """
-        sftp_client = FakeSFTPClient(b"never read")
         source = _source(members=None, file_name="omits.zip", folder=EXPIRED_FOLDER)
         with pytest.raises(ValueError, match="cannot be derived from its name"):
-            sync_source(
-                sftp_client=sftp_client,
-                s3_client=FakeS3Client(),
-                bucket="bucket",
-                prefix="staging/prod",
-                source=source,
-                staging_dir=str(tmp_path),
-            )
+            self._sync(b"never read", source, tmp_path)
         assert not list(tmp_path.iterdir())
 
     def test_refuses_an_archive_larger_than_the_free_space(self, monkeypatch, tmp_path):
         """The precheck is what makes download-to-disk viable on a fixed 10 GiB worker."""
         monkeypatch.setattr(l2_voter_loaders.shutil, "disk_usage", lambda _: SimpleNamespace(free=1_000_000))
         with pytest.raises(ValueError, match="GB is free"):
-            sync_source(
-                sftp_client=FakeSFTPClient(b""),
-                s3_client=FakeS3Client(),
-                bucket="bucket",
-                prefix="staging/prod",
-                source=_source(MEMBERS, size=9_000_000_000),
-                staging_dir=str(tmp_path),
-            )
+            self._sync(b"", _source(MEMBERS, size=9_000_000_000), tmp_path)
         assert not list(tmp_path.iterdir())
 
     def test_unknown_size_skips_the_check_rather_than_blocking(self, vm2_archive, tmp_path):
-        keys = sync_source(
-            sftp_client=FakeSFTPClient(vm2_archive),
-            s3_client=FakeS3Client(),
-            bucket="bucket",
-            prefix="staging/prod",
-            source=_source(MEMBERS, size=0),
-            staging_dir=str(tmp_path),
-        )
+        _, keys = self._sync(vm2_archive, _source(MEMBERS, size=0), tmp_path)
         assert len(keys) == len(MEMBERS)
 
     def test_plain_file_is_copied_as_is(self, tmp_path):
-        s3_client = FakeS3Client()
         source = _source(
             members=["Manual_ID_Omits.tab"], file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER
         )
-        keys = sync_source(
-            sftp_client=FakeSFTPClient(DEMOGRAPHIC_ROWS),
-            s3_client=s3_client,
-            bucket="bucket",
-            prefix="staging/prod",
-            source=source,
-            staging_dir=str(tmp_path),
-        )
+        s3_client, keys = self._sync(DEMOGRAPHIC_ROWS, source, tmp_path)
 
         assert keys == [f"staging/prod/{EXPIRED_FOLDER}/Manual_ID_Omits.tab"]
         assert s3_client.objects[keys[0]] == DEMOGRAPHIC_ROWS
-
-
-class TestSourceFileType:
-    @pytest.mark.parametrize(
-        "source_file_name,expected",
-        [
-            ("VM2Uniform--AK--2025-05-10.tab", "uniform"),
-            ("VM2Uniform--AK--2025-05-10_DataDictionary.csv", "uniform_data_dictionary"),
-            ("VM2--NY--2025-05-10-DEMOGRAPHIC.tab", "demographic"),
-            ("VM2--TX--2025-05-10-DEMOGRAPHIC_DataDictionary.csv", "demographic_data_dictionary"),
-            ("VM2--AL--2025-05-10-VOTEHISTORY.tab", "vote_history"),
-            ("VM2--CA--2025-05-10-VOTEHISTORY_DataDictionary.csv", "vote_history_data_dictionary"),
-        ],
-    )
-    def test_type_drives_the_table_suffix(self, source_file_name, expected):
-        """These six strings name 306 tables, so they are a contract."""
-        assert source_file_type(source_file_name) == expected
-
-    def test_fillrate_is_not_a_voter_file(self):
-        assert source_file_type("VM2--AL--2025-05-10-DEMOGRAPHIC-FillRate.tab") is None
-
-    def test_every_archive_member_is_classifiable(self):
-        """A member we stage but cannot classify would be uploaded and then never loaded."""
-        for name, spec in ARCHIVE_GROUPS.items():
-            for suffix in spec["members"]:
-                assert source_file_type(f"{name}--MO--2026-08-03{suffix}") is not None
 
 
 class TestPlanLoads:
@@ -345,9 +327,16 @@ class TestPlanLoads:
         }
         assert [load["source_file_name"] for load in plan_loads(staged, {})] == [self.UNIFORM]
 
-    def test_expired_folder_maps_to_its_own_table(self):
-        staged = {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}
-        assert [load["table_name"] for load in plan_loads(staged, {})] == ["l2_s3_expired_voters"]
+    def test_haystaq_and_expired_files_map_to_their_own_tables(self):
+        """These table names are the contract with the dbt staging models that read them."""
+        staged = {
+            "MO/mo_haystaqdnascores_20260520.tab": STAGED,
+            f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED,
+        }
+        assert [load["table_name"] for load in plan_loads(staged, {})] == [
+            "l2_s3_expired_voters",
+            "l2_s3_mo_haystaq_dna_scores",
+        ]
 
 
 class TestBuildLoadStatement:
