@@ -971,7 +971,7 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
   - name: dbt_source_haystaq
-    schema: "{{ var('l2_haystaq_databricks_schema', 'dbt_source') }}"
+    schema: dbt_source
     description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
     tables:

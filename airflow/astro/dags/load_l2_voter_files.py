@@ -29,7 +29,9 @@ this server needs an entry there and nothing here.
 **Variables:**
 - `l2_s3_bucket`
 - `l2_voter_files_s3_prefix` — e.g. `l2_data/from_sftp_server/VMFiles/prod`
-- `l2_voter_files_databricks_schema` — e.g. `dbt_source`
+- `l2_voter_files_databricks_schema` — where the tables land. The dbt `dbt_source` and
+  `dbt_source_haystaq` sources read from a fixed `dbt_source`, so in prod this must be that.
+  Pointing it elsewhere stages a scratch copy dbt will not see.
 - `l2_sftp_expired_dir`, `l2_sftp_expired_file_pattern` — where the expired-ID file lives
 - `databricks_conn_id`
 
