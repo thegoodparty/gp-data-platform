@@ -61,6 +61,10 @@ with suppress_logging("airflow"):
     # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
     _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
 
+_L2_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_l2_voter_files.py")
+with suppress_logging("airflow"):
+    _L2_DAG = DagBag(dag_folder=_L2_DAG_FILE).dags.get("load_l2_voter_files")
+
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -136,3 +140,18 @@ def test_load_people_api_scale_down_on_failure():
     # the writer down, so promote is deliberately not a scale_down upstream.
     assert "promote" not in upstream_ids
     assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
+
+
+def test_load_l2_voter_files_sequence():
+    """The load plan must run after the sync, and must run even when a sync fails.
+
+    The Databricks side reads S3 rather than the sync's results, so a state that fails to copy
+    must not stop the states that copied. Losing all_done here would strand them.
+    """
+    assert _L2_DAG is not None, f"load_l2_voter_files failed to load from {_L2_DAG_FILE}"
+    plan_table_loads = _L2_DAG.get_task("plan_table_loads")
+    assert plan_table_loads.trigger_rule == "all_done"
+    assert {t.task_id for t in plan_table_loads.upstream_list} == {"sync"}
+    assert {t.task_id for t in _L2_DAG.get_task("load").upstream_list} == {"plan_table_loads"}
+    # One archive per worker, since sync downloads it whole to a fixed 10 GiB of local disk.
+    assert _L2_DAG.get_task("sync").max_active_tis_per_dag == 1

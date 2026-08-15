@@ -1,4 +1,12 @@
 models:
+  - name: stg_dbt_source__l2_s3_expired_voters
+    description: "Nationwide list of L2 voter IDs flagged as expired"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
   - name: stg_dbt_source__l2_s3_ak_demographic
     description: "AK (Alaska) Demographic data"
     columns:

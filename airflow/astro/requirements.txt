@@ -21,3 +21,6 @@ people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@mai
 # run on the image's Python 3.14, and the full monorepo project needs ~24 parse-time env vars. This
 # provider ships the operator + the dbt_cloud connection type.
 apache-airflow-providers-dbt-cloud>=4.9.2,<5.0.0
+# S3Hook for the l2_voter_files DAG. Pre-installed in Astro Runtime; pinned here so a
+# runtime image that drops it from the default provider set fails the build, not the DAG.
+apache-airflow-providers-amazon>=9.16.0,<10.0.0
