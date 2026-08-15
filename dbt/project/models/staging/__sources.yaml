@@ -352,7 +352,7 @@ sources:
 
   - name: dbt_source
     schema: dbt_source
-    description: Raw data loaded from dbt models
+    description: Raw data staged in S3 and loaded into Databricks by the load_l2_voter_files DAG
 
     tables:
       - name: l2_s3_ak_demographic
@@ -972,7 +972,7 @@ sources:
 
   - name: dbt_source_haystaq
     schema: "{{ var('l2_haystaq_databricks_schema', 'dbt_source') }}"
-    description: Raw Haystaq issue model tables loaded by dbt from S3 into Databricks
+    description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
     tables:
       - name: l2_s3_al_haystaq_dna_flags
