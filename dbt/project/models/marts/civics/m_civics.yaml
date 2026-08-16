@@ -580,9 +580,11 @@ models:
           evidence-backed stage rows only: a candidacy_stage row sourced solely
           from gp_api records the campaign's pledged race (product-signup
           intent, not a ballot appearance) and never contributes to the
-          outcome. Falls back to the provider-rolled outcome only when no
-          in-context evidence-backed candidacy_stage row exists (e.g. the 2025
-          HubSpot archive). KNOWN GAP: a jurisdiction where
+          outcome. The provider-rolled outcome applies only to 2025 archive
+          rows: a populated archive outcome is authoritative and wins even
+          when stage evidence exists (archive rows with a NULL provider
+          outcome still fall through to the stage logic); non-archive rows
+          never use the provider rollup. KNOWN GAP: a jurisdiction where
           a majority at the primary wins the seat outright while a general is
           still scheduled reads NULL (not 'Won') until the general resolves
           (a known follow-up). To answer "did they win the seat / will they
