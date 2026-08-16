@@ -6,8 +6,8 @@ requires-python = ">=3.14"
 dependencies = [
     "pandas>=3.0.5,<4.0.0",
     "pyyaml>=6.0",
-    "databricks-sql-connector>=3",
-    "databricks-sdk>=0.20",
+    "databricks-sql-connector>=4.4.0",
+    "databricks-sdk>=0.128.0",
 ]
 
 [dependency-groups]
