@@ -31,7 +31,7 @@ caveats and deprecations the one-line registry definitions don't carry.
 - **`has_amplitude_data`** misses the broader onboarding-progress family (`Onboarding -%` steps), so it materially **undercounts** true coverage (Nov-2025 cohort: 36% by this flag vs ~79% with ≥1 raw candidate-attributed event). Don't use it as a funnel top — compute "any Win evidence" from the raw stream instead.
 - **`is_post_amplitude_registration`** (`user_created_at >= 2023-12-10`, the documented Amplitude tracking start) is **too loose** for engagement analyses — Win-product event instrumentation actually started ~2025-05-28.
 - **`has_completed_onboarding_flow`** (`onboarding_completed_at IS NOT NULL`, event `onboarding_complete`) and **`is_onboarded`** (US user, dashboard viewed within 14d of *Amplitude registration*) are both **⚠ NEW-FLOW-BLIND** across the 2026-05-07 cutover. Deprecated as cohort filters — use the canonical **Onboarded** metric instead.
-- **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses. ⚠ Currently anchored on the dead legacy dashboard event, so they read FALSE for everyone as their windows pass 2026-06-13 (`_30d` fully dead since ~2026-07-13; see Dashboard surface migration; fix ticketed DATA-2173).
+- **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses. ⚠ Repaired for the 2026-06-13 break (DATA-2173, merged 2026-07-24), but **degrading again from 2026-07-31** — read "Third era" below before using them for any window touching August 2026 or later.
 - **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff (`first_campaign_sent_at <= election_date`, or `<= month-end`) for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). **Activation lands late:** ~59% of ever-activated users send their first campaign >14 days after signup (verified 2026-06-11, 705/1,201), so activation cannot share the 14-day-of-signup window used for the dashboard-view / pledge milestones — anchor it point-in-time to the period end instead. Do not conflate with the colloquial "activated."
 - **Activation is Pro-gated in the product** (code-verified in omni, 2026-07-23): every real voter-contact channel (text, robocall, door knocking, phone banking) has UI-required Pro since 2025-06-24 (voter file since ≥2024-08); server-side Pro checks were *added* 2025-10 and 2026-05/06 — the gate never loosened. Social posts are the only free channel; texts are additionally pay-per-send via Stripe since 2025-09. So **activated ⊆ Pro is approximately true in both 2025 and 2026**; "activated but not Pro" cells are churned ex-Pros plus undatable/comped Pros (see the `is_pro` row in [segmentation.md](segmentation.md) for Pro dating), NOT evidence of a free outreach tier. Don't read Pro-evidence coverage trends as gating changes — coverage improved with instrumentation (Amplitude milestone 2025-05-29+, Stripe events 2025-08-25+, P2P self-serve 2025-09).
 - **Win W+1 Retention (OKR O2 KR1)** = share of Win-ICP users who return to the dashboard about a week after their **first voter outreach send** (Amplitude chart `owc6mfnp`: start `ce:Voter Outreach - All`, return `Viewed` path=/dashboard, segment = Win ICP cohort; target 60%). **Method matters and the two differ ~5x:** the ~55–60% we report (and the June All Hands deck) is **rolling** retention — returned in W+1 *or any later week* — reconciled at ~64.5% on 2026-08-03. The chart is currently **saved as N-day** (returned specifically in the day 7–13 window), which reads ~12.6%. The gap is method only: the return event (`Viewed` path=/dashboard) is alive and stable (~800–1,100/wk through mid-2026), not an instrumentation break. The chart should be re-saved to rolling so the artifact matches the reported KR. It conditions on activated ICP users **by construction** — weekly cohorts run ~10–25 users — so never read it as a population retention rate. The honest chain: registered → activated (~3–5% all-accounts) → ~55–60% (rolling) of those return in W+1 (resolved 2026-07-23 from the June All Hands deck + chart definition; N-day-vs-rolling method reconciled 2026-08-03).
@@ -111,7 +111,56 @@ Cross-era anchors: top-of-funnel = **product-DB account creation** (`users_win_c
 
 `Dashboard - Candidate Dashboard Viewed` last fired in-data **2026-06-13**; code-retired 2026-07-13 (omni PR #732) — the call site was orphaned by the dashboard rebuild, so code provenance dates the break a month late. Successor: **`Dashboard - Campaign Plan Viewed`** (in code 2026-04-01, first in-data 2026-04-09). Divergence starts with May-2026 signup cohorts (plan-only viewers by cohort month, Jan→May 2026: 0/0/0/0/68 — the events co-fired before that). Any dashboard-view metric spanning the migration — the canonical **Onboarded**, **Active Candidates**, and the activity intermediates — must use the **2-event union**; per-user MAX/EXISTS logic is co-fire-safe, naive event counts double-count Apr–Jun. Verified 2026-07-22 (q04 gold run): the legacy event alone reads May-2026 14-day dashboard views at 157 vs 225 true (−30%).
 
-⚠ **Prod breakage (verified 2026-07-22; fix ticketed DATA-2173 — re-check):** `users_win_base.is_active_candidate_30d` reads FALSE for all ~62k users (`last_dashboard_viewed_at` is computed in `int__amplitude_user_milestones` from the dead event, so it caps at 2026-06-13; `_7d` died ~2026-06-20, `_90d` decays to zero by ~mid-September). `int__amplitude_win_activity`/`_weekly` aggregate the same dead event, so modeled dashboard-side activity is zero after 2026-06-13.
+### Third era: the 2026-07-31 break (LIVE — verified 2026-08-17)
+
+DATA-2173 (PR #685, merged 2026-07-24) repaired the 2026-06-13 death; the flags recovered and the
+2-event union is correct for that era. **A third break is now live.**
+`Dashboard - Campaign Plan Viewed` fell from 122 events / 42 users (2026-07-30) to 6 / 4 (07-31)
+and single digits since. Successor per gp-meta supersession:
+**`Campaign Plan - Campaign Tracker Viewed`** (instrumented 2026-08-07, omni PR 1185), with a
+7-day measurement hole (07-31 → 08-06) carrying no dashboard-view instrument at all.
+
+Two traps in the successor. It is classified `win_compliance_or_planning` with
+`is_recurrent = false`, so the 2-event union **and** any family-based dashboard read both miss it.
+And the damage is already visible rather than pending: `is_active_candidate_7d` reads **24** against
+~168 weekly dashboard viewers before the break; `_30d` reads 382 and is decaying; `_90d` follows.
+Repair (union extension + taxonomy fix + a liveness guard) is ticketed **DATA-2337**, urgent — two
+OKR metrics, Active Candidates and Onboarded, sit on this counter.
+
+**Resolve eras from the omni event-lifecycle assets, not from volume.** The provenance CSV and the
+gp-meta supersession record named this successor in one lookup; reconstructing it empirically from
+event volume took considerably longer and produced a wrong successor list on the first pass.
+
+### Dashboard view COUNTS measure instrumentation as much as behaviour
+
+The 30-second dedup (`dashboard_view_is_new`) removes **67–68%** of all raw dashboard events
+(2025: 115,494 → 38,114; 2026: 75,853 → 24,105). In 2025 only one dashboard event existed, so that
+is not the Apr–Jun 2026 co-fire — it is the same event re-firing within seconds. The collapse rate
+falls to ~18% from 2026-07, after the rebuild replaced the surface, so the behaviour belonged to
+the legacy implementation.
+
+Consequence: **prefer distinct view-days to any view count** for an engagement threshold. The 30s
+boundary has no natural valley (2.8% of events sit at 31–60s, 5.5% at 61–300s), so even the deduped
+count still carries rapid repeats just above the gap, and a count-based bar is not refresh-proof.
+Worked example: `DASH_P90_PINNED = 14.0` in the win_power_users project is p90 of the *undeduped*
+count; when the dedup landed beneath it the same literal silently became ~2.8x stricter.
+(Verified 2026-08-17, DATA-2206.)
+
+### Sales impersonation: the marker, and the era it does not cover
+
+`event_properties.impersonation` (`'true'` / `'false'`) is present on **all** event types from
+**2026-03-24** in-data (frontend marking merged 2026-03-23, omni ENG-5943). The **capability is ~18
+months older**: impersonation shipped 2024-08 (omni WEB-2536) as a client-side user-context swap
+wired into `UserProvider` / `PageWrapper` — where Segment/Amplitude identify runs — so pre-marker
+impersonated sessions fired **as the impersonated user with no flag**. Never assume the pre-marker
+era is clean on the grounds that the feature is new.
+
+Rates where measured (DATA-2206 scoped population, marked era): **9.0%** of deduped dashboard views
+are impersonated (286 users) against **0.2%** of outreach sends (2 users) — roughly 45:1 in rate,
+so contamination is viewer-side and biases any view-count qualifier far more than a send-based one.
+`users_win_base.total_campaigns_sent` and `is_activated` come from `int__amplitude_user_milestones`
+(Amplitude counts, not product-DB counters), so **both** legs are impersonation-subtractable on
+this marker.
 
 ### Channel / UTM (acquisition source)
 
