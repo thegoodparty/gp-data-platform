@@ -97,6 +97,22 @@ def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch)
     assert LoaderConfig.from_env().new_cluster_id("20260707") == "gp-people-db-20260707-prod"
 
 
+def test_export_prefix_is_env_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The prefix namespaces `_manifest/{step}.json`, and a step short-circuits when its manifest
+    # exists. Dev and prod share the bucket, so an un-scoped prefix let a same-date run in one env
+    # adopt the other's manifests and skip every step while reporting success.
+    monkeypatch.setenv("LOADER_S3_BUCKET", "gp-people-loader-us-west-2")
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    dev = LoaderConfig.from_env()
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    prod = LoaderConfig.from_env()
+
+    assert dev.export_prefix("20260707") == "voter_export_20260707_dev"
+    assert prod.export_prefix("20260707") == "voter_export_20260707_prod"
+    # The whole point: same date, different env, no shared manifest key.
+    assert dev.manifest_key("20260707", "unload") != prod.manifest_key("20260707", "unload")
+
+
 def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     import os
 
