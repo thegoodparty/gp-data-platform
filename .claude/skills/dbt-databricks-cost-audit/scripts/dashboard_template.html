@@ -67,7 +67,7 @@
 
   <h2>Top dbt nodes by execution time <span class="muted" id="nodespan"></span></h2>
   <div class="chartbox">
-    <table id="nodes"><thead><tr><th>node</th><th>type</th><th>exec-hr</th><th>runs</th><th>TB read</th></tr></thead><tbody></tbody></table>
+    <table id="nodes"><thead><tr><th>node</th><th>type</th><th>exec-hr</th><th>stmts</th><th>&gt;60s</th><th>TB read</th><th>hr/TB</th><th>profile</th></tr></thead><tbody></tbody></table>
   </div>
 </div>
 <div class="tt" id="tt"></div>
@@ -164,8 +164,12 @@ function renderChart(){
 
 function renderNodes(){
   const tb=document.querySelector("#nodes tbody");
+  // >200 hr/TB means the node burns compute without reading much: usually a join
+  // that could not be hashed (an OR'd anti-join planning as a nested loop), not a
+  // scan problem. Pruning/partitioning will not help those; the plan has to change.
+  const profile=n=>n.tb<0.01?"—":(n.hr_per_tb>200?"compute-bound":(n.hr_per_tb<20?"scan-bound":"mixed"));
   tb.innerHTML=DATA.topnodes.map(n=>
-    `<tr><td>${n.node}</td><td class="muted">${n.type}</td><td>${n.hr.toFixed(1)}</td><td>${n.q.toLocaleString()}</td><td>${n.tb.toFixed(2)}</td></tr>`).join("");
+    `<tr><td>${n.node}</td><td class="muted">${n.type}</td><td>${n.hr.toFixed(1)}</td><td class="muted">${n.q.toLocaleString()}</td><td>${(n.heavy_q||0).toLocaleString()}</td><td>${n.tb.toFixed(2)}</td><td>${(n.hr_per_tb||0).toFixed(0)}</td><td class="muted">${profile(n)}</td></tr>`).join("");
 }
 
 document.getElementById("grain").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;

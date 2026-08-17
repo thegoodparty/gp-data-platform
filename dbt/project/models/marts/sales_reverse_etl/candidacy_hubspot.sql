@@ -57,6 +57,26 @@ with
             ) as ts_office
     ),
 
+    -- HubSpot de-dupe keys, normalized once per contact rather than once per
+    -- comparison. Each set is distinct, so the anti-joins below cannot fan out.
+    hs_email_keys as (
+        select distinct lower(trim(email)) as email_key
+        from {{ ref("int__hubspot_contacts") }}
+        where email is not null
+    ),
+
+    hs_phone_keys as (
+        select distinct regexp_replace(phone_number, '[^0-9]', '') as phone_key
+        from {{ ref("int__hubspot_contacts") }}
+        where length(regexp_replace(phone_number, '[^0-9]', '')) >= 10
+    ),
+
+    hs_br_candidacy_ids as (
+        select distinct br_candidacy_id
+        from {{ ref("int__hubspot_contacts") }}
+        where br_candidacy_id is not null
+    ),
+
     civics_base as (
         select
             cy.gp_candidacy_id,
@@ -115,7 +135,20 @@ with
                 then 'primary'
                 when cy.general_election_date >= current_date()
                 then 'general'
-            end as election_stage
+            end as election_stage,
+            -- Candidate-side de-dupe keys. Null where the leg does not apply, so
+            -- the anti-joins below simply do not match (null never equals a key).
+            case
+                when c.email is not null and c.email != '' then lower(trim(c.email))
+            end as hs_email_key,
+            case
+                when
+                    c.phone_number is not null
+                    and c.phone_number != ''
+                    and length(regexp_replace(c.phone_number, '[^0-9]', '')) >= 10
+                then regexp_replace(c.phone_number, '[^0-9]', '')
+            end as hs_phone_key,
+            try_cast(br_int.br_candidacy_id as int) as hs_br_candidacy_id
         from {{ ref("candidacy_scored") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
@@ -147,27 +180,21 @@ with
             )
             -- belt-and-suspenders not-already-in-HubSpot
             and cy.hubspot_contact_id is null
-            and not exists (
-                select 1
-                from {{ ref("int__hubspot_contacts") }} as hs
-                where
-                    (
-                        c.email is not null
-                        and c.email != ''
-                        and lower(trim(hs.email)) = lower(trim(c.email))
-                    )
-                    or (
-                        c.phone_number is not null
-                        and c.phone_number != ''
-                        and length(regexp_replace(c.phone_number, '[^0-9]', '')) >= 10
-                        and regexp_replace(hs.phone_number, '[^0-9]', '')
-                        = regexp_replace(c.phone_number, '[^0-9]', '')
-                    )
-                    or (
-                        br_int.br_candidacy_id is not null
-                        and hs.br_candidacy_id = try_cast(br_int.br_candidacy_id as int)
-                    )
-            )
+    ),
+
+    -- Not-already-in-HubSpot, as three hash anti-joins instead of one correlated
+    -- `not exists` that ORs the three keys together. Spark cannot hash-join an OR
+    -- across disjoint keys, so the OR form planned as a
+    -- BroadcastNestedLoopJoin LeftAnti -- every candidacy in the window compared
+    -- against every HubSpot contact, with the phone regexp re-evaluated per pair.
+    not_in_hubspot as (
+        select b.*
+        from civics_base as b
+        left join hs_email_keys as he on b.hs_email_key = he.email_key
+        left join hs_phone_keys as hp on b.hs_phone_key = hp.phone_key
+        left join hs_br_candidacy_ids as hb on b.hs_br_candidacy_id = hb.br_candidacy_id
+        where
+            he.email_key is null and hp.phone_key is null and hb.br_candidacy_id is null
     )
 
 select
@@ -300,4 +327,4 @@ select
     ) as election_year,
     b.election_stage,
     greatest(b.created_at, b.updated_at) as last_activity_at
-from civics_base as b
+from not_in_hubspot as b
