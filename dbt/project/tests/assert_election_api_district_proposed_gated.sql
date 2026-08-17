@@ -23,15 +23,10 @@ where
         from adopted
         where
             adopted.state = district.state
-            and upper(district.l2_district_name) like '%PROPOSED CONG DIST%'
+            and {{ is_proposed_cong_dist("district.l2_district_name") }}
             and (
                 adopted.district_number is null
-                or adopted.district_number = cast(
-                    regexp_extract(
-                        upper(district.l2_district_name),
-                        '^[0-9]{4} PROPOSED CONG DIST ([0-9]+)',
-                        1
-                    ) as int
-                )
+                or adopted.district_number
+                = {{ proposed_cong_dist_number("district.l2_district_name") }}
             )
     )

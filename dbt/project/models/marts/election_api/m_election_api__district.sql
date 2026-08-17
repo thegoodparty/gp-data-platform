@@ -68,16 +68,11 @@ with
                 from adopted_proposed_congressional as adoption
                 where
                     adoption.state = raw.state
-                    and upper(raw.l2_district_name) like '%PROPOSED CONG DIST%'
+                    and {{ is_proposed_cong_dist("raw.l2_district_name") }}
                     and (
                         adoption.district_number is null
-                        or adoption.district_number = cast(
-                            regexp_extract(
-                                upper(raw.l2_district_name),
-                                '^[0-9]{4} PROPOSED CONG DIST ([0-9]+)',
-                                1
-                            ) as int
-                        )
+                        or adoption.district_number
+                        = {{ proposed_cong_dist_number("raw.l2_district_name") }}
                     )
             )
     ),

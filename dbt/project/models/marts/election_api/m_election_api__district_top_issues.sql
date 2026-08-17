@@ -116,11 +116,13 @@ with
         select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
         where m.is_matched
-        union
+        union all
         -- The match snapshot predates the proposed-district ingest, so adopted
         -- proposed districts would score nothing. m_election_api__district is
         -- already gated by district_map_adoption, so this inherits the gate
-        -- rather than re-stating it.
+        -- rather than re-stating it. union all is safe for the same reason the
+        -- branch is needed: a snapshot older than the ingest holds no
+        -- Proposed_District rows to collide with.
         select distinct state as l2_state, l2_district_type, l2_district_name
         from {{ ref("m_election_api__district") }}
         where l2_district_type = 'Proposed_District'

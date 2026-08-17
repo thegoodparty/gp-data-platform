@@ -11,6 +11,6 @@ left join
     and adoption.district_type = 'US_Congressional_District'
 where
     agg.district_type = 'Proposed_District'
-    and upper(agg.district_name) like '%PROPOSED CONG DIST%'
+    and {{ is_proposed_cong_dist("agg.district_name") }}
     and adoption.state is null
 group by agg.state_postal_code
