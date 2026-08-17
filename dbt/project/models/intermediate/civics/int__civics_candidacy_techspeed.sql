@@ -218,7 +218,17 @@ with
             cast(null as string) as win_number_model,
 
             _airbyte_extracted_at as created_at,
-            _airbyte_extracted_at as updated_at
+            _airbyte_extracted_at as updated_at,
+
+            -- Vendor event time, kept separate from created_at/updated_at (which
+            -- are extract stamps, so a re-delivery of an unchanged record reads
+            -- as fresh). Clamped to this row's own extract time so a
+            -- future-dated form value settles at when we first saw it rather
+            -- than staying perpetually fresh.
+            least(
+                coalesce(cast(date_processed_date as timestamp), _airbyte_extracted_at),
+                _airbyte_extracted_at
+            ) as vendor_activity_at
 
         from source
         left join
@@ -239,7 +249,14 @@ with
     ),
 
     deduplicated as (
-        select *
+        select
+            * except (vendor_activity_at),
+            -- Latest vendor event across the candidacy's stages, so the picker
+            -- below (which keeps the latest-EXTRACTED stage row) cannot discard
+            -- a sibling stage that carries a later processing date.
+            max(vendor_activity_at) over (
+                partition by gp_candidacy_id
+            ) as vendor_activity_at
         from candidacies
         qualify
             row_number() over (

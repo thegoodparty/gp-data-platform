@@ -84,7 +84,20 @@ with
             -- to distinct IDs (matching int__civics_election_stage_ballotready).
             coalesce(
                 lower(candidacies.election_name) like '%special%', false
-            ) as is_special
+            ) as is_special,
+            -- Vendor event time, kept separate from created_at/updated_at (which
+            -- are extract stamps, so a re-delivery of an unchanged record reads
+            -- as fresh). Clamped to this row's own extract time because the
+            -- vendor ships some future-dated updates: clamping to when we first
+            -- saw the version is stable, whereas clamping to "now" would leave
+            -- such rows perpetually fresh.
+            least(
+                coalesce(
+                    try_cast(candidacies.candidacy_updated_at as timestamp),
+                    candidacies._airbyte_extracted_at
+                ),
+                candidacies._airbyte_extracted_at
+            ) as vendor_activity_at
         from candidacies
         left join
             candidacy_mint as cm
@@ -171,6 +184,11 @@ with
             ) as raw_election_result,
 
             max(candidacy_updated_at) as candidacy_updated_at,
+
+            -- Latest vendor event across the candidacy's stages. max(), not
+            -- any_value(): the value has to be deterministic because a
+            -- destination-facing recency window filters on it.
+            max(vendor_activity_at) as vendor_activity_at,
 
             -- BallotReady native IDs (one per stage; take any for candidacy grain)
             any_value(br_candidacy_id) as br_candidacy_id,
@@ -319,9 +337,13 @@ with
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
 
-            -- Timestamps
+            -- Timestamps. created_at/updated_at are extract stamps and stay that
+            -- way: the whole provider precedence chain and every civics consumer
+            -- reads them. vendor_activity_at is the additive event-time column
+            -- for consumers that need real candidate activity instead.
             _airbyte_extracted_at as created_at,
-            _airbyte_extracted_at as updated_at
+            _airbyte_extracted_at as updated_at,
+            vendor_activity_at
 
         from candidacies_enriched
         left join
@@ -382,5 +404,6 @@ select
     win_number,
     win_number_model,
     created_at,
-    updated_at
+    updated_at,
+    vendor_activity_at
 from deduplicated

@@ -523,6 +523,19 @@ models:
         data_tests:
           - not_null
 
+      - name: vendor_activity_at
+        description: >
+          Latest TechSpeed event time for the candidacy: the max of the form row's
+          date_processed across its stages, clamped to that row's extract time so a
+          future-dated form value settles at when we first saw it rather than
+          reading as perpetually fresh. Additive and destination-facing --
+          created_at/updated_at stay extract stamps for the provider precedence
+          chain, so consumers that need real candidate activity (the sales export
+          windows) read this instead. Non-null: the clamp falls back to extract
+          time, which every row has.
+        data_tests:
+          - not_null
+
     tests:
       - dbt_utils.expression_is_true:
           name: techspeed_candidacy_has_general_or_primary_date
@@ -1358,6 +1371,20 @@ models:
           - not_null
 
       - name: updated_at
+        data_tests:
+          - not_null
+
+      - name: vendor_activity_at
+        description: >
+          Latest BallotReady event time for the candidacy: the max of the vendor's
+          own candidacy_updated_at across its stages, clamped to that stage row's
+          extract time so the vendor's known future-dated values settle at when we
+          first saw them rather than reading as perpetually fresh. Additive and
+          destination-facing -- created_at/updated_at stay extract stamps for the
+          provider precedence chain, so consumers that need real candidate activity
+          (the sales export windows) read this instead. A re-delivery of an
+          unchanged record does not move it. Non-null: the clamp falls back to
+          extract time, which every row has.
         data_tests:
           - not_null
 

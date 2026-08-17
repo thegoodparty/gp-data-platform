@@ -1,8 +1,15 @@
 -- Civics -> HubSpot lead feed (reverse-ETL mart `candidacy_hubspot`). One row per
 -- gp_candidacy_id regardless of whether BallotReady, TechSpeed, DDHQ, or gp_api
 -- identified the candidacy, replacing the per-provider legacy feeds. Output is the
--- Title-Case HubSpot import contract with owner/Type set for all rows. 30-day rolling
--- window on greatest(created_at, updated_at).
+-- Title-Case HubSpot import contract with owner/Type set for all rows.
+--
+-- WINDOW: 30-day rolling on feed_activity_at -- the latest real provider EVENT time.
+-- For vendor-sourced rows created_at/updated_at are pipeline extract stamps, so a
+-- vendor re-delivering its whole file re-stamps its entire universe as active today
+-- and floods this feed with old candidacies. The vendor intermediates' additive
+-- vendor_activity_at columns carry the event time instead; gp_api rows already carry
+-- real product timestamps, and DDHQ supplies no event time (the coalesce below keeps
+-- those rows on status-quo behavior).
 with
     icp_ts_offices as (
         select
@@ -120,6 +127,22 @@ with
             ts_int.election_type as election_type_ts,
             br_int.br_candidacy_id,
             br_int.br_race_id as br_race_id_br,
+            -- Destination-facing recency: greatest available provider EVENT time,
+            -- falling back to the extract-stamped canonical timestamps only where
+            -- no provider supplies one (DDHQ-only rows). Both greatest() calls
+            -- skip nulls, so the fallback fires only when every leg is null,
+            -- which keeps this non-null.
+            coalesce(
+                greatest(
+                    br_int.vendor_activity_at,
+                    ts_int.vendor_activity_at,
+                    case
+                        when cy.candidate_id_source = 'gp_api'
+                        then greatest(cy.created_at, cy.updated_at)
+                    end
+                ),
+                greatest(cy.created_at, cy.updated_at)
+            ) as feed_activity_at,
             e.population,
             e.city,
             e.district,
@@ -164,9 +187,8 @@ with
             {{ ref("int__civics_candidacy_techspeed") }} as ts_int
             on cy.gp_candidacy_id = ts_int.gp_candidacy_id
         where
-            greatest(cy.created_at, cy.updated_at) >= current_date() - interval 30 day
             -- HS-eligible: has email or phone
-            and (
+            (
                 (c.email is not null and c.email != '')
                 or (c.phone_number is not null and c.phone_number != '')
             )
@@ -182,6 +204,16 @@ with
             and cy.hubspot_contact_id is null
     ),
 
+    -- Recency filter lives here rather than in civics_base's WHERE so the window
+    -- basis is defined exactly once: the same expression is filtered on and
+    -- emitted, and the two cannot drift apart. The candidacy-only predicates stay
+    -- above, where they still push down to the scan.
+    in_window as (
+        select *
+        from civics_base
+        where feed_activity_at >= current_date() - interval 30 day
+    ),
+
     -- Not-already-in-HubSpot, as three hash anti-joins instead of one correlated
     -- `not exists` that ORs the three keys together. Spark cannot hash-join an OR
     -- across disjoint keys, so the OR form planned as a
@@ -189,7 +221,7 @@ with
     -- against every HubSpot contact, with the phone regexp re-evaluated per pair.
     not_in_hubspot as (
         select b.*
-        from civics_base as b
+        from in_window as b
         left join hs_email_keys as he on b.hs_email_key = he.email_key
         left join hs_phone_keys as hp on b.hs_phone_key = hp.phone_key
         left join hs_br_candidacy_ids as hb on b.hs_br_candidacy_id = hb.br_candidacy_id
@@ -326,5 +358,7 @@ select
         )
     ) as election_year,
     b.election_stage,
-    greatest(b.created_at, b.updated_at) as last_activity_at
+    -- Name kept: ops sorts and filters on it. Only the basis improves -- it is now
+    -- the provider event time rather than the pipeline extract stamp.
+    b.feed_activity_at as last_activity_at
 from not_in_hubspot as b

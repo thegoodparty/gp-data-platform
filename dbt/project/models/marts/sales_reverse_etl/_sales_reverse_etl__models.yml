@@ -45,6 +45,17 @@ models:
         description: True when candidate_code is non-null; the reverse-ETL diff filters on this.
         data_tests:
           - not_null
+      - name: last_activity_at
+        description: >
+          Basis of the 16-day rolling window, and the recency value ops sorts on. The
+          greatest available provider EVENT time: the vendor intermediates'
+          vendor_activity_at, or the product timestamps for gp_api rows, falling back to
+          the canonical candidacy timestamps only where no provider supplies one.
+          Deliberately NOT the canonical created_at/updated_at, which for vendor-sourced
+          rows are pipeline extract stamps -- a vendor re-delivering its whole file would
+          otherwise re-stamp its entire universe as active today and flood this feed.
+        data_tests:
+          - not_null
 
   - name: candidacy_hubspot
     description: >
@@ -105,3 +116,14 @@ models:
                 max_value: 5
               config:
                 where: "viability_rating_2_0 is not null"
+      - name: last_activity_at
+        description: >
+          Basis of the 30-day rolling window, and the recency value ops sorts on. The
+          greatest available provider EVENT time: the vendor intermediates'
+          vendor_activity_at, or the product timestamps for gp_api rows, falling back to
+          the canonical candidacy timestamps only where no provider supplies one.
+          Deliberately NOT the canonical created_at/updated_at, which for vendor-sourced
+          rows are pipeline extract stamps -- a vendor re-delivering its whole file would
+          otherwise re-stamp its entire universe as active today and flood this feed.
+        data_tests:
+          - not_null

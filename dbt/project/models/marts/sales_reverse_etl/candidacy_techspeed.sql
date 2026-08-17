@@ -8,9 +8,13 @@
 -- Appended: match-back key (candidate_code), reverse-ETL tracking-key inputs
 -- (election_year, election_stage), gp_candidacy_id, is_keyable, last_activity_at.
 --
--- WINDOW: 16-day rolling on greatest(created_at, updated_at) -- interim/manual-era
--- dedup; the reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap
--- point below).
+-- WINDOW: 16-day rolling on feed_activity_at -- interim/manual-era dedup; the
+-- reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap point
+-- below). feed_activity_at is the latest real provider EVENT time: for vendor-sourced
+-- rows created_at/updated_at are pipeline extract stamps, so a vendor re-delivering
+-- its whole file re-stamps its entire universe as active today and floods this feed.
+-- The vendor intermediates' additive vendor_activity_at columns carry the event time
+-- instead; gp_api rows already carry real product timestamps.
 with
     civics_base as (
         select
@@ -34,13 +38,34 @@ with
             e.seats_available,
             br_int.br_candidacy_id,
             br_int.br_race_id,
-            br_int.br_position_database_id
+            br_int.br_position_database_id,
+            -- Destination-facing recency: greatest available provider EVENT time,
+            -- falling back to the extract-stamped canonical timestamps only where
+            -- no provider supplies one (DDHQ-only rows). Both greatest() calls
+            -- skip nulls, so the fallback fires only when every leg is null,
+            -- which keeps this non-null.
+            coalesce(
+                greatest(
+                    br_int.vendor_activity_at,
+                    ts_int.vendor_activity_at,
+                    case
+                        when cy.candidate_id_source = 'gp_api'
+                        then greatest(cy.created_at, cy.updated_at)
+                    end
+                ),
+                greatest(cy.created_at, cy.updated_at)
+            ) as feed_activity_at
         from {{ ref("candidacy") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
         left join
             {{ ref("int__civics_candidacy_ballotready") }} as br_int
             on cy.gp_candidacy_id = br_int.gp_candidacy_id
+        -- LEFT JOIN, never INNER: an INNER join here silently collapses this
+        -- provider-agnostic feed to TechSpeed-sourced candidacies only.
+        left join
+            {{ ref("int__civics_candidacy_techspeed") }} as ts_int
+            on cy.gp_candidacy_id = ts_int.gp_candidacy_id
         where
             -- missing at least one of email/phone (legacy: phone='' OR email='')
             not (
@@ -60,9 +85,6 @@ with
                 cy.general_election_date > current_date() + interval 3 day
                 or cy.primary_election_date > current_date() + interval 3 day
             )
-            -- 16-day rolling window
-            and greatest(cy.created_at, cy.updated_at)
-            >= current_date() - interval 16 day
             -- belt-and-suspenders not-already-in-HubSpot
             and cy.hubspot_contact_id is null
             and not exists (
@@ -93,6 +115,15 @@ with
             -- has already touched -- the most current source signal that they hold
             -- the data.
             and not array_contains(cy.source_systems, 'techspeed')
+    ),
+
+    -- Recency filter lives here rather than in civics_base's WHERE so the window
+    -- basis is defined exactly once: the same expression is filtered on and
+    -- emitted, and the two cannot drift apart.
+    in_window as (
+        select *
+        from civics_base
+        where feed_activity_at >= current_date() - interval 16 day
     )
 
 select
@@ -180,5 +211,7 @@ select
     end as election_stage,
     b.gp_candidacy_id,
     b.gp_candidate_id,
-    greatest(b.created_at, b.updated_at) as last_activity_at
-from civics_base as b
+    -- Name kept: ops sorts and filters on it. Only the basis improves -- it is now
+    -- the provider event time rather than the pipeline extract stamp.
+    b.feed_activity_at as last_activity_at
+from in_window as b
