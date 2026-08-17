@@ -1,3 +1,10 @@
+-- Deliberate override (materialized as a table, not the directory default):
+-- several consumers read this per build -- the race mart's key CTE, this
+-- model's own tests, and downstream singular tests -- so a pinned snapshot
+-- keeps build-time and test-time reads coherent; as a view, every consumer
+-- would re-execute this derivation against live vendor data.
+{{ config(materialized="table") }}
+
 -- Live-recomputed Primary date per (state, year), informed by BallotReady's
 -- scheduled-election data and treated as authoritative for Primary in the
 -- race build: this always reflects BallotReady's CURRENT data, so an edit
@@ -51,10 +58,10 @@
 -- Election" row and never hit this branch.
 {% set wisconsin_states = "('WI')" %}
 
--- next_day(d, 'MON') returns the first Monday strictly after d, so
--- subtracting a day from Nov 1 first means a Nov-1-is-a-Monday year still
--- resolves to Nov 1 itself, not Nov 8.
-{% set computed_general_date_expr = "date_add(next_day(make_date(year(election_day), 11, 1) - interval 1 day, 'MON'), 1)" %}
+-- November-day derivation: see the november_general_election_day macro.
+{% set computed_general_date_expr = november_general_election_day(
+    "year(election_day)"
+) %}
 
 with
     candidates_no_presidential as (
@@ -75,6 +82,11 @@ with
             and race_count > 0
             and year(election_day) % 2 = 0
             and election_day != {{ computed_general_date_expr }}
+            -- A NULL-state vendor artifact (e.g. a national/party-level row)
+            -- would survive to both picked CTEs and duplicate through the
+            -- full outer join's non-null-safe key, failing the calendar's
+            -- own grain tests loudly over ignorable noise.
+            and state is not null
     ),
 
     candidates_with_presidential as (
@@ -94,6 +106,7 @@ with
             and race_count > 0
             and year(election_day) % 2 = 0
             and election_day != {{ computed_general_date_expr }}
+            and state is not null
     ),
 
     ranked_no_presidential as (

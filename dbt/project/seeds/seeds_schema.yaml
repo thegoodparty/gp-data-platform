@@ -228,6 +228,66 @@ seeds:
                 from {{ ref('m_election_api__race') }}
               )
 
+  - name: election_api_race_filing_date_overrides
+    description: >
+      Manual overrides for the candidate filing window shown on election-api race
+      pages. BallotReady stores a filing period per race and can populate a whole
+      state from a rolled-forward template that was never a real window, so a
+      single bad value reaches thousands of races at once. Keyed at the grain the
+      filing window is actually set at (a class of offices in a state for one
+      election date) rather than per race, so one row corrects every affected
+      race and any BallotReady adds later. Takes precedence over the BallotReady
+      value in the election-api race mart.
+    config:
+      column_types:
+        election_date: date
+        filing_date_start: date
+        filing_date_end: date
+    columns:
+      - name: state
+        description: Two-letter state of the races to override
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: election_date
+        description: Election date of the races to override
+        data_tests:
+          - not_null
+      - name: position_level
+        description: BallotReady position level the statutory window applies to
+        data_tests:
+          - not_null
+      - name: partisan_type
+        description: >
+          BallotReady partisan type. Part of the key because partisan and
+          nonpartisan candidates for the same office often file in different
+          windows.
+        data_tests:
+          - not_null
+      - name: filing_date_start
+        description: Corrected first day of the filing window
+        data_tests:
+          - not_null
+      - name: filing_date_end
+        description: Corrected last day of the filing window
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with a citation
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date
+              - position_level
+              - partisan_type
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: filing_date_end >= filing_date_start
+
   - name: br_position_place_overrides
     description: >
       Points a BallotReady position geography at the Place it should resolve to,
