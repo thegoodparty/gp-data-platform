@@ -147,7 +147,16 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false) }})
             )
-        where district_value is not null
+        -- Drop unadopted proposed values here rather than letting the join to
+        -- target_districts reject them, so the 66 per-issue averages below are
+        -- never computed for rows that cannot survive it.
+        where
+            district_value is not null
+            and {{
+                retain_district_row(
+                    "district_column_name", "state_postal_code", "district_value"
+                )
+            }}
         union all
         select
             state_postal_code as l2_state,

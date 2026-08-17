@@ -18,3 +18,41 @@
         ) as int
     )
 {%- endmacro %}
+
+
+-- True when a Proposed_District value is the map a state actually runs under.
+-- Self-contained so a consumer needs no companion CTE: the seed is a handful of
+-- rows, so the correlated lookup costs nothing. A null district_number means the
+-- decision covers the whole state; a value narrows it to that one district, so a
+-- state can be rolled out district by district as each is checked against the
+-- enacted map.
+--
+-- Models share this; the assertion guarding the gate deliberately restates the
+-- rule by hand, so a mistake here cannot make the guard agree with it.
+{% macro is_adopted_proposed_congressional(state_expr, name_expr) -%}
+    exists (
+        select 1
+        from {{ ref("district_map_adoption") }} as adoption
+        where
+            adoption.district_type = 'US_Congressional_District'
+            and adoption.adopted_source = 'proposed'
+            and adoption.is_verified
+            and adoption.state = {{ state_expr }}
+            and {{ is_proposed_cong_dist(name_expr) }}
+            and (
+                cast(nullif(trim(adoption.district_number), '') as int) is null
+                or cast(nullif(trim(adoption.district_number), '') as int)
+                = {{ proposed_cong_dist_number(name_expr) }}
+            )
+    )
+{%- endmacro %}
+
+
+-- A Proposed_District row is worth carrying only if it is the adopted map.
+-- Everything else in that column — states seeded current or needs_boundary, MI's
+-- proposed state senate, CO/WA annexation areas — is unbindable, so aggregating
+-- it at voter grain is work whose result nothing can ever read.
+{% macro retain_district_row(type_expr, state_expr, name_expr) -%}
+    {{ type_expr }} != 'Proposed_District'
+    or {{ is_adopted_proposed_congressional(state_expr, name_expr) }}
+{%- endmacro %}

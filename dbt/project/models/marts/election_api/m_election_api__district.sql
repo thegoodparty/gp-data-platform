@@ -25,23 +25,6 @@ with
             where loaded_at >= (select max(updated_at) from {{ this }})
         {% endif %}
     ),
-    -- States whose L2 proposed congressional map is the one legally in force
-    -- for the upcoming election, and has been checked. A proposed value is not
-    -- evidence of adoption (see the district_map_adoption seed), so this is the
-    -- only route by which a proposed district becomes bindable.
-    -- district_number is a sparse key: null means the decision covers every
-    -- district in the state, a value narrows it to that one. Adoption is a
-    -- state-wide legal fact, so state-level rows are the norm; per-district
-    -- rows exist to roll out districts as each is verified against the
-    -- enacted map, without holding the whole state back.
-    adopted_proposed_congressional as (
-        select state, cast(nullif(trim(district_number), '') as int) as district_number
-        from {{ ref("district_map_adoption") }}
-        where
-            district_type = 'US_Congressional_District'
-            and adopted_source = 'proposed'
-            and is_verified
-    ),
     l2_data_districts_raw as (
         select distinct
             state_postal_code as state,
@@ -62,19 +45,11 @@ with
         select raw.state, raw.l2_district_type, raw.l2_district_name
         from l2_data_districts_raw as raw
         where
-            raw.l2_district_type != 'Proposed_District'
-            or exists (
-                select 1
-                from adopted_proposed_congressional as adoption
-                where
-                    adoption.state = raw.state
-                    and {{ is_proposed_cong_dist("raw.l2_district_name") }}
-                    and (
-                        adoption.district_number is null
-                        or adoption.district_number
-                        = {{ proposed_cong_dist_number("raw.l2_district_name") }}
-                    )
-            )
+            {{
+                retain_district_row(
+                    "raw.l2_district_type", "raw.state", "raw.l2_district_name"
+                )
+            }}
     ),
     -- State-level districts for statewide positions (Governor, US Senate, etc.)
     state_districts as (

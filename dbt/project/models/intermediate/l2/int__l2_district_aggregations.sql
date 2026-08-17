@@ -46,7 +46,15 @@ with
                     district_value for district_column_name
                     in ({{ get_l2_district_columns(use_backticks=false) }})
                 )
-            where district_value is not null
+            where
+                district_value is not null
+                and {{
+                    retain_district_row(
+                        "district_column_name",
+                        "state_postal_code",
+                        "district_value",
+                    )
+                }}
         {% else %}
             -- For full refresh, this CTE is not used
             select
@@ -78,7 +86,16 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false) }})
             )
-        where district_value is not null
+        -- Unadopted proposed values are dropped before the voter-grain
+        -- count(distinct ...) below, not after: nothing downstream can bind
+        -- them, so aggregating them is work whose result is always discarded.
+        where
+            district_value is not null
+            and {{
+                retain_district_row(
+                    "district_column_name", "state_postal_code", "district_value"
+                )
+            }}
     ),
     filtered_districts as (
         select
