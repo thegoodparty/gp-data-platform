@@ -87,15 +87,25 @@ with
             ) as is_special,
             -- Vendor event time, kept separate from created_at/updated_at (which
             -- are extract stamps, so a re-delivery of an unchanged record reads
-            -- as fresh). Clamped to this row's own extract time because the
-            -- vendor ships some future-dated updates: clamping to when we first
-            -- saw the version is stable, whereas clamping to "now" would leave
-            -- such rows perpetually fresh.
-            least(
-                coalesce(
-                    try_cast(candidacies.candidacy_updated_at as timestamp),
-                    candidacies._airbyte_extracted_at
-                ),
+            -- as fresh). Preference order matters: an implausible future update
+            -- time falls back to the vendor's own creation time, NOT to our
+            -- extract stamp. The extract stamp moves forward on every weekly
+            -- full-file re-delivery, so anchoring to it would drag such a row
+            -- along with it and keep it perpetually fresh -- the exact failure
+            -- this guards against. Both vendor timestamps are stable across
+            -- re-deliveries; the extract stamp is only the last resort, for rows
+            -- carrying no usable vendor time at all.
+            coalesce(
+                case
+                    when
+                        try_cast(candidacies.candidacy_updated_at as timestamp)
+                        <= candidacies._airbyte_extracted_at
+                    then try_cast(candidacies.candidacy_updated_at as timestamp)
+                    when
+                        candidacies.candidacy_created_at
+                        <= candidacies._airbyte_extracted_at
+                    then candidacies.candidacy_created_at
+                end,
                 candidacies._airbyte_extracted_at
             ) as vendor_activity_at
         from candidacies

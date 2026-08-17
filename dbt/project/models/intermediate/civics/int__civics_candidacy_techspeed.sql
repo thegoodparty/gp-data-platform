@@ -222,9 +222,11 @@ with
 
             -- Vendor event time, kept separate from created_at/updated_at (which
             -- are extract stamps, so a re-delivery of an unchanged record reads
-            -- as fresh). Clamped to this row's own extract time so a
-            -- future-dated form value settles at when we first saw it rather
-            -- than staying perpetually fresh.
+            -- as fresh). Unlike the BallotReady leg this source carries no stable
+            -- vendor creation timestamp, so an implausible future form date can
+            -- only be clamped to our own extract stamp. That anchor moves with
+            -- each delivery, but it still beats passing a future value through:
+            -- a future timestamp sits inside every rolling window permanently.
             least(
                 coalesce(cast(date_processed_date as timestamp), _airbyte_extracted_at),
                 _airbyte_extracted_at

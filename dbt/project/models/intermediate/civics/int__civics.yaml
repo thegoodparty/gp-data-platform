@@ -526,13 +526,16 @@ models:
       - name: vendor_activity_at
         description: >
           Latest TechSpeed event time for the candidacy: the max of the form row's
-          date_processed across its stages, clamped to that row's extract time so a
-          future-dated form value settles at when we first saw it rather than
-          reading as perpetually fresh. Additive and destination-facing --
+          date_processed across its stages, clamped by that row's extract stamp.
+          Unlike the BallotReady leg this source carries no stable vendor creation
+          timestamp, so an implausible future form date can only be clamped to the
+          extract stamp, which does move with each delivery; that still beats
+          passing a future value through, since a future timestamp sits inside
+          every rolling window permanently. Additive and destination-facing --
           created_at/updated_at stay extract stamps for the provider precedence
           chain, so consumers that need real candidate activity (the sales export
-          windows) read this instead. Non-null: the clamp falls back to extract
-          time, which every row has.
+          windows) read this instead. Non-null: rows with no parseable form date
+          fall back to extract time, which every row has.
         data_tests:
           - not_null
 
@@ -1376,15 +1379,17 @@ models:
 
       - name: vendor_activity_at
         description: >
-          Latest BallotReady event time for the candidacy: the max of the vendor's
-          own candidacy_updated_at across its stages, clamped to that stage row's
-          extract time so the vendor's known future-dated values settle at when we
-          first saw them rather than reading as perpetually fresh. Additive and
-          destination-facing -- created_at/updated_at stay extract stamps for the
-          provider precedence chain, so consumers that need real candidate activity
-          (the sales export windows) read this instead. A re-delivery of an
-          unchanged record does not move it. Non-null: the clamp falls back to
-          extract time, which every row has.
+          Latest BallotReady event time for the candidacy: the max across its stages
+          of the vendor's own candidacy_updated_at, or -- where that is implausibly
+          later than the extract that carried it -- the vendor's candidacy_created_at.
+          Both are stable across re-deliveries, which matters: anchoring an
+          implausible value to the extract stamp instead would drag it forward on
+          every weekly full-file re-delivery and keep the row perpetually fresh.
+          Additive and destination-facing -- created_at/updated_at stay extract
+          stamps for the provider precedence chain, so consumers that need real
+          candidate activity (the sales export windows) read this instead. A
+          re-delivery of an unchanged record does not move it. Non-null: rows with no
+          usable vendor time at all fall back to extract time, which every row has.
         data_tests:
           - not_null
 
