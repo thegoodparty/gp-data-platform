@@ -1,34 +1,42 @@
--- A vendor record that was merely re-delivered unchanged must not read as recent
--- activity. BallotReady began re-sending its entire candidate file weekly, and
--- because the vendor intermediates stamp created_at/updated_at from the pipeline's
--- extract time, each re-delivery re-marked the whole vendor universe as active
--- today and flooded this feed with thousands of long-dormant candidacies. The
--- window now runs on the vendor's own event time, so no row may be in the feed
--- whose only claim to being in-window is the extract stamp.
+-- Wherever a vendor supplies an event time, the feed's emitted recency MUST be that
+-- event time -- never the pipeline's extract stamp. That is the incident this fix
+-- exists to prevent: the vendor began re-sending its whole candidate file weekly, and
+-- because the intermediates stamp created_at/updated_at from extract time, each
+-- re-delivery re-marked the entire vendor universe as active today and flooded this
+-- feed with long-dormant candidacies.
 --
--- This is not a restatement of the model's WHERE clause: it asserts against the
--- intermediates' vendor_activity_at, so it also fires if a vendor join is dropped,
--- if the clamp starts overwriting vendor time with extract time, or if the window
--- basis is reverted while the emitted column is left alone. The intermediates'
--- not_null tests on vendor_activity_at keep it from passing vacuously.
+-- Stated as an identity rather than a staleness cutoff, which buys three things:
+-- it covers every row with a vendor leg instead of only the BallotReady-only ones;
+-- it fires if the window basis is reverted to the canonical timestamps, or if either
+-- vendor join is dropped, because both make the emitted value fall back to extract
+-- time; and it has no date arithmetic, so it cannot false-fail when tests run a day
+-- or more after the table was built.
 --
--- gp_api rows are excluded because their leg of the recency expression is a real
--- product timestamp, so one can legitimately be in-window with a stale vendor leg.
--- DDHQ-only rows have no vendor leg at all and keep status-quo behavior; the inner
--- join below already leaves them out.
+-- greatest() skips nulls on Spark, so rows with no vendor leg at all (DDHQ-only, and
+-- the null-vendor tail) drop out on the is-not-null guard. Those keep status-quo
+-- behavior by design and are not asserted here.
 --
--- 31 rather than 30 days: model and test can straddle a midnight rollover, which
--- moves current_date() forward a day between them. The cohort this guards is
--- months stale, so a day of slack costs nothing.
-select f.gp_candidacy_id, f.last_activity_at, br.vendor_activity_at
+-- gp_api rows are excluded because their leg IS the canonical product timestamps, so
+-- for them the emitted value legitimately differs from the vendor legs. The source is
+-- read from candidacy_scored, the same relation the model gates on, rather than from
+-- the feed's Title-Case import-contract column, which ops owns and may relabel.
+--
+-- Residual, named so nobody assumes otherwise: this cannot detect the clamp itself
+-- regressing to extract time, because the emitted value and vendor_activity_at would
+-- move together. The warn-severity check on the intermediate covers that.
+select
+    f.gp_candidacy_id,
+    f.last_activity_at,
+    greatest(br.vendor_activity_at, ts.vendor_activity_at) as vendor_basis
 from {{ ref("candidacy_hubspot") }} as f
-inner join
+inner join {{ ref("candidacy_scored") }} as cy on f.gp_candidacy_id = cy.gp_candidacy_id
+left join
     {{ ref("int__civics_candidacy_ballotready") }} as br
     on f.gp_candidacy_id = br.gp_candidacy_id
 left join
     {{ ref("int__civics_candidacy_techspeed") }} as ts
     on f.gp_candidacy_id = ts.gp_candidacy_id
 where
-    f.`Candidate ID Source` != 'gp_api'
-    and br.vendor_activity_at < current_date() - interval 31 day
-    and ts.vendor_activity_at is null
+    coalesce(cy.candidate_id_source, '') != 'gp_api'
+    and greatest(br.vendor_activity_at, ts.vendor_activity_at) is not null
+    and f.last_activity_at != greatest(br.vendor_activity_at, ts.vendor_activity_at)

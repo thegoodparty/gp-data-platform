@@ -1,34 +1,27 @@
--- The sibling of assert_candidacy_hubspot_vendor_recency_basis, for the other feed.
--- A vendor record that was merely re-delivered unchanged must not read as recent
--- activity here either. This feed has its own window predicate and its own vendor
--- joins, so the sibling test does not cover it: a reverted window basis or a dropped
--- vendor join on this model alone would otherwise go unnoticed.
+-- The sibling of assert_candidacy_hubspot_vendor_recency_basis, for the other feed:
+-- wherever a vendor supplies an event time, this feed's emitted recency MUST be that
+-- event time and never the pipeline's extract stamp. This model has its own window
+-- predicate and its own vendor join, so the sibling test does not cover it.
 --
--- Asserted against the intermediates' vendor_activity_at rather than the model's own
--- filter, so it also fires if the clamp starts overwriting vendor time with extract
--- time. The intermediates' not_null tests on that column keep it from passing
--- vacuously.
+-- Only the BallotReady leg is asserted because it is the only vendor leg this feed
+-- has: the ALREADY-SENT filter keeps candidacies with no 'techspeed' in
+-- source_systems, and the candidacy mart sets that flag exactly when a row exists in
+-- the TechSpeed intermediate, so a TechSpeed leg here can never be populated. When
+-- that filter becomes the sent_log anti-join, add the leg to both the model and here.
 --
--- gp_api rows are excluded because their leg of the recency expression is a real
--- product timestamp, so one can legitimately be in-window with a stale vendor leg.
--- This feed does not emit the source (its column contract is fixed), so the source
--- comes from the candidacy mart.
+-- Stated as an identity rather than a staleness cutoff, so it covers every row with a
+-- vendor leg, fires if the window basis is reverted or the vendor join dropped, and
+-- carries no date arithmetic that could false-fail when tests run after the build day.
 --
--- 17 rather than 16 days: model and test can straddle a midnight rollover, which
--- moves current_date() forward a day between them. The cohort this guards is months
--- stale, so a day of slack costs nothing.
+-- gp_api rows are excluded because their leg IS the canonical product timestamps. The
+-- source is read from the candidacy mart, the relation this model gates on; this
+-- feed's own output cannot carry it, because its 42-column shape is a fixed contract.
 select f.gp_candidacy_id, f.last_activity_at, br.vendor_activity_at
 from {{ ref("candidacy_techspeed") }} as f
+inner join {{ ref("candidacy") }} as cy on f.gp_candidacy_id = cy.gp_candidacy_id
 inner join
     {{ ref("int__civics_candidacy_ballotready") }} as br
     on f.gp_candidacy_id = br.gp_candidacy_id
-inner join {{ ref("candidacy") }} as cy on f.gp_candidacy_id = cy.gp_candidacy_id
-left join
-    {{ ref("int__civics_candidacy_techspeed") }} as ts
-    on f.gp_candidacy_id = ts.gp_candidacy_id
 where
-    -- coalesce, not a bare !=: candidate_id_source is nullable on the mart, and a
-    -- bare comparison would silently drop null-source rows from the guard.
     coalesce(cy.candidate_id_source, '') != 'gp_api'
-    and br.vendor_activity_at < current_date() - interval 17 day
-    and ts.vendor_activity_at is null
+    and f.last_activity_at != br.vendor_activity_at

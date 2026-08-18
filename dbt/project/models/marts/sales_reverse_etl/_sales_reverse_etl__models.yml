@@ -48,12 +48,16 @@ models:
       - name: last_activity_at
         description: >
           Basis of the 16-day rolling window, and the recency value ops sorts on. The
-          greatest available provider EVENT time: the vendor intermediates'
-          vendor_activity_at, or the product timestamps for gp_api rows, falling back to
-          the canonical candidacy timestamps only where no provider supplies one.
-          Deliberately NOT the canonical created_at/updated_at, which for vendor-sourced
-          rows are pipeline extract stamps -- a vendor re-delivering its whole file would
-          otherwise re-stamp its entire universe as active today and flood this feed.
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: the BallotReady intermediate's
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
+          This feed has no TechSpeed leg by construction; see the model header.
         data_tests:
           - not_null
 
@@ -119,11 +123,14 @@ models:
       - name: last_activity_at
         description: >
           Basis of the 30-day rolling window, and the recency value ops sorts on. The
-          greatest available provider EVENT time: the vendor intermediates'
-          vendor_activity_at, or the product timestamps for gp_api rows, falling back to
-          the canonical candidacy timestamps only where no provider supplies one.
-          Deliberately NOT the canonical created_at/updated_at, which for vendor-sourced
-          rows are pipeline extract stamps -- a vendor re-delivering its whole file would
-          otherwise re-stamp its entire universe as active today and flood this feed.
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: both vendor intermediates'
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
         data_tests:
           - not_null

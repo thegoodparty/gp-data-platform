@@ -8,8 +8,8 @@
 -- vendor re-delivering its whole file re-stamps its entire universe as active today
 -- and floods this feed with old candidacies. The vendor intermediates' additive
 -- vendor_activity_at columns carry the event time instead; gp_api rows already carry
--- real product timestamps, and DDHQ supplies no event time (the coalesce below keeps
--- those rows on status-quo behavior).
+-- real product timestamps. The DDHQ intermediate exposes no event-time column, so
+-- DDHQ-only rows fall through the coalesce below and keep status-quo behavior.
 with
     icp_ts_offices as (
         select
@@ -211,7 +211,13 @@ with
     in_window as (
         select *
         from civics_base
-        where feed_activity_at >= current_date() - interval 30 day
+        where
+            feed_activity_at >= current_date() - interval 30 day
+            -- Bounded above as well: gp_api product timestamps and the canonical
+            -- fallback are not clamped the way the vendor legs are, and a single
+            -- future-dated value would otherwise satisfy the lower bound forever,
+            -- putting one row on every export indefinitely.
+            and feed_activity_at <= current_date() + interval 1 day
     ),
 
     -- Not-already-in-HubSpot, as three hash anti-joins instead of one correlated

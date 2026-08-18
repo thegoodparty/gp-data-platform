@@ -13,8 +13,12 @@
 -- below). feed_activity_at is the latest real provider EVENT time: for vendor-sourced
 -- rows created_at/updated_at are pipeline extract stamps, so a vendor re-delivering
 -- its whole file re-stamps its entire universe as active today and floods this feed.
--- The vendor intermediates' additive vendor_activity_at columns carry the event time
--- instead; gp_api rows already carry real product timestamps.
+-- The BallotReady intermediate's additive vendor_activity_at column carries the event
+-- time instead; gp_api rows already carry real product timestamps. There is no
+-- TechSpeed leg -- the ALREADY-SENT filter below excludes exactly the candidacies one
+-- could match -- so this feed's recency is BallotReady's event time or the canonical
+-- fallback. The window is bounded above as well, since the non-vendor legs are not
+-- clamped and one future-dated value would otherwise never leave the window.
 with
     civics_base as (
         select
@@ -41,13 +45,17 @@ with
             br_int.br_position_database_id,
             -- Destination-facing recency: greatest available provider EVENT time,
             -- falling back to the extract-stamped canonical timestamps only where
-            -- no provider supplies one (DDHQ-only rows). Both greatest() calls
-            -- skip nulls, so the fallback fires only when every leg is null,
-            -- which keeps this non-null.
+            -- no provider supplies one. greatest() skips nulls, so the fallback
+            -- fires only when every leg is null, which keeps this non-null.
+            --
+            -- No TechSpeed leg here, deliberately: the ALREADY-SENT filter below
+            -- keeps only candidacies with no 'techspeed' in source_systems, and
+            -- the candidacy mart sets that flag exactly when a row exists in the
+            -- TechSpeed intermediate -- so a join to it can never match. Add the
+            -- leg back when that filter becomes the sent_log anti-join.
             coalesce(
                 greatest(
                     br_int.vendor_activity_at,
-                    ts_int.vendor_activity_at,
                     case
                         when cy.candidate_id_source = 'gp_api'
                         then greatest(cy.created_at, cy.updated_at)
@@ -61,11 +69,6 @@ with
         left join
             {{ ref("int__civics_candidacy_ballotready") }} as br_int
             on cy.gp_candidacy_id = br_int.gp_candidacy_id
-        -- LEFT JOIN, never INNER: an INNER join here silently collapses this
-        -- provider-agnostic feed to TechSpeed-sourced candidacies only.
-        left join
-            {{ ref("int__civics_candidacy_techspeed") }} as ts_int
-            on cy.gp_candidacy_id = ts_int.gp_candidacy_id
         where
             -- missing at least one of email/phone (legacy: phone='' OR email='')
             not (
@@ -123,7 +126,13 @@ with
     in_window as (
         select *
         from civics_base
-        where feed_activity_at >= current_date() - interval 16 day
+        where
+            feed_activity_at >= current_date() - interval 16 day
+            -- Bounded above as well: gp_api product timestamps and the canonical
+            -- fallback are not clamped the way the vendor legs are, and a single
+            -- future-dated value would otherwise satisfy the lower bound forever,
+            -- putting one row on every export indefinitely.
+            and feed_activity_at <= current_date() + interval 1 day
     )
 
 select

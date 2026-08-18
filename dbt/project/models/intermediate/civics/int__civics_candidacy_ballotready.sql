@@ -87,27 +87,27 @@ with
             ) as is_special,
             -- Vendor event time, kept separate from created_at/updated_at (which
             -- are extract stamps, so a re-delivery of an unchanged record reads
-            -- as fresh). Preference order matters: an implausible future update
-            -- time falls back to the vendor's own creation time, NOT to our
-            -- extract stamp. The extract stamp moves forward on every weekly
-            -- full-file re-delivery, so anchoring to it would drag such a row
-            -- along with it and keep it perpetually fresh -- the exact failure
-            -- this guards against. Both vendor timestamps are stable across
-            -- re-deliveries; the extract stamp is only the last resort, for rows
-            -- carrying no usable vendor time at all.
-            coalesce(
-                case
-                    when
-                        try_cast(candidacies.candidacy_updated_at as timestamp)
-                        <= candidacies._airbyte_extracted_at
-                    then try_cast(candidacies.candidacy_updated_at as timestamp)
-                    when
-                        candidacies.candidacy_created_at
-                        <= candidacies._airbyte_extracted_at
-                    then candidacies.candidacy_created_at
-                end,
-                candidacies._airbyte_extracted_at
-            ) as vendor_activity_at
+            -- as fresh). An implausible future update time falls back to the
+            -- vendor's own creation time rather than to our extract stamp, which
+            -- advances on every full-file re-delivery and would drag the row
+            -- along with it. NULL where neither vendor timestamp is usable: the
+            -- rollup below substitutes extract time only for candidacies with no
+            -- usable vendor time on ANY stage, so one unusable stage cannot lift
+            -- a whole candidacy to ingestion time.
+            -- NB the comparison bound is the LATEST extract of this row, not the
+            -- delivery that first carried it -- Airbyte id-dedup keeps one row
+            -- per id -- so which branch a row takes can change across
+            -- re-deliveries. The values themselves are vendor-owned and stable.
+            case
+                when
+                    try_cast(candidacies.candidacy_updated_at as timestamp)
+                    <= candidacies._airbyte_extracted_at
+                then try_cast(candidacies.candidacy_updated_at as timestamp)
+                when
+                    candidacies.candidacy_created_at
+                    <= candidacies._airbyte_extracted_at
+                then candidacies.candidacy_created_at
+            end as vendor_activity_at
         from candidacies
         left join
             candidacy_mint as cm
@@ -193,12 +193,13 @@ with
                 max(case when is_primary then election_result end)
             ) as raw_election_result,
 
-            max(candidacy_updated_at) as candidacy_updated_at,
-
-            -- Latest vendor event across the candidacy's stages. max(), not
-            -- any_value(): the value has to be deterministic because a
-            -- destination-facing recency window filters on it.
-            max(vendor_activity_at) as vendor_activity_at,
+            -- Latest usable vendor event across the candidacy's stages. max(),
+            -- not any_value(): the value has to be deterministic because a
+            -- destination-facing recency window filters on it. Extract time is
+            -- substituted only when NO stage carried a usable vendor timestamp.
+            coalesce(
+                max(vendor_activity_at), max(_airbyte_extracted_at)
+            ) as vendor_activity_at,
 
             -- BallotReady native IDs (one per stage; take any for candidacy grain)
             any_value(br_candidacy_id) as br_candidacy_id,

@@ -222,15 +222,18 @@ with
 
             -- Vendor event time, kept separate from created_at/updated_at (which
             -- are extract stamps, so a re-delivery of an unchanged record reads
-            -- as fresh). Unlike the BallotReady leg this source carries no stable
-            -- vendor creation timestamp, so an implausible future form date can
-            -- only be clamped to our own extract stamp. That anchor moves with
-            -- each delivery, but it still beats passing a future value through:
-            -- a future timestamp sits inside every rolling window permanently.
-            least(
-                coalesce(cast(date_processed_date as timestamp), _airbyte_extracted_at),
-                _airbyte_extracted_at
-            ) as vendor_activity_at
+            -- as fresh). NULL where the form date did not parse, so the rollup
+            -- below can tell "no vendor signal" apart from a real date and one
+            -- unparseable stage cannot lift a whole candidacy to ingestion time.
+            -- Unlike the BallotReady leg this source carries no stable vendor
+            -- creation timestamp, so an implausible future form date can only be
+            -- clamped to our own extract stamp; that still beats passing a future
+            -- value through, which would sit inside every window permanently.
+            case
+                when date_processed_date is not null
+                then
+                    least(cast(date_processed_date as timestamp), _airbyte_extracted_at)
+            end as vendor_activity_at
 
         from source
         left join
@@ -253,11 +256,17 @@ with
     deduplicated as (
         select
             * except (vendor_activity_at),
-            -- Latest vendor event across the candidacy's stages, so the picker
-            -- below (which keeps the latest-EXTRACTED stage row) cannot discard
-            -- a sibling stage that carries a later processing date.
-            max(vendor_activity_at) over (
-                partition by gp_candidacy_id
+            -- Latest REAL vendor event across the candidacy's stages, so the
+            -- picker below (which keeps the latest-EXTRACTED stage row) cannot
+            -- discard a sibling stage carrying a later processing date. A stage
+            -- whose form date did not parse contributes nothing rather than
+            -- contributing its delivery stamp, which would otherwise lift the
+            -- candidacy to ingestion time and re-create the staleness this
+            -- column exists to remove. Extract time substitutes only where NO
+            -- stage parsed.
+            coalesce(
+                max(vendor_activity_at) over (partition by gp_candidacy_id),
+                max(updated_at) over (partition by gp_candidacy_id)
             ) as vendor_activity_at
         from candidacies
         qualify

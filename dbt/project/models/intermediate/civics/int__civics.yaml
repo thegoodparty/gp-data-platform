@@ -525,17 +525,21 @@ models:
 
       - name: vendor_activity_at
         description: >
-          Latest TechSpeed event time for the candidacy: the max of the form row's
-          date_processed across its stages, clamped by that row's extract stamp.
-          Unlike the BallotReady leg this source carries no stable vendor creation
-          timestamp, so an implausible future form date can only be clamped to the
-          extract stamp, which does move with each delivery; that still beats
-          passing a future value through, since a future timestamp sits inside
-          every rolling window permanently. Additive and destination-facing --
-          created_at/updated_at stay extract stamps for the provider precedence
-          chain, so consumers that need real candidate activity (the sales export
-          windows) read this instead. Non-null: rows with no parseable form date
-          fall back to extract time, which every row has.
+          Latest TechSpeed event time for the candidacy: the max across its stages of
+          the form's date_processed, clamped by that stage row's extract stamp. Stages
+          whose form date did not parse contribute nothing, so one unparseable stage
+          cannot lift a whole candidacy to ingestion time; extract time substitutes
+          only where NO stage parsed, which is why this stays non-null. Unlike the
+          BallotReady leg this source carries no stable vendor creation timestamp, so
+          an implausible future form date can only be clamped to the extract stamp,
+          which does move with each delivery; that still beats passing a future value
+          through, since a future timestamp sits inside every rolling window
+          permanently. A meaningful share of form dates do not parse today because the
+          staging rule accepts slash-separated US dates but not hyphen-separated ones
+          (a known follow-up); those candidacies fall back to extract time. Additive
+          and destination-facing -- created_at/updated_at stay extract stamps for the
+          provider precedence chain, so consumers that need real candidate activity
+          (the sales export windows) read this instead.
         data_tests:
           - not_null
 
@@ -1381,17 +1385,37 @@ models:
         description: >
           Latest BallotReady event time for the candidacy: the max across its stages
           of the vendor's own candidacy_updated_at, or -- where that is implausibly
-          later than the extract that carried it -- the vendor's candidacy_created_at.
-          Both are stable across re-deliveries, which matters: anchoring an
-          implausible value to the extract stamp instead would drag it forward on
-          every weekly full-file re-delivery and keep the row perpetually fresh.
+          later than the row's extract stamp -- the vendor's candidacy_created_at.
+          Both values are vendor-owned, so neither is re-written by a re-delivery of
+          an unchanged record; anchoring an implausible value to the extract stamp
+          instead would drag it forward on every weekly full-file re-delivery and
+          keep the row perpetually fresh. Caveat: the COMPARISON bound is the row's
+          latest extract stamp rather than the delivery that first carried it
+          (Airbyte id-dedup keeps one row per id), so which of the two branches a
+          row takes can change across re-deliveries even though the values cannot.
           Additive and destination-facing -- created_at/updated_at stay extract
           stamps for the provider precedence chain, so consumers that need real
-          candidate activity (the sales export windows) read this instead. A
-          re-delivery of an unchanged record does not move it. Non-null: rows with no
-          usable vendor time at all fall back to extract time, which every row has.
+          candidate activity (the sales export windows) read this instead. Non-null:
+          extract time substitutes only for candidacies where NO stage carried a
+          usable vendor timestamp.
         data_tests:
           - not_null
+
+    data_tests:
+      # The one check that can see the clamp itself regressing. Every other guard
+      # compares vendor_activity_at against something derived from it, so if the
+      # expression started returning extract time they would all still pass. Here,
+      # equality with updated_at (which IS the extract stamp) means the vendor time
+      # was lost. Every row supplies a usable vendor timestamp today, so this is
+      # currently zero. Warn, not error: a non-zero result means the vendor stopped
+      # populating its own timestamps, which is worth surfacing but is not our bug
+      # and should not block a build.
+      - dbt_utils.expression_is_true:
+          name: br_candidacy_vendor_activity_at_is_not_the_extract_stamp
+          arguments:
+            expression: "vendor_activity_at != updated_at"
+          config:
+            severity: warn
 
   - name: int__civics_elected_official_ballotready
     description: >
