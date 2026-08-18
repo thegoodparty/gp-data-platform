@@ -1425,6 +1425,10 @@ models:
 
       - name: seats_available
         description: Number of seats available in the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: term_start_date
         description: Start date of the term

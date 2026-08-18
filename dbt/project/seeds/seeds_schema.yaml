@@ -725,6 +725,13 @@ seeds:
                 field: database_id
               config:
                 severity: warn
+      - name: election_date
+        description: >
+          General election date of the nulled contest. Load-bearing beyond
+          documentation: the viability seats fallback's position + date
+          rejection key reads it.
+        data_tests:
+          - not_null
       - name: reason
         description: Why the tag is nulled.
         data_tests:
