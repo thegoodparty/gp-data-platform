@@ -205,9 +205,15 @@ with
     ),
 
     -- Recency filter lives here rather than in civics_base's WHERE so the window
-    -- basis is defined exactly once: the same expression is filtered on and
-    -- emitted, and the two cannot drift apart. The candidacy-only predicates stay
-    -- above, where they still push down to the scan.
+    -- basis is defined exactly once: the same expression is filtered on and emitted,
+    -- and the two cannot drift apart.
+    --
+    -- This costs real work. The old basis referenced only the candidacy relation, so
+    -- it pushed into that scan and pruned before any join; the new one spans the two
+    -- vendor intermediates and cannot push below them wherever it is written, so the
+    -- join tree now processes roughly 2.5-3x more rows. The remaining candidacy-only
+    -- predicates above still push down. Judged worth it: a duplicated expression can
+    -- drift between filter and output, which is the defect class being fixed here.
     in_window as (
         select *
         from civics_base

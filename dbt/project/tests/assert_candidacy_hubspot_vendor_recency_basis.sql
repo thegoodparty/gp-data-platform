@@ -12,18 +12,14 @@
 -- time; and it has no date arithmetic, so it cannot false-fail when tests run a day
 -- or more after the table was built.
 --
--- greatest() skips nulls on Spark, so rows with no vendor leg at all (DDHQ-only, and
--- the null-vendor tail) drop out on the is-not-null guard. Those keep status-quo
+-- greatest() skips nulls on Spark, so rows where no provider supplied an event time
+-- yield null and the inequality below filters them out. Those keep status-quo
 -- behavior by design and are not asserted here.
 --
 -- gp_api rows are excluded because their leg IS the canonical product timestamps, so
 -- for them the emitted value legitimately differs from the vendor legs. The source is
 -- read from candidacy_scored, the same relation the model gates on, rather than from
 -- the feed's Title-Case import-contract column, which ops owns and may relabel.
---
--- Residual, named so nobody assumes otherwise: this cannot detect the clamp itself
--- regressing to extract time, because the emitted value and vendor_activity_at would
--- move together. The warn-severity check on the intermediate covers that.
 select
     f.gp_candidacy_id,
     f.last_activity_at,
@@ -38,5 +34,4 @@ left join
     on f.gp_candidacy_id = ts.gp_candidacy_id
 where
     coalesce(cy.candidate_id_source, '') != 'gp_api'
-    and greatest(br.vendor_activity_at, ts.vendor_activity_at) is not null
     and f.last_activity_at != greatest(br.vendor_activity_at, ts.vendor_activity_at)

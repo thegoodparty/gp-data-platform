@@ -57,6 +57,8 @@ models:
           whole file would otherwise re-stamp its entire universe as active today and
           flood this feed. The window is bounded above as well as below, so a
           future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
           This feed has no TechSpeed leg by construction; see the model header.
         data_tests:
           - not_null
@@ -132,5 +134,7 @@ models:
           whole file would otherwise re-stamp its entire universe as active today and
           flood this feed. The window is bounded above as well as below, so a
           future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
         data_tests:
           - not_null
