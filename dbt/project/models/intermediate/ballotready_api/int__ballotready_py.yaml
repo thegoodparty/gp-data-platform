@@ -55,6 +55,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: feed_extracted_at
+        description: "Airbyte ingest time of the candidacy's newest S3 feed row; the incremental cutoff (null when the feed has never delivered the candidacy)"
 
   - name: int__ballotready_endorsement
     description: >
@@ -225,6 +227,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: feed_extracted_at
+        description: "Newest feed_extracted_at across the person's candidacies; the incremental cutoff"
 
   - name: int__ballotready_position_election_frequency
     description: >
