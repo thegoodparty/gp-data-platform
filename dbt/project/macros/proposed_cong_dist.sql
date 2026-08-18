@@ -27,8 +27,12 @@
 -- state can be rolled out district by district as each is checked against the
 -- enacted map.
 --
--- Models share this; the assertion guarding the gate deliberately restates the
--- rule by hand, so a mistake here cannot make the guard agree with it.
+-- Models share this. The assertion guarding the gate restates the *seed lookup*
+-- by hand, so a mistake in which rows count as adopted cannot make the guard
+-- agree with the gate. It does share the two parse macros above, so a mistake in
+-- the parse propagates into the guard — that shape is covered instead by
+-- assert_proposed_cong_dist_format, which reads the vendor column directly and
+-- deliberately does not go through these macros.
 {% macro is_adopted_proposed_congressional(state_expr, name_expr) -%}
     exists (
         select 1
@@ -48,11 +52,43 @@
 {%- endmacro %}
 
 
+-- Post-hook for the district mart. Its merge only adds and updates, so the gate
+-- can admit a district but never take one back: rows minted while a state was
+-- adopted survive a seed edit that would no longer admit them. Retraction is the
+-- case this design exists for — a court ruling striking a map down is exactly
+-- what happened to Virginia — so without this a flip leaves stale bindable
+-- districts behind and reds the gate assertion until someone knows to run a full
+-- refresh, under time pressure. This makes the seed authoritative both ways.
+-- The alias is load-bearing: district_map_adoption has its own `state` column,
+-- so an unqualified `state` inside the correlated subquery binds to the seed
+-- rather than to the target, making the correlation a tautology.
+{% macro retract_unadopted_proposed_districts() -%}
+    delete from {{ this }} as district
+    where
+        district.l2_district_type = 'Proposed_District' and not
+        {{
+            is_adopted_proposed_congressional(
+                "district.state", "district.l2_district_name"
+            )
+        }}
+{%- endmacro %}
+
+
 -- A Proposed_District row is worth carrying only if it is the adopted map.
 -- Everything else in that column — states seeded current or needs_boundary, MI's
 -- proposed state senate, CO/WA annexation areas — is unbindable, so aggregating
 -- it at voter grain is work whose result nothing can ever read.
+--
+-- A case expression rather than `type != '...' or exists (...)`, for two
+-- reasons. It is a single boolean, so a caller can safely append a further
+-- condition — the bare or form binds as `(x and type != ...) or exists (...)`,
+-- quietly dropping every other conjunct for rows the exists matches. And the
+-- subquery is unreachable for non-proposed rows, so it is not evaluated across
+-- the whole unpivoted voter grain the way a disjunction forces.
 {% macro retain_district_row(type_expr, state_expr, name_expr) -%}
-    {{ type_expr }} != 'Proposed_District'
-    or {{ is_adopted_proposed_congressional(state_expr, name_expr) }}
+    case
+        when {{ type_expr }} = 'Proposed_District'
+        then {{ is_adopted_proposed_congressional(state_expr, name_expr) }}
+        else true
+    end
 {%- endmacro %}

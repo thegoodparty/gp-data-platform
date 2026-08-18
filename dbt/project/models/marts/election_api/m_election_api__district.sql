@@ -4,17 +4,24 @@
         unique_key="id",
         on_schema_change="fail",
         auto_liquid_cluster=True,
+        post_hook="{{ retract_unadopted_proposed_districts() }}",
     )
 }}
 
 with
+    -- Gated too, not just the L2 unpivot below. This CTE unions districts in
+    -- from the turnout model, so without the same filter an unadopted proposed
+    -- district reaches the dimension by a route that never passes the gate —
+    -- which is exactly what happened, 204 of them.
     turnout_districts as (
         select distinct
             state, district_type as l2_district_type, district_name as l2_district_name
         from {{ ref("int__model_prediction_voter_turnout") }}
-        {% if is_incremental() %}
-            where inference_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
+        where
+            {{ retain_district_row("district_type", "state", "district_name") }}
+            {% if is_incremental() %}
+                and inference_at >= (select max(updated_at) from {{ this }})
+            {% endif %}
     ),
     l2_data as (
         select

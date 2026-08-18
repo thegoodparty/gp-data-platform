@@ -4,6 +4,13 @@
 -- district the state has not rolled out yet, or a non-congressional proposed
 -- value such as MI's state senate or a WA/CO annexation) means the gate in
 -- m_election_api__district stopped working.
+--
+-- If this fires right after a seed edit that RETRACTED a state — a court ruling
+-- flipping it back to current, the case this design exists for — the gate is
+-- working and the mart is stale. m_election_api__district is incremental merge
+-- on id and never deletes, so rows minted while the state was adopted survive a
+-- seed change that would no longer admit them. Clearing it needs a
+-- --full-refresh of that model; the gate alone cannot retract.
 with
     adopted as (
         select state, cast(nullif(trim(district_number), '') as int) as district_number

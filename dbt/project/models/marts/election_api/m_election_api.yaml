@@ -594,9 +594,12 @@ models:
     description: >
       District-level Haystaq issue scores per L2 district, covering every L2
       district with an `is_matched = true` row in the LLM L2-to-BallotReady
-      district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-      scoped to a single election cycle — districts with off-cycle offices
-      are included as well.
+      district match (`stg_model_predictions__llm_l2_br_match_20260126`),
+      plus any `Proposed_District` adopted per `m_election_api__district`
+      (inherited from that model's `district_map_adoption` gate — the match
+      snapshot predates the proposed-district ingest, so adopted proposed
+      districts would otherwise score nothing). Not scoped to a single
+      election cycle — districts with off-cycle offices are included as well.
 
       Each row carries four jurisdictional flags (is_local, is_regional,
       is_state, is_federal) indicating where the issue is actionable.

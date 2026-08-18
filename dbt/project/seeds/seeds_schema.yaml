@@ -760,6 +760,16 @@ seeds:
     config:
       column_types:
         district_number: string
+    data_tests:
+      # The gate is an exists, so a second contradictory row for the same
+      # scope has no veto: adding a proposed row beside a current one opens
+      # the gate rather than conflicting with it.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - district_type
+              - district_number
     columns:
       - name: state
         description: Two-letter state code the decision applies to.
@@ -803,6 +813,14 @@ seeds:
           adopted map for this state. Only proposed AND is_verified states
           mint bindable rows, so an unverified state stays on the current map
           rather than going live on an unchecked one.
+
+          Meaningful only on a proposed row, and false everywhere else — not
+          because current and needs_boundary states went unresearched, but
+          because that research answered a different question and must not be
+          mistaken for this one. Otherwise flipping a state to proposed, the
+          natural one-field edit when a struck-down map is reinstated, would
+          carry a stale true along with it and put the state live without the
+          single human check this column exists to force.
         data_tests:
           - not_null
       - name: source_url
