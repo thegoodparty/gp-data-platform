@@ -222,18 +222,23 @@ with
 
             -- Vendor event time, kept separate from created_at/updated_at (which
             -- are extract stamps, so a re-delivery of an unchanged record reads
-            -- as fresh). NULL, never an extract stamp, where the form date did not
-            -- parse: ingestion time here would outrank a correctly-dated sibling
-            -- provider in the feeds' greatest(), so the next full-file re-delivery
-            -- would sweep every unparsed candidacy back into the window at once --
-            -- the flood this column exists to prevent. A null result means "no
-            -- vendor signal", and consumers coalesce it to the canonical
-            -- timestamps, keeping those rows on documented status-quo behavior.
-            -- Day resolution only: the form captures a date, not a time.
+            -- as fresh). NULL, never an extract stamp, where the form date is
+            -- missing, unparseable, or implausibly later than the extract that
+            -- carried it: ingestion time here would outrank a correctly-dated
+            -- sibling provider in the feeds' greatest(), and because it advances
+            -- with every delivery the row would tick forward forever -- the flood
+            -- this column exists to prevent. A null result means "no vendor
+            -- signal", and consumers coalesce it to the canonical timestamps,
+            -- keeping those rows on documented status-quo behavior. The day of
+            -- slack and the null-on-implausible shape both match the BallotReady
+            -- leg; a missing date needs no explicit guard because a null
+            -- comparison is not true. Day resolution only: the form captures a
+            -- date, not a time.
             case
-                when date_processed_date is not null
-                then
-                    least(cast(date_processed_date as timestamp), _airbyte_extracted_at)
+                when
+                    cast(date_processed_date as timestamp)
+                    <= _airbyte_extracted_at + interval 1 day
+                then cast(date_processed_date as timestamp)
             end as vendor_activity_at
 
         from source

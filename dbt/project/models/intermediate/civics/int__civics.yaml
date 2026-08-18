@@ -526,15 +526,18 @@ models:
       - name: vendor_activity_at
         description: >
           Latest TechSpeed event time for the candidacy: the max across its stages of
-          the form's date_processed, clamped by that stage row's extract stamp. DAY
+          the form's date_processed, taken only where it is not implausibly later than
+          the extract that carried it (a day of slack for clock skew, matching the
+          BallotReady leg). DAY
           RESOLUTION ONLY -- the form captures a date, not a time, so values land at
           midnight and consumers sorting on this will see ties within a day.
-          NULLABLE BY DESIGN: null means the form date did not parse, and consumers
-          coalesce that to the canonical timestamps. Extract time is deliberately NOT
-          substituted -- as a non-null value it would outrank a correctly-dated
-          sibling provider wherever consumers take the greatest across providers, so
-          the next full-file re-delivery would sweep every unparsed candidacy back
-          into a recency window at once. Parse failures are not rare: the staging rule
+          NULLABLE BY DESIGN: null means the form date is missing, unparseable, or
+          implausibly future, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted -- as a non-null value it would
+          outrank a correctly-dated sibling provider wherever consumers take the
+          greatest across providers, and because it advances with every delivery the
+          row would tick forward forever, sweeping the whole affected cohort back into
+          a recency window on each re-delivery. Parse failures are not rare: the staging rule
           accepts slash-separated US dates but not hyphen-separated ones, which is a
           known follow-up. Additive and destination-facing -- created_at/updated_at
           stay extract stamps for the provider precedence chain, so consumers that
