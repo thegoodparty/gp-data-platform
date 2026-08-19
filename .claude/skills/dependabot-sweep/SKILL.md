@@ -105,38 +105,84 @@ Expect that family of alerts to keep showing up until someone closes them.
 
 Alerts on dead manifests are **not** part of the PR. Collect them for step 6.
 
-### Why they persist, and what does not fix it
+### Why they persist
 
-`.github/dependabot.yml` is **not** the cause and editing it will not help. That
-file configures version-update PRs; security alerts come from the dependency
-graph, which is a separate store. The config has carried no `poetry` ecosystem
-since the standardization; it is seven `uv` entries plus one `pip` for
-`/airflow/astro`.
+A stale row means **no configured scanner still reads that path**. The graph is
+rebuilt by per-directory jobs, and `.github/dependabot.yml` decides which jobs
+exist: one `Configured Graph Update` per entry, exactly. Nothing scans a path that
+no entry covers, so its rows freeze at whatever they last held. A path can lose
+coverage two ways, and this repo has done both:
 
-The dependency graph is what still holds the deleted manifests. Confirm before
-proposing any fix:
+- **The file is deleted but the entry stays.** The next scan finds it gone and
+  drops the row. This is the healthy case.
+- **The entry changes ecosystem or directory.** The old rows are orphaned, because
+  the new scanner does not read the old file. The uv grapher reads `uv.lock` and
+  `pyproject.toml`; it never reads `poetry.lock`.
+
+That second case is what happened here. `poetry.lock` and `requirements_test.txt`
+were deleted in #466 to #468, and then #617 replaced the `pip` entries for `/` and
+`/dbt` with `uv` ones. From that point nothing read those paths again.
+
+Confirm the coverage gap before proposing anything. Compare the manifests the
+graph holds against the directories the config actually scans:
 
 ```bash
 gh api graphql -H 'Accept: application/vnd.github.hawkgirl-preview+json' -f query='
 { repository(owner:"thegoodparty", name:"gp-data-platform") {
     dependencyGraphManifests(first:100) { nodes { filename } } } }' \
   --jq '.data.repository.dependencyGraphManifests.nodes[].filename' | sort
+
+python3 -c "
+import re
+t = open('.github/dependabot.yml').read()
+for e, p in zip(re.findall(r'package-ecosystem:\s*\"([^\"]+)\"', t),
+                re.findall(r'directory:\s*\"([^\"]+)\"', t)):
+    print(f'{e:5} {p}')
+"
 ```
 
-Entries here that `git ls-files` does not have are stale graph rows. GitHub is
-meant to drop them when the file leaves the default branch and sometimes does not.
-The `poetry.lock` rows survived every push to main for over two months, including
-a merge that touched the graph's own manifests.
+A dead manifest under a directory the config no longer covers, or covers with a
+different ecosystem, is an orphaned row. You can also confirm which jobs a refresh
+actually ran; the count matches the config entries exactly:
 
-This is a known GitHub defect, not a repo misconfiguration. The graph rescans
-reactively, only for the part of the tree a push touched, so a path that no longer
-receives commits never gets revisited and its rows persist. Tracked upstream in
+```bash
+gh api "repos/thegoodparty/gp-data-platform/actions/runs?per_page=100&event=dynamic" \
+  --paginate --jq '.workflow_runs[] | select(.path | test("update-graph"))
+    | "\(.created_at)  \(.conclusion)  \(.display_title)"' | sort | tail -20
+```
+
+A `failure` here is worth reading: the two in this repo's history both landed on
+the commits that deleted the poetry files, which is why the removals never
+registered. Logs expire, so grab them early
+(`gh api repos/.../actions/runs/<id>/logs > logs.zip`); older runs return 410.
+
+That GitHub does not clean these up on its own is a known defect, tracked in
 [dependabot-core#15010](https://github.com/dependabot/dependabot-core/issues/15010)
 (open; the report is a monorepo with many `uv.lock` files, the same shape as this
 one) and, going back to 2020, in
-[#2041](https://github.com/dependabot/dependabot-core/issues/2041).
+[#2041](https://github.com/dependabot/dependabot-core/issues/2041). The repo-side
+lever is coverage, below.
 
-### The fix: Refresh Dependabot alerts
+### Step one: restore coverage for the orphaned path
+
+A refresh runs one job per config entry and nothing else, so refreshing while a
+path is uncovered achieves nothing. Give the path a scanner back first, in
+`.github/dependabot.yml`, matching the **ecosystem that originally indexed the
+file** (`pip` for `poetry.lock` and `requirements*.txt`, not `uv`):
+
+```yaml
+  - package-ecosystem: "pip"
+    directory: "/dbt"
+    schedule: { interval: "weekly" }
+    open-pull-requests-limit: 0
+```
+
+`open-pull-requests-limit: 0` keeps graph scanning on while suppressing
+version-update PRs, so the temporary entry adds no noise. Merge it, run the
+refresh, confirm the rows are gone, then open a second PR removing the entries.
+Leaving them in place would keep a scanner pointed at files that do not exist.
+
+### Step two: Refresh Dependabot alerts
 
 Do this **before** dismissing anything. It is a documented GitHub feature, not a
 workaround, and it rebuilds the graph rather than hiding its output:
@@ -144,19 +190,21 @@ workaround, and it rebuilds the graph rather than hiding its output:
 > Security tab > Dependabot > the gear icon at the top of the alert list >
 > **Refresh Dependabot alerts**
 
-It enqueues a background task that re-processes the repository's manifests,
-detects changed dependencies, and updates the alerts, closing stale ones as
-"Fixed". Takes roughly ten minutes.
+It enqueues one graph-update job per config entry, re-processes those manifests,
+and closes stale alerts as "Fixed". Takes roughly ten minutes.
 
 Constraints worth knowing before promising it:
 
+- **It only covers configured entries.** This is the trap. A refresh run before
+  step one looks like it worked, because every job succeeds, while the orphaned
+  rows are untouched. Match the job list against the config to be sure.
 - **UI only.** There is no REST endpoint; `POST .../dependabot/alerts/refresh`
   returns 404. You cannot run this, so hand the user the click path.
 - **Once per hour per repository.**
 - Requires permission to manage security alerts.
 
 Verify afterwards by re-running the manifest query above and confirming the dead
-paths are gone.
+paths are gone. Do not report success off the job statuses alone.
 
 If a refresh does not clear them, the heavier reported workaround is to disable
 and re-enable the dependency graph in the repository's security settings, then

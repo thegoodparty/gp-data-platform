@@ -1,5 +1,40 @@
 version: 2
 updates:
+  # Temporary. Restores pip coverage for three paths whose dependency-graph rows
+  # went stale: the root (requirements_test.txt), /dbt and /airflow (poetry.lock).
+  # Those files were deleted in #466 to #468, but #617 swapped their config
+  # entries from pip to uv, and the uv grapher never reads poetry.lock, so nothing
+  # has rescanned the paths since. Refresh Dependabot alerts only runs jobs for
+  # configured entries, so the rows cannot clear until the paths are configured
+  # again. open-pull-requests-limit: 0 keeps graph scanning while suppressing
+  # version-update PRs. Remove these three entries once the rows are gone.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: "pip"
+    directory: "/dbt"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: "pip"
+    directory: "/airflow"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 0
+
   - package-ecosystem: "uv"
     directory: "/dbt"
     schedule:
