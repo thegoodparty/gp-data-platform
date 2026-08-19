@@ -195,13 +195,13 @@ select
     -- Take the candidacy office name when it agrees with the race's own position
     -- name, or when the group is unanimous. A conflicting group with no agreeing
     -- value publishes nothing: consumers already read the office name off
-    -- position_names, and another seat's name is worse than none.
+    -- position_names, and another seat's name is worse than none. Match on the
+    -- singular position_name — position_names aggregates every sibling seat
+    -- sharing the position's geo_id, so its first element is often another
+    -- district's name.
     case
-        when
-            array_contains(
-                tbl_civics.official_office_names, element_at(tbl_race.position_names, 1)
-            )
-        then element_at(tbl_race.position_names, 1)
+        when array_contains(tbl_civics.official_office_names, tbl_race.position_name)
+        then tbl_race.position_name
         when size(tbl_civics.official_office_names) = 1
         then element_at(tbl_civics.official_office_names, 1)
     end as official_office_name,
