@@ -11,10 +11,10 @@ routinely shows up as eight alerts. A second chunk of the list is usually dead:
 alerts against manifests that were deleted months ago and never got auto-closed.
 
 The job is to collapse that list down to the actual fixes, ship them as one PR,
-and report the dead alerts separately. Dismissing those is the owner's call, so
-ask before doing it, but you can carry it out once they say yes: the repo is
-public, so a `repo`-scoped token is enough and no `security_events` scope is
-needed. See step 3 for the command and the caveat.
+and handle the dead alerts separately. For those, the answer is almost always
+**Refresh Dependabot alerts** in the repository's Dependabot settings, which
+rebuilds the graph and closes them; dismissal is the fallback, and hides the
+problem rather than fixing it. See step 3.
 
 ## 0. Set up, and read this first
 
@@ -128,14 +128,50 @@ meant to drop them when the file leaves the default branch and sometimes does no
 The `poetry.lock` rows survived every push to main for over two months, including
 a merge that touched the graph's own manifests.
 
-There is no API to delete a graph row, and **this repo is public, so the
-dependency graph cannot be turned off**. The off/on toggle in Settings > Code
-security that people suggest for this does not exist here; `security_and_analysis`
-carries no `dependency_graph` key, and a `PATCH` setting one is silently ignored.
-Do not send anyone looking for it.
+This is a known GitHub defect, not a repo misconfiguration. The graph rescans
+reactively, only for the part of the tree a push touched, so a path that no longer
+receives commits never gets revisited and its rows persist. Tracked upstream in
+[dependabot-core#15010](https://github.com/dependabot/dependabot-core/issues/15010)
+(open; the report is a monorepo with many `uv.lock` files, the same shape as this
+one) and, going back to 2020, in
+[#2041](https://github.com/dependabot/dependabot-core/issues/2041).
 
-That leaves dismissal, which needs no extra token scope on a public repo (`repo`
-covers it). Confirm with the user first, then:
+### The fix: Refresh Dependabot alerts
+
+Do this **before** dismissing anything. It is a documented GitHub feature, not a
+workaround, and it rebuilds the graph rather than hiding its output:
+
+> Security tab > Dependabot > the gear icon at the top of the alert list >
+> **Refresh Dependabot alerts**
+
+It enqueues a background task that re-processes the repository's manifests,
+detects changed dependencies, and updates the alerts, closing stale ones as
+"Fixed". Takes roughly ten minutes.
+
+Constraints worth knowing before promising it:
+
+- **UI only.** There is no REST endpoint; `POST .../dependabot/alerts/refresh`
+  returns 404. You cannot run this, so hand the user the click path.
+- **Once per hour per repository.**
+- Requires permission to manage security alerts.
+
+Verify afterwards by re-running the manifest query above and confirming the dead
+paths are gone.
+
+If a refresh does not clear them, the heavier reported workaround is to disable
+and re-enable the dependency graph in the repository's security settings, then
+refresh again. Note that disabling the graph also disables Dependabot alerts while
+it is off, so capture the existing settings first. This repo's REST payload exposes
+no `dependency_graph` key under `security_and_analysis` and a `PATCH` setting one
+is ignored, so treat that route as UI-only and unverified here.
+
+### Dismissal, only as a fallback
+
+Dismissing treats the symptom: the graph row survives, so a **new** advisory
+against a package in a dead manifest files a fresh alert against the same path.
+That is exactly how the `poetry.lock` alerts appeared two months after the files
+were deleted. Prefer the refresh. If the user still wants them dismissed, confirm
+first, then:
 
 ```bash
 gh api -X PATCH "repos/thegoodparty/gp-data-platform/dependabot/alerts/<n>" \
@@ -145,12 +181,8 @@ gh api -X PATCH "repos/thegoodparty/gp-data-platform/dependabot/alerts/<n>" \
 ```
 
 `not_used` is the right reason: the vulnerable code is genuinely not reachable
-because the manifest is gone. Dismissals are reversible from the UI.
-
-Be honest that this treats the symptom. The graph row survives, so a **new**
-advisory against a package in a dead manifest can file a fresh alert against the
-same path later. If that happens, the escalation is a GitHub Support ticket
-asking them to re-index the repository's dependency graph, not another sweep.
+because the manifest is gone. No `security_events` scope is needed on a public
+repo, `repo` covers it. Dismissals are reversible from the UI.
 
 ## 4. Confirm each live bump is reachable
 
@@ -306,5 +338,6 @@ jq -r '.[] | [.number, .dependency.package.name, .dependency.manifest_path, .sec
   done | sort -V
 ```
 
-Ask whether they want them dismissed. If yes, run the `PATCH` from step 3 over
-this list; if no, leave them and say they will stay on the dashboard.
+Then point them at **Refresh Dependabot alerts** (step 3), which is the fix. Offer
+dismissal only if the refresh does not clear the list, and say plainly that
+dismissal leaves the stale graph rows in place.
