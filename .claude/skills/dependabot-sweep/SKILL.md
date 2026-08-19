@@ -15,6 +15,26 @@ and hand the dead alerts back to the user, who closes them in the UI. Do not
 dismiss alerts via the API yourself; that is the user's call and needs a token
 scope you probably do not have.
 
+## 0. Set up, and read this first
+
+Almost every search in this skill reports "not found" as **empty output**. A
+mistyped package name, an unset variable, or a command run from the wrong
+directory therefore produces a result indistinguishable from a genuine all-clear.
+Two habits prevent a silent false negative:
+
+- Set the variables below once and let every command read them. Never paste an
+  angle-bracket placeholder into a command.
+- Never rely on the current directory. Every path here is anchored to `$ROOT`.
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+PKG=          # the package from step 2, e.g. sqlparse
+: "${PKG:?set PKG before running the commands below}"
+```
+
+The `:?` line aborts loudly if `PKG` is empty, which is the point. Re-run it after
+setting `PKG` and expect no output.
+
 ## 1. Pull the alerts
 
 ```bash
@@ -54,8 +74,13 @@ lowest leaves the other advisories open.
 This is the step that decides how much real work there is. An alert whose
 `manifest_path` is not tracked in git has no code fix, because the file is gone.
 
+`manifest_path` is repo-root-relative, so the tracked-file list must be too. Note
+the `git -C "$ROOT"`: plain `git ls-files` run from a subproject lists only that
+subtree, which would mark every manifest DEAD and silently reduce the sweep to
+nothing.
+
 ```bash
-git ls-files > /tmp/tracked.txt
+git -C "$ROOT" ls-files > /tmp/tracked.txt
 jq -r '.[].dependency.manifest_path' /tmp/alerts.json | sort -u | while read -r m; do
   grep -qxF "$m" /tmp/tracked.txt && echo "LIVE  $m" || echo "DEAD  $m"
 done
@@ -65,7 +90,12 @@ For each dead manifest, find when it went away so the report to the user has a
 reason attached rather than just an assertion:
 
 ```bash
-git log --oneline -3 -- <dead-manifest-path>
+jq -r '.[].dependency.manifest_path' /tmp/alerts.json | sort -u | while read -r m; do
+  grep -qxF "$m" /tmp/tracked.txt || {
+    printf '%-24s last touched in ' "$m"
+    git -C "$ROOT" log -1 --format='%h %ad %s' --date=short -- "$m"
+  }
+done
 ```
 
 The uv standardization (PRs #466 through #468, June 2026) retired `poetry.lock` in
@@ -103,41 +133,40 @@ Settings > Code security, which forces a full re-scan. Both are the owner's call
 Most flagged packages are transitive, so the constraint that matters belongs to
 the parent, not to us. Check it before committing to a version.
 
-Set the package name once, as a real shell variable. Every command from here on
-reads `$PKG`. The searches below all report "not found" as empty output, so a
-placeholder left unsubstituted would look exactly like a clean result:
+Find the parent. Scan **every** tracked lock, not just the ones the alerts named.
+There are seven uv subprojects (see the multi-venv table in the root `CLAUDE.md`),
+and a package can be reachable in one that Dependabot did not flag. The scan is
+anchored to `$ROOT` for the same reason step 3 is:
 
 ```bash
-PKG=sqlparse   # the package from step 2
-```
-
-Find the parent in the lock. Scan **every** tracked lock, not just the ones the
-alerts named. There are seven uv subprojects (see the multi-venv table in the root
-`CLAUDE.md`), and a package can be reachable in one that Dependabot did not flag:
-
-```bash
-python3 - "$PKG" <<'PY'
-import re, subprocess, sys
-pkg = sys.argv[1]
-locks = subprocess.run(["git", "ls-files", "*uv.lock"], capture_output=True, text=True).stdout.split()
+python3 - "$ROOT" "$PKG" <<'PY'
+import os, re, subprocess, sys
+root, pkg = sys.argv[1], sys.argv[2]
+locks = subprocess.run(["git", "ls-files", "--full-name", ":(glob,top)**/uv.lock"],
+                       capture_output=True, text=True, cwd=root).stdout.split()
+print(f"scanned {len(locks)} locks for {pkg!r}")
 for lf in locks:
-    for block in open(lf).read().split("[[package]]"):
+    for block in open(os.path.join(root, lf)).read().split("[[package]]"):
         name = re.search(r'name = "([^"]+)"', block)
-        if name and re.search(r'\{ name = "' + re.escape(pkg) + '"', block):
-            print(lf, "->", name.group(1))
+        ver = re.search(r'version = "([^"]+)"', block)
+        if name and name.group(1) != pkg and re.search(r'\{ name = "' + re.escape(pkg) + '"', block):
+            print(f"{lf} -> PARENT={name.group(1)} PARENT_VERSION={ver.group(1) if ver else '?'}")
 PY
 ```
 
-A lock with no hit does not carry the package at all and needs no bump. Confirm
-that rather than assuming it from the alert list. Empty output across every lock
-means either that, or a typo in `$PKG`; check `$PKG` before believing it.
+It prints the lock count first, so "scanned 7 locks" with no rows below it means
+the package genuinely is not there, rather than the scan having failed. A lock with
+no hit needs no bump; confirm that rather than assuming it from the alert list.
 
-Then read that parent's own requirement from PyPI, using the parent and version
-the previous command printed:
+Then read that parent's own requirement from PyPI. Copy the two assignments from
+the output above rather than typing them; `curl -f` turns a wrong parent or version
+into a visible HTTP error instead of a quiet empty list:
 
 ```bash
-PARENT=apache-airflow-providers-common-sql; PARENT_VERSION=2.0.1
-curl -s "https://pypi.org/pypi/$PARENT/$PARENT_VERSION/json" \
+PARENT=            # PARENT= value printed by the scan above
+PARENT_VERSION=    # PARENT_VERSION= value printed by the scan above
+: "${PARENT:?}" "${PARENT_VERSION:?}"
+curl -fsS "https://pypi.org/pypi/$PARENT/$PARENT_VERSION/json" \
   | python3 -c "import json,sys; pkg=sys.argv[1]; print([r for r in (json.load(sys.stdin)['info'].get('requires_dist') or []) if pkg in r])" "$PKG"
 ```
 
@@ -165,12 +194,13 @@ Check the image directly rather than assuming. It is amd64, so on an arm64 Mac y
 cannot execute anything inside it, but you can still read its filesystem:
 
 ```bash
-IMAGE=$(awk '/^FROM /{print $2}' airflow/astro/Dockerfile)
+IMAGE=$(awk '/^FROM /{print $2}' "$ROOT/airflow/astro/Dockerfile")
 cid=$(docker create --platform linux/amd64 "$IMAGE")
 docker export "$cid" > /tmp/img.tar; docker rm -f "$cid"
 mkdir -p /tmp/meta && tar -xf /tmp/img.tar -C /tmp/meta '*.dist-info/METADATA'
 grep -rh -i "$PKG" /tmp/meta --include=METADATA | grep -i '^Requires-Dist' | sort -u
 grep -rl -i "$PKG" /tmp/meta --include=METADATA | sed 's|/METADATA||;s|.*/||' | sort -u
+rm -rf /tmp/img.tar /tmp/meta
 ```
 
 The first grep gives every constraint on the package anywhere in the image, which
@@ -179,39 +209,48 @@ version and which packages pull it. Delete the tar afterwards; it is ~1GB.
 
 If the image ships a vulnerable version, add an explicit floor to
 `astro/requirements.txt`. Just the requirement line, no explanatory comment; the
-pin says what it does, and the reasoning belongs in the PR body. Do not try to `docker build` the
-image locally on arm64 to confirm; the base image's install step is an amd64 binary
-and fails with `exec format error`.
+pin says what it does, and the reasoning belongs in the PR body. Do not try to
+`docker build` the image locally on arm64 to confirm; the base image's install step
+is an amd64 binary and fails with `exec format error`.
 
 ## 5. Fix and open one PR
 
 Bump only the flagged package. A bare `uv lock --upgrade` drags in unrelated
 churn and turns a reviewable security patch into a large diff.
 
+Set `SUBPROJECT` to one of the paths the step 4 scan printed, and repeat the block
+per affected subproject. The `cd` runs in a subshell so `$ROOT` stays valid
+afterwards:
+
 ```bash
-cd <subproject> && uv lock --upgrade-package <pkg>
+SUBPROJECT=        # e.g. airflow, or dbt
+: "${SUBPROJECT:?}"
+( cd "$ROOT/$SUBPROJECT" && uv lock --upgrade-package "$PKG" )
 ```
 
-Repeat per affected subproject. Transient 502s from the PyPI CDN happen; just
-retry the same command.
+Transient 502s from the PyPI CDN happen; just retry the same command.
 
 Verify the diff is only what you intended:
 
 ```bash
-git diff --stat
-git diff -U0 -- '*uv.lock' | grep -E '^[+-]version'
+git -C "$ROOT" diff --stat
+git -C "$ROOT" diff -U0 -- '*uv.lock' | grep -E '^[+-]version'
 ```
 
 Then sync, confirm the installed version, and run each touched subproject's
 suite in its own environment (per the multi-venv rule in the root `CLAUDE.md`):
 
 ```bash
-cd <subproject> && uv sync && uv run python -c "import <pkg>; print(<pkg>.__version__)"
-cd <subproject> && uv run pytest -q
+( cd "$ROOT/$SUBPROJECT" && uv sync && uv run python -c "import $PKG; print($PKG.__version__)" )
+( cd "$ROOT/$SUBPROJECT" && uv run pytest -q )
 ```
 
+The import name is not always the package name (`psycopg2-binary` imports as
+`psycopg2`, `databricks-sdk` as `databricks.sdk`). If the import fails, check the
+name before concluding the sync did not work.
+
 One PR covers every subproject, since it is one advisory set. Branch as
-`chore/<pkg>-security-bump`; these sweeps have no ClickUp ticket, so the
+`chore/$PKG-security-bump`; these sweeps have no ClickUp ticket, so the
 `data-XXXX/` convention does not apply. Hand off to the `pull-request` skill to
 open it and drive the delegate reviewer.
 
@@ -223,11 +262,13 @@ against the diff does not think something was missed.
 ## 6. Report the dead alerts to the user
 
 End by listing them explicitly, because the user closes these by hand. Give
-alert numbers, package, dead manifest, and the reason:
+alert numbers, package, dead manifest, and the advisory:
 
 ```bash
-jq -r '.[] | "\(.number)\t\(.dependency.package.name)\t\(.dependency.manifest_path)\t\(.security_advisory.ghsa_id)"' \
-  /tmp/alerts.json | sort -k3
+jq -r '.[] | [.number, .dependency.package.name, .dependency.manifest_path, .security_advisory.ghsa_id, .security_advisory.severity] | @tsv' \
+  /tmp/alerts.json | while IFS=$'\t' read -r n p m g s; do
+    grep -qxF "$m" /tmp/tracked.txt || printf '#%s\t%-15s %-22s %-22s %s\n' "$n" "$p" "$m" "$g" "$s"
+  done | sort -V
 ```
 
 `not_used` is the right dismissal reason for a manifest that no longer exists.
