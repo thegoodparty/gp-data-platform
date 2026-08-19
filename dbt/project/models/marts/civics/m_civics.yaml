@@ -2964,15 +2964,16 @@ models:
       portion of the DDHQ candidacy key.
 
       Attribute precedence:
-        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS >
-          TS officeholder > DDHQ (DDHQ carries no email/phone).
-        state, party: BR > HubSpot > TS > TS officeholder > DDHQ (gp_api
-          carries neither).
+        first_name, last_name, email, phone: gp_api > HubSpot > BR >
+          BR officeholder > TS > TS officeholder > DDHQ (DDHQ carries no
+          email/phone).
+        state, party: BR > BR officeholder > HubSpot > TS > TS officeholder >
+          DDHQ (gp_api carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at), so a source's fields stay internally consistent.
-      BR contact/state come from int__ballotready_candidate_identity (2026
-      candidacy grain), BR party from the candidacy feed; officeholder-only or
-      pre-2026 BR persons therefore have sparse attributes. HubSpot state is
+      BR contact/state/party come from int__ballotready_candidate_identity
+      across all election years; a BR person whose only BR presence is a term
+      rather than a race falls to the officeholder feed tier. HubSpot state is
       the raw CRM value and may be a full state name rather than a postal code.
       party is normalized to the parse_party_affiliation vocabulary in every
       tier; vendor abbreviations and minor parties outside it (e.g. IND,

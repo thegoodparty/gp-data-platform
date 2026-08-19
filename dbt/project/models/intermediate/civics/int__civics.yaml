@@ -1231,12 +1231,9 @@ models:
 
   - name: int__ballotready_candidate_identity
     description: >
-      Canonical BallotReady candidate identity inputs, one deterministic row per
-      br_candidate_id. int__civics_candidate_ballotready and
-      int__civics_candidacy_ballotready both hash these columns for
-      gp_candidate_id, so a person resolves to the same id in both models
-      (previously they picked divergent per-row vs rolled-up contact values and
-      orphaned candidates whose email varied across candidacy rows).
+      Canonical BallotReady candidate name/contact/party per br_candidate_id: one
+      deterministic representative row, since S3 email/name/phone vary across a
+      person's candidacy rows. Feeds the person mart's display attributes only.
 
       Grain: One row per br_candidate_id.
     columns:
