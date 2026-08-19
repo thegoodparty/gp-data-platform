@@ -15,6 +15,10 @@ updates:
       semver-major-days: 14
       semver-minor-days: 2
       semver-patch-days: 2
+    ignore:
+      - dependency-name: "pandas"
+        update-types:
+          - "version-update:semver-major"
     groups:
       minor-and-patch:
         patterns:
