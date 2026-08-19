@@ -135,8 +135,8 @@ tells you whether raising the floor can resolve. The second names the installed
 version and which packages pull it. Delete the tar afterwards; it is ~1GB.
 
 If the image ships a vulnerable version, add an explicit floor to
-`astro/requirements.txt` with a comment saying it is a security floor rather than a
-direct dependency, and when it can be dropped. Do not try to `docker build` the
+`astro/requirements.txt`. Just the requirement line, no explanatory comment; the
+pin says what it does, and the reasoning belongs in the PR body. Do not try to `docker build` the
 image locally on arm64 to confirm; the base image's install step is an amd64 binary
 and fails with `exec format error`.
 
