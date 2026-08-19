@@ -11,10 +11,11 @@ routinely shows up as eight alerts. A second chunk of the list is usually dead:
 alerts against manifests that were deleted months ago and never got auto-closed.
 
 The job is to collapse that list down to the actual fixes, ship them as one PR,
-and handle the dead alerts separately. For those, the answer is almost always
-**Refresh Dependabot alerts** in the repository's Dependabot settings, which
-rebuilds the graph and closes them; dismissal is the fallback, and hides the
-problem rather than fixing it. See step 3.
+and handle the dead alerts separately. For those, the fix is to **disable and
+re-enable the dependency graph** in the repository's security settings, which
+rebuilds it from the current tree and drops every stale row. Nothing short of
+that has worked. See step 3, which also lists the plausible-looking approaches
+that do not.
 
 ## 0. Set up, and read this first
 
@@ -107,24 +108,24 @@ Alerts on dead manifests are **not** part of the PR. Collect them for step 6.
 
 ### Why they persist
 
-A stale row means **no configured scanner still reads that path**. The graph is
-rebuilt by per-directory jobs, and `.github/dependabot.yml` decides which jobs
-exist: one `Configured Graph Update` per entry, exactly. Nothing scans a path that
-no entry covers, so its rows freeze at whatever they last held. A path can lose
-coverage two ways, and this repo has done both:
+A stale row is one **nothing rescans any more**. The graph updates incrementally,
+per path, so a row only changes when a job processes that path. When no job ever
+does again, the row freezes at whatever it last held, indefinitely.
 
-- **The file is deleted but the entry stays.** The next scan finds it gone and
-  drops the row. This is the healthy case.
-- **The entry changes ecosystem or directory.** The old rows are orphaned, because
-  the new scanner does not read the old file. The uv grapher reads `uv.lock` and
-  `pyproject.toml`; it never reads `poetry.lock`.
+Two things have to go wrong together, and both did here:
 
-That second case is what happened here. `poetry.lock` and `requirements_test.txt`
-were deleted in #466 to #468, and then #617 replaced the `pip` entries for `/` and
-`/dbt` with `uv` ones. From that point nothing read those paths again.
+- **The removal was never processed.** The graph-update job for the deleting
+  commit failed. This repo has exactly two failed `update-graph` runs in its whole
+  history, and both landed on the commits that deleted the poetry files.
+- **Nothing revisited the path afterwards.** `#617` swapped the `pip` entries for
+  `/` and `/dbt` to `uv`, and the uv grapher never reads `poetry.lock`. The
+  automatic, non-`Configured` jobs that might otherwise have caught it stopped
+  running about five weeks later.
 
-Confirm the coverage gap before proposing anything. Compare the manifests the
-graph holds against the directories the config actually scans:
+Neither is recoverable per-path, which is why the whole-graph rebuild is the fix.
+
+Gather the evidence anyway, because it is what makes a support ticket credible.
+Compare the manifests the graph holds against the directories the config scans:
 
 ```bash
 gh api graphql -H 'Accept: application/vnd.github.hawkgirl-preview+json' -f query='
@@ -162,81 +163,59 @@ That GitHub does not clean these up on its own is a known defect, tracked in
 one) and, going back to 2020, in
 [#2041](https://github.com/dependabot/dependabot-core/issues/2041).
 
-**Config alone will not fix it.** Adding a `dependabot.yml` entry for a path whose
-file is gone produces no scan at all, because Dependabot only tracks paths where a
-file exists. Verified the hard way: three `pip` entries were merged for `/`,
-`/dbt` and `/airflow`, and the next graph run produced the same 8 jobs as before,
-with no new tracked manifests. Check what is actually tracked at
-**Insights > Dependency graph > Dependabot**; that list, not the config, is what
-gets scanned.
+### What does not work, so you can skip it
 
-### Step one: give the path a file to re-scan
+All three of these were tried against this repo on 2026-08-19 and none moved the
+stale rows. Do not spend time rediscovering them:
 
-Rows are created by automatic detection when a push touches a path, independently
-of `dependabot.yml`; `poetry` has never appeared in this repo's config, yet
-`poetry.lock` was indexed. A row goes stale when the push that should have removed
-it did not process, so the fix is to make a fresh push that touches the same path.
+- **Editing `.github/dependabot.yml`.** Adding an entry for a path whose file is
+  gone produces no scan at all, because Dependabot only tracks paths where a file
+  exists. Three `pip` entries were merged for `/`, `/dbt` and `/airflow`; the next
+  run produced the same 8 jobs as before and no new tracked manifests. What is
+  actually scanned is listed at **Insights > Dependency graph > Dependabot**, and
+  that list, not the config, is what matters.
+- **`Refresh Dependabot alerts` on its own.** It runs one job per config entry and
+  nothing more, so it cannot reach an uncovered path. Every job reports success
+  while the stale rows sit untouched, which makes it look like it worked.
+- **Re-adding a placeholder file and deleting it,** to give the path a fresh push.
+  This produced a scan for the root, where a plain `requirements.txt`-style file is
+  recognized, but nothing for the two `poetry.lock` paths: Dependabot's poetry
+  detection wants `[tool.poetry]` in `pyproject.toml`, and these projects are
+  PEP 621 `[project]`. Automatic (non-`Configured`) graph jobs had also stopped
+  running entirely five weeks earlier, so nothing was left to detect the change.
 
-Commit a placeholder at each dead path with no dependencies in it, so nothing new
-enters the graph:
 
-```toml
-# dbt/poetry.lock, temporary
-package = []
+### What actually clears a stale row: rebuild the graph
 
-[metadata]
-lock-version = "2.0"
-python-versions = "^3.14"
-content-hash = "0000000000000000000000000000000000000000000000000000000000000000"
-```
+If a path's row is stale, **skip everything above and do this**. It is the only
+thing that has ever worked here, and it worked completely:
 
-Pair it with a `dependabot.yml` entry covering that directory, using the
-**ecosystem that originally indexed the file**. GitHub's `pip` ecosystem covers
-poetry, so `poetry.lock` needs `pip`, not `uv`:
+> Settings > Advanced Security > Dependency graph > **Disable**, then **Enable**
 
-```yaml
-  - package-ecosystem: "pip"
-    directory: "/dbt"
-    schedule: { interval: "weekly" }
-    open-pull-requests-limit: 0
-```
+Disabling tears the graph down; re-enabling rebuilds it from the current tree, so
+it can only index files that exist. Every stale row disappears by construction.
+Confirmed on 2026-08-19: three rows that had survived two months, a successful
+`Refresh Dependabot alerts`, added config coverage, and a placeholder
+add-then-delete cycle were all gone within minutes of the rebuild.
 
-`open-pull-requests-limit: 0` keeps graph scanning on while suppressing
-version-update PRs. Merge that, confirm the path appears under the Dependabot tab,
-then open a second PR deleting both the placeholder and the config entry. That
-deletion is the healthy case GitHub does handle: a tracked file disappearing while
-its entry still covers the directory.
+**The `Disable` button exists on public repositories.** Do not conclude otherwise
+from the REST API, which is what led this skill astray twice: `security_and_analysis`
+carries no `dependency_graph` key, and a `PATCH` setting one is accepted and
+silently ignored. The UI control is there regardless. Check the UI, not the API.
 
-### Step two: Refresh Dependabot alerts
+Two things to get right:
 
-Do this **before** dismissing anything. It is a documented GitHub feature, not a
-workaround, and it rebuilds the graph rather than hiding its output:
+- **Capture the security settings first.** Disabling the graph also disables
+  Dependabot alerts, and re-enabling the graph does **not** bring alerts back.
+  `gh api repos/<owner>/<repo> --jq '.security_and_analysis'` gives most of it;
+  note separately whether Dependabot alerts are on, via
+  `gh api repos/<owner>/<repo>/vulnerability-alerts -i` (204 means on, 404 off).
+- **Re-enable Dependabot alerts explicitly afterwards** and verify with that same
+  call. The repo has no vulnerability alerting until you do, which is easy to miss
+  because the graph page goes green on its own.
 
-> Security tab > Dependabot > the gear icon at the top of the alert list >
-> **Refresh Dependabot alerts**
-
-It enqueues one graph-update job per config entry, re-processes those manifests,
-and closes stale alerts as "Fixed". Takes roughly ten minutes.
-
-Constraints worth knowing before promising it:
-
-- **It only covers configured entries.** This is the trap. A refresh run before
-  step one looks like it worked, because every job succeeds, while the orphaned
-  rows are untouched. Match the job list against the config to be sure.
-- **UI only.** There is no REST endpoint; `POST .../dependabot/alerts/refresh`
-  returns 404. You cannot run this, so hand the user the click path.
-- **Once per hour per repository.**
-- Requires permission to manage security alerts.
-
-Verify afterwards by re-running the manifest query above and confirming the dead
-paths are gone. Do not report success off the job statuses alone.
-
-If a refresh does not clear them, the heavier reported workaround is to disable
-and re-enable the dependency graph in the repository's security settings, then
-refresh again. Note that disabling the graph also disables Dependabot alerts while
-it is off, so capture the existing settings first. This repo's REST payload exposes
-no `dependency_graph` key under `security_and_analysis` and a `PATCH` setting one
-is ignored, so treat that route as UI-only and unverified here.
+The rebuild takes a few minutes. Verify with the manifest query above, not the
+page banner.
 
 ### Dismissal, only as a fallback
 
