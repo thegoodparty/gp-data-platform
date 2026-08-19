@@ -160,15 +160,39 @@ That GitHub does not clean these up on its own is a known defect, tracked in
 [dependabot-core#15010](https://github.com/dependabot/dependabot-core/issues/15010)
 (open; the report is a monorepo with many `uv.lock` files, the same shape as this
 one) and, going back to 2020, in
-[#2041](https://github.com/dependabot/dependabot-core/issues/2041). The repo-side
-lever is coverage, below.
+[#2041](https://github.com/dependabot/dependabot-core/issues/2041).
 
-### Step one: restore coverage for the orphaned path
+**Config alone will not fix it.** Adding a `dependabot.yml` entry for a path whose
+file is gone produces no scan at all, because Dependabot only tracks paths where a
+file exists. Verified the hard way: three `pip` entries were merged for `/`,
+`/dbt` and `/airflow`, and the next graph run produced the same 8 jobs as before,
+with no new tracked manifests. Check what is actually tracked at
+**Insights > Dependency graph > Dependabot**; that list, not the config, is what
+gets scanned.
 
-A refresh runs one job per config entry and nothing else, so refreshing while a
-path is uncovered achieves nothing. Give the path a scanner back first, in
-`.github/dependabot.yml`, matching the **ecosystem that originally indexed the
-file** (`pip` for `poetry.lock` and `requirements*.txt`, not `uv`):
+### Step one: give the path a file to re-scan
+
+Rows are created by automatic detection when a push touches a path, independently
+of `dependabot.yml`; `poetry` has never appeared in this repo's config, yet
+`poetry.lock` was indexed. A row goes stale when the push that should have removed
+it did not process, so the fix is to make a fresh push that touches the same path.
+
+Commit a placeholder at each dead path with no dependencies in it, so nothing new
+enters the graph:
+
+```toml
+# dbt/poetry.lock, temporary
+package = []
+
+[metadata]
+lock-version = "2.0"
+python-versions = "^3.14"
+content-hash = "0000000000000000000000000000000000000000000000000000000000000000"
+```
+
+Pair it with a `dependabot.yml` entry covering that directory, using the
+**ecosystem that originally indexed the file**. GitHub's `pip` ecosystem covers
+poetry, so `poetry.lock` needs `pip`, not `uv`:
 
 ```yaml
   - package-ecosystem: "pip"
@@ -178,9 +202,10 @@ file** (`pip` for `poetry.lock` and `requirements*.txt`, not `uv`):
 ```
 
 `open-pull-requests-limit: 0` keeps graph scanning on while suppressing
-version-update PRs, so the temporary entry adds no noise. Merge it, run the
-refresh, confirm the rows are gone, then open a second PR removing the entries.
-Leaving them in place would keep a scanner pointed at files that do not exist.
+version-update PRs. Merge that, confirm the path appears under the Dependabot tab,
+then open a second PR deleting both the placeholder and the config entry. That
+deletion is the healthy case GitHub does handle: a tracked file disappearing while
+its entry still covers the directory.
 
 ### Step two: Refresh Dependabot alerts
 

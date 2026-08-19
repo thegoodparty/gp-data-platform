@@ -1,0 +1,9 @@
+# Temporary placeholder, delete in the follow-up PR. No requirements here; this
+# file was retired in #467 and test dependencies live in each subproject's
+# dependency group.
+#
+# This exists to give GitHub's dependency graph a file to re-scan at this path.
+# The row for requirements_test.txt went stale when the real file was deleted and
+# nothing has touched the path since, so the removal never registered. Deleting
+# this file while the pip entry in dependabot.yml covers the root puts the path
+# back on the removal path the graph handles correctly.
