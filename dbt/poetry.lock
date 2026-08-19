@@ -1,0 +1,14 @@
+# Temporary placeholder, delete in the follow-up PR. Not a real lock file and
+# poetry is not used here; dbt dependencies live in dbt/uv.lock.
+#
+# This exists to give GitHub's dependency graph a file to re-scan at this path.
+# The row for dbt/poetry.lock went stale when the real file was deleted in #466
+# and the graph-update job for that push failed, so the removal never registered.
+# Deleting this file while the pip entry in dependabot.yml covers the directory
+# puts the path back on the removal path the graph handles correctly.
+package = []
+
+[metadata]
+lock-version = "2.0"
+python-versions = "^3.14"
+content-hash = "0000000000000000000000000000000000000000000000000000000000000000"
