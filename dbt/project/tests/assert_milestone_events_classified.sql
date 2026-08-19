@@ -6,16 +6,21 @@
 --
 -- Fails (returns rows) if a milestone event falls through to 'other', i.e. the
 -- pattern set no longer covers it. Keep this list in sync with the event_type
--- filter in int__amplitude_user_milestones.sql.
+-- filter in int__amplitude_user_milestones.sql. 'Viewed' is admitted there only
+-- for page path '/dashboard' (the path-anchored leg of the dashboard-view union);
+-- the path condition is not restated here because this guards classification of
+-- the event_type alone.
 with
     milestone_events(event_type) as (
         values
+            ('Viewed'),
             ('Onboarding - Registration Completed'),
             ('onboarding_complete'),
             ('pro_upgrade_complete'),
             ('Voter Outreach - Campaign Completed'),
             ('Dashboard - Candidate Dashboard Viewed'),
             ('Dashboard - Campaign Plan Viewed'),
+            ('Campaign Plan - Campaign Tracker Viewed'),
             ('Serve Onboarding - Getting Started Viewed'),
             ('Serve Onboarding - Constituency Profile Viewed'),
             ('Serve Onboarding - Poll Value Props Viewed'),

@@ -34,6 +34,14 @@
         then 'win_onboarding'
         when {{ event_type_col }} like 'Dashboard -%'
         then 'win_dashboard'
+        -- Third-generation dashboard-view event. Named 'Campaign Plan -%' by the
+        -- product, so it would otherwise fall to win_compliance_or_planning and
+        -- drop out of every family-based dashboard read. The sibling
+        -- 'Campaign Plan - Weekly Tasks Digest' deliberately stays in
+        -- compliance_or_planning: it is a server-emitted weekly digest
+        -- (session_id = -1, ~1.3k recipients per batch), not a surface view.
+        when {{ event_type_col }} = 'Campaign Plan - Campaign Tracker Viewed'
+        then 'win_dashboard'
         when {{ event_type_col }} like 'Voter Outreach -%'
         then 'win_voter_outreach'
         when {{ event_type_col }} like 'Outreach -%'
@@ -145,12 +153,14 @@
         (int__amplitude_win_activity and its weekly variant). Extend this list
         when a genuinely recurrent activity event is added to those rollups.
 
-        The allowlist now carries 3 events total (1 campaign-outreach event
-        plus 2 dashboard-view events): the legacy
-        'Dashboard - Candidate Dashboard Viewed' and its live replacement
-        'Dashboard - Campaign Plan Viewed' co-fired Apr-Jun 2026 during the
-        dashboard-surface migration (see is_dashboard_view_event /
-        dashboard_view_is_new for the union and co-fire dedup).
+        The allowlist now carries 4 events total (1 campaign-outreach event plus
+        the 3 generations of named dashboard-view event, each of which replaced
+        its predecessor when the dashboard surface was rebuilt). This list stays
+        event-name-based, so it does NOT cover the page-path leg of
+        is_dashboard_view_event: 'Viewed' is a site-wide page event and only its
+        '/dashboard' rows are dashboard views, which an event_type allowlist
+        cannot express. Consumers that intake by is_recurrent must therefore
+        admit the page-path leg explicitly alongside it.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
@@ -161,35 +171,65 @@
     {{ event_type_col }} in (
         'Voter Outreach - Campaign Completed',
         'Dashboard - Candidate Dashboard Viewed',
-        'Dashboard - Campaign Plan Viewed'
+        'Dashboard - Campaign Plan Viewed',
+        'Campaign Plan - Campaign Tracker Viewed'
     )
 {% endmacro %}
 
-{% macro is_dashboard_view_event(event_type_col) %}
+{% macro is_dashboard_view_event(event_type_col, page_path_col) %}
     {#
-        Membership test for a candidate-dashboard view, spanning the 2026-05/06
-        dashboard-surface migration. The legacy event
-        'Dashboard - Candidate Dashboard Viewed' died in-data 2026-06-13 when the
-        rebuild replaced the surface with the Campaign Plan view, which fires
-        'Dashboard - Campaign Plan Viewed' (live 2026-04-09). The two co-fired
-        2026-04-09 -> 2026-06-13, so raw counts over this union double-count that
-        window (use dashboard_view_is_new for counts); MIN/MAX/EXISTS and
-        COUNT(DISTINCT date) over the union are co-fire-safe.
+        Membership test for a candidate-dashboard view.
+
+        Anchored on the page path, not on the surface event name. The product has
+        renamed the dashboard-view event on every rebuild of the surface, and each
+        rename silently zeroed every metric built on it:
+          - 'Dashboard - Candidate Dashboard Viewed'  died in-data 2026-06-13
+          - 'Dashboard - Campaign Plan Viewed'        died in-data 2026-07-31
+          - 'Campaign Plan - Campaign Tracker Viewed' live from 2026-08-07
+        The site-wide 'Viewed' page event with path '/dashboard' has run
+        continuously since 2025-04-21, predating the first named event, and passes
+        through both deaths with no discontinuity. Over a window where the legacy
+        event was healthy (2025-08 -> 2025-10) the two agree on 98.6% of users
+        (5,232 of 5,306 legacy users; 71 path-only), so the path leg is a
+        like-for-like substitute rather than a broader proxy.
+
+        The three named events are kept as an OR so the definition is additive and
+        no history is lost. They contribute ~1.4% of users beyond the path leg.
+        Only path '/dashboard' counts, not '/dashboard%': the sub-pages are
+        distinct surfaces (the 2026-08 successor fires mainly on
+        '/dashboard/campaign-plan'), and admitting them would silently widen this
+        from "viewed the dashboard" to "used the app".
+
+        Because the legs co-fire on a single visit, raw counts over this predicate
+        over-count (use dashboard_view_is_new for counts); MIN/MAX/EXISTS and
+        COUNT(DISTINCT date) are co-fire-safe.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
+            page_path_col: SQL expression producing the page path
+                (event_properties:path::string).
     #}
-    {{ event_type_col }}
-    in ('Dashboard - Candidate Dashboard Viewed', 'Dashboard - Campaign Plan Viewed')
+    (
+        ({{ event_type_col }} = 'Viewed' and {{ page_path_col }} = '/dashboard')
+        or {{ event_type_col }} in (
+            'Dashboard - Candidate Dashboard Viewed',
+            'Dashboard - Campaign Plan Viewed',
+            'Campaign Plan - Campaign Tracker Viewed'
+        )
+    )
 {% endmacro %}
 
 {% macro dashboard_view_is_new(event_time_col, partition_col, gap_seconds=30) %}
     {#
-        Time-gap sessionization for de-duplicating dashboard-view counts across
-        the 2026-04-09 -> 2026-06-13 co-fire window, where a single visit fired
-        both dashboard events. TRUE for a user's first dashboard view and for any
+        Time-gap sessionization for de-duplicating dashboard-view counts where a
+        single visit fires more than one member of the union: the page event plus
+        whichever named surface event is live, and during 2026-04-09 -> 2026-06-13
+        two named events as well. TRUE for a user's first dashboard view and for any
         view whose gap from the prior dashboard event exceeds gap_seconds; co-fired
-        pairs collapse to one, genuine re-visits still count. Apply only to rows
+        events collapse to one regardless of how many legs fire, genuine re-visits
+        still count. The 30s gap is unchanged: the 2026-08 successor does not
+        co-fire with its predecessor (1 of 19 consecutive pairs inside 30s), so the
+        third era gave no reason to move it. Apply only to rows
         already filtered to is_dashboard_view_event, materialize the result as a
         boolean column in a CTE/subquery, then count_if that column in an outer
         query (a window function cannot be nested directly inside count_if).
