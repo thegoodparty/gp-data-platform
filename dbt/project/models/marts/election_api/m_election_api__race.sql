@@ -53,7 +53,12 @@ with
             max(case when win_number >= 1 then win_number end) as win_number,
             bool_or(is_partisan) as is_partisan,
             max(office_type) as office_type,
-            max(official_office_name) as official_office_name,
+            -- official_office_name is free text from each candidacy's own source, so
+            -- a vendor row matched to the wrong race puts a second seat's office name
+            -- in the group. Carry the whole set and resolve it against the race's own
+            -- position name at the select; an arbitrary max here published one
+            -- district's name on another district's race.
+            collect_set(official_office_name) as official_office_names,
             max(office_level) as office_level
         from {{ ref("candidacy") }}
         where gp_election_id is not null
@@ -187,7 +192,19 @@ select
     tbl_civics.win_number,
     tbl_civics.is_partisan,
     tbl_civics.office_type,
-    tbl_civics.official_office_name,
+    -- Take the candidacy office name when it agrees with the race's own position
+    -- name, or when the group is unanimous. A conflicting group with no agreeing
+    -- value publishes nothing: consumers already read the office name off
+    -- position_names, and another seat's name is worse than none.
+    case
+        when
+            array_contains(
+                tbl_civics.official_office_names, element_at(tbl_race.position_names, 1)
+            )
+        then element_at(tbl_race.position_names, 1)
+        when size(tbl_civics.official_office_names) = 1
+        then element_at(tbl_civics.official_office_names, 1)
+    end as official_office_name,
     tbl_civics.office_level,
     tbl_projection_key.election_code,
     -- Delivery contract: the Postgres projection columns are integers (same
