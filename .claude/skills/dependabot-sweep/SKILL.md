@@ -79,18 +79,24 @@ Alerts on dead manifests are **not** part of the PR. Collect them for step 6.
 Most flagged packages are transitive, so the constraint that matters belongs to
 the parent, not to us. Check it before committing to a version.
 
-Find the parent in the lock:
+Find the parent in the lock. Scan **every** tracked lock, not just the ones the
+alerts named. There are seven uv subprojects (see the multi-venv table in the root
+`CLAUDE.md`), and a package can be reachable in one that Dependabot did not flag:
 
 ```bash
 python3 - <<'PY'
-import re
-for lf in ["airflow/uv.lock", "dbt/uv.lock"]:
+import re, subprocess
+locks = subprocess.run(["git", "ls-files", "*uv.lock"], capture_output=True, text=True).stdout.split()
+for lf in locks:
     for block in open(lf).read().split("[[package]]"):
         name = re.search(r'name = "([^"]+)"', block)
         if name and re.search(r'\{ name = "<pkg>"', block):
             print(lf, "->", name.group(1))
 PY
 ```
+
+A lock with no hit does not carry the package at all and needs no bump. Confirm
+that rather than assuming it from the alert list.
 
 Then read that parent's own requirement from PyPI:
 
