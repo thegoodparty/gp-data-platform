@@ -27,7 +27,6 @@ Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
 """
 
-import mlflow
 import numpy as np
 import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
@@ -45,6 +44,26 @@ from pyspark.sql.functions import (
 )
 
 
+def _string_nans_to_none(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace NaN with None in non-numeric columns, in place of a copy.
+
+    `to_dict("records")` leaves Spark to infer each column's type from the
+    Python values, and a NaN in a string column infers as the literal text
+    "nan" rather than a null. pandas 2 hid this on the provenance columns --
+    an object column carried None -- but pandas 3's default `str` dtype
+    carries NaN, so the nulls arrive as "nan" strings.
+
+    Numeric columns keep their NaN: the unscored waterfall columns are
+    entirely NaN, and an all-None column gives Spark nothing to infer a
+    double from. The `isnan` whitelist below nulls those instead.
+    """
+    out = df.copy()
+    for c in out.columns:
+        if not pd.api.types.is_numeric_dtype(out[c]):
+            out[c] = out[c].astype(object).where(pd.notna(out[c]), None)
+    return out
+
+
 def _resolve_latest_version(modelname: str) -> str:
     """Latest registered version of an MLflow model in model_predictions.
 
@@ -54,6 +73,10 @@ def _resolve_latest_version(modelname: str) -> str:
     already at v5. No @prod alias is used: these models load by latest version
     because setting @prod needs apply_tag, which is gated by design.
     """
+    # Imported here, not at module scope, so the pure helpers below stay
+    # importable in the dbt test env (pyspark + pandas, no mlflow).
+    import mlflow
+
     client = mlflow.tracking.MlflowClient()
     versions = client.search_model_versions(f"name='goodparty_data_catalog.model_predictions.{modelname}'")
     if not versions:
@@ -65,6 +88,8 @@ def _resolve_latest_version(modelname: str) -> str:
 
 
 def _score_using_model(df: pd.DataFrame, modelname: str, score_col: str) -> tuple[pd.DataFrame, str]:
+    import mlflow
+
     version = _resolve_latest_version(modelname)
     model = mlflow.sklearn.load_model(
         f"models:/goodparty_data_catalog.model_predictions.{modelname}/{version}"
@@ -272,20 +297,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     score_cols = ["y_score0a", "y_score0b", "y_score2", "y_score3", "y_score1a"]
 
-    df_scored = spark.createDataFrame(df_pd.to_dict("records"))
+    df_scored = spark.createDataFrame(_string_nans_to_none(df_pd).to_dict("records"))
 
     # pandas NaN survives as float NaN in Spark (not null) — convert explicitly
     # so COALESCE and comparisons behave correctly
     for s in score_cols:
         df_scored = df_scored.withColumn(s, when(col(s).isNull() | isnan(col(s)), None).otherwise(col(s)))
 
-    # The same pandas round-trip artifact reaches these two string columns,
-    # but since the target type is string rather than double it surfaces as
-    # the literal text "nan" instead of an incompatible float (confirmed
-    # empirically: every row expected null here landed as "nan", never a true
-    # null). Whitelist the values the withColumns above can actually produce
-    # so a round-trip artifact lands back on a true null instead of leaking a
-    # stray non-value string past the yml's accepted_values tests.
+    # _string_nans_to_none already keeps the round-trip from landing "nan" in
+    # these two string columns; this whitelist is the second line of defense,
+    # pinning them to the values the when-chains above can actually produce so
+    # no stray non-value string reaches the accepted_values tests.
     # This whitelist, the when-chains above, and the yml accepted_values must move together -- no shared constant.
     df_scored = df_scored.withColumn(
         "log_n_losers_source",

@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from scripts.databricks_io import (
+    _coerce_to_string_df,
     _df_to_databricks_schema,
     is_databricks_fqn,
     write_table,
@@ -58,22 +59,22 @@ def test_parquet_schema_coerces_null_columns_to_string(tmp_path):
     df = pd.DataFrame({"name": ["alice", "bob"], "all_null": [None, None], "score": [0.9, 0.8]})
     outpath = tmp_path / "test.parquet"
 
-    # Replicate the schema logic from write_table
-    inferred = pa.Schema.from_pandas(df, preserve_index=False)
-    fields = [pa.field(f.name, pa.string(), nullable=True) if f.type == pa.null() else f for f in inferred]
-    schema = pa.schema(fields)
-    df.to_parquet(outpath, index=False, schema=schema)
+    # The schema logic from write_table: every column pinned to string, so the
+    # COPY INTO never merges a null/numeric field into the STRING table schema.
+    # Pinned rather than inferred, which is why the pandas dtype behind a column
+    # (object vs. str, and so string vs. large_string) cannot change what lands.
+    coerced = _coerce_to_string_df(df)
+    schema = pa.schema([pa.field(name, pa.string(), nullable=True) for name in coerced.columns])
+    coerced.to_parquet(outpath, index=False, schema=schema)
 
     result_schema = pq.read_schema(outpath)
-    # The all-null column should be string, not null
-    assert result_schema.field("all_null").type == pa.string()
-    # Other columns keep their original types
-    assert result_schema.field("name").type == pa.string()
-    assert result_schema.field("score").type == pa.float64()
+    # Every column is string -- the all-null one included, never null type
+    assert [f.type for f in result_schema] == [pa.string()] * 3
 
-    # Null values are preserved (not empty strings)
+    # Null values are preserved (not empty strings, not the text "nan")
     result_df = pd.read_parquet(outpath)
     assert result_df["all_null"].isna().all()
+    assert result_df["name"].tolist() == ["alice", "bob"]
 
 
 def test_parquet_schema_handles_named_index(tmp_path):
