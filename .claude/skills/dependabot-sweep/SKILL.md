@@ -150,7 +150,8 @@ for lf in locks:
         name = re.search(r'name = "([^"]+)"', block)
         ver = re.search(r'version = "([^"]+)"', block)
         if name and name.group(1) != pkg and re.search(r'\{ name = "' + re.escape(pkg) + '"', block):
-            print(f"{lf} -> PARENT={name.group(1)} PARENT_VERSION={ver.group(1) if ver else '?'}")
+            print(f"SUBPROJECT={os.path.dirname(lf) or '.'} "
+                  f"PARENT={name.group(1)} PARENT_VERSION={ver.group(1) if ver else '?'}")
 PY
 ```
 
@@ -158,8 +159,17 @@ It prints the lock count first, so "scanned 7 locks" with no rows below it means
 the package genuinely is not there, rather than the scan having failed. A lock with
 no hit needs no bump; confirm that rather than assuming it from the alert list.
 
-Then read that parent's own requirement from PyPI. Copy the two assignments from
-the output above rather than typing them; `curl -f` turns a wrong parent or version
+Each row is emitted as ready-to-paste shell assignments, so nothing has to be
+transcribed or trimmed by hand:
+
+```
+scanned 7 locks for 'sqlparse'
+SUBPROJECT=airflow PARENT=apache-airflow-providers-common-sql PARENT_VERSION=2.0.1
+SUBPROJECT=dbt PARENT=apache-airflow-providers-common-sql PARENT_VERSION=2.0.1
+```
+
+Then read that parent's own requirement from PyPI. Copy the assignments from the
+scan output rather than typing them; `curl -f` turns a wrong parent or version
 into a visible HTTP error instead of a quiet empty list:
 
 ```bash
@@ -218,13 +228,14 @@ is an amd64 binary and fails with `exec format error`.
 Bump only the flagged package. A bare `uv lock --upgrade` drags in unrelated
 churn and turns a reviewable security patch into a large diff.
 
-Set `SUBPROJECT` to one of the paths the step 4 scan printed, and repeat the block
-per affected subproject. The `cd` runs in a subshell so `$ROOT` stays valid
-afterwards:
+Use the `SUBPROJECT=` assignment the step 4 scan printed, and repeat the block per
+affected subproject. It is the directory (`airflow`), not the lock path
+(`airflow/uv.lock`). The `cd` runs in a subshell so `$ROOT` stays valid afterwards:
 
 ```bash
-SUBPROJECT=        # e.g. airflow, or dbt
+SUBPROJECT=        # SUBPROJECT= value printed by the step 4 scan, e.g. airflow
 : "${SUBPROJECT:?}"
+[ -d "$ROOT/$SUBPROJECT" ] || echo "not a directory: $ROOT/$SUBPROJECT"
 ( cd "$ROOT/$SUBPROJECT" && uv lock --upgrade-package "$PKG" )
 ```
 
