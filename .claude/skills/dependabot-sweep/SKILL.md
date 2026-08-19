@@ -68,41 +68,77 @@ reason attached rather than just an assertion:
 git log --oneline -3 -- <dead-manifest-path>
 ```
 
-The uv standardization (PRs #466 through #468) retired `poetry.lock` in several
-subprojects plus a root `requirements_test.txt`, and left their alerts open.
+The uv standardization (PRs #466 through #468, June 2026) retired `poetry.lock` in
+several subprojects plus a root `requirements_test.txt`, and left their alerts open.
 Expect that family of alerts to keep showing up until someone closes them.
 
 Alerts on dead manifests are **not** part of the PR. Collect them for step 6.
+
+### Why they persist, and what does not fix it
+
+`.github/dependabot.yml` is **not** the cause and editing it will not help. That
+file configures version-update PRs; security alerts come from the dependency
+graph, which is a separate store. The config has carried no `poetry` ecosystem
+since the standardization; it is seven `uv` entries plus one `pip` for
+`/airflow/astro`.
+
+The dependency graph is what still holds the deleted manifests. Confirm before
+proposing any fix:
+
+```bash
+gh api graphql -H 'Accept: application/vnd.github.hawkgirl-preview+json' -f query='
+{ repository(owner:"thegoodparty", name:"gp-data-platform") {
+    dependencyGraphManifests(first:100) { nodes { filename } } } }' \
+  --jq '.data.repository.dependencyGraphManifests.nodes[].filename' | sort
+```
+
+Entries here that `git ls-files` does not have are stale graph rows. GitHub is
+meant to drop them when the file leaves the default branch and sometimes does not.
+There is no API to delete one. The remedies are to dismiss the alerts as
+`not_used`, or for a repo admin to toggle the dependency graph off and back on in
+Settings > Code security, which forces a full re-scan. Both are the owner's call.
 
 ## 4. Confirm each live bump is reachable
 
 Most flagged packages are transitive, so the constraint that matters belongs to
 the parent, not to us. Check it before committing to a version.
 
+Set the package name once, as a real shell variable. Every command from here on
+reads `$PKG`. The searches below all report "not found" as empty output, so a
+placeholder left unsubstituted would look exactly like a clean result:
+
+```bash
+PKG=sqlparse   # the package from step 2
+```
+
 Find the parent in the lock. Scan **every** tracked lock, not just the ones the
 alerts named. There are seven uv subprojects (see the multi-venv table in the root
 `CLAUDE.md`), and a package can be reachable in one that Dependabot did not flag:
 
 ```bash
-python3 - <<'PY'
-import re, subprocess
+python3 - "$PKG" <<'PY'
+import re, subprocess, sys
+pkg = sys.argv[1]
 locks = subprocess.run(["git", "ls-files", "*uv.lock"], capture_output=True, text=True).stdout.split()
 for lf in locks:
     for block in open(lf).read().split("[[package]]"):
         name = re.search(r'name = "([^"]+)"', block)
-        if name and re.search(r'\{ name = "<pkg>"', block):
+        if name and re.search(r'\{ name = "' + re.escape(pkg) + '"', block):
             print(lf, "->", name.group(1))
 PY
 ```
 
 A lock with no hit does not carry the package at all and needs no bump. Confirm
-that rather than assuming it from the alert list.
+that rather than assuming it from the alert list. Empty output across every lock
+means either that, or a typo in `$PKG`; check `$PKG` before believing it.
 
-Then read that parent's own requirement from PyPI:
+Then read that parent's own requirement from PyPI, using the parent and version
+the previous command printed:
 
 ```bash
-curl -s https://pypi.org/pypi/<parent>/<version>/json \
-  | python3 -c "import json,sys; print([r for r in (json.load(sys.stdin)['info'].get('requires_dist') or []) if '<pkg>' in r])"
+PARENT=apache-airflow-providers-common-sql; PARENT_VERSION=2.0.1
+curl -s "https://pypi.org/pypi/$PARENT/$PARENT_VERSION/json" \
+  | python3 -c "import json,sys; pkg=sys.argv[1]; print([r for r in (json.load(sys.stdin)['info'].get('requires_dist') or []) if pkg in r])" "$PKG"
 ```
 
 If the parent caps the version below the patched release, the lock bump will not
@@ -129,11 +165,12 @@ Check the image directly rather than assuming. It is amd64, so on an arm64 Mac y
 cannot execute anything inside it, but you can still read its filesystem:
 
 ```bash
-cid=$(docker create --platform linux/amd64 <image>)
+IMAGE=$(awk '/^FROM /{print $2}' airflow/astro/Dockerfile)
+cid=$(docker create --platform linux/amd64 "$IMAGE")
 docker export "$cid" > /tmp/img.tar; docker rm -f "$cid"
 mkdir -p /tmp/meta && tar -xf /tmp/img.tar -C /tmp/meta '*.dist-info/METADATA'
-grep -rh -i '<pkg>' /tmp/meta --include=METADATA | grep -i '^Requires-Dist' | sort -u
-grep -rl -i '<pkg>' /tmp/meta --include=METADATA | sed 's|/METADATA||;s|.*/||' | sort -u
+grep -rh -i "$PKG" /tmp/meta --include=METADATA | grep -i '^Requires-Dist' | sort -u
+grep -rl -i "$PKG" /tmp/meta --include=METADATA | sed 's|/METADATA||;s|.*/||' | sort -u
 ```
 
 The first grep gives every constraint on the package anywhere in the image, which
