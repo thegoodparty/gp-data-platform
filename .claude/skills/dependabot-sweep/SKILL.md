@@ -11,9 +11,10 @@ routinely shows up as eight alerts. A second chunk of the list is usually dead:
 alerts against manifests that were deleted months ago and never got auto-closed.
 
 The job is to collapse that list down to the actual fixes, ship them as one PR,
-and hand the dead alerts back to the user, who closes them in the UI. Do not
-dismiss alerts via the API yourself; that is the user's call and needs a token
-scope you probably do not have.
+and report the dead alerts separately. Dismissing those is the owner's call, so
+ask before doing it, but you can carry it out once they say yes: the repo is
+public, so a `repo`-scoped token is enough and no `security_events` scope is
+needed. See step 3 for the command and the caveat.
 
 ## 0. Set up, and read this first
 
@@ -124,9 +125,32 @@ gh api graphql -H 'Accept: application/vnd.github.hawkgirl-preview+json' -f quer
 
 Entries here that `git ls-files` does not have are stale graph rows. GitHub is
 meant to drop them when the file leaves the default branch and sometimes does not.
-There is no API to delete one. The remedies are to dismiss the alerts as
-`not_used`, or for a repo admin to toggle the dependency graph off and back on in
-Settings > Code security, which forces a full re-scan. Both are the owner's call.
+The `poetry.lock` rows survived every push to main for over two months, including
+a merge that touched the graph's own manifests.
+
+There is no API to delete a graph row, and **this repo is public, so the
+dependency graph cannot be turned off**. The off/on toggle in Settings > Code
+security that people suggest for this does not exist here; `security_and_analysis`
+carries no `dependency_graph` key, and a `PATCH` setting one is silently ignored.
+Do not send anyone looking for it.
+
+That leaves dismissal, which needs no extra token scope on a public repo (`repo`
+covers it). Confirm with the user first, then:
+
+```bash
+gh api -X PATCH "repos/thegoodparty/gp-data-platform/dependabot/alerts/<n>" \
+  -f state=dismissed -f dismissed_reason=not_used \
+  -f dismissed_comment="Manifest <path> was deleted in #<pr>. The dependency graph still lists it; there is no code to patch." \
+  --jq '{number, state, dismissed_reason}'
+```
+
+`not_used` is the right reason: the vulnerable code is genuinely not reachable
+because the manifest is gone. Dismissals are reversible from the UI.
+
+Be honest that this treats the symptom. The graph row survives, so a **new**
+advisory against a package in a dead manifest can file a fresh alert against the
+same path later. If that happens, the escalation is a GitHub Support ticket
+asking them to re-index the repository's dependency graph, not another sweep.
 
 ## 4. Confirm each live bump is reachable
 
@@ -282,4 +306,5 @@ jq -r '.[] | [.number, .dependency.package.name, .dependency.manifest_path, .sec
   done | sort -V
 ```
 
-`not_used` is the right dismissal reason for a manifest that no longer exists.
+Ask whether they want them dismissed. If yes, run the `PATCH` from step 3 over
+this list; if no, leave them and say they will stay on the dashboard.
