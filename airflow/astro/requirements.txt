@@ -9,6 +9,12 @@ databricks-sql-connector>=4.3.0,<5.0.0
 databricks-sdk>=0.117.0,<1.0.0
 psycopg2-binary>=2.9.12,<3.0.0
 sshtunnel>=0.4.0,<1.0.0
+# Security floor, not a direct dependency. sqlparse arrives transitively via the runtime's
+# apache-airflow-providers-common-sql, and the base image pins it to the Airflow 3.3.0
+# constraint (0.5.5), which is vulnerable to three high ReDoS/DoS advisories and one medium
+# SQL-string-breakout. The provider itself only asks for >=0.5.1, so raising the floor here is
+# safe. Drop this line once a runtime release ships 0.6.0 or later on its own.
+sqlparse>=0.6.0
 
 # People-API loader CLI — installed from this monorepo's subdirectory so the
 # `loader` console script is on PATH for the load_people_api DAG's BashOperators.

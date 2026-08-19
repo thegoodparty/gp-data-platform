@@ -107,6 +107,39 @@ Also check whether our own `pyproject.toml` already pins the package at or above
 the patched version. If it does and the alert only names dead manifests, there is
 nothing to fix; it belongs in step 6.
 
+### The alert list does not cover the deploy path
+
+Dependabot only sees manifests that name the package. It cannot see a transitive
+dependency baked into a base image, so **fixing every alert does not mean
+production is patched**. Ask separately how each affected subproject ships.
+
+`airflow/` is the live example. Its `uv.lock` governs local dev only; production
+is Astro Runtime, built from `airflow/astro/Dockerfile` plus
+`airflow/astro/requirements.txt` (the root `CLAUDE.md` says so). The runtime image
+carries its own `apache-airflow` and providers pinned to the Airflow constraints
+file, so a lock bump leaves the container untouched.
+
+Check the image directly rather than assuming. It is amd64, so on an arm64 Mac you
+cannot execute anything inside it, but you can still read its filesystem:
+
+```bash
+cid=$(docker create --platform linux/amd64 <image>)
+docker export "$cid" > /tmp/img.tar; docker rm -f "$cid"
+mkdir -p /tmp/meta && tar -xf /tmp/img.tar -C /tmp/meta '*.dist-info/METADATA'
+grep -rh -i '<pkg>' /tmp/meta --include=METADATA | grep -i '^Requires-Dist' | sort -u
+grep -rl -i '<pkg>' /tmp/meta --include=METADATA | sed 's|/METADATA||;s|.*/||' | sort -u
+```
+
+The first grep gives every constraint on the package anywhere in the image, which
+tells you whether raising the floor can resolve. The second names the installed
+version and which packages pull it. Delete the tar afterwards; it is ~1GB.
+
+If the image ships a vulnerable version, add an explicit floor to
+`astro/requirements.txt` with a comment saying it is a security floor rather than a
+direct dependency, and when it can be dropped. Do not try to `docker build` the
+image locally on arm64 to confirm; the base image's install step is an amd64 binary
+and fails with `exec format error`.
+
 ## 5. Fix and open one PR
 
 Bump only the flagged package. A bare `uv lock --upgrade` drags in unrelated
