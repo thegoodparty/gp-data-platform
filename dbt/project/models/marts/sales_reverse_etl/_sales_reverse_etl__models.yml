@@ -45,6 +45,23 @@ models:
         description: True when candidate_code is non-null; the reverse-ETL diff filters on this.
         data_tests:
           - not_null
+      - name: last_activity_at
+        description: >
+          Basis of the 16-day rolling window, and the recency value ops sorts on. The
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: the BallotReady intermediate's
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
+          This feed has no TechSpeed leg by construction; see the model header.
+        data_tests:
+          - not_null
 
   - name: candidacy_hubspot
     description: >
@@ -105,3 +122,19 @@ models:
                 max_value: 5
               config:
                 where: "viability_rating_2_0 is not null"
+      - name: last_activity_at
+        description: >
+          Basis of the 30-day rolling window, and the recency value ops sorts on. The
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: both vendor intermediates'
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
+        data_tests:
+          - not_null

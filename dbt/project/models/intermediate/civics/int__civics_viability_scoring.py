@@ -14,7 +14,14 @@ Waterfall (best available wins via COALESCE):
 
 Seats fall back to a trust-gated BallotReady lookup
 (int__civics_viability_seats_fallback) when the election link supplies none;
-fallback seats (both tiers) feed multi_seat only.
+fallback seats feed multi_seat only, with the roster fallback's race seats as
+the last resort. Opponent counts fall back to a roster-membership lookup
+(int__civics_viability_opponents_fallback): where the native per-election
+computation is missing, log_n_losers computes from the roster's member count
+and the SAME race row's seats, gated on multi_seat boundary agreement so the
+models never see a multi_seat/log_n_losers pair implying different race
+shapes. Two internal provenance columns (log_n_losers_source,
+multi_seat_source) record which source fed each row; they are not published.
 
 Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
@@ -108,6 +115,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("gp_candidacy_id"),
         col("fallback_seats"),
     )
+    opponents_fallback = dbt.ref("int__civics_viability_opponents_fallback").select(
+        col("gp_candidacy_id"),
+        col("fallback_n_candidates"),
+        col("fallback_race_seats"),
+    )
 
     # bring in state, seats_available, and number_of_opponents fallback from election table
     # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
@@ -131,6 +143,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         candidacy.join(election_fields, on="gp_election_id", how="left")
         .join(n_candidates_per_election, on="gp_election_id", how="left")
         .join(seats_fallback, on="gp_candidacy_id", how="left")
+        .join(opponents_fallback, on="gp_candidacy_id", how="left")
     )
 
     df = (
@@ -143,11 +156,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .otherwise(col("seats_available").cast("int")),
         )
         # Fallback seats answer only "is this a multi-seat office/race" -- they
-        # must not reach n_seats/log_n_losers, whose candidate count is
-        # per-election grain and can span positions (inflated opponent counts).
+        # must not reach n_seats, whose native pairing with the per-election
+        # candidate count is what log_n_losers means on native rows. The
+        # roster fallback's race seats are the last resort; on rows they fill,
+        # log_n_losers (below) uses the same race row's pair, so the boundary
+        # stays coherent by construction.
         .withColumn(
             "n_seats_for_multi",
-            coalesce(col("n_seats"), col("fallback_seats").cast("int")),
+            coalesce(
+                col("n_seats"),
+                col("fallback_seats").cast("int"),
+                col("fallback_race_seats").cast("int"),
+            ),
         )
         # n_candidates: trust mart count when > 1, else fall back to election column, else null
         .withColumn(
@@ -176,10 +196,42 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
         .withColumn("is_unexpired", lit(False))
         .withColumn(
-            "log_n_losers",
+            "log_n_losers_native",
             when(col("n_candidates").isNull() | col("n_seats").isNull(), None)
             .when(col("n_seats") >= col("n_candidates"), log(lit(0.001)))
             .otherwise(log(col("n_candidates") - col("n_seats"))),
+        )
+        # Roster fill: BOTH inputs from the same race row (never the
+        # per-election mart count with race seats), and only when the seat
+        # source that won multi_seat precedence agrees with the roster seats
+        # on the multi-seat boundary -- trained rows derive multi_seat and
+        # log_n_losers from one seat value, so a boundary-inconsistent pair
+        # would be an input the models never saw.
+        .withColumn(
+            "log_n_losers_fill",
+            when(
+                col("fallback_n_candidates").isNotNull()
+                & col("fallback_race_seats").isNotNull()
+                & ((col("n_seats_for_multi") > 1) == (col("fallback_race_seats") > 1)),
+                when(
+                    col("fallback_race_seats") >= col("fallback_n_candidates"),
+                    log(lit(0.001)),
+                ).otherwise(log(col("fallback_n_candidates") - col("fallback_race_seats"))),
+            ),
+        )
+        .withColumn("log_n_losers", coalesce(col("log_n_losers_native"), col("log_n_losers_fill")))
+        .withColumn(
+            "log_n_losers_source",
+            when(col("log_n_losers_native").isNotNull(), lit("native"))
+            .when(col("log_n_losers_fill").isNotNull(), lit("roster"))
+            .otherwise(lit(None).cast("string")),
+        )
+        .withColumn(
+            "multi_seat_source",
+            when(col("n_seats").isNotNull(), lit("native"))
+            .when(col("fallback_seats").isNotNull(), lit("seats_fallback"))
+            .when(col("fallback_race_seats").isNotNull(), lit("roster"))
+            .otherwise(lit(None).cast("string")),
         )
         # open_seat: boolean → keep as-is (pandas will cast to float 0/1/NaN)
         .withColumnRenamed("is_open_seat", "open_seat")
@@ -201,7 +253,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "log_n_losers",
     ]
 
-    df_pd = df.select(["gp_candidacy_id", *all_features]).toPandas()
+    df_pd = df.select(
+        ["gp_candidacy_id", *all_features, "log_n_losers_source", "multi_seat_source"]
+    ).toPandas()
     df_pd[all_features] = df_pd[all_features].astype(float)
 
     # waterfall — each model scores the rows it can; COALESCE picks best available
@@ -224,6 +278,25 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # so COALESCE and comparisons behave correctly
     for s in score_cols:
         df_scored = df_scored.withColumn(s, when(col(s).isNull() | isnan(col(s)), None).otherwise(col(s)))
+
+    # The same pandas round-trip artifact reaches these two string columns,
+    # but since the target type is string rather than double it surfaces as
+    # the literal text "nan" instead of an incompatible float (confirmed
+    # empirically: every row expected null here landed as "nan", never a true
+    # null). Whitelist the values the withColumns above can actually produce
+    # so a round-trip artifact lands back on a true null instead of leaking a
+    # stray non-value string past the yml's accepted_values tests.
+    # This whitelist, the when-chains above, and the yml accepted_values must move together -- no shared constant.
+    df_scored = df_scored.withColumn(
+        "log_n_losers_source",
+        when(col("log_n_losers_source").isin("native", "roster"), col("log_n_losers_source")),
+    ).withColumn(
+        "multi_seat_source",
+        when(
+            col("multi_seat_source").isin("native", "seats_fallback", "roster"),
+            col("multi_seat_source"),
+        ),
+    )
 
     df_scored = (
         df_scored.withColumn(
@@ -285,5 +358,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "score_viability_automated",
         "scoring_model",
         "model_version",
+        "log_n_losers_source",
+        "multi_seat_source",
         "updated_at",
     )

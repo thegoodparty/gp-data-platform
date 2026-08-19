@@ -3,12 +3,14 @@ import random
 import time
 from base64 import b64encode
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, lit, pandas_udf
+from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -326,6 +328,10 @@ def model(dbt, session) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
+        # "ignore" (the default) would silently drop feed_extracted_at from
+        # incremental merges until a full refresh; fail loudly instead, like
+        # the sibling models.
+        on_schema_change="fail",
         tags=["intermediate", "ballotready", "person", "api", "pandas_udf"],
     )
 
@@ -342,14 +348,46 @@ def model(dbt, session) -> DataFrame:
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
-        max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
-        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+        # Gate on the feed's ingest clock carried through the candidacy model:
+        # the old vendor-timestamp comparison stranded backfills the same way
+        # (see int__ballotready_candidacy).
+        max_feed_row = existing_table.agg({"feed_extracted_at": "max"}).collect()[0]
+        max_feed_extracted_at = max_feed_row[0] if max_feed_row else None
 
-        if max_updated_at:
-            candidacy = candidacy.filter(candidacy["updated_at"] >= max_updated_at)
+        # Candidacies the feed never delivered (the upcoming-roster path) carry
+        # a null feed_extracted_at, so the cutoff can never admit them. Admit
+        # them only for persons not stored yet: re-admitting every null-feed
+        # candidacy each run would re-enrich an ever-growing set nightly.
+        existing_person_ids = existing_table.select(col("database_id").alias("stored_person_id"))
+        null_feed_candidacies = candidacy.filter(candidacy["feed_extracted_at"].isNull())
+        null_feed_candidacies = null_feed_candidacies.join(
+            existing_person_ids,
+            null_feed_candidacies["candidate_database_id"] == existing_person_ids["stored_person_id"],
+            "left_anti",
+        )
 
-    # get distinct person IDs
-    person_ids = candidacy.select("candidate_database_id").distinct()
+        if max_feed_extracted_at:
+            # Strict ">" for the same reason as the candidacy model: the ingest
+            # stamp is batch-constant, so ">=" would re-admit the entire newest
+            # batch every run until the next file lands.
+            fresh_candidacies = candidacy.filter(candidacy["feed_extracted_at"] > max_feed_extracted_at)
+        else:
+            # Empty-table incremental run (manual truncation, or a new
+            # environment where full-refresh has not run): bound the input to a
+            # 30-day ingest window instead of re-enriching every person ever,
+            # matching int__ballotready_candidacy. Full history recovery is a
+            # --full-refresh.
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            fresh_candidacies = candidacy.filter(candidacy["feed_extracted_at"] >= thirty_days_ago)
+            logging.info(
+                f"INFO: No feed cutoff found. Filtered to candidacies ingested since {thirty_days_ago}"
+            )
+        candidacy = null_feed_candidacies.unionByName(fresh_candidacies)
+
+    # one row per person, carrying the newest feed ingest time across their candidacies
+    person_ids = candidacy.groupBy("candidate_database_id").agg(
+        spark_max("feed_extracted_at").alias("feed_extracted_at")
+    )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if person_ids is empty, return empty DataFrame
@@ -378,6 +416,7 @@ def model(dbt, session) -> DataFrame:
             col("suffix"),
             col("updatedAt").alias("updated_at"),
             col("urls"),
+            lit(None).cast("timestamp").alias("feed_extracted_at"),
         )
         return empty_df
 
@@ -406,6 +445,7 @@ def model(dbt, session) -> DataFrame:
         col("person.suffix"),
         col("person.updatedAt").alias("updated_at"),
         col("person.urls"),
+        col("feed_extracted_at"),
     )
 
     # Trigger a cache to ensure these transformations are applied before the filter
