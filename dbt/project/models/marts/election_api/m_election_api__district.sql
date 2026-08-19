@@ -4,31 +4,13 @@ with
             state, district_type as l2_district_type, district_name as l2_district_name
         from {{ ref("int__model_prediction_voter_turnout") }}
     ),
-    l2_data as (
+    -- Carries the synthetic district_type='State' rows statewide positions match on.
+    l2_districts as (
         select
-            state_postal_code,
-            {{ get_l2_district_columns(use_backticks=true, cast_to_string=true) }}
-        from {{ ref("int__l2_nationwide_uniform") }}
-    ),
-    l2_data_districts as (
-        select distinct
             state_postal_code as state,
-            district_column_name as l2_district_type,
-            district_value as l2_district_name
-        from
-            l2_data unpivot (
-                district_value for district_column_name
-                in ({{ get_l2_district_columns(use_backticks=false) }})
-            )
-        where district_value is not null
-    ),
-    -- State-level districts for statewide positions (Governor, US Senate, etc.)
-    state_districts as (
-        select distinct
-            state_postal_code as state,
-            'State' as l2_district_type,
-            state_postal_code as l2_district_name
-        from {{ ref("int__l2_nationwide_uniform") }}
+            district_type as l2_district_type,
+            district_name as l2_district_name
+        from {{ ref("int__l2_district_aggregations") }}
     ),
     unioned_w_id_districts as (
         select
@@ -47,25 +29,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "l2_data_districts.state",
-                        "l2_data_districts.l2_district_type",
-                        "l2_data_districts.l2_district_name",
+                        "l2_districts.state",
+                        "l2_districts.l2_district_type",
+                        "l2_districts.l2_district_name",
                     ]
                 )
-            }} as id, l2_data_districts.*
-        from l2_data_districts
-        union all
-        select
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "state_districts.state",
-                        "state_districts.l2_district_type",
-                        "state_districts.l2_district_name",
-                    ]
-                )
-            }} as id, state_districts.*
-        from state_districts
+            }} as id, l2_districts.*
+        from l2_districts
     ),
     districts as (select * from unioned_w_id_districts)
 
@@ -81,10 +51,9 @@ select
     -- both hash the same (state, l2_district_type, l2_district_name)
     -- tuple with the default salt). Turnout-only synthetic districts
     -- have no L2 row and surface NULL across all three.
-    tbl_agg.voter_count as registered_voters,
-    tbl_agg.unique_cellphones,
-    tbl_agg.unique_landlines
+    agg.voter_count as registered_voters,
+    agg.unique_cellphones,
+    agg.unique_landlines
 from districts
-left join
-    {{ ref("int__l2_district_aggregations") }} as tbl_agg on districts.id = tbl_agg.id
+left join {{ ref("int__l2_district_aggregations") }} as agg on districts.id = agg.id
 qualify row_number() over (partition by districts.id order by updated_at desc) = 1
