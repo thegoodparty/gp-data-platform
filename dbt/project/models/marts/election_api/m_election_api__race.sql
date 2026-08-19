@@ -1,16 +1,7 @@
-{{
-    config(
-        materialized="table",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
 {% set serving_window_predicate %}
 tbl_race.election_date
 between current_date() - interval '6 years' and current_date() + interval '2 years'
 {% endset %}
-
 
 with
     -- Pre-aggregate civics.election_stage to one row per br_race_id. The

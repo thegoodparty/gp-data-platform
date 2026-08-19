@@ -1,12 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        unique_key="id",
-        on_schema_change="append_new_columns",
-        auto_liquid_cluster=true,
-    )
-}}
-
 with
     matched_positions as (
         select distinct
@@ -59,12 +50,6 @@ with
                     and tbl_match.confidence >= 90
                 )
             )
-            {% if is_incremental() %}
-                and (
-                    tbl_position.updated_at > (select max(updated_at) from {{ this }})
-                    or tbl_override.br_database_id is not null
-                )
-            {% endif %}
     ),
 
     -- Inject a match from the override seed for positions absent from the LLM
@@ -95,7 +80,6 @@ with
                 from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
                 where br_database_id is not null
             )
-    -- No incremental filter: re-emit every run so seed edits always propagate.
     ),
 
     unmatched_br_positions as (
@@ -121,9 +105,6 @@ with
                 from override_injected_positions
                 where br_database_id is not null
             )
-            {% if is_incremental() %}
-                and tbl_position.updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
     ),
 
     all_positions as (
