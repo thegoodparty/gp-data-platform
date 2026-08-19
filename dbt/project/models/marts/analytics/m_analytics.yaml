@@ -1551,9 +1551,10 @@ models:
     description: >
       Exposure of stg_airbyte_source__amplitude_api_events into
       mart_analytics (Sigma reads marts only), enriched with the governed
-      event taxonomy: family, is_win, is_serve, and is_recurrent derive from
-      the amplitude_event_taxonomy macros so BI consumers never re-derive
-      serve/win classification from event_type strings. Passthrough columns
+      event taxonomy: family, is_win, is_serve, is_recurrent and
+      is_dashboard_view derive from the amplitude_event_taxonomy macros so BI
+      consumers never re-derive serve/win classification from event_type
+      strings. Passthrough columns
       are documented at the upstream staging model; the event_type-grain
       catalog (volume, recency, Govern metadata) is
       int__amplitude_event_catalog, built from the same macros.
@@ -1603,6 +1604,34 @@ models:
           milestones) — exactly the events the Win activity rollups count.
           Event-level allowlist (amplitude_event_is_recurrent macro), not a
           pattern. False, never null, when event_type is null.
+
+          Does NOT cover dashboard views: use is_dashboard_view for those. The
+          dashboard-view union includes a page-path leg that an event-name
+          allowlist cannot express.
+        data_tests:
+          - not_null
+
+      - name: is_dashboard_view
+        description: >
+          True for a candidate-dashboard view, from the is_dashboard_view_event
+          macro. Anchored on the page path ('Viewed' where
+          event_properties:path = '/dashboard') OR'd with the three generations
+          of named dashboard event, because the product renamed that event on
+          every rebuild of the surface and each rename zeroed the metrics built
+          on it. False, never null, when event_type is null.
+
+          Do NOT combine with is_win. The page-path leg fires on event_type
+          'Viewed', which classifies to family 'viewed_generic', so is_win is
+          FALSE on those rows. `where is_win and is_dashboard_view` drops the
+          path leg and reintroduces the undercount this column exists to
+          prevent: from 2026-08-07 the path leg carries 2,033 of 2,762
+          dashboard-view events (74%). Filter on is_dashboard_view alone.
+
+          Raw counts over this flag over-count, because a single visit fires
+          both the page event and whichever named event is live. Per-user
+          MIN/MAX/EXISTS and COUNT(DISTINCT date) are safe; for view counts use
+          the deduped columns on int__amplitude_win_activity, or prefer
+          distinct view-days.
         data_tests:
           - not_null
     tests:
