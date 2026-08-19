@@ -390,6 +390,10 @@ jq -r '.[] | [.number, .dependency.package.name, .dependency.manifest_path, .sec
   done | sort -V
 ```
 
-Then point them at **Refresh Dependabot alerts** (step 3), which is the fix. Offer
-dismissal only if the refresh does not clear the list, and say plainly that
-dismissal leaves the stale graph rows in place.
+Then point them at the **dependency graph rebuild**, the disable/re-enable
+procedure under "What actually clears a stale row" in step 3. It is the only
+action confirmed to clear stale rows, and it needs a repository admin. Remind them
+to re-enable Dependabot alerts afterwards, since the rebuild does not.
+
+Offer dismissal only if they cannot or will not do the rebuild, and say plainly
+that it hides the alerts while leaving the rows that generate them.
