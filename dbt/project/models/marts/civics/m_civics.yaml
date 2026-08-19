@@ -233,7 +233,13 @@ models:
         description: Political party affiliation
 
       - name: election_level
-        description: Level of election (city, county, state, federal)
+        description: >
+          Level of election (city, county, state, federal). Prefers the level
+          the app persisted on the campaign; where that is absent, falls back to
+          the raw BallotReady position level captured at onboarding, collapsed
+          to the same four buckets (federal/state/county pass through, every
+          other BallotReady level maps to city). Null for campaigns with neither
+          — mostly custom-office signups, where no BallotReady position exists.
         data_tests:
           - accepted_values:
               arguments:
