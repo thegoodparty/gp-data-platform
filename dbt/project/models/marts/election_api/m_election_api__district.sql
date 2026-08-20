@@ -15,12 +15,18 @@ with
     -- which is exactly what happened, 204 of them.
     turnout_districts as (
         select distinct
-            state, district_type as l2_district_type, district_name as l2_district_name
-        from {{ ref("int__model_prediction_voter_turnout") }}
+            turnout.state,
+            turnout.district_type as l2_district_type,
+            turnout.district_name as l2_district_name
+        from {{ ref("int__model_prediction_voter_turnout") }} as turnout
         where
-            {{ retain_district_row("district_type", "state", "district_name") }}
+            {{
+                retain_district_row(
+                    "turnout.district_type", "turnout.state", "turnout.district_name"
+                )
+            }}
             {% if is_incremental() %}
-                and inference_at >= (select max(updated_at) from {{ this }})
+                and turnout.inference_at >= (select max(updated_at) from {{ this }})
             {% endif %}
     ),
     l2_data as (

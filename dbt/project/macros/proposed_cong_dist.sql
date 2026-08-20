@@ -34,7 +34,37 @@
 -- assert_proposed_cong_dist_format, which reads the vendor column directly and
 -- deliberately does not go through these macros.
 {% macro is_adopted_proposed_congressional(state_expr, name_expr) -%}
-    exists (
+    {#-
+        The outer references below sit inside a correlated subquery over the
+        adoption seed, and an unqualified name binds to the innermost scope
+        first. So passing a bare `state` silently resolves to the seed's own
+        state column, turning the correlation into `adoption.state =
+        adoption.state` — always true, gate wide open, no error anywhere. That
+        has happened twice. Refuse it at compile time rather than trusting the
+        next caller to remember.
+    -#}
+    {%- set seed_columns = [
+        "state",
+        "district_type",
+        "district_number",
+        "adopted_source",
+        "is_verified",
+        "source_url",
+        "notes",
+    ] -%}
+    {%- for expr in [state_expr, name_expr] -%}
+        {%- if "." not in expr and expr | trim | lower in seed_columns -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "is_adopted_proposed_congressional got '"
+                    ~ expr
+                    ~ "', which collides with a district_map_adoption column. "
+                    ~ "Qualify it with its table alias, or the correlation "
+                    ~ "becomes a tautology and the gate stops gating."
+                )
+            }}
+        {%- endif -%}
+    {%- endfor -%} exists (
         select 1
         from {{ ref("district_map_adoption") }} as adoption
         where
