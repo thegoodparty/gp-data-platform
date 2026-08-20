@@ -75,7 +75,14 @@ _DDL_NAMES = (
     '    "FirstName" text,\n'
     '    "LastName" text,\n'
     '    "Parties_Description" text,\n'
-    '    "hf_most_important_policy_item" text\n'
+    '    "hf_most_important_policy_item" text,\n'
+    '    "4H_Livestock_District" text,\n'
+    '    "Community_College" text,\n'
+    '    "Judicial_Chancery_Court" text,\n'
+    '    "Judicial_Justice_of_the_Peace" text,\n'
+    '    "Soil_and_Water_District" text,\n'
+    '    "Soil_and_Water_District_At_Large" text,\n'
+    '    "State_Board_of_Equalization" text\n'
     ");"
 )
 
@@ -310,7 +317,7 @@ def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> Non
         _exec(cur, 'ANALYZE public."Voter"')
 
     # Build the committed extras (3 trigram GIN — first/last name lower() + Parties_Description,
-    # 2 lower() b-tree, 1 multicolumn b-tree, 1 plain b-tree) via the exact partitioned path
+    # 2 lower() b-tree, 1 multicolumn b-tree, 8 plain b-tree) via the exact partitioned path
     # build_indexes.run uses: parent ON ONLY, then a child
     # per state attached. The spatial GiST index on "geom" is excluded here — it needs postgis and
     # the generated column, which this names-only fixture doesn't set up (it's covered by the
