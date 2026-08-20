@@ -21,8 +21,8 @@ with
             model_version
         from {{ ref("int__model_prediction_voter_turnout") }}
         where
-            -- Past elections are not served: an out-of-horizon race returns no
-            -- projection, so these rows answer nothing.
+            -- Past election years are not served: an out-of-horizon race
+            -- returns no projection, so these rows answer nothing.
             election_year >= year(current_date())
             -- The retrained model dropped this category. The rows are frozen
             -- output from a retired run, and the app no longer asks for them.
