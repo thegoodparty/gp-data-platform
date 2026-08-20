@@ -9,6 +9,7 @@ with
             event_type,
             event_time,
             country,
+            event_properties:path::string as page_path,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -31,20 +32,30 @@ with
             -- single-source classifier is int__amplitude_event_catalog; a singular
             -- test (assert_milestone_events_classified) guards that every event
             -- below classifies to a non-'other' family.
-            and event_type in (
-                'Onboarding - Registration Completed',
-                'onboarding_complete',
-                'pro_upgrade_complete',
-                'Voter Outreach - Campaign Completed',
-                'Dashboard - Candidate Dashboard Viewed',
-                'Dashboard - Campaign Plan Viewed',
-                'Serve Onboarding - Getting Started Viewed',
-                'Serve Onboarding - Constituency Profile Viewed',
-                'Serve Onboarding - Poll Value Props Viewed',
-                'Serve Onboarding - Poll Strategy Viewed',
-                'Serve Onboarding - Add Image Viewed',
-                'Serve Onboarding - Poll Preview Viewed',
-                'Serve Onboarding - SMS Poll Sent'
+            and (
+                event_type in (
+                    'Onboarding - Registration Completed',
+                    'onboarding_complete',
+                    'pro_upgrade_complete',
+                    'Voter Outreach - Campaign Completed',
+                    'Dashboard - Candidate Dashboard Viewed',
+                    'Dashboard - Campaign Plan Viewed',
+                    'Campaign Plan - Campaign Tracker Viewed',
+                    'Serve Onboarding - Getting Started Viewed',
+                    'Serve Onboarding - Constituency Profile Viewed',
+                    'Serve Onboarding - Poll Value Props Viewed',
+                    'Serve Onboarding - Poll Strategy Viewed',
+                    'Serve Onboarding - Add Image Viewed',
+                    'Serve Onboarding - Poll Preview Viewed',
+                    'Serve Onboarding - SMS Poll Sent'
+                )
+                -- Page-path leg of the dashboard-view union. The path predicate has
+                -- to be here rather than downstream: 'Viewed' is site-wide (4.5M
+                -- rows) and only its ~106k '/dashboard' rows are dashboard views.
+                or (
+                    event_type = 'Viewed'
+                    and event_properties:path::string = '/dashboard'
+                )
             )
     ),
 
@@ -52,7 +63,7 @@ with
         select
             user_id, {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
         from milestone_events
-        where {{ is_dashboard_view_event("event_type") }}
+        where {{ is_dashboard_view_event("event_type", "page_path") }}
     ),
 
     dashboard_views_dedup as (
@@ -74,7 +85,8 @@ with
             ) as amplitude_registration_completed_at,
             min(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as first_dashboard_viewed_at,
             min_by(
@@ -110,7 +122,8 @@ with
             -- Active Candidates
             max(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as last_dashboard_viewed_at,
             coalesce(max(dv.dashboard_view_count), 0) as dashboard_view_count,

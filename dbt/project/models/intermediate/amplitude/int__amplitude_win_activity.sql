@@ -8,6 +8,7 @@ with
             date_trunc('month', event_time) as activity_month_year,
             event_type,
             event_time,
+            event_properties:path::string as page_path,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -24,14 +25,22 @@ with
             user_id is not null
             and try_cast(user_id as bigint) is not null
             -- Recurrent-activity events come from the single-source taxonomy
-            -- instead of a hardcoded list. Resolves to 3 events:
-            -- 'Voter Outreach - Campaign Completed', plus both the legacy
-            -- and live dashboard-view events (unioned below via
-            -- is_dashboard_view_event).
-            and event_type in (
-                select event_type
-                from {{ ref("int__amplitude_event_catalog") }}
-                where is_recurrent
+            -- instead of a hardcoded list: 'Voter Outreach - Campaign Completed'
+            -- plus the three generations of named dashboard-view event.
+            and (
+                event_type in (
+                    select event_type
+                    from {{ ref("int__amplitude_event_catalog") }}
+                    where is_recurrent
+                )
+                -- Page-path leg of the dashboard-view union, which an event_type
+                -- allowlist cannot express: 'Viewed' is site-wide and only its
+                -- '/dashboard' rows are dashboard views. Keeps this model's intake
+                -- aligned with is_dashboard_view_event below.
+                or (
+                    event_type = 'Viewed'
+                    and event_properties:path::string = '/dashboard'
+                )
             )
     ),
 
@@ -41,7 +50,7 @@ with
             event_time,
             {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
         from win_events
-        where {{ is_dashboard_view_event("event_type") }}
+        where {{ is_dashboard_view_event("event_type", "page_path") }}
     ),
 
     dashboard_views_dedup as (
@@ -83,18 +92,20 @@ with
             coalesce(max(dv.dashboard_views), 0) as dashboard_views,
             count(
                 distinct case
-                    when {{ is_dashboard_view_event("event_type") }}
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
                     then date(event_time)
                 end
             ) as dashboard_view_days,
             min(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as first_dashboard_viewed_at,
             max(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as last_dashboard_viewed_at,
 
