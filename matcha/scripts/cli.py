@@ -31,12 +31,26 @@ _ENTITY_TYPE_OPTION = click.option(
 )
 
 
+def _json_fallback(o):
+    """Unwrap the numpy types json refuses, for _serialize_array_value."""
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, np.generic):
+        return o.item()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
 def _serialize_array_value(v):
-    """Convert array/ndarray cell to a JSON string, passing through nulls."""
+    """Convert array/ndarray cell to a JSON string, passing through nulls.
+
+    Nested arrays need the `default` hook: ndarray.tolist() unwraps only the
+    outer level, so a list<list<...>> column arrives with inner ndarrays that
+    json cannot serialize on its own.
+    """
     if isinstance(v, np.ndarray):
-        return json.dumps(v.tolist())
+        return json.dumps(v.tolist(), default=_json_fallback)
     if isinstance(v, list):
-        return json.dumps(v)
+        return json.dumps(v, default=_json_fallback)
     return v
 
 
