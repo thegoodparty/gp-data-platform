@@ -82,28 +82,6 @@
 {%- endmacro %}
 
 
--- Post-hook for the district mart. Its merge only adds and updates, so the gate
--- can admit a district but never take one back: rows minted while a state was
--- adopted survive a seed edit that would no longer admit them. Retraction is the
--- case this design exists for — a court ruling striking a map down is exactly
--- what happened to Virginia — so without this a flip leaves stale bindable
--- districts behind and reds the gate assertion until someone knows to run a full
--- refresh, under time pressure. This makes the seed authoritative both ways.
--- The alias is load-bearing: district_map_adoption has its own `state` column,
--- so an unqualified `state` inside the correlated subquery binds to the seed
--- rather than to the target, making the correlation a tautology.
-{% macro retract_unadopted_proposed_districts() -%}
-    delete from {{ this }} as district
-    where
-        district.l2_district_type = 'Proposed_District' and not
-        {{
-            is_adopted_proposed_congressional(
-                "district.state", "district.l2_district_name"
-            )
-        }}
-{%- endmacro %}
-
-
 -- A Proposed_District row is worth carrying only if it is the adopted map.
 -- Everything else in that column — states seeded current or needs_boundary, MI's
 -- proposed state senate, CO/WA annexation areas — is unbindable, so aggregating

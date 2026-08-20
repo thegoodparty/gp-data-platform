@@ -6,8 +6,11 @@
 -- requires at least one matching candidacy_stage row whose election/position
 -- aligns with the candidacy's (NULL-tolerant) and whose result matches
 -- (NULL-safe, so a pending stage matches its own result-less row), preventing
--- cross-race contamination via upstream gp_candidacy_id collisions. Zero rows
--- expected.
+-- cross-race contamination via upstream gp_candidacy_id collisions. The
+-- backing row must also be evidence, not a gp_api-only pledge row -- stage
+-- derivation excludes pledges, so a pledge row satisfying the membership
+-- would mask a regression on candidacies that hold both a vendor row and a
+-- pledge row. Zero rows expected.
 with
     paired_null_violations as (
         select gp_candidacy_id, latest_stage_reached, latest_stage_result
@@ -29,6 +32,7 @@ with
                     cs.gp_candidacy_id = c.gp_candidacy_id
                     and cs.election_stage = c.latest_stage_reached
                     and cs.election_result <=> c.latest_stage_result
+                    and not (cs.source_systems <=> array('gp_api'))
                     and (
                         es.gp_election_id is null
                         or c.gp_election_id is null

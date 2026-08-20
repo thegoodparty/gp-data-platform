@@ -523,6 +523,26 @@ models:
         data_tests:
           - not_null
 
+      - name: vendor_activity_at
+        description: >
+          Latest TechSpeed event time for the candidacy: the max across its stages of
+          the form's date_processed, taken only where it is not implausibly later than
+          the extract that carried it (a day of slack for clock skew, matching the
+          BallotReady leg). DAY
+          RESOLUTION ONLY -- the form captures a date, not a time, so values land at
+          midnight and consumers sorting on this will see ties within a day.
+          NULLABLE BY DESIGN: null means the form date is missing, unparseable, or
+          implausibly future, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted -- as a non-null value it would
+          outrank a correctly-dated sibling provider wherever consumers take the
+          greatest across providers, and because it advances with every delivery the
+          row would tick forward forever, sweeping the whole affected cohort back into
+          a recency window on each re-delivery. Parse failures are not rare: the staging rule
+          accepts slash-separated US dates but not hyphen-separated ones, which is a
+          known follow-up. Additive and destination-facing -- created_at/updated_at
+          stay extract stamps for the provider precedence chain, so consumers that
+          need real candidate activity (the sales export windows) read this instead.
+
     tests:
       - dbt_utils.expression_is_true:
           name: techspeed_candidacy_has_general_or_primary_date
@@ -1211,12 +1231,9 @@ models:
 
   - name: int__ballotready_candidate_identity
     description: >
-      Canonical BallotReady candidate identity inputs, one deterministic row per
-      br_candidate_id. int__civics_candidate_ballotready and
-      int__civics_candidacy_ballotready both hash these columns for
-      gp_candidate_id, so a person resolves to the same id in both models
-      (previously they picked divergent per-row vs rolled-up contact values and
-      orphaned candidates whose email varied across candidacy rows).
+      Canonical BallotReady candidate name/contact/party per br_candidate_id: one
+      deterministic representative row, since S3 email/name/phone vary across a
+      person's candidacy rows. Feeds the person mart's display attributes only.
 
       Grain: One row per br_candidate_id.
     columns:
@@ -1360,6 +1377,24 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+      - name: vendor_activity_at
+        description: >
+          Latest BallotReady event time for the candidacy: the max across its stages
+          of the vendor's own candidacy_updated_at, or -- where that sits implausibly
+          later than the row's extract stamp -- the vendor's candidacy_created_at,
+          with a day of slack for ordinary clock skew between the vendor's clock and
+          ours. Both values are vendor-owned, so a re-delivery of an unchanged record
+          does not move them; anchoring to the extract stamp instead would drag the
+          value forward on every weekly full-file re-delivery and keep the row
+          perpetually fresh. NULLABLE BY DESIGN: null means this provider supplied no
+          usable event time, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted here -- as a non-null value it
+          would outrank a correctly-dated sibling provider wherever consumers take
+          the greatest across providers. Additive and destination-facing:
+          created_at/updated_at stay extract stamps for the provider precedence
+          chain, so consumers that need real candidate activity (the sales export
+          windows) read this instead.
 
   - name: int__civics_elected_official_ballotready
     description: >
@@ -4079,6 +4114,59 @@ models:
           arguments:
             expression: "(seats_source = 'race_exact') = (matched_br_race_id is not null)"
 
+  - name: int__civics_viability_opponents_fallback
+    description: >
+      Opponent-count inputs for the viability scorer, selected by roster
+      membership: the candidacy's own BR candidacy ids (via candidacy_stage)
+      found inside the candidacies array of exactly one clean BallotReady
+      race (latest race version). Unlike the seats fallback's
+      matched_br_race_id (a position+date min-pick, not roster-verified),
+      roster_br_race_id is a race the candidacy provably belongs to.
+      Fail-closed: multi-race membership, office-type contradictions against
+      the roster race's position, and rosters smaller than two members yield
+      no row. The scorer consumes the count and seats as a same-race-row pair
+      for log_n_losers where the native computation is missing, and the seats
+      as the last multi_seat coalesce arm. Grain: zero or one row per
+      gp_candidacy_id. Town Council and City Council are treated as one
+      compatible municipal category in that gate.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_n_candidates
+        description: >
+          Member count of the roster (the candidacy itself included). At
+          least 2 by construction: a one-member roster is not evidence of an
+          uncontested race while BallotReady is still discovering the field.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2
+      - name: fallback_race_seats
+        description: >
+          Seat count of the same race row; pairs with fallback_n_candidates
+          so log_n_losers never mixes grains. Positive by construction via
+          the clean-race predicate.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: roster_br_race_id
+        description: >
+          The single clean race whose roster contains the candidacy.
+          Roster-verified provenance, safe to join for audits.
+        data_tests:
+          - not_null
+
   - name: int__civics_viability_scoring
     description: >
       Viability scores for all candidacies in the civics mart, produced by an
@@ -4132,6 +4220,30 @@ models:
           Resolved model_predictions registered version of scoring_model for this
           row. Latest-version load is a moving pointer, so this records the exact
           version that scored the row for traceability and a code-pin rollback target.
+      - name: log_n_losers_source
+        description: >
+          Which source computed log_n_losers for this row -- the native
+          per-election pair or the roster fallback's same-race pair. Internal
+          provenance; null when the feature is unavailable; not surfaced on
+          candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - roster
+      - name: multi_seat_source
+        description: >
+          Which seat source won the multi_seat coalesce -- native election
+          seats, the position+date seats fallback, or the roster fallback's
+          race seats. Internal provenance; not surfaced on candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - seats_fallback
+                  - roster
       - name: updated_at
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
