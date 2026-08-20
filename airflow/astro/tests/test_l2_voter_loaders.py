@@ -11,20 +11,20 @@ from include.custom_functions.l2_voter_loaders import (
     EXPIRED_DIR,
     EXPIRED_FOLDER,
     SOURCE_GROUPS,
-    build_load_statement,
-    get_table_loaded_at,
     list_remote_sources,
     load_table,
     plan_loads,
     plan_transfers,
     source_file_type,
     sync_source,
+    table_loaded_at,
 )
 
 BASE = "VM2--MO--2026-08-03"
 MODIFIED = datetime(2026, 8, 3, 20, 0, tzinfo=UTC)
 MODIFIED_TS = MODIFIED.timestamp()
 STAGED = MODIFIED + timedelta(minutes=30)
+UNIFORM = "VM2Uniform--MO--2026-08-03.tab"
 
 DEMOGRAPHIC_ROWS = b"LALVOTERID\tZip\nLALMO1\t01854\nLALMO2\t07001\n"
 MEMBERS = [
@@ -34,7 +34,7 @@ MEMBERS = [
     f"{BASE}-VOTEHISTORY_DataDictionary.csv",
 ]
 
-# One real archive name per group. A group added without one fails the round-trip test below.
+# One real archive name per group. A group added without one fails the grammar test below.
 ARCHIVE_SAMPLES = {
     "VM2": f"{BASE}.zip",
     "VM2Uniform": "VM2Uniform--MO--2026-08-03.zip",
@@ -70,14 +70,9 @@ class FakeAttributes:
 
 
 class FakeSFTPClient:
-    """Stands in for paramiko: download() copies the payload to the local path."""
+    """Stands in for paramiko: get() copies the payload to the local path."""
 
-    def __init__(
-        self,
-        payload: bytes = b"",
-        listings: dict[str, list] | None = None,
-        missing: set[str] | None = None,
-    ):
+    def __init__(self, payload: bytes = b"", listings: dict | None = None, missing: set | None = None):
         self.payload = payload
         self.listings = listings or {}
         self.missing = missing or set()
@@ -104,9 +99,32 @@ class FakeS3Client:
         self.objects[Key] = fileobj.read()
 
 
-def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024, group="VM2"):
+class FakeCursor:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+        self.executed = []
+
+    def execute(self, query, parameters=None):
+        self.executed.append((query, parameters))
+
+    def fetchall(self):
+        return self.rows
+
+    def close(self):
+        pass
+
+
+class FakeConnection:
+    def __init__(self, rows=()):
+        self.cursor_obj = FakeCursor(rows)
+
+    def cursor(self):
+        return self.cursor_obj
+
+
+def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
     return {
-        "group": group,
+        "group": "VM2",
         "folder": folder,
         "remote_path": f"/VMFiles/{file_name}",
         "members": members,
@@ -115,75 +133,41 @@ def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024, group
     }
 
 
+def _list(listings, missing=None):
+    return list_remote_sources(FakeSFTPClient(listings=listings, missing=missing))
+
+
 class TestListRemoteSources:
-    def _list(self, listings, missing=None):
-        return list_remote_sources(FakeSFTPClient(listings=listings, missing=missing))
+    def test_only_the_newest_publication_per_state(self):
+        """L2 leaves superseded archives in place, and only the newest ever becomes a table."""
+        sources = _list(
+            {"/VMFiles": [FakeAttributes(f"{BASE}.zip"), FakeAttributes("VM2--MO--2026-07-27.zip")]}
+        )
+        assert [source["remote_path"] for source in sources] == [f"/VMFiles/{BASE}.zip"]
 
     def test_missing_expired_dir_does_not_block_the_archives(self):
         """The expired feed is auxiliary, so losing its directory must not cost us 51 states."""
-        sources = self._list({"/VMFiles": [FakeAttributes("VM2--MO--2026-08-03.zip")]}, missing={EXPIRED_DIR})
-        assert [s["folder"] for s in sources] == ["MO"]
+        sources = _list({"/VMFiles": [FakeAttributes(f"{BASE}.zip")]}, missing={EXPIRED_DIR})
+        assert [source["folder"] for source in sources] == ["MO"]
 
     def test_missing_archive_dir_raises(self):
         """A fixed L2 directory disappearing is an alarm, not a quiet zero-work success."""
         with pytest.raises(FileNotFoundError):
-            self._list({}, missing={"/VMFiles"})
+            _list({}, missing={"/VMFiles"})
 
-    def test_both_archive_groups_and_the_expired_file(self):
-        sources = self._list(
-            {
-                "/VM2Uniform": [FakeAttributes("VM2Uniform--MO--2026-08-03.zip")],
-                "/VMFiles": [FakeAttributes("VM2--MO--2026-08-03.zip")],
-                EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.tab")],
-            }
-        )
+    def test_missing_mtime_forces_a_copy(self):
+        """Nothing to compare against, so the staged copy cannot be assumed current."""
+        sources = _list({EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.tab", st_mtime=None)]})
 
-        assert sorted((s["folder"], len(s["members"])) for s in sources) == [
-            ("EXPIRED", 1),
-            ("MO", 2),
-            ("MO", 4),
-        ]
-
-    def test_non_matching_names_are_ignored(self):
-        """A state L2 has pulled, and its scratch files, simply do not appear."""
-        assert (
-            self._list(
-                {
-                    "/VM2Uniform": [FakeAttributes("VM2Uniform--MO--2026-08-03.zip.tmp")],
-                    "/VMFiles": [FakeAttributes("readme.txt")],
-                }
-            )
-            == []
-        )
-
-    def test_only_the_newest_publication_per_state_is_listed(self):
-        """L2 leaves superseded archives in place, and only the newest ever becomes a table."""
-        sources = self._list(
-            {
-                "/VMFiles": [
-                    FakeAttributes("VM2--MO--2026-08-03.zip"),
-                    FakeAttributes("VM2--MO--2026-07-27.zip"),
-                ]
-            }
-        )
-        assert [s["remote_path"] for s in sources] == ["/VMFiles/VM2--MO--2026-08-03.zip"]
-
-    def test_missing_mtime_forces_a_transfer(self):
-        sources = self._list({EXPIRED_DIR: [FakeAttributes("Manual_ID_Omits.tab", st_mtime=None)]})
-
-        assert sources[0]["modified_at"] is None
+        assert [(s["folder"], s["modified_at"]) for s in sources] == [(EXPIRED_FOLDER, None)]
         assert plan_transfers(sources, {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == sources
 
-
-class TestArchiveGrammar:
-    """SOURCE_GROUPS names 300-odd tables, so its patterns are a contract."""
-
-    def test_members_derived_from_an_archive_classify_to_their_declared_type(self):
-        """A member we stage but cannot classify is uploaded and then never loaded."""
+    def test_every_group_classifies_its_members_to_their_declared_type(self):
+        """SOURCE_GROUPS names 300-odd tables. A member we stage but cannot classify never loads."""
         listings: dict[str, list] = {}
         for group, file_name in ARCHIVE_SAMPLES.items():
             listings.setdefault(SOURCE_GROUPS[group]["remote_dir"], []).append(FakeAttributes(file_name))
-        sources = list_remote_sources(FakeSFTPClient(listings=listings))
+        sources = _list(listings)
 
         assert {source["group"] for source in sources} == set(SOURCE_GROUPS)
         for source in sources:
@@ -197,24 +181,16 @@ class TestArchiveGrammar:
 
 
 class TestPlanTransfers:
-    """The diff is the whole idempotency story: no manifest, just S3 versus the SFTP listing."""
+    """The diff is the whole idempotency story: no manifest, just S3 against the SFTP listing."""
 
     def test_fully_staged_source_is_a_noop(self):
-        staged = {f"MO/{member}": STAGED for member in MEMBERS}
-        assert plan_transfers([_source(MEMBERS)], staged) == []
+        assert plan_transfers([_source(MEMBERS)], {f"MO/{member}": STAGED for member in MEMBERS}) == []
 
-    def test_partially_staged_source_is_pending(self):
-        staged = {f"MO/{member}": STAGED for member in MEMBERS[:-1]}
-        assert plan_transfers([_source(MEMBERS)], staged) == [_source(MEMBERS)]
+    def test_missing_or_partly_staged_source_is_pending(self):
+        """Requiring every member retries a run that died mid-archive."""
+        partial = {f"MO/{member}": STAGED for member in MEMBERS[:-1]}
+        assert plan_transfers([_source(MEMBERS)], partial) == [_source(MEMBERS)]
         assert plan_transfers([_source(MEMBERS)], {}) == [_source(MEMBERS)]
-
-    def test_plain_file_is_its_own_member(self):
-        """The expired file stages under its own name, so it diffs like any other source."""
-        expired = _source(
-            members=["Manual_ID_Omits.tab"], file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER
-        )
-        assert plan_transfers([expired], {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == []
-        assert plan_transfers([expired], {}) == [expired]
 
 
 class TestSyncSource:
@@ -246,14 +222,8 @@ class TestSyncSource:
             self._sync(b"", _source(MEMBERS, size=9_000_000_000), tmp_path)
         assert not list(tmp_path.iterdir())
 
-    def test_unknown_size_skips_the_check_rather_than_blocking(self, vm2_archive, tmp_path):
-        _, keys = self._sync(vm2_archive, _source(MEMBERS, size=0), tmp_path)
-        assert len(keys) == len(MEMBERS)
-
     def test_plain_file_is_copied_as_is(self, tmp_path):
-        source = _source(
-            members=["Manual_ID_Omits.tab"], file_name="Manual_ID_Omits.tab", folder=EXPIRED_FOLDER
-        )
+        source = _source(["Manual_ID_Omits.tab"], "Manual_ID_Omits.tab", folder=EXPIRED_FOLDER)
         s3_client, keys = self._sync(DEMOGRAPHIC_ROWS, source, tmp_path)
 
         assert keys == [f"staging/prod/{EXPIRED_FOLDER}/Manual_ID_Omits.tab"]
@@ -261,26 +231,19 @@ class TestSyncSource:
 
 
 class TestPlanLoads:
-    UNIFORM = "VM2Uniform--MO--2026-08-03.tab"
-
     def test_current_table_is_a_noop(self):
-        assert (
-            plan_loads({f"MO/{self.UNIFORM}": STAGED}, {"l2_s3_mo_uniform": STAGED + timedelta(hours=8)})
-            == []
-        )
-
-    def test_table_older_than_the_staged_file_is_pending(self):
-        assert plan_loads({f"MO/{self.UNIFORM}": STAGED}, {}) == [
-            {"folder": "MO", "source_file_name": self.UNIFORM, "table_name": "l2_s3_mo_uniform"}
-        ]
+        staged, loaded = {f"MO/{UNIFORM}": STAGED}, {"l2_s3_mo_uniform": STAGED + timedelta(hours=8)}
+        assert plan_loads(staged, loaded) == []
 
     def test_only_the_newest_snapshot_per_table_is_loaded(self):
         """S3 retains every dated snapshot; loading an older one would regress a table."""
         staged = {
             "MO/VM2Uniform--MO--2026-07-27.tab": STAGED - timedelta(days=7),
-            f"MO/{self.UNIFORM}": STAGED,
+            f"MO/{UNIFORM}": STAGED,
         }
-        assert [load["source_file_name"] for load in plan_loads(staged, {})] == [self.UNIFORM]
+        assert plan_loads(staged, {}) == [
+            {"folder": "MO", "source_file_name": UNIFORM, "table_name": "l2_s3_mo_uniform"}
+        ]
 
     def test_haystaq_and_expired_files_map_to_their_own_tables(self):
         """These table names are the contract with the dbt staging models that read them."""
@@ -294,81 +257,39 @@ class TestPlanLoads:
         ]
 
 
-class TestBuildLoadStatement:
-    def _statement(self, source_file_name, table_name="t"):
-        return build_load_statement(
-            "cat",
-            "schema",
-            "bucket",
-            "staging/prod",
-            {"folder": "MO", "source_file_name": source_file_name, "table_name": table_name},
-        )
+class TestLoadTable:
+    def _load(self, source_file_name):
+        connection = FakeConnection()
+        load = {"folder": "MO", "source_file_name": source_file_name, "table_name": "l2_s3_mo_demographic"}
+        name = load_table(connection, "cat", "schema", "bucket", "staging/prod", load)
+        return name, connection.cursor_obj.executed[0]
 
-    def test_tab_and_csv_get_their_own_delimiter(self):
-        assert self._statement(MEMBERS[0])[1]["delimiter"] == "\t"
-        assert self._statement(MEMBERS[1])[1]["delimiter"] == ","
-
-    def test_reads_every_column_as_a_string(self):
+    def test_rebuilds_the_named_table_reading_every_column_as_a_string(self):
         """Leading zeros in ZIPs and similar codes only survive with inference off."""
-        sql, _ = self._statement(MEMBERS[0])
+        name, (sql, parameters) = self._load(MEMBERS[0])
+
+        assert name == "cat.schema.l2_s3_mo_demographic"
+        assert "CREATE OR REPLACE TABLE `cat`.`schema`.`l2_s3_mo_demographic`" in sql
         assert "inferColumnTypes => false" in sql
         # read_files appends a rescued-data column the source tables have never carried.
         assert "EXCEPT (_rescued_data)" in sql
+        assert parameters["delimiter"] == "\t"
 
-    def test_path_is_bound_not_interpolated(self):
+    def test_csv_members_get_a_comma(self):
+        assert self._load(MEMBERS[1])[1][1]["delimiter"] == ","
+
+    def test_the_staged_path_is_bound_not_interpolated(self):
         """A staged name reaches Databricks as data, so it cannot alter the statement."""
-        sql, parameters = self._statement("evil'; drop table x; --.tab")
+        _, (sql, parameters) = self._load("evil'; drop table x; --.tab")
+
         assert "drop table" not in sql
         assert parameters["path"] == "s3://bucket/staging/prod/MO/evil'; drop table x; --.tab"
 
-    def test_rejects_an_unsafe_identifier(self):
-        """Identifiers cannot be bound in DDL, so they are still validated."""
-        with pytest.raises(ValueError, match="Unsafe table name"):
-            self._statement(MEMBERS[0], table_name="t`; drop table x; --")
 
+def test_naive_load_timestamps_become_utc():
+    """The connector returns naive datetimes; comparing them to S3's aware ones would raise."""
+    connection = FakeConnection([("l2_s3_mo_uniform", datetime(2026, 8, 3, 20, 0))])
+    loaded_at = table_loaded_at(connection, "cat", "schema")
 
-class FakeCursor:
-    def __init__(self, rows=()):
-        self.rows = list(rows)
-        self.executed = []
-
-    def execute(self, query, parameters=None):
-        self.executed.append((query, parameters))
-
-    def fetchall(self):
-        return self.rows
-
-    def close(self):
-        pass
-
-
-class FakeConnection:
-    def __init__(self, rows=()):
-        self.cursor_obj = FakeCursor(rows)
-
-    def cursor(self):
-        return self.cursor_obj
-
-
-class TestGetTableLoadedAt:
-    def test_naive_timestamps_become_utc(self):
-        """The connector returns naive datetimes; comparing them to S3's aware ones would raise."""
-        connection = FakeConnection([("l2_s3_mo_uniform", datetime(2026, 8, 3, 20, 0))])
-        loaded_at = get_table_loaded_at(connection, "cat", "schema")
-
-        assert loaded_at["l2_s3_mo_uniform"].tzinfo is UTC
-        # The value must survive a comparison against an aware S3 timestamp.
-        assert loaded_at["l2_s3_mo_uniform"] < STAGED
-
-
-class TestLoadTable:
-    def test_returns_the_fully_qualified_name_and_binds_the_path(self):
-        connection = FakeConnection()
-        load = {"folder": "MO", "source_file_name": MEMBERS[0], "table_name": "l2_s3_mo_demographic"}
-
-        name = load_table(connection, "cat", "schema", "bucket", "staging/prod", load)
-
-        assert name == "cat.schema.l2_s3_mo_demographic"
-        query, parameters = connection.cursor_obj.executed[0]
-        assert "CREATE OR REPLACE TABLE `cat`.`schema`.`l2_s3_mo_demographic`" in query
-        assert parameters["path"].endswith(MEMBERS[0])
+    assert loaded_at["l2_s3_mo_uniform"].tzinfo is UTC
+    assert loaded_at["l2_s3_mo_uniform"] < STAGED

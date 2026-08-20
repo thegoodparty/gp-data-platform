@@ -143,10 +143,10 @@ def test_load_people_api_scale_down_on_failure():
 
 
 def test_load_l2_voter_files_sequence():
-    """The load plan must run after the sync, and must run even when a sync fails.
+    """The load plan runs after the sync, and runs even when a sync fails.
 
-    The Databricks side reads S3 rather than the sync's results, so a state that fails to copy
-    must not stop the states that copied. Losing all_done here would strand them.
+    Databricks reads S3 rather than the sync's results, so a state that fails to copy must not
+    strand the states that copied.
     """
     assert _L2_DAG is not None, f"load_l2_voter_files failed to load from {_L2_DAG_FILE}"
     plan_table_loads = _L2_DAG.get_task("plan_table_loads")
