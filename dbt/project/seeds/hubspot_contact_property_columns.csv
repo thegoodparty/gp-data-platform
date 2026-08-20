@@ -348,3 +348,4 @@ task_status_4,Task Status 4,enumeration,win_campaign_plan,generated,task_status_
 task_status_5,Task Status 5,enumeration,win_campaign_plan,generated,task_status_5,string,347,,,,
 task_type,Task Type,enumeration,win_campaign_plan,generated,task_type,string,348,,,,
 connected_with_rep,Connected with rep,enumeration,contactinformation,generated,connected_with_rep,string,349,,,,
+viable_state_leg,Viable State Leg,bool,contactinformation,generated,is_viable_state_leg,boolean,350,,,,
