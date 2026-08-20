@@ -1659,6 +1659,28 @@ models:
           - not_null
           - unique
 
+  - name: hubspot_calls
+    description: >
+      Call-grain exposure of int__hubspot_calls into mart_analytics for Sigma
+      BI. One row per HubSpot call engagement, already deduped upstream and
+      carrying disposition_label, disposition_label_source and outcome_family
+      from the hubspot_call_dispositions seed. View materialization, no
+      transformations; columns documented at the upstream intermediate, where
+      the grain and disposition tests also live.
+
+      Per-contact call aggregates are in the prospects mart, not here.
+
+      Source: int__hubspot_calls.
+    columns:
+      - name: id
+        description: HubSpot call engagement ID (primary key).
+      - name: outcome_family
+        description: >
+          Disjoint outcome classification: connected_pledge, connected_reject,
+          connected_other, not_connected, unmapped (disposition GUID not yet in
+          the seed), or null_disposition (no disposition set on the call). Use
+          this rather than re-deriving outcomes from hs_call_disposition.
+
   - name: people_served
     description: >
       The People Served metrics: one row per
