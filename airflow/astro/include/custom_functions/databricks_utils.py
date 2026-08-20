@@ -1,6 +1,7 @@
 import logging
 import time
 from collections.abc import Generator
+from typing import TypedDict
 
 from airflow.sdk import BaseHook, Variable
 from databricks import sql as databricks_sql
@@ -84,7 +85,14 @@ def get_databricks_connection(
     raise RuntimeError("Unreachable")
 
 
-def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
+class _ConnKwargs(TypedDict):
+    host: str
+    http_path: str
+    client_id: str
+    client_secret: str
+
+
+def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
     """The host and OAuth credentials of the Databricks connection an Airflow Variable names."""
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
