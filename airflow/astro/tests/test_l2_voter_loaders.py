@@ -192,6 +192,13 @@ class TestPlanTransfers:
         assert plan_transfers([_source(MEMBERS)], partial) == [_source(MEMBERS)]
         assert plan_transfers([_source(MEMBERS)], {}) == [_source(MEMBERS)]
 
+    def test_stale_staged_copy_is_pending(self):
+        """L2 republishes under the same dated name, so this is how a new edition gets picked up."""
+        stale = {f"MO/{member}": MODIFIED - timedelta(minutes=30) for member in MEMBERS}
+        assert plan_transfers([_source(MEMBERS)], stale) == [_source(MEMBERS)]
+        # Staged at exactly the mtime is current; calling that stale would recopy 179 GB a night.
+        assert plan_transfers([_source(MEMBERS)], {f"MO/{m}": MODIFIED for m in MEMBERS}) == []
+
 
 class TestSyncSource:
     def _sync(self, payload, source, tmp_path):
