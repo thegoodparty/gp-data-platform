@@ -186,7 +186,18 @@ TABLE_SPECS: dict[str, TableSpec] = {
 # columns the serving schema gained while the prod baseline still predates them
 # ("hf_most_important_policy_item"). Keyed by serving table.
 LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
-    "Voter": {"geom", "hf_most_important_policy_item", "Voter_Turnout_Probability"}
+    "Voter": {
+        "geom",
+        "hf_most_important_policy_item",
+        "Voter_Turnout_Probability",
+        "4H_Livestock_District",
+        "Community_College",
+        "Judicial_Chancery_Court",
+        "Judicial_Justice_of_the_Peace",
+        "Soil_and_Water_District",
+        "Soil_and_Water_District_At_Large",
+        "State_Board_of_Equalization",
+    }
 }
 
 
