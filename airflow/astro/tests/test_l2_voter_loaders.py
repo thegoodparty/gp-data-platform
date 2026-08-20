@@ -229,6 +229,15 @@ class TestSyncSource:
             self._sync(b"", _source(MEMBERS, size=9_000_000_000), tmp_path)
         assert not list(tmp_path.iterdir())
 
+    def test_archive_missing_a_member_raises_and_leaves_no_file(self, tmp_path):
+        """A partial L2 publication must fail loudly, and not leak GBs on a fixed 10 GiB worker."""
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(MEMBERS[0], DEMOGRAPHIC_ROWS)
+        with pytest.raises(ValueError, match="did not contain"):
+            self._sync(buffer.getvalue(), _source(MEMBERS), tmp_path)
+        assert not list(tmp_path.iterdir())
+
     def test_plain_file_is_copied_as_is(self, tmp_path):
         source = _source(["Manual_ID_Omits.tab"], "Manual_ID_Omits.tab", folder=EXPIRED_FOLDER)
         s3_client, keys = self._sync(DEMOGRAPHIC_ROWS, source, tmp_path)
