@@ -14,7 +14,6 @@ import pytest
 from click.testing import CliRunner
 
 from scripts.cli import (
-    _json_fallback,
     _load_input,
     _load_results,
     _normalize_to_strings,
@@ -22,6 +21,7 @@ from scripts.cli import (
     cli,
 )
 from scripts.configs.candidacy import CANDIDACY_CONFIG
+from scripts.serialization import json_fallback
 
 DUMMY_CSV = Path(__file__).parent / "dummy_data.csv"
 
@@ -246,7 +246,7 @@ def test_normalize_to_strings_handles_all_null_column():
 def test_json_fallback_rejects_unknown_types():
     """The hook unwraps numpy only; anything else is still a real error."""
     with pytest.raises(TypeError, match="not JSON serializable"):
-        _json_fallback(object())
+        json_fallback(object())
 
 
 # --- _load_input / _load_results: the pandas IO boundary -----------------------

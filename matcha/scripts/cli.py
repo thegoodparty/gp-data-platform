@@ -18,6 +18,7 @@ import pandas as pd
 from scripts.databricks_io import is_databricks_fqn, read_table, write_table
 from scripts.entity_config import ENTITY_TYPES, EntityConfig, get_config
 from scripts.pipeline import run
+from scripts.serialization import json_fallback
 
 _PROJECT_DIR = Path(__file__).resolve().parent.parent
 _DEFAULT_RESULTS = _PROJECT_DIR / "results"
@@ -31,26 +32,12 @@ _ENTITY_TYPE_OPTION = click.option(
 )
 
 
-def _json_fallback(o):
-    """Unwrap the numpy types json refuses, for _serialize_array_value."""
-    if isinstance(o, np.ndarray):
-        return o.tolist()
-    if isinstance(o, np.generic):
-        return o.item()
-    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
-
-
 def _serialize_array_value(v):
-    """Convert array/ndarray cell to a JSON string, passing through nulls.
-
-    Nested arrays need the `default` hook: ndarray.tolist() unwraps only the
-    outer level, so a list<list<...>> column arrives with inner ndarrays that
-    json cannot serialize on its own.
-    """
+    """Convert array/ndarray cell to a JSON string, passing through nulls."""
     if isinstance(v, np.ndarray):
-        return json.dumps(v.tolist(), default=_json_fallback)
+        return json.dumps(v.tolist(), default=json_fallback)
     if isinstance(v, list):
-        return json.dumps(v, default=_json_fallback)
+        return json.dumps(v, default=json_fallback)
     return v
 
 

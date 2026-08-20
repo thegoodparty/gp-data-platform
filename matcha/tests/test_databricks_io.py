@@ -203,6 +203,34 @@ def test_coerce_to_string_df_serializes_containers():
     assert [json.loads(v) for v in out["c"]] == [["x", "y"], [1, 2]]
 
 
+@pytest.mark.parametrize(
+    ("cell", "expected"),
+    [
+        ([np.int64(1), np.int64(2)], [1, 2]),
+        ([np.float64(2.5)], [2.5]),
+        ([np.array(["x"], dtype=object)], [["x"]]),
+    ],
+)
+def test_coerce_to_string_df_serializes_numpy_inside_containers(cell, expected):
+    """numpy scalars and nested arrays inside a cell must not break the write.
+
+    Splink hands back numpy-backed frames and _normalize_to_strings only runs on
+    the read side, so nothing upstream guarantees plain Python types here.
+    """
+    out = _coerce_to_string_df(pd.DataFrame({"c": [cell]}))
+    assert json.loads(out["c"].iloc[0]) == expected
+
+
+def test_coerce_to_string_df_serializes_nested_ndarray_cell():
+    """An ndarray cell holding ndarrays serializes rather than raising."""
+    outer = np.empty(1, dtype=object)
+    outer[0] = np.array(["x", "y"], dtype=object)
+
+    out = _coerce_to_string_df(pd.DataFrame({"c": [outer]}))
+
+    assert json.loads(out["c"].iloc[0]) == [["x", "y"]]
+
+
 def test_coerce_to_string_df_does_not_mutate_input():
     df = pd.DataFrame({"c": [1.0, None]})
     before = df["c"].tolist()
