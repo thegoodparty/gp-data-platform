@@ -757,9 +757,10 @@ seeds:
       gates the districts a later change mints from the proposed column, so
       that an unadopted or unchecked map never becomes bindable. Absence of a
       row means current, which is conservative but not automatically right:
-      for a redistricted state, current is the stale map. Every state
-      carrying a proposed congressional value must therefore be listed
-      explicitly, which assert_proposed_cong_dist_seed_coverage enforces.
+      for a redistricted state, current is the stale map. Every
+      (state, district type) carrying a proposed value must therefore be
+      listed explicitly, which assert_proposed_district_seed_coverage
+      enforces for both handled types.
 
       Editing this seed does not bump voter loaded_at, so the incremental
       consumers need a --full-refresh afterwards, same as
