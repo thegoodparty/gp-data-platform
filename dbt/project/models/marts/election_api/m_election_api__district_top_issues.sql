@@ -115,6 +115,13 @@ with
         select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
         where m.is_matched
+        union
+        -- The match snapshot predates the proposed-map districts, so without this
+        -- they score nothing and the onboarding voter-issues endpoint comes back
+        -- empty for every campaign on the new map. No gate needed here: only
+        -- districts the adoption seed cleared exist in that model at all.
+        select state_postal_code, district_type, district_name
+        from {{ ref("int__l2_proposed_district_aggregations") }}
     ),
 
     l2_voter_data as (
@@ -144,6 +151,19 @@ with
             state_postal_code as l2_district_name,
             {{ issue_columns | join(",\n            ") }}
         from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        union all
+        -- Proposed-map districts. The unpivot above is driven by column name and
+        -- so cannot reach these: one vendor column carries both handled types, so
+        -- the type has to come from parsing the value. The join to
+        -- target_districts is what restricts these to adopted districts.
+        select
+            state_postal_code as l2_state,
+            {{ proposed_district_minted_type("proposed_district") }}
+            as l2_district_type,
+            {{ proposed_district_number("proposed_district") }} as l2_district_name,
+            {{ issue_columns | join(",\n            ") }}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        where {{ is_proposed_handled_district("proposed_district") }}
     ),
 
     district_avg_scores as (

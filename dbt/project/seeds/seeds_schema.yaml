@@ -742,6 +742,35 @@ seeds:
       - name: br_position_name
         description: Human-readable BR position name (documentation only).
 
+  - name: proposed_district_ignored_values
+    description: >
+      Proposed_District values that are known and deliberately not minted as
+      districts. The column is a catch-all for district changes, so alongside
+      the congressional and state senate maps it carries county-commissioner
+      rows and local annexation records that are not seats at all.
+
+      This exists so the drift guard can tell "known and ignored" from "new
+      shape nobody has looked at". Removing a row makes the build fail rather
+      than silently changing behaviour, which is the point: every value in the
+      column has either a decision or a red build behind it.
+    columns:
+      - name: proposed_district
+        description: The exact vendor value, matched literally.
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: State the value appears in, for orientation only.
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: reason
+        description: >
+          Why it is not a seat. Each was located by voter geography and then
+          verified against the jurisdiction's own records.
+        data_tests:
+          - not_null
+
   - name: district_map_adoption
     description: >
       Which map is legally in force for an upcoming election, per (state,
