@@ -3418,6 +3418,34 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_internal_persons
+    description: >
+      Persons that must never reach a public-facing feed: GoodParty staff and
+      test accounts. One row per person, so a public mart can anti-join it and a
+      test can assert the same set is absent, from one definition.
+
+      Two signals. The email pattern carries almost all of it; the admin and
+      sales roles additionally catch internal users who signed up with a
+      personal address. campaignManager is a product role held by a candidate's
+      own staff, so it is deliberately not treated as internal.
+
+      Resolved through every gp_api member of the person group rather than the
+      scalar people.gp_api_user_id, which is null whenever a group holds more
+      than one account, so a staff member with two logins is still covered.
+
+      Demo campaigns are handled at their own grain, not here: a demo-only
+      account is not a candidate, so the is_demo filters on the gp_api candidacy
+      feeds keep it out of the role flags and out of any mart scoped to them.
+
+      Known tradeoff: the email pattern also hides a staff member who genuinely
+      runs for office. Rare, and the Serve models accept the same tradeoff.
+    columns:
+      - name: gp_person_id
+        description: Person excluded from public-facing feeds.
+        data_tests:
+          - not_null
+          - unique
+
   - name: int__civics_person_groups
     description: >
       Person groups. One row per int__civics_person_nodes record_key with its
