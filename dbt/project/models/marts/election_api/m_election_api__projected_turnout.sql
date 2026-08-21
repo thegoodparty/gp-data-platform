@@ -14,14 +14,19 @@ with
             case
                 when election_code = 'Local_or_Municipal'
                 then 'LocalOrMunicipal'
-                when election_code = 'Consolidated_General'
-                then 'ConsolidatedGeneral'
                 else election_code
             end as election_code,
             coalesce(ballots_projected, 0) as projected_turnout,
             inference_at,
             model_version
         from {{ ref("int__model_prediction_voter_turnout") }}
+        where
+            -- Past election years are not served: an out-of-horizon race
+            -- returns no projection, so these rows answer nothing.
+            election_year >= year(current_date())
+            -- The retrained model dropped this category. The rows are frozen
+            -- output from a retired run, and the app no longer asks for them.
+            and election_code <> 'Consolidated_General'
     )
 
 -- full rebuild every run: districts that drift out of model coverage drop out
