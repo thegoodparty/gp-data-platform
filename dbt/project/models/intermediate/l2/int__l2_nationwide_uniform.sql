@@ -23,7 +23,7 @@ with
             and (assignments.precinct is null or assignments.precinct = voters.precinct)
     ),
 
-    assigned as (
+    hospital_assigned as (
         select
             voters.* except (`Hospital_District`),
             coalesce(
@@ -33,6 +33,23 @@ with
         left join
             {{ ref("l2_manual_district_assignments") }} as assignments
             on assignments.l2_district_type = 'Hospital_District'
+            and assignments.state = voters.state_postal_code
+            and (assignments.county is null or assignments.county = voters.county)
+            and (assignments.city is null or assignments.city = voters.city)
+            and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    ),
+
+    assigned as (
+        select
+            voters.* except (`Judicial_Circuit_Court_District`),
+            coalesce(
+                nullif(voters.`Judicial_Circuit_Court_District`, ''),
+                assignments.l2_district_name
+            ) as `Judicial_Circuit_Court_District`
+        from hospital_assigned as voters
+        left join
+            {{ ref("l2_manual_district_assignments") }} as assignments
+            on assignments.l2_district_type = 'Judicial_Circuit_Court_District'
             and assignments.state = voters.state_postal_code
             and (assignments.county is null or assignments.county = voters.county)
             and (assignments.city is null or assignments.city = voters.city)
