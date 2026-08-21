@@ -219,7 +219,9 @@ models:
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
-      tags: ["monthly"]
+      # Untagged for the same reason as int__l2_nationwide_uniform_w_haystaq
+      # downstream: the whole chain has to keep pace with the L2 loads. The
+      # merge is a fast no-op when no new Haystaq file has landed.
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
@@ -236,7 +238,7 @@ models:
   - name: int__l2_nationwide_haystaq_scores
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
-      tags: ["monthly"]
+      # Untagged alongside the flags model above; same reasoning.
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
