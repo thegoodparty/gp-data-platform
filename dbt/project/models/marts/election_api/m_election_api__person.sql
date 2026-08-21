@@ -6,12 +6,29 @@
 -- from it, and their bio/headshot/degrees/experiences stay null (known
 -- follow-up).
 with
+    -- Staff and test accounts, which would otherwise get a live public profile:
+    -- internal users file real (non-demo) campaigns while testing, so the
+    -- is_demo filters upstream do not catch them. Keyed off every gp_api member
+    -- of the group, not people.gp_api_user_id, which is null when a person holds
+    -- more than one account. Same email convention as the Serve models.
+    internal_people as (
+        select distinct ids.gp_person_id
+        from {{ ref("person_identifiers") }} as ids
+        inner join
+            {{ ref("stg_airbyte_source__gp_api_db_user") }} as u
+            on cast(u.id as string) = ids.source_id
+        where ids.source_name = 'gp_api' and u.email ilike '%goodparty%'
+    ),
+
     public_people as (
         select *, try_cast(br_person_id as int) as br_person_id_int
         from {{ ref("people") }}
         where
             (is_candidate or is_elected_official)
             and (first_name is not null or last_name is not null)
+            and gp_person_id not in (
+                select gp_person_id from internal_people where gp_person_id is not null
+            )
     ),
 
     br_person as (
