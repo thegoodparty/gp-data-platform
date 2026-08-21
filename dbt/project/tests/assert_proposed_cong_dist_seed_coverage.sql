@@ -6,6 +6,12 @@
 -- Reads the voter file rather than a district model so it stays independent of
 -- how the map is consumed downstream: anything that filters unadopted values
 -- would hide a brand-new unseeded state, which is the case this exists to catch.
+--
+-- Congressional only, deliberately and temporarily. MI carries a proposed state
+-- senate map that no seed row covers, so widening this now would fail the build
+-- on a decision nobody has made yet. The seed already accepts a state senate
+-- row; extending this guard is the last step of that research, not a precursor
+-- to it. Until then the silent-default risk is real for MI and untested.
 select distinct l2.state_postal_code
 from {{ ref("int__l2_nationwide_uniform") }} as l2
 left join

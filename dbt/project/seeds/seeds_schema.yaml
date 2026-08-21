@@ -785,14 +785,17 @@ seeds:
           - is_state_abbreviation
       - name: district_type
         description: >
-          L2 district column the decision governs. Congressional is the only
-          type in scope today; state-legislative and municipal maps get their
-          own rows when those phases land.
+          L2 district column the decision governs. Both handled types are
+          accepted so a decision can be recorded for either, but only
+          congressional rows exist so far: MI is the one state carrying a
+          proposed state senate map and its adoption is still unresearched.
+          Municipal maps live in a different vendor column and are out of
+          scope entirely.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["US_Congressional_District"]
+                values: ["US_Congressional_District", "State_Senate_District"]
       - name: district_number
         description: >
           Sparse key, same convention as l2_manual_district_assignments: empty
