@@ -16,10 +16,6 @@
                       voters, but allocating population to them would size
                       districts no Serve org holds. Recheck the exclusion if a
                       Serve-ICP office ever binds to one.
-                      Proposed_District is the same shape of exclusion: it holds
-                      the vendor's proposed maps for an upcoming election, which
-                      belong in the election-api District dimension but must not
-                      size the current-map substrate Serve resolves against.
                       The two accepted_values tests on district_type
                       read this list, so it is the single source of truth.
 
@@ -192,7 +188,6 @@
         "Port_District",
         "Port_SubDistrict",
         "Power_District",
-        "Proposed_District",
         "Public_Airport_District",
         "Public_Regulation_Commission",
         "Public_Service_Commission_District",

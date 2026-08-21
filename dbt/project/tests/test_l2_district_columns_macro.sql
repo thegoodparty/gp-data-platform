@@ -5,7 +5,7 @@ with
         select
             'all_list_size' as check_name,
             {{ get_l2_district_types() | length }} as actual,
-            231 as expected
+            230 as expected
 
         union all
 
@@ -43,7 +43,7 @@ with
             size(
                 split('{{ get_l2_district_columns() | replace("\n", " ") }}', ',')
             ) as actual,
-            231 as expected
+            230 as expected
 
         union all
 
