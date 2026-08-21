@@ -25,6 +25,19 @@ vars:
   # Must match ELECTION_DATE_WINDOW_DAYS in matcha/scripts/configs/candidacy.py
   # (the matcher's contract source of truth). Update both together.
   er_election_date_window_days: 10
+  # Voter-density heat map. K is the k-anonymity floor: a published H3 cell must
+  # hold at least this many voters, and the value is also published to the app as
+  # min_cell_count. Declared here (no inline fallbacks) so the suppression, the
+  # disclosed K, and the guardrail test cannot drift apart.
+  voter_density_k: 10
+  # The H3 resolutions binned and published. Coarser = larger hexagons, which
+  # survive suppression in sparse districts but lose detail in dense ones. r6 is
+  # carried for sparse rural districts, where the finer cells suppress almost
+  # entirely; note it improves them without fully rescuing the sparsest, which
+  # still fall short of a usable coverage floor and should hide the map.
+  # Each added resolution costs another fan-out pass over the district-voter
+  # bridge in int__people_api__district_h3_cell_counts.
+  voter_density_h3_resolutions: [6, 7, 8, 9]
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models

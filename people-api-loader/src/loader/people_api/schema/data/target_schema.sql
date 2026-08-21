@@ -388,3 +388,27 @@ CREATE TABLE public."DistrictVoter" (
     "created_at" TIMESTAMP,
     "updated_at" TIMESTAMP
 );
+
+CREATE TABLE public."DistrictVoterDensity" (
+    "district_id" UUID,
+    "resolution" INTEGER,
+    "h3_index" TEXT,
+    "lat" DOUBLE PRECISION,
+    "lng" DOUBLE PRECISION,
+    "voter_count" INTEGER,
+    "State" "USState",
+    "updated_at" TIMESTAMP
+);
+
+CREATE TABLE public."DistrictVoterDensityMeta" (
+    "district_id" UUID,
+    "resolution" INTEGER,
+    "coverage" DOUBLE PRECISION,
+    "min_cell_count" INTEGER,
+    "total_voters" INTEGER,
+    "geocoded_voters" INTEGER,
+    "rendered_voters" INTEGER,
+    "suppressed_cells" INTEGER,
+    "State" "USState",
+    "updated_at" TIMESTAMP
+);

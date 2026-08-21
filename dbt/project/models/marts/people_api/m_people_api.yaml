@@ -254,3 +254,158 @@ models:
       - dbt_utils.equality:
           arguments:
             compare_model: ref('m_people_api__districtstats')
+
+  - name: m_people_api__district_voter_density
+    description: >
+      Aggregated, K-anonymized, H3-binned voter residence density per district,
+      loaded to people-api green."DistrictVoterDensity". Each row is an H3 cell
+      with a voter count and the deterministic H3 cell centroid — never a voter,
+      address, or the mean of voter positions. See
+      packages/people-api/docs/voter-density-heatmap-handoff.md §3.2 / §7.
+    columns:
+      - name: district_id
+        # No relationships test: district_id comes straight from the bridge, which
+        # already asserts this FK, and re-checking it here is a full join of this
+        # table against a view that re-executes m_election_api__district.
+        description: Unique identifier for a district (== District.id, salted-uuid)
+        data_type: uuid
+        data_tests:
+          - not_null
+      - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
+        description: H3 resolution of this row
+        data_type: integer
+      - name: h3_index
+        description: H3 cell index as an opaque string (h3_h3tostring)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: lat
+        description: H3 cell centroid latitude (deterministic; never a voter position)
+        data_type: double
+        data_tests:
+          - not_null
+      - name: lng
+        description: H3 cell centroid longitude (deterministic; never a voter position)
+        data_type: double
+        data_tests:
+          - not_null
+      - name: voter_count
+        description: Number of voters whose residence falls in this cell; always >= K
+        data_type: integer
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: "{{ var('voter_density_k') }}"
+                inclusive: true
+      - name: state
+        description: Two-letter state postal code (loaded into the "State" USState enum)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: updated_at
+        # No not_null: the value is current_timestamp().
+        description: Mart run time
+        data_type: timestamp
+    data_tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - resolution
+              - h3_index
+            sample_size: 100000
+          config:
+            severity: error
+
+  - name: m_people_api__district_voter_density_meta
+    description: >
+      Voter-density coverage bookkeeping per (district_id, resolution), loaded to
+      people-api green."DistrictVoterDensityMeta". The app uses coverage to decide
+      whether to render the map and to draw the legend. See handoff §3.3 / §7.
+    columns:
+      - name: district_id
+        # No relationships test: see the density mart's district_id note.
+        description: Unique identifier for a district (== District.id)
+        data_type: uuid
+        data_tests:
+          - not_null
+      - name: resolution
+        # No not_null: the value is a literal from the resolution fan-out.
+        description: H3 resolution of this row
+        data_type: integer
+      - name: coverage
+        description: rendered_voters / total_voters ∈ [0, 1]
+        data_type: double
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+      # AUDIT-ONLY from here down (except state, which the loader maps to the
+      # serving enum). The serve query selects `coverage` and nothing else, so
+      # these columns exist to explain a coverage number without a warehouse
+      # query. Do not assume the app depends on them.
+      - name: min_cell_count
+        description: >
+          AUDIT. The K (voter_density_k) applied to this build, published so the
+          disclosed threshold travels with the data.
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: total_voters
+        description: >
+          AUDIT. The district's voters, the coverage denominator. Identical across
+          resolutions: a voter's H3 cell exists at every resolution or at none.
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: geocoded_voters
+        description: >
+          AUDIT. Voters with a usable H3. Also resolution-invariant, since the
+          binning filter does not vary by resolution.
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: rendered_voters
+        description: AUDIT. Sum of voter_count over non-suppressed cells.
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: suppressed_cells
+        description: AUDIT. Cells dropped by K-anonymity suppression.
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: state
+        description: Two-letter state postal code (loaded into the "State" USState enum)
+        data_type: string
+        data_tests:
+          - not_null
+      - name: updated_at
+        # No not_null: the value is current_timestamp().
+        description: Mart run time
+        data_type: timestamp
+    data_tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - resolution
+            sample_size: 100000
+          config:
+            severity: error
+      # Suppression accounting. Rendered voters come from cells that survived K,
+      # which are a subset of the geocoded voters, which are a subset of the
+      # district's voters. Pure arithmetic, so it cannot false-positive, and it is
+      # the check that catches a coverage numerator and denominator drifting onto
+      # different populations.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: rendered_voters <= geocoded_voters
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: geocoded_voters <= total_voters
