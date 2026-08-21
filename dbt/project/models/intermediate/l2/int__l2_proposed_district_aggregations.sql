@@ -17,30 +17,8 @@ file but that six l2_br_match_overrides rows still point at, turning the overrid
 guard red. Keeping the proposed districts separate means a seed flip rebuilds
 only this model and cannot take that with it.
 */
-select
-    {{
-        generate_salted_uuid(
-            fields=[
-                "aggregated.state_postal_code",
-                "aggregated.district_type",
-                "aggregated.district_name",
-            ]
-        )
-    }} as id,
-    state_postal_code,
-    district_type,
-    -- The current type this district replaces. Carried as a column so the one
-    -- place that knows the mapping is the one that mints it: consumers needing
-    -- the same-numbered current district (the turnout carry-over) join on this
-    -- rather than restating the pairing.
-    shadowed_district_type,
-    district_name,
-    voter_count,
-    unique_cellphones,
-    unique_landlines,
-    loaded_at
-from
-    (
+with
+    adopted_proposed_districts as (
         select
             l2.state_postal_code,
             {{ proposed_district_minted_type("l2.proposed_district") }}
@@ -89,4 +67,28 @@ from
                 = cast({{ proposed_district_number("l2.proposed_district") }} as int)
             )
         group by 1, 2, 3, 4
-    ) as aggregated
+    )
+
+select
+    {{
+        generate_salted_uuid(
+            fields=[
+                "adopted_proposed_districts.state_postal_code",
+                "adopted_proposed_districts.district_type",
+                "adopted_proposed_districts.district_name",
+            ]
+        )
+    }} as id,
+    state_postal_code,
+    district_type,
+    -- The current type this district replaces. Carried as a column so the one
+    -- place that knows the mapping is the one that mints it: consumers needing
+    -- the same-numbered current district (the turnout carry-over) join on this
+    -- rather than restating the pairing.
+    shadowed_district_type,
+    district_name,
+    voter_count,
+    unique_cellphones,
+    unique_landlines,
+    loaded_at
+from adopted_proposed_districts

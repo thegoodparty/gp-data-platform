@@ -83,7 +83,11 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 - Utilize Databrick's support for lateral column references to reduce the number
   of chained CTEs by referencing a modified column lower in the same select
   block
-- Avoid subqueries in favor of CTEs
+- Avoid subqueries in favor of CTEs. This covers a nested `SELECT` in the `FROM`
+  clause, not just scalar and `IN` subqueries: name it as a CTE and select from
+  it, so each step is readable and referenceable on its own.
+    - Bad: `select ... from (select ... group by 1, 2) as aggregated`
+    - Good: `with aggregated as (select ... group by 1, 2) select ... from aggregated`
 - Prefer to keep join blocks flat with minimal transformations in the join
   condition by moving the needed transformation up to the SELECT clause
 - **Wrap generic test arguments under `arguments:`.** Top-level args on a
