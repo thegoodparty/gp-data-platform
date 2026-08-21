@@ -12,15 +12,15 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
 objects to ensure they build as expected.
 - **Rebuild stale dev copies locally before trusting a before/after comparison.**
 Deferral only applies to models *absent* from your dev schema; anything you built
-in an earlier session is reused silently, however stale. A weeks-old `dbt_hugh`
-copy of an upstream mart masquerades as production and manufactures regressions
-that do not exist. Find the shadows and rebuild them:
+in an earlier session is reused silently, however stale. A weeks-old copy of an
+upstream mart in your dev schema masquerades as production and manufactures
+regressions that do not exist. Find the shadows and rebuild them:
 
     ```sql
     -- dbt ls --select "+my_model" --resource-type model --output name
     select table_name, last_altered
     from goodparty_data_catalog.information_schema.tables
-    where table_schema = 'dbt_hugh' and table_name in (<those names>)
+    where table_schema = '{{ target.schema }}' and table_name in (<those names>)
     order by last_altered
     ```
 
