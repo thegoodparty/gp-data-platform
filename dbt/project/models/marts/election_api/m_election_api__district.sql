@@ -1,24 +1,10 @@
 with
-    -- Gated, because this CTE reaches the dimension by a route that does not
-    -- pass through the aggregations model below. Without the same filter an
-    -- unadopted proposed district lands here ungated — which is exactly what
-    -- happened, 204 of them.
     turnout_districts as (
         select distinct
-            turnout.state,
-            turnout.district_type as l2_district_type,
-            turnout.district_name as l2_district_name
-        from {{ ref("int__model_prediction_voter_turnout") }} as turnout
-        where
-            {{
-                retain_district_row(
-                    "turnout.district_type", "turnout.state", "turnout.district_name"
-                )
-            }}
+            state, district_type as l2_district_type, district_name as l2_district_name
+        from {{ ref("int__model_prediction_voter_turnout") }}
     ),
-    -- Carries the synthetic district_type='State' rows statewide positions match
-    -- on. Needs no gate of its own: int__l2_district_aggregations already drops
-    -- unadopted proposed values, before its voter-grain aggregation.
+    -- Carries the synthetic district_type='State' rows statewide positions match on.
     l2_districts as (
         select
             state_postal_code as state,

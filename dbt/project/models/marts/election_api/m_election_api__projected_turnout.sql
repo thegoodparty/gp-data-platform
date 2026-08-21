@@ -1,19 +1,4 @@
 with
-    -- Gated on the same predicate as m_election_api__district's turnout branch.
-    -- district_id is a salted hash of the tuple, so a row here for a district the
-    -- dimension does not mint is a dangling foreign key: the gate withholds
-    -- unadopted proposed districts, and turnout predictions for them would point
-    -- at nothing.
-    turnout as (
-        select *
-        from {{ ref("int__model_prediction_voter_turnout") }} as turnout
-        where
-            {{
-                retain_district_row(
-                    "turnout.district_type", "turnout.state", "turnout.district_name"
-                )
-            }}
-    ),
     projected_turnout as (
         select
             {{
@@ -36,7 +21,7 @@ with
             coalesce(ballots_projected, 0) as projected_turnout,
             inference_at,
             model_version
-        from turnout
+        from {{ ref("int__model_prediction_voter_turnout") }}
     )
 
 -- full rebuild every run: districts that drift out of model coverage drop out

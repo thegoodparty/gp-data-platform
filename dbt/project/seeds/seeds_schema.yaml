@@ -753,13 +753,13 @@ seeds:
       So adoption is a human decision recorded here with a citation, never
       inferred from the presence of a value.
 
-      m_election_api__district reads this seed and mints Proposed_District
-      rows only for states marked proposed AND is_verified, so an unadopted
-      or unchecked map never becomes bindable. Absence of a row means
-      current, which is conservative but not automatically right: for a
-      redistricted state, current is the stale map. Every state carrying a
-      proposed congressional value must therefore be listed explicitly, which
-      assert_proposed_cong_dist_seed_coverage enforces.
+      This seed is the decision record only. Nothing consumes it yet: it
+      gates the districts a later change mints from the proposed column, so
+      that an unadopted or unchecked map never becomes bindable. Absence of a
+      row means current, which is conservative but not automatically right:
+      for a redistricted state, current is the stale map. Every state
+      carrying a proposed congressional value must therefore be listed
+      explicitly, which assert_proposed_cong_dist_seed_coverage enforces.
 
       Editing this seed does not bump voter loaded_at, so the incremental
       consumers need a --full-refresh afterwards, same as

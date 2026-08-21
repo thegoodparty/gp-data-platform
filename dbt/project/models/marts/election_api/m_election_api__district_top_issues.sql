@@ -1,10 +1,9 @@
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady
-    district match (`stg_model_predictions__llm_l2_br_match_20260126`), plus
-    any `Proposed_District` adopted per `m_election_api__district` (inherited
-    from that model's `district_map_adoption` gate). Not scoped to a single
-    election cycle — districts with off-cycle offices are included as well.
+    district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
+    scoped to a single election cycle — districts with off-cycle offices are
+    included as well.
 
     Grain: up to one row per (district, issue) where the district has at
     least one voter with a non-null score for that issue. Spark UNPIVOT
@@ -116,16 +115,6 @@ with
         select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
         where m.is_matched
-        union all
-        -- The match snapshot predates the proposed-district ingest, so adopted
-        -- proposed districts would score nothing. m_election_api__district is
-        -- already gated by district_map_adoption, so this inherits the gate
-        -- rather than re-stating it. union all is safe for the same reason the
-        -- branch is needed: a snapshot older than the ingest holds no
-        -- Proposed_District rows to collide with.
-        select distinct state as l2_state, l2_district_type, l2_district_name
-        from {{ ref("m_election_api__district") }}
-        where l2_district_type = 'Proposed_District'
     ),
 
     l2_voter_data as (
@@ -147,16 +136,7 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false) }})
             )
-        -- Drop unadopted proposed values here rather than letting the join to
-        -- target_districts reject them, so the 66 per-issue averages below are
-        -- never computed for rows that cannot survive it.
-        where
-            district_value is not null
-            and {{
-                retain_district_row(
-                    "district_column_name", "state_postal_code", "district_value"
-                )
-            }}
+        where district_value is not null
         union all
         select
             state_postal_code as l2_state,
