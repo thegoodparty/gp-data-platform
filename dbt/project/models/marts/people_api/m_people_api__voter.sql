@@ -31,6 +31,15 @@ with
             {%- endfor %}
         from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
     ),
+    -- (state, district type) pairs where a proposed map is the one legally in force.
+    -- Referenced as a semi-join below rather than joined into updated_voters: that
+    -- select carries hundreds of unqualified column references, so keeping its FROM
+    -- single-table removes any chance of an ambiguity introduced from here.
+    adopted_scopes as (
+        select concat(state, '|', district_type) as scope
+        from {{ ref("district_map_adoption") }}
+        where adopted_source = 'proposed' and is_verified
+    ),
     updated_voters as (
         select
             -- Core Voter Information
@@ -378,6 +387,34 @@ with
             `Proposed_City_Commissioner_District`,
             `Proposed_Community_College`,
             `Proposed_District`,
+            -- The adopted map, split out of the vendor's catch-all Proposed_District
+            -- into one column per handled type and named to match the minted district
+            -- type. m_people_api__districtvoter derives the columns it unpivots by
+            -- intersecting voter columns with district types, so naming them this way
+            -- is what makes DistrictVoter rows appear for these districts with no list
+            -- to maintain there.
+            --
+            -- Null unless the adoption seed records that state's proposed map as the
+            -- one legally in force, so a struck-down map (Virginia) never reaches a
+            -- voter row. The seed's per-district narrowing is not applied here; every
+            -- row is state-level today, and a narrowed row would simply not mint the
+            -- district, so no DistrictVoter row could form regardless.
+            case
+                when
+                    {{ proposed_district_type("`Proposed_District`") }}
+                    = 'US_Congressional_District'
+                    and concat(state_postal_code, '|US_Congressional_District')
+                    in (select scope from adopted_scopes)
+                then {{ proposed_district_number("`Proposed_District`") }}
+            end as `Congressional_District_2026`,
+            case
+                when
+                    {{ proposed_district_type("`Proposed_District`") }}
+                    = 'State_Senate_District'
+                    and concat(state_postal_code, '|State_Senate_District')
+                    in (select scope from adopted_scopes)
+                then {{ proposed_district_number("`Proposed_District`") }}
+            end as `State_Senate_District_2026`,
             `Proposed_Elementary_School_District`,
             `Proposed_Fire_District`,
             `Proposed_Unified_School_District`,
@@ -771,6 +808,8 @@ with
             tbl_updated.`Proposed_City_Commissioner_District`,
             tbl_updated.`Proposed_Community_College`,
             tbl_updated.`Proposed_District`,
+            tbl_updated.`Congressional_District_2026`,
+            tbl_updated.`State_Senate_District_2026`,
             tbl_updated.`Proposed_Elementary_School_District`,
             tbl_updated.`Proposed_Fire_District`,
             tbl_updated.`Proposed_Unified_School_District`,
