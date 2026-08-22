@@ -3424,10 +3424,14 @@ models:
       test accounts. One row per person, so a public mart can anti-join it and a
       test can assert the same set is absent, from one definition.
 
-      Two signals. The email pattern carries almost all of it; the admin and
-      sales roles additionally catch internal users who signed up with a
-      personal address. campaignManager is a product role held by a candidate's
-      own staff, so it is deliberately not treated as internal.
+      Matched on the email domain, never the whole address: a substring match
+      on the address silently hard-excludes real candidates who put "goodparty"
+      in the local part. Matching the domain also covers every GoodParty
+      spelling without enumerating them, including the legacy thegoodparty.org
+      and typos. mailinator is a disposable-address service used for test
+      signups. The admin and sales roles additionally catch internal users who
+      signed up with a personal address; campaignManager is a product role held
+      by a candidate's own staff and is deliberately not internal.
 
       Resolved through every gp_api member of the person group rather than the
       scalar people.gp_api_user_id, which is null whenever a group holds more
@@ -3437,8 +3441,18 @@ models:
       account is not a candidate, so the is_demo filters on the gp_api candidacy
       feeds keep it out of the role flags and out of any mart scoped to them.
 
-      Known tradeoff: the email pattern also hides a staff member who genuinely
+      Known tradeoff: the domain match also hides a staff member who genuinely
       runs for office. Rare, and the Serve models accept the same tradeoff.
+    tests:
+      # A floor, because every other guard here passes vacuously on an empty
+      # relation: not_null and unique hold, and the mart's exclusion test is an
+      # inner join that finds no leaks because there is nothing to leak. A
+      # schema change upstream could empty this model and silently republish
+      # every internal account instead of failing.
+      - dbt_utils.expression_is_true:
+          name: internal_persons_not_silently_empty
+          arguments:
+            expression: "(select count(*) from {{ ref('int__civics_internal_persons') }}) >= 500"
     columns:
       - name: gp_person_id
         description: Person excluded from public-facing feeds.
