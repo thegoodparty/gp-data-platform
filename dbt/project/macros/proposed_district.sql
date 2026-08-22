@@ -28,18 +28,24 @@
 -- can coexist in the dimension: a campaign binds to the minted row while a
 -- sitting officeholder stays on the current one.
 --
--- The year is the term the map governs, not the election that fills it: the
--- congressional map applies to the Congress seated in January 2027, and MI
--- senators elected in November 2026 serve from 2027. Naming it for the term also
--- keeps it distinct from the vendor's "2026 PROPOSED ..." string, so our district
--- is never mistaken for the raw value it was parsed from. The cost is that a
--- consumer filtering on election_year = 2026 has to know the type says 2027.
+-- The year is the election, not the term the map governs. Every consumer joins on
+-- the election -- candidacies, races, turnout projections, the position match --
+-- so a type labelled 2027 invites someone filtering election_year = 2026 to
+-- silently miss it, and a silent miss is the failure this whole design exists to
+-- prevent.
+--
+-- Naming it for the term was considered and rejected: 2027 is when the Congress
+-- is seated and when MI senators elected in 2026 take office, so it reads more
+-- accurately in isolation, and it would keep the type visibly distinct from the
+-- vendor's "2026 PROPOSED ..." value. Neither outweighs a missed join. Nothing
+-- joins on the term, and the two strings are a type name and a column value, so
+-- confusing them takes real effort.
 {% macro proposed_district_minted_type(column_expr) -%}
     case
         when upper({{ column_expr }}) like '%PROPOSED CONG DIST%'
-        then 'Congressional_District_2027'
+        then 'Congressional_District_2026'
         when upper({{ column_expr }}) like '%PROPOSED STATE SEN DIST%'
-        then 'State_Senate_District_2027'
+        then 'State_Senate_District_2026'
     end
 {%- endmacro %}
 
