@@ -3,10 +3,11 @@
 -- count from int__l2_district_aggregations but no DistrictVoter rows at all:
 -- a district that looks populated everywhere and serves nobody.
 --
--- The voter mart and m_people_api__districtvoter each carry a hand-written
--- district column list while the aggregations drive theirs off
--- get_l2_district_types(). Three lists, no shared source, so they drift. This
--- resolves the mart's real columns at compile time, so it costs no scan.
+-- The voter mart carries a hand-written district column list while the
+-- aggregations drive theirs off get_l2_district_types(). Two lists, no shared
+-- source, so they drift. This resolves the mart's real columns at compile time,
+-- so it costs no scan. (m_people_api__districtvoter derives its list from the
+-- district table's own types, so it cannot fall behind.)
 -- depends_on: {{ ref('m_people_api__voter') }}
 {% set voter_columns = [] %}
 {% if execute %}

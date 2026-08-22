@@ -257,10 +257,12 @@ with
         where br_candidate_id is not null
     ),
 
+    -- Demo campaigns are excluded here as they are on every other gp_api entry
+    -- point in civics; without it a demo-only account reads as a candidate.
     gp_campaign_users as (
         select distinct cast(user_id as string) as user_id
         from {{ ref("campaigns") }}
-        where is_latest_version and user_id is not null
+        where is_latest_version and user_id is not null and not coalesce(is_demo, false)
     ),
 
     gp_elected_users as (
