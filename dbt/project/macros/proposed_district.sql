@@ -26,14 +26,20 @@
 
 -- The type the district is minted as. Separate from the shadowed type so both
 -- can coexist in the dimension: a campaign binds to the minted row while a
--- sitting officeholder stays on the current one. Year is the election year, not
--- the term year, because every consumer joins on the election.
+-- sitting officeholder stays on the current one.
+--
+-- The year is the term the map governs, not the election that fills it: the
+-- congressional map applies to the Congress seated in January 2027, and MI
+-- senators elected in November 2026 serve from 2027. Naming it for the term also
+-- keeps it distinct from the vendor's "2026 PROPOSED ..." string, so our district
+-- is never mistaken for the raw value it was parsed from. The cost is that a
+-- consumer filtering on election_year = 2026 has to know the type says 2027.
 {% macro proposed_district_minted_type(column_expr) -%}
     case
         when upper({{ column_expr }}) like '%PROPOSED CONG DIST%'
-        then 'Congressional_District_2026'
+        then 'Congressional_District_2027'
         when upper({{ column_expr }}) like '%PROPOSED STATE SEN DIST%'
-        then 'State_Senate_District_2026'
+        then 'State_Senate_District_2027'
     end
 {%- endmacro %}
 

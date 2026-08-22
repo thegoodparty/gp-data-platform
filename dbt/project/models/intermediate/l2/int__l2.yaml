@@ -30,16 +30,17 @@ models:
           - not_null
       - name: district_type
         description: >
-          The minted type, suffixed with the election year
-          (Congressional_District_2026, State_Senate_District_2026). Derived by
-          parsing the vendor value, never from the column name, because one
-          column carries both handled types.
+          The minted type, suffixed with the term the map governs rather than
+          the election that fills it (Congressional_District_2027,
+          State_Senate_District_2027). Derived by parsing the vendor value,
+          never from the column name, because one column carries both handled
+          types.
         tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
-                  ["Congressional_District_2026", "State_Senate_District_2026"]
+                  ["Congressional_District_2027", "State_Senate_District_2027"]
       - name: shadowed_district_type
         description: >
           The existing type this district replaces, and what the adoption seed
