@@ -141,6 +141,43 @@ models:
             to_district_type_column: district_type
             to_district_name_column: district_name
 
+  - name: int__l2_br_match_pending_offices
+    description: >
+      One row per BallotReady office needing an L2 district match attempt:
+      never attempted, last attempt abstained more than 30 days ago, or
+      matched to a district int__l2_district_universe no longer carries.
+      "Attempted" and "matched" are computed from llm_l2_br_match_runs and
+      llm_l2_br_match_results, both dbt sources written only by the matcher.
+      The matcher reads this list to build its next batch. Reads
+      stg_airbyte_source__ballotready_api_position directly, not
+      int__enhanced_position, to keep the geography fields (sub_area_name,
+      sub_area_value, is_judicial, has_unknown_boundaries) that
+      int__enhanced_position drops and the matcher's geography filters need.
+      Every office (~286,000) until the matcher has run at least once --
+      that is the expected starting state, not a defect.
+    columns:
+      - name: br_database_id
+        description: "BallotReady office database id."
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: "BallotReady office name."
+      - name: mtfcc
+        description: "Census MTFCC code for the office's geography; a menu-narrowing filter input for the matcher."
+      - name: geo_id
+        description: "Census geography id for the office; a menu-narrowing filter input for the matcher."
+      - name: sub_area_name
+        description: "BallotReady sub-area name. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: sub_area_value
+        description: "BallotReady sub-area value. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: is_judicial
+        description: "Whether the office is a judicial seat. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: has_unknown_boundaries
+        description: "Whether BallotReady flags the office's boundaries as unknown. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: state
+        description: "State postal code."
+
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
     columns:
