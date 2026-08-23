@@ -1,6 +1,70 @@
 version: 2
 
 models:
+  - name: int__l2_proposed_district_aggregations
+    description: >
+      Districts on a proposed map that the adoption seed records as the one
+      legally in force, aggregated to the same shape and id as
+      int__l2_district_aggregations so the dimension can union the two.
+
+      Separate from that model, and a full rebuild, for two reasons. A seed edit
+      does not move a voter's loaded_at, so an incremental branch would not pick
+      up a state flipped to verified until that state's data happened to reload.
+      And that model is incremental-merge and never deletes, so it holds
+      districts L2 has retired and a full refresh on it drops them, which breaks
+      the guard requiring every l2_br_match_overrides row to resolve. Keeping
+      these separate means a seed flip rebuilds only this.
+    columns:
+      - name: id
+        description: >
+          Salted hash of (state, district_type, district_name), the same
+          derivation int__l2_district_aggregations uses, so the dimension's
+          voter-count join works identically across both sources.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - not_null
+      - name: district_type
+        description: >
+          The minted type, suffixed with the election year rather than the term
+          the map governs (Congressional_District_2026,
+          State_Senate_District_2026), because every consumer joins on the
+          election. Derived by parsing the vendor value, never from the column
+          name, because one column carries both handled types.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  ["Congressional_District_2026", "State_Senate_District_2026"]
+      - name: shadowed_district_type
+        description: >
+          The existing type this district replaces, and what the adoption seed
+          records its decision against. Consumers needing the same-numbered
+          current district join on this rather than restating the pairing.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["US_Congressional_District", "State_Senate_District"]
+      - name: district_name
+        description: >
+          District number as a bare unpadded string, matching how every current
+          column names its districts, so "DIST 04" becomes "4".
+        tests:
+          - not_null
+      - name: voter_count
+        description: Distinct voters in the district.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
   - name: int__l2_district_aggregations
     description: Intermediate model that aggregates L2 district data for downstream use.
     columns:
