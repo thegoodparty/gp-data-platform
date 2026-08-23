@@ -183,12 +183,23 @@ seeds:
         data_tests:
           - not_null
     data_tests:
+      # Both memberships, because they fail differently. The universe says the
+      # district is live in the newest L2 delivery, which the district mart
+      # cannot say since it retains everything it ever held. The mart says the
+      # district is reachable by the consumer that actually joins it, which the
+      # universe cannot say since the mart's L2 leg is an incremental that can
+      # lag a delivery. An override satisfying only one of them resolves to
+      # nothing in production.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
               concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state_postal_code, '|', district_type, '|', district_name)
                 from {{ ref('int__l2_district_universe') }}
+              )
+              and concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                select concat(state, '|', l2_district_type, '|', l2_district_name)
+                from {{ ref('m_election_api__district') }}
               )
 
   - name: election_api_race_filing_address_overrides
