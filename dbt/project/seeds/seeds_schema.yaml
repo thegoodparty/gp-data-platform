@@ -146,9 +146,6 @@ seeds:
       election-api position mart. A row is also honored when its BR position has
       no LLM match row at all (e.g. positions added after the static match
       snapshot): the position mart injects the match directly from this seed.
-      Repointing an existing row at a different district leaves the old
-      zip->office rows behind, since an incremental merge cannot delete them, so
-      --full-refresh int__zip_code_to_br_office after the seed reloads.
     columns:
       - name: br_database_id
         description: BallotReady position database ID to override
