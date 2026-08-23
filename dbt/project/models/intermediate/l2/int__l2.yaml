@@ -251,7 +251,13 @@ models:
           - unique
 
   - name: int__zip_code_to_br_office
-    description: "Zip code to BR office mapping"
+    description: >
+      Zip code to BR office mapping. Rows arrive by two paths: the frozen LLM
+      match, and the l2_br_match_overrides seed for positions the LLM placed
+      at the wrong district or not at all. To see why a district was chosen,
+      join stg_model_predictions__llm_l2_br_match_20260126 (a view) on
+      br_database_id; a position absent there, or carrying a different
+      district than the row shows, was placed by the seed.
     columns:
       - name: zip_code
         description: "Zip code"
