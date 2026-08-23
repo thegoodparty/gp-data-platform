@@ -12,6 +12,7 @@ with
             results.match_status,
             results.l2_district_type,
             results.l2_district_name,
+            results.attempted_at,
             runs.sequence
         from {{ source("model_predictions", "llm_l2_br_match_results") }} as results
         inner join
@@ -19,12 +20,21 @@ with
             on results.run_id = runs.run_id
         where runs.status = 'COMPLETE'
     ),
+    -- This ordering must match int__l2_br_match_pending_offices exactly.
+    -- sequence belongs to the run, so one run's rows all share it, and the
+    -- results table is append-only with no key: a mid-run retry can leave two
+    -- rows for one office at the same sequence. If the model and this test broke
+    -- that tie differently, the test would red against a correct table.
     latest_attempt as (
         select
             br_database_id, match_status, l2_district_type, l2_district_name, sequence
         from completed_attempts
         qualify
-            row_number() over (partition by br_database_id order by sequence desc) = 1
+            row_number() over (
+                partition by br_database_id
+                order by sequence desc, attempted_at desc, match_status
+            )
+            = 1
     ),
     still_valid_matches as (
         select latest_attempt.br_database_id

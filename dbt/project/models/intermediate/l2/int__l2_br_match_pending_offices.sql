@@ -58,6 +58,14 @@ with
     -- "Current means latest": the newest row per office ordered by run
     -- sequence, never by confidence or match_status, so a newer abstention
     -- supersedes an older match.
+    --
+    -- The tiebreak past sequence is load-bearing, not defensive. sequence
+    -- belongs to the run, so every result row in one run shares it, and the
+    -- results table is append-only with no key -- a mid-run retry can leave two
+    -- rows for one office at the same sequence. Ordering on sequence alone then
+    -- picks arbitrarily, and the singular test recomputes this same window in a
+    -- separate query, so the two can disagree and red the build against a
+    -- correctly built table. Keep both orderings identical.
     latest_attempt as (
         select
             br_database_id,
@@ -68,7 +76,20 @@ with
             sequence
         from completed_attempts
         qualify
-            row_number() over (partition by br_database_id order by sequence desc) = 1
+            row_number() over (
+                partition by br_database_id
+                order by sequence desc, attempted_at desc, match_status
+            )
+            = 1
+    ),
+
+    -- Rule 3 keys on the absence of a universe row, which cannot by itself tell
+    -- "this district was relabelled" from "this state has no universe rows right
+    -- now". A stalled L2 load would flood every matched office in the state back
+    -- onto the list, which is the unbounded-run failure this model exists to
+    -- prevent.
+    states_in_universe as (
+        select distinct state_postal_code from {{ ref("int__l2_district_universe") }}
     )
 
 select
@@ -107,5 +128,17 @@ where
     -- Rule 3: matched, but the universe rebuilt and no longer carries that
     -- exact label -- the one join that stops a dead match sitting here
     -- indefinitely. An office matched to a district that still exists must
-    -- NOT reappear just because L2 shipped a new file for some other state.
-    or (latest_attempt.match_status = 'MATCHED' and universe.district_name is null)
+    -- NOT reappear just because L2 shipped a new file for some other state,
+    -- nor because its own state is momentarily absent from the universe.
+    or (
+        latest_attempt.match_status = 'MATCHED'
+        and universe.district_name is null
+        and br_offices.state in (select state_postal_code from states_in_universe)
+    )
+    -- Fail safe. The three rules above enumerate the only statuses the contract
+    -- allows, so an unexpected one would fall through all of them and retire the
+    -- office silently, forever, with nothing failing. An unknown outcome is not
+    -- an outcome: re-attempt it. (A null status is rule 1's case; `not in` on
+    -- null yields unknown, so this does not double-count a never-attempted
+    -- office.)
+    or latest_attempt.match_status not in ('MATCHED', 'ABSTAINED')
