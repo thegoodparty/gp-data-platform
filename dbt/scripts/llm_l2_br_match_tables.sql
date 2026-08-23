@@ -4,13 +4,13 @@
 -- populate either one -- dbt does not create a table it never populates.
 -- The matcher (a container, not dbt) is the only writer.
 --
--- Run by hand, once, against the warehouse, via dbsql.py -- but ONE STATEMENT
--- AT A TIME. The Statement Execution API rejects multiple ';'-separated
--- statements in a single call (verified empirically: two no-op SELECTs in
--- one call fail with PARSE_SYNTAX_ERROR: extra input), so pointing -f at
--- this whole file in one invocation will fail. Split the two CREATE TABLE
--- statements below into two files (or two -f calls) before running:
---   python .claude/skills/databricks-query/scripts/dbsql.py -f <one-statement-file>
+-- Run by hand, once, ONE STATEMENT AT A TIME: the Statement Execution API
+-- rejects multiple ';'-separated statements in a single call, so this file
+-- cannot be piped in whole. Paste each CREATE TABLE into a Databricks SQL
+-- editor, or feed each separately to the repo's helper:
+--   python .claude/skills/databricks-query/scripts/dbsql.py -f <one-statement>
+-- Splitting this file on ';' does NOT work -- a COMMENT literal below contains
+-- one. Split on the 'create table' boundary.
 --
 -- Both tables are empty on creation and stay that way until the matcher's
 -- first run.
@@ -28,6 +28,7 @@ create table if not exists goodparty_data_catalog.model_predictions.llm_l2_br_ma
 create table if not exists goodparty_data_catalog.model_predictions.llm_l2_br_match_results (
     run_id string not null comment 'FK to llm_l2_br_match_runs.run_id.',
     br_database_id int not null comment 'BallotReady office database id -- int, matching the type stg_airbyte_source__ballotready_api_position casts it to (cast(databaseid as int)).',
+    l2_state string comment 'State of the matched district. Completes the district key to (state, type, name), which is the grain the universe, the district mart and the overrides seed all use -- without it a same-named district in another state resolves silently. Null on an ABSTAINED row.',
     l2_district_type string comment 'Null on an ABSTAINED row.',
     l2_district_name string comment 'Null on an ABSTAINED row.',
     match_status string not null comment 'MATCHED or ABSTAINED only. A technical error fails the run rather than being persisted as a match; there is no error state here.',

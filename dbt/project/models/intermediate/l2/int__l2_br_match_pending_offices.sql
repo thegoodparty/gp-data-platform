@@ -4,24 +4,19 @@
 {{ config(materialized="table") }}
 
 /*
-One row per BallotReady office needing an L2 district match attempt: never
-attempted, last attempt abstained more than 30 days ago, or matched to a
-district the current L2 universe no longer carries. The matcher reads this
-list to build its next batch.
-
 Reads stg_airbyte_source__ballotready_api_position directly, not
-int__enhanced_position, which drops sub_area_name, sub_area_value,
-is_judicial and has_unknown_boundaries -- exactly the geography fields the
-matcher's menu-narrowing filters need.
+int__enhanced_position, which drops sub_area_name, sub_area_value, is_judicial
+and has_unknown_boundaries -- exactly the geography fields the matcher's
+menu-narrowing filters need.
 
-llm_l2_br_match_runs and llm_l2_br_match_results are dbt sources, not refs:
+llm_l2_br_match_runs and llm_l2_br_match_results are sources, not refs:
 provisioned outside dbt (dbt/scripts/llm_l2_br_match_tables.sql) and written
-only by the matcher. This model, and the matcher, are the only two readers
-the data contract names for either table.
+only by the matcher.
 
-Table is empty on every office (~286,000) until the matcher has run at
-least once: "never attempted" alone matches everything before that, which is
-correct, not a bug.
+This is a table, so it is a snapshot of the worklist as of its last build. The
+supervised cutover MUST rebuild it after seeding the baseline run, or it still
+holds every office and hands the matcher ~286,000 instead of the ~23,000
+backlog.
 */
 with
     br_offices as (
@@ -44,6 +39,7 @@ with
         select
             results.br_database_id,
             results.match_status,
+            results.l2_state,
             results.l2_district_type,
             results.l2_district_name,
             results.attempted_at,
@@ -70,6 +66,7 @@ with
         select
             br_database_id,
             match_status,
+            l2_state,
             l2_district_type,
             l2_district_name,
             attempted_at,
@@ -104,16 +101,15 @@ select
     br_offices.state
 from br_offices
 left join latest_attempt on br_offices.br_database_id = latest_attempt.br_database_id
--- Rule 3's join: does the office's own state still carry this exact label in
--- the current universe? Results rows carry no state column of their own, so
--- the office's state stands in for it. Guarding on match_status='MATCHED'
--- here is belt-and-suspenders (a null l2_district_type/name, true of every
--- unattempted or ABSTAINED office, already fails every equality below), kept
--- for readability: this join exists only to implement rule 3.
+-- Rule 3's join. A match is live only if the district it named still exists in
+-- the state it was matched in AND the office is still in that state, so both
+-- equalities on l2_state are load-bearing: a district key here is
+-- (state, type, name) exactly as everywhere else in this repo, and a position
+-- that changes state must not inherit a same-named district in the new one.
 left join
     {{ ref("int__l2_district_universe") }} as universe
-    on latest_attempt.match_status = 'MATCHED'
-    and br_offices.state = universe.state_postal_code
+    on latest_attempt.l2_state = universe.state_postal_code
+    and latest_attempt.l2_state = br_offices.state
     and latest_attempt.l2_district_type = universe.district_type
     and latest_attempt.l2_district_name = universe.district_name
 where

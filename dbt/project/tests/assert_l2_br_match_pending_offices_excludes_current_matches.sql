@@ -10,6 +10,7 @@ with
         select
             results.br_database_id,
             results.match_status,
+            results.l2_state,
             results.l2_district_type,
             results.l2_district_name,
             results.attempted_at,
@@ -27,7 +28,12 @@ with
     -- that tie differently, the test would red against a correct table.
     latest_attempt as (
         select
-            br_database_id, match_status, l2_district_type, l2_district_name, sequence
+            br_database_id,
+            match_status,
+            l2_state,
+            l2_district_type,
+            l2_district_name,
+            sequence
         from completed_attempts
         qualify
             row_number() over (
@@ -44,7 +50,8 @@ with
             on latest_attempt.br_database_id = office.database_id
         inner join
             {{ ref("int__l2_district_universe") }} as universe
-            on office.state = universe.state_postal_code
+            on latest_attempt.l2_state = universe.state_postal_code
+            and latest_attempt.l2_state = office.state
             and latest_attempt.l2_district_type = universe.district_type
             and latest_attempt.l2_district_name = universe.district_name
         where latest_attempt.match_status = 'MATCHED'
