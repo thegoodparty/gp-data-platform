@@ -83,6 +83,53 @@ models:
             district_type_column: district_type
             district_name_column: district_name
 
+  - name: int__l2_district_universe
+    description: >
+      One row per district in each state's latest L2 delivery, plus 51
+      synthetic statewide rows (district_type='State', district_name =
+      state_postal_code) that give Governor and US Senate seats something
+      to match to. This is the candidate menu the L2-to-BallotReady
+      matcher reads; it carries no voter counts because a menu needs
+      labels and types, not counts.
+    columns:
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: district_type
+        description: "L2 district column name, or 'State' for the synthetic statewide row."
+      - name: district_name
+        description: "District identifier within district_type; state_postal_code again for the 'State' rows."
+        tests:
+          - not_null
+      - name: loaded_at
+        description: >
+          Timestamp of the L2 delivery this district is current as of; the
+          join key used to filter to each state's latest delivery.
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state_postal_code
+              - district_type
+              - district_name
+      # Universe canonicalization check: a label spelled one way here must be
+      # spelled the same way in the relation that carries the voter counts,
+      # or the two never join.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state_postal_code
+            district_type_column: district_type
+            district_name_column: district_name
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
     columns:

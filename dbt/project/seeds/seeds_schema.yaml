@@ -184,8 +184,8 @@ seeds:
           arguments:
             expression: >
               concat(state, '|', l2_district_type, '|', l2_district_name) in (
-                select concat(state, '|', l2_district_type, '|', l2_district_name)
-                from {{ ref('m_election_api__district') }}
+                select concat(state_postal_code, '|', district_type, '|', district_name)
+                from {{ ref('int__l2_district_universe') }}
               )
 
   - name: election_api_race_filing_address_overrides
