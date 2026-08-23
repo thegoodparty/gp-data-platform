@@ -122,9 +122,7 @@ with
     ),
 
     -- Same zip->office linkage as above, but built from active_overrides (the
-    -- override rows the LLM did not already place at the same district). Reads
-    -- the unfiltered zip->district source so a new override backfills without a
-    -- full refresh.
+    -- override rows the LLM did not already place at the same district).
     override_zip_to_br_office as (
         select
             tbl_zip.zip_code,
@@ -197,9 +195,9 @@ select
     is_matched,
     confidence
 from combined
--- Keep only rows with a live BR position. This drops both LLM-unmatched rows
--- (br_database_id null) and orphan rows whose br_database_id no longer exists
--- in stg_airbyte_source__ballotready_api_position; the sole downstream
--- consumer (m_election_api__zip_to_position) filters br_database_id is not
--- null anyway.
+-- Keep only rows with a live BR position. Two classes go: LLM-unmatched rows,
+-- whose null br_database_id the sole downstream consumer
+-- (m_election_api__zip_to_position) also filters out; and orphan rows whose
+-- br_database_id is non-null but no longer exists in
+-- stg_airbyte_source__ballotready_api_position, which that filter would keep.
 where br_position_id is not null
