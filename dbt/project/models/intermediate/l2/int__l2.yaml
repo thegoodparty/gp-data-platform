@@ -95,9 +95,14 @@ models:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
         tests:
+          # Excludes the synthetic rows deliberately. Those are emitted per
+          # state unconditionally, so without the condition every state is
+          # present whether or not it contributed a single real district, and
+          # the test could never catch the state going missing from the menu.
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                row_condition: "district_type <> 'State'"
       - name: district_type
         description: "L2 district column name, or 'State' for the synthetic statewide row."
       - name: district_name

@@ -101,6 +101,9 @@ seeds:
       (int__zip_code_to_l2_district, m_election_api__district,
       int__l2_district_aggregations) need a --full-refresh afterwards;
       assert_manual_district_assignments_resolve.sql fails until they get one.
+      int__l2_district_universe is a plain table rather than an incremental, so
+      it needs an ordinary rebuild instead, and the l2_br_match_overrides tuple
+      test fails until it gets one.
       The people chain is gated the same way: rebuild m_people_api__voter (a
       full-rebuild table) and --full-refresh m_people_api__districtvoter, or
       the assignment reaches the people DB only when the state's next L2 load
