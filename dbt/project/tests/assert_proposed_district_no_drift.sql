@@ -10,9 +10,14 @@
 -- swallowed those would mint districts nobody runs in.
 select distinct l2.state_postal_code, l2.proposed_district
 from {{ ref("int__l2_nationwide_uniform") }} as l2
+-- Normalised on both sides. Nothing trims Proposed_District upstream: the WA
+-- staging model is a bare passthrough and the uniform model's ltrim loop skips
+-- this column. So a vendor delivering "SPOKANE CNTY COMM DIST 1 (2023) " would
+-- miss the join and fail the build on a value already classified, which is a
+-- false alarm rather than the drift this exists to surface.
 left join
     {{ ref("proposed_district_ignored_values") }} as ignored
-    on ignored.proposed_district = l2.proposed_district
+    on trim(upper(ignored.proposed_district)) = trim(upper(l2.proposed_district))
 where
     l2.proposed_district is not null
     and not {{ is_proposed_handled_district("l2.proposed_district") }}

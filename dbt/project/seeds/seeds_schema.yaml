@@ -807,6 +807,15 @@ seeds:
               - state
               - district_type
               - district_number
+      # The invariant is_verified's description only described. Without it a
+      # current or needs_boundary row can carry is_verified = true, and the gate
+      # opens the moment adopted_source is flipped to proposed - skipping the
+      # re-verification that flip is supposed to require. Seed-level rather than
+      # on the column, because a column-level expression_is_true prepends the
+      # column name and cannot express a cross-column rule.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "adopted_source = 'proposed' or not is_verified"
     columns:
       - name: state
         description: Two-letter state code the decision applies to.
