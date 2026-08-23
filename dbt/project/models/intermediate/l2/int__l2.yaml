@@ -83,6 +83,64 @@ models:
             district_type_column: district_type
             district_name_column: district_name
 
+  - name: int__l2_district_universe
+    description: >
+      One row per district in each state's latest L2 delivery, plus 51
+      synthetic statewide rows (district_type='State', district_name =
+      state_postal_code) that give Governor and US Senate seats something
+      to match to. This is the candidate menu the L2-to-BallotReady
+      matcher reads; it carries no voter counts because a menu needs
+      labels and types, not counts.
+    columns:
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          # Excludes the synthetic rows deliberately. Those are emitted per
+          # state unconditionally, so without the condition every state is
+          # present whether or not it contributed a single real district, and
+          # the test could never catch the state going missing from the menu.
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                row_condition: "district_type <> 'State'"
+      - name: district_type
+        description: "L2 district column name, or 'State' for the synthetic statewide row."
+      - name: district_name
+        description: "District identifier within district_type; state_postal_code again for the 'State' rows."
+      - name: loaded_at
+        description: >
+          Timestamp of the L2 delivery this district is current as of; the
+          join key used to filter to each state's latest delivery.
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state_postal_code
+              - district_type
+              - district_name
+      # Asserts the aggregation is CURRENT relative to this menu, not that the
+      # two spell labels alike: both derive district_name from the same ltrim
+      # in int__l2_nationwide_uniform, so a spelling cannot diverge between
+      # them. What can diverge is freshness — this model is a plain table and
+      # the aggregation is an incremental whose watermark only admits tuples
+      # with a newer loaded_at. A menu district the aggregation lacks carries
+      # no voter counts, which is the failure worth catching.
+      # COUPLING: adding a district type to get_l2_district_types() puts new
+      # tuples here immediately but not there until each state's next delivery,
+      # so a macro edit needs a --full-refresh of int__l2_district_aggregations
+      # in the same change or this reds until deliveries catch up.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state_postal_code
+            district_type_column: district_type
+            district_name_column: district_name
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
     columns:

@@ -101,6 +101,9 @@ seeds:
       (int__zip_code_to_l2_district, m_election_api__district,
       int__l2_district_aggregations) need a --full-refresh afterwards;
       assert_manual_district_assignments_resolve.sql fails until they get one.
+      int__l2_district_universe is a plain table rather than an incremental, so
+      it needs an ordinary rebuild instead, and the l2_br_match_overrides tuple
+      test fails until it gets one.
       The people chain is gated the same way: rebuild m_people_api__voter (a
       full-rebuild table) and --full-refresh m_people_api__districtvoter, or
       the assignment reaches the people DB only when the state's next L2 load
@@ -180,10 +183,21 @@ seeds:
         data_tests:
           - not_null
     data_tests:
+      # Both memberships, because they fail differently. The universe says the
+      # district is live in the newest L2 delivery, which the district mart
+      # cannot say since it retains everything it ever held. The mart says the
+      # district is reachable by the consumer that actually joins it, which the
+      # universe cannot say since the mart's L2 leg is an incremental that can
+      # lag a delivery. An override satisfying only one of them resolves to
+      # nothing in production.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
               concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                select concat(state_postal_code, '|', district_type, '|', district_name)
+                from {{ ref('int__l2_district_universe') }}
+              )
+              and concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
                 from {{ ref('m_election_api__district') }}
               )
