@@ -8,7 +8,8 @@ with
         -- test can disagree with the model about which attempt is latest.
         qualify
             row_number() over (
-                partition by br_database_id order by attempted_at desc, l2_district_name
+                partition by br_database_id
+                order by attempted_at desc, l2_district_name nulls first
             )
             = 1
     ),
