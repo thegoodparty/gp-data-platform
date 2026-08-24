@@ -152,8 +152,9 @@ seeds:
       no LLM match row at all (e.g. positions added after the static match
       snapshot): the position mart injects the match directly from this seed.
       A standalone dbt seed does not build dependent models, so build
-      int__zip_code_to_br_office afterwards for the change to reach the office
-      picker; it no longer needs a --full-refresh.
+      int__zip_code_to_br_office (no longer needs a --full-refresh) and its
+      downstream m_election_api__zip_to_position, the office picker, for the
+      change to reach it.
     columns:
       - name: br_database_id
         description: BallotReady position database ID to override
@@ -189,9 +190,9 @@ seeds:
       # district is live in the newest L2 delivery, which the district mart
       # cannot say since it retains everything it ever held. The mart says the
       # district is reachable by the consumer that actually joins it, which the
-      # universe cannot say since the mart's L2 leg is an incremental that can
-      # lag a delivery. An override satisfying only one of them resolves to
-      # nothing in production.
+      # universe cannot say since the mart's L2 leg, int__l2_district_aggregations,
+      # is an incremental that can lag a delivery. An override satisfying only
+      # one of them resolves to nothing in production.
       #
       # Liveness has two sources. Minted districts cannot be in the universe,
       # which unpivots L2 column names while their type comes from parsing the

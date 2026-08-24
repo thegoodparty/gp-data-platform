@@ -23,6 +23,13 @@
     either scope's list marks the other scope's downstream models
     state:modified, not just its own.
 
+    COUPLING: adding a type to all_types also needs a --full-refresh of
+    int__l2_district_aggregations in the same change. int__l2_district_universe
+    (a plain table) carries the new type on its next build; the aggregation
+    (an incremental) only admits it per state on that state's next L2
+    delivery, so int__l2.yaml's canonicalization test on the universe reds
+    until every state redelivers.
+
     Args:
         scope (str): 'all' or 'allocated'.
 
