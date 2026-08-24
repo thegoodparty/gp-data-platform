@@ -2,9 +2,16 @@
 
 Short, non-obvious context for `gp-data-platform`. The repo overview is in `README.md`; dbt-specific guidance is in `dbt/project/CLAUDE.md`.
 
-## Multi-venv reality
+## General instructions
+- Use terse comments that explain "why" not "what", and only whe it's not obvious. Most comments should be a sentence or two at most
+- Don't use the following phrases:
+  - load-bearing
+  - seam
+  - substrate
 
-There is no single root venv. Each subproject manages its own deps. `cd` into the right one before you install or run anything.
+## Subproject
+
+Each subproject manages its own deps. `cd` into the right one before you install or run anything.
 
 | Subproject | Tool | Python | Notes |
 |---|---|---|---|
@@ -32,7 +39,7 @@ When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or
 
 ## pre-commit
 
-Two layers, both driven by `pre-commit`:
+Driven by `pre-commit`:
 
 - **Repo-wide lint/format** (ruff, ruff-format, sqlfmt, and the generic hooks) run on the default `pre-commit` stage and in CI (`pre-commit run --all-files` on every PR). A failing hook blocks the merge.
 - **Per-directory tests** run on the `pre-push` stage only. Each directory has a `pytest-<dir>` hook gated by `files:`, so a push runs only the suites for the directories it touched, in that directory's own environment. These are local only: the `pre-push` stage keeps them out of the CI `pre-commit run --all-files` job, and CI test coverage is each directory's own workflow.
