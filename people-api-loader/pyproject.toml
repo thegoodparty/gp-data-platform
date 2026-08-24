@@ -21,7 +21,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-mock>=3.14",
     "ruff>=0.16.3",
-    "ty==0.0.72",
+    "ty==0.0.73",
     "pre-commit>=4.6.2",
     "moto[rds,ec2]>=5.2.2",
 ]
