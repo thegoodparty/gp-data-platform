@@ -3,7 +3,7 @@
 Short, non-obvious context for `gp-data-platform`. The repo overview is in `README.md`; dbt-specific guidance is in `dbt/project/CLAUDE.md`.
 
 ## General instructions
-- Use terse comments that explain "why" not "what", and only whe it's not obvious. Most comments should be a sentence or two at most
+- Use terse comments that explain "why" not "what", and only when it's not obvious. Most comments should be a sentence or two at most
 - Don't use the following phrases:
   - load-bearing
   - seam
