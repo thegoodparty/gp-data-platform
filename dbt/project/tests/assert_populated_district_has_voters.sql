@@ -1,4 +1,13 @@
 -- A district that L2 says holds voters must have DistrictVoter rows.
+{{ config(severity="error", error_if=">250", warn_if=">0") }}
+--
+-- Thresholded because the two sides read different delivery vintages:
+-- registered_voters from int__l2_nationwide_uniform, links from the haystaq
+-- merge behind it. On 2026-08-23 that lag left 25 unlinked of 125,603, against
+-- the ~2,500 below; 250 separates routine lag from a systemic break.
+--
+-- Do not narrow this by comparing vintages here: the watermark comes from a
+-- monthly-tagged model, and CI drops tests whose parents it excludes.
 --
 -- The existing tests only check the other direction: that a DistrictVoter row
 -- points at a real district and a real voter. Nothing caught a district losing

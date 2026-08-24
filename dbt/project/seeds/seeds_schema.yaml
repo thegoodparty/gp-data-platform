@@ -190,12 +190,25 @@ seeds:
       # universe cannot say since the mart's L2 leg is an incremental that can
       # lag a delivery. An override satisfying only one of them resolves to
       # nothing in production.
+      #
+      # Liveness has two sources. Minted districts cannot be in the universe,
+      # which unpivots L2 column names while their type comes from parsing the
+      # value. They prove it instead by still being emitted by
+      # int__l2_proposed_district_aggregations, a full rebuild from the current
+      # file. Hence the or: adding them to the universe breaks its own
+      # reciprocal test against int__l2_district_aggregations.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
-              concat(state, '|', l2_district_type, '|', l2_district_name) in (
-                select concat(state_postal_code, '|', district_type, '|', district_name)
-                from {{ ref('int__l2_district_universe') }}
+              (
+                concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_district_universe') }}
+                )
+                or concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_proposed_district_aggregations') }}
+                )
               )
               and concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
