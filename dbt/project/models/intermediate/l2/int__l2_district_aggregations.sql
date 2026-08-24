@@ -1,3 +1,4 @@
+-- depends_on: {{ ref("l2_manual_district_assignments") }}
 {{
     config(
         materialized="incremental",
@@ -47,6 +48,18 @@ with
                     in ({{ get_l2_district_columns(use_backticks=false) }})
                 )
             where district_value is not null
+
+            union
+
+            -- The assignment seed reaches voters through a coalesce in
+            -- int__l2_nationwide_uniform without moving any voter's loaded_at,
+            -- so without this leg an assigned district is not aggregated until
+            -- that state's next delivery.
+            select
+                state as state_postal_code,
+                l2_district_type as district_type,
+                l2_district_name as district_name
+            from {{ ref("l2_manual_district_assignments") }}
         {% else %}
             -- For full refresh, this CTE is not used
             select
