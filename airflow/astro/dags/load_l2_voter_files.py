@@ -131,7 +131,12 @@ def load_l2_voter_files():
         return [] if _param("dry_run") else pending
 
     # max_active_tis_per_dag keeps one archive per worker even if the queue is reconfigured.
-    @task(queue=SYNC_QUEUE, max_active_tis_per_dag=1, execution_timeout=duration(hours=6))
+    @task(
+        queue=SYNC_QUEUE,
+        max_active_tis_per_dag=1,
+        execution_timeout=duration(hours=6),
+        map_index_template="{{ task.op_kwargs['source']['remote_path'].split('/') | last }}",
+    )
     def sync(source: dict) -> list[str]:
         """Copy one source file into S3."""
         bucket, prefix = _staging_location()
@@ -170,7 +175,11 @@ def load_l2_voter_files():
 
         return [] if dry_run else pending
 
-    @task(max_active_tis_per_dag=8, execution_timeout=duration(hours=6))
+    @task(
+        max_active_tis_per_dag=8,
+        execution_timeout=duration(hours=6),
+        map_index_template="{{ task.op_kwargs['table_load']['table_name'] }}",
+    )
     def load(table_load: dict) -> str:
         """Rebuild one `l2_s3_*` table from its staged file."""
         bucket, prefix = _staging_location()
