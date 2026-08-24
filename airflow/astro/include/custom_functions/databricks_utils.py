@@ -131,7 +131,8 @@ def read_databricks_table(
     Args:
         query: SQL SELECT statement to execute.
         databricks_conn_id_var: Airflow Variable holding the Databricks connection ID.
-        batch_size: Number of rows per batch (fetchmany size).
+        batch_size: Rows per batch, passed as the cursor's `arraysize` so it
+            also bounds what the connector holds resident.
         use_cloud_fetch: Enable CloudFetch (bulk S3 download). Disabled by
             default so that fetchmany controls peak memory usage.
 
@@ -142,7 +143,9 @@ def read_databricks_table(
     connection = connect_from_conn_id(databricks_conn_id_var, use_cloud_fetch=use_cloud_fetch)
 
     try:
-        cursor = connection.cursor()
+        # arraysize is the server fetch size, and defaults to 100,000 rows;
+        # fetchmany only slices an already-resident buffer.
+        cursor = connection.cursor(arraysize=batch_size)
         execute_with_retry(cursor, query)
         if cursor.description is None:
             raise RuntimeError("Databricks cursor returned no description after execute")
@@ -199,10 +202,12 @@ def read_databricks_partitioned(
     """Stream `base_query` one distinct `partition_column` value at a time over a
     SINGLE Databricks connection.
 
-    Peak memory stays bounded to one partition's result instead of the whole
-    table, and exactly one connection is opened for the entire read. Opening a
-    fresh connection per partition (the naive loop) leaks resources that
-    accumulate across many partitions and OOM the worker on large reads.
+    Peak memory is bounded by `batch_size`, which sets the cursor's `arraysize`
+    and so the resident buffer; partitioning keeps each server-side result set
+    small rather than capping what the client holds. Exactly one connection is
+    opened for the entire read. Opening a fresh connection per partition (the
+    naive loop) leaks resources that accumulate across many partitions and OOM
+    the worker on large reads.
 
     Yields lists of row tuples (same batch shape as read_databricks_table). The
     connection is closed when the generator is exhausted or closed.
@@ -213,7 +218,7 @@ def read_databricks_partitioned(
 
     def _iter():
         connection = get_databricks_connection(**conn_kwargs, use_cloud_fetch=use_cloud_fetch)
-        cursor = connection.cursor()
+        cursor = connection.cursor(arraysize=batch_size)
         try:
             execute_with_retry(
                 cursor, f"SELECT DISTINCT {partition_column} AS _pv FROM ({base_query}) AS _src"

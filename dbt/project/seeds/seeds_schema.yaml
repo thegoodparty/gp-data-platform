@@ -97,10 +97,15 @@ seeds:
       int__l2_nationwide_uniform_raw_districts that coalesces the
       assignment into the named district column so L2 stays authoritative
       wherever it supplies a value. Editing this seed does not bump voter
-      loaded_at, so the loaded_at-incremental consumers
-      (int__zip_code_to_l2_district, m_election_api__district,
-      int__l2_district_aggregations) need a --full-refresh afterwards;
-      assert_manual_district_assignments_resolve.sql fails until they get one.
+      loaded_at, so nothing keyed on it recomputes by itself.
+      int__l2_district_aggregations unions this seed into its incremental
+      candidate set, so it, m_election_api__district and
+      int__l2_district_universe all pick a new assignment up on the next
+      ordinary run; assert_manual_district_assignments_resolve.sql and the
+      l2_br_match_overrides tuple test fail only in the window before it.
+      int__zip_code_to_l2_district is still keyed on voter loaded_at and needs
+      a --full-refresh, or the seats stay invisible in the office picker until
+      the state's next L2 load.
       The people chain is gated the same way: rebuild m_people_api__voter (a
       full-rebuild table) and --full-refresh m_people_api__districtvoter, or
       the assignment reaches the people DB only when the state's next L2 load
@@ -146,9 +151,9 @@ seeds:
       election-api position mart. A row is also honored when its BR position has
       no LLM match row at all (e.g. positions added after the static match
       snapshot): the position mart injects the match directly from this seed.
-      Repointing an existing row at a different district leaves the old
-      zip->office rows behind, since an incremental merge cannot delete them, so
-      --full-refresh int__zip_code_to_br_office after the seed reloads.
+      A standalone dbt seed does not build dependent models, so build
+      int__zip_code_to_br_office afterwards for the change to reach the office
+      picker; it no longer needs a --full-refresh.
     columns:
       - name: br_database_id
         description: BallotReady position database ID to override
@@ -180,10 +185,34 @@ seeds:
         data_tests:
           - not_null
     data_tests:
+      # Both memberships, because they fail differently. The universe says the
+      # district is live in the newest L2 delivery, which the district mart
+      # cannot say since it retains everything it ever held. The mart says the
+      # district is reachable by the consumer that actually joins it, which the
+      # universe cannot say since the mart's L2 leg is an incremental that can
+      # lag a delivery. An override satisfying only one of them resolves to
+      # nothing in production.
+      #
+      # Liveness has two sources. Minted districts cannot be in the universe,
+      # which unpivots L2 column names while their type comes from parsing the
+      # value. They prove it instead by still being emitted by
+      # int__l2_proposed_district_aggregations, a full rebuild from the current
+      # file. Hence the or: adding them to the universe breaks its own
+      # reciprocal test against int__l2_district_aggregations.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
-              concat(state, '|', l2_district_type, '|', l2_district_name) in (
+              (
+                concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_district_universe') }}
+                )
+                or concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_proposed_district_aggregations') }}
+                )
+              )
+              and concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
                 from {{ ref('m_election_api__district') }}
               )
@@ -741,3 +770,140 @@ seeds:
                 values: ["office_mismatch"]
       - name: br_position_name
         description: Human-readable BR position name (documentation only).
+
+  - name: proposed_district_ignored_values
+    description: >
+      Proposed_District values that are known and deliberately not minted as
+      districts. The column is a catch-all for district changes, so alongside
+      the congressional and state senate maps it carries county-commissioner
+      rows and local annexation records that are not seats at all.
+
+      This exists so the drift guard can tell "known and ignored" from "new
+      shape nobody has looked at". Removing a row makes the build fail rather
+      than silently changing behaviour, which is the point: every value in the
+      column has either a decision or a red build behind it.
+    columns:
+      - name: proposed_district
+        description: The exact vendor value, matched literally.
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: State the value appears in, for orientation only.
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: reason
+        description: >
+          Why it is not a seat. Each was located by voter geography and then
+          verified against the jurisdiction's own records.
+        data_tests:
+          - not_null
+
+  - name: district_map_adoption
+    description: >
+      Which map is legally in force for an upcoming election, per (state,
+      district type). L2 ships a proposed map in Proposed_District, but a
+      proposed value is not evidence of adoption: it can be rejected,
+      superseded, or struck down, and L2 lags on removing dead maps. Virginia
+      is the standing example, its remap was struck down in May 2026 and the
+      vendor still carries a proposal that moves half the state's voters.
+      So adoption is a human decision recorded here with a citation, never
+      inferred from the presence of a value.
+
+      This seed is the decision record only. Nothing consumes it yet: it
+      gates the districts a later change mints from the proposed column, so
+      that an unadopted or unchecked map never becomes bindable. Absence of a
+      row means current, which is conservative but not automatically right:
+      for a redistricted state, current is the stale map. Every
+      (state, district type) carrying a proposed value must therefore be
+      listed explicitly, which assert_proposed_district_seed_coverage
+      enforces for both handled types.
+
+      Editing this seed does not bump voter loaded_at, so the incremental
+      consumers need a --full-refresh afterwards, same as
+      l2_manual_district_assignments.
+    config:
+      column_types:
+        district_number: string
+    data_tests:
+      # The gate is an exists, so a second contradictory row for the same
+      # scope has no veto: adding a proposed row beside a current one opens
+      # the gate rather than conflicting with it.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - district_type
+              - district_number
+      # The invariant is_verified's description only described. Without it a
+      # current or needs_boundary row can carry is_verified = true, and the gate
+      # opens the moment adopted_source is flipped to proposed - skipping the
+      # re-verification that flip is supposed to require. Seed-level rather than
+      # on the column, because a column-level expression_is_true prepends the
+      # column name and cannot express a cross-column rule.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "adopted_source = 'proposed' or not is_verified"
+    columns:
+      - name: state
+        description: Two-letter state code the decision applies to.
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+      - name: district_type
+        description: >
+          L2 district column the decision governs. Both handled types are
+          accepted so a decision can be recorded for either, but only
+          congressional rows exist so far: MI is the one state carrying a
+          proposed state senate map and its adoption is still unresearched.
+          Municipal maps live in a different vendor column and are out of
+          scope entirely.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["US_Congressional_District", "State_Senate_District"]
+      - name: district_number
+        description: >
+          Sparse key, same convention as l2_manual_district_assignments: empty
+          means the decision covers every district in the state, a value
+          narrows it to that district. Adoption is a state-wide legal fact so
+          empty is the norm. Per-district rows exist so a district can be
+          rolled out as it is verified against the enacted map without holding
+          the rest of the state back. A district left out simply behaves as it
+          does today rather than getting worse, so a partial rollout is safe.
+      - name: adopted_source
+        description: >
+          current = the current typed column is the correct map for the
+          upcoming election. proposed = L2's proposed value is the adopted
+          map. needs_boundary = the state redistricted but neither L2 column
+          holds the adopted map, so it cannot be resolved from L2 alone and
+          needs boundary data.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["current", "proposed", "needs_boundary"]
+      - name: is_verified
+        description: >
+          Whether someone confirmed L2's proposed value equals the legally
+          adopted map for this state. Only proposed AND is_verified states
+          mint bindable rows, so an unverified state stays on the current map
+          rather than going live on an unchecked one.
+
+          Meaningful only on a proposed row, and false everywhere else — not
+          because current and needs_boundary states went unresearched, but
+          because that research answered a different question and must not be
+          mistaken for this one. Otherwise flipping a state to proposed, the
+          natural one-field edit when a struck-down map is reinstated, would
+          carry a stale true along with it and put the state live without the
+          single human check this column exists to force.
+        data_tests:
+          - not_null
+      - name: source_url
+        description: Citation for the adoption decision. Required, so a flip is auditable.
+        data_tests:
+          - not_null
+      - name: notes
+        description: Short prose on the map's legal status and any caveat.

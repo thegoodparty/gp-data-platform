@@ -197,6 +197,11 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
         "Soil_and_Water_District",
         "Soil_and_Water_District_At_Large",
         "State_Board_of_Equalization",
+        # Adopted 2026 maps, minted as their own district types. Present so
+        # m_people_api__districtvoter emits links for them: it derives the columns it
+        # unpivots by intersecting voter columns with district types.
+        "Congressional_District_2026",
+        "State_Senate_District_2026",
     }
 }
 

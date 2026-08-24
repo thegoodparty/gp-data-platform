@@ -29,8 +29,9 @@ models:
 
       - name: first_dashboard_viewed_at
         description: >
-          Earliest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Numerator timestamp for onboarding conversion.
+          Earliest dashboard view per user, over the dashboard-view union
+          (page path '/dashboard' plus the named surface events). Numerator
+          timestamp for onboarding conversion.
 
       - name: registration_country
         description: >
@@ -68,13 +69,17 @@ models:
 
       - name: last_dashboard_viewed_at
         description: >
-          Latest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Supports active-candidate recency logic.
+          Latest dashboard view per user, over the dashboard-view union
+          (page path '/dashboard' plus the named surface events). Supports
+          active-candidate recency logic.
 
       - name: dashboard_view_count
         description: >
-          Count of event_type = 'Dashboard - Candidate Dashboard Viewed' per user.
-          Supports active-candidate usage intensity logic.
+          Deduped count of dashboard views per user, over the dashboard-view
+          union. Legs that co-fire on one visit collapse to a single view.
+          Supports active-candidate usage intensity logic. Prefer distinct
+          view-days for any engagement threshold: this count is sensitive to
+          in-page re-firing, which the 30s gap only partly removes.
         data_tests:
           - not_null
 
@@ -247,9 +252,10 @@ models:
 
       - name: dashboard_views
         description: >
-          Deduped count of dashboard-view events (legacy + live event names)
-          in this month. Co-fires of both event names for the same view are
-          collapsed to one. Zero if user had only campaign events this month.
+          Deduped count of dashboard views in this month, over the
+          dashboard-view union (page path '/dashboard' plus the named surface
+          events). Legs that co-fire on one visit collapse to a single view.
+          Zero if user had only campaign events this month.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -268,7 +274,7 @@ models:
         description: >
           Total raw Win engagement events (campaigns + dashboard views) in
           this month, undeduped; can exceed campaigns_sent + dashboard_views
-          when a dashboard view co-fired both event names.
+          when one visit fired several legs of the dashboard-view union.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -398,9 +404,10 @@ models:
 
       - name: dashboard_views
         description: >
-          Deduped count of dashboard-view events (legacy + live event names)
-          in this week. Co-fires of both event names for the same view are
-          collapsed to one. Zero if user had only campaign events this week.
+          Deduped count of dashboard views in this week, over the
+          dashboard-view union (page path '/dashboard' plus the named surface
+          events). Legs that co-fire on one visit collapse to a single view.
+          Zero if user had only campaign events this week.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -419,7 +426,7 @@ models:
         description: >
           Total raw Win engagement events (campaigns + dashboard views) in
           this week, undeduped; can exceed campaigns_sent + dashboard_views
-          when a dashboard view co-fired both event names.
+          when one visit fired several legs of the dashboard-view union.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
