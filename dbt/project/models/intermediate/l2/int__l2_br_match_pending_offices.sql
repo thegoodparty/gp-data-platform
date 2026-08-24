@@ -10,8 +10,7 @@ and has_unknown_boundaries -- exactly the geography fields the matcher's
 menu-narrowing filters need.
 
 llm_l2_br_match_runs and llm_l2_br_match_results are sources, not refs:
-provisioned outside dbt (dbt/scripts/llm_l2_br_match_tables.sql) and written
-only by the matcher.
+created and written by the matcher, never by dbt.
 
 This is a table, so it is a snapshot of the worklist as of its last build. The
 supervised cutover MUST rebuild it after seeding the baseline run, or it still
