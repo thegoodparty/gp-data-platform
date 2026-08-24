@@ -2838,6 +2838,18 @@ models:
       the anchored list; entries for unexposed columns are superfluous and ignored.
     columns: *l2_voter_columns
 
+  - name: voters
+    description: >
+      Unfiltered pass-through of int__l2_nationwide_uniform_w_haystaq (L2
+      national voter file + Haystaq flags and scores), served directly over SQL
+      to the gp-api application. Every upstream column is exposed as-is,
+      including direct identifiers and partisan fields, so this differs from
+      serve_agent_voters and win_agent_voters, which project curated subsets.
+      A view over the upstream table, so it inherits its grain: one row per
+      LALVOTERID. Column docs come from the shared l2col_ blocks via the
+      anchored list.
+    columns: *l2_voter_columns
+
 seeds:
   - name: l2_column_classification
     description: >
