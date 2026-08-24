@@ -192,7 +192,6 @@ or query `goodparty_data_catalog.information_schema.columns`.
 | snapshot__hubspot_api_contacts | MANAGED | 893 |
 | snapshot__hubspot_api_deals | MANAGED | 667 |
 | snapshot__int__civics_person_canonical_ids | MANAGED | 12 |
-| snapshot__int__l2_nationwide_uniform | MANAGED | 1414 |
 | states_zip_code_range | MANAGED | 2 |
 | stg_airbyte_internal__raw_gp_api_db_campaign | VIEW | 23 |
 | stg_airbyte_source__amplitude_api_active_users | VIEW | 6 |

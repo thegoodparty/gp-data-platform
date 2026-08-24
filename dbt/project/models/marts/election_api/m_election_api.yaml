@@ -192,17 +192,6 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_updated_at
-        description: >
-          Un-bumped source updated_at, carried separately from updated_at so
-          the model's incremental watermark stays in the source-time domain.
-          updated_at is bumped to wall-clock when a row is new to the mart or
-          its slug changed (the election-api write model's publish gate);
-          gating ingestion on those bumped values would skip later source
-          updates whose BallotReady stamps lag wall-clock. Not published to
-          election-api (the writer's Place upsert selects explicit columns).
-        tests:
-          - not_null
 
   - name: m_election_api__position
     description: "Mart model that serves the Election API"
@@ -295,7 +284,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral", "Primary"]
+                values: ["General", "LocalOrMunicipal", "Primary"]
       - name: model_version
         description: The model version
         tests:
@@ -421,7 +410,9 @@ models:
           mart_civics.candidacy. The existing position_names[] array carries
           the BR position name(s) for the race; official_office_name is the
           civics-standardized single string. Null when civics has no
-          matching candidacy rows.
+          matching candidacy rows, and also null when those candidacies
+          disagree on the name and none of them matches this race's own
+          position name (a vendor row matched to the wrong race).
       - name: office_level
         description: >
           Civics (HubSpot-sourced) office level. Distinct from the BR
@@ -429,6 +420,57 @@ models:
           STATE / TOWNSHIP); office_level uses the civics taxonomy and can
           be null even when positionLevel is populated. Aggregated from
           mart_civics.candidacy by gp_election_id.
+      - name: election_code
+        description: >
+          Day type of the race's own election date: the even-year November
+          rule (Tuesday after the first Monday in November) says General; a
+          date matching the state's derived primary day says Primary;
+          everything else is LocalOrMunicipal. Provenance for the projection
+          join; spelled in the API's ElectionCode enum vocabulary.
+          ConsolidatedGeneral is deliberately never emitted: the frozen
+          consolidated rows are a legacy serving-path concept.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary", "LocalOrMunicipal"]
+      - name: projected_turnout
+        description: >
+          Projected ballots for this race's (district, year, day type) from
+          the turnout model output, integer-cast for the Postgres delivery
+          contract. NULL when the race's year is outside the model horizon or
+          its district has no model coverage: no fallback, nothing invented.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_lower
+        description: >
+          Lower prediction bound (p25) from the same model row as the point.
+          NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_upper
+        description: >
+          Upper prediction bound (p95), the risk-relevant band for win-number
+          planning. NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: inference_at
+        description: >
+          When the joined projection was produced (freshness stamp; staleness
+          is detectable on the row rather than only in pipeline logs). NULL
+          exactly when projected_turnout is NULL. Accepted skew: race
+          attributes and projections are joined from the same nightly build,
+          but BallotReady race edits land next-build; that skew is bounded to
+          one build and matches the legacy serving path's behavior.
 
   - name: m_election_api__zip_to_position
     description: >

@@ -350,3 +350,165 @@ models:
         description: Modeled turnout probability in [0, 1] for the 2026 General
         data_tests:
           - not_null
+
+  - name: stg_model_predictions__web_verify_verdicts_20260813
+    description: >
+      Web verification of uncorroborated Win signups against official election sources
+      (filing lists, certified results, sample ballots, Ballotpedia, local news), as of
+      2026-08-13. Four waves of one blind protocol: a 30-row pilot and a 150-row
+      score-stratified run on 2026-08-07, then a full sweep of the high-confidence
+      flag population plus a mop-up of access-blocked rows on 2026-08-13.
+
+      This is label evidence, not model input. Every verdict was established by looking
+      up what happened at or after the election, so nothing here is knowable at signup
+      and no column is legal as a feature.
+
+      Two things a consumer must not do. First, do not pool the waves into a rate: they
+      are separate sampling frames (the sweep is high-score flags only, the stratified
+      run is 30 rows per score bin, the pilot mixes three groups), so condition on wave,
+      oof_hgb or score_bin. Second, do not read verification as corroboration: whether
+      web verification becomes a fourth corroboration channel is an open governance
+      question, and this snapshot deliberately changes no definition.
+
+      Grain is the campaign. One person holding two campaigns appears twice, so user_id
+      is intentionally not unique.
+    columns:
+      - name: verify_id
+        description: >
+          Batch bookkeeping id, unique within the snapshot. Prefixes are meaningful:
+          V pilot, S stratified, F sweep. Mop-up rows keep their original S id because
+          they are re-verifications of stratified rows, not new draws.
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: gp_api campaign under verification; the grain of this table
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: >
+          gp_api user who owns the campaign. Not unique by design: the verification ran
+          at campaign grain, and one person can hold two campaigns. Collapse on this
+          column before computing any person-level rate.
+        data_tests:
+          - not_null
+      - name: wave
+        description: Which verification run produced the verdict
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["pilot", "stratified", "sweep", "mopup"]
+      - name: method_version
+        description: >
+          Protocol version and wave. One protocol across all four waves, so the version
+          is constant and only the wave suffix varies.
+        data_tests:
+          - not_null
+      - name: verdict
+        description: >
+          CONFIRMED (official filing, result or ballot evidence they ran), LIKELY
+          (strong but indirect evidence), CONTRADICTED (roster-level evidence they did
+          not run in the recorded race), NOT_FOUND (searched, nothing found),
+          NOT_FOUND_BUDGET (search ended before the evidence was exhausted, often a
+          source that was down). The last two are undecided, not negative.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "CONFIRMED", "LIKELY", "CONTRADICTED",
+                  "NOT_FOUND", "NOT_FOUND_BUDGET",
+                ]
+      - name: evidence_url
+        description: >
+          Source backing the verdict. Null in the pilot and stratified waves, which
+          recorded no url, and null for not-found verdicts in the evidenced waves. Use
+          is_evidence_recorded to tell those two cases apart rather than reading the
+          null directly.
+      - name: source_type
+        description: Kind of evidence; null exactly where evidence_url is null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [
+                  "official_filing", "certified_results", "ballot", "ballotpedia",
+                  "news", "campaign_site", "other",
+                ]
+      - name: is_evidence_recorded
+        description: >
+          Whether this row's wave captured evidence at all. False for the pilot and
+          stratified waves, which recorded the verdict only.
+        data_tests:
+          - not_null
+      - name: notes
+        description: >
+          Verifier narrative, left as written. Populated in the evidenced waves only.
+          This is the audit trail for the verdict, including the reasoning behind a
+          CONTRADICTED where a full roster was enumerated.
+      - name: adjudication_note
+        description: >
+          Populated only where a verdict or url was changed after the run, with the
+          reason. Null means the verifier's call stands as recorded. Five rows carry
+          one: three where the only evidence was a source derived from our own data
+          (a page on a corroboration channel, or our own site) and so could not
+          independently corroborate anything, one where an inference from a term cycle
+          was downgraded for want of a direct filing, and one where a wrong url was
+          corrected on re-verification.
+      - name: verified_at
+        description: Day the wave was completed
+        data_tests:
+          - not_null
+      - name: oof_hgb
+        description: >
+          Out-of-fold model score the row was sampled on. Sampling metadata: it defines
+          which rows were verified, so it can never be evidence about the group it
+          selected.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_cleanlab_flagged
+        description: Row was flagged as a probable label error. Sampling metadata.
+        data_tests:
+          - not_null
+      - name: is_high_confidence_flag
+        description: Row was in the high-confidence flag population. Sampling metadata.
+        data_tests:
+          - not_null
+      - name: score_bin
+        description: >
+          Score bin for the stratified frame only; null where the wave was not
+          bin-sampled. Non-null exactly where bin_population is.
+      - name: bin_population
+        description: Population of the row's score bin. Stratified frame only.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+    data_tests:
+      # A decided verdict without a url would be an unfalsifiable claim, and a url in a
+      # wave that recorded none would mean the wave metadata is wrong. Both directions
+      # of the evidence contract are pinned here.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              case
+                  when not is_evidence_recorded then evidence_url is null
+                  when verdict in ('NOT_FOUND', 'NOT_FOUND_BUDGET') then evidence_url is null
+                  else evidence_url is not null
+              end
+          name: web_verify_verdicts_evidence_url_matches_wave_and_verdict
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: (evidence_url is null) = (source_type is null)
+          name: web_verify_verdicts_source_type_accompanies_url
+      # score_bin and bin_population are one fact about the stratified frame, so they
+      # must appear and disappear together.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: (score_bin is null) = (bin_population is null)
+          name: web_verify_verdicts_score_bin_pairs_with_population

@@ -1,17 +1,6 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        auto_liquid_cluster=true,
-        on_schema_change="fail",
-        unique_key=[
-            "zip_code",
-            "district_type",
-            "district_name",
-            "br_database_id",
-        ],
-    )
-}}
+-- Explicit because this directory sets no materialization default: an empty
+-- config block would silently make this a view.
+{{ config(materialized="table") }}
 
 with
     zip_code_to_l2_district as (
@@ -24,9 +13,6 @@ with
             voters_in_zip,
             loaded_at
         from {{ ref("int__zip_code_to_l2_district") }}
-        {% if is_incremental() %}
-            where loaded_at > (select max(loaded_at) from {{ this }})
-        {% endif %}
     ),
     -- Some L2 voters have an out-of-state zip in the L2 file; filter those.
     zip_code_within_state_range as (
@@ -87,10 +73,7 @@ with
             tbl_match.l2_district_name,
             tbl_match.l2_district_type,
             tbl_match.is_matched,
-            tbl_match.llm_reason,
-            tbl_match.confidence,
-            tbl_match.embeddings,
-            tbl_match.top_embedding_score
+            tbl_match.confidence
         from zip_code_within_state_range as tbl_zip
         left join
             {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as tbl_match
@@ -139,9 +122,7 @@ with
     ),
 
     -- Same zip->office linkage as above, but built from active_overrides (the
-    -- override rows the LLM did not already place at the same district). Reads
-    -- the unfiltered zip->district source so a new override backfills without a
-    -- full refresh.
+    -- override rows the LLM did not already place at the same district).
     override_zip_to_br_office as (
         select
             tbl_zip.zip_code,
@@ -159,10 +140,7 @@ with
             tbl_override.l2_district_name,
             tbl_override.l2_district_type,
             true as is_matched,
-            'l2_br_match_overrides seed' as llm_reason,
-            null as confidence,
-            null as embeddings,
-            null as top_embedding_score
+            null as confidence
         from {{ ref("int__zip_code_to_l2_district") }} as tbl_zip
         inner join
             {{ ref("int__general_states_zip_code_range") }} as zip_range
@@ -215,16 +193,11 @@ select
     l2_district_name,
     l2_district_type,
     is_matched,
-    llm_reason,
-    confidence,
-    embeddings,
-    top_embedding_score
+    confidence
 from combined
--- Keep only rows with a live BR position. This drops both LLM-unmatched rows
--- (br_database_id null) and orphan rows whose br_database_id no longer exists
--- in stg_airbyte_source__ballotready_api_position. Unmatched rows would
--- otherwise produce duplicates on incremental merge (the unique_key includes
--- br_database_id, and ANSI null semantics prevent NULL merge keys from
--- matching existing target rows), and the sole downstream consumer
--- (m_election_api__zip_to_position) filters br_database_id is not null anyway.
+-- Keep only rows with a live BR position. Two classes go: LLM-unmatched rows,
+-- whose null br_database_id the sole downstream consumer
+-- (m_election_api__zip_to_position) also filters out; and orphan rows whose
+-- br_database_id is non-null but no longer exists in
+-- stg_airbyte_source__ballotready_api_position, which that filter would keep.
 where br_position_id is not null

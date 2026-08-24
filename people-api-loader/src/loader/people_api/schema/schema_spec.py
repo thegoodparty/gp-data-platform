@@ -190,8 +190,6 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
         "geom",
         "hf_most_important_policy_item",
         "Voter_Turnout_Probability",
-        # District columns the voter mart had drifted out of and now sources from
-        # get_l2_district_columns.
         "4H_Livestock_District",
         "Community_College",
         "Judicial_Chancery_Court",

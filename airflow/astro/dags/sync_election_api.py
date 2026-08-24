@@ -8,11 +8,12 @@ transaction. Each table is one task group with the same build lifecycle:
 1. **build_staging** — drop & recreate `staging."<Table>_new"` LIKE the live
    target (no indexes — fast bulk-insert).
 2. **load_staging** — stream the source mart from Databricks into staging.
-   The column list is the live table's own columns (minus any
-   `db_owned_columns`), so the mart must publish matching names and types —
-   there is no per-table column mapping or row transform in this DAG. A live
-   column the mart lacks fails the load; a new live column whose data the
-   mart already publishes starts flowing automatically.
+   The column list is the live table's own columns, so the mart must publish
+   every one of them, with matching names and types — there is no per-table
+   column mapping, row transform, or exclusion list in this DAG. A live column
+   the mart lacks fails the load; a new live column whose data the mart already
+   publishes starts flowing automatically. Adding a column therefore lands
+   mart-side first, then in Postgres.
 3. **build_indexes_and_fk** — add PK, indexes, and FK constraints, generated
    from the table's declarative spec. Cross-table FKs reference the sibling
    STAGING table, so the staging set is self-contained and validates against
@@ -41,9 +42,8 @@ parallel.
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
 dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
-only the swap is withheld. Rehearsal freezes ALL tables, since the legacy dbt
-writer `write__election_api_db` is disabled in the same change, so keep the
-rehearsal window short.
+only the swap is withheld. This DAG is the only writer to these tables, so
+rehearsal freezes ALL of them: keep the rehearsal window short.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -237,15 +237,7 @@ TABLES: tuple[MartSync, ...] = (
         ),
         source_model="m_election_api__person",
         partition_column="state",
-        # Prisma-owned columns the loader does not select or supply:
-        # is_pledged keeps its DEFAULT false, gp_api_user_id stays NULL. Both
-        # are unpopulated today; when their ETL lands, the mart must start
-        # supplying them and this allowlist shrinks.
-        gate=QualityGate(
-            cold_start_floor=200_000,
-            min_id_overlap=_GRAPH_ID_OVERLAP,
-            db_owned_columns=frozenset({"is_pledged", "gp_api_user_id"}),
-        ),
+        gate=QualityGate(cold_start_floor=200_000, min_id_overlap=_GRAPH_ID_OVERLAP),
     ),
     MartSync(
         group_id="position",
@@ -277,22 +269,7 @@ TABLES: tuple[MartSync, ...] = (
         source_model="m_election_api__race",
         # ~1M rows; one state at a time bounds worker memory.
         partition_column="state",
-        # The projection columns deploy ahead of their data: the migration adds
-        # them nullable, the loader leaves them alone, and the delivery step
-        # drops them from this allowlist once the mart publishes them.
-        gate=QualityGate(
-            cold_start_floor=100_000,
-            min_id_overlap=_GRAPH_ID_OVERLAP,
-            db_owned_columns=frozenset(
-                {
-                    "projected_turnout",
-                    "projected_turnout_lower",
-                    "projected_turnout_upper",
-                    "election_code",
-                    "inference_at",
-                }
-            ),
-        ),
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("place", "position"),
     ),
     MartSync(
@@ -383,7 +360,7 @@ TABLES: tuple[MartSync, ...] = (
         # No id-overlap floor: nothing references ZipToPosition ids (PK only;
         # the API reads by zip/position), and this change re-mints them (the
         # mart now derives them from the natural key).
-        gate=QualityGate(cold_start_floor=1_000, db_owned_columns=frozenset({"created_at"})),
+        gate=QualityGate(cold_start_floor=1_000),
         extra_checks=_ztp_extra_checks,
         parents=("position",),
     ),
@@ -407,7 +384,6 @@ TABLES: tuple[MartSync, ...] = (
         partition_column="issue",
         gate=QualityGate(
             cold_start_floor=100_000,
-            db_owned_columns=frozenset({"created_at"}),
             # The mart's LEFT JOIN to haystaq_issue_tags only emits NULL flags
             # on drift; belt-and-suspenders over the dbt-side tests.
             not_null_columns=("is_local", "is_regional", "is_state", "is_federal"),
@@ -487,10 +463,9 @@ def _build_group(table: MartSync) -> dict:
             catalog = Variable.get("databricks_catalog")
             schema = Variable.get("election_api_source_schema", default="dbt")
             with _open_pg() as conn:
-                # The live table's own columns drive the load: dbt must
-                # publish matching names and types, and db-owned columns are
-                # left to their Postgres defaults.
-                columns = staging_columns(conn, spec, exclude=table.gate.db_owned_columns)
+                # The live table's own columns drive the load: dbt must publish
+                # every one of them, with matching names and types.
+                columns = staging_columns(conn, spec)
                 col_list = ", ".join(f"`{c}`" for c in columns)
                 query = f"SELECT {col_list} " f"FROM `{catalog}`.`{schema}`.`{table.source_model}`"
                 return bulk_insert_from_databricks(

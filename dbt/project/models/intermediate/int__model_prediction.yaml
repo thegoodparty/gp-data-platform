@@ -14,6 +14,10 @@ models:
         description: The election year
         data_tests:
           - not_null
+      - name: election_code
+        description: The election category the projection was scored for
+        data_tests:
+          - not_null
       - name: state
         description: State postal code
         data_tests:

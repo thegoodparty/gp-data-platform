@@ -33,6 +33,8 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
 
+from scripts.serialization import json_fallback
+
 
 @dataclass(frozen=True)
 class TableFQN:
@@ -159,12 +161,16 @@ def _coerce_to_string_df(df: pd.DataFrame) -> pd.DataFrame:
     def _to_str(v):
         if v is None:
             return None
-        if isinstance(v, float) and pd.isna(v):
-            return None
+        # Containers first: pd.isna() on a list or array returns an array, so it
+        # cannot be used as a condition until those are out of the way.
         if isinstance(v, list):
-            return json.dumps(v)
+            return json.dumps(v, default=json_fallback)
         if isinstance(v, np.ndarray):
-            return json.dumps(v.tolist())
+            return json.dumps(v.tolist(), default=json_fallback)
+        # Every scalar null, not just float NaN -- pd.NaT and pd.NA are neither
+        # None nor float, and would otherwise land as the text "NaT" / "<NA>".
+        if pd.isna(v):
+            return None
         s = str(v)
         # Drop trailing ".0" for whole-number floats so 5.0 -> "5"; mirrors
         # cli._normalize_to_strings on the read side.

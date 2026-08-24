@@ -4,11 +4,14 @@
 -- (wrong district). Combo uniqueness and existence are tested separately in
 -- m_election_api.yaml and seeds_schema.yaml.
 with
+    -- Same spelling resolution the position model applies, so an override that
+    -- names a stale L2 spelling is expected to land on the populated sibling.
+    resolved_districts as ({{ l2_district_spelling_resolution() }}),
     override_expected as (
-        select o.br_database_id, d.id as expected_district_id
+        select o.br_database_id, d.district_id as expected_district_id
         from {{ ref("l2_br_match_overrides") }} as o
         inner join
-            {{ ref("m_election_api__district") }} as d
+            resolved_districts as d
             on o.state = d.state
             and o.l2_district_type = d.l2_district_type
             and o.l2_district_name = d.l2_district_name

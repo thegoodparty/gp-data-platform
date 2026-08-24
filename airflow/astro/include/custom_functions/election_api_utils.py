@@ -126,9 +126,6 @@ class QualityGate:
     # table whose ids external consumers may hold. None skips the check
     # (tables whose ids legitimately re-mint, e.g. model-version keyed).
     min_id_overlap: float | None = None
-    # Live columns excluded from the load (Prisma-owned; their Postgres
-    # defaults carry them, e.g. Person.is_pledged).
-    db_owned_columns: frozenset[str] = frozenset()
     # Belt-and-braces NULL probes over the staged rows.
     not_null_columns: tuple[str, ...] = ()
 
@@ -172,11 +169,10 @@ def check_nulls(null_rows: int, gate: QualityGate, table: str) -> None:
         )
 
 
-def staging_columns(conn, spec: TableSyncSpec, exclude: frozenset[str] = frozenset()) -> list[str]:
+def staging_columns(conn, spec: TableSyncSpec) -> list[str]:
     """Ordered column names of the staging clone (which mirrors the live
     table). The loader selects exactly these from the mart, so dbt must
-    publish matching names and types; `exclude` holds the db-owned columns
-    whose Postgres defaults carry them."""
+    publish every one of them, with matching names and types."""
     cur = conn.cursor()
     try:
         cur.execute(
@@ -185,7 +181,7 @@ def staging_columns(conn, spec: TableSyncSpec, exclude: frozenset[str] = frozens
             "ORDER BY ordinal_position",
             (spec.staging_schema, spec.new_table),
         )
-        columns = [r[0] for r in cur.fetchall() if r[0] not in exclude]
+        columns = [r[0] for r in cur.fetchall()]
     finally:
         cur.close()
     if not columns:

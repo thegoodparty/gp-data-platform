@@ -1208,6 +1208,18 @@ sources:
         description: output of gemini string matching between DDHQ election results and candidacies
       - name: llm_l2_br_match_20260126
         description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: llm_l2_br_match_runs
+        description: >
+          One row per L2-to-BallotReady matcher run, with its status
+          (RUNNING/COMPLETE/REVOKED) and timing. Provisioned outside dbt by
+          dbt/scripts/llm_l2_br_match_tables.sql; written only by the matcher.
+          dbt must never create or populate this table.
+      - name: llm_l2_br_match_results
+        description: >
+          One row per (run, office) the L2-to-BallotReady matcher attempted,
+          append-only. Provisioned outside dbt by
+          dbt/scripts/llm_l2_br_match_tables.sql; written only by the matcher.
+          dbt must never create or populate this table.
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd
@@ -1222,6 +1234,12 @@ sources:
         description: raw data load from voter turnout projections for 2028
       - name: voter_turnout_scores_20260730
         description: In-house per-voter turnout propensity scores (prob_vote) for 2026 General
+      - name: web_verify_verdicts_20260813
+        description: >
+          Web verification of uncorroborated Win signups against official election sources,
+          as of 2026-08-13. Label evidence, not model input: every verdict was established
+          by looking up what happened at or after the election. The four waves are separate
+          sampling frames and must not be pooled into a rate.
 
   - name: segment_storage_source
     database: segment_storage

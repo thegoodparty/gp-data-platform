@@ -7,11 +7,16 @@
 -- follow-up).
 with
     public_people as (
-        select *, try_cast(br_person_id as int) as br_person_id_int
-        from {{ ref("people") }}
+        select p.*, try_cast(p.br_person_id as int) as br_person_id_int
+        from {{ ref("people") }} as p
+        left join
+            {{ ref("int__civics_internal_persons") }} as internal
+            on internal.gp_person_id = p.gp_person_id
         where
-            (is_candidate or is_elected_official)
-            and (first_name is not null or last_name is not null)
+            (p.is_candidate or p.is_elected_official)
+            and (p.first_name is not null or p.last_name is not null)
+            -- staff and test accounts must never get a public profile
+            and internal.gp_person_id is null
     ),
 
     br_person as (
