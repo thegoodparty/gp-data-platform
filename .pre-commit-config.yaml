@@ -39,14 +39,7 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
-        # sqlfmt formats dbt SQL (SELECTs, Jinja). It cannot parse raw DDL —
-        # inline COMMENT clauses and constraint definitions make it fail rather
-        # than reformat. Both excluded paths are hand-run CREATE TABLE files.
-        exclude: |
-          (?x)^(
-            people-api-loader/src/loader/people_api/schema/data/|
-            dbt/scripts/llm_l2_br_match_tables\.sql$
-          )
+        exclude: ^people-api-loader/src/loader/people_api/schema/data/
 
 -   repo: local
     hooks:
