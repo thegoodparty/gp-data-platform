@@ -281,10 +281,12 @@ def bulk_insert_from_databricks(
     Source rows pass through unchanged, so the query's column order must
     match `target_columns`.
 
-    `partition_column`, if set, reads one distinct value at a time over a single
-    Databricks connection (see `read_databricks_partitioned`), bounding peak
-    worker memory to one partition. The commit lands after the whole load, so a
-    mid-load failure rolls back and a retry starts from a clean `<table>_new`.
+    `batch_size` is what bounds peak worker memory: it is both the insert page
+    size and the Databricks cursor's fetch size. `partition_column`, if set,
+    additionally reads one distinct value at a time over a single Databricks
+    connection (see `read_databricks_partitioned`), keeping each server-side
+    result set small. The commit lands after the whole load, so a mid-load
+    failure rolls back and a retry starts from a clean `<table>_new`.
     """
     col_list = ", ".join(f'"{c}"' for c in target_columns)
     insert_sql = f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" ' f"({col_list}) VALUES %s"
