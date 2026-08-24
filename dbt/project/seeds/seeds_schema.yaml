@@ -97,13 +97,15 @@ seeds:
       int__l2_nationwide_uniform_raw_districts that coalesces the
       assignment into the named district column so L2 stays authoritative
       wherever it supplies a value. Editing this seed does not bump voter
-      loaded_at, so the loaded_at-incremental consumers
-      (int__zip_code_to_l2_district, m_election_api__district,
-      int__l2_district_aggregations) need a --full-refresh afterwards;
-      assert_manual_district_assignments_resolve.sql fails until they get one.
-      int__l2_district_universe is a plain table rather than an incremental, so
-      it needs an ordinary rebuild instead, and the l2_br_match_overrides tuple
-      test fails until it gets one.
+      loaded_at, so nothing keyed on it recomputes by itself.
+      int__l2_district_aggregations unions this seed into its incremental
+      candidate set, so it, m_election_api__district and
+      int__l2_district_universe all pick a new assignment up on the next
+      ordinary run; assert_manual_district_assignments_resolve.sql and the
+      l2_br_match_overrides tuple test fail only in the window before it.
+      int__zip_code_to_l2_district is still keyed on voter loaded_at and needs
+      a --full-refresh, or the seats stay invisible in the office picker until
+      the state's next L2 load.
       The people chain is gated the same way: rebuild m_people_api__voter (a
       full-rebuild table) and --full-refresh m_people_api__districtvoter, or
       the assignment reaches the people DB only when the state's next L2 load
