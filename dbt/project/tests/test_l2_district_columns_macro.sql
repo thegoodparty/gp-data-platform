@@ -72,6 +72,20 @@ with
             )
             - 1 as actual,
             62 as expected
+
+        union all
+
+        -- alias form qualifies every entry as v.`Col`
+        select
+            'alias_form_qualifies_every_entry' as check_name,
+            size(
+                split(
+                    '{{ get_l2_district_columns(table_alias="v") | replace("\n", " ") }}',
+                    'v\\.`'
+                )
+            )
+            - 1 as actual,
+            230 as expected
     )
 
 select *
