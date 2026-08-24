@@ -17,12 +17,17 @@ with
         from {{ ref("stg_airbyte_source__ballotready_api_position") }}
     ),
 
+    -- The name tiebreak keeps the pick deterministic if a writer ever leaves two
+    -- rows for one office at one timestamp. Nulls sort first, so an abstention
+    -- wins the tie, which is what the previous match_status ordering did.
     latest_attempt as (
         select
             br_database_id, l2_state, l2_district_type, l2_district_name, attempted_at
         from {{ source("model_predictions", "llm_l2_br_match_results") }}
         qualify
-            row_number() over (partition by br_database_id order by attempted_at desc)
+            row_number() over (
+                partition by br_database_id order by attempted_at desc, l2_district_name
+            )
             = 1
     ),
 

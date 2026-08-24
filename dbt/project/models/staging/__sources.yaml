@@ -1213,6 +1213,19 @@ sources:
           One row per attempt and office, append-only. A populated district
           means matched; an empty one means the attempt found nothing. The
           matcher creates and writes this table; dbt only reads it.
+        columns:
+          # The schema of record now lives with the matcher, so the two columns
+          # nothing downstream can work without are pinned from this side.
+          - name: br_database_id
+            description: BallotReady office database id.
+            data_tests:
+              - not_null
+          - name: attempted_at
+            description: >
+              When the attempt was made, and the run key: one run stamps one
+              value across every row it writes.
+            data_tests:
+              - not_null
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd
