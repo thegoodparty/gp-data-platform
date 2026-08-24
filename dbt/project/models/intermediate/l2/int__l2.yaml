@@ -209,10 +209,9 @@ models:
     description: >
       One row per BallotReady office needing an L2 district match attempt:
       never attempted, last attempt found nothing more than 30 days ago, or
-      matched to a district int__l2_district_universe no longer carries. A
-      populated district on llm_l2_br_match_results, a dbt source written
-      only by the matcher, is what "matched" means. The matcher reads this
-      list to build its next batch. Reads
+      matched to a district int__l2_district_universe no longer carries.
+      Computed from llm_l2_br_match_results, a dbt source written only by the
+      matcher. The matcher reads this list to build its next batch. Reads
       stg_airbyte_source__ballotready_api_position directly, not
       int__enhanced_position, to keep the geography fields (sub_area_name,
       sub_area_value, is_judicial, has_unknown_boundaries) that

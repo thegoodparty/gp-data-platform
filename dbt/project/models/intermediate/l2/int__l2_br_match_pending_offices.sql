@@ -31,8 +31,12 @@ with
             = 1
     ),
 
+    -- Real districts only: the synthetic State row is emitted per state
+    -- unconditionally, so it would mark a state healthy with no districts at all.
     states_in_universe as (
-        select distinct state_postal_code from {{ ref("int__l2_district_universe") }}
+        select distinct state_postal_code
+        from {{ ref("int__l2_district_universe") }}
+        where district_type <> 'State'
     )
 
 select
