@@ -1,59 +1,74 @@
 -- L2 packs proposed congressional maps, MI's proposed state senate, and local
--- annexation areas into one Proposed_District column, so a value has to be typed
--- by parsing it and never by its column name. These are the single definition of
--- which values are handled, which L2 type each one shadows, the type it is minted
--- as, and the district number inside it.
---
--- The raw string shape is asserted separately, by a guard that deliberately does
--- not use these macros, so that a bug here stays detectable.
+-- annexation areas into one Proposed_District column, so a value is typed by
+-- parsing it, never by its column name. These are the single definition of that
+-- parse. The raw string shape is asserted separately, by a guard that does not
+-- use these macros, so a bug here stays detectable.
 {% macro is_proposed_handled_district(column_expr) -%}
     regexp_like(upper({{ column_expr }}), 'PROPOSED (CONG|STATE SEN) DIST')
 {%- endmacro %}
 
 
--- The existing L2 type whose current column this value shadows. This is what the
--- adoption seed records a decision against, so the seed join and the coverage
--- guard both go through here.
+-- Pattern -> (shadowed type, minted type). One mapping so the two macros below
+-- and get_proposed_minted_district_types cannot drift apart.
+{% macro proposed_district_type_map() -%}
+    {{
+        return(
+            [
+                (
+                    "%PROPOSED CONG DIST%",
+                    "US_Congressional_District",
+                    "Congressional_District_2026",
+                ),
+                (
+                    "%PROPOSED STATE SEN DIST%",
+                    "State_Senate_District",
+                    "State_Senate_District_2026",
+                ),
+            ]
+        )
+    }}
+{%- endmacro %}
+
+
+-- Minted type names. A voter-mart column must exist for each, or
+-- m_people_api__districtvoter emits no links: it intersects voter columns with
+-- district types. assert_minted_types_have_voter_columns enforces that.
+{% macro get_proposed_minted_district_types() -%}
+    {{ return(proposed_district_type_map() | map(attribute=2) | list) }}
+{%- endmacro %}
+
+
+-- The existing L2 type whose current column this value shadows, and what the
+-- adoption seed records its decision against.
 {% macro proposed_district_type(column_expr) -%}
     case
-        when upper({{ column_expr }}) like '%PROPOSED CONG DIST%'
-        then 'US_Congressional_District'
-        when upper({{ column_expr }}) like '%PROPOSED STATE SEN DIST%'
-        then 'State_Senate_District'
+        {%- for pattern, shadowed, _minted in proposed_district_type_map() %}
+            when upper({{ column_expr }}) like '{{ pattern }}' then '{{ shadowed }}'
+        {%- endfor %}
     end
 {%- endmacro %}
 
 
--- The type the district is minted as. Separate from the shadowed type so both
--- can coexist in the dimension: a campaign binds to the minted row while a
+-- The type the district is minted as, kept separate from the shadowed one so
+-- both coexist in the dimension: a campaign binds to the minted row while a
 -- sitting officeholder stays on the current one.
 --
 -- The year is the election, not the term the map governs. Every consumer joins on
--- the election -- candidacies, races, turnout projections, the position match --
--- so a type labelled 2027 invites someone filtering election_year = 2026 to
--- silently miss it, and a silent miss is the failure this whole design exists to
--- prevent.
---
--- Naming it for the term was considered and rejected: 2027 is when the Congress
--- is seated and when MI senators elected in 2026 take office, so it reads more
--- accurately in isolation, and it would keep the type visibly distinct from the
--- vendor's "2026 PROPOSED ..." value. Neither outweighs a missed join. Nothing
--- joins on the term, and the two strings are a type name and a column value, so
--- confusing them takes real effort.
+-- the election, so a 2027 label invites someone filtering election_year = 2026 to
+-- miss it silently. Naming it for the term reads more accurately in isolation but
+-- nothing joins on the term.
 {% macro proposed_district_minted_type(column_expr) -%}
     case
-        when upper({{ column_expr }}) like '%PROPOSED CONG DIST%'
-        then 'Congressional_District_2026'
-        when upper({{ column_expr }}) like '%PROPOSED STATE SEN DIST%'
-        then 'State_Senate_District_2026'
+        {%- for pattern, _shadowed, minted in proposed_district_type_map() %}
+            when upper({{ column_expr }}) like '{{ pattern }}' then '{{ minted }}'
+        {%- endfor %}
     end
 {%- endmacro %}
 
 
 -- District number as a bare unpadded string, matching how every current column
--- names its districts. The int cast is what strips the vendor's leading zero, so
--- "DIST 04" becomes "4" rather than "04" and lines up with both the existing
--- convention and BallotReady's numbering.
+-- names its districts. The int cast strips the vendor's leading zero, so
+-- "DIST 04" becomes "4" and lines up with BallotReady's numbering.
 {% macro proposed_district_number(column_expr) -%}
     cast(
         cast(
