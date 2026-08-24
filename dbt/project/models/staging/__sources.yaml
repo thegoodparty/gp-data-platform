@@ -1208,16 +1208,24 @@ sources:
         description: output of gemini string matching between DDHQ election results and candidacies
       - name: llm_l2_br_match_20260126
         description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: llm_l2_br_match_runs
-        description: >
-          One row per L2-to-BallotReady matcher run, with its status
-          (RUNNING/COMPLETE/REVOKED) and timing. The matcher creates and writes
-          this table; dbt only reads it.
       - name: llm_l2_br_match_results
         description: >
-          One row per (run, office) the L2-to-BallotReady matcher attempted,
-          append-only. The matcher creates and writes this table; dbt only
-          reads it.
+          One row per attempt and office, append-only. A populated district
+          means matched; an empty one means the attempt found nothing. The
+          matcher creates and writes this table; dbt only reads it.
+        columns:
+          # The schema of record now lives with the matcher, so the two columns
+          # nothing downstream can work without are pinned from this side.
+          - name: br_database_id
+            description: BallotReady office database id.
+            data_tests:
+              - not_null
+          - name: attempted_at
+            description: >
+              When the attempt was made, and the run key: one run stamps one
+              value across every row it writes.
+            data_tests:
+              - not_null
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd
