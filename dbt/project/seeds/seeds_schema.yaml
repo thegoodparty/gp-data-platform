@@ -190,12 +190,28 @@ seeds:
       # universe cannot say since the mart's L2 leg is an incremental that can
       # lag a delivery. An override satisfying only one of them resolves to
       # nothing in production.
+      #
+      # Liveness has two sources, not one. Districts minted from an adopted
+      # proposed map are not in the universe and cannot be: that model unpivots
+      # L2 column names, and a minted district's type comes from parsing the
+      # vendor value instead, so there is no column to unpivot. They prove the
+      # same property another way - int__l2_proposed_district_aggregations is a
+      # full rebuild from the current file, so a district it still emits is by
+      # construction live in the newest delivery. Hence the or, rather than
+      # adding derived rows to the universe and breaking its own reciprocal
+      # test against int__l2_district_aggregations.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
-              concat(state, '|', l2_district_type, '|', l2_district_name) in (
-                select concat(state_postal_code, '|', district_type, '|', district_name)
-                from {{ ref('int__l2_district_universe') }}
+              (
+                concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_district_universe') }}
+                )
+                or concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                  select concat(state_postal_code, '|', district_type, '|', district_name)
+                  from {{ ref('int__l2_proposed_district_aggregations') }}
+                )
               )
               and concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
