@@ -10,7 +10,10 @@ with
             tbl_match.br_database_id,
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
-            coalesce(tbl_override.state, tbl_match.l2_state) as state,
+            -- The office's own state. The district's state (l2_state) is a
+            -- join key below, never this output column: the two can diverge
+            -- when an office changes state after matching.
+            tbl_position.state,
             tbl_position.level,
             tbl_district.district_id,
             tbl_position.created_at,
