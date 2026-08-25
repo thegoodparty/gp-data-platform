@@ -197,6 +197,12 @@ Read the printed rows, then interpret against these lines:
   a later relabel wave when auditing post hoc. Deleting this run's rows cannot
   clear it; repair it at its source before publication. For a post-hoc audit of
   a superseded run, only the run-scoped metric speaks for the audited run.
+  The January baseline stratum is deliberately OUT OF SCOPE for both metrics'
+  staging-wide reading, mirroring the warn test's own scoping: a January-origin
+  dead label is the pre-existing backlog (the pending list's dead-label rule
+  has already reopened those offices), and a dead label joins nothing — the
+  office shows no number, not a wrong one — so counting them would red every
+  audit until the whole backlog is re-matched.
 - `rows_under_key` must equal the operator's reported batch count. ZERO rows
   means a mistranscribed run key far more often than a missing run — re-copy it
   verbatim from Step 0 before concluding anything. A genuine short write is
@@ -598,9 +604,11 @@ Restate only the hard conditions, each naming where it was measured:
 - [ ] Batch count reconciles (Step 0's operator count vs Step 1's `rows_under_key`).
 - [ ] `run_label_check_missing` is zero (Step 1) — a nonzero here is THIS run's
   hard stop.
-- [ ] `label_check_warn_count` is zero before release (Step 1). A nonzero with a
-  zero run-scoped count is repaired at its SOURCE run, never by deleting this
-  one — the serving state must still be clean before anything publishes.
+- [ ] `label_check_warn_count` is zero before release (Step 1) — zero POST-baseline
+  dead tuples, the warn test's own scope. January-origin dead labels are the
+  pending backlog, deliberately out of scope, and join nothing while they wait.
+  A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
+  by deleting this one.
 - [ ] Zero matched rows in `R0_party_committee`, `R1_judicial_abstain`, and
   `R2_slice_zero_subtype_abstain` (Step 2).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
