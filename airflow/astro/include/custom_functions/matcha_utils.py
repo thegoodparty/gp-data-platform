@@ -157,3 +157,68 @@ def dated_name(table: str, run_date: str) -> str:
 def old_name(table: str) -> str:
     """Renamed-aside name the live table takes during a swap."""
     return f"{table}_old"
+
+
+# ── Gate checks (pure) ──
+
+
+def check_counts(loaded_count: int, prior_count: int, gate: TableGate, table: str) -> None:
+    """Ratio floor against the prior live table, cold-start floor without one."""
+    if prior_count > 0:
+        ratio = loaded_count / prior_count
+        if ratio < gate.min_prior_ratio:
+            raise ValueError(
+                f"{table}: loaded {loaded_count} rows, prior live had "
+                f"{prior_count} (ratio {ratio:.2f}, floor {gate.min_prior_ratio}) "
+                f"— refusing to swap"
+            )
+    elif loaded_count < gate.cold_start_floor:
+        raise ValueError(
+            f"{table}: cold-start load of {loaded_count} rows "
+            f"(<{gate.cold_start_floor}) is implausibly small — refusing to swap"
+        )
+
+
+def check_distinct_ids(loaded_count: int, distinct_count: int, gate: TableGate, table: str) -> None:
+    """The cluster tables promise one row per identity. No id column skips it."""
+    if gate.id_column is None:
+        return
+    if distinct_count != loaded_count:
+        raise ValueError(
+            f"{table}: {loaded_count - distinct_count} duplicate "
+            f"{gate.id_column} values in {loaded_count} rows — refusing to swap"
+        )
+
+
+def check_id_overlap(overlap: int, prior_count: int, gate: TableGate, table: str) -> None:
+    """Too few shared ids means the run re-keyed wholesale rather than refreshed."""
+    if gate.min_id_overlap is None or prior_count <= 0:
+        return
+    if overlap / prior_count < gate.min_id_overlap:
+        raise ValueError(
+            f"{table}: dated id overlap {overlap}/{prior_count} below floor "
+            f"{gate.min_id_overlap}; wholesale re-key suspected — refusing to swap"
+        )
+
+
+def check_nulls(null_rows: int, gate: TableGate, table: str) -> None:
+    """NULL probe over the dated rows."""
+    if null_rows > 0:
+        raise ValueError(
+            f"{table}: {null_rows} rows have a NULL in " f"{list(gate.not_null_columns)} — refusing to swap"
+        )
+
+
+def check_sources(found_sources: set[str], gate: TableGate, table: str) -> None:
+    """Every expected source must still be represented.
+
+    A source dropping out of prematch is silent otherwise: the row count barely
+    moves and the clusters just quietly stop bridging that source.
+    """
+    if not gate.expected_sources:
+        return
+    missing = sorted(set(gate.expected_sources) - found_sources)
+    if missing:
+        raise ValueError(
+            f"{table}: expected sources {missing} absent from " f"{gate.source_column} — refusing to swap"
+        )

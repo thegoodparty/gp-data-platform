@@ -5,7 +5,13 @@ from dataclasses import FrozenInstanceError
 import pytest
 from include.custom_functions.matcha_utils import (
     ENTITIES,
+    TableGate,
     _ident,
+    check_counts,
+    check_distinct_ids,
+    check_id_overlap,
+    check_nulls,
+    check_sources,
     dated_name,
     fqn,
     old_name,
@@ -106,3 +112,147 @@ class TestNaming:
 
     def test_old_name(self):
         assert old_name("clustered_candidacy_stages") == "clustered_candidacy_stages_old"
+
+
+class TestCheckCounts:
+    """Row-count gate: ratio floor against live, cold-start floor without."""
+
+    def test_passes_above_ratio(self):
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        check_counts(900, 1000, gate, "clustered_x")
+
+    def test_passes_when_grown(self):
+        """The prematch universe is cumulative; growth is normal."""
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        check_counts(5000, 1000, gate, "clustered_x")
+
+    def test_fails_below_ratio(self):
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        with pytest.raises(ValueError, match="refusing to swap"):
+            check_counts(700, 1000, gate, "clustered_x")
+
+    def test_ratio_boundary_is_inclusive(self):
+        """Exactly at the floor passes; the message should mean 'below'."""
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        check_counts(800, 1000, gate, "clustered_x")
+
+    def test_cold_start_uses_floor(self):
+        """No prior live table: fall back to the absolute floor."""
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        check_counts(150, 0, gate, "clustered_x")
+
+    def test_cold_start_below_floor_fails(self):
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        with pytest.raises(ValueError, match="implausibly small"):
+            check_counts(99, 0, gate, "clustered_x")
+
+    def test_message_names_the_table(self):
+        gate = TableGate(cold_start_floor=100, min_prior_ratio=0.8, not_null_columns=())
+        with pytest.raises(ValueError, match="clustered_candidacy_stages"):
+            check_counts(1, 1000, gate, "clustered_candidacy_stages")
+
+
+class TestCheckDistinctIds:
+    """The cluster tables promise a unique unique_id."""
+
+    def test_passes_when_all_distinct(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=(), id_column="unique_id")
+        check_distinct_ids(1000, 1000, gate, "clustered_x")
+
+    def test_fails_on_duplicates(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=(), id_column="unique_id")
+        with pytest.raises(ValueError, match="duplicate"):
+            check_distinct_ids(1000, 990, gate, "clustered_x")
+
+    def test_skipped_without_id_column(self):
+        """Pairwise rows are pairs, so there is no single identity column."""
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=())
+        check_distinct_ids(1000, 1, gate, "pairwise_x")
+
+
+class TestCheckIdOverlap:
+    """Too few shared ids means a wholesale re-key, not a refresh."""
+
+    def test_passes_above_floor(self):
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            id_column="unique_id",
+            min_id_overlap=0.8,
+        )
+        check_id_overlap(900, 1000, gate, "clustered_x")
+
+    def test_fails_below_floor(self):
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            id_column="unique_id",
+            min_id_overlap=0.8,
+        )
+        with pytest.raises(ValueError, match="re-key"):
+            check_id_overlap(500, 1000, gate, "clustered_x")
+
+    def test_skipped_without_floor(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=())
+        check_id_overlap(0, 1000, gate, "pairwise_x")
+
+    def test_skipped_on_cold_start(self):
+        """No prior rows means nothing to overlap with."""
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            id_column="unique_id",
+            min_id_overlap=0.8,
+        )
+        check_id_overlap(0, 0, gate, "clustered_x")
+
+
+class TestCheckNulls:
+    def test_passes_with_no_nulls(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=("cluster_id",))
+        check_nulls(0, gate, "clustered_x")
+
+    def test_fails_with_nulls(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=("cluster_id",))
+        with pytest.raises(ValueError, match="NULL"):
+            check_nulls(3, gate, "clustered_x")
+
+
+class TestCheckSources:
+    """A source silently dropping out of prematch is the failure this catches."""
+
+    def test_passes_when_all_present(self):
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            expected_sources=("ballotready", "ddhq"),
+        )
+        check_sources({"ballotready", "ddhq"}, gate, "clustered_x")
+
+    def test_passes_with_extra_source(self):
+        """A new source appearing is not a reason to block the swap."""
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            expected_sources=("ballotready", "ddhq"),
+        )
+        check_sources({"ballotready", "ddhq", "newthing"}, gate, "clustered_x")
+
+    def test_fails_on_missing_source(self):
+        gate = TableGate(
+            cold_start_floor=1,
+            min_prior_ratio=0.5,
+            not_null_columns=(),
+            expected_sources=("ballotready", "ddhq"),
+        )
+        with pytest.raises(ValueError, match="ddhq"):
+            check_sources({"ballotready"}, gate, "clustered_x")
+
+    def test_skipped_when_none_expected(self):
+        gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=())
+        check_sources(set(), gate, "pairwise_x")
