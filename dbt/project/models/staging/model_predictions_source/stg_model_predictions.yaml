@@ -122,10 +122,9 @@ models:
       except candidates_outreach, which is retired separately.
     columns:
       - name: br_database_id
-        description: >
-          BallotReady office database id. not_null already lives on the
-          source in __sources.yaml.
+        description: BallotReady office database id; the model is one row per office.
         data_tests:
+          - not_null
           - unique
       - name: l2_state
         description: >
