@@ -57,12 +57,30 @@ def challenger_tuple_of(row, answers):
     answer = answers.get(int(row["br_database_id"]))
     if answer is None:  # no row for this office in the run's answers = no attempt = abstain
         return (None, None, None)
-    return (answer.get("l2_state"), answer.get("l2_district_type"), answer.get("l2_district_name"))
+    # Bracket access on purpose: a malformed answers file must fail loudly, not
+    # score every office as an abstain-miss.
+    return (answer["l2_state"], answer["l2_district_type"], answer["l2_district_name"])
+
+
+VALID_VERDICTS = ("DISTRICT", "NO_VALID_DISTRICT", "UNDETERMINABLE")
 
 
 def load_truth(path):
+    """Normalize and validate the human-edited columns at the load boundary: a
+    stray-whitespace or typo'd verdict must fail loudly here, never silently
+    reroute an office through the wrong scoring branch.
+    """
     with open(path, newline="") as fh:
-        return list(csv.DictReader(fh))
+        rows = list(csv.DictReader(fh))
+    for row in rows:
+        row["truth_verdict"] = (row["truth_verdict"] or "").strip()
+        if row["truth_verdict"] not in VALID_VERDICTS:
+            raise ValueError(
+                f"unrecognized truth_verdict {row['truth_verdict']!r} for office {row['br_database_id']}"
+            )
+        for field in ("truth_l2_state", "truth_l2_district_type", "truth_l2_district_name"):
+            row[field] = (row[field] or "").strip()
+    return rows
 
 
 def load_answers(path):
