@@ -7,8 +7,10 @@ metastore dependency.
 """
 
 import logging
+import sys
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from airflow.models import DagBag
 from include.custom_functions.matcha_utils import ENTITIES as _ENTITY_SPECS
@@ -99,18 +101,10 @@ def test_pods_write_dated_tables_never_live():
 
 
 def test_match_pod_targets_its_own_entity():
-    """Every assertion above is entity-agnostic (task ids, upstream sets, pool
-    name, the ds_nodash/--overwrite substrings), so a factory bug that closes
-    over the loop variable instead of taking `entity` as a parameter would
-    still pass all of them while every group's pod actually matched
-    `election_stage` (the last iteration value). This checks each group's pod
-    is wired to ITS OWN entity's --entity-type flag and table names, which
-    such a bug would break.
-
-    The gate/swap tasks carry the identical closure risk but are TaskFlow
-    task instances wrapping a Python closure; the DAG structure exposes no
-    way to introspect which entity a closure captured, so that half of a
-    late-binding regression is not structurally testable from here.
+    """`_match_pod(entity)` is called synchronously inside `group()`, so its
+    `arguments` list is fully resolved at DAG-build time and was never
+    vulnerable to a late-binding bug — this only guards against some other
+    regression breaking the per-entity wiring.
     """
     for entity in _ENTITY_SPECS:
         args = _DAG.get_task(f"{entity.entity_type}.match").arguments
@@ -118,3 +112,49 @@ def test_match_pod_targets_its_own_entity():
         joined = " ".join(args)
         assert entity.cluster_table in joined
         assert entity.pairwise_table in joined
+
+
+def _dag_module():
+    """The (hash-prefixed, DagBag-assigned) module matcha_er.py was imported
+    under, recovered via a task's python_callable rather than a fixed name."""
+    return sys.modules[_DAG.get_task("candidacy_stage.gate").python_callable.__module__]
+
+
+def test_gate_task_checks_its_own_entitys_tables():
+    """`gate` and `swap` read `entity` from the enclosing closure at task
+    EXECUTION time, unlike `match`'s eagerly-resolved arguments — so a bare
+    `for entity in ENTITIES:` loop in place of the `entity_group` factory
+    would pass every structural test above while every group's gate/swap
+    silently operated on the same (last-iteration) entity's tables. DagBag
+    exposes the TaskFlow-wrapped closure via `python_callable`, so invoke it
+    directly and assert it gates THAT group's own tables.
+    """
+    module = _dag_module()
+    for entity in _ENTITY_SPECS:
+        gate_fn = _DAG.get_task(f"{entity.entity_type}.gate").python_callable
+        with (
+            patch.object(module, "open_connection", return_value=MagicMock()),
+            patch.object(module, "Variable") as mock_variable,
+            patch.object(module, "run_gate") as mock_run_gate,
+        ):
+            mock_variable.get.return_value = "cat"
+            gate_fn("20260825")
+        tables = {call.args[3] for call in mock_run_gate.call_args_list}
+        assert tables == {entity.cluster_table, entity.pairwise_table}
+
+
+def test_swap_task_swaps_its_own_entitys_tables():
+    """Same closure risk as `gate`, exercised with the rename path armed."""
+    module = _dag_module()
+    for entity in _ENTITY_SPECS:
+        swap_fn = _DAG.get_task(f"{entity.entity_type}.swap").python_callable
+        with (
+            patch.object(module, "swap_enabled", return_value=True),
+            patch.object(module, "open_connection", return_value=MagicMock()),
+            patch.object(module, "Variable") as mock_variable,
+            patch.object(module, "swap_table") as mock_swap_table,
+        ):
+            mock_variable.get.return_value = "cat"
+            swap_fn("20260825")
+        tables = {call.args[3] for call in mock_swap_table.call_args_list}
+        assert tables == {entity.cluster_table, entity.pairwise_table}
