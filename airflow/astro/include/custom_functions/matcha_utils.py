@@ -1,0 +1,159 @@
+"""Pre-swap quality gates and the dated-vintage swap for the matcha ER outputs.
+
+The matcha container writes each run to a DATED table
+(`er_source.clustered_candidacy_stages_20260825`) and never to a live one: its
+upload is `CREATE OR REPLACE TABLE` followed by `COPY INTO`, so pointing it at
+a live table means a mid-upload failure leaves every downstream dbt model
+reading an empty or partial table. This module is the other half of that
+contract — it gates the dated table, then renames it into the live name.
+
+Unity Catalog has no multi-statement transaction, so the swap is an explicit
+idempotent sequence rather than one atomic statement, and the leftover `_old`
+from a crashed run is dropped first so a crash never wedges the next run.
+
+Everything above the "Databricks execution" divider is pure, so the gate logic
+is testable without a warehouse.
+"""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class TableGate:
+    """Pre-swap gate for one er_source table.
+
+    Cluster and pairwise tables are deliberately gated differently. The civics
+    marts build their crosswalks from the cluster tables, so those get identity
+    and source-coverage checks. Pairwise is audit-only and its row volume
+    swings legitimately with blocking and threshold tuning, so a gate as tight
+    as the cluster one would fail on ordinary model work and train us to
+    ignore it.
+    """
+
+    # Minimum plausible row count when no prior live table exists.
+    cold_start_floor: int
+    # Refuse the swap when dated/live row count falls below this ratio.
+    min_prior_ratio: float
+    # NULL probes over the dated rows.
+    not_null_columns: tuple[str, ...]
+    # Identity column for the distinct and overlap checks. None skips both.
+    id_column: str | None = None
+    # Floor on dated-vs-live id overlap; catches a wholesale re-key rather than
+    # a refresh. Requires id_column. None skips the check.
+    min_id_overlap: float | None = None
+    # Every source that must still be represented. Empty skips the check.
+    expected_sources: tuple[str, ...] = ()
+    source_column: str = "source_name"
+
+
+@dataclass(frozen=True)
+class EntitySpec:
+    """One matcha entity type and the two er_source tables it produces."""
+
+    entity_type: str
+    # Plural stem shared by both output tables.
+    table_stem: str
+    prematch_model: str
+    cluster_gate: TableGate
+    pairwise_gate: TableGate
+
+    @property
+    def cluster_table(self) -> str:
+        return f"clustered_{self.table_stem}"
+
+    @property
+    def pairwise_table(self) -> str:
+        return f"pairwise_{self.table_stem}"
+
+
+_CLUSTER_NOT_NULL = ("cluster_id", "unique_id")
+_PAIRWISE_NOT_NULL = ("unique_id_l", "unique_id_r")
+
+# Cold-start floors sit at roughly 70% of the live counts observed when this
+# was written (563k candidacy, 554k elected official, 731k election stage) —
+# low enough not to trip on ordinary growth, high enough to catch a run that
+# produced almost nothing.
+ENTITIES: tuple[EntitySpec, ...] = (
+    EntitySpec(
+        entity_type="candidacy_stage",
+        table_stem="candidacy_stages",
+        prematch_model="int__er_prematch_candidacy_stages",
+        cluster_gate=TableGate(
+            cold_start_floor=400_000,
+            min_prior_ratio=0.8,
+            not_null_columns=_CLUSTER_NOT_NULL,
+            id_column="unique_id",
+            min_id_overlap=0.8,
+            expected_sources=("ballotready", "techspeed", "ddhq", "gp_api"),
+        ),
+        pairwise_gate=TableGate(
+            cold_start_floor=1_000,
+            min_prior_ratio=0.5,
+            not_null_columns=_PAIRWISE_NOT_NULL,
+        ),
+    ),
+    EntitySpec(
+        entity_type="elected_official",
+        table_stem="elected_officials",
+        prematch_model="int__er_prematch_elected_officials",
+        cluster_gate=TableGate(
+            cold_start_floor=400_000,
+            min_prior_ratio=0.8,
+            not_null_columns=_CLUSTER_NOT_NULL,
+            id_column="unique_id",
+            min_id_overlap=0.8,
+            expected_sources=("ballotready_techspeed", "gp_api", "ddhq"),
+        ),
+        # This entity's pairwise output is tiny (about 1.8k rows) next to its
+        # 554k clusters, so its cold-start floor is lower than the others'.
+        pairwise_gate=TableGate(
+            cold_start_floor=500,
+            min_prior_ratio=0.5,
+            not_null_columns=_PAIRWISE_NOT_NULL,
+        ),
+    ),
+    EntitySpec(
+        entity_type="election_stage",
+        table_stem="election_stages",
+        prematch_model="int__er_prematch_election_stages",
+        cluster_gate=TableGate(
+            cold_start_floor=500_000,
+            min_prior_ratio=0.8,
+            not_null_columns=_CLUSTER_NOT_NULL,
+            id_column="unique_id",
+            min_id_overlap=0.8,
+            expected_sources=("ballotready", "ddhq", "techspeed"),
+        ),
+        pairwise_gate=TableGate(
+            cold_start_floor=1_000,
+            min_prior_ratio=0.5,
+            not_null_columns=_PAIRWISE_NOT_NULL,
+        ),
+    ),
+)
+
+
+def _ident(part: str) -> str:
+    """Backtick-quote one identifier, refusing anything that could break out.
+
+    Catalog and schema come from Airflow Variables, so they are operator input
+    rather than constants; every identifier reaches SQL by interpolation.
+    """
+    if not part or "`" in part:
+        raise ValueError(f"Unsafe Databricks identifier: {part!r}")
+    return f"`{part}`"
+
+
+def fqn(catalog: str, schema: str, table: str) -> str:
+    """Fully-qualified, quoted Unity Catalog table name."""
+    return f"{_ident(catalog)}.{_ident(schema)}.{_ident(table)}"
+
+
+def dated_name(table: str, run_date: str) -> str:
+    """Vintage table name matcha writes for this run (`<table>_<yyyymmdd>`)."""
+    return f"{table}_{run_date}"
+
+
+def old_name(table: str) -> str:
+    """Renamed-aside name the live table takes during a swap."""
+    return f"{table}_old"
