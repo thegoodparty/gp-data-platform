@@ -42,7 +42,9 @@ order by 1 desc
 Confirm the candidate `attempted_at` with the operator, alongside the batch size
 their own run summary reports. The writer contract counts what it wrote; this
 audit re-counts independently, starting in Step 1. Set `__RUN_KEY__` to the
-confirmed value for every step below.
+confirmed value for every step below, copied VERBATIM from this output —
+fractional seconds included, if present — because every step filters on exact
+timestamp equality.
 
 ## Step 1 — Run shape
 
@@ -87,6 +89,20 @@ with
             and universe.district_type = label_check_tuples.l2_district_type
             and universe.district_name = label_check_tuples.l2_district_name
         where universe.state_postal_code is null
+    ),
+
+    -- The run-scoped variant: THIS run's own matched tuples against the
+    -- current universe. The staging-wide count above describes the serving
+    -- state; only this one attributes a dead label to the audited run.
+    run_label_missing as (
+        select distinct run_rows.l2_state, run_rows.l2_district_type, run_rows.l2_district_name
+        from run_rows
+        left join
+            goodparty_data_catalog.dbt.int__l2_district_universe as universe
+            on universe.state_postal_code = run_rows.l2_state
+            and universe.district_type = run_rows.l2_district_type
+            and universe.district_name = run_rows.l2_district_name
+        where run_rows.l2_district_name is not null and universe.state_postal_code is null
     ),
 
     -- Same join as dbt/project/tests/assert_position_district_voter_coverage_floor.sql;
@@ -147,8 +163,16 @@ union all
 select
     'label_check_warn_count',
     cast(count(*) as double),
-    'distinct dead tuples matched since the 2026-01-26 baseline'
+    'distinct dead tuples in the CURRENT serving state since the baseline'
 from label_check_missing
+
+union all
+
+select
+    'run_label_check_missing',
+    cast(count(*) as double),
+    'distinct dead tuples matched by THIS run'
+from run_label_missing
 
 union all
 
@@ -161,15 +185,27 @@ from coverage
 
 Read the printed rows, then interpret against these lines:
 
-- A nonzero `label_check_warn_count` is a HARD STOP before publication: delete
-  the run's rows per SPEC 3.5, rebuild, stop.
-- `rows_under_key` must equal the operator's reported batch count. A short
-  write is repaired by deleting the run's rows and re-running.
+- Both label metrics and the coverage ratio describe the warehouse AS BUILT:
+  before the post-append dbt rebuild they describe the PREVIOUS publication.
+  Run this step after the rebuild (the cutover's rebuild-then-gate ordering),
+  or read it as history, never as this run's gate.
+- A nonzero `run_label_check_missing` is a HARD STOP before publication: THIS
+  run shipped labels the current universe does not carry — delete the run's
+  rows per SPEC 3.5, rebuild, stop.
+- `label_check_warn_count` nonzero while `run_label_check_missing` is zero
+  means the dead tuple belongs to a DIFFERENT run — an earlier run's answer, or
+  a later relabel wave when auditing post hoc. Deleting this run's rows cannot
+  clear it; repair it at its source before publication. For a post-hoc audit of
+  a superseded run, only the run-scoped metric speaks for the audited run.
+- `rows_under_key` must equal the operator's reported batch count. ZERO rows
+  means a mistranscribed run key far more often than a missing run — re-copy it
+  verbatim from Step 0 before concluding anything. A genuine short write is
+  repaired by deleting the run's rows and re-running.
 - `coverage_ratio_positions_on_populated_over_with_district` must clear the
   floor `dbt/project/tests/assert_position_district_voter_coverage_floor.sql`
-  states, with this run's labels in place.
+  states, with this run's labels in place (see the as-built line above).
 
-## Step 2 — Rule classes, outcomes, and January transitions
+## Step 2 — Rule classes, outcomes, and prior-answer transitions
 
 The classification below is recomputed at audit time from BallotReady's own
 fields — there is no persisted rule column anywhere, by design, so this is the
@@ -208,22 +244,29 @@ with
             = 1
     ),
 
-    -- CURRENT BallotReady fields for every office under the key. A missing row
-    -- here is the feed churn Step 1's rows_absent_from_br_feed already counts;
-    -- it carries a null rule_class below rather than dropping out silently.
-    -- BR staging can carry empty strings and the literal string "null" in the
-    -- sub_area pair; the matcher normalizes both to absent at its own load
-    -- boundary, and this audit does the same since it reads the raw column.
+    -- CURRENT BallotReady fields for every office under the key. Feed absence
+    -- is witnessed by the JOIN KEY (the same churn Step 1's
+    -- rows_absent_from_br_feed counts), never by a null field, because the
+    -- matcher classifies null-field offices normally. Normalization mirrors the
+    -- matcher's load boundary exactly: empty and any-case "null" sentinels
+    -- become absent, and kept values stay UNMODIFIED — no trimming, so a padded
+    -- geo_id is malformed to the format check on both sides.
     office_geo as (
         select
             run_rows.br_database_id,
+            br.database_id is null as absent_from_br_feed,
             upper(trim(br.state)) as office_state,
-            br.mtfcc,
+            coalesce(case when lower(trim(br.mtfcc)) in ('', 'null') then null else br.mtfcc end, '')
+                as mtfcc,
             coalesce(br.is_judicial, false) as is_judicial,
             coalesce(br.has_unknown_boundaries, false) as has_unknown_boundaries,
-            nullif(nullif(trim(br.geo_id), ''), 'null') as geo_id,
-            nullif(nullif(trim(br.sub_area_name), ''), 'null') as sub_area_name,
-            nullif(nullif(trim(br.sub_area_value), ''), 'null') as sub_area_value
+            case when lower(trim(br.geo_id)) in ('', 'null') then null else br.geo_id end as geo_id,
+            case
+                when lower(trim(br.sub_area_name)) in ('', 'null') then null else br.sub_area_name
+            end as sub_area_name,
+            case
+                when lower(trim(br.sub_area_value)) in ('', 'null') then null else br.sub_area_value
+            end as sub_area_value
         from run_rows
         left join
             goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position as br
@@ -282,7 +325,7 @@ with
     -- only, per the note above.
     state_vocab as (
         select
-            state_postal_code,
+            upper(trim(state_postal_code)) as state_postal_code,
             max(case when district_type rlike '^Judicial_' then 1 else 0 end) = 1 as has_judicial_vocab,
             sum(
                 case
@@ -336,7 +379,7 @@ with
             max(case when district_type in ('Township_Ward', 'Town_Ward') then 1 else 0 end) = 1
                 as has_county_subdivision_subtype
         from goodparty_data_catalog.dbt.int__l2_district_universe
-        group by state_postal_code
+        group by upper(trim(state_postal_code))
     ),
 
     labeled as (
@@ -348,7 +391,7 @@ with
             run_rows.l2_district_name,
             case when run_rows.l2_district_name is not null then 'matched' else 'abstained' end as outcome,
             case
-                when geo_level.mtfcc is null then null  -- office absent from BR staging; see Step 1
+                when geo_level.absent_from_br_feed then null  -- office gone from BR staging; see Step 1
                 when geo_level.mtfcc = 'X0024' then 'R0_party_committee'
                 when
                     geo_level.is_judicial
@@ -423,8 +466,13 @@ Read the printed rows, then interpret against these lines:
 
 - The three abstain classes (`R0_party_committee`, `R1_judicial_abstain`,
   `R2_slice_zero_subtype_abstain`) must show ZERO matched rows: the code
-  abstains before the LLM on those paths, so any match there means the run was
-  made with different code than reviewed. Hard stop.
+  abstains before the LLM on those paths, so a match there means the run was
+  made with different code than reviewed. Hard stop — but rule out input drift
+  first: the classes are recomputed from TODAY's BR fields and universe, and a
+  rebuild between the run and the audit (the cutover's own rebuild step) can
+  legitimately reclassify an office. Check the drill-down rows' fields and
+  their state's vocabulary against the run window before deleting anything; a
+  post-hoc rule class is evidence of which branch ran, never a replay of it.
 - `R2_whole_school_gated` offices matched to a school SUB-level type indicate
   the run had `--enable-school-whole-assertion` OFF (allowed only if that is
   what the operator intended; the flag is run config, not persisted, so this is
@@ -497,9 +545,17 @@ one of them, so a disagreement is signal for review, never a stop.
 
 ## Step 4 — The holdout gate
 
-Run `score_holdout.py` against the adjudicated holdout packet and this run's
-answers, once per matcher arm (the run's own JSON of `{br_database_id, l2_state,
-l2_district_type, l2_district_name, confidence}`, nulls meaning abstain):
+The holdout is scored from DEDICATED arm artifacts, never from the audited
+run's own rows: a production run reads the pending list, which structurally
+excludes the holdout's served stratum, so exporting its rows would score every
+served office as an abstention and produce a spurious served-gate FAIL. The
+holdout owner's operator-local arms driver calls the matcher's `match_office`
+directly over all 120 frozen offices and writes one COMPLETE answers JSON per
+arm (`{br_database_id, l2_state, l2_district_type, l2_district_name,
+confidence}`, nulls meaning abstain); the scorer refuses an answers file that
+does not cover every scorable office. This step only RECORDS the arms'
+verdicts against the run being audited — it does not produce them. Run once
+per arm:
 
 ```bash
 python .claude/skills/gold-match-run-audit/score_holdout.py \
@@ -547,4 +603,5 @@ Restate only the hard conditions, each naming where it was measured:
   floor (Step 1).
 - [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
   the owner (Step 2).
-- [ ] Holdout gate verdict recorded — supervised cutover only (Step 4).
+- [ ] Holdout gate verdict is PASS — a FAIL stops the cutover, it is not
+  satisfied by being recorded; supervised cutover only (Step 4).
