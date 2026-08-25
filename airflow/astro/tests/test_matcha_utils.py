@@ -1,6 +1,7 @@
 """Tests for the matcha ER gate and swap helpers."""
 
 from dataclasses import FrozenInstanceError
+from unittest.mock import MagicMock
 
 import pytest
 from include.custom_functions.matcha_utils import (
@@ -16,12 +17,16 @@ from include.custom_functions.matcha_utils import (
     dated_name,
     distinct_count_sql,
     distinct_sources_sql,
+    drop_stale_vintages,
     fqn,
     null_probe_sql,
     old_name,
     overlap_sql,
+    run_gate,
     stale_vintages,
     swap_statements,
+    swap_table,
+    table_exists,
 )
 
 
@@ -361,3 +366,111 @@ class TestStaleVintages:
     def test_ignores_non_date_suffixes(self):
         existing = ["clustered_x_backup", "clustered_x_2026"]
         assert stale_vintages(existing, "clustered_x", "20990101") == []
+
+
+@pytest.fixture
+def mock_connection():
+    """Mock Databricks connection whose cursor returns queued scalars."""
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value = cursor
+    return conn, cursor
+
+
+class TestTableExists:
+    def test_true_when_information_schema_has_a_row(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.return_value = (1,)
+        assert table_exists(conn, "cat", "er_source", "clustered_x") is True
+
+    def test_false_when_absent(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.return_value = None
+        assert table_exists(conn, "cat", "er_source", "clustered_x") is False
+
+    def test_queries_information_schema(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.return_value = None
+        table_exists(conn, "cat", "er_source", "clustered_x")
+        sql = cursor.execute.call_args[0][0]
+        assert "information_schema.tables" in sql
+
+
+class TestRunGate:
+    """The wrapper's job is ordering the queries and feeding the pure checks."""
+
+    def _gate(self):
+        return TableGate(
+            cold_start_floor=100,
+            min_prior_ratio=0.8,
+            not_null_columns=("cluster_id",),
+            id_column="unique_id",
+            min_id_overlap=0.8,
+            expected_sources=("ballotready",),
+        )
+
+    # NOTE on the mocked sequences: `run_gate` calls `table_exists` first, and
+    # that consumes the FIRST fetchone off the same mock cursor. So the order is
+    # always: exists-probe, loaded, distinct, nulls, prior, overlap — with the
+    # source check reading fetchall in between nulls and prior.
+
+    def test_passes_a_healthy_table(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.side_effect = [(1,), (1000,), (1000,), (0,), (1000,), (1000,)]
+        cursor.fetchall.return_value = [("ballotready",)]
+        run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
+
+    def test_raises_on_a_shrunken_table(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.side_effect = [(1,), (100,), (100,), (0,), (1000,), (100,)]
+        cursor.fetchall.return_value = [("ballotready",)]
+        with pytest.raises(ValueError, match="refusing to swap"):
+            run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
+
+    def test_raises_on_a_missing_source(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.side_effect = [(1,), (1000,), (1000,), (0,), (1000,), (1000,)]
+        cursor.fetchall.return_value = [("techspeed",)]
+        with pytest.raises(ValueError, match="ballotready"):
+            run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
+
+    def test_cold_start_skips_the_live_queries(self, mock_connection):
+        """No live table: prior count is 0 and overlap is never queried."""
+        conn, cursor = mock_connection
+        # exists-probe (None), loaded, distinct, nulls
+        cursor.fetchone.side_effect = [None, (1000,), (1000,), (0,)]
+        cursor.fetchall.return_value = [("ballotready",)]
+        run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
+        # Overlap is never queried, so a fifth fetchone would raise StopIteration.
+
+
+class TestSwapTable:
+    def test_executes_the_swap_sequence(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchone.return_value = (1,)
+        swap_table(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825")
+        executed = [c[0][0] for c in cursor.execute.call_args_list]
+        renames = [s for s in executed if s.startswith("ALTER TABLE")]
+        assert len(renames) == 2
+        assert any(s.startswith("DROP TABLE IF EXISTS") for s in executed)
+
+
+class TestDropStaleVintages:
+    def test_drops_only_stale_ones(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchall.return_value = [
+            ("clustered_x_20260701",),
+            ("clustered_x_20260825",),
+            ("clustered_x",),
+        ]
+        dropped = drop_stale_vintages(conn, "cat", "er_source", "clustered_x", "20260801")
+        assert dropped == ["clustered_x_20260701"]
+        drops = [c[0][0] for c in cursor.execute.call_args_list if "DROP TABLE" in c[0][0]]
+        assert len(drops) == 1
+        assert "`clustered_x_20260701`" in drops[0]
+
+    def test_no_stale_vintages_issues_no_drops(self, mock_connection):
+        conn, cursor = mock_connection
+        cursor.fetchall.return_value = [("clustered_x_20260825",)]
+        assert drop_stale_vintages(conn, "cat", "er_source", "clustered_x", "20260801") == []
+        assert not [c for c in cursor.execute.call_args_list if "DROP TABLE" in c[0][0]]

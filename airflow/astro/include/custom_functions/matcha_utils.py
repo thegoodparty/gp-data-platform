@@ -15,8 +15,14 @@ Everything above the "Databricks execution" divider is pure, so the gate logic
 is testable without a warehouse.
 """
 
+import logging
 import re
 from dataclasses import dataclass
+
+from airflow.sdk import BaseHook, Variable
+from include.custom_functions.databricks_utils import get_databricks_connection
+
+logger = logging.getLogger("airflow.task")
 
 
 @dataclass(frozen=True)
@@ -300,3 +306,139 @@ def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[
         if match and match.group("table") == table and match.group("vintage") < cutoff:
             stale.append(name)
     return sorted(stale)
+
+
+# ── Databricks execution ──
+#
+# Everything below opens or uses a warehouse connection. Keep it thin: assemble
+# with the builders above, run, then hand the numbers to the pure checks.
+
+
+def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
+    """Open a warehouse connection from the deployment's Databricks connection.
+
+    WHICH connection is chosen at task runtime from the shared
+    `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
+    prod), matching the other DAGs. Must not be called at DAG parse.
+    """
+    conn_id = Variable.get(databricks_conn_id_var, default_var="databricks")
+    db_conn = BaseHook.get_connection(conn_id)
+    http_path = db_conn.extra_dejson.get("http_path", "")
+    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
+        raise ValueError(
+            f"Databricks connection '{conn_id}' is missing a required "
+            "host, login, password, or http_path (extra) field"
+        )
+    return get_databricks_connection(
+        host=db_conn.host,
+        http_path=http_path,
+        client_id=db_conn.login,
+        client_secret=db_conn.password,
+    )
+
+
+def _scalar(cursor, sql: str) -> int:
+    """Run `sql` and return its single numeric result (0 when no row)."""
+    cursor.execute(sql)
+    row = cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+def table_exists(conn, catalog: str, schema: str, table: str) -> bool:
+    """True if the table is present in the catalog."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"SELECT 1 FROM {_ident(catalog)}.information_schema.tables "
+            f"WHERE table_schema = '{schema}' AND table_name = '{table}'"
+        )
+        return cursor.fetchone() is not None
+    finally:
+        cursor.close()
+
+
+def list_tables(conn, catalog: str, schema: str) -> list[str]:
+    """Every table name in the schema."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"SELECT table_name FROM {_ident(catalog)}.information_schema.tables "
+            f"WHERE table_schema = '{schema}'"
+        )
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+
+
+def run_gate(
+    conn,
+    catalog: str,
+    schema: str,
+    live_table: str,
+    dated_table: str,
+    gate: TableGate,
+) -> None:
+    """Run every check for one table. Raises ValueError on the first failure."""
+    dated = fqn(catalog, schema, dated_table)
+    live = fqn(catalog, schema, live_table)
+    live_present = table_exists(conn, catalog, schema, live_table)
+
+    cursor = conn.cursor()
+    try:
+        loaded = _scalar(cursor, count_sql(dated))
+
+        distinct = loaded
+        if gate.id_column is not None:
+            distinct = _scalar(cursor, distinct_count_sql(dated, gate.id_column))
+        check_distinct_ids(loaded, distinct, gate, dated_table)
+
+        if gate.not_null_columns:
+            check_nulls(_scalar(cursor, null_probe_sql(dated, gate.not_null_columns)), gate, dated_table)
+
+        if gate.expected_sources:
+            cursor.execute(distinct_sources_sql(dated, gate.source_column))
+            found = {row[0] for row in cursor.fetchall() if row[0] is not None}
+            check_sources(found, gate, dated_table)
+
+        prior = _scalar(cursor, count_sql(live)) if live_present else 0
+        check_counts(loaded, prior, gate, dated_table)
+
+        if live_present and gate.id_column is not None and gate.min_id_overlap is not None:
+            overlap = _scalar(cursor, overlap_sql(dated, live, gate.id_column))
+            check_id_overlap(overlap, prior, gate, dated_table)
+    finally:
+        cursor.close()
+
+
+def swap_table(conn, catalog: str, schema: str, live_table: str, dated_table: str) -> None:
+    """Promote the dated vintage into the live name."""
+    live_present = table_exists(conn, catalog, schema, live_table)
+    cursor = conn.cursor()
+    try:
+        for statement in swap_statements(catalog, schema, live_table, dated_table, live_present):
+            logger.info("Swap: %s", statement)
+            cursor.execute(statement)
+    finally:
+        cursor.close()
+
+
+def drop_old_table(conn, catalog: str, schema: str, live_table: str) -> None:
+    """Drop the renamed-aside table left by a completed swap."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"DROP TABLE IF EXISTS {fqn(catalog, schema, old_name(live_table))}")
+    finally:
+        cursor.close()
+
+
+def drop_stale_vintages(conn, catalog: str, schema: str, table: str, cutoff: str) -> list[str]:
+    """Drop dated vintages older than `cutoff`. Returns what was dropped."""
+    stale = stale_vintages(list_tables(conn, catalog, schema), table, cutoff)
+    cursor = conn.cursor()
+    try:
+        for name in stale:
+            logger.info("Dropping stale vintage %s", name)
+            cursor.execute(f"DROP TABLE IF EXISTS {fqn(catalog, schema, name)}")
+    finally:
+        cursor.close()
+    return stale
