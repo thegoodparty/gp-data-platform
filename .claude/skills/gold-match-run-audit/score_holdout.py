@@ -90,7 +90,24 @@ def load_truth(path):
     utf-8-sig so a spreadsheet re-save's BOM cannot mangle the first fieldname.
     """
     with open(path, newline="", encoding="utf-8-sig") as fh:
-        rows = list(csv.DictReader(fh))
+        reader = csv.DictReader(fh)
+        rows = list(reader)
+        fieldnames = set(reader.fieldnames or [])
+    required = {
+        "br_database_id",
+        "stratum",
+        "cell",
+        "truth_verdict",
+        "truth_l2_state",
+        "truth_l2_district_type",
+        "truth_l2_district_name",
+        "jan_l2_state",
+        "jan_l2_district_type",
+        "jan_l2_district_name",
+    }
+    missing_cols = required - fieldnames
+    if missing_cols:
+        raise ValueError(f"packet CSV is missing required column(s): {sorted(missing_cols)}")
     seen = set()
     for row in rows:
         bid = row["br_database_id"]

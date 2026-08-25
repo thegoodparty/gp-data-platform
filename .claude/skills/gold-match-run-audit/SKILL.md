@@ -596,7 +596,11 @@ review, not an automatic stop.
 Restate only the hard conditions, each naming where it was measured:
 
 - [ ] Batch count reconciles (Step 0's operator count vs Step 1's `rows_under_key`).
-- [ ] `label_check_warn_count` is zero (Step 1).
+- [ ] `run_label_check_missing` is zero (Step 1) — a nonzero here is THIS run's
+  hard stop.
+- [ ] `label_check_warn_count` is zero before release (Step 1). A nonzero with a
+  zero run-scoped count is repaired at its SOURCE run, never by deleting this
+  one — the serving state must still be clean before anything publishes.
 - [ ] Zero matched rows in `R0_party_committee`, `R1_judicial_abstain`, and
   `R2_slice_zero_subtype_abstain` (Step 2).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
