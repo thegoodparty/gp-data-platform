@@ -65,6 +65,9 @@ with
         group by gp_person_id
     ),
 
+    -- Normalizes free-text state values (HubSpot, TS officeholder) to a postal code.
+    clean_states as (select * from {{ ref("clean_states") }}),
+
     -- Attribute reps: one representative record per (person, source), earliest
     -- first, so a source's fields stay internally consistent rather than being
     -- stitched column-wise across rows.
@@ -95,12 +98,13 @@ with
             nullif(trim(c.last_name), '') as last_name,
             nullif(trim(c.email), '') as email,
             nullif(trim(c.phone), '') as phone,
-            nullif(trim(c.state), '') as state,
+            cs.state_cleaned_postal_code as state,
             {{ parse_party_affiliation("c.party_affiliation") }} as party
         from records as r
         inner join
             {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as c
             on cast(c.id as string) = r.source_id
+        left join clean_states as cs on upper(trim(c.state)) = upper(trim(cs.state_raw))
         where r.source_name = 'hubspot'
         qualify
             row_number() over (
@@ -217,12 +221,13 @@ with
             nullif(trim(o.last_name), '') as last_name,
             nullif(trim(o.email), '') as email,
             nullif(trim(o.phone_clean), '') as phone,
-            nullif(trim(o.state), '') as state,
+            cs.state_cleaned_postal_code as state,
             {{ parse_party_affiliation("o.party") }} as party
         from records as r
         inner join
             {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }} as o
             on cast(o.ts_officeholder_id as string) = r.source_id
+        left join clean_states as cs on upper(trim(o.state)) = upper(trim(cs.state_raw))
         where r.source_name = 'techspeed_officeholder'
         qualify
             row_number() over (
