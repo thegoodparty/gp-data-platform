@@ -379,8 +379,6 @@ models:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-        # optional override if your user doesn't have permissions on the default source schema
-        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
@@ -396,8 +394,6 @@ models:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-        # optional override if your user doesn't have permissions on the default source schema
-        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
