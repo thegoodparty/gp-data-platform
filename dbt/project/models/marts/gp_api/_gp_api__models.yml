@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: gp_api_voters
+    description: Pass-through of m_people_api__voter
+
+  - name: gp_api_districts
+    description: Pass-through of m_people_api__district
+
+  - name: gp_api_district_stats
+    description: Pass-through of m_people_api__districtstats

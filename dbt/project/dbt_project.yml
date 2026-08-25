@@ -88,12 +88,7 @@ models:
         +materialized: view
       gp_api:
         +schema: mart_gp_api
-        # View, not a table: the model is a pass-through of an upstream that is
-        # already the serving-shaped table, so materializing would duplicate it
-        # for no read benefit. Databricks freezes the star expansion at view
-        # creation, so the daily rebuild is what picks up appended L2 columns.
         +materialized: view
-        +tags: ["mart", "gp_api"]
     staging:
       airbyte_source:
         stripe_api:
