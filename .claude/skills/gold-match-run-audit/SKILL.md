@@ -1,6 +1,6 @@
 ---
 name: gold-match-run-audit
-description: Audit one run key of the gold-match pipeline (llm_l2_br_match_results) before publication or as a post-hoc review — run shape and confidence, the geography rule-class mirror with January transitions, the override suite, the ratified holdout gate via score_holdout.py, a web spot-check, and a sign-off checklist. Use after a supervised or automated gold-match run lands rows under a new attempted_at, before the nightly swap publishes them, or when reviewing a completed run's abstain/withdrawal counts.
+description: Audit one run key of the gold-match pipeline (llm_l2_br_match_results) before publication or as a post-hoc review — run shape and confidence, the geography rule-class mirror with prior-answer transitions, the override suite, the ratified holdout gate via score_holdout.py, a web spot-check, and a sign-off checklist. Use after a supervised or automated gold-match run lands rows under a new attempted_at, before the nightly swap publishes them, or when reviewing a completed run's abstain/withdrawal counts.
 ---
 
 # Gold-match run audit
@@ -185,10 +185,12 @@ from coverage
 
 Read the printed rows, then interpret against these lines:
 
-- Both label metrics and the coverage ratio describe the warehouse AS BUILT:
-  before the post-append dbt rebuild they describe the PREVIOUS publication.
-  Run this step after the rebuild (the cutover's rebuild-then-gate ordering),
-  or read it as history, never as this run's gate.
+- Both label metrics and the coverage ratio are meaningful only AFTER the
+  post-append dbt rebuild (the cutover's rebuild-then-gate ordering). Before
+  it, they read a MIXED snapshot — the staging model is a view over live rows,
+  so it already includes the appended run, while the universe and the
+  election-api marts are still the last build — which is neither the previous
+  publication nor this one. Never gate on the pre-rebuild reading.
 - A nonzero `run_label_check_missing` is a HARD STOP before publication: THIS
   run shipped labels the current universe does not carry — delete the run's
   rows per SPEC 3.5, rebuild, stop.
@@ -609,11 +611,16 @@ Restate only the hard conditions, each naming where it was measured:
   pending backlog, deliberately out of scope, and join nothing while they wait.
   A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
   by deleting this one.
-- [ ] Zero matched rows in `R0_party_committee`, `R1_judicial_abstain`, and
-  `R2_slice_zero_subtype_abstain` (Step 2).
+- [ ] Zero CONFIRMED matched-row violations in `R0_party_committee`,
+  `R1_judicial_abstain`, and `R2_slice_zero_subtype_abstain` after Step 2's
+  input-drift review (a reclassification caused by BR/universe drift between
+  run and audit is not a violation).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
   floor (Step 1).
 - [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
   the owner (Step 2).
-- [ ] Holdout gate verdict is PASS — a FAIL stops the cutover, it is not
-  satisfied by being recorded; supervised cutover only (Step 4).
+- [ ] Holdout gate verdict is PASS **for the arm this run actually used**
+  (operator-confirmed `--enable-school-whole-assertion` state; the flag is not
+  persisted) — the other arm's PASS does not transfer, and a FAIL stops the
+  cutover rather than being satisfied by recording it; supervised cutover only
+  (Step 4).

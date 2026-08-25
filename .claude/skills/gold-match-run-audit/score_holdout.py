@@ -75,6 +75,10 @@ def challenger_tuple_of(row, answers):
 
 
 VALID_VERDICTS = ("DISTRICT", "NO_VALID_DISTRICT", "UNDETERMINABLE")
+# The ratified instrument's frozen shape (the same ruling that fixed the gate
+# numbers quoted in SKILL.md Step 4); a truncated packet must not reach the gates.
+EXPECTED_BACKLOG_ROWS = 72
+EXPECTED_SERVED_ROWS = 48
 VALID_STRATA = (
     "backlog_A_never_attempted",
     "backlog_B_stale_abstain",
@@ -121,6 +125,17 @@ def load_truth(path):
             raise ValueError(f"unrecognized truth_verdict {row['truth_verdict']!r} for office {bid}")
         for field in ("truth_l2_state", "truth_l2_district_type", "truth_l2_district_name"):
             row[field] = (row[field] or "").strip()
+        if row["truth_verdict"] == "DISTRICT" and not all(
+            row[f] for f in ("truth_l2_state", "truth_l2_district_type", "truth_l2_district_name")
+        ):
+            raise ValueError(f"DISTRICT verdict with a partial truth tuple for office {bid}")
+    backlog = sum(1 for row in rows if row["stratum"] != SERVED_STRATUM)
+    served = len(rows) - backlog
+    if (backlog, served) != (EXPECTED_BACKLOG_ROWS, EXPECTED_SERVED_ROWS):
+        raise ValueError(
+            f"packet shape {backlog} backlog / {served} served rows; the ratified instrument "
+            f"is {EXPECTED_BACKLOG_ROWS}/{EXPECTED_SERVED_ROWS} — refusing a truncated or padded packet"
+        )
     return rows
 
 
@@ -129,7 +144,12 @@ def load_answers(path):
         return None
     with open(path) as fh:
         payload = json.load(fh)
-    return {int(row["br_database_id"]): row for row in payload}
+    answers = {int(row["br_database_id"]): row for row in payload}
+    if len(answers) != len(payload):
+        raise ValueError(
+            "duplicate br_database_id entries in the answers file; JSON order must not pick the answer"
+        )
+    return answers
 
 
 def score_all(rows, answers):

@@ -54,6 +54,52 @@ def write_packet(rows, dirpath, drop_columns=()):
     return path
 
 
+def full_packet(poison=None, n_backlog=72, n_served=48):
+    """The ratified 72/48 shape with poisonable lead rows; filler rows are valid NVDs."""
+    rows = [
+        packet_row(1, "backlog_C_dead_label", "school", "DISTRICT", truth=("KY", "City", "A")),
+        packet_row(2, "served_matched", "city", "NO_VALID_DISTRICT"),
+        packet_row(
+            3,
+            "served_matched",
+            "subthreshold",
+            "DISTRICT",
+            truth=("OH", "City", "B"),
+            jan=("OH", "City", "B"),
+        ),
+    ]
+    rows += [
+        packet_row(100 + i, "backlog_B_stale_abstain", "county", "NO_VALID_DISTRICT")
+        for i in range(n_backlog - 1)
+    ]
+    rows += [
+        packet_row(500 + i, "served_matched", "county", "NO_VALID_DISTRICT") for i in range(n_served - 2)
+    ]
+    for row in poison or []:
+        rows[row.pop("_idx")].update(row)
+    return rows
+
+
+def full_answers(rows, matched=()):
+    out = []
+    for row in rows:
+        bid = int(row["br_database_id"])
+        if bid in matched:
+            out.append(
+                {
+                    "br_database_id": bid,
+                    "l2_state": row["truth_l2_state"],
+                    "l2_district_type": row["truth_l2_district_type"],
+                    "l2_district_name": row["truth_l2_district_name"],
+                }
+            )
+        else:
+            out.append(
+                {"br_database_id": bid, "l2_state": None, "l2_district_type": None, "l2_district_name": None}
+            )
+    return out
+
+
 def run_scorer(truth_path, answers=None, tmp=None):
     argv = [sys.executable, str(SKILL_ROOT / "score_holdout.py"), "--truth", str(truth_path), "--label", "t"]
     if answers is not None:
@@ -134,11 +180,7 @@ class LoadBoundary(unittest.TestCase):
     """A malformed operator artifact must fail loudly at load, never reroute rows."""
 
     def base_rows(self):
-        return [
-            packet_row(1, "backlog_C_dead_label", "school", "DISTRICT", truth=("KY", "City", "A")),
-            packet_row(2, "served_matched", "city", "NO_VALID_DISTRICT"),
-            packet_row(3, "served_matched", "subthreshold", "DISTRICT", truth=("OH", "City", "B")),
-        ]
+        return full_packet()
 
     def test_missing_cell_column_raises_at_load(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,44 +216,59 @@ class LoadBoundary(unittest.TestCase):
             result = run_scorer(write_packet(rows, tmp))
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_truncated_packet_refused(self):
+        # A dropped row can delete a served regression from the gate arithmetic.
+        rows = self.base_rows()[:-1]
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("packet shape", result.stderr)
+
+    def test_partial_district_truth_tuple_refused(self):
+        rows = self.base_rows()
+        rows[0]["truth_l2_district_name"] = ""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("partial truth tuple", result.stderr)
+
 
 class GateWiring(unittest.TestCase):
     """main()-level guards: the wrong artifact must be refused, not scored."""
 
-    def rows(self):
-        return [
-            packet_row(1, "backlog_C_dead_label", "school", "DISTRICT", truth=("KY", "City", "A")),
-            packet_row(
-                2, "served_matched", "city", "DISTRICT", truth=("OH", "City", "B"), jan=("OH", "City", "B")
-            ),
-        ]
-
     def test_incomplete_answers_refused_not_scored_as_abstention(self):
-        answers = [
-            {"br_database_id": 1, "l2_state": "KY", "l2_district_type": "City", "l2_district_name": "A"}
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(self.rows(), tmp), answers=answers, tmp=tmp)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("missing 1 scorable office", result.stderr)
-
-    def test_packet_without_served_rows_refuses_a_fail_open_gate(self):
-        rows = [self.rows()[0]]
-        answers = [
-            {"br_database_id": 1, "l2_state": None, "l2_district_type": None, "l2_district_name": None}
-        ]
+        rows = full_packet()
+        answers = full_answers(rows)[:-1]
         with tempfile.TemporaryDirectory() as tmp:
             result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("fail-open", result.stderr)
+        self.assertIn("missing 1 scorable office", result.stderr)
+
+    def test_duplicate_answer_ids_refused_not_last_write_wins(self):
+        rows = full_packet()
+        answers = full_answers(rows)
+        conflict = dict(answers[0])
+        conflict.update(l2_state="ZZ", l2_district_type="City", l2_district_name="CONFLICT")
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp), answers=answers + [conflict], tmp=tmp)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate br_database_id entries in the answers", result.stderr)
+
+    def test_all_backlog_packet_refused(self):
+        # The shape guard is the fail-open kill for a served-empty packet; the
+        # served-pool raise in main remains as depth behind it.
+        rows = full_packet(n_backlog=121, n_served=0)
+        rows = [r for r in rows if r["stratum"] != "served_matched"]
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp), answers=full_answers(rows), tmp=tmp)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("packet shape", result.stderr)
 
     def test_complete_run_prints_verdict(self):
-        answers = [
-            {"br_database_id": 1, "l2_state": "KY", "l2_district_type": "City", "l2_district_name": "A"},
-            {"br_database_id": 2, "l2_state": None, "l2_district_type": None, "l2_district_name": None},
-        ]
+        rows = full_packet()
+        answers = full_answers(rows, matched=(1, 3))
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(self.rows(), tmp), answers=answers, tmp=tmp)
+            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Backlog gate", result.stdout)
         self.assertIn("Verdict:", result.stdout)
