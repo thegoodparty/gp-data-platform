@@ -271,7 +271,40 @@ class GateWiring(unittest.TestCase):
             result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Backlog gate", result.stdout)
-        self.assertIn("Verdict:", result.stdout)
+        # Deterministic with this fixture: challenger wins row 1, nothing regresses.
+        self.assertIn("Verdict: PASS", result.stdout)
+
+    def test_regressing_challenger_prints_fail(self):
+        rows = full_packet()
+        answers = full_answers(rows)
+        # Fabricate wrong matches on three served NVD rows: 3 regressions, 0
+        # improvements, net 3 > ceiling; backlog unchanged (equal = not better).
+        for answer in answers:
+            if 500 <= answer["br_database_id"] <= 502:
+                answer.update(l2_state="ZZ", l2_district_type="City", l2_district_name="WRONG")
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Verdict: FAIL", result.stdout)
+
+    def test_padded_stratum_is_normalized_not_crashed(self):
+        rows = full_packet()
+        rows[1]["stratum"] = "served_matched "
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_all_undeterminable_backlog_refused_not_scored_zero_vs_zero(self):
+        rows = full_packet()
+        for row in rows:
+            if row["stratum"] != "served_matched":
+                row["truth_verdict"] = "UNDETERMINABLE"
+                row["truth_l2_state"] = row["truth_l2_district_type"] = row["truth_l2_district_name"] = ""
+        answers = full_answers(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("vacuous backlog gate", result.stderr)
 
 
 if __name__ == "__main__":

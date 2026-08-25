@@ -118,6 +118,8 @@ def load_truth(path):
         if bid in seen:
             raise ValueError(f"duplicate br_database_id {bid} in the packet")
         seen.add(bid)
+        row["stratum"] = (row["stratum"] or "").strip()
+        row["cell"] = (row["cell"] or "").strip()
         if row["stratum"] not in VALID_STRATA:
             raise ValueError(f"unrecognized stratum {row['stratum']!r} for office {bid}")
         row["truth_verdict"] = (row["truth_verdict"] or "").strip()
@@ -241,6 +243,9 @@ def main():
     if not served_bids:
         # An empty served pool would make the served gate pass vacuously.
         raise ValueError("no scorable served_matched rows in the packet; refusing a fail-open gate")
+    if not any(challenger_groups.get(g) for g in BACKLOG_GROUPS):
+        # All-UNDETERMINABLE backlog would print a misleading 0-vs-0 FAIL.
+        raise ValueError("no scorable backlog rows in the packet; refusing a vacuous backlog gate")
     backlog_pass, challenger_correct, jan_correct = backlog_gate(challenger_groups, jan_groups)
     served_pass, net, regressions, improvements = served_gate(challenger_scores, jan_scores, served_bids)
 
