@@ -25,11 +25,11 @@ with
             br_database_id,
             lower(l2_district_type) as l2_district_type,
             lower(l2_district_name) as l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-        where br_database_id is not null and is_matched
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        where is_matched
     ),
     -- Override rows the LLM did not already place at the same district: the
-    -- backfills (LLM absent or NOT_MATCHED) and the curated corrections (LLM
+    -- backfills (LLM absent or abstained) and the curated corrections (LLM
     -- matched a different district). These are the rows the override path
     -- emits and the rows the LLM path must yield. Overrides that agree with
     -- the LLM are absent here and stay on the LLM path. Flat anti-join, shared
@@ -60,10 +60,10 @@ with
             tbl_match.l2_district_type
         from zip_code_within_state_range as tbl_zip
         left join
-            {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as tbl_match
+            {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
             on lower(tbl_zip.district_name) = lower(tbl_match.l2_district_name)
             and lower(tbl_zip.district_type) = lower(tbl_match.l2_district_type)
-            and lower(tbl_zip.state_postal_code) = lower(tbl_match.state)
+            and lower(tbl_zip.state_postal_code) = lower(tbl_match.l2_state)
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_br_position
             on tbl_match.br_database_id = tbl_br_position.database_id

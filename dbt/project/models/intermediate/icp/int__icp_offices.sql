@@ -15,7 +15,7 @@ with
             *,
             {{ normalize_l2_district_name("l2_district_name") }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
     ),
 
     -- aliased on both lookups: a bare voter_count on either would shadow the

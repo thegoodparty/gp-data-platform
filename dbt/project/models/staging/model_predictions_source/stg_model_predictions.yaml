@@ -112,6 +112,51 @@ models:
                 'US_Congressional_District'
               )
 
+  - name: stg_model_predictions__llm_l2_br_match
+    description: >
+      One row per office: the newest attempt from the append-only,
+      matcher-written llm_l2_br_match_results table, ordered by attempted_at
+      desc and never by confidence or match state. A populated district is
+      what "matched" means now; there is no status column. Supersedes
+      stg_model_predictions__llm_l2_br_match_20260126 for every consumer
+      except candidates_outreach, which is retired separately.
+    columns:
+      - name: br_database_id
+        description: >
+          BallotReady office database id. not_null already lives on the
+          source in __sources.yaml.
+        data_tests:
+          - unique
+      - name: l2_state
+        description: >
+          The matched DISTRICT's state, null on an abstain, completing the
+          (state, type, name) key. NOT the office's state: consumers take
+          that from the position side.
+      - name: is_matched
+        description: >
+          Derived from the district key (l2_district_name is not null).
+          There is no status column, and none should be reintroduced.
+      - name: attempted_at
+        description: When the attempt was made; also the run key.
+    data_tests:
+      # The publication-time label check: the universe is rebuilt just before
+      # publication and every published label is re-tested against it, so a
+      # label that was valid when matched and died before publication is
+      # caught here instead of shipping. Rows from the seeded January
+      # baseline are exempt -- their dead labels ARE the backlog this
+      # project re-attempts, already reopened by int__l2_br_match_pending_offices'
+      # rule 3, not a new regression -- but every run written after the
+      # baseline is held to it. The date literal is the baseline's immutable
+      # run key, not a tunable threshold.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_universe')
+            state_column: l2_state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: "attempted_at > timestamp'2026-01-26'"
+
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions
     columns:

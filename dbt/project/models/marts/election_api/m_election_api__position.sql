@@ -10,12 +10,12 @@ with
             tbl_match.br_database_id,
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
-            coalesce(tbl_override.state, tbl_match.state) as state,
+            coalesce(tbl_override.state, tbl_match.l2_state) as state,
             tbl_position.level,
             tbl_district.district_id,
             tbl_position.created_at,
             tbl_position.updated_at
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as tbl_match
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
         inner join
             {{ ref("int__enhanced_position") }} as tbl_position
             on tbl_match.br_database_id = tbl_position.br_database_id
@@ -24,7 +24,7 @@ with
             on tbl_match.br_database_id = tbl_override.br_database_id
         left join
             resolved_districts as tbl_district
-            on coalesce(tbl_override.state, tbl_match.state) = tbl_district.state
+            on coalesce(tbl_override.state, tbl_match.l2_state) = tbl_district.state
             and coalesce(tbl_override.l2_district_type, tbl_match.l2_district_type)
             = tbl_district.l2_district_type
             and coalesce(tbl_override.l2_district_name, tbl_match.l2_district_name)
@@ -82,7 +82,7 @@ with
         where
             tbl_override.br_database_id not in (
                 select br_database_id
-                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+                from {{ ref("stg_model_predictions__llm_l2_br_match") }}
                 where br_database_id is not null
             )
     ),
