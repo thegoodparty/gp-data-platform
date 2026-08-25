@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from airflow.models import DagBag
+from include.custom_functions.matcha_utils import ENTITIES as _ENTITY_SPECS
 
 
 @contextmanager
@@ -95,3 +96,25 @@ def test_pods_write_dated_tables_never_live():
         args = " ".join(_DAG.get_task(f"{entity}.match").arguments)
         assert "ds_nodash" in args
         assert "--overwrite" in args
+
+
+def test_match_pod_targets_its_own_entity():
+    """Every assertion above is entity-agnostic (task ids, upstream sets, pool
+    name, the ds_nodash/--overwrite substrings), so a factory bug that closes
+    over the loop variable instead of taking `entity` as a parameter would
+    still pass all of them while every group's pod actually matched
+    `election_stage` (the last iteration value). This checks each group's pod
+    is wired to ITS OWN entity's --entity-type flag and table names, which
+    such a bug would break.
+
+    The gate/swap tasks carry the identical closure risk but are TaskFlow
+    task instances wrapping a Python closure; the DAG structure exposes no
+    way to introspect which entity a closure captured, so that half of a
+    late-binding regression is not structurally testable from here.
+    """
+    for entity in _ENTITY_SPECS:
+        args = _DAG.get_task(f"{entity.entity_type}.match").arguments
+        assert args[args.index("--entity-type") + 1] == entity.entity_type
+        joined = " ".join(args)
+        assert entity.cluster_table in joined
+        assert entity.pairwise_table in joined

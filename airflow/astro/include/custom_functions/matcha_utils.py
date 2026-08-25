@@ -166,6 +166,20 @@ def old_name(table: str) -> str:
     return f"{table}_old"
 
 
+SWAP_GATE_VARIABLE = "matcha_swap_enabled"
+
+
+def swap_enabled() -> bool:
+    """Whether the swap step may rename a dated vintage into the live name.
+
+    Case-sensitive and exact on purpose: only the literal string "true" arms
+    it, so an unset, empty, or differently-cased Variable value fails safely
+    into rehearsal (match + gate still run) rather than going live by
+    accident. Reads a Variable, so callable at task runtime only.
+    """
+    return Variable.get(SWAP_GATE_VARIABLE, default_var="") == "true"
+
+
 # ── Gate checks (pure) ──
 
 

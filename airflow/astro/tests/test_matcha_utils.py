@@ -1,9 +1,10 @@
 """Tests for the matcha ER gate and swap helpers."""
 
 from dataclasses import FrozenInstanceError
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from include.custom_functions import matcha_utils
 from include.custom_functions.matcha_utils import (
     ENTITIES,
     TableGate,
@@ -25,6 +26,7 @@ from include.custom_functions.matcha_utils import (
     overlap_sql,
     run_gate,
     stale_vintages,
+    swap_enabled,
     swap_statements,
     swap_table,
     table_exists,
@@ -125,6 +127,31 @@ class TestNaming:
 
     def test_old_name(self):
         assert old_name("clustered_candidacy_stages") == "clustered_candidacy_stages_old"
+
+
+class TestSwapEnabled:
+    """The rehearsal/live switch. Hoisted out of the DAG body specifically so
+    this comparison — the one thing standing between a rehearsal and an
+    accidental live rename — has a unit test at all."""
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("true", True),
+            ("True", False),  # case must match exactly; do not become lenient
+            ("1", False),
+            ("", False),
+        ],
+    )
+    def test_exact_literal_match_only(self, value, expected):
+        with patch.object(matcha_utils.Variable, "get", return_value=value):
+            assert swap_enabled() is expected
+
+    def test_unset_variable_is_rehearsal(self):
+        """An unset Variable resolves through default_var="" — same as an
+        explicit empty string, and must not accidentally arm the swap."""
+        with patch.object(matcha_utils.Variable, "get", return_value=""):
+            assert swap_enabled() is False
 
 
 class TestCheckCounts:

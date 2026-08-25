@@ -33,8 +33,6 @@ still builds and gates the dated tables.
 - `databricks_catalog` — Databricks catalog name.
 - `dbt_cloud_job_id` — dbt Cloud job the bookends run steps against.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
-- `matcha_image_pull_secret` — image pull secret name from Astronomer support.
-  Unset means the GHCR package is public and pulls anonymously.
 
 ### Pools:
 - `matcha_er` — one slot, so only one pod runs at a time.
@@ -42,30 +40,34 @@ still builds and gates the dated tables.
 
 from __future__ import annotations
 
+import logging
+
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.matcha_utils import (
     ENTITIES,
+    SWAP_GATE_VARIABLE,
     EntitySpec,
     dated_name,
     drop_old_table,
     drop_stale_vintages,
     open_connection,
     run_gate,
+    swap_enabled,
     swap_table,
 )
 from kubernetes.client import models as k8s
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
+t_log = logging.getLogger("airflow.task")
+
 MATCHA_IMAGE = "ghcr.io/thegoodparty/gp-data-platform/matcha:latest"
 MATCHA_POOL = "matcha_er"
 ER_SCHEMA = "er_source"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
-SWAP_GATE_VARIABLE = "matcha_swap_enabled"
-IMAGE_PULL_SECRET_VARIABLE = "matcha_image_pull_secret"
 # Weekly schedule, so this keeps roughly a month of vintages to audit against.
 VINTAGE_RETENTION_DAYS = 28
 
@@ -87,31 +89,16 @@ _DBX_ENV: dict[str, str] = {
 }
 
 
-class _MatchaPodOperator(KubernetesPodOperator):
-    """KPO that resolves its image pull secret at task runtime.
+def _match_pod(entity: EntitySpec) -> KubernetesPodOperator:
+    """The container run for one entity, writing this run's dated vintage.
 
-    Astro exposes neither Variables nor deployment env vars to the DAG
-    processor at parse, and `image_pull_secrets` holds Kubernetes client
-    objects rather than strings, so Jinja cannot reach it. Resolving in
-    pre_execute keeps parse metastore-free while letting each deployment carry
-    its own secret: astro-dev receives one from Astronomer support before
-    astro-prod does, and until a deployment has one the matcha GHCR package is
-    public and the kubelet pulls it anonymously.
+    The matcha GHCR package is permanently public, so the pod needs no
+    `image_pull_secrets` and the kubelet pulls it anonymously.
     """
-
-    def pre_execute(self, context) -> None:
-        secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default_var="")
-        if secret_name:
-            self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
-        super().pre_execute(context)
-
-
-def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
-    """The container run for one entity, writing this run's dated vintage."""
     catalog = "{{ var.value.get('databricks_catalog') }}"
     dated_cluster = dated_name(entity.cluster_table, "{{ ds_nodash }}")
     dated_pairwise = dated_name(entity.pairwise_table, "{{ ds_nodash }}")
-    return _MatchaPodOperator(
+    return KubernetesPodOperator(
         task_id="match",
         name=f"matcha-{entity.entity_type.replace('_', '-')}",
         image=MATCHA_IMAGE,
@@ -231,10 +218,11 @@ def matcha_er():
 
             @task(task_id="swap")
             def swap(run_date: str) -> None:
-                if Variable.get(SWAP_GATE_VARIABLE, default_var="") != "true":
-                    print(
-                        f"{SWAP_GATE_VARIABLE} is not 'true' — rehearsal only, "
-                        f"leaving {entity.entity_type} live tables untouched."
+                if not swap_enabled():
+                    t_log.info(
+                        "%s is not 'true' — rehearsal only, leaving %s live tables untouched.",
+                        SWAP_GATE_VARIABLE,
+                        entity.entity_type,
                     )
                     return
                 catalog = Variable.get(CATALOG_VARIABLE)
