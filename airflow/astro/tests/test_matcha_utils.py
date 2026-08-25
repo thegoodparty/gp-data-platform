@@ -17,6 +17,7 @@ from include.custom_functions.matcha_utils import (
     dated_name,
     distinct_count_sql,
     distinct_sources_sql,
+    drop_old_table,
     drop_stale_vintages,
     fqn,
     null_probe_sql,
@@ -394,6 +395,22 @@ class TestTableExists:
         table_exists(conn, "cat", "er_source", "clustered_x")
         sql = cursor.execute.call_args[0][0]
         assert "information_schema.tables" in sql
+
+    def test_escapes_an_embedded_apostrophe(self, mock_connection):
+        """An apostrophe in the table name must not break the string literal."""
+        conn, cursor = mock_connection
+        cursor.fetchone.return_value = None
+        table_exists(conn, "cat", "er_source", "o'malley")
+        sql = cursor.execute.call_args[0][0]
+        assert "table_name = 'o\\'malley'" in sql
+
+
+class TestDropOldTable:
+    def test_drops_the_renamed_aside_table(self, mock_connection):
+        conn, cursor = mock_connection
+        drop_old_table(conn, "cat", "er_source", "clustered_x")
+        sql = cursor.execute.call_args[0][0]
+        assert sql == "DROP TABLE IF EXISTS `cat`.`er_source`.`clustered_x_old`"
 
 
 class TestRunGate:

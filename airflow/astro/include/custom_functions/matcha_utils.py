@@ -344,13 +344,20 @@ def _scalar(cursor, sql: str) -> int:
     return int(row[0]) if row else 0
 
 
+def _sql_string_literal_safe(value: str) -> str:
+    """Escape a value for use inside a single-quoted SQL string literal."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 def table_exists(conn, catalog: str, schema: str, table: str) -> bool:
     """True if the table is present in the catalog."""
+    schema_safe = _sql_string_literal_safe(schema)
+    table_safe = _sql_string_literal_safe(table)
     cursor = conn.cursor()
     try:
         cursor.execute(
             f"SELECT 1 FROM {_ident(catalog)}.information_schema.tables "
-            f"WHERE table_schema = '{schema}' AND table_name = '{table}'"
+            f"WHERE table_schema = '{schema_safe}' AND table_name = '{table_safe}'"
         )
         return cursor.fetchone() is not None
     finally:
@@ -359,11 +366,12 @@ def table_exists(conn, catalog: str, schema: str, table: str) -> bool:
 
 def list_tables(conn, catalog: str, schema: str) -> list[str]:
     """Every table name in the schema."""
+    schema_safe = _sql_string_literal_safe(schema)
     cursor = conn.cursor()
     try:
         cursor.execute(
             f"SELECT table_name FROM {_ident(catalog)}.information_schema.tables "
-            f"WHERE table_schema = '{schema}'"
+            f"WHERE table_schema = '{schema_safe}'"
         )
         return [row[0] for row in cursor.fetchall()]
     finally:
