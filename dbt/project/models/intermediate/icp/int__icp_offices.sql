@@ -9,8 +9,9 @@ with
 
     l2_match as (
         -- the allocation normalizes district names (case, whitespace, trailing
-        -- "(EST.)"); the match snapshot does not, so carry a normalized copy for
-        -- the population join and the voter-count fallback below.
+        -- "(EST.)"); match labels carry the universe's current spelling, which
+        -- can differ from the aggregation's vintage, so carry a normalized copy
+        -- for the population join and the voter-count fallback below.
         select
             *,
             {{ normalize_l2_district_name("l2_district_name") }}
@@ -29,9 +30,9 @@ with
         from {{ ref("int__l2_district_aggregations") }}
     ),
 
-    -- Fallback keyed on the normalized name: the match snapshot carries L2's
-    -- "(EST.)" and whitespace drift, so the exact join above misses and leaves the
-    -- position unsized with null ICP gates.
+    -- Fallback keyed on the normalized name: match labels can carry "(EST.)"
+    -- and whitespace drift against the aggregation's vintage, so the exact join
+    -- above misses and leaves the position unsized with null ICP gates.
     --
     -- max() not sum(): 7 keys nationwide have two raw spellings of one district, so
     -- summing double counts its voters. Deduping also keeps this join 1:1.

@@ -1,5 +1,5 @@
 with
-    -- Both the LLM match snapshot and the override seed name a district by its
+    -- Both the LLM match results and the override seed name a district by its
     -- L2 spelling, which L2 rewrites between vintages. Resolve through this so
     -- a stale spelling still lands on the district that carries the voters.
     resolved_districts as ({{ l2_district_spelling_resolution() }}),
@@ -60,8 +60,8 @@ with
             )
     ),
 
-    -- Inject a match from the override seed for positions absent from the LLM
-    -- snapshot (the left join above can only correct rows that exist there).
+    -- Inject a match from the override seed for positions absent from the match
+    -- table (the left join above can only correct rows that exist there).
     override_injected_positions as (
         select distinct
             tbl_position.id as id,
