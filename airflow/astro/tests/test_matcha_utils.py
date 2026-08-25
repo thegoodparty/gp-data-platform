@@ -12,9 +12,16 @@ from include.custom_functions.matcha_utils import (
     check_id_overlap,
     check_nulls,
     check_sources,
+    count_sql,
     dated_name,
+    distinct_count_sql,
+    distinct_sources_sql,
     fqn,
+    null_probe_sql,
     old_name,
+    overlap_sql,
+    stale_vintages,
+    swap_statements,
 )
 
 
@@ -256,3 +263,101 @@ class TestCheckSources:
     def test_skipped_when_none_expected(self):
         gate = TableGate(cold_start_floor=1, min_prior_ratio=0.5, not_null_columns=())
         check_sources(set(), gate, "pairwise_x")
+
+
+class TestSqlBuilders:
+    """Statement text the gate issues. Assert shape, not formatting."""
+
+    def test_count_sql(self):
+        assert count_sql("`c`.`s`.`t`") == "SELECT count(*) FROM `c`.`s`.`t`"
+
+    def test_distinct_count_sql(self):
+        sql = distinct_count_sql("`c`.`s`.`t`", "unique_id")
+        assert "count(DISTINCT `unique_id`)" in sql
+        assert "FROM `c`.`s`.`t`" in sql
+
+    def test_null_probe_counts_rows_with_any_null(self):
+        sql = null_probe_sql("`c`.`s`.`t`", ("cluster_id", "unique_id"))
+        assert "`cluster_id` IS NULL" in sql
+        assert "`unique_id` IS NULL" in sql
+        assert " OR " in sql
+
+    def test_overlap_sql_joins_on_the_id(self):
+        sql = overlap_sql("`c`.`s`.`d`", "`c`.`s`.`l`", "unique_id")
+        assert "`c`.`s`.`d`" in sql
+        assert "`c`.`s`.`l`" in sql
+        assert "`unique_id`" in sql
+
+    def test_distinct_sources_sql(self):
+        sql = distinct_sources_sql("`c`.`s`.`t`", "source_name")
+        assert "DISTINCT `source_name`" in sql
+
+    def test_builders_reject_unsafe_columns(self):
+        """Column names are constants today, but the guard is cheap."""
+        with pytest.raises(ValueError, match="Unsafe Databricks identifier"):
+            distinct_count_sql("`c`.`s`.`t`", "id`; drop table x; --")
+
+
+class TestSwapStatements:
+    """Unity Catalog has no multi-statement transaction, so the sequence and
+    its idempotency are the whole safety argument."""
+
+    def test_order_when_live_exists(self):
+        stmts = swap_statements("cat", "er_source", "clustered_x", "clustered_x_20260825", True)
+        assert len(stmts) == 3
+        assert stmts[0].startswith("DROP TABLE IF EXISTS")
+        assert "`clustered_x_old`" in stmts[0]
+        assert stmts[1] == (
+            "ALTER TABLE `cat`.`er_source`.`clustered_x` RENAME TO " "`cat`.`er_source`.`clustered_x_old`"
+        )
+        assert stmts[2] == (
+            "ALTER TABLE `cat`.`er_source`.`clustered_x_20260825` RENAME TO "
+            "`cat`.`er_source`.`clustered_x`"
+        )
+
+    def test_pre_drop_comes_first(self):
+        """A crash between swap and cleanup leaves _old behind; the next run's
+        rename-aside would collide with it without this pre-drop."""
+        stmts = swap_statements("cat", "er_source", "clustered_x", "clustered_x_20260825", True)
+        assert stmts.index(next(s for s in stmts if s.startswith("DROP"))) == 0
+
+    def test_cold_start_skips_the_rename_aside(self):
+        """No live table yet: promote the dated table straight into place."""
+        stmts = swap_statements("cat", "er_source", "clustered_x", "clustered_x_20260825", False)
+        assert len(stmts) == 2
+        assert stmts[0].startswith("DROP TABLE IF EXISTS")
+        assert stmts[1] == (
+            "ALTER TABLE `cat`.`er_source`.`clustered_x_20260825` RENAME TO "
+            "`cat`.`er_source`.`clustered_x`"
+        )
+
+
+class TestStaleVintages:
+    """Retention over the dated tables left behind by past runs."""
+
+    def test_selects_only_older_vintages(self):
+        existing = [
+            "clustered_x_20260701",
+            "clustered_x_20260801",
+            "clustered_x_20260825",
+            "clustered_x",
+        ]
+        assert stale_vintages(existing, "clustered_x", "20260801") == ["clustered_x_20260701"]
+
+    def test_cutoff_is_exclusive(self):
+        """A vintage exactly at the cutoff is retained."""
+        existing = ["clustered_x_20260801"]
+        assert stale_vintages(existing, "clustered_x", "20260801") == []
+
+    def test_ignores_the_live_and_old_tables(self):
+        existing = ["clustered_x", "clustered_x_old"]
+        assert stale_vintages(existing, "clustered_x", "20990101") == []
+
+    def test_ignores_other_tables_with_a_shared_prefix(self):
+        """`clustered_x` must not match `clustered_xyz_20260701`."""
+        existing = ["clustered_xyz_20260701"]
+        assert stale_vintages(existing, "clustered_x", "20990101") == []
+
+    def test_ignores_non_date_suffixes(self):
+        existing = ["clustered_x_backup", "clustered_x_2026"]
+        assert stale_vintages(existing, "clustered_x", "20990101") == []

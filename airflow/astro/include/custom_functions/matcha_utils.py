@@ -15,6 +15,7 @@ Everything above the "Databricks execution" divider is pure, so the gate logic
 is testable without a warehouse.
 """
 
+import re
 from dataclasses import dataclass
 
 
@@ -222,3 +223,80 @@ def check_sources(found_sources: set[str], gate: TableGate, table: str) -> None:
         raise ValueError(
             f"{table}: expected sources {missing} absent from " f"{gate.source_column} — refusing to swap"
         )
+
+
+# ── SQL builders (pure) ──
+
+_VINTAGE_SUFFIX = re.compile(r"^(?P<table>.+)_(?P<vintage>\d{8})$")
+
+
+def count_sql(target: str) -> str:
+    """Row count of a fully-qualified table."""
+    return f"SELECT count(*) FROM {target}"
+
+
+def distinct_count_sql(target: str, column: str) -> str:
+    """Distinct values of one column."""
+    return f"SELECT count(DISTINCT {_ident(column)}) FROM {target}"
+
+
+def null_probe_sql(target: str, columns: tuple[str, ...]) -> str:
+    """Count rows carrying a NULL in ANY of `columns`."""
+    predicate = " OR ".join(f"{_ident(c)} IS NULL" for c in columns)
+    return f"SELECT count(*) FROM {target} WHERE {predicate}"
+
+
+def overlap_sql(dated: str, live: str, column: str) -> str:
+    """Count ids present in BOTH the dated and the live table."""
+    col = _ident(column)
+    return (
+        f"SELECT count(*) FROM (SELECT DISTINCT {col} FROM {dated}) d "
+        f"JOIN (SELECT DISTINCT {col} FROM {live}) l ON d.{col} = l.{col}"
+    )
+
+
+def distinct_sources_sql(target: str, column: str) -> str:
+    """Every distinct source value present in the dated table."""
+    return f"SELECT DISTINCT {_ident(column)} FROM {target}"
+
+
+def swap_statements(
+    catalog: str,
+    schema: str,
+    live_table: str,
+    dated_table: str,
+    live_exists: bool,
+) -> list[str]:
+    """Ordered statements that promote a dated vintage into the live name.
+
+    Unity Catalog gives no multi-statement transaction, so the sequence is
+    explicit and idempotent on retry. The pre-drop MUST come first: a crash
+    between the swap and cleanup leaves an `_old` table behind, and the next
+    run's rename-aside would collide with it — failing run after run until a
+    human intervened.
+    """
+    aside = old_name(live_table)
+    statements = [f"DROP TABLE IF EXISTS {fqn(catalog, schema, aside)}"]
+    if live_exists:
+        statements.append(
+            f"ALTER TABLE {fqn(catalog, schema, live_table)} RENAME TO " f"{fqn(catalog, schema, aside)}"
+        )
+    statements.append(
+        f"ALTER TABLE {fqn(catalog, schema, dated_table)} RENAME TO " f"{fqn(catalog, schema, live_table)}"
+    )
+    return statements
+
+
+def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[str]:
+    """Dated vintages of `table` older than `cutoff` (a yyyymmdd string).
+
+    Matches only an exact `<table>_<8 digits>` suffix, so `clustered_x` never
+    sweeps up `clustered_xyz_20260701`, the live table, or `<table>_old`.
+    Vintages are zero-padded yyyymmdd, so a lexical compare is a date compare.
+    """
+    stale = []
+    for name in existing_tables:
+        match = _VINTAGE_SUFFIX.match(name)
+        if match and match.group("table") == table and match.group("vintage") < cutoff:
+            stale.append(name)
+    return sorted(stale)
