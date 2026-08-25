@@ -21,6 +21,9 @@ with
     -- office at one timestamp. `nulls first` is Spark's ASC default and is
     -- stated anyway: an abstention must win the tie, as the previous
     -- match_status ordering did, and leaving it implicit has misled two readers.
+    -- Ordering must stay character-identical to
+    -- stg_model_predictions__llm_l2_br_match, which serves consumers by this
+    -- same rule.
     latest_attempt as (
         select
             br_database_id, l2_state, l2_district_type, l2_district_name, attempted_at

@@ -1,8 +1,8 @@
 -- Overrides the LLM path can't place must get zip->office coverage in
 -- int__zip_code_to_br_office (the override_zip_to_br_office injection),
 -- otherwise the position has a district but is invisible to the officepicker.
--- This covers overrides absent from the snapshot, those present but unmatched
--- (NOT_MATCHED), and those the LLM matched to a different district than the
+-- This covers overrides absent from the match table, those present but
+-- abstained, and those the LLM matched to a different district than the
 -- override specifies. Only positions the LLM matched to the same district are
 -- placed by the LLM path. Scoped to overrides whose L2 district has zips, so
 -- districts with no L2 zip coverage do not produce false failures.
@@ -12,8 +12,8 @@ with
             br_database_id,
             lower(l2_district_type) as l2_district_type,
             lower(l2_district_name) as l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-        where br_database_id is not null and is_matched
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        where is_matched
     ),
     llm_unplaceable_overrides as (
         select o.br_database_id, o.state, o.l2_district_type, o.l2_district_name
