@@ -68,7 +68,9 @@ with
             tbl_override.br_database_id,
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
-            tbl_override.state,
+            -- Office state from the position side here too; the override's
+            -- state stays the district join key below.
+            tbl_position.state,
             tbl_position.level,
             tbl_district.district_id,
             tbl_position.created_at,
