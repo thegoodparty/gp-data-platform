@@ -1,11 +1,10 @@
 -- Product DB users -> Civics mart candidate schema.
--- Grain: one row per user with campaign_count > 0. Schema aligns with
--- int__civics_candidate_ballotready / _techspeed for the downstream union.
+-- Grain: one row per user with at least one valid candidacy. Schema aligns
+-- with int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
     latest_campaigns as (
-        -- 2026+ / non-demo / BR-anchored scope: matches
-        -- int__civics_candidacy_gp_api so both models cover the same user
-        -- universe (the candidacy model inner-joins valid candidates).
+        -- 2026+ / non-demo / BR-anchored scope, used for the state rollup;
+        -- membership itself comes from int__civics_candidacy_gp_api.
         select *
         from {{ ref("campaigns") }}
         where
@@ -15,7 +14,15 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    users_with_real_campaign as (select distinct user_id from latest_campaigns),
+    -- A user with no valid candidacy is not a candidate, so the candidacy model
+    -- (not the raw campaign list) defines the user universe here.
+    users_with_valid_candidacy as (
+        select distinct c.user_id
+        from latest_campaigns as c
+        inner join
+            {{ ref("int__civics_candidacy_gp_api") }} as cy
+            on c.campaign_id = cy.product_campaign_id
+    ),
 
     users_filtered as (
         select
@@ -27,7 +34,7 @@ with
             u.created_at,
             u.updated_at
         from {{ ref("users") }} as u
-        inner join users_with_real_campaign as uw on u.user_id = uw.user_id
+        inner join users_with_valid_candidacy as uw on u.user_id = uw.user_id
         where u.campaign_count > 0
     ),
 
