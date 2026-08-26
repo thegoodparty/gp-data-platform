@@ -277,9 +277,82 @@ def test_no_selection_carries_the_outer_query_wrapper(name, selection):
     assert "nodes(ids:" not in selection, f"{name} still has the nodes() wrapper"
 
 
-def test_candidacy_selection_keeps_the_fields_the_replaced_model_reads():
-    for field in ("databaseId", "id", "candidate", "election", "position", "race"):
-        assert field in CANDIDACY_SELECTION
+def _top_level_fields(selection: str) -> frozenset[str]:
+    """Names of the fields directly inside the `... on Type { ... }` body.
+
+    Ignores commented-out lines (`#...`) and anything nested inside a field's
+    own `{ ... }` sub-selection, so a dropped or added top-level field is
+    caught but renaming something two levels deep is not.
+    """
+    live = "\n".join(line for line in selection.splitlines() if not line.strip().startswith("#"))
+    body = live[live.index("{") + 1 : live.rindex("}")]
+
+    fields = []
+    depth = 0
+    i = 0
+    while i < len(body):
+        char = body[i]
+        if char == "{":
+            depth += 1
+            i += 1
+        elif char == "}":
+            depth -= 1
+            i += 1
+        elif char.isalnum() or char == "_":
+            j = i
+            while j < len(body) and (body[j].isalnum() or body[j] == "_"):
+                j += 1
+            if depth == 0:
+                fields.append(body[i:j])
+            i = j
+        else:
+            i += 1
+    return frozenset(fields)
+
+
+# Complete top-level field set for each selection, verified against the dbt
+# source it was copied from. A dropped, renamed, or newly added top-level
+# field fails this even if it is buried among a dozen others.
+EXPECTED_TOP_LEVEL_FIELDS = {
+    "Candidacy": frozenset(
+        {
+            "candidate",
+            "createdAt",
+            "databaseId",
+            "election",
+            "endorsements",
+            "id",
+            "isCertified",
+            "isHidden",
+            "parties",
+            "position",
+            "race",
+            "result",
+            "stances",
+            "updatedAt",
+            "withdrawn",
+        }
+    ),
+    "Endorsement": frozenset({"id", "databaseId", "endorsements"}),
+    "FilingPeriod": frozenset(
+        {"createdAt", "databaseId", "endOn", "id", "notes", "startOn", "type", "updatedAt"}
+    ),
+    "Geofence": frozenset(
+        {"createdAt", "databaseId", "geoId", "id", "mtfcc", "updatedAt", "validFrom", "validTo"}
+    ),
+    "Issue": frozenset({"databaseId", "id", "key", "name", "pluginEnabled", "responseType", "rowOrder"}),
+    "NormalizedPosition": frozenset({"databaseId", "description", "id", "issues", "mtfcc", "name"}),
+    "Party": frozenset({"id", "databaseId", "parties"}),
+    "PositionElectionFrequency": frozenset(
+        {"databaseId", "frequency", "id", "referenceYear", "seats", "validFrom", "validTo"}
+    ),
+    "Stance": frozenset({"id", "databaseId", "stances"}),
+}
+
+
+@pytest.mark.parametrize("name,selection", sorted(ALL_SELECTIONS.items()))
+def test_selection_top_level_fields_match_the_replaced_model_exactly(name, selection):
+    assert _top_level_fields(selection) == EXPECTED_TOP_LEVEL_FIELDS[name]
 
 
 def test_stance_selection_keeps_the_nested_issue_reference():
