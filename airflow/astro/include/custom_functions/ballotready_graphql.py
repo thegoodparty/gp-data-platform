@@ -6,6 +6,7 @@ payloads in Databricks. Every entity is addressed the same way, through
 of them.
 """
 
+import contextlib
 import gzip
 import json
 import logging
@@ -605,6 +606,8 @@ def issue_worklist_sql(
     slow-changing, so "everything referenced but not yet landed" is both correct
     and cheap. staging_schema, intermediate_schema, and the keyset cursor args
     are accepted but unused, so this builder is callable identically to the rest.
+    Because of this, `full_reload` has no effect on issue: there is no cursor to
+    ignore, and the anti-join against already-landed rows always applies.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -709,8 +712,10 @@ def copy_into_landing(connection, catalog: str, schema: str, entity: str, s3_uri
         execute_with_retry(
             cursor,
             f"COPY INTO {table} FROM ("
-            "  SELECT requested_id, node_id, database_id, payload, source_changed_at, "
-            "         extracted_at, current_timestamp() AS loaded_at, dag_run_id "
+            "  SELECT requested_id, node_id, database_id, payload, "
+            "         cast(source_changed_at AS TIMESTAMP) AS source_changed_at, "
+            "         cast(extracted_at AS TIMESTAMP) AS extracted_at, "
+            "         current_timestamp() AS loaded_at, dag_run_id "
             "  FROM :path"
             ") FILEFORMAT = JSON FORMAT_OPTIONS ('compression' = 'gzip')",
             parameters={"path": s3_uri},
@@ -862,25 +867,34 @@ def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfi
     ids = [source_id for source_id, _ in worklist]
     batches = list(chunked(ids, spec.batch_size))
 
-    session = make_session(config.max_workers)
-    limiter = RateLimiter(config.requests_per_second)
-
-    def fetch_batch(batch: list[int]) -> list[FetchedNode]:
-        return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
-
     rows_written = 0
     parts = 0
-    # Submission order, not completion order, so part numbers stay stable across retries.
-    with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-        futures = {executor.submit(fetch_batch, batch): index for index, batch in enumerate(batches)}
-        for future in as_completed(futures):
-            index = futures[future]
-            fetched = future.result()  # raises before COPY INTO if any worker failed
-            blob = rows_to_ndjson_gz(fetched, changed_at_by_id, config.extracted_at, config.dag_run_id)
-            key = f"{run_prefix}part-{index:05d}.json.gz"
-            s3_client.load_bytes(blob, key=key, bucket_name=config.bucket, replace=True)
-            rows_written += len(fetched)
-            parts += 1
+    with contextlib.closing(make_session(config.max_workers)) as session:
+        limiter = RateLimiter(config.requests_per_second)
+
+        def fetch_batch(batch: list[int]) -> list[FetchedNode]:
+            return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
+
+        with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+            futures = {executor.submit(fetch_batch, batch): index for index, batch in enumerate(batches)}
+            try:
+                # Submission order, not completion order, keeps part numbers deterministic.
+                # Retry safety comes from clearing the run's S3 prefix above, not from this.
+                for future in as_completed(futures):
+                    index = futures[future]
+                    fetched = future.result()  # raises before COPY INTO if any worker failed
+                    blob = rows_to_ndjson_gz(
+                        fetched, changed_at_by_id, config.extracted_at, config.dag_run_id
+                    )
+                    key = f"{run_prefix}part-{index:05d}.json.gz"
+                    s3_client.load_bytes(blob, key=key, bucket_name=config.bucket, replace=True)
+                    rows_written += len(fetched)
+                    parts += 1
+            except Exception:
+                # One failed batch must not let every already-submitted batch keep
+                # hitting the live API before this exception surfaces.
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
     copy_into_landing(
         connection, config.catalog, config.source_schema, spec.name, f"s3://{config.bucket}/{run_prefix}"

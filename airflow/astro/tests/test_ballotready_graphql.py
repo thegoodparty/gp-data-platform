@@ -174,9 +174,11 @@ class FakeSession:
     def __init__(self, responses):
         self._responses = list(responses)
         self.requested_id_counts = []
+        self.requested_ids = []
 
     def post(self, url, json, headers, timeout):
         self.requested_id_counts.append(len(json["variables"]["ids"]))
+        self.requested_ids.append(json["variables"]["ids"])
         return self._responses.pop(0)
 
 
@@ -223,6 +225,14 @@ def test_fetch_nodes_bisects_when_the_response_is_short():
 
     assert [r.requested_id for r in result] == [1, 2, 3, 4]
     assert session.requested_id_counts == [4, 2, 2]
+    # Pins which ids each recursive call actually sent, not just how many, so a
+    # shuffled argument order in the recursive call (e.g. node_type swapped with
+    # another positional arg) fails here instead of silently fetching wrong ids.
+    assert session.requested_ids == [
+        [encode_node_id("Candidacy", i) for i in [1, 2, 3, 4]],
+        [encode_node_id("Candidacy", i) for i in [1, 2]],
+        [encode_node_id("Candidacy", i) for i in [3, 4]],
+    ]
 
 
 def test_fetch_nodes_raises_when_a_single_id_request_is_still_short():
