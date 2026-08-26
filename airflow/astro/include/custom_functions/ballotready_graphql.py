@@ -8,14 +8,20 @@ of them.
 
 import logging
 import random
+import re
 import threading
 import time
 from base64 import b64encode
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
+from include.custom_functions.databricks_utils import execute_with_retry
+
 logger = logging.getLogger("airflow.task")
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 CIVIC_ENGINE_GRAPHQL_URL = "https://bpi.civicengine.com/graphql"
 _NODE_ID_PREFIX = "gid://ballot-factory"
@@ -374,3 +380,189 @@ class EntitySpec:
 def landing_table(catalog: str, schema: str, entity: str) -> str:
     """Fully qualified, backtick-quoted landing table for an entity."""
     return f"`{catalog}`.`{schema}`.`ballotready_{entity}_raw`"
+
+
+def validate_identifier(name: str, value: str) -> str:
+    """Identifiers cannot be bound as parameters in DDL, so they are validated instead."""
+    if not _IDENTIFIER_RE.match(value or ""):
+        raise ValueError(f"{name} is not a valid SQL identifier: {value!r}")
+    return value
+
+
+def format_cursor_ts(value: datetime) -> str:
+    """Render a Databricks timestamp as a tz-naive UTC literal, keeping sub-second precision.
+
+    Precision matters: the tiebreak is only exact if ties really are ties.
+    """
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value.isoformat(sep=" ", timespec="microseconds")
+
+
+def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[datetime | None, int | None]:
+    """The highest (source_changed_at, requested_id) already landed for this entity.
+
+    Derived from the landing table rather than kept separately, so a run that
+    dies part way leaves a cursor that is exactly true.
+    """
+    table = landing_table(
+        validate_identifier("catalog", catalog), validate_identifier("schema", schema), entity
+    )
+    cursor = connection.cursor()
+    try:
+        execute_with_retry(
+            cursor,
+            f"SELECT source_changed_at, requested_id FROM {table} "
+            "ORDER BY source_changed_at DESC, requested_id DESC LIMIT 1",
+        )
+        row = cursor.fetchone()
+        return (row[0], int(row[1])) if row else (None, None)
+    finally:
+        cursor.close()
+
+
+def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
+    """The keyset half of the WHERE clause, or an always-true stand-in."""
+    if after_changed_at is None or after_source_id is None:
+        return "source_changed_at IS NOT NULL"
+    ts = format_cursor_ts(datetime.fromisoformat(after_changed_at))
+    sid = int(after_source_id)
+    return (
+        "source_changed_at IS NOT NULL AND ("
+        f"source_changed_at > TIMESTAMP '{ts}' OR "
+        f"(source_changed_at = TIMESTAMP '{ts}' AND source_id > {sid}))"
+    )
+
+
+def _worklist(inner_sql: str, predicate: str, limit: int) -> str:
+    return (
+        f"WITH worklist AS ({inner_sql}) "
+        f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
+        f"ORDER BY source_changed_at ASC, source_id ASC LIMIT {int(limit)}"
+    )
+
+
+def candidacy_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Candidacy ids from the S3 feed plus the upcoming-race roster.
+
+    The S3 feed omits many upcoming general-stage rosters that the API race
+    object already carries, and without them those candidacies are never fetched.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("dbt_schema", dbt_schema)
+    base = f"`{catalog}`.`{dbt_schema}`"
+    inner = (
+        "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
+        "greatest(candidacy_created_at, candidacy_updated_at) AS source_changed_at "
+        f"FROM {base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
+        "WHERE br_candidacy_id IS NOT NULL "
+        "UNION ALL "
+        "SELECT cast(br_candidacy_id AS bigint) AS source_id, race_updated_at AS source_changed_at "
+        f"FROM {base}.`int__ballotready_upcoming_candidacy_ids` "
+        "WHERE br_candidacy_id IS NOT NULL"
+    )
+    grouped = (
+        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
+    )
+    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
+
+
+def geofence_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Geofence ids referenced by candidacies; geofences carry no update feed of their own.
+
+    Many candidacies share one geofence, so the freshest of them decides when
+    that geofence is next due for a refetch.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
+    inner = (
+        "SELECT cast(br_geofence_id AS bigint) AS source_id, candidacy_updated_at AS source_changed_at "
+        f"FROM {table} WHERE br_geofence_id IS NOT NULL"
+    )
+    grouped = (
+        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
+    )
+    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
+
+
+def race_derived_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Filing period ids exploded out of each race's `filing_periods` array.
+
+    Many races reference the same filing period, so the freshest referencing
+    race decides when that filing period is next due for a refetch.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_race`"
+    inner = (
+        "SELECT cast(filing_period.databaseId AS bigint) AS source_id, updated_at AS source_changed_at "
+        f"FROM {table} LATERAL VIEW explode(filing_periods) AS filing_period "
+        "WHERE filing_period.databaseId IS NOT NULL"
+    )
+    grouped = (
+        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
+    )
+    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
+
+
+def position_derived_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    field: str,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Ids derived from one field of the position payload.
+
+    Two entities (normalized positions, position election frequencies) key off
+    this one staging model with different shapes, so `field` picks between
+    them; a later task binds it per entity with `functools.partial`, leaving
+    the call site identical to the other three builders.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_position`"
+    if field == "normalized_position":
+        id_expr = "normalized_position.databaseId"
+        from_clause = table
+    elif field == "election_frequencies":
+        id_expr = "election_frequency.databaseId"
+        from_clause = f"{table} LATERAL VIEW explode(election_frequencies) AS election_frequency"
+    else:
+        raise ValueError(f"field must be 'normalized_position' or 'election_frequencies', got {field!r}")
+    inner = (
+        f"SELECT cast({id_expr} AS bigint) AS source_id, updated_at AS source_changed_at "
+        f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
+    )
+    grouped = (
+        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
+    )
+    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)

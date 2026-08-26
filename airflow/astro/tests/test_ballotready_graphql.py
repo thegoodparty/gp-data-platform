@@ -1,5 +1,6 @@
 import base64
 from dataclasses import FrozenInstanceError
+from datetime import datetime
 
 import pytest
 from include.custom_functions.ballotready_graphql import (
@@ -15,12 +16,18 @@ from include.custom_functions.ballotready_graphql import (
     EntitySpec,
     FetchedNode,
     RateLimiter,
+    candidacy_worklist_sql,
     chunked,
     encode_node_id,
     fetch_nodes,
+    geofence_worklist_sql,
     is_retryable_status,
     landing_table,
+    position_derived_worklist_sql,
+    race_derived_worklist_sql,
+    read_cursor,
     retry_wait_seconds,
+    validate_identifier,
 )
 
 
@@ -382,3 +389,209 @@ def test_landing_table_names_follow_the_entity():
     assert landing_table("c", "s", "position_election_frequency").endswith(
         "`ballotready_position_election_frequency_raw`"
     )
+
+
+class FakeCursor:
+    def __init__(self, rows):
+        self.rows = rows
+        self.executed = []
+
+    def execute(self, sql, parameters=None):
+        self.executed.append((sql, parameters))
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return self.rows
+
+    def close(self):
+        pass
+
+
+class FakeConnection:
+    def __init__(self, rows):
+        self._cursor = FakeCursor(rows)
+
+    def cursor(self, *args, **kwargs):
+        return self._cursor
+
+
+def test_validate_identifier_accepts_a_plain_name():
+    assert validate_identifier("catalog", "goodparty_data_catalog") == "goodparty_data_catalog"
+
+
+@pytest.mark.parametrize("bad", ["has space", "has-dash", "has`tick", "drop;table", ""])
+def test_validate_identifier_rejects_anything_that_is_not_a_bare_identifier(bad):
+    with pytest.raises(ValueError, match="catalog"):
+        validate_identifier("catalog", bad)
+
+
+def test_read_cursor_returns_none_when_the_landing_table_is_empty():
+    assert read_cursor(FakeConnection([]), "cat", "sch", "issue") == (None, None)
+
+
+def test_read_cursor_returns_the_highest_landed_pair():
+    landed = datetime(2026, 8, 1, 12, 0, 0)
+    assert read_cursor(FakeConnection([(landed, 99)]), "cat", "sch", "issue") == (landed, 99)
+
+
+def test_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=500)
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 500" in sql
+
+
+def test_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
+    sql = candidacy_worklist_sql(
+        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99, limit=10
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 99" in sql
+
+
+def test_worklist_omits_the_predicate_with_no_cursor():
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "TIMESTAMP '" not in sql
+
+
+def test_worklist_rejects_an_injected_schema():
+    with pytest.raises(ValueError, match="dbt_schema"):
+        candidacy_worklist_sql(
+            "cat", "dbt; drop table x", after_changed_at=None, after_source_id=None, limit=10
+        )
+
+
+def test_candidacy_worklist_unions_the_upcoming_ids_source():
+    """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "stg_airbyte_source__ballotready_s3_candidacies_v3" in sql
+    assert "int__ballotready_upcoming_candidacy_ids" in sql
+
+
+def test_candidacy_worklist_accepts_and_ignores_source_schema():
+    """A later builder (issues) needs source_schema; this one takes it for a uniform call site."""
+    sql = candidacy_worklist_sql(
+        "cat", "dbt", source_schema="zzz_marker_schema", after_changed_at=None, after_source_id=None, limit=10
+    )
+    assert "zzz_marker_schema" not in sql
+
+
+def test_geofence_worklist_reads_geofence_ids_off_the_candidacies_table():
+    """Many candidacies share one geofence; the freshest of them decides its due time."""
+    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "stg_airbyte_source__ballotready_s3_candidacies_v3" in sql
+    assert "br_geofence_id" in sql
+    assert "IS NOT NULL" in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_geofence_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
+    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=25)
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 25" in sql
+
+
+def test_geofence_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
+    sql = geofence_worklist_sql(
+        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=5, limit=10
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 5" in sql
+
+
+def test_geofence_worklist_rejects_an_injected_catalog():
+    with pytest.raises(ValueError, match="catalog"):
+        geofence_worklist_sql(
+            "cat; drop table x", "dbt", after_changed_at=None, after_source_id=None, limit=10
+        )
+
+
+def test_race_derived_worklist_explodes_filing_periods():
+    """Filing period ids only exist nested in each race's filing_periods array."""
+    sql = race_derived_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "stg_airbyte_source__ballotready_api_race" in sql
+    assert "LATERAL VIEW explode(filing_periods) AS filing_period" in sql
+    assert "filing_period.databaseId" in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_race_derived_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
+    sql = race_derived_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=50)
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 50" in sql
+
+
+def test_race_derived_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
+    sql = race_derived_worklist_sql(
+        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=7, limit=10
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 7" in sql
+
+
+def test_race_derived_worklist_rejects_an_injected_dbt_schema():
+    with pytest.raises(ValueError, match="dbt_schema"):
+        race_derived_worklist_sql(
+            "cat", "dbt`; drop table x", after_changed_at=None, after_source_id=None, limit=10
+        )
+
+
+def test_position_derived_worklist_reads_the_normalized_position_struct_without_exploding():
+    sql = position_derived_worklist_sql(
+        "cat", "dbt", field="normalized_position", after_changed_at=None, after_source_id=None, limit=10
+    )
+    assert "stg_airbyte_source__ballotready_api_position" in sql
+    assert "normalized_position.databaseId" in sql
+    assert "LATERAL VIEW" not in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_position_derived_worklist_explodes_election_frequencies():
+    sql = position_derived_worklist_sql(
+        "cat", "dbt", field="election_frequencies", after_changed_at=None, after_source_id=None, limit=10
+    )
+    assert "stg_airbyte_source__ballotready_api_position" in sql
+    assert "LATERAL VIEW explode(election_frequencies) AS election_frequency" in sql
+    assert "election_frequency.databaseId" in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_position_derived_worklist_rejects_an_unknown_field():
+    with pytest.raises(ValueError, match="field"):
+        position_derived_worklist_sql(
+            "cat", "dbt", field="bogus", after_changed_at=None, after_source_id=None, limit=10
+        )
+
+
+def test_position_derived_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
+    sql = position_derived_worklist_sql(
+        "cat", "dbt", field="normalized_position", after_changed_at=None, after_source_id=None, limit=15
+    )
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 15" in sql
+
+
+def test_position_derived_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
+    sql = position_derived_worklist_sql(
+        "cat",
+        "dbt",
+        field="election_frequencies",
+        after_changed_at="2026-08-01 12:00:00.000000",
+        after_source_id=3,
+        limit=10,
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 3" in sql
+
+
+def test_position_derived_worklist_rejects_an_injected_catalog():
+    with pytest.raises(ValueError, match="catalog"):
+        position_derived_worklist_sql(
+            "cat; drop table x",
+            "dbt",
+            field="normalized_position",
+            after_changed_at=None,
+            after_source_id=None,
+            limit=10,
+        )
