@@ -184,7 +184,7 @@ def test_extract_ballotready_only_orders_issue_after_stance():
         assert _BR_DAG.get_task(task_id).upstream_list == []
 
 
-def test_extract_ballotready_tasks_share_the_api_pool():
-    """The concurrency budget is pool slots times workers, so the pool must be set."""
+def test_extract_ballotready_bounds_concurrent_tasks():
+    """The concurrency budget is max_active_tasks times max_workers, so this must stay pinned."""
     assert _BR_DAG is not None
-    assert {t.pool for t in _BR_DAG.tasks} == {"ballotready_api"}
+    assert _BR_DAG.max_active_tasks == 4

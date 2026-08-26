@@ -29,10 +29,7 @@ airflow:
       conn_schema: gpdb
       conn_port: 5432
 
-  pools:
-    - pool_name: ballotready_api
-      pool_slot: 4
-      pool_description: Caps concurrent CivicEngine GraphQL callers across entity tasks
+  pools: []
 
   variables:
     - variable_name: databricks_conn_id

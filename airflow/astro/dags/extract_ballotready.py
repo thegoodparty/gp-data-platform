@@ -16,9 +16,9 @@ with `extract_candidacy`, and `geofence` builds its own worklist (`geofence_work
 straight off the S3 candidacies feed. None of them wait on `extract_candidacy` — each builds its
 own worklist independently rather than from another task's output.
 
-All nine share the `ballotready_api` pool, capping how many of them can call the CivicEngine
-GraphQL endpoint at once; each task's own `max_workers`/`requests_per_second` params bound its
-concurrency and rate within that pool slot.
+Concurrency against the CivicEngine GraphQL endpoint is bounded by `max_active_tasks` (how many
+of the nine tasks can run at once) times each task's own `max_workers` param (how many API calls
+that task makes concurrently) — with the defaults below, 4 x 4 = 16 concurrent callers.
 
 ### Configuration
 
@@ -78,6 +78,9 @@ def _safe_run_key(run_id: str) -> str:
     schedule="@daily",
     catchup=False,
     max_active_runs=1,
+    # Bounds concurrent CivicEngine GraphQL callers (an undocumented rate limit); don't raise
+    # without confirming headroom.
+    max_active_tasks=4,
     max_consecutive_failed_dag_runs=5,
     doc_md=__doc__,
     default_args={"retries": 3, "retry_delay": duration(seconds=30)},
@@ -102,7 +105,7 @@ def extract_ballotready():
     tasks = {}
     for name, spec in ENTITY_SPECS.items():
 
-        @task(task_id=f"extract_{name}", pool="ballotready_api")
+        @task(task_id=f"extract_{name}")
         def _extract(name=name, spec=spec) -> dict:
             context = get_current_context()
             params = context["params"]
