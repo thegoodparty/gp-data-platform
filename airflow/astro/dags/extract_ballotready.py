@@ -11,9 +11,10 @@ Databricks, replacing the direct-API dbt Python models those tables used to come
 
 Every task is independent except one: `extract_stance -> extract_issue`, because the issue
 worklist reads issue ids out of landed stance payloads (see `issue_worklist_sql`). The other
-three Candidacy-keyed entities (`party`, `endorsement`) and the two derived from the S3
-candidacies feed directly (`stance`, `geofence`) do not wait on `extract_candidacy` — they all
-build their own worklist from the same staged feed rather than from each other's output.
+three Candidacy-keyed entities (`party`, `endorsement`, `stance`) share `candidacy_worklist_sql`
+with `extract_candidacy`, and `geofence` builds its own worklist (`geofence_worklist_sql`)
+straight off the S3 candidacies feed. None of them wait on `extract_candidacy` — each builds its
+own worklist independently rather than from another task's output.
 
 All nine share the `ballotready_api` pool, capping how many of them can call the CivicEngine
 GraphQL endpoint at once; each task's own `max_workers`/`requests_per_second` params bound its
@@ -83,7 +84,14 @@ def _safe_run_key(run_id: str) -> str:
     tags=["ballotready", "civicengine", "ingestion"],
     is_paused_upon_creation=True,
     params={
-        "full_reload": Param(False, type="boolean", description="Ignore the cursor and re-sweep."),
+        "full_reload": Param(
+            False,
+            type="boolean",
+            description=(
+                "Ignore the cursor and re-sweep. No effect on `issue`: its worklist has no "
+                "cursor and always fetches only what is not yet landed."
+            ),
+        ),
         "max_ids_per_entity": Param(50000, type="integer", minimum=1),
         "entities": Param([], type="array", description="Run only these entities; empty runs all."),
         "max_workers": Param(4, type="integer", minimum=1, maximum=16),
@@ -100,6 +108,9 @@ def extract_ballotready():
             params = context["params"]
 
             requested = set(params["entities"])
+            unknown = requested - set(ENTITY_SPECS)
+            if unknown:
+                raise ValueError(f"Unknown entities in `entities` param: {sorted(unknown)}")
             if requested and name not in requested:
                 t_log.info(f"{name} not in requested entities {sorted(requested)}; skipping")
                 return {"entity": name, "skipped": True}
