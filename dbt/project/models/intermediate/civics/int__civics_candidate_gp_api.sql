@@ -35,7 +35,6 @@ with
             u.updated_at
         from {{ ref("users") }} as u
         inner join users_with_valid_candidacy as uw on u.user_id = uw.user_id
-        where u.campaign_count > 0
     ),
 
     user_state as (
@@ -49,9 +48,9 @@ with
         from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
-    -- hubspotid lives in the user's meta_data JSON, not on the users mart.
+    -- A real HubSpot CONTACT id, and not on the users mart.
     user_hubspot as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 

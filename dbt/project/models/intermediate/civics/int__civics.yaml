@@ -2785,9 +2785,11 @@ models:
     description: >
       Product Database campaigns transformed into the civics mart candidacy
       schema. Grain: one row per latest-version campaign with a non-null
-      election_date whose entity-resolution cluster also holds a BallotReady,
-      TechSpeed, or DDHQ candidacy. A self-reported race no vendor corroborates
-      is not a candidacy.
+      election_date backed by outside evidence that the race is real: either the
+      entity-resolution cluster also holds a BallotReady, TechSpeed, or DDHQ
+      candidacy, or the user's HubSpot contact carries
+      verified_candidate_status = 'Yes'. A self-reported race with neither is
+      not a candidacy.
 
       gp_candidate_id uses the user's derived state (most recent non-demo
       campaign), not the per-campaign state, so users with campaigns in

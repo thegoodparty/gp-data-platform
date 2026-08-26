@@ -23,9 +23,8 @@ with
         where source_name in ('ballotready', 'techspeed', 'ddhq')
     ),
 
-    -- A campaign is a candidacy only when entity resolution puts a vendor
-    -- candidacy in the same cluster. A self-reported race nobody else lists is
-    -- not evidence that the person is on a ballot.
+    -- A self-reported race nobody else lists is not evidence that the person is
+    -- on a ballot, so a campaign needs a vendor candidacy in its cluster.
     corroborated_campaigns as (
         select distinct cast(split(source_id, '__')[0] as bigint) as campaign_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }}
@@ -33,15 +32,37 @@ with
         where source_name = 'gp_api'
     ),
 
-    -- Inner-joined below so the candidacy universe stays gated on users that
-    -- exist in the users mart (matches candidate_gp_api's user filter).
+    -- Sole owner of the user gate now that candidate_gp_api derives its universe
+    -- from this model: a candidacy the users mart can't resolve would have no
+    -- candidate row to point at.
     users as (select user_id from {{ ref("users") }} where campaign_count > 0),
 
-    -- hubspotid lives in the user's meta_data JSON (a real HubSpot CONTACT id),
-    -- not on the users mart. Mirrors int__civics_candidate_gp_api.
+    -- A real HubSpot CONTACT id, and not on the users mart.
     user_hubspot as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+    ),
+
+    -- Someone has independently confirmed the contact is running. Distinct from
+    -- the product's own campaign.is_verified, which is self-asserted. Contact
+    -- grain, so a user's 'Yes' vouches for every 2026+ campaign they hold.
+    hubspot_verified_campaigns as (
+        select distinct c.campaign_id
+        from latest_campaigns as c
+        inner join user_hubspot as uh on c.user_id = uh.user_id
+        inner join
+            {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as hc
+            on uh.hubspot_contact_id = hc.id
+        where trim(hc.verified_candidate_status) = 'Yes'
+    ),
+
+    -- Either kind of outside evidence makes the campaign a candidacy.
+    eligible_campaigns as (
+        select campaign_id
+        from corroborated_campaigns
+        union
+        select campaign_id
+        from hubspot_verified_campaigns
     ),
 
     person_ids as (
@@ -122,7 +143,7 @@ with
             p.gp_person_id as user_gp_person_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
-        inner join corroborated_campaigns as cc on c.campaign_id = cc.campaign_id
+        inner join eligible_campaigns as ec on c.campaign_id = ec.campaign_id
         left join
             person_ids as p on 'gp_api|' || cast(c.user_id as string) = p.record_key
         left join user_hubspot as uh on c.user_id = uh.user_id
