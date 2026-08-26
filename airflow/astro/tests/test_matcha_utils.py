@@ -498,6 +498,24 @@ class TestSwapTable:
         assert len(renames) == 2
         assert any(s.startswith("DROP TABLE IF EXISTS") for s in executed)
 
+    def test_already_promoted_is_a_noop(self, mock_connection):
+        """A retry after the dated table was already consumed by a prior,
+        successful attempt must not re-run drop+rename — there is nothing
+        left to promote, and doing so would destroy `_old` for nothing."""
+        conn, cursor = mock_connection
+        cursor.fetchone.side_effect = [None, (1,)]  # dated: absent, live: present
+        swap_table(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825")
+        executed = [c[0][0] for c in cursor.execute.call_args_list]
+        assert not any(s.startswith(("DROP", "ALTER")) for s in executed)
+
+    def test_neither_table_exists_raises(self, mock_connection):
+        """Dated gone and no live table either means data is missing, not
+        promoted — refuse rather than silently doing nothing."""
+        conn, cursor = mock_connection
+        cursor.fetchone.side_effect = [None, None]  # dated: absent, live: absent
+        with pytest.raises(ValueError, match="Neither"):
+            swap_table(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825")
+
 
 class TestDropStaleVintages:
     def test_drops_only_stale_ones(self, mock_connection):

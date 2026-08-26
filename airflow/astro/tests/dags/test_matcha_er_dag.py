@@ -128,6 +128,14 @@ def test_gate_task_checks_its_own_entitys_tables():
     silently operated on the same (last-iteration) entity's tables. DagBag
     exposes the TaskFlow-wrapped closure via `python_callable`, so invoke it
     directly and assert it gates THAT group's own tables.
+
+    Checks table (args[3]) paired with its OWN gate (args[5]), not just that
+    the right tables and gates each showed up somewhere: a swapped pairing
+    (cluster table checked against the pairwise gate, or vice versa) would
+    under-gate the cluster table — silently dropping its identity/source
+    checks — which is exactly the failure class this branch exists to catch.
+    Index 4 (the dated table name) is skipped: it's derived from args[3] in
+    the same expression and cannot diverge from it independently.
     """
     module = _dag_module()
     for entity in _ENTITY_SPECS:
@@ -139,12 +147,20 @@ def test_gate_task_checks_its_own_entitys_tables():
         ):
             mock_variable.get.return_value = "cat"
             gate_fn("20260825")
-        tables = {call.args[3] for call in mock_run_gate.call_args_list}
-        assert tables == {entity.cluster_table, entity.pairwise_table}
+        pairs = {(call.args[3], call.args[5]) for call in mock_run_gate.call_args_list}
+        assert pairs == {
+            (entity.cluster_table, entity.cluster_gate),
+            (entity.pairwise_table, entity.pairwise_gate),
+        }
 
 
 def test_swap_task_swaps_its_own_entitys_tables():
-    """Same closure risk as `gate`, exercised with the rename path armed."""
+    """Same closure risk as `gate`, exercised with the rename path armed.
+
+    `swap_table`'s call carries no gate-like argument to pair (conn, catalog,
+    schema, table, dated_table only), so there is no equivalent args[5] to
+    tighten this against — the table-name check is already the full claim.
+    """
     module = _dag_module()
     for entity in _ENTITY_SPECS:
         swap_fn = _DAG.get_task(f"{entity.entity_type}.swap").python_callable

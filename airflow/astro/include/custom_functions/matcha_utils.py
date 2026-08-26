@@ -8,8 +8,13 @@ reading an empty or partial table. This module is the other half of that
 contract — it gates the dated table, then renames it into the live name.
 
 Unity Catalog has no multi-statement transaction, so the swap is an explicit
-idempotent sequence rather than one atomic statement, and the leftover `_old`
-from a crashed run is dropped first so a crash never wedges the next run.
+sequence rather than one atomic statement. It is idempotent for a crash
+WITHIN one table's three statements — the leftover `_old` from a crashed run
+is dropped first, so a crash never wedges the next attempt. It is NOT
+idempotent across a full table promotion: a completed swap CONSUMES the dated
+table (it becomes the live table), so `swap_table` guards on the dated
+table's existence before doing anything, rather than re-running drop+rename
+against a table that is already gone.
 
 Everything above the "Databricks execution" divider is pure, so the gate logic
 is testable without a warehouse.
@@ -20,7 +25,7 @@ import re
 from dataclasses import dataclass
 
 from airflow.sdk import BaseHook, Variable
-from include.custom_functions.databricks_utils import get_databricks_connection
+from include.custom_functions.databricks_utils import execute_with_retry, get_databricks_connection
 
 logger = logging.getLogger("airflow.task")
 
@@ -290,10 +295,15 @@ def swap_statements(
     """Ordered statements that promote a dated vintage into the live name.
 
     Unity Catalog gives no multi-statement transaction, so the sequence is
-    explicit and idempotent on retry. The pre-drop MUST come first: a crash
-    between the swap and cleanup leaves an `_old` table behind, and the next
-    run's rename-aside would collide with it — failing run after run until a
-    human intervened.
+    explicit. It is idempotent for a crash WITHIN these three statements: the
+    pre-drop MUST come first, since a crash between the swap and cleanup
+    leaves an `_old` table behind, and the next attempt's rename-aside would
+    collide with it — failing run after run until a human intervened. It is
+    NOT idempotent once the final rename has committed: the dated table no
+    longer exists at that point, and building this same statement list again
+    would fail on a missing table. Callers must not invoke this a second time
+    for a table already promoted — `swap_table` enforces that by checking the
+    dated table's existence first.
     """
     aside = old_name(live_table)
     statements = [f"DROP TABLE IF EXISTS {fqn(catalog, schema, aside)}"]
@@ -433,13 +443,30 @@ def run_gate(
 
 
 def swap_table(conn, catalog: str, schema: str, live_table: str, dated_table: str) -> None:
-    """Promote the dated vintage into the live name."""
+    """Promote the dated vintage into the live name.
+
+    Guards on the DATED table's existence, not just the live one's. The
+    `swap` task loops cluster then pairwise with retries: if the cluster
+    swap completes and the pairwise swap then raises, a naive retry that
+    only checks the live table would see it present and re-run drop+rename —
+    destroying `_old` (the backup) and then failing the final rename because
+    the dated table it's looking for was already consumed by attempt one.
+    Checking the dated table first makes each table's swap resumable: once
+    it's gone, there is nothing left to do.
+    """
+    dated_present = table_exists(conn, catalog, schema, dated_table)
     live_present = table_exists(conn, catalog, schema, live_table)
+    if not dated_present:
+        if live_present:
+            logger.info("%s already promoted; %s is gone. Nothing to do.", live_table, dated_table)
+            return
+        raise ValueError(f"Neither {dated_table} nor {live_table} exists — refusing to swap")
+
     cursor = conn.cursor()
     try:
         for statement in swap_statements(catalog, schema, live_table, dated_table, live_present):
             logger.info("Swap: %s", statement)
-            cursor.execute(statement)
+            execute_with_retry(cursor, statement)
     finally:
         cursor.close()
 

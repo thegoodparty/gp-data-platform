@@ -10,15 +10,26 @@ one — its upload is `CREATE OR REPLACE TABLE` followed by `COPY INTO`, so
 aiming it at a live table would let a mid-upload failure leave every downstream
 dbt model reading an empty or partial table.
 
-The three entities carry no dependency edges between them: no dbt model joins
-two entities' cluster tables, so one failing must not block the others. What
-serialises the pods today is the one-slot `matcha_er` pool, a quota
-accommodation rather than a modelling decision — three 8Gi pods in parallel is
-24Gi against a 20Gi deployment quota. Raising the quota and widening the pool
-needs no change here.
+The three entities carry no dependency edges between them WITHIN THIS DAG:
+each match task depends only on `dbt_refresh_prematch`, so one entity failing
+does not block another from matching, gating, or swapping. That does not mean
+the entities are independent downstream of `er_source` — `marts/civics/
+candidacy_stage.sql` joins the candidacy clustered table with
+`ref("election_stage")`, which derives from `clustered_election_stages`, so a
+civics mart can read a mix of one entity's fresh vintage and another's stale
+one regardless of what this DAG does. What serialises the pods today is the
+one-slot `matcha_er` pool, a quota accommodation rather than a modelling
+decision — three 8Gi pods in parallel is 24Gi against a 20Gi deployment
+quota. Raising the quota and widening the pool needs no change here.
 
-`dbt_build_er_source` waits on all three swaps, so a partial failure withholds
-the downstream build rather than publishing a mixed vintage.
+`dbt_build_er_source` waits on all three swaps, so THIS DAG's own staging
+rebuild never runs against a partially-swapped set. That is not the same as
+`er_source` itself staying consistent: if one entity's swap fails after the
+other two have already replaced their live tables, those two ARE published —
+`er_source` already holds a mix of this run's fresh tables and whichever
+vintage the failed entity's live table was last swapped from. Any other job
+reading `er_source` before a retry succeeds sees that mix; only this DAG's
+own `dbt_build_er_source` step is withheld.
 
 The swap is held behind the `matcha_swap_enabled` Variable: anything but
 "true" withholds only the rename, making every run a full dress rehearsal that
@@ -33,6 +44,8 @@ still builds and gates the dated tables.
 - `databricks_catalog` — Databricks catalog name.
 - `dbt_cloud_job_id` — dbt Cloud job the bookends run steps against.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
+- `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
+  a sha to pin a deployment without a code change.
 
 ### Pools:
 - `matcha_er` — one slot, so only one pod runs at a time.
@@ -63,8 +76,18 @@ from pendulum import duration
 
 t_log = logging.getLogger("airflow.task")
 
-MATCHA_IMAGE = "ghcr.io/thegoodparty/gp-data-platform/matcha:latest"
+# `image` is a KPO template field, so the tag resolves at task runtime, not parse — any merge
+# touching matcha/** would otherwise silently change what the next scheduled run executes with
+# no code change to show for it. A deployment can pin a sha via the Variable with no redeploy;
+# the default keeps today's behavior.
+MATCHA_IMAGE_TAG_VARIABLE = "matcha_image_tag"
+MATCHA_IMAGE = (
+    "ghcr.io/thegoodparty/gp-data-platform/matcha:" "{{ var.value.get('matcha_image_tag', 'latest') }}"
+)
 MATCHA_POOL = "matcha_er"
+# A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
+# two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
+MATCH_EXECUTION_TIMEOUT = duration(hours=4)
 ER_SCHEMA = "er_source"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
@@ -126,6 +149,7 @@ def _match_pod(entity: EntitySpec) -> KubernetesPodOperator:
         in_cluster=True,
         get_logs=True,
         on_finish_action="delete_pod",
+        execution_timeout=MATCH_EXECUTION_TIMEOUT,
     )
 
 
@@ -139,6 +163,10 @@ def _match_pod(entity: EntitySpec) -> KubernetesPodOperator:
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
+    # gate/swap/cleanup are unpooled (only the pods are), so an overlapping manual trigger
+    # would give two runs with different ds_nodash whose swaps can interleave DROP/RENAME on
+    # the same live table.
+    max_active_runs=1,
 )
 def matcha_er():
     # `dbt build` is run plus test, so the prematch not-null/unique tests gate the

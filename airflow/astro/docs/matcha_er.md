@@ -33,14 +33,21 @@ Set on the Astro deployment as **Airflow Variables**:
 | `databricks_catalog` | Databricks catalog name the ER tables live in. |
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
+| `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
 
-**Pool:** `matcha_er`, one slot. Each pod requests 8Gi memory / 4 CPU, and three running in parallel
-would ask for 24Gi against a 20Gi deployment quota, so the pool holds them to one at a time. This is a
-quota accommodation, not a modeling decision — the three entities have no dependency on each other and
-would otherwise run concurrently. Raising the quota and widening the pool needs no DAG change.
+**Pool:** create `matcha_er` with **1 slot** on each deployment (Admin -> Pools) before unpausing the
+DAG — a task assigned to a pool that doesn't exist fails at scheduling, not gracefully. Each pod requests
+8Gi memory / 4 CPU, and three running in parallel would ask for 24Gi against a 20Gi deployment quota, so
+the pool holds them to one at a time. This is a quota accommodation, not a modeling decision — within
+this DAG the three entities have no dependency on each other and would otherwise run concurrently.
+Raising the quota and widening the pool needs no DAG change.
+
+**Concurrency:** the DAG also sets `max_active_runs=1`. `gate`/`swap`/`cleanup` are not pooled — only the
+match pods are — so without this, an overlapping manual trigger would give two runs with different
+`ds_nodash` whose swaps could interleave DROP/RENAME statements against the same live table.
 
 ## Rehearsal vs. live
 
@@ -55,9 +62,9 @@ been reviewed and are trusted to go live.
 whether or not that week's swap actually ran. If a deployment does one live swap and then goes back to
 rehearsal mode (e.g. to test a matcha change before the next real cutover), the next rehearsal run's
 `cleanup` still drops `_old` even though no swap replaced it — the rollback position from the last live
-swap is gone a week later with nothing to show for it. The fallback in that case is a dated vintage:
-they are kept for 28 days regardless of rehearsal/live status, so the pre-swap state can still be
-recovered from the dated table matching the last live swap's run date (see "Rolling back a bad vintage").
+swap is gone a week later. There is no dated-vintage fallback for this: a table that swapped successfully
+no longer has a dated vintage (the rename consumed it), only whatever `_old`/Delta-history recovery
+paths "Rolling back a bad vintage" describes.
 
 ## Image pull
 
@@ -84,18 +91,29 @@ re-triggering `matcha_er`.
 ## When a swap crashes midway
 
 `swap_statements` runs three statements in sequence per table (Unity Catalog has no multi-statement
-transaction): `DROP _old` -> `RENAME live -> _old` -> `RENAME dated -> live`. Where the crash lands
-matters:
+transaction): `DROP _old` -> `RENAME live -> _old` -> `RENAME dated -> live`. The `swap` task calls this
+once for the cluster table, then once for pairwise. Two different things can crash midway, and
+`swap_table` guards on the DATED table's existence specifically so retrying either is safe:
 
-- **Before or during the drop, or after the drop but before the rename-away** (statement 1, or between
-  1 and 2): the live table is never touched. The next attempt just re-drops the (already-gone) `_old`
-  and proceeds normally. No manual action needed.
-- **After the live table has been renamed to `_old` but before the dated table takes its place**
-  (between statement 2 and 3): there is briefly **no live table at all** for that entity's cluster or
-  pairwise table — every downstream dbt model and civics mart reading `er_source.clustered_*` /
-  `pairwise_*` for it fails until the swap completes. This is the state worth actually checking for.
+- **Crash within one table's own three-statement sequence**, before its final rename commits. If it
+  crashes before the live table is renamed away, the live table is untouched and the next attempt just
+  re-drops the (already-gone) `_old` and proceeds normally. If it crashes **after** the live table has
+  been renamed to `_old` but before the dated table takes its place, there is briefly **no live table at
+  all** for that table — every downstream dbt model and civics mart reading it fails until the swap
+  completes. Either way, the dated table for that specific table is still there, so `swap_table` on retry
+  sees the live table missing, runs only the drop-`_old` + rename-dated-into-place pair, and the live
+  table comes back. The `swap` task's own retries (2, at the DAG's default 10-minute delay) normally
+  clear this automatically within about 20 minutes with no manual step.
+- **One table finishes and the other then raises** (e.g. cluster promotes fully, pairwise hits a
+  transient error) — the whole `swap` task fails and Airflow retries it from the top, calling
+  `swap_table` again for BOTH tables. For the table that already finished, its dated table is gone
+  (a completed swap consumes it): `swap_table` checks the dated table first, sees it is gone and the
+  live table is present, logs that it is already promoted, and returns without touching anything. Only
+  the table that actually failed gets swapped for real. This guard is what makes retrying safe — without
+  it, re-running drop+rename against an already-promoted table would destroy the `_old` backup for
+  nothing and then fail trying to rename a dated table that no longer exists.
 
-Check whether the live table is currently missing:
+Check whether a table's live version is currently missing:
 
 ```sql
 SELECT 1 FROM <catalog>.information_schema.tables
@@ -103,13 +121,11 @@ WHERE table_schema = 'er_source' AND table_name = '<table>';
 -- no row back means the live table is missing right now
 ```
 
-The `swap` task's own retries (2, at the DAG's default 10-minute delay) normally clear this
-automatically within about 20 minutes with no manual step: on retry, `swap_table` sees the live table
-does not exist, so it runs only the drop-`_old` + rename-dated-into-place pair and the live table comes
-back. If every retry is exhausted, or you need it back sooner:
+If every retry is exhausted, or you need it back sooner:
 
-- **Clear the `swap` task** for that entity in the Airflow UI to let it try again — safe, since the
-  dated table matcha wrote is untouched by the crash, or
+- **Clear the `swap` task** for that entity in the Airflow UI to let it try again. This is safe in both
+  crash shapes above because of the dated-table guard described there — a table already promoted is
+  skipped rather than re-swapped, and only tables that genuinely still need swapping are touched.
 - **Rename `_old` back into place by hand** if you want the pre-crash vintage restored immediately
   rather than waiting on the retry to install the new one:
 
@@ -119,26 +135,48 @@ ALTER TABLE <catalog>.er_source.<table>_old RENAME TO <catalog>.er_source.<table
 
 ## Rolling back a bad vintage
 
-Dated vintages are kept for 28 days; the immediate prior vintage is also available as `<table>_old`
-until `cleanup` runs after `dbt_build_er_source` succeeds. To roll back, rename the vintage you want
-back into the live name, having first renamed the current (bad) live table aside so it is not lost:
+**A dated vintage that swaps successfully stops existing as a separate table** — the rename consumes it,
+so it IS the live table afterward. The 28-day retention in `cleanup` only ever protects vintages that
+were never promoted: a gate failure, a still-failing entity, or a rehearsal run where `matcha_swap_enabled`
+withheld the rename. **In live steady state, once `cleanup` has run for a given week, there is no dated
+vintage and no `_old` left for that table — nothing for the rollback SQL below to find.** Know which
+recovery path applies before reaching for one at 3am:
 
-```sql
--- 1. Move the current, bad live table out of the way (per table: cluster and pairwise)
-ALTER TABLE <catalog>.er_source.clustered_candidacy_stages
-  RENAME TO <catalog>.er_source.clustered_candidacy_stages_bad_<yyyymmdd>;
+1. **`_old` still exists** (the window between a live swap and the next `cleanup` run, or after a
+   crashed-and-not-yet-cleaned-up swap): the fastest path, and the one to check first.
+   ```sql
+   SELECT 1 FROM <catalog>.information_schema.tables
+   WHERE table_schema = 'er_source' AND table_name = '<table>_old';
+   ```
+   If it exists:
+   ```sql
+   -- 1. Move the current, bad live table out of the way
+   ALTER TABLE <catalog>.er_source.<table> RENAME TO <catalog>.er_source.<table>_bad_<yyyymmdd>;
+   -- 2. Rename the prior vintage back into the live name
+   ALTER TABLE <catalog>.er_source.<table>_old RENAME TO <catalog>.er_source.<table>;
+   -- Repeat for the matching pairwise_/clustered_ counterpart.
+   ```
 
--- 2. Rename the vintage you want back (a dated table, or `_old` if it's the immediate prior one)
---    into the live name
-ALTER TABLE <catalog>.er_source.clustered_candidacy_stages_<yyyymmdd>
-  RENAME TO <catalog>.er_source.clustered_candidacy_stages;
+2. **`_old` is already gone: Unity Catalog `UNDROP TABLE`.** `cleanup`'s `DROP TABLE IF EXISTS` on `_old`
+   is recoverable for **7 days** after the drop:
+   ```sql
+   UNDROP TABLE <catalog>.er_source.<table>_old;
+   ```
+   then follow the two-statement rename sequence in path 1 once it's back.
 
--- Repeat both for the matching pairwise_ table.
-```
+3. **Past the 7-day undrop window: Delta time travel on the live table itself.** The live table's own
+   history holds every version `swap_table`'s renames produced, independent of `_old`/vintage retention:
+   ```sql
+   -- find the version to restore (or use a TIMESTAMP AS OF instead of VERSION AS OF)
+   DESCRIBE HISTORY <catalog>.er_source.<table>;
+   RESTORE TABLE <catalog>.er_source.<table> TO VERSION AS OF <version>;
+   ```
+   Delta's own time-travel retention window (governed by the table's log/vacuum settings, not this DAG)
+   is the real limit here — check it before assuming a given version is still reachable.
 
-**Then re-run `dbt_build_er_source`** (or trigger the underlying dbt Cloud job's
-`dbt build --select path:models/staging/er_source+` step directly) before calling the rollback done.
-Renaming the ER table back is not enough on its own — every downstream mart still has the bad
+Whichever path recovers the table, **re-run `dbt_build_er_source`** (or trigger the underlying dbt Cloud
+job's `dbt build --select path:models/staging/er_source+` step directly) before calling the rollback
+done. Restoring the ER table is not enough on its own — every downstream mart still has the bad
 vintage's output baked in until that build runs again, which is the state most likely to be misread as
 "the rollback didn't work."
 
