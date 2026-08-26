@@ -12,10 +12,11 @@ the run, and returns terminal results. The matcher itself writes nothing --
 prod_gold_data/
 ├── l2_br_matcher.py           # The matcher: class L2BrMatcher
 ├── l2_br_match_schema.py      # Schema of record for llm_l2_br_match_results
-├── l2_br_match_writer.py      # The write path: class MatchResultWriter
-└── vector_store_generator.py  # Unrelated laptop tool, out of scope here --
-                                # still feeds bronze_data's pickle-based path
+└── l2_br_match_writer.py      # The write path: class MatchResultWriter
 ```
+
+(`vector_store_generator.py`, an unrelated laptop tool, stayed behind in omni
+with bronze_data's pickle-based path.)
 
 ## Running
 

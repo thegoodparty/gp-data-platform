@@ -7,12 +7,12 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
-        # omni's shared/ modules carry trailing whitespace and move into
-        # gold-match/ byte-frozen; the whitespace is lint-excluded debt
-        # upstream too.
-        exclude: ^gold-match/shared/
+        # Both gold-match trees are byte-frozen copies from omni (shared/
+        # carries upstream's lint-excluded whitespace debt today); the
+        # rewriting hooks must never touch either, including future re-syncs.
+        exclude: ^gold-match/(shared|stitch_golden_data)/
     -   id: end-of-file-fixer
-        exclude: ^gold-match/shared/
+        exclude: ^gold-match/(shared|stitch_golden_data)/
     -   id: check-yaml
     -   id: mixed-line-ending
         args: ['--fix=lf']

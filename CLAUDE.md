@@ -20,7 +20,7 @@ Each subproject manages its own deps. `cd` into the right one before you install
 | `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
-| `gold-match/` | uv | 3.14 | L2-to-BallotReady district matcher, moved from omni. `cd gold-match && uv sync`, `uv run pytest`. `shared/` is a byte-frozen copy of omni's client modules; don't edit or lint it. |
+| `gold-match/` | uv | 3.14 | L2-to-BallotReady district matcher, moved from omni @ `766137e50`. `cd gold-match && uv sync`, `uv run pytest`. `shared/` and `stitch_golden_data/` are both byte-frozen copies from that omni commit — don't edit, lint, or format them. |
 | `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
 | `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
 
