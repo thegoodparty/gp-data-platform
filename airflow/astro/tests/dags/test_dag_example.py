@@ -65,6 +65,10 @@ _L2_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_l2_voter
 with suppress_logging("airflow"):
     _L2_DAG = DagBag(dag_folder=_L2_DAG_FILE).dags.get("load_l2_voter_files")
 
+_BR_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "extract_ballotready.py")
+with suppress_logging("airflow"):
+    _BR_DAG = DagBag(dag_folder=_BR_DAG_FILE).dags.get("extract_ballotready")
+
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -155,3 +159,32 @@ def test_load_l2_voter_files_sequence():
     assert {t.task_id for t in _L2_DAG.get_task("load").upstream_list} == {"plan_table_loads"}
     # One archive per worker, since sync downloads it whole to a fixed 10 GiB of local disk.
     assert _L2_DAG.get_task("sync").max_active_tis_per_dag == 1
+
+
+def test_extract_ballotready_has_a_task_per_entity():
+    assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
+    assert {t.task_id for t in _BR_DAG.tasks} == {
+        "extract_candidacy",
+        "extract_endorsement",
+        "extract_filing_period",
+        "extract_geofence",
+        "extract_issue",
+        "extract_normalized_position",
+        "extract_party",
+        "extract_position_election_frequency",
+        "extract_stance",
+    }
+
+
+def test_extract_ballotready_only_orders_issue_after_stance():
+    """Everything else reads the S3 candidacies feed directly, so nothing else needs ordering."""
+    assert _BR_DAG is not None
+    assert {t.task_id for t in _BR_DAG.get_task("extract_issue").upstream_list} == {"extract_stance"}
+    for task_id in ("extract_candidacy", "extract_party", "extract_geofence", "extract_endorsement"):
+        assert _BR_DAG.get_task(task_id).upstream_list == []
+
+
+def test_extract_ballotready_tasks_share_the_api_pool():
+    """The concurrency budget is pool slots times workers, so the pool must be set."""
+    assert _BR_DAG is not None
+    assert {t.pool for t in _BR_DAG.tasks} == {"ballotready_api"}

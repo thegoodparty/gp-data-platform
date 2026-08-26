@@ -1,0 +1,136 @@
+"""
+## Extract BallotReady (CivicEngine)
+
+Pulls the nine BallotReady GraphQL entities by id and lands their raw node payloads in
+Databricks, replacing the direct-API dbt Python models those tables used to come from:
+
+    extract_candidacy       extract_endorsement   extract_filing_period
+    extract_geofence         extract_issue         extract_normalized_position
+    extract_party            extract_position_election_frequency
+    extract_stance
+
+Every task is independent except one: `extract_stance -> extract_issue`, because the issue
+worklist reads issue ids out of landed stance payloads (see `issue_worklist_sql`). The other
+three Candidacy-keyed entities (`party`, `endorsement`) and the two derived from the S3
+candidacies feed directly (`stance`, `geofence`) do not wait on `extract_candidacy` — they all
+build their own worklist from the same staged feed rather than from each other's output.
+
+All nine share the `ballotready_api` pool, capping how many of them can call the CivicEngine
+GraphQL endpoint at once; each task's own `max_workers`/`requests_per_second` params bound its
+concurrency and rate within that pool slot.
+
+### Configuration
+
+Connections: the Databricks connection the `databricks_conn_id` variable names (OAuth M2M SQL
+warehouse), and `aws_default` for S3 (leave its credentials empty to use the worker's own role;
+needs `s3:ListBucket`, `s3:PutObject`, and `s3:DeleteObject` on the staging prefix).
+
+Variables:
+- `civicengine_api_token` — bearer token for the CivicEngine GraphQL endpoint.
+- `databricks_conn_id` — names the Databricks connection above.
+- `databricks_catalog` — the Unity Catalog catalog.
+- `databricks_staging_schema` — holds the `stg_airbyte_source__ballotready_*` dbt models that
+  most worklist queries read ids from.
+- `databricks_intermediate_schema` — holds `int__ballotready_upcoming_candidacy_ids`, a second,
+  genuinely different schema the candidacy worklist also reads (upcoming-race rosters the S3
+  feed omits). Conflating the two schemas fails at runtime (TABLE_OR_VIEW_NOT_FOUND), it does
+  not silently read the wrong table.
+- `ballotready_extract_databricks_schema` — where this DAG's own `ballotready_*_raw` landing
+  tables live (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows
+  back out of this schema.
+- `ballotready_extract_s3_bucket` / `ballotready_extract_s3_prefix` — where the gzipped NDJSON
+  batches are staged before `COPY INTO` lands them.
+
+### Params
+
+`entities` narrows a manual run to a subset of the nine (empty runs all). An entity not in the
+list still runs its task, but as a cheap no-op rather than being removed from the graph — the
+task graph is fixed at parse time, and `extract_stance -> extract_issue` must keep working when
+only one side is requested (e.g. `entities: ["issue"]` alone still lets `extract_stance` execute,
+skip its own work, and hand off cleanly). `full_reload`, `max_ids_per_entity`, `max_workers`, and
+`requests_per_second` all forward straight into `ExtractConfig`.
+"""
+
+import logging
+from datetime import UTC
+from datetime import datetime as dt
+from re import sub
+
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.sdk import Param, Variable, dag, get_current_context, task
+from include.custom_functions.ballotready_graphql import ENTITY_SPECS, ExtractConfig, extract_entity
+from include.custom_functions.databricks_utils import connect_from_conn_id
+from pendulum import datetime, duration
+
+t_log = logging.getLogger("airflow.task")
+
+
+def _safe_run_key(run_id: str) -> str:
+    """An Airflow run_id as an S3-path-safe token (run_id can contain ':', which S3 allows but
+    plenty of tooling downstream does not).
+    """
+    return sub(r"[^A-Za-z0-9_.-]", "-", run_id)
+
+
+@dag(
+    start_date=datetime(2026, 8, 1),
+    schedule="@daily",
+    catchup=False,
+    max_active_runs=1,
+    max_consecutive_failed_dag_runs=5,
+    doc_md=__doc__,
+    default_args={"retries": 3, "retry_delay": duration(seconds=30)},
+    tags=["ballotready", "civicengine", "ingestion"],
+    is_paused_upon_creation=True,
+    params={
+        "full_reload": Param(False, type="boolean", description="Ignore the cursor and re-sweep."),
+        "max_ids_per_entity": Param(50000, type="integer", minimum=1),
+        "entities": Param([], type="array", description="Run only these entities; empty runs all."),
+        "max_workers": Param(4, type="integer", minimum=1, maximum=16),
+        "requests_per_second": Param(8.0, type="number", minimum=0.1),
+    },
+)
+def extract_ballotready():
+    tasks = {}
+    for name, spec in ENTITY_SPECS.items():
+
+        @task(task_id=f"extract_{name}", pool="ballotready_api")
+        def _extract(name=name, spec=spec) -> dict:
+            context = get_current_context()
+            params = context["params"]
+
+            requested = set(params["entities"])
+            if requested and name not in requested:
+                t_log.info(f"{name} not in requested entities {sorted(requested)}; skipping")
+                return {"entity": name, "skipped": True}
+
+            run_id = context["dag_run"].run_id
+            config = ExtractConfig(
+                catalog=Variable.get("databricks_catalog"),
+                staging_schema=Variable.get("databricks_staging_schema"),
+                intermediate_schema=Variable.get("databricks_intermediate_schema"),
+                source_schema=Variable.get("ballotready_extract_databricks_schema"),
+                bucket=Variable.get("ballotready_extract_s3_bucket"),
+                prefix=Variable.get("ballotready_extract_s3_prefix"),
+                api_token=Variable.get("civicengine_api_token"),
+                max_ids=params["max_ids_per_entity"],
+                max_workers=params["max_workers"],
+                requests_per_second=params["requests_per_second"],
+                full_reload=params["full_reload"],
+                dag_run_id=run_id,
+                run_key=_safe_run_key(run_id),
+                extracted_at=dt.now(UTC).isoformat(),
+            )
+
+            connection = connect_from_conn_id()
+            try:
+                return extract_entity(spec, connection, S3Hook(aws_conn_id="aws_default"), config)
+            finally:
+                connection.close()
+
+        tasks[name] = _extract()
+
+    tasks["stance"] >> tasks["issue"]
+
+
+extract_ballotready()
