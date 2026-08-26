@@ -581,3 +581,43 @@ def position_derived_worklist_sql(
         f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
     )
     return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
+
+
+def issue_worklist_sql(
+    catalog: str,
+    staging_schema: str,
+    *,
+    intermediate_schema: str | None = None,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Issue ids referenced by landed stances that have not been fetched yet.
+
+    Issues have no timestamped feed to key a cursor on, and the set is small and
+    slow-changing, so "everything referenced but not yet landed" is both correct
+    and cheap. staging_schema, intermediate_schema, and the keyset cursor args
+    are accepted but unused, so this builder is callable identically to the rest.
+    """
+    validate_identifier("catalog", catalog)
+    if source_schema is None:
+        raise ValueError("source_schema is required: issue ids are read out of the landed stance table")
+    validate_identifier("source_schema", source_schema)
+    stance = landing_table(catalog, source_schema, "stance")
+    issue = landing_table(catalog, source_schema, "issue")
+    referenced = (
+        "SELECT DISTINCT cast(get_json_object(stance_json, '$.issue.databaseId') AS bigint) AS source_id "
+        f"FROM {stance} "
+        "LATERAL VIEW explode(from_json(get_json_object(payload, '$.stances'), 'array<string>')) "
+        "AS stance_json "
+        "WHERE payload IS NOT NULL"
+    )
+    return (
+        f"WITH referenced AS ({referenced}) "
+        "SELECT source_id, current_timestamp() AS source_changed_at FROM referenced "
+        "WHERE source_id IS NOT NULL AND NOT EXISTS ("
+        f"SELECT 1 FROM {issue} landed WHERE landed.requested_id = referenced.source_id"
+        ") "
+        f"ORDER BY source_id ASC LIMIT {int(limit)}"
+    )

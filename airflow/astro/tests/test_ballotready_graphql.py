@@ -22,6 +22,7 @@ from include.custom_functions.ballotready_graphql import (
     fetch_nodes,
     geofence_worklist_sql,
     is_retryable_status,
+    issue_worklist_sql,
     landing_table,
     position_derived_worklist_sql,
     race_derived_worklist_sql,
@@ -666,3 +667,52 @@ def test_position_derived_worklist_rejects_an_injected_catalog():
             after_source_id=None,
             limit=10,
         )
+
+
+def test_issue_worklist_reads_issue_ids_out_of_landed_stance_payloads():
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "ballotready_stance_raw" in sql
+    assert "payload" in sql
+
+
+def test_issue_worklist_excludes_ids_already_landed():
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "ballotready_issue_raw" in sql
+    assert "NOT EXISTS" in sql or "LEFT ANTI" in sql
+
+
+def test_issue_worklist_applies_the_limit():
+    assert "LIMIT 100" in issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+
+
+def test_issue_worklist_rejects_an_injected_source_schema():
+    with pytest.raises(ValueError, match="source_schema"):
+        issue_worklist_sql("cat", "dbt", source_schema="src; drop table x", limit=10)
+
+
+def test_issue_worklist_requires_source_schema():
+    """Issue ids only exist in the landed stance table; there is no safe default schema."""
+    with pytest.raises(ValueError, match="source_schema"):
+        issue_worklist_sql("cat", "dbt", limit=10)
+
+
+def test_issue_worklist_excludes_null_payloads():
+    """A null payload records an id the API returned nothing for; it has no stances to read."""
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=10)
+    assert "payload IS NOT NULL" in sql
+
+
+def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
+    """A later task calls every worklist builder identically, without branching on entity name."""
+    sql = issue_worklist_sql(
+        "cat",
+        "dbt",
+        intermediate_schema="dbtint",
+        source_schema="src",
+        after_changed_at="2026-08-01 12:00:00.000000",
+        after_source_id=99,
+        limit=10,
+    )
+    assert "ballotready_stance_raw" in sql
+    assert "dbtint" not in sql
+    assert "2026-08-01" not in sql
