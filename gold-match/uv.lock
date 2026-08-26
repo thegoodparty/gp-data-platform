@@ -364,7 +364,7 @@ wheels = [
 [[package]]
 name = "gold-match"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "braintrust" },
     { name = "databricks-sql-connector" },

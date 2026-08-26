@@ -26,6 +26,18 @@ dev = [
     "pytest",
 ]
 
+# omni installs `shared` into its env (its hatch wheel), which is the only
+# reason the README's `uv run stitch_golden_data/prod_gold_data/l2_br_matcher.py`
+# entrypoint resolves imports there. Mirror the mechanism, installing both
+# ported packages editable so every entrypoint works, not just pytest (which
+# puts the project root on sys.path itself).
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shared", "stitch_golden_data"]
+
 [tool.pytest.ini_options]
 testpaths = ["stitch_golden_data/prod_gold_data/tests"]
 
