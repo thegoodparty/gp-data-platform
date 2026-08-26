@@ -87,6 +87,19 @@ def test_no_tool_use_raises():
             llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
 
 
+def test_truncated_response_raises_even_with_schema_valid_input():
+    """stopReason max_tokens means the forced tool call was cut off; a
+    schema-valid-looking input must still be rejected -- this is the case
+    the stopReason gate exists for, distinct from the missing-block guard."""
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 1, "selection_confidence": 80}
+    stubber.add_response("converse", converse_response(payload, stop_reason="max_tokens"), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(StructuredOutputError, match="max_tokens"):
+            llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+
+
 def test_schema_violation_raises_and_usage_still_counted():
     client, stubber = make_client_and_stubber()
     bad = {"selected_candidate_number": 2, "selection_confidence": 950}
