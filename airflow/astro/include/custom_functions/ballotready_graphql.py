@@ -6,6 +6,8 @@ payloads in Databricks. Every entity is addressed the same way, through
 of them.
 """
 
+import gzip
+import json
 import logging
 import random
 import re
@@ -622,6 +624,41 @@ def issue_worklist_sql(
         ") "
         f"ORDER BY source_id ASC LIMIT {int(limit)}"
     )
+
+
+def rows_to_ndjson_gz(
+    fetched: list[FetchedNode],
+    changed_at_by_id: dict[int, datetime],
+    extracted_at: str,
+    dag_run_id: str,
+) -> bytes:
+    """Serialize a batch as gzipped NDJSON matching the landing table columns.
+
+    A line is written for every requested id, with a null payload where the API
+    returned nothing. Skipping those would leave the id below the cursor forever
+    and would read downstream as a deletion rather than an absence.
+    """
+    if not fetched:
+        return b""
+    lines = []
+    for item in fetched:
+        node = item.node
+        changed_at = changed_at_by_id.get(item.requested_id)
+        lines.append(
+            json.dumps(
+                {
+                    "requested_id": item.requested_id,
+                    "node_id": node.get("id") if node is not None else None,
+                    "database_id": node.get("databaseId") if node is not None else None,
+                    "payload": json.dumps(node, default=str) if node is not None else None,
+                    "source_changed_at": format_cursor_ts(changed_at) if changed_at else None,
+                    "extracted_at": extracted_at,
+                    "dag_run_id": dag_run_id,
+                },
+                default=str,
+            )
+        )
+    return gzip.compress("\n".join(lines).encode("utf-8"))
 
 
 # Four entities share candidacy_worklist_sql: their selections are all inline

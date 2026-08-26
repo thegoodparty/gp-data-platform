@@ -1,4 +1,6 @@
 import base64
+import gzip
+import json
 from dataclasses import FrozenInstanceError
 from datetime import datetime
 
@@ -29,6 +31,7 @@ from include.custom_functions.ballotready_graphql import (
     race_derived_worklist_sql,
     read_cursor,
     retry_wait_seconds,
+    rows_to_ndjson_gz,
     validate_identifier,
 )
 
@@ -811,3 +814,63 @@ def test_position_derived_specs_are_bound_to_distinct_fields():
     assert "election_frequency.databaseId" not in normalized_sql
     assert "election_frequency.databaseId" in frequency_sql
     assert "normalized_position.databaseId" not in frequency_sql
+
+
+CHANGED = {1: datetime(2026, 8, 1, 9, 0, 0), 2: datetime(2026, 8, 1, 10, 0, 0)}
+
+
+def _decode(blob):
+    return [json.loads(line) for line in gzip.decompress(blob).decode().splitlines()]
+
+
+def test_ndjson_emits_one_line_per_requested_id_including_misses():
+    fetched = [FetchedNode(1, {"databaseId": 11, "id": "abc"}), FetchedNode(2, None)]
+
+    rows = _decode(rows_to_ndjson_gz(fetched, CHANGED, "2026-08-25T00:00:00", "run-1"))
+
+    assert [r["requested_id"] for r in rows] == [1, 2]
+    assert rows[1]["payload"] is None
+    assert rows[1]["node_id"] is None
+    assert rows[1]["database_id"] is None
+
+
+def test_ndjson_stores_the_payload_as_a_json_string():
+    fetched = [FetchedNode(1, {"databaseId": 11, "id": "abc"})]
+
+    rows = _decode(rows_to_ndjson_gz(fetched, CHANGED, "2026-08-25T00:00:00", "run-1"))
+
+    assert json.loads(rows[0]["payload"]) == {"databaseId": 11, "id": "abc"}
+    assert rows[0]["database_id"] == 11
+    assert rows[0]["node_id"] == "abc"
+
+
+def test_ndjson_carries_the_source_changed_at_that_put_the_id_on_the_worklist():
+    rows = _decode(rows_to_ndjson_gz([FetchedNode(2, None)], CHANGED, "2026-08-25T00:00:00", "run-1"))
+    assert rows[0]["source_changed_at"] == "2026-08-01 10:00:00.000000"
+
+
+def test_ndjson_stamps_the_run_and_extraction_time():
+    rows = _decode(
+        rows_to_ndjson_gz(
+            [
+                FetchedNode(1, {}),
+            ],
+            CHANGED,
+            "2026-08-25T00:00:00",
+            "run-1",
+        )
+    )
+    assert rows[0]["dag_run_id"] == "run-1"
+    assert rows[0]["extracted_at"] == "2026-08-25T00:00:00"
+
+
+def test_ndjson_of_no_rows_is_empty():
+    assert rows_to_ndjson_gz([], CHANGED, "2026-08-25T00:00:00", "run-1") == b""
+
+
+def test_ndjson_empty_dict_node_is_a_hit_not_a_miss():
+    """An empty dict is a hit; node is None is the miss."""
+    rows = _decode(rows_to_ndjson_gz([FetchedNode(1, {})], CHANGED, "2026-08-25T00:00:00", "run-1"))
+    assert rows[0]["payload"] is not None
+    assert rows[0]["node_id"] is None
+    assert rows[0]["database_id"] is None
