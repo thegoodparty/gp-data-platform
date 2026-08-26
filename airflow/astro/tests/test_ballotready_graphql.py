@@ -21,6 +21,8 @@ from include.custom_functions.ballotready_graphql import (
     RateLimiter,
     candidacy_worklist_sql,
     chunked,
+    copy_into_landing,
+    create_landing_table,
     encode_node_id,
     fetch_nodes,
     geofence_worklist_sql,
@@ -874,3 +876,91 @@ def test_ndjson_empty_dict_node_is_a_hit_not_a_miss():
     assert rows[0]["payload"] is not None
     assert rows[0]["node_id"] is None
     assert rows[0]["database_id"] is None
+
+
+def test_create_landing_table_is_idempotent_and_fully_qualified():
+    connection = FakeConnection([])
+    create_landing_table(connection, "cat", "sch", "stance")
+    sql = connection.cursor().executed[-1][0]
+    assert "CREATE TABLE IF NOT EXISTS `cat`.`sch`.`ballotready_stance_raw`" in sql
+
+
+def test_landing_table_declares_every_contract_column():
+    connection = FakeConnection([])
+    create_landing_table(connection, "cat", "sch", "stance")
+    sql = connection.cursor().executed[-1][0]
+    for column in (
+        "requested_id",
+        "node_id",
+        "database_id",
+        "payload",
+        "source_changed_at",
+        "extracted_at",
+        "loaded_at",
+        "dag_run_id",
+    ):
+        assert column in sql
+
+
+def test_copy_into_binds_the_path_and_stamps_loaded_at():
+    connection = FakeConnection([])
+    copy_into_landing(connection, "cat", "sch", "stance", "s3://bucket/prefix/stance/run-1/")
+    sql, parameters = connection.cursor().executed[-1]
+    assert "COPY INTO `cat`.`sch`.`ballotready_stance_raw`" in sql
+    assert "current_timestamp() AS loaded_at" in sql
+    assert "FILEFORMAT = JSON" in sql
+    assert parameters == {"path": "s3://bucket/prefix/stance/run-1/"}
+
+
+def test_copy_into_rejects_an_injected_schema():
+    with pytest.raises(ValueError, match="schema"):
+        copy_into_landing(FakeConnection([]), "cat", "sch; drop table x", "stance", "s3://b/p/")
+
+
+def _ddl_column_names(sql: str) -> list[str]:
+    """Column names declared in a `CREATE TABLE (...)` statement, in order."""
+    inside = sql[sql.index("(") + 1 : sql.rindex(")")]
+    return [part.strip().split()[0] for part in inside.split(",")]
+
+
+def _select_column_names(sql: str) -> list[str]:
+    """Output column names of a `SELECT ... FROM` clause, in order.
+
+    An aliased expression (`current_timestamp() AS loaded_at`) resolves to its
+    alias, since that alias is what lands in the target column.
+    """
+    start = sql.index("SELECT") + len("SELECT")
+    end = sql.index("FROM", start)
+    names = []
+    for part in sql[start:end].split(","):
+        part = part.strip()
+        names.append(part.split(" AS ")[-1].strip() if " AS " in part else part)
+    return names
+
+
+def test_landing_table_declares_exactly_the_task_8_ndjson_keys_plus_loaded_at():
+    """A renamed DDL column would otherwise land its NDJSON counterpart as a silent NULL."""
+    ndjson_keys = list(
+        _decode(rows_to_ndjson_gz([FetchedNode(1, {"id": "abc"})], CHANGED, "2026-08-25T00:00:00", "run-1"))[
+            0
+        ].keys()
+    )
+
+    connection = FakeConnection([])
+    create_landing_table(connection, "cat", "sch", "stance")
+    ddl_columns = _ddl_column_names(connection.cursor().executed[-1][0])
+
+    assert set(ddl_columns) == {*ndjson_keys, "loaded_at"}
+
+
+def test_copy_into_select_list_matches_the_landing_table_column_order():
+    """COPY INTO's subquery aligns to the target table positionally, not by name."""
+    ddl_connection = FakeConnection([])
+    create_landing_table(ddl_connection, "cat", "sch", "stance")
+    ddl_columns = _ddl_column_names(ddl_connection.cursor().executed[-1][0])
+
+    copy_connection = FakeConnection([])
+    copy_into_landing(copy_connection, "cat", "sch", "stance", "s3://bucket/prefix/stance/run-1/")
+    select_columns = _select_column_names(copy_connection.cursor().executed[-1][0])
+
+    assert select_columns == ddl_columns

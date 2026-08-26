@@ -661,6 +661,61 @@ def rows_to_ndjson_gz(
     return gzip.compress("\n".join(lines).encode("utf-8"))
 
 
+def create_landing_table(connection, catalog: str, schema: str, entity: str) -> None:
+    """Create the append-only raw landing table for an entity if it is absent.
+
+    Column order matches copy_into_landing's SELECT list: COPY INTO's subquery
+    result aligns to the target table positionally, not by name.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("schema", schema)
+    table = landing_table(catalog, schema, entity)
+    cursor = connection.cursor()
+    try:
+        execute_with_retry(cursor, f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
+        execute_with_retry(
+            cursor,
+            f"CREATE TABLE IF NOT EXISTS {table} ("
+            "  requested_id BIGINT,"
+            "  node_id STRING,"
+            "  database_id BIGINT,"
+            "  payload STRING,"
+            "  source_changed_at TIMESTAMP,"
+            "  extracted_at TIMESTAMP,"
+            "  loaded_at TIMESTAMP,"
+            "  dag_run_id STRING"
+            ") CLUSTER BY AUTO",
+        )
+    finally:
+        cursor.close()
+
+
+def copy_into_landing(connection, catalog: str, schema: str, entity: str, s3_uri: str) -> None:
+    """Load this run's staged files into the landing table, once, at the end.
+
+    Deliberately not per batch: concurrent fetches finish out of order, so a
+    partial load would advance the cursor past ids that never landed and they
+    would never be requested again. COPY INTO also tracks the files it has
+    already ingested, so a task retry does not double-load.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("schema", schema)
+    table = landing_table(catalog, schema, entity)
+    cursor = connection.cursor()
+    try:
+        execute_with_retry(
+            cursor,
+            f"COPY INTO {table} FROM ("
+            "  SELECT requested_id, node_id, database_id, payload, source_changed_at, "
+            "         extracted_at, current_timestamp() AS loaded_at, dag_run_id "
+            "  FROM :path"
+            ") FILEFORMAT = JSON FORMAT_OPTIONS ('compression' = 'gzip')",
+            parameters={"path": s3_uri},
+        )
+    finally:
+        cursor.close()
+
+
 # Four entities share candidacy_worklist_sql: their selections are all inline
 # fragments on Candidacy, keyed off the same candidacy id set from the same feed.
 ENTITY_SPECS: dict[str, EntitySpec] = {
