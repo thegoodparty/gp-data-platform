@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 from airflow.models import DagBag
+from airflow.operators.python import PythonOperator
 from include.custom_functions.ballotready_graphql import ENTITY_SPECS
 
 
@@ -37,7 +38,9 @@ with suppress_logging("airflow"):
 
 def _callable(entity_name: str):
     assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
-    return _BR_DAG.get_task(f"extract_{entity_name}").python_callable
+    task = _BR_DAG.get_task(f"extract_{entity_name}")
+    assert isinstance(task, PythonOperator), f"extract_{entity_name} is not a PythonOperator"
+    return task.python_callable
 
 
 def _context(entities: list[str]) -> dict:

@@ -35,6 +35,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import requests
 from airflow.sdk import Param, Variable, dag, get_current_context, task
@@ -95,7 +96,7 @@ def probe_fetch(
     completed) instead of raising on the array length.
     """
     query = f"query GetNodesBatch($ids: [ID!]!) {{ nodes(ids: $ids) {{ {selection} }} }}"
-    payload = {
+    payload: dict[str, Any] = {
         "query": query,
         "variables": {"ids": [encode_node_id(node_type, i) for i in ids]},
     }

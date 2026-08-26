@@ -29,6 +29,8 @@ from requests.adapters import HTTPAdapter
 logger = logging.getLogger("airflow.task")
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
+# No quote character: this is interpolated inside a single-quoted SQL string literal.
+_S3_URI_RE = re.compile(r"^s3://[a-z0-9.-]+/[A-Za-z0-9!_.*()/=-]+/$")
 
 CIVIC_ENGINE_GRAPHQL_URL = "https://bpi.civicengine.com/graphql"
 _NODE_ID_PREFIX = "gid://ballot-factory"
@@ -400,6 +402,13 @@ def validate_identifier(name: str, value: str) -> str:
     return value
 
 
+def validate_s3_uri(value: str) -> str:
+    """Paths cannot be bound in a COPY INTO FROM clause, so they are validated instead."""
+    if not _S3_URI_RE.match(value or ""):
+        raise ValueError(f"not a valid s3:// uri: {value!r}")
+    return value
+
+
 def format_cursor_ts(value: datetime) -> str:
     """Render a Databricks timestamp as a tz-naive UTC literal, keeping sub-second precision.
 
@@ -710,6 +719,7 @@ def copy_into_landing(connection, catalog: str, schema: str, entity: str, s3_uri
     """
     validate_identifier("catalog", catalog)
     validate_identifier("schema", schema)
+    validate_s3_uri(s3_uri)
     table = landing_table(catalog, schema, entity)
     cursor = connection.cursor()
     try:
@@ -720,9 +730,8 @@ def copy_into_landing(connection, catalog: str, schema: str, entity: str, s3_uri
             "         cast(source_changed_at AS TIMESTAMP) AS source_changed_at, "
             "         cast(extracted_at AS TIMESTAMP) AS extracted_at, "
             "         current_timestamp() AS loaded_at, dag_run_id "
-            "  FROM :path"
+            f"  FROM '{s3_uri}'"
             ") FILEFORMAT = JSON FORMAT_OPTIONS ('compression' = 'gzip')",
-            parameters={"path": s3_uri},
         )
     finally:
         cursor.close()

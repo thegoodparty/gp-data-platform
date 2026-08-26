@@ -41,6 +41,7 @@ from include.custom_functions.ballotready_graphql import (
     retry_wait_seconds,
     rows_to_ndjson_gz,
     validate_identifier,
+    validate_s3_uri,
 )
 
 
@@ -886,19 +887,39 @@ def test_landing_table_declares_every_contract_column():
         assert column in sql
 
 
-def test_copy_into_binds_the_path_and_stamps_loaded_at():
+def test_copy_into_inlines_the_quoted_path_and_stamps_loaded_at():
     connection = FakeConnection([])
     copy_into_landing(connection, "cat", "sch", "stance", "s3://bucket/prefix/stance/run-1/")
     sql, parameters = connection.cursor().executed[-1]
     assert "COPY INTO `cat`.`sch`.`ballotready_stance_raw`" in sql
+    assert "FROM 's3://bucket/prefix/stance/run-1/'" in sql
     assert "current_timestamp() AS loaded_at" in sql
     assert "FILEFORMAT = JSON" in sql
-    assert parameters == {"path": "s3://bucket/prefix/stance/run-1/"}
+    assert parameters is None
 
 
 def test_copy_into_rejects_an_injected_schema():
     with pytest.raises(ValueError, match="schema"):
         copy_into_landing(FakeConnection([]), "cat", "sch; drop table x", "stance", "s3://b/p/")
+
+
+def test_validate_s3_uri_accepts_a_normal_uri():
+    assert validate_s3_uri("s3://bucket/prefix/stance/run-1/") == "s3://bucket/prefix/stance/run-1/"
+
+
+def test_validate_s3_uri_rejects_a_single_quote():
+    with pytest.raises(ValueError, match="uri"):
+        validate_s3_uri("s3://bucket/prefix/it's/run-1/")
+
+
+def test_validate_s3_uri_rejects_a_path_missing_the_trailing_slash():
+    with pytest.raises(ValueError, match="uri"):
+        validate_s3_uri("s3://bucket/prefix/stance/run-1")
+
+
+def test_validate_s3_uri_rejects_a_non_s3_scheme():
+    with pytest.raises(ValueError, match="uri"):
+        validate_s3_uri("http://bucket/prefix/stance/run-1/")
 
 
 def _ddl_column_names(sql: str) -> list[str]:
