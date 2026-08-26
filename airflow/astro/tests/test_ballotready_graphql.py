@@ -681,6 +681,23 @@ def test_issue_worklist_excludes_ids_already_landed():
     assert "NOT EXISTS" in sql or "LEFT ANTI" in sql
 
 
+def test_issue_worklist_correlates_the_anti_join_on_matching_ids():
+    """Pin both the exact correlation predicate and which table it excludes against.
+
+    A swapped correlation (e.g. comparing a column to itself) would make the
+    anti-join a permanent no-op, or pointing it at the wrong table would make it
+    exclude nothing real; either regression would still pass a substring check
+    that only looks for "NOT EXISTS" and the table name somewhere in the SQL.
+    """
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    issue_table = landing_table("cat", "src", "issue")
+    correlation = (
+        f"NOT EXISTS (SELECT 1 FROM {issue_table} landed WHERE landed.requested_id = referenced.source_id)"
+    )
+    assert correlation in sql
+    assert "SELECT source_id, current_timestamp() AS source_changed_at FROM referenced" in sql
+
+
 def test_issue_worklist_applies_the_limit():
     assert "LIMIT 100" in issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
 
