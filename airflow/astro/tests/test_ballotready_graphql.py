@@ -2,9 +2,11 @@ import base64
 
 import pytest
 from include.custom_functions.ballotready_graphql import (
+    FetchedNode,
     RateLimiter,
     chunked,
     encode_node_id,
+    fetch_nodes,
     is_retryable_status,
     retry_wait_seconds,
 )
@@ -117,3 +119,121 @@ def test_retry_wait_backoff_grows_with_the_attempt_number():
 def test_retry_wait_never_returns_a_negative_wait_for_a_negative_retry_after():
     wait = retry_wait_seconds({"Retry-After": "-5"}, attempt=0)
     assert wait >= 0.0
+
+
+SELECTION = "... on Candidacy { databaseId id }"
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, body=None, headers=None):
+        self.status_code = status_code
+        self._body = body or {}
+        self.headers = headers or {}
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class FakeSession:
+    """Returns queued responses in order and records the ids each call requested."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.requested_id_counts = []
+
+    def post(self, url, json, headers, timeout):
+        self.requested_id_counts.append(len(json["variables"]["ids"]))
+        return self._responses.pop(0)
+
+
+def _ok(nodes):
+    return FakeResponse(body={"data": {"nodes": nodes}})
+
+
+def _limiter():
+    return RateLimiter(requests_per_second=1000.0, sleep=lambda s: None, clock=lambda: 0.0)
+
+
+def test_fetch_nodes_maps_results_positionally():
+    session = FakeSession([_ok([{"databaseId": 11}, None, {"databaseId": 33}])])
+
+    result = fetch_nodes([1, 2, 3], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+    assert result == [
+        FetchedNode(requested_id=1, node={"databaseId": 11}),
+        FetchedNode(requested_id=2, node=None),
+        FetchedNode(requested_id=3, node={"databaseId": 33}),
+    ]
+
+
+def test_fetch_nodes_does_not_key_results_by_database_id():
+    """databaseId need not equal the requested id, so position is the only safe mapping."""
+    session = FakeSession([_ok([{"databaseId": 999}])])
+
+    result = fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+    assert result == [FetchedNode(requested_id=1, node={"databaseId": 999})]
+
+
+def test_fetch_nodes_bisects_when_the_response_is_short():
+    """A short array means silent truncation, so split and retry rather than lose rows."""
+    session = FakeSession(
+        [
+            _ok([{"databaseId": 1}, {"databaseId": 2}]),  # 4 requested, 2 returned
+            _ok([{"databaseId": 1}, {"databaseId": 2}]),  # first half
+            _ok([{"databaseId": 3}, {"databaseId": 4}]),  # second half
+        ]
+    )
+
+    result = fetch_nodes([1, 2, 3, 4], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+    assert [r.requested_id for r in result] == [1, 2, 3, 4]
+    assert session.requested_id_counts == [4, 2, 2]
+
+
+def test_fetch_nodes_raises_when_a_single_id_request_is_still_short():
+    session = FakeSession([_ok([])])
+
+    with pytest.raises(RuntimeError, match="returned 0 nodes for 1 id"):
+        fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+
+def test_fetch_nodes_retries_a_429_and_pauses_every_worker():
+    limiter = _limiter()
+    paused = []
+    limiter.pause_for = lambda s: paused.append(s)
+    session = FakeSession([FakeResponse(429, headers={"Retry-After": "7"}), _ok([{"databaseId": 1}])])
+
+    result = fetch_nodes([1], "Candidacy", SELECTION, "tok", limiter, session, sleep=lambda s: None)
+
+    assert paused == [7.0]
+    assert result == [FetchedNode(requested_id=1, node={"databaseId": 1})]
+
+
+def test_fetch_nodes_raises_on_graphql_errors():
+    session = FakeSession([FakeResponse(body={"errors": [{"message": "nope"}]})])
+
+    with pytest.raises(RuntimeError, match="CivicEngine GraphQL errors"):
+        fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+
+def test_fetch_nodes_sends_encoded_ids_and_a_bearer_token():
+    captured = {}
+
+    class CapturingSession(FakeSession):
+        def post(self, url, json, headers, timeout):
+            captured["url"] = url
+            captured["ids"] = json["variables"]["ids"]
+            captured["auth"] = headers["Authorization"]
+            return super().post(url, json, headers, timeout)
+
+    session = CapturingSession([_ok([{"databaseId": 1}])])
+    fetch_nodes([42], "Issue", SELECTION, "tok", _limiter(), session)
+
+    assert captured["url"] == "https://bpi.civicengine.com/graphql"
+    assert captured["ids"] == [encode_node_id("Issue", 42)]
+    assert captured["auth"] == "Bearer tok"
