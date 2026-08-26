@@ -89,7 +89,7 @@ def retry_wait_seconds(
     retry_after = headers.get("Retry-After") or headers.get("retry-after")
     if retry_after:
         try:
-            return min(float(retry_after), max_backoff)
+            return max(0.0, min(float(retry_after), max_backoff))
         except ValueError:
             pass
     return rng(0, min(base_backoff * (2**attempt), max_backoff))

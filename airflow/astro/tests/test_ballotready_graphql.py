@@ -112,3 +112,8 @@ def test_retry_wait_backoff_grows_with_the_attempt_number():
     rng = lambda lo, hi: hi  # noqa: E731
     waits = [retry_wait_seconds({}, attempt=n, base_backoff=1.0, rng=rng) for n in range(4)]
     assert waits == [1.0, 2.0, 4.0, 8.0]
+
+
+def test_retry_wait_never_returns_a_negative_wait_for_a_negative_retry_after():
+    wait = retry_wait_seconds({"Retry-After": "-5"}, attempt=0)
+    assert wait >= 0.0
