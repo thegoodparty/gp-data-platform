@@ -15,12 +15,15 @@ import threading
 import time
 from base64 import b64encode
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
+import requests
 from include.custom_functions.databricks_utils import execute_with_retry
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger("airflow.task")
 
@@ -743,3 +746,152 @@ ENTITY_SPECS: dict[str, EntitySpec] = {
     ),
     "issue": EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql),
 }
+
+
+@dataclass(frozen=True)
+class ExtractConfig:
+    """Per-run parameters threaded through every entity's extract task.
+
+    staging_schema and intermediate_schema are the two dbt read schemas a
+    worklist query may need. source_schema is where this DAG's own landing
+    tables live (it is what issue_worklist_sql reads landed stance/issue rows
+    back out of). run_key names the S3 path; dag_run_id is stamped into the
+    landed rows. They are usually the same value, but run_key must be safe to
+    use in a path where an Airflow run_id (which can contain ':') might not be.
+    """
+
+    catalog: str
+    staging_schema: str
+    intermediate_schema: str
+    source_schema: str
+    bucket: str
+    prefix: str
+    api_token: str
+    max_ids: int
+    max_workers: int
+    requests_per_second: float
+    full_reload: bool
+    dag_run_id: str
+    run_key: str
+    extracted_at: str
+
+
+def make_session(max_workers: int) -> requests.Session:
+    """A session whose connection pool can actually serve `max_workers` requests at once.
+
+    requests.Session's default pool holds 10 connections; below max_workers,
+    extra threads queue on the pool instead of the network and the
+    concurrency configured by max_workers never materializes.
+    """
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+def read_worklist(
+    connection,
+    spec: EntitySpec,
+    config: ExtractConfig,
+    after: tuple[datetime | None, int | None],
+) -> list[tuple[int, datetime]]:
+    """Run one entity's worklist query for at most config.max_ids ids.
+
+    Every builder in ENTITY_SPECS takes the same keyword signature, so this
+    never branches on entity name.
+    """
+    after_changed_at, after_source_id = after
+    sql = spec.worklist_sql(
+        config.catalog,
+        config.staging_schema,
+        intermediate_schema=config.intermediate_schema,
+        source_schema=config.source_schema,
+        after_changed_at=format_cursor_ts(after_changed_at) if after_changed_at is not None else None,
+        after_source_id=after_source_id,
+        limit=config.max_ids,
+    )
+    cursor = connection.cursor()
+    try:
+        execute_with_retry(cursor, sql)
+        return [(int(row[0]), row[1]) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+
+
+def _run_prefix(config: ExtractConfig, entity: str) -> str:
+    return f"{config.prefix}/{entity}/{config.run_key}/"
+
+
+def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfig) -> dict:
+    """Extract one entity end to end: cursor, worklist, concurrent fetch, land.
+
+    COPY INTO runs exactly once, after every batch has landed in S3. Batches
+    complete out of order under threading, and the cursor is derived from the
+    landing table's own max (source_changed_at, requested_id); loading per
+    batch would let that max run ahead of ids a crash left unfetched, so those
+    ids would never be requested again.
+    """
+    create_landing_table(connection, config.catalog, config.source_schema, spec.name)
+
+    after: tuple[datetime | None, int | None] = (
+        (None, None)
+        if config.full_reload
+        else read_cursor(connection, config.catalog, config.source_schema, spec.name)
+    )
+
+    worklist = read_worklist(connection, spec, config, after)
+    if not worklist:
+        return {
+            "entity": spec.name,
+            "ids_requested": 0,
+            "rows_written": 0,
+            "parts": 0,
+            "cursor_source_changed_at": after[0],
+            "cursor_requested_id": after[1],
+        }
+
+    run_prefix = _run_prefix(config, spec.name)
+    stale_keys = s3_client.list_keys(bucket_name=config.bucket, prefix=run_prefix)
+    if stale_keys:
+        # A retry reuses dag_run_id/run_key, so the previous attempt's parts
+        # are still here; COPY INTO would otherwise ingest both attempts.
+        s3_client.delete_objects(bucket=config.bucket, keys=stale_keys)
+
+    changed_at_by_id = dict(worklist)
+    ids = [source_id for source_id, _ in worklist]
+    batches = list(chunked(ids, spec.batch_size))
+
+    session = make_session(config.max_workers)
+    limiter = RateLimiter(config.requests_per_second)
+
+    def fetch_batch(batch: list[int]) -> list[FetchedNode]:
+        return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
+
+    rows_written = 0
+    parts = 0
+    # Submission order, not completion order, so part numbers stay stable across retries.
+    with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+        futures = {executor.submit(fetch_batch, batch): index for index, batch in enumerate(batches)}
+        for future in as_completed(futures):
+            index = futures[future]
+            fetched = future.result()  # raises before COPY INTO if any worker failed
+            blob = rows_to_ndjson_gz(fetched, changed_at_by_id, config.extracted_at, config.dag_run_id)
+            key = f"{run_prefix}part-{index:05d}.json.gz"
+            s3_client.load_bytes(blob, key=key, bucket_name=config.bucket, replace=True)
+            rows_written += len(fetched)
+            parts += 1
+
+    copy_into_landing(
+        connection, config.catalog, config.source_schema, spec.name, f"s3://{config.bucket}/{run_prefix}"
+    )
+
+    last_id, last_changed_at = worklist[-1]
+    return {
+        "entity": spec.name,
+        "ids_requested": len(worklist),
+        "rows_written": rows_written,
+        "parts": parts,
+        "cursor_source_changed_at": last_changed_at,
+        "cursor_requested_id": last_id,
+    }

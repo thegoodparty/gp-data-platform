@@ -3,6 +3,7 @@ import gzip
 import json
 from dataclasses import FrozenInstanceError
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 from include.custom_functions.ballotready_graphql import (
@@ -17,6 +18,7 @@ from include.custom_functions.ballotready_graphql import (
     POSITION_ELECTION_FREQUENCY_SELECTION,
     STANCE_SELECTION,
     EntitySpec,
+    ExtractConfig,
     FetchedNode,
     RateLimiter,
     candidacy_worklist_sql,
@@ -24,11 +26,13 @@ from include.custom_functions.ballotready_graphql import (
     copy_into_landing,
     create_landing_table,
     encode_node_id,
+    extract_entity,
     fetch_nodes,
     geofence_worklist_sql,
     is_retryable_status,
     issue_worklist_sql,
     landing_table,
+    make_session,
     position_derived_worklist_sql,
     race_derived_worklist_sql,
     read_cursor,
@@ -964,3 +968,128 @@ def test_copy_into_select_list_matches_the_landing_table_column_order():
     select_columns = _select_column_names(copy_connection.cursor().executed[-1][0])
 
     assert select_columns == ddl_columns
+
+
+def _config(**overrides):
+    base = dict(
+        catalog="cat",
+        staging_schema="dbt",
+        intermediate_schema="dbt_intermediate",
+        source_schema="src",
+        bucket="bucket",
+        prefix="ballotready/graphql",
+        api_token="tok",
+        max_ids=1000,
+        max_workers=2,
+        requests_per_second=1000.0,
+        full_reload=False,
+        dag_run_id="run-1",
+        run_key="run-1",
+        extracted_at="2026-08-25T00:00:00",
+    )
+    base.update(overrides)
+    return ExtractConfig(**base)
+
+
+def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    s3 = MagicMock()
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+
+    assert summary["ids_requested"] == 0
+    assert summary["rows_written"] == 0
+    s3.load_bytes.assert_not_called()
+
+
+def test_extract_entity_clears_the_run_prefix_before_writing(monkeypatch):
+    """A retry reuses the dag_run_id, so stale parts would be ingested twice."""
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: [(1, datetime(2026, 8, 1))],
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda ids, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in ids],
+    )
+    s3 = MagicMock()
+    s3.list_keys.return_value = ["ballotready/graphql/issue/run-1/part-00000.json.gz"]
+
+    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+
+    s3.delete_objects.assert_called_once()
+
+
+def test_extract_entity_writes_one_part_per_batch_and_copies_once(monkeypatch):
+    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 251)]
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+    copies = []
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.copy_into_landing",
+        lambda *a, **k: copies.append(a),
+    )
+    s3 = MagicMock()
+    s3.list_keys.return_value = []
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+
+    assert s3.load_bytes.call_count == 3  # 250 ids at batch_size 100
+    assert len(copies) == 1
+    assert summary["rows_written"] == 250
+
+
+def test_extract_entity_skips_the_cursor_on_full_reload(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_cursor",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("cursor must not be read")),
+    )
+
+    def _fake_read_worklist(conn, spec, config, after):
+        # `after` is (None, None), a truthy tuple, so `... or []` would never
+        # fall through; record it and return the empty worklist explicitly.
+        seen["after"] = after
+        return []
+
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", _fake_read_worklist)
+
+    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), MagicMock(), _config(full_reload=True))
+
+    assert seen["after"] == (None, None)
+
+
+def test_extract_entity_does_not_copy_into_landing_when_a_worker_fails(monkeypatch):
+    """A partial fetch must never reach COPY INTO, or the cursor would skip the failed ids forever."""
+    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 201)]  # two batches of 100
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+
+    def flaky_fetch(batch, *a, **k):
+        if batch[0] == 101:
+            raise RuntimeError("boom")
+        return [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch]
+
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.fetch_nodes", flaky_fetch)
+    copies = []
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.copy_into_landing",
+        lambda *a, **k: copies.append(a),
+    )
+    s3 = MagicMock()
+    s3.list_keys.return_value = []
+
+    with pytest.raises(RuntimeError, match="boom"):
+        extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+
+    assert copies == []
+
+
+def test_make_session_pool_covers_every_worker():
+    """Below max_workers in the pool, extra threads queue on the pool and gain nothing."""
+    session = make_session(8)
+    adapter = session.get_adapter("https://bpi.civicengine.com/graphql")
+    assert adapter._pool_connections >= 8
+    assert adapter._pool_maxsize >= 8
