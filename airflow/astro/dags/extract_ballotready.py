@@ -23,8 +23,7 @@ that task makes concurrently) — with the defaults below, 4 x 4 = 16 concurrent
 ### Configuration
 
 Connections: the Databricks connection the `databricks_conn_id` variable names (OAuth M2M SQL
-warehouse), and `aws_default` for S3 (leave its credentials empty to use the worker's own role;
-needs `s3:ListBucket`, `s3:PutObject`, and `s3:DeleteObject` on the staging prefix).
+warehouse).
 
 Variables:
 - `civicengine_api_token` — bearer token for the CivicEngine GraphQL endpoint.
@@ -35,10 +34,6 @@ Variables:
 - `databricks_source_schema` — where this DAG's own `ballotready_*_raw` landing tables live
   (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows back out of
   this schema.
-- `ballotready_extract_s3_bucket` — where the gzipped NDJSON batches are staged before
-  `COPY INTO` lands them. The staging prefix under that bucket is a code constant
-  (`S3_STAGING_PREFIX` in `ballotready_graphql.py`), not a Variable — there is no
-  `ballotready_extract_s3_prefix` Variable to configure.
 
 ### Params
 
@@ -53,22 +48,13 @@ skip its own work, and hand off cleanly). `full_reload`, `max_ids_per_entity`, `
 import logging
 from datetime import UTC
 from datetime import datetime as dt
-from re import sub
 
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import Param, Variable, dag, get_current_context, task
 from include.custom_functions.ballotready_graphql import ENTITY_SPECS, ExtractConfig, extract_entity
 from include.custom_functions.databricks_utils import connect_from_conn_id
 from pendulum import datetime, duration
 
 t_log = logging.getLogger("airflow.task")
-
-
-def _safe_run_key(run_id: str) -> str:
-    """An Airflow run_id as an S3-path-safe token (run_id can contain ':', which S3 allows but
-    plenty of tooling downstream does not).
-    """
-    return sub(r"[^A-Za-z0-9_.-]", "-", run_id)
 
 
 @dag(
@@ -121,20 +107,18 @@ def extract_ballotready():
                 catalog=Variable.get("databricks_catalog"),
                 dbt_schema=Variable.get("databricks_dbt_schema"),
                 source_schema=Variable.get("databricks_source_schema"),
-                bucket=Variable.get("ballotready_extract_s3_bucket"),
                 api_token=Variable.get("civicengine_api_token"),
                 max_ids=params["max_ids_per_entity"],
                 max_workers=params["max_workers"],
                 requests_per_second=params["requests_per_second"],
                 full_reload=params["full_reload"],
                 dag_run_id=run_id,
-                run_key=_safe_run_key(run_id),
                 extracted_at=dt.now(UTC).isoformat(),
             )
 
             connection = connect_from_conn_id()
             try:
-                return extract_entity(spec, connection, S3Hook(aws_conn_id="aws_default"), config)
+                return extract_entity(spec, connection, config)
             finally:
                 connection.close()
 

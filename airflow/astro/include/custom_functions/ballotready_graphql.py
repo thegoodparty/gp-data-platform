@@ -7,7 +7,6 @@ of them.
 """
 
 import contextlib
-import gzip
 import json
 import logging
 import random
@@ -29,15 +28,18 @@ from requests.adapters import HTTPAdapter
 logger = logging.getLogger("airflow.task")
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
-# No quote character: this is interpolated inside a single-quoted SQL string literal.
-_S3_URI_RE = re.compile(r"^s3://[a-z0-9.-]+/[A-Za-z0-9!_.*()/=-]+/$")
 
 CIVIC_ENGINE_GRAPHQL_URL = "https://bpi.civicengine.com/graphql"
 _NODE_ID_PREFIX = "gid://ballot-factory"
 
-# A path convention, not an environment-specific value, so it is a constant rather than a
-# Variable; the bucket Variable already carries the dev/prod distinction.
-S3_STAGING_PREFIX = "ballotready/graphql"
+# Ids are fetched and inserted one window at a time, in cursor order, so a crash mid-run
+# leaves a contiguous prefix committed rather than an out-of-order gap. See extract_entity.
+WINDOW_SIZE = 2000
+
+# 7 bound values per row; at 200 rows/statement that is 1400 parameters, deliberately
+# conservative because the connector's actual per-statement parameter cap could not be
+# verified from here. Trivially tunable if that turns out to be too small.
+INSERT_BATCH_SIZE = 200
 
 
 def encode_node_id(node_type: str, node_id: int) -> str:
@@ -418,13 +420,6 @@ def validate_identifier(name: str, value: str) -> str:
     return value
 
 
-def validate_s3_uri(value: str) -> str:
-    """Paths cannot be bound in a COPY INTO FROM clause, so they are validated instead."""
-    if not _S3_URI_RE.match(value or ""):
-        raise ValueError(f"not a valid s3:// uri: {value!r}")
-    return value
-
-
 def format_cursor_ts(value: datetime) -> str:
     """Render a Databricks timestamp as a tz-naive UTC literal, keeping sub-second precision.
 
@@ -661,46 +656,41 @@ def issue_worklist_sql(
     )
 
 
-def rows_to_ndjson_gz(
+def build_insert_rows(
     fetched: list[FetchedNode],
     changed_at_by_id: dict[int, datetime],
     extracted_at: str,
     dag_run_id: str,
-) -> bytes:
-    """Serialize a batch as gzipped NDJSON matching the landing table columns.
+) -> list[tuple[int, str | None, int | None, str | None, str | None, str, str]]:
+    """One row per requested id, in landing table column order minus loaded_at.
 
-    A line is written for every requested id, with a null payload where the API
+    A row is built for every requested id, with a null payload where the API
     returned nothing. Skipping those would leave the id below the cursor forever
-    and would read downstream as a deletion rather than an absence.
+    and would read downstream as a deletion rather than an absence. `node is not
+    None` (not truthiness) decides a hit, because an empty dict is a real payload.
     """
-    if not fetched:
-        return b""
-    lines = []
+    rows = []
     for item in fetched:
         node = item.node
         changed_at = changed_at_by_id.get(item.requested_id)
-        lines.append(
-            json.dumps(
-                {
-                    "requested_id": item.requested_id,
-                    "node_id": node.get("id") if node is not None else None,
-                    "database_id": node.get("databaseId") if node is not None else None,
-                    "payload": json.dumps(node, default=str) if node is not None else None,
-                    "source_changed_at": format_cursor_ts(changed_at) if changed_at else None,
-                    "extracted_at": extracted_at,
-                    "dag_run_id": dag_run_id,
-                },
-                default=str,
+        rows.append(
+            (
+                item.requested_id,
+                node.get("id") if node is not None else None,
+                node.get("databaseId") if node is not None else None,
+                json.dumps(node, default=str) if node is not None else None,
+                format_cursor_ts(changed_at) if changed_at is not None else None,
+                extracted_at,
+                dag_run_id,
             )
         )
-    return gzip.compress("\n".join(lines).encode("utf-8"))
+    return rows
 
 
 def create_landing_table(connection, catalog: str, schema: str, entity: str) -> None:
     """Create the append-only raw landing table for an entity if it is absent.
 
-    Column order matches copy_into_landing's SELECT list: COPY INTO's subquery
-    result aligns to the target table positionally, not by name.
+    Column order matches insert_rows's column list.
     """
     validate_identifier("catalog", catalog)
     validate_identifier("schema", schema)
@@ -725,30 +715,49 @@ def create_landing_table(connection, catalog: str, schema: str, entity: str) -> 
         cursor.close()
 
 
-def copy_into_landing(connection, catalog: str, schema: str, entity: str, s3_uri: str) -> None:
-    """Load this run's staged files into the landing table, once, at the end.
+def insert_rows(
+    connection,
+    catalog: str,
+    schema: str,
+    entity: str,
+    rows: list[tuple[int, str | None, int | None, str | None, str | None, str, str]],
+) -> None:
+    """Append rows to the landing table in one or more parameterized multi-row INSERTs.
 
-    Deliberately not per batch: concurrent fetches finish out of order, so a
-    partial load would advance the cursor past ids that never landed and they
-    would never be requested again. COPY INTO also tracks the files it has
-    already ingested, so a task retry does not double-load.
+    Chunked at INSERT_BATCH_SIZE to stay well clear of the connector's per-statement
+    parameter cap (see the constant's comment). Always an INSERT, never a MERGE:
+    duplicates are expected on a full_reload or a genuine BallotReady change, and
+    downstream dedup on (requested_id, max(loaded_at)) resolves them.
     """
+    if not rows:
+        return
     validate_identifier("catalog", catalog)
     validate_identifier("schema", schema)
-    validate_s3_uri(s3_uri)
     table = landing_table(catalog, schema, entity)
     cursor = connection.cursor()
     try:
-        execute_with_retry(
-            cursor,
-            f"COPY INTO {table} FROM ("
-            "  SELECT requested_id, node_id, database_id, payload, "
-            "         cast(source_changed_at AS TIMESTAMP) AS source_changed_at, "
-            "         cast(extracted_at AS TIMESTAMP) AS extracted_at, "
-            "         current_timestamp() AS loaded_at, dag_run_id "
-            f"  FROM '{s3_uri}'"
-            ") FILEFORMAT = JSON FORMAT_OPTIONS ('compression' = 'gzip')",
-        )
+        for chunk in chunked(rows, INSERT_BATCH_SIZE):
+            value_groups = []
+            parameters: dict[str, Any] = {}
+            for i, row in enumerate(chunk):
+                requested_id, node_id, database_id, payload, source_changed_at, extracted_at, dag_run_id = row
+                value_groups.append(
+                    f"(:requested_id_{i}, :node_id_{i}, :database_id_{i}, :payload_{i}, "
+                    f"cast(:source_changed_at_{i} AS TIMESTAMP), cast(:extracted_at_{i} AS TIMESTAMP), "
+                    f"current_timestamp(), :dag_run_id_{i})"
+                )
+                parameters[f"requested_id_{i}"] = requested_id
+                parameters[f"node_id_{i}"] = node_id
+                parameters[f"database_id_{i}"] = database_id
+                parameters[f"payload_{i}"] = payload
+                parameters[f"source_changed_at_{i}"] = source_changed_at
+                parameters[f"extracted_at_{i}"] = extracted_at
+                parameters[f"dag_run_id_{i}"] = dag_run_id
+            sql = (
+                f"INSERT INTO {table} (requested_id, node_id, database_id, payload, "
+                "source_changed_at, extracted_at, loaded_at, dag_run_id) VALUES " + ", ".join(value_groups)
+            )
+            execute_with_retry(cursor, sql, parameters=parameters)
     finally:
         cursor.close()
 
@@ -789,23 +798,18 @@ class ExtractConfig:
     dbt_schema is the one dbt read schema a worklist query may need (the
     stg_airbyte_source__ballotready_* models). source_schema is where this
     DAG's own landing tables live (it is what issue_worklist_sql reads landed
-    stance/issue rows back out of). run_key names the S3 path; dag_run_id is
-    stamped into the landed rows. They are usually the same value, but run_key
-    must be safe to use in a path where an Airflow run_id (which can contain
-    ':') might not be.
+    stance/issue rows back out of). dag_run_id is stamped into the landed rows.
     """
 
     catalog: str
     dbt_schema: str
     source_schema: str
-    bucket: str
     api_token: str
     max_ids: int
     max_workers: int
     requests_per_second: float
     full_reload: bool
     dag_run_id: str
-    run_key: str
     extracted_at: str
 
 
@@ -851,20 +855,18 @@ def read_worklist(
         cursor.close()
 
 
-def _run_prefix(config: ExtractConfig, entity: str) -> str:
-    # Trailing slash matters: without it "run-1" would also match "run-10" and a
-    # delete could reach another run's files.
-    return f"{S3_STAGING_PREFIX}/{entity}/{config.run_key}/"
-
-
-def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfig) -> dict:
+def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     """Extract one entity end to end: cursor, worklist, concurrent fetch, land.
 
-    COPY INTO runs exactly once, after every batch has landed in S3. Batches
-    complete out of order under threading, and the cursor is derived from the
-    landing table's own max (source_changed_at, requested_id); loading per
-    batch would let that max run ahead of ids a crash left unfetched, so those
-    ids would never be requested again.
+    The worklist arrives sorted by (source_changed_at, source_id) ascending. It is
+    fetched and inserted one WINDOW_SIZE-sized window at a time, in that order, rather
+    than fetched wholesale and loaded once. The cursor is derived from the landing
+    table's own max (source_changed_at, requested_id); an out-of-order insert (e.g. one
+    committing whichever batch happens to finish first under threading) could push that
+    max ahead of an id that never landed, and that id would then sit below the cursor
+    forever. Landing windows in cursor order instead means a crash mid-run always leaves
+    a contiguous prefix committed, so the cursor read on retry is exactly right and
+    picks back up where the failure left off.
     """
     create_landing_table(connection, config.catalog, config.source_schema, spec.name)
 
@@ -880,61 +882,53 @@ def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfi
             "entity": spec.name,
             "ids_requested": 0,
             "rows_written": 0,
-            "parts": 0,
+            "windows": 0,
             "cursor_source_changed_at": format_cursor_ts(after[0]) if after[0] is not None else None,
             "cursor_requested_id": after[1],
         }
 
-    run_prefix = _run_prefix(config, spec.name)
-    stale_keys = s3_client.list_keys(bucket_name=config.bucket, prefix=run_prefix)
-    if stale_keys:
-        # A retry reuses dag_run_id/run_key, so the previous attempt's parts
-        # are still here; COPY INTO would otherwise ingest both attempts.
-        s3_client.delete_objects(bucket=config.bucket, keys=stale_keys)
-
     changed_at_by_id = dict(worklist)
     ids = [source_id for source_id, _ in worklist]
-    batches = list(chunked(ids, spec.batch_size))
 
     rows_written = 0
-    parts = 0
+    windows = 0
     with contextlib.closing(make_session(config.max_workers)) as session:
         limiter = RateLimiter(config.requests_per_second)
 
         def fetch_batch(batch: list[int]) -> list[FetchedNode]:
             return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
 
-        with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-            futures = {executor.submit(fetch_batch, batch): index for index, batch in enumerate(batches)}
-            try:
-                # Submission order, not completion order, keeps part numbers deterministic.
-                # Retry safety comes from clearing the run's S3 prefix above, not from this.
-                for future in as_completed(futures):
-                    index = futures[future]
-                    fetched = future.result()  # raises before COPY INTO if any worker failed
-                    blob = rows_to_ndjson_gz(
-                        fetched, changed_at_by_id, config.extracted_at, config.dag_run_id
-                    )
-                    key = f"{run_prefix}part-{index:05d}.json.gz"
-                    s3_client.load_bytes(blob, key=key, bucket_name=config.bucket, replace=True)
-                    rows_written += len(fetched)
-                    parts += 1
-            except Exception:
-                # One failed batch must not let every already-submitted batch keep
-                # hitting the live API before this exception surfaces.
-                executor.shutdown(wait=False, cancel_futures=True)
-                raise
+        # Each window's batches fan out across the pool concurrently (fine: order
+        # within a window is fixed up by the sort below), but windows themselves run
+        # one at a time and each is fully inserted before the next one starts. Do not
+        # "optimize" this into one pool across every window -- that reintroduces the
+        # out-of-order landing this loop exists to prevent (see the docstring above).
+        for window_ids in chunked(ids, WINDOW_SIZE):
+            batches = list(chunked(window_ids, spec.batch_size))
+            fetched: list[FetchedNode] = []
+            with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+                futures = [executor.submit(fetch_batch, batch) for batch in batches]
+                try:
+                    for future in as_completed(futures):
+                        fetched.extend(future.result())  # raises before this window's INSERT
+                except Exception:
+                    # One failed batch must not let every already-submitted batch in
+                    # this window keep hitting the live API before this surfaces.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise
 
-    copy_into_landing(
-        connection, config.catalog, config.source_schema, spec.name, f"s3://{config.bucket}/{run_prefix}"
-    )
+            rows = build_insert_rows(fetched, changed_at_by_id, config.extracted_at, config.dag_run_id)
+            rows.sort(key=lambda row: (row[4], row[0]))
+            insert_rows(connection, config.catalog, config.source_schema, spec.name, rows)
+            rows_written += len(rows)
+            windows += 1
 
     last_id, last_changed_at = worklist[-1]
     return {
         "entity": spec.name,
         "ids_requested": len(worklist),
         "rows_written": rows_written,
-        "parts": parts,
+        "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.
         "cursor_source_changed_at": format_cursor_ts(last_changed_at)
         if last_changed_at is not None

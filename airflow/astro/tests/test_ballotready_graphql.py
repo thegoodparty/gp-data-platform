@@ -1,8 +1,7 @@
 import base64
-import gzip
 import json
 from dataclasses import FrozenInstanceError
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,25 +12,26 @@ from include.custom_functions.ballotready_graphql import (
     ENTITY_SPECS,
     FILING_PERIOD_SELECTION,
     GEOFENCE_SELECTION,
+    INSERT_BATCH_SIZE,
     ISSUE_SELECTION,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
     POSITION_ELECTION_FREQUENCY_SELECTION,
-    S3_STAGING_PREFIX,
     STANCE_SELECTION,
+    WINDOW_SIZE,
     EntitySpec,
     ExtractConfig,
     FetchedNode,
     RateLimiter,
-    _run_prefix,
+    build_insert_rows,
     candidacy_worklist_sql,
     chunked,
-    copy_into_landing,
     create_landing_table,
     encode_node_id,
     extract_entity,
     fetch_nodes,
     geofence_worklist_sql,
+    insert_rows,
     is_retryable_status,
     issue_worklist_sql,
     landing_table,
@@ -40,9 +40,7 @@ from include.custom_functions.ballotready_graphql import (
     race_derived_worklist_sql,
     read_cursor,
     retry_wait_seconds,
-    rows_to_ndjson_gz,
     validate_identifier,
-    validate_s3_uri,
 )
 
 
@@ -842,62 +840,64 @@ def test_position_derived_specs_are_bound_to_distinct_fields():
 
 CHANGED = {1: datetime(2026, 8, 1, 9, 0, 0), 2: datetime(2026, 8, 1, 10, 0, 0)}
 
+_ROW_COLUMNS = (
+    "requested_id",
+    "node_id",
+    "database_id",
+    "payload",
+    "source_changed_at",
+    "extracted_at",
+    "dag_run_id",
+)
 
-def _decode(blob):
-    return [json.loads(line) for line in gzip.decompress(blob).decode().splitlines()]
+
+def _row_dict(row: tuple) -> dict:
+    return dict(zip(_ROW_COLUMNS, row, strict=True))
 
 
-def test_ndjson_emits_one_line_per_requested_id_including_misses():
+def test_build_insert_rows_includes_one_row_per_requested_id_including_misses():
     fetched = [FetchedNode(1, {"databaseId": 11, "id": "abc"}), FetchedNode(2, None)]
 
-    rows = _decode(rows_to_ndjson_gz(fetched, CHANGED, "2026-08-25T00:00:00", "run-1"))
+    rows = build_insert_rows(fetched, CHANGED, "2026-08-25T00:00:00", "run-1")
 
-    assert [r["requested_id"] for r in rows] == [1, 2]
-    assert rows[1]["payload"] is None
-    assert rows[1]["node_id"] is None
-    assert rows[1]["database_id"] is None
+    assert [row[0] for row in rows] == [1, 2]
+    miss = _row_dict(rows[1])
+    assert miss["payload"] is None
+    assert miss["node_id"] is None
+    assert miss["database_id"] is None
 
 
-def test_ndjson_stores_the_payload_as_a_json_string():
+def test_build_insert_rows_stores_the_payload_as_a_json_string():
     fetched = [FetchedNode(1, {"databaseId": 11, "id": "abc"})]
 
-    rows = _decode(rows_to_ndjson_gz(fetched, CHANGED, "2026-08-25T00:00:00", "run-1"))
+    row = _row_dict(build_insert_rows(fetched, CHANGED, "2026-08-25T00:00:00", "run-1")[0])
 
-    assert json.loads(rows[0]["payload"]) == {"databaseId": 11, "id": "abc"}
-    assert rows[0]["database_id"] == 11
-    assert rows[0]["node_id"] == "abc"
-
-
-def test_ndjson_carries_the_source_changed_at_that_put_the_id_on_the_worklist():
-    rows = _decode(rows_to_ndjson_gz([FetchedNode(2, None)], CHANGED, "2026-08-25T00:00:00", "run-1"))
-    assert rows[0]["source_changed_at"] == "2026-08-01 10:00:00.000000"
+    assert json.loads(row["payload"]) == {"databaseId": 11, "id": "abc"}
+    assert row["database_id"] == 11
+    assert row["node_id"] == "abc"
 
 
-def test_ndjson_stamps_the_run_and_extraction_time():
-    rows = _decode(
-        rows_to_ndjson_gz(
-            [
-                FetchedNode(1, {}),
-            ],
-            CHANGED,
-            "2026-08-25T00:00:00",
-            "run-1",
-        )
-    )
-    assert rows[0]["dag_run_id"] == "run-1"
-    assert rows[0]["extracted_at"] == "2026-08-25T00:00:00"
+def test_build_insert_rows_carries_the_source_changed_at_that_put_the_id_on_the_worklist():
+    row = _row_dict(build_insert_rows([FetchedNode(2, None)], CHANGED, "2026-08-25T00:00:00", "run-1")[0])
+    assert row["source_changed_at"] == "2026-08-01 10:00:00.000000"
 
 
-def test_ndjson_of_no_rows_is_empty():
-    assert rows_to_ndjson_gz([], CHANGED, "2026-08-25T00:00:00", "run-1") == b""
+def test_build_insert_rows_stamps_the_run_and_extraction_time():
+    row = _row_dict(build_insert_rows([FetchedNode(1, {})], CHANGED, "2026-08-25T00:00:00", "run-1")[0])
+    assert row["dag_run_id"] == "run-1"
+    assert row["extracted_at"] == "2026-08-25T00:00:00"
 
 
-def test_ndjson_empty_dict_node_is_a_hit_not_a_miss():
+def test_build_insert_rows_of_no_fetched_is_empty():
+    assert build_insert_rows([], CHANGED, "2026-08-25T00:00:00", "run-1") == []
+
+
+def test_build_insert_rows_empty_dict_node_is_a_hit_not_a_miss():
     """An empty dict is a hit; node is None is the miss."""
-    rows = _decode(rows_to_ndjson_gz([FetchedNode(1, {})], CHANGED, "2026-08-25T00:00:00", "run-1"))
-    assert rows[0]["payload"] is not None
-    assert rows[0]["node_id"] is None
-    assert rows[0]["database_id"] is None
+    row = _row_dict(build_insert_rows([FetchedNode(1, {})], CHANGED, "2026-08-25T00:00:00", "run-1")[0])
+    assert row["payload"] is not None
+    assert row["node_id"] is None
+    assert row["database_id"] is None
 
 
 def test_create_landing_table_is_idempotent_and_fully_qualified():
@@ -924,39 +924,51 @@ def test_landing_table_declares_every_contract_column():
         assert column in sql
 
 
-def test_copy_into_inlines_the_quoted_path_and_stamps_loaded_at():
+_INSERT_ROW = (1, "abc", 11, '{"a": 1}', "2026-08-01 00:00:00.000000", "2026-08-25T00:00:00", "run-1")
+
+
+def test_insert_rows_binds_parameters_and_casts_timestamps():
     connection = FakeConnection([])
-    copy_into_landing(connection, "cat", "sch", "stance", "s3://bucket/prefix/stance/run-1/")
+
+    insert_rows(connection, "cat", "sch", "stance", [_INSERT_ROW])
+
     sql, parameters = connection.cursor().executed[-1]
-    assert "COPY INTO `cat`.`sch`.`ballotready_stance_raw`" in sql
-    assert "FROM 's3://bucket/prefix/stance/run-1/'" in sql
-    assert "current_timestamp() AS loaded_at" in sql
-    assert "FILEFORMAT = JSON" in sql
-    assert parameters is None
+    assert "INSERT INTO `cat`.`sch`.`ballotready_stance_raw`" in sql
+    assert "cast(:source_changed_at_0 AS TIMESTAMP)" in sql
+    assert "cast(:extracted_at_0 AS TIMESTAMP)" in sql
+    assert "current_timestamp()" in sql
+    assert parameters["requested_id_0"] == 1
+    assert parameters["source_changed_at_0"] == "2026-08-01 00:00:00.000000"
+    assert parameters["dag_run_id_0"] == "run-1"
 
 
-def test_copy_into_rejects_an_injected_schema():
+def test_insert_rows_rejects_an_injected_schema():
     with pytest.raises(ValueError, match="schema"):
-        copy_into_landing(FakeConnection([]), "cat", "sch; drop table x", "stance", "s3://b/p/")
+        insert_rows(FakeConnection([]), "cat", "sch; drop table x", "stance", [_INSERT_ROW])
 
 
-def test_validate_s3_uri_accepts_a_normal_uri():
-    assert validate_s3_uri("s3://bucket/prefix/stance/run-1/") == "s3://bucket/prefix/stance/run-1/"
+def test_insert_rows_of_no_rows_executes_nothing():
+    connection = FakeConnection([])
+    insert_rows(connection, "cat", "sch", "stance", [])
+    assert connection.cursor().executed == []
 
 
-def test_validate_s3_uri_rejects_a_single_quote():
-    with pytest.raises(ValueError, match="uri"):
-        validate_s3_uri("s3://bucket/prefix/it's/run-1/")
+def test_insert_rows_chunks_at_insert_batch_size():
+    """7 bound values/row * INSERT_BATCH_SIZE rows stays a deliberately conservative distance
+    under the connector's (unverified from here) per-statement parameter cap.
+    """
+    connection = FakeConnection([])
+    rows = [
+        (i, None, None, None, "2026-08-01 00:00:00.000000", "2026-08-25T00:00:00", "run-1")
+        for i in range(INSERT_BATCH_SIZE + 1)
+    ]
 
+    insert_rows(connection, "cat", "sch", "stance", rows)
 
-def test_validate_s3_uri_rejects_a_path_missing_the_trailing_slash():
-    with pytest.raises(ValueError, match="uri"):
-        validate_s3_uri("s3://bucket/prefix/stance/run-1")
-
-
-def test_validate_s3_uri_rejects_a_non_s3_scheme():
-    with pytest.raises(ValueError, match="uri"):
-        validate_s3_uri("http://bucket/prefix/stance/run-1/")
+    executed = connection.cursor().executed
+    assert len(executed) == 2  # one full chunk, one with the single remaining row
+    assert executed[0][0].count("(:requested_id_") == INSERT_BATCH_SIZE
+    assert executed[1][0].count("(:requested_id_") == 1
 
 
 def _ddl_column_names(sql: str) -> list[str]:
@@ -965,47 +977,33 @@ def _ddl_column_names(sql: str) -> list[str]:
     return [part.strip().split()[0] for part in inside.split(",")]
 
 
-def _select_column_names(sql: str) -> list[str]:
-    """Output column names of a `SELECT ... FROM` clause, in order.
-
-    An aliased expression (`current_timestamp() AS loaded_at`) resolves to its
-    alias, since that alias is what lands in the target column.
-    """
-    start = sql.index("SELECT") + len("SELECT")
-    end = sql.index("FROM", start)
-    names = []
-    for part in sql[start:end].split(","):
-        part = part.strip()
-        names.append(part.split(" AS ")[-1].strip() if " AS " in part else part)
-    return names
+def _insert_column_names(sql: str) -> list[str]:
+    """Column names an `INSERT INTO t (...) VALUES ...` statement targets, in order."""
+    start = sql.index("(", sql.index("INSERT INTO")) + 1
+    end = sql.index(")", start)
+    return [part.strip() for part in sql[start:end].split(",")]
 
 
-def test_landing_table_declares_exactly_the_task_8_ndjson_keys_plus_loaded_at():
-    """A renamed DDL column would otherwise land its NDJSON counterpart as a silent NULL."""
-    ndjson_keys = list(
-        _decode(rows_to_ndjson_gz([FetchedNode(1, {"id": "abc"})], CHANGED, "2026-08-25T00:00:00", "run-1"))[
-            0
-        ].keys()
-    )
-
+def test_landing_table_declares_exactly_the_row_builder_columns_plus_loaded_at():
+    """A renamed DDL column would otherwise land its row-builder counterpart as a silent NULL."""
     connection = FakeConnection([])
     create_landing_table(connection, "cat", "sch", "stance")
     ddl_columns = _ddl_column_names(connection.cursor().executed[-1][0])
 
-    assert set(ddl_columns) == {*ndjson_keys, "loaded_at"}
+    assert set(ddl_columns) == {*_ROW_COLUMNS, "loaded_at"}
 
 
-def test_copy_into_select_list_matches_the_landing_table_column_order():
-    """COPY INTO's subquery aligns to the target table positionally, not by name."""
+def test_insert_rows_column_list_matches_the_landing_table_column_order():
+    """The INSERT's column list must match the DDL's positions so a bound param lands right."""
     ddl_connection = FakeConnection([])
     create_landing_table(ddl_connection, "cat", "sch", "stance")
     ddl_columns = _ddl_column_names(ddl_connection.cursor().executed[-1][0])
 
-    copy_connection = FakeConnection([])
-    copy_into_landing(copy_connection, "cat", "sch", "stance", "s3://bucket/prefix/stance/run-1/")
-    select_columns = _select_column_names(copy_connection.cursor().executed[-1][0])
+    insert_connection = FakeConnection([])
+    insert_rows(insert_connection, "cat", "sch", "stance", [_INSERT_ROW])
+    insert_columns = _insert_column_names(insert_connection.cursor().executed[-1][0])
 
-    assert select_columns == ddl_columns
+    assert insert_columns == ddl_columns
 
 
 def _config(**overrides):
@@ -1013,14 +1011,12 @@ def _config(**overrides):
         catalog="cat",
         dbt_schema="dbt",
         source_schema="src",
-        bucket="bucket",
         api_token="tok",
         max_ids=1000,
         max_workers=2,
         requests_per_second=1000.0,
         full_reload=False,
         dag_run_id="run-1",
-        run_key="run-1",
         extracted_at="2026-08-25T00:00:00",
     )
     base.update(overrides)
@@ -1029,14 +1025,16 @@ def _config(**overrides):
 
 def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
-    s3 = MagicMock()
+    inserted = MagicMock()
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", inserted)
 
-    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
 
     assert summary["ids_requested"] == 0
     assert summary["rows_written"] == 0
+    assert summary["windows"] == 0
     assert summary["cursor_source_changed_at"] is None
-    s3.load_bytes.assert_not_called()
+    inserted.assert_not_called()
 
 
 def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(monkeypatch):
@@ -1046,62 +1044,59 @@ def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(
     )
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
 
-    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), MagicMock(), _config())
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
 
     assert summary["cursor_source_changed_at"] == "2026-08-01 09:00:00.000000"
 
 
-def test_extract_entity_clears_the_run_prefix_before_writing(monkeypatch):
-    """A retry reuses the dag_run_id, so stale parts would be ingested twice."""
-    monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.read_worklist",
-        lambda *a, **k: [(1, datetime(2026, 8, 1))],
-    )
-    monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.fetch_nodes",
-        lambda ids, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in ids],
-    )
-    s3 = MagicMock()
-    s3.list_keys.return_value = [f"{S3_STAGING_PREFIX}/issue/run-1/part-00000.json.gz"]
-
-    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
-
-    s3.delete_objects.assert_called_once()
-
-
-def test_run_prefix_has_a_trailing_slash_so_sibling_run_keys_cannot_collide():
-    """Without the trailing slash, listing prefix ".../run-1" would also match
-    ".../run-10/...", and a stale-run delete could reach another run's files.
-    """
-    prefix_run_1 = _run_prefix(_config(run_key="run-1"), "issue")
-    prefix_run_10 = _run_prefix(_config(run_key="run-10"), "issue")
-
-    assert prefix_run_1.endswith("/")
-    assert not prefix_run_10.startswith(prefix_run_1)
-    assert prefix_run_1 == f"{S3_STAGING_PREFIX}/issue/run-1/"
-
-
-def test_extract_entity_writes_one_part_per_batch_and_copies_once(monkeypatch):
-    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 251)]
+def test_extract_entity_writes_one_insert_per_window_and_the_right_number_of_windows(monkeypatch):
+    total_ids = WINDOW_SIZE * 2 + 50
+    ids = [(i, datetime(2026, 8, 1)) for i in range(1, total_ids + 1)]
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.fetch_nodes",
         lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
     )
-    copies = []
+    inserted_calls = []
     monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.copy_into_landing",
-        lambda *a, **k: copies.append(a),
+        "include.custom_functions.ballotready_graphql.insert_rows",
+        lambda conn, catalog, schema, entity, rows: inserted_calls.append(rows),
     )
-    s3 = MagicMock()
-    s3.list_keys.return_value = []
 
-    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
 
-    assert s3.load_bytes.call_count == 3  # 250 ids at batch_size 100
-    assert len(copies) == 1
-    assert summary["rows_written"] == 250
-    assert summary["cursor_source_changed_at"] == "2026-08-01 00:00:00.000000"
+    expected_windows = -(-total_ids // WINDOW_SIZE)  # ceil division
+    assert len(inserted_calls) == expected_windows
+    assert summary["windows"] == expected_windows
+    assert summary["rows_written"] == total_ids
+    assert sum(len(rows) for rows in inserted_calls) == total_ids
+    assert len(inserted_calls[0]) == WINDOW_SIZE
+    assert len(inserted_calls[-1]) == total_ids - WINDOW_SIZE * (expected_windows - 1)
+
+
+def test_extract_entity_inserts_a_windows_rows_in_source_changed_at_requested_id_order(monkeypatch):
+    """The correctness property the windowed insert depends on: rows within a window must land
+    sorted by (source_changed_at, requested_id), not in whatever order threads happened to finish.
+    """
+    base = datetime(2026, 8, 1)
+    # changed_at decreases as id increases, so a correct sort reverses id order -- this would pass
+    # by accident if it merely preserved fetch/submission order instead of actually sorting.
+    ids = [(i, base + timedelta(seconds=250 - i)) for i in range(1, 251)]
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+    inserted_calls = []
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.insert_rows",
+        lambda conn, catalog, schema, entity, rows: inserted_calls.append(rows),
+    )
+
+    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
+
+    assert len(inserted_calls) == 1
+    assert [row[0] for row in inserted_calls[0]] == list(range(250, 0, -1))
 
 
 def test_extract_entity_skips_the_cursor_on_full_reload(monkeypatch):
@@ -1119,34 +1114,147 @@ def test_extract_entity_skips_the_cursor_on_full_reload(monkeypatch):
 
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", _fake_read_worklist)
 
-    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), MagicMock(), _config(full_reload=True))
+    extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(full_reload=True))
 
     assert seen["after"] == (None, None)
 
 
-def test_extract_entity_does_not_copy_into_landing_when_a_worker_fails(monkeypatch):
-    """A partial fetch must never reach COPY INTO, or the cursor would skip the failed ids forever."""
-    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 201)]  # two batches of 100
+def test_extract_entity_aborts_before_the_failing_windows_insert(monkeypatch):
+    """A worker failure must abort before that window's INSERT; earlier committed windows stay
+    committed, or the cursor would skip the failed window's ids forever.
+    """
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.WINDOW_SIZE", 100)
+    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 301)]  # three windows of 100
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
 
     def flaky_fetch(batch, *a, **k):
-        if batch[0] == 101:
+        if batch[0] == 201:
             raise RuntimeError("boom")
         return [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch]
 
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.fetch_nodes", flaky_fetch)
-    copies = []
+    inserted_calls = []
     monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.copy_into_landing",
-        lambda *a, **k: copies.append(a),
+        "include.custom_functions.ballotready_graphql.insert_rows",
+        lambda conn, catalog, schema, entity, rows: inserted_calls.append(rows),
     )
-    s3 = MagicMock()
-    s3.list_keys.return_value = []
 
     with pytest.raises(RuntimeError, match="boom"):
-        extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
+        extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
 
-    assert copies == []
+    assert len(inserted_calls) == 2  # the two windows before the failing one committed
+    assert [row[0] for row in inserted_calls[0]] == list(range(1, 101))
+    assert [row[0] for row in inserted_calls[1]] == list(range(101, 201))
+
+
+class _LandingCursor:
+    """A cursor whose execute() understands the three statements extract_entity issues -- DDL
+    (no-op), the max-cursor SELECT, and a multi-row INSERT -- against a shared in-memory table.
+    Lets read_cursor and insert_rows run for real, rather than mocking the property under test.
+    """
+
+    def __init__(self, rows: list[tuple[int, datetime]]):
+        self._rows = rows
+        self._result: list[tuple] = []
+
+    def execute(self, sql, parameters=None):
+        if sql.startswith(("CREATE SCHEMA", "CREATE TABLE")):
+            self._result = []
+        elif sql.startswith("SELECT source_changed_at, requested_id FROM"):
+            if self._rows:
+                requested_id, changed_at = max(self._rows, key=lambda r: (r[1], r[0]))
+                self._result = [(changed_at, requested_id)]
+            else:
+                self._result = []
+        elif sql.startswith("INSERT INTO"):
+            parameters = parameters or {}
+            i = 0
+            while f"requested_id_{i}" in parameters:
+                self._rows.append(
+                    (
+                        parameters[f"requested_id_{i}"],
+                        datetime.fromisoformat(parameters[f"source_changed_at_{i}"]),
+                    )
+                )
+                i += 1
+            self._result = []
+        else:
+            raise AssertionError(f"unexpected SQL in this fake: {sql}")
+
+    def fetchone(self):
+        return self._result[0] if self._result else None
+
+    def fetchall(self):
+        return self._result
+
+    def close(self):
+        pass
+
+
+class _LandingConnection:
+    """An in-memory landing table, shared across two extract_entity calls (a run, then its retry)."""
+
+    def __init__(self):
+        self.rows: list[tuple[int, datetime]] = []
+
+    def cursor(self, *args, **kwargs):
+        return _LandingCursor(self.rows)
+
+
+def _fake_read_worklist_over(full_worklist):
+    """A worklist builder that applies the real keyset filter in Python, so the retry in the test
+    below reads a worklist that actually reflects the cursor read_cursor already reported.
+    """
+
+    def _read(conn, spec, config, after):
+        after_changed_at, after_source_id = after
+        if after_changed_at is None:
+            return list(full_worklist)
+        return [
+            (source_id, changed_at)
+            for source_id, changed_at in full_worklist
+            if (changed_at, source_id) > (after_changed_at, after_source_id)
+        ]
+
+    return _read
+
+
+def test_committed_windows_form_a_cursor_prefix_so_a_retry_resumes_after_them(monkeypatch):
+    """A crash mid-run must not skip or duplicate ids: earlier windows are already committed, and
+    the retry's cursor read must resume exactly where the crash left off.
+    """
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.WINDOW_SIZE", 2)
+    base = datetime(2026, 8, 1)
+    full_worklist = [(i, base + timedelta(seconds=i)) for i in range(1, 6)]  # 5 ids, ascending
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        _fake_read_worklist_over(full_worklist),
+    )
+
+    attempted = []
+
+    def flaky_fetch(batch, *a, **k):
+        attempted.extend(batch)
+        if batch == [3, 4] and attempted.count(3) == 1:
+            raise RuntimeError("boom")
+        return [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch]
+
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.fetch_nodes", flaky_fetch)
+
+    connection = _LandingConnection()
+    config = _config()
+
+    with pytest.raises(RuntimeError, match="boom"):
+        extract_entity(ENTITY_SPECS["issue"], connection, config)
+
+    # Window 1 ([1, 2]) landed; window 2 ([3, 4]) never did.
+    assert sorted(row[0] for row in connection.rows) == [1, 2]
+
+    extract_entity(ENTITY_SPECS["issue"], connection, config)
+
+    landed_ids = [row[0] for row in connection.rows]
+    assert sorted(landed_ids) == [1, 2, 3, 4, 5]
+    assert len(landed_ids) == len(set(landed_ids))  # no duplicates: the retry did not redo window 1
 
 
 def test_make_session_pool_covers_every_worker():

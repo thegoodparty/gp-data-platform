@@ -48,5 +48,3 @@ airflow:
       variable_value: <schema holding the stg_airbyte_source__ballotready_* dbt models>
     - variable_name: databricks_source_schema
       variable_value: <schema the ballotready_*_raw landing tables are written to>
-    - variable_name: ballotready_extract_s3_bucket
-      variable_value: <bucket for the NDJSON staging files>
