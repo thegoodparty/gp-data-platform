@@ -2973,8 +2973,8 @@ models:
       by first_seen_at), so a source's fields stay internally consistent.
       BR contact/state/party come from int__ballotready_candidate_identity
       across all election years; a BR person whose only BR presence is a term
-      rather than a race falls to the officeholder feed tier. HubSpot state is
-      the raw CRM value and may be a full state name rather than a postal code.
+      rather than a race falls to the officeholder feed tier. HubSpot and TS
+      officeholder state values are normalized via the clean_states seed.
       party is normalized to the parse_party_affiliation vocabulary in every
       tier; vendor abbreviations and minor parties outside it (e.g. IND,
       Unaffiliated, Working Families) coarsen to 'Other'.
@@ -3017,7 +3017,9 @@ models:
       - name: phone
         description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: state
-        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Format may vary (HubSpot free-text).
+        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Always a 2-letter postal code.
+        data_tests:
+          - is_state_abbreviation
       - name: party
         description: >
           Party affiliation, precedence BR > HubSpot > TS > TS officeholder >
