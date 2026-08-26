@@ -7,10 +7,11 @@ of them.
 """
 
 import logging
+import random
 import threading
 import time
 from base64 import b64encode
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
 logger = logging.getLogger("airflow.task")
@@ -66,3 +67,29 @@ class RateLimiter:
         """Hold every worker for `seconds`, after a rate-limit response."""
         with self._lock:
             self._next_allowed = max(self._next_allowed, self._clock() + seconds)
+
+
+def is_retryable_status(status_code: int) -> bool:
+    """429 (rate limited) and 5xx (server) responses are worth retrying."""
+    return status_code == 429 or status_code >= 500
+
+
+def retry_wait_seconds(
+    headers: Mapping[str, str],
+    attempt: int,
+    base_backoff: float = 1.0,
+    max_backoff: float = 60.0,
+    rng: Callable[[float, float], float] = random.uniform,
+) -> float:
+    """Seconds to wait before the next retry.
+
+    Honors a numeric `Retry-After` when present; otherwise exponential backoff
+    with full jitter so concurrent workers do not resynchronize on the retry.
+    """
+    retry_after = headers.get("Retry-After") or headers.get("retry-after")
+    if retry_after:
+        try:
+            return min(float(retry_after), max_backoff)
+        except ValueError:
+            pass
+    return rng(0, min(base_backoff * (2**attempt), max_backoff))
