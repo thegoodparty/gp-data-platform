@@ -1,13 +1,25 @@
 import base64
+from dataclasses import FrozenInstanceError
 
 import pytest
 from include.custom_functions.ballotready_graphql import (
+    CANDIDACY_SELECTION,
+    ENDORSEMENT_SELECTION,
+    FILING_PERIOD_SELECTION,
+    GEOFENCE_SELECTION,
+    ISSUE_SELECTION,
+    NORMALIZED_POSITION_SELECTION,
+    PARTY_SELECTION,
+    POSITION_ELECTION_FREQUENCY_SELECTION,
+    STANCE_SELECTION,
+    EntitySpec,
     FetchedNode,
     RateLimiter,
     chunked,
     encode_node_id,
     fetch_nodes,
     is_retryable_status,
+    landing_table,
     retry_wait_seconds,
 )
 
@@ -237,3 +249,63 @@ def test_fetch_nodes_sends_encoded_ids_and_a_bearer_token():
     assert captured["url"] == "https://bpi.civicengine.com/graphql"
     assert captured["ids"] == [encode_node_id("Issue", 42)]
     assert captured["auth"] == "Bearer tok"
+
+
+ALL_SELECTIONS = {
+    "Candidacy": CANDIDACY_SELECTION,
+    "Endorsement": ENDORSEMENT_SELECTION,
+    "FilingPeriod": FILING_PERIOD_SELECTION,
+    "Geofence": GEOFENCE_SELECTION,
+    "Issue": ISSUE_SELECTION,
+    "NormalizedPosition": NORMALIZED_POSITION_SELECTION,
+    "Party": PARTY_SELECTION,
+    "PositionElectionFrequency": POSITION_ELECTION_FREQUENCY_SELECTION,
+    "Stance": STANCE_SELECTION,
+}
+
+
+@pytest.mark.parametrize("name,selection", sorted(ALL_SELECTIONS.items()))
+def test_every_selection_is_an_inline_fragment_with_balanced_braces(name, selection):
+    assert selection.strip().startswith("... on "), f"{name} is not an inline fragment"
+    assert selection.count("{") == selection.count("}"), f"{name} has unbalanced braces"
+
+
+@pytest.mark.parametrize("name,selection", sorted(ALL_SELECTIONS.items()))
+def test_no_selection_carries_the_outer_query_wrapper(name, selection):
+    # _build_query supplies `query GetNodesBatch(...) { nodes(ids: $ids) { ... } }`.
+    assert "query Get" not in selection, f"{name} still has the query wrapper"
+    assert "nodes(ids:" not in selection, f"{name} still has the nodes() wrapper"
+
+
+def test_candidacy_selection_keeps_the_fields_the_replaced_model_reads():
+    for field in ("databaseId", "id", "candidate", "election", "position", "race"):
+        assert field in CANDIDACY_SELECTION
+
+
+def test_stance_selection_keeps_the_nested_issue_reference():
+    # The issue worklist reads issue ids back out of landed stance payloads.
+    assert "stances" in STANCE_SELECTION
+    assert "issue" in STANCE_SELECTION
+
+
+def test_entity_spec_is_frozen():
+    spec = EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, lambda **kwargs: "")
+    with pytest.raises(FrozenInstanceError):
+        spec.name = "other"
+
+
+def test_entity_spec_carries_its_fields():
+    builder = lambda **kwargs: "sql"  # noqa: E731
+    spec = EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, builder)
+    assert (spec.name, spec.node_type, spec.batch_size) == ("issue", "Issue", 100)
+    assert spec.worklist_sql is builder
+
+
+def test_landing_table_is_backtick_qualified():
+    assert landing_table("cat", "sch", "issue") == "`cat`.`sch`.`ballotready_issue_raw`"
+
+
+def test_landing_table_names_follow_the_entity():
+    assert landing_table("c", "s", "position_election_frequency").endswith(
+        "`ballotready_position_election_frequency_raw`"
+    )

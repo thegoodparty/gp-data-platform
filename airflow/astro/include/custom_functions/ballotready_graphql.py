@@ -190,3 +190,187 @@ def fetch_nodes(
         return [FetchedNode(requested_id=i, node=n) for i, n in zip(ids, nodes, strict=True)]
 
     raise RuntimeError("Unreachable: fetch_nodes exhausted retries without returning")
+
+
+# Selections below are copied verbatim (field-for-field) from the dbt Python
+# models this DAG replaces, so their landed payloads keep parity with what
+# those models used to read from the API directly.
+
+CANDIDACY_SELECTION = """
+... on Candidacy {
+    candidate {
+        databaseId
+    }
+    createdAt
+    databaseId
+    election {
+        databaseId
+    }
+    endorsements {
+        databaseId
+        id
+    }
+    id
+    isCertified
+    isHidden
+    parties {
+        databaseId
+        id
+    }
+    position {
+        databaseId
+    }
+    race {
+        databaseId
+    }
+    result
+    stances {
+        databaseId
+        id
+    }
+    updatedAt
+    withdrawn
+}
+"""
+
+ENDORSEMENT_SELECTION = """
+... on Candidacy {
+    id
+    databaseId
+    endorsements {
+        databaseId
+        id
+        createdAt
+        endorser
+        recommendation
+        status
+        updatedAt
+        organization {
+            databaseId
+            id
+        }
+    }
+}
+"""
+
+FILING_PERIOD_SELECTION = """
+... on FilingPeriod {
+    createdAt
+    databaseId
+    endOn
+    id
+    notes
+    startOn
+    type
+    updatedAt
+}
+"""
+
+GEOFENCE_SELECTION = """
+... on Geofence {
+    createdAt
+    databaseId
+    geoId
+    id
+    mtfcc
+    updatedAt
+    validFrom
+    validTo
+}
+"""
+
+ISSUE_SELECTION = """
+... on Issue {
+    databaseId
+    # expandedText
+    id
+    key
+    name
+    # parentIssue {
+    #     databaseId
+    #     id
+    # }
+    pluginEnabled
+    responseType
+    rowOrder
+}
+"""
+
+NORMALIZED_POSITION_SELECTION = """
+... on NormalizedPosition {
+    databaseId
+    description
+    id
+    issues {
+        databaseId
+        id
+    }
+    mtfcc
+    name
+}
+"""
+
+PARTY_SELECTION = """
+... on Candidacy {
+  id
+  databaseId
+  parties {
+    createdAt
+    databaseId
+    id
+    name
+    shortName
+    updatedAt
+  }
+}
+"""
+
+POSITION_ELECTION_FREQUENCY_SELECTION = """
+... on PositionElectionFrequency {
+    databaseId
+    frequency
+    id
+    referenceYear
+    seats
+    validFrom
+    validTo
+}
+"""
+
+STANCE_SELECTION = """
+... on Candidacy {
+    id
+    databaseId
+    stances {
+        databaseId
+        id
+        issue {
+            databaseId
+            id
+        }
+        locale
+        referenceUrl
+        statement
+    }
+}
+"""
+
+
+@dataclass(frozen=True)
+class EntitySpec:
+    """Everything that differs between the nine entity tasks.
+
+    The task body is identical for all of them; only this differs. Person slots
+    in later as a tenth spec with node_type "Candidate".
+    """
+
+    name: str
+    node_type: str
+    selection: str
+    batch_size: int
+    worklist_sql: Callable[..., str]
+
+
+def landing_table(catalog: str, schema: str, entity: str) -> str:
+    """Fully qualified, backtick-quoted landing table for an entity."""
+    return f"`{catalog}`.`{schema}`.`ballotready_{entity}_raw`"
