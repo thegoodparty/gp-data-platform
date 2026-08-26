@@ -34,6 +34,7 @@ Set on the Astro deployment as **Airflow Variables**:
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. |
+| `matcha_image_pull_secret` | Kubernetes image pull secret name from Astronomer support. Unset means the GHCR package is public and the kubelet pulls it anonymously. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
@@ -68,9 +69,29 @@ paths "Rolling back a bad vintage" describes.
 
 ## Image pull
 
-The matcha GHCR package is permanently public. The Kubernetes pod carries no `image_pull_secrets`, and
-the kubelet pulls the image anonymously on every deployment — there is no per-deployment secret to
-provision and no Astronomer support ticket involved.
+The matcha GHCR package is public today, so the pod carries no `image_pull_secrets` and the kubelet
+pulls it anonymously; `matcha_image_pull_secret` is unset. This is a transitional state, not the final
+one — the plan is to flip the package private once both deployments can pull it with a secret.
+
+**Provisioning the secret.** Astronomer support creates a namespace-scoped Kubernetes secret of type
+`kubernetes.io/dockerconfigjson` per deployment. This is a support request, not something a user can do
+from the Astro UI or CLI on Astro Hosted — there is no self-serve path to create or attach an
+image-pull secret to a deployment's namespace.
+
+**Cutover, per deployment:** once Astronomer confirms the secret exists, set `matcha_image_pull_secret`
+to its name on that deployment and trigger a run. `_MatchaPodOperator.pre_execute` picks it up at task
+runtime with no redeploy needed — confirm the pod actually pulls (no `ImagePullBackOff`) before
+considering that deployment done.
+
+**Flip the GHCR package to private only once BOTH deployments are pulling successfully with their own
+secret.** Flipping it earlier breaks whichever deployment doesn't have a working secret yet.
+
+**Rotation hazard.** The credential behind the secret is a GitHub classic PAT scoped to `read:packages`,
+which **expires**. When it does, every pod pull fails with `ImagePullBackOff` and `matcha_er` fails at
+pod start on every entity, with no advance warning — nothing degrades gracefully first. The secret
+cannot be edited from the Astro UI, so rotating it needs another Astronomer support ticket, the same as
+provisioning it the first time. Record the PAT's expiry date somewhere it will actually be checked
+before it lapses.
 
 ## When a gate fails
 

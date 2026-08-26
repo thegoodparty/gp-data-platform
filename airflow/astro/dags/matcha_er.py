@@ -46,6 +46,8 @@ still builds and gates the dated tables.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
 - `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
   a sha to pin a deployment without a code change.
+- `matcha_image_pull_secret` — image pull secret name from Astronomer support.
+  Unset means the GHCR package is public and pulls anonymously.
 
 ### Pools:
 - `matcha_er` — one slot, so only one pod runs at a time.
@@ -89,6 +91,7 @@ MATCHA_POOL = "matcha_er"
 # A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
 # two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
+IMAGE_PULL_SECRET_VARIABLE = "matcha_image_pull_secret"
 ER_SCHEMA = "er_source"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
@@ -113,16 +116,31 @@ _DBX_ENV: dict[str, str] = {
 }
 
 
-def _match_pod(entity: EntitySpec) -> KubernetesPodOperator:
-    """The container run for one entity, writing this run's dated vintage.
+class _MatchaPodOperator(KubernetesPodOperator):
+    """KPO that resolves its image pull secret at task runtime.
 
-    The matcha GHCR package is permanently public, so the pod needs no
-    `image_pull_secrets` and the kubelet pulls it anonymously.
+    Astro exposes neither Variables nor deployment env vars to the DAG
+    processor at parse, and `image_pull_secrets` holds Kubernetes client
+    objects rather than strings, so Jinja cannot reach it. Resolving in
+    pre_execute keeps parse metastore-free while letting each deployment carry
+    its own secret: astro-dev receives one from Astronomer support before
+    astro-prod does, and until a deployment has one the matcha GHCR package is
+    public and the kubelet pulls it anonymously.
     """
+
+    def pre_execute(self, context) -> None:
+        secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default="")
+        if secret_name:
+            self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
+        super().pre_execute(context)
+
+
+def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
+    """The container run for one entity, writing this run's dated vintage."""
     catalog = "{{ var.value.get('databricks_catalog') }}"
     dated_cluster = dated_name(entity.cluster_table, "{{ ds_nodash }}")
     dated_pairwise = dated_name(entity.pairwise_table, "{{ ds_nodash }}")
-    return KubernetesPodOperator(
+    return _MatchaPodOperator(
         task_id="match",
         name=f"matcha-{entity.entity_type.replace('_', '-')}",
         image=MATCHA_IMAGE,

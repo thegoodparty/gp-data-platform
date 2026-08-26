@@ -128,6 +128,37 @@ def _dag_module():
     return sys.modules[_DAG.get_task("candidacy_stage.gate").python_callable.__module__]
 
 
+def test_pull_secret_unset_leaves_the_pod_pulling_anonymously():
+    """image_pull_secrets holds Kubernetes client objects, not strings, so
+    Jinja cannot template it — _MatchaPodOperator.pre_execute resolves it at
+    task runtime instead. Confirmed (not assumed) that a freshly-built
+    KubernetesPodOperator's own default is `[]`, not `None`, before asserting
+    an unset/empty Variable leaves it there: the matcha image is still public
+    today, so the pod must carry no imagePullSecrets at all.
+
+    Uses a fresh operator from _match_pod rather than a task pulled off the
+    shared _DAG (whose task objects are the same instance across every test
+    in this module, so mutating one's image_pull_secrets would leak state).
+    """
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    assert op.image_pull_secrets == []  # KubernetesPodOperator's real instantiated default
+    with patch.object(module, "Variable", autospec=True) as mock_variable:
+        mock_variable.get.return_value = ""
+        op.pre_execute({})
+    assert op.image_pull_secrets == []
+
+
+def test_pull_secret_set_attaches_exactly_one_reference():
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    with patch.object(module, "Variable", autospec=True) as mock_variable:
+        mock_variable.get.return_value = "matcha-ghcr-pull"
+        op.pre_execute({})
+    assert len(op.image_pull_secrets) == 1
+    assert op.image_pull_secrets[0].name == "matcha-ghcr-pull"
+
+
 def test_gate_task_checks_its_own_entitys_tables():
     """`gate` and `swap` read `entity` from the enclosing closure at task
     EXECUTION time, unlike `match`'s eagerly-resolved arguments — so a bare
