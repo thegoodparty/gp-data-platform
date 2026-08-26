@@ -423,6 +423,9 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
 
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
     """The keyset half of the WHERE clause, or an always-true stand-in."""
+    # A cursor is only usable as a pair; if just one half is missing, treat it as
+    # no cursor at all (a full sweep) rather than raise, since an over-broad
+    # worklist is safe and a raise here would stall a run over a partial value.
     if after_changed_at is None or after_source_id is None:
         return "source_changed_at IS NOT NULL"
     ts = format_cursor_ts(datetime.fromisoformat(after_changed_at))
@@ -444,8 +447,9 @@ def _worklist(inner_sql: str, predicate: str, limit: int) -> str:
 
 def candidacy_worklist_sql(
     catalog: str,
-    dbt_schema: str,
+    staging_schema: str,
     *,
+    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -455,18 +459,26 @@ def candidacy_worklist_sql(
 
     The S3 feed omits many upcoming general-stage rosters that the API race
     object already carries, and without them those candidacies are never fetched.
+    The two sources live in different schemas (stg_* models vs int_* models),
+    so this is the one builder that needs both schema parameters.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    base = f"`{catalog}`.`{dbt_schema}`"
+    validate_identifier("staging_schema", staging_schema)
+    if intermediate_schema is None:
+        raise ValueError(
+            "intermediate_schema is required: the upcoming-ids source lives outside staging_schema"
+        )
+    validate_identifier("intermediate_schema", intermediate_schema)
+    staging_base = f"`{catalog}`.`{staging_schema}`"
+    intermediate_base = f"`{catalog}`.`{intermediate_schema}`"
     inner = (
         "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
         "greatest(candidacy_created_at, candidacy_updated_at) AS source_changed_at "
-        f"FROM {base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
+        f"FROM {staging_base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
         "WHERE br_candidacy_id IS NOT NULL "
         "UNION ALL "
         "SELECT cast(br_candidacy_id AS bigint) AS source_id, race_updated_at AS source_changed_at "
-        f"FROM {base}.`int__ballotready_upcoming_candidacy_ids` "
+        f"FROM {intermediate_base}.`int__ballotready_upcoming_candidacy_ids` "
         "WHERE br_candidacy_id IS NOT NULL"
     )
     grouped = (
@@ -477,8 +489,9 @@ def candidacy_worklist_sql(
 
 def geofence_worklist_sql(
     catalog: str,
-    dbt_schema: str,
+    staging_schema: str,
     *,
+    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -490,8 +503,8 @@ def geofence_worklist_sql(
     that geofence is next due for a refetch.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
+    validate_identifier("staging_schema", staging_schema)
+    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
     inner = (
         "SELECT cast(br_geofence_id AS bigint) AS source_id, candidacy_updated_at AS source_changed_at "
         f"FROM {table} WHERE br_geofence_id IS NOT NULL"
@@ -504,8 +517,9 @@ def geofence_worklist_sql(
 
 def race_derived_worklist_sql(
     catalog: str,
-    dbt_schema: str,
+    staging_schema: str,
     *,
+    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -517,8 +531,8 @@ def race_derived_worklist_sql(
     race decides when that filing period is next due for a refetch.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_race`"
+    validate_identifier("staging_schema", staging_schema)
+    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_api_race`"
     inner = (
         "SELECT cast(filing_period.databaseId AS bigint) AS source_id, updated_at AS source_changed_at "
         f"FROM {table} LATERAL VIEW explode(filing_periods) AS filing_period "
@@ -532,9 +546,10 @@ def race_derived_worklist_sql(
 
 def position_derived_worklist_sql(
     catalog: str,
-    dbt_schema: str,
+    staging_schema: str,
     *,
     field: str,
+    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -548,8 +563,8 @@ def position_derived_worklist_sql(
     the call site identical to the other three builders.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_position`"
+    validate_identifier("staging_schema", staging_schema)
+    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_api_position`"
     if field == "normalized_position":
         id_expr = "normalized_position.databaseId"
         from_clause = table

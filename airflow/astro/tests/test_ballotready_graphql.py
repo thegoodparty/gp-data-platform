@@ -437,42 +437,113 @@ def test_read_cursor_returns_the_highest_landed_pair():
 
 
 def test_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=500)
+    sql = candidacy_worklist_sql(
+        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=500
+    )
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
     assert "LIMIT 500" in sql
 
 
 def test_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
     sql = candidacy_worklist_sql(
-        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99, limit=10
+        "cat",
+        "dbt",
+        intermediate_schema="dbtint",
+        after_changed_at="2026-08-01 12:00:00.000000",
+        after_source_id=99,
+        limit=10,
     )
     assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 99" in sql
 
 
 def test_worklist_omits_the_predicate_with_no_cursor():
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql(
+        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=10
+    )
+    assert "TIMESTAMP '" not in sql
+
+
+@pytest.mark.parametrize(
+    "after_changed_at,after_source_id",
+    [("2026-08-01 12:00:00.000000", None), (None, 99)],
+)
+def test_worklist_treats_a_partial_cursor_as_no_cursor(after_changed_at, after_source_id):
+    """Only one half of the pair supplied degrades to a full sweep, not an error."""
+    sql = candidacy_worklist_sql(
+        "cat",
+        "dbt",
+        intermediate_schema="dbtint",
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        limit=10,
+    )
     assert "TIMESTAMP '" not in sql
 
 
 def test_worklist_rejects_an_injected_schema():
-    with pytest.raises(ValueError, match="dbt_schema"):
+    with pytest.raises(ValueError, match="staging_schema"):
         candidacy_worklist_sql(
-            "cat", "dbt; drop table x", after_changed_at=None, after_source_id=None, limit=10
+            "cat",
+            "dbt; drop table x",
+            intermediate_schema="dbtint",
+            after_changed_at=None,
+            after_source_id=None,
+            limit=10,
         )
 
 
 def test_candidacy_worklist_unions_the_upcoming_ids_source():
     """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql(
+        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=10
+    )
     assert "stg_airbyte_source__ballotready_s3_candidacies_v3" in sql
     assert "int__ballotready_upcoming_candidacy_ids" in sql
+
+
+def test_candidacy_worklist_puts_each_source_on_its_own_schema():
+    """The two sources live in different schemas in the real catalog; one param cannot address both."""
+    sql = candidacy_worklist_sql(
+        "cat",
+        "dbt_staging",
+        intermediate_schema="dbt_intermediate",
+        after_changed_at=None,
+        after_source_id=None,
+        limit=10,
+    )
+    assert "`dbt_staging`.`stg_airbyte_source__ballotready_s3_candidacies_v3`" in sql
+    assert "`dbt_intermediate`.`int__ballotready_upcoming_candidacy_ids`" in sql
+
+
+def test_candidacy_worklist_requires_intermediate_schema():
+    """The upcoming-ids source cannot be addressed without it; there is no safe default."""
+    with pytest.raises(ValueError, match="intermediate_schema"):
+        candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+
+
+def test_candidacy_worklist_rejects_an_injected_intermediate_schema():
+    with pytest.raises(ValueError, match="intermediate_schema"):
+        candidacy_worklist_sql(
+            "cat",
+            "dbt",
+            intermediate_schema="dbt; drop table x",
+            after_changed_at=None,
+            after_source_id=None,
+            limit=10,
+        )
 
 
 def test_candidacy_worklist_accepts_and_ignores_source_schema():
     """A later builder (issues) needs source_schema; this one takes it for a uniform call site."""
     sql = candidacy_worklist_sql(
-        "cat", "dbt", source_schema="zzz_marker_schema", after_changed_at=None, after_source_id=None, limit=10
+        "cat",
+        "dbt",
+        intermediate_schema="dbtint",
+        source_schema="zzz_marker_schema",
+        after_changed_at=None,
+        after_source_id=None,
+        limit=10,
     )
     assert "zzz_marker_schema" not in sql
 
@@ -530,8 +601,8 @@ def test_race_derived_worklist_emits_a_keyset_predicate_when_a_cursor_is_present
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 7" in sql
 
 
-def test_race_derived_worklist_rejects_an_injected_dbt_schema():
-    with pytest.raises(ValueError, match="dbt_schema"):
+def test_race_derived_worklist_rejects_an_injected_staging_schema():
+    with pytest.raises(ValueError, match="staging_schema"):
         race_derived_worklist_sql(
             "cat", "dbt`; drop table x", after_changed_at=None, after_source_id=None, limit=10
         )
