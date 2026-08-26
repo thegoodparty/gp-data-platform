@@ -161,7 +161,23 @@ def fetch_nodes(
 
     for attempt in range(max_retries + 1):
         limiter.acquire()
-        response = session.post(CIVIC_ENGINE_GRAPHQL_URL, json=payload, headers=headers, timeout=timeout)
+        try:
+            response = session.post(CIVIC_ENGINE_GRAPHQL_URL, json=payload, headers=headers, timeout=timeout)
+        except requests.exceptions.RequestException as exc:
+            if attempt == max_retries:
+                raise
+            wait = retry_wait_seconds({}, attempt)
+            logger.warning(
+                "CivicEngine request failed for %d %s ids (attempt %d/%d); retrying in %.1fs: %s",
+                len(ids),
+                node_type,
+                attempt + 1,
+                max_retries,
+                wait,
+                exc,
+            )
+            sleep(wait)
+            continue
 
         if is_retryable_status(response.status_code):
             if attempt == max_retries:
@@ -865,7 +881,7 @@ def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfi
             "ids_requested": 0,
             "rows_written": 0,
             "parts": 0,
-            "cursor_source_changed_at": after[0],
+            "cursor_source_changed_at": format_cursor_ts(after[0]) if after[0] is not None else None,
             "cursor_requested_id": after[1],
         }
 
@@ -919,6 +935,9 @@ def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfi
         "ids_requested": len(worklist),
         "rows_written": rows_written,
         "parts": parts,
-        "cursor_source_changed_at": last_changed_at,
+        # Formatted so the UI summary matches the cursor format used everywhere else.
+        "cursor_source_changed_at": format_cursor_ts(last_changed_at)
+        if last_changed_at is not None
+        else None,
         "cursor_requested_id": last_id,
     }

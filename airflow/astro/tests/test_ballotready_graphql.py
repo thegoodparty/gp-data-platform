@@ -6,6 +6,7 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 from include.custom_functions.ballotready_graphql import (
     CANDIDACY_SELECTION,
     ENDORSEMENT_SELECTION,
@@ -172,7 +173,12 @@ class FakeResponse:
 
 
 class FakeSession:
-    """Returns queued responses in order and records the ids each call requested."""
+    """Returns queued responses in order and records the ids each call requested.
+
+    A queued item that is an Exception instance is raised instead of returned,
+    so a caller can simulate a network-level failure (ConnectionError, Timeout, ...)
+    on a given call.
+    """
 
     def __init__(self, responses):
         self._responses = list(responses)
@@ -182,7 +188,10 @@ class FakeSession:
     def post(self, url, json, headers, timeout):
         self.requested_id_counts.append(len(json["variables"]["ids"]))
         self.requested_ids.append(json["variables"]["ids"])
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def _ok(nodes):
@@ -255,6 +264,34 @@ def test_fetch_nodes_retries_a_429_and_pauses_every_worker():
 
     assert paused == [7.0]
     assert result == [FetchedNode(requested_id=1, node={"databaseId": 1})]
+
+
+def test_fetch_nodes_retries_a_connection_error_then_succeeds():
+    session = FakeSession([requests.exceptions.ConnectionError("boom"), _ok([{"databaseId": 1}])])
+
+    result = fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session, sleep=lambda s: None)
+
+    assert result == [FetchedNode(requested_id=1, node={"databaseId": 1})]
+
+
+def test_fetch_nodes_reraises_a_persistent_request_exception_after_max_retries():
+    session = FakeSession([requests.exceptions.ConnectionError("boom")] * 3)
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        fetch_nodes(
+            [1], "Candidacy", SELECTION, "tok", _limiter(), session, max_retries=2, sleep=lambda s: None
+        )
+
+
+def test_fetch_nodes_sleeps_between_network_exception_retries():
+    """A retry must back off through the injected sleep, not hot-loop straight to the next attempt."""
+    slept = []
+    session = FakeSession([requests.exceptions.ConnectionError("boom"), _ok([{"databaseId": 1}])])
+
+    fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session, sleep=slept.append)
+
+    assert len(slept) == 1
+    assert slept[0] >= 0.0
 
 
 def test_fetch_nodes_raises_on_graphql_errors():
@@ -998,7 +1035,20 @@ def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
 
     assert summary["ids_requested"] == 0
     assert summary["rows_written"] == 0
+    assert summary["cursor_source_changed_at"] is None
     s3.load_bytes.assert_not_called()
+
+
+def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(monkeypatch):
+    cursor_ts = datetime(2026, 8, 1, 9, 0, 0)
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_cursor", lambda *a, **k: (cursor_ts, 5)
+    )
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), MagicMock(), _config())
+
+    assert summary["cursor_source_changed_at"] == "2026-08-01 09:00:00.000000"
 
 
 def test_extract_entity_clears_the_run_prefix_before_writing(monkeypatch):
@@ -1051,6 +1101,7 @@ def test_extract_entity_writes_one_part_per_batch_and_copies_once(monkeypatch):
     assert s3.load_bytes.call_count == 3  # 250 ids at batch_size 100
     assert len(copies) == 1
     assert summary["rows_written"] == 250
+    assert summary["cursor_source_changed_at"] == "2026-08-01 00:00:00.000000"
 
 
 def test_extract_entity_skips_the_cursor_on_full_reload(monkeypatch):
