@@ -33,6 +33,10 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 CIVIC_ENGINE_GRAPHQL_URL = "https://bpi.civicengine.com/graphql"
 _NODE_ID_PREFIX = "gid://ballot-factory"
 
+# A path convention, not an environment-specific value, so it is a constant rather than a
+# Variable; the bucket Variable already carries the dev/prod distinction.
+S3_STAGING_PREFIX = "ballotready/graphql"
+
 
 def encode_node_id(node_type: str, node_id: int) -> str:
     """Encode an integer BallotReady id as its base64 GraphQL global id."""
@@ -770,7 +774,6 @@ class ExtractConfig:
     dbt_schema: str
     source_schema: str
     bucket: str
-    prefix: str
     api_token: str
     max_ids: int
     max_workers: int
@@ -824,7 +827,9 @@ def read_worklist(
 
 
 def _run_prefix(config: ExtractConfig, entity: str) -> str:
-    return f"{config.prefix}/{entity}/{config.run_key}/"
+    # Trailing slash matters: without it "run-1" would also match "run-10" and a
+    # delete could reach another run's files.
+    return f"{S3_STAGING_PREFIX}/{entity}/{config.run_key}/"
 
 
 def extract_entity(spec: EntitySpec, connection, s3_client, config: ExtractConfig) -> dict:

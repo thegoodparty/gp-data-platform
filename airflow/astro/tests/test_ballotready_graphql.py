@@ -16,11 +16,13 @@ from include.custom_functions.ballotready_graphql import (
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
     POSITION_ELECTION_FREQUENCY_SELECTION,
+    S3_STAGING_PREFIX,
     STANCE_SELECTION,
     EntitySpec,
     ExtractConfig,
     FetchedNode,
     RateLimiter,
+    _run_prefix,
     candidacy_worklist_sql,
     chunked,
     copy_into_landing,
@@ -954,7 +956,6 @@ def _config(**overrides):
         dbt_schema="dbt",
         source_schema="src",
         bucket="bucket",
-        prefix="ballotready/graphql",
         api_token="tok",
         max_ids=1000,
         max_workers=2,
@@ -990,11 +991,23 @@ def test_extract_entity_clears_the_run_prefix_before_writing(monkeypatch):
         lambda ids, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in ids],
     )
     s3 = MagicMock()
-    s3.list_keys.return_value = ["ballotready/graphql/issue/run-1/part-00000.json.gz"]
+    s3.list_keys.return_value = [f"{S3_STAGING_PREFIX}/issue/run-1/part-00000.json.gz"]
 
     extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), s3, _config())
 
     s3.delete_objects.assert_called_once()
+
+
+def test_run_prefix_has_a_trailing_slash_so_sibling_run_keys_cannot_collide():
+    """Without the trailing slash, listing prefix ".../run-1" would also match
+    ".../run-10/...", and a stale-run delete could reach another run's files.
+    """
+    prefix_run_1 = _run_prefix(_config(run_key="run-1"), "issue")
+    prefix_run_10 = _run_prefix(_config(run_key="run-10"), "issue")
+
+    assert prefix_run_1.endswith("/")
+    assert not prefix_run_10.startswith(prefix_run_1)
+    assert prefix_run_1 == f"{S3_STAGING_PREFIX}/issue/run-1/"
 
 
 def test_extract_entity_writes_one_part_per_batch_and_copies_once(monkeypatch):

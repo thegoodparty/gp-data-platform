@@ -35,8 +35,10 @@ Variables:
 - `databricks_source_schema` — where this DAG's own `ballotready_*_raw` landing tables live
   (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows back out of
   this schema.
-- `ballotready_extract_s3_bucket` / `ballotready_extract_s3_prefix` — where the gzipped NDJSON
-  batches are staged before `COPY INTO` lands them.
+- `ballotready_extract_s3_bucket` — where the gzipped NDJSON batches are staged before
+  `COPY INTO` lands them. The staging prefix under that bucket is a code constant
+  (`S3_STAGING_PREFIX` in `ballotready_graphql.py`), not a Variable — there is no
+  `ballotready_extract_s3_prefix` Variable to configure.
 
 ### Params
 
@@ -120,7 +122,6 @@ def extract_ballotready():
                 dbt_schema=Variable.get("databricks_dbt_schema"),
                 source_schema=Variable.get("databricks_source_schema"),
                 bucket=Variable.get("ballotready_extract_s3_bucket"),
-                prefix=Variable.get("ballotready_extract_s3_prefix"),
                 api_token=Variable.get("civicengine_api_token"),
                 max_ids=params["max_ids_per_entity"],
                 max_workers=params["max_workers"],
