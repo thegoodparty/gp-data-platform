@@ -23,8 +23,7 @@ not a genuine absence.
 ### Configuration
 
 Same Variables as `extract_ballotready`: `civicengine_api_token`, `databricks_conn_id`,
-`databricks_catalog`, `databricks_staging_schema`, `databricks_intermediate_schema`,
-`ballotready_extract_databricks_schema`.
+`databricks_catalog`, `databricks_dbt_schema`, `databricks_source_schema`.
 
 ### Params
 
@@ -235,8 +234,7 @@ def _entity_id_pool_sql(
     entity: str,
     spec: EntitySpec,
     catalog: str,
-    staging_schema: str,
-    intermediate_schema: str,
+    dbt_schema: str,
     source_schema: str,
     limit: int,
 ) -> str:
@@ -249,15 +247,14 @@ def _entity_id_pool_sql(
     than standing up a fake landing table just for this probe.
     """
     if entity == "issue":
-        table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_api_issue`"
+        table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_issue`"
         return (
             f"SELECT databaseid AS source_id FROM {table} "
             f"WHERE databaseid IS NOT NULL ORDER BY databaseid ASC LIMIT {int(limit)}"
         )
     return spec.worklist_sql(
         catalog,
-        staging_schema,
-        intermediate_schema=intermediate_schema,
+        dbt_schema,
         source_schema=source_schema,
         after_changed_at=None,
         after_source_id=None,
@@ -311,9 +308,8 @@ def probe_ballotready_page_size():
         pool_limit = max(sizes) * 3  # buffer, since not every drawn id is guaranteed to resolve
 
         catalog = Variable.get("databricks_catalog")
-        staging_schema = Variable.get("databricks_staging_schema")
-        intermediate_schema = Variable.get("databricks_intermediate_schema")
-        source_schema = Variable.get("ballotready_extract_databricks_schema")
+        dbt_schema = Variable.get("databricks_dbt_schema")
+        source_schema = Variable.get("databricks_source_schema")
         api_token = Variable.get("civicengine_api_token")
 
         connection = connect_from_conn_id()
@@ -321,9 +317,7 @@ def probe_ballotready_page_size():
             id_pools: dict[str, list[int]] = {}
             for entity in wanted:
                 spec = ENTITY_SPECS[entity]
-                sql = _entity_id_pool_sql(
-                    entity, spec, catalog, staging_schema, intermediate_schema, source_schema, pool_limit
-                )
+                sql = _entity_id_pool_sql(entity, spec, catalog, dbt_schema, source_schema, pool_limit)
                 cursor = connection.cursor()
                 try:
                     execute_with_retry(cursor, sql)

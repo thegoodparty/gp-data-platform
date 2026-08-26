@@ -458,9 +458,7 @@ def test_read_cursor_returns_the_highest_landed_pair():
 
 
 def test_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
-    sql = candidacy_worklist_sql(
-        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=500
-    )
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=500)
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
     assert "LIMIT 500" in sql
 
@@ -469,7 +467,6 @@ def test_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
     sql = candidacy_worklist_sql(
         "cat",
         "dbt",
-        intermediate_schema="dbtint",
         after_changed_at="2026-08-01 12:00:00.000000",
         after_source_id=99,
         limit=10,
@@ -479,9 +476,7 @@ def test_worklist_emits_a_keyset_predicate_when_a_cursor_is_present():
 
 
 def test_worklist_omits_the_predicate_with_no_cursor():
-    sql = candidacy_worklist_sql(
-        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=10
-    )
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
     assert "TIMESTAMP '" not in sql
 
 
@@ -494,7 +489,6 @@ def test_worklist_treats_a_partial_cursor_as_no_cursor(after_changed_at, after_s
     sql = candidacy_worklist_sql(
         "cat",
         "dbt",
-        intermediate_schema="dbtint",
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
         limit=10,
@@ -503,11 +497,10 @@ def test_worklist_treats_a_partial_cursor_as_no_cursor(after_changed_at, after_s
 
 
 def test_worklist_rejects_an_injected_schema():
-    with pytest.raises(ValueError, match="staging_schema"):
+    with pytest.raises(ValueError, match="dbt_schema"):
         candidacy_worklist_sql(
             "cat",
             "dbt; drop table x",
-            intermediate_schema="dbtint",
             after_changed_at=None,
             after_source_id=None,
             limit=10,
@@ -516,43 +509,23 @@ def test_worklist_rejects_an_injected_schema():
 
 def test_candidacy_worklist_unions_the_upcoming_ids_source():
     """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
-    sql = candidacy_worklist_sql(
-        "cat", "dbt", intermediate_schema="dbtint", after_changed_at=None, after_source_id=None, limit=10
-    )
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
     assert "stg_airbyte_source__ballotready_s3_candidacies_v3" in sql
-    assert "int__ballotready_upcoming_candidacy_ids" in sql
+    assert "stg_airbyte_source__ballotready_api_race" in sql
+    assert "stg_airbyte_source__ballotready_api_election" in sql
 
 
-def test_candidacy_worklist_puts_each_source_on_its_own_schema():
-    """The two sources live in different schemas in the real catalog; one param cannot address both."""
-    sql = candidacy_worklist_sql(
-        "cat",
-        "dbt_staging",
-        intermediate_schema="dbt_intermediate",
-        after_changed_at=None,
-        after_source_id=None,
-        limit=10,
-    )
+def test_candidacy_worklist_no_longer_reads_the_dbt_intermediate_layer():
+    """The upcoming-ids source used to live in an int_ model; it is now inlined from staging only."""
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "int__ballotready_upcoming_candidacy_ids" not in sql
+
+
+def test_candidacy_worklist_puts_both_sources_on_the_one_dbt_schema():
+    sql = candidacy_worklist_sql("cat", "dbt_staging", after_changed_at=None, after_source_id=None, limit=10)
     assert "`dbt_staging`.`stg_airbyte_source__ballotready_s3_candidacies_v3`" in sql
-    assert "`dbt_intermediate`.`int__ballotready_upcoming_candidacy_ids`" in sql
-
-
-def test_candidacy_worklist_requires_intermediate_schema():
-    """The upcoming-ids source cannot be addressed without it; there is no safe default."""
-    with pytest.raises(ValueError, match="intermediate_schema"):
-        candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
-
-
-def test_candidacy_worklist_rejects_an_injected_intermediate_schema():
-    with pytest.raises(ValueError, match="intermediate_schema"):
-        candidacy_worklist_sql(
-            "cat",
-            "dbt",
-            intermediate_schema="dbt; drop table x",
-            after_changed_at=None,
-            after_source_id=None,
-            limit=10,
-        )
+    assert "`dbt_staging`.`stg_airbyte_source__ballotready_api_race`" in sql
+    assert "`dbt_staging`.`stg_airbyte_source__ballotready_api_election`" in sql
 
 
 def test_candidacy_worklist_accepts_and_ignores_source_schema():
@@ -560,7 +533,6 @@ def test_candidacy_worklist_accepts_and_ignores_source_schema():
     sql = candidacy_worklist_sql(
         "cat",
         "dbt",
-        intermediate_schema="dbtint",
         source_schema="zzz_marker_schema",
         after_changed_at=None,
         after_source_id=None,
@@ -622,8 +594,8 @@ def test_race_derived_worklist_emits_a_keyset_predicate_when_a_cursor_is_present
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 7" in sql
 
 
-def test_race_derived_worklist_rejects_an_injected_staging_schema():
-    with pytest.raises(ValueError, match="staging_schema"):
+def test_race_derived_worklist_rejects_an_injected_dbt_schema():
+    with pytest.raises(ValueError, match="dbt_schema"):
         race_derived_worklist_sql(
             "cat", "dbt`; drop table x", after_changed_at=None, after_source_id=None, limit=10
         )
@@ -744,14 +716,12 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     sql = issue_worklist_sql(
         "cat",
         "dbt",
-        intermediate_schema="dbtint",
         source_schema="src",
         after_changed_at="2026-08-01 12:00:00.000000",
         after_source_id=99,
         limit=10,
     )
     assert "ballotready_stance_raw" in sql
-    assert "dbtint" not in sql
     assert "2026-08-01" not in sql
 
 
@@ -806,14 +776,12 @@ def test_node_types_match_the_ballotready_object_names():
 def test_every_worklist_builder_accepts_the_uniform_signature(entity):
     """Every builder is called the same way, so the task body needs no branch.
 
-    candidacy_worklist_sql and issue_worklist_sql each raise ValueError when a
-    schema they specifically need is missing, so both intermediate_schema and
-    source_schema are passed here alongside the cursor kwargs and limit.
+    issue_worklist_sql raises ValueError when source_schema is missing, so it
+    is passed here alongside the cursor kwargs and limit.
     """
     sql = ENTITY_SPECS[entity].worklist_sql(
         "cat",
         "dbt",
-        intermediate_schema="dbtint",
         source_schema="src",
         after_changed_at=None,
         after_source_id=None,
@@ -983,8 +951,7 @@ def test_copy_into_select_list_matches_the_landing_table_column_order():
 def _config(**overrides):
     base = dict(
         catalog="cat",
-        staging_schema="dbt",
-        intermediate_schema="dbt_intermediate",
+        dbt_schema="dbt",
         source_schema="src",
         bucket="bucket",
         prefix="ballotready/graphql",

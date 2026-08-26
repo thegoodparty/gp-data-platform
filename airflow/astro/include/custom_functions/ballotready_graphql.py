@@ -454,9 +454,8 @@ def _worklist(inner_sql: str, predicate: str, limit: int) -> str:
 
 def candidacy_worklist_sql(
     catalog: str,
-    staging_schema: str,
+    dbt_schema: str,
     *,
-    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -465,28 +464,33 @@ def candidacy_worklist_sql(
     """Candidacy ids from the S3 feed plus the upcoming-race roster.
 
     The S3 feed omits many upcoming general-stage rosters that the API race
-    object already carries, and without them those candidacies are never fetched.
-    The two sources live in different schemas (stg_* models vs int_* models),
-    so this is the one builder that needs both schema parameters.
+    object already carries, and without them those candidacies are never
+    fetched. The upcoming-roster query is inlined from what used to be a dbt
+    intermediate model (an explode of two staging models), so this reads only
+    staging rather than reaching into dbt's intermediate layer.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("staging_schema", staging_schema)
-    if intermediate_schema is None:
-        raise ValueError(
-            "intermediate_schema is required: the upcoming-ids source lives outside staging_schema"
-        )
-    validate_identifier("intermediate_schema", intermediate_schema)
-    staging_base = f"`{catalog}`.`{staging_schema}`"
-    intermediate_base = f"`{catalog}`.`{intermediate_schema}`"
+    validate_identifier("dbt_schema", dbt_schema)
+    base = f"`{catalog}`.`{dbt_schema}`"
+    upcoming = (
+        "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
+        "max(r.updated_at) AS race_updated_at "
+        f"FROM {base}.`stg_airbyte_source__ballotready_api_race` r "
+        "LATERAL VIEW explode(r.candidacies) AS candidacy "
+        "WHERE r.election.databaseId IN (SELECT database_id "
+        f"FROM {base}.`stg_airbyte_source__ballotready_api_election` "
+        "WHERE election_day >= current_date()) "
+        "AND candidacy.databaseId IS NOT NULL "
+        "GROUP BY cast(candidacy.databaseId AS bigint)"
+    )
     inner = (
         "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
         "greatest(candidacy_created_at, candidacy_updated_at) AS source_changed_at "
-        f"FROM {staging_base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
+        f"FROM {base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
         "WHERE br_candidacy_id IS NOT NULL "
         "UNION ALL "
-        "SELECT cast(br_candidacy_id AS bigint) AS source_id, race_updated_at AS source_changed_at "
-        f"FROM {intermediate_base}.`int__ballotready_upcoming_candidacy_ids` "
-        "WHERE br_candidacy_id IS NOT NULL"
+        "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
+        f"FROM ({upcoming}) upcoming"
     )
     grouped = (
         f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
@@ -496,9 +500,8 @@ def candidacy_worklist_sql(
 
 def geofence_worklist_sql(
     catalog: str,
-    staging_schema: str,
+    dbt_schema: str,
     *,
-    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -510,8 +513,8 @@ def geofence_worklist_sql(
     that geofence is next due for a refetch.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("staging_schema", staging_schema)
-    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
     inner = (
         "SELECT cast(br_geofence_id AS bigint) AS source_id, candidacy_updated_at AS source_changed_at "
         f"FROM {table} WHERE br_geofence_id IS NOT NULL"
@@ -524,9 +527,8 @@ def geofence_worklist_sql(
 
 def race_derived_worklist_sql(
     catalog: str,
-    staging_schema: str,
+    dbt_schema: str,
     *,
-    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -538,8 +540,8 @@ def race_derived_worklist_sql(
     race decides when that filing period is next due for a refetch.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("staging_schema", staging_schema)
-    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_api_race`"
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_race`"
     inner = (
         "SELECT cast(filing_period.databaseId AS bigint) AS source_id, updated_at AS source_changed_at "
         f"FROM {table} LATERAL VIEW explode(filing_periods) AS filing_period "
@@ -553,10 +555,9 @@ def race_derived_worklist_sql(
 
 def position_derived_worklist_sql(
     catalog: str,
-    staging_schema: str,
+    dbt_schema: str,
     *,
     field: str,
-    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -570,8 +571,8 @@ def position_derived_worklist_sql(
     the call site identical to the other three builders.
     """
     validate_identifier("catalog", catalog)
-    validate_identifier("staging_schema", staging_schema)
-    table = f"`{catalog}`.`{staging_schema}`.`stg_airbyte_source__ballotready_api_position`"
+    validate_identifier("dbt_schema", dbt_schema)
+    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_position`"
     if field == "normalized_position":
         id_expr = "normalized_position.databaseId"
         from_clause = table
@@ -592,9 +593,8 @@ def position_derived_worklist_sql(
 
 def issue_worklist_sql(
     catalog: str,
-    staging_schema: str,
+    dbt_schema: str,
     *,
-    intermediate_schema: str | None = None,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
@@ -604,10 +604,10 @@ def issue_worklist_sql(
 
     Issues have no timestamped feed to key a cursor on, and the set is small and
     slow-changing, so "everything referenced but not yet landed" is both correct
-    and cheap. staging_schema, intermediate_schema, and the keyset cursor args
-    are accepted but unused, so this builder is callable identically to the rest.
-    Because of this, `full_reload` has no effect on issue: there is no cursor to
-    ignore, and the anti-join against already-landed rows always applies.
+    and cheap. dbt_schema and the keyset cursor args are accepted but unused, so
+    this builder is callable identically to the rest. Because of this,
+    `full_reload` has no effect on issue: there is no cursor to ignore, and the
+    anti-join against already-landed rows always applies.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -757,17 +757,17 @@ ENTITY_SPECS: dict[str, EntitySpec] = {
 class ExtractConfig:
     """Per-run parameters threaded through every entity's extract task.
 
-    staging_schema and intermediate_schema are the two dbt read schemas a
-    worklist query may need. source_schema is where this DAG's own landing
-    tables live (it is what issue_worklist_sql reads landed stance/issue rows
-    back out of). run_key names the S3 path; dag_run_id is stamped into the
-    landed rows. They are usually the same value, but run_key must be safe to
-    use in a path where an Airflow run_id (which can contain ':') might not be.
+    dbt_schema is the one dbt read schema a worklist query may need (the
+    stg_airbyte_source__ballotready_* models). source_schema is where this
+    DAG's own landing tables live (it is what issue_worklist_sql reads landed
+    stance/issue rows back out of). run_key names the S3 path; dag_run_id is
+    stamped into the landed rows. They are usually the same value, but run_key
+    must be safe to use in a path where an Airflow run_id (which can contain
+    ':') might not be.
     """
 
     catalog: str
-    staging_schema: str
-    intermediate_schema: str
+    dbt_schema: str
     source_schema: str
     bucket: str
     prefix: str
@@ -809,8 +809,7 @@ def read_worklist(
     after_changed_at, after_source_id = after
     sql = spec.worklist_sql(
         config.catalog,
-        config.staging_schema,
-        intermediate_schema=config.intermediate_schema,
+        config.dbt_schema,
         source_schema=config.source_schema,
         after_changed_at=format_cursor_ts(after_changed_at) if after_changed_at is not None else None,
         after_source_id=after_source_id,

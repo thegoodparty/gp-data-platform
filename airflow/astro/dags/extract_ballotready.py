@@ -30,15 +30,11 @@ Variables:
 - `civicengine_api_token` — bearer token for the CivicEngine GraphQL endpoint.
 - `databricks_conn_id` — names the Databricks connection above.
 - `databricks_catalog` — the Unity Catalog catalog.
-- `databricks_staging_schema` — holds the `stg_airbyte_source__ballotready_*` dbt models that
-  most worklist queries read ids from.
-- `databricks_intermediate_schema` — holds `int__ballotready_upcoming_candidacy_ids`, a second,
-  genuinely different schema the candidacy worklist also reads (upcoming-race rosters the S3
-  feed omits). Conflating the two schemas fails at runtime (TABLE_OR_VIEW_NOT_FOUND), it does
-  not silently read the wrong table.
-- `ballotready_extract_databricks_schema` — where this DAG's own `ballotready_*_raw` landing
-  tables live (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows
-  back out of this schema.
+- `databricks_dbt_schema` — holds the `stg_airbyte_source__ballotready_*` dbt models that every
+  worklist query reads ids from.
+- `databricks_source_schema` — where this DAG's own `ballotready_*_raw` landing tables live
+  (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows back out of
+  this schema.
 - `ballotready_extract_s3_bucket` / `ballotready_extract_s3_prefix` — where the gzipped NDJSON
   batches are staged before `COPY INTO` lands them.
 
@@ -121,9 +117,8 @@ def extract_ballotready():
             run_id = context["dag_run"].run_id
             config = ExtractConfig(
                 catalog=Variable.get("databricks_catalog"),
-                staging_schema=Variable.get("databricks_staging_schema"),
-                intermediate_schema=Variable.get("databricks_intermediate_schema"),
-                source_schema=Variable.get("ballotready_extract_databricks_schema"),
+                dbt_schema=Variable.get("databricks_dbt_schema"),
+                source_schema=Variable.get("databricks_source_schema"),
                 bucket=Variable.get("ballotready_extract_s3_bucket"),
                 prefix=Variable.get("ballotready_extract_s3_prefix"),
                 api_token=Variable.get("civicengine_api_token"),
