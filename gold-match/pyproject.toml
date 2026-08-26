@@ -1,0 +1,49 @@
+[project]
+name = "gold-match"
+version = "0.1.0"
+description = "L2-to-BallotReady district matcher (gold match), moved from omni as a frozen port"
+requires-python = ">=3.14"
+# Floors are omni's locked versions. Three ceilings keep the byte-frozen code
+# on the series it was written and evaluated under -- Python 3.14 forces only
+# pandas (2.2.3 -> 2.3.x) and databricks-sql-connector (4.1.4 -> 4.4) past
+# omni's lock; nothing forces a pandas 3 / google-genai 2 / braintrust 0.18+
+# jump, so the port doesn't take one. Relaxing these is client-PR work.
+dependencies = [
+    "braintrust>=0.17.0,<0.18.0",
+    "databricks-sql-connector>=4.4.0,<5.0.0",
+    "google-genai>=1.56.0,<2.0.0",
+    "httpx>=0.28.1",
+    "numpy>=2.3.4",
+    "pandas>=2.3.1,<3.0.0",
+    "pillow>=12.3.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "tqdm>=4.67.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["stitch_golden_data/prod_gold_data/tests"]
+
+# The matcher and shared/ modules are byte-frozen copies from omni, excluded
+# from this repo's ruff entirely: they keep omni's newer-ruff lint and format
+# verbatim, and the older pinned hooks here must neither flag nor rewrite
+# them (0.7.4 still enforces since-removed rules and formats some constructs
+# differently). Both excludes are anchored -- a bare name would match at any
+# depth. Subproject-native code is linted under omni's envelope so ported
+# code keeps one style.
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["./shared", "./stitch_golden_data"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
