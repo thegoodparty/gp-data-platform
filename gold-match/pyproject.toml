@@ -12,10 +12,15 @@ requires-python = ">=3.14"
 # and without it databricks-sql-connector drops its arrow/cloud-fetch result
 # path and warns on every import. Relaxing any of this is client-PR work.
 dependencies = [
+    "boto3>=1.40.55,<2.0.0",
+    "botocore>=1.40.55,<2.0.0",
     "braintrust>=0.17.0,<0.18.0",
     "databricks-sql-connector>=4.4.0,<5.0.0",
     "google-genai>=1.56.0,<1.57.0",
     "httpx>=0.28.1",
+    # jsonschema is transitively present; declared because bedrock_clients
+    # imports it directly.
+    "jsonschema>=4.26.0",
     "numpy>=2.3.4",
     "pandas>=2.3.1,<3.0.0",
     "pillow>=12.3.0",
@@ -40,10 +45,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["shared", "stitch_golden_data"]
+packages = ["shared", "stitch_golden_data", "bedrock_clients"]
 
 [tool.pytest.ini_options]
-testpaths = ["stitch_golden_data/prod_gold_data/tests"]
+testpaths = ["stitch_golden_data/prod_gold_data/tests", "bedrock_clients/tests"]
 
 # The matcher and shared/ modules are byte-frozen copies from omni, excluded
 # from this repo's ruff entirely: they keep omni's newer-ruff lint and format
