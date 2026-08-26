@@ -969,114 +969,6 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_vote_history_data_dictionary
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
-      - name: ballotready_candidacy_raw
-        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_endorsement_raw
-        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `endorsements` array on each Candidacy (there is no standalone Endorsement node)
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_filing_period_raw
-        description: Raw CivicEngine GraphQL FilingPeriod nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_geofence_raw
-        description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_issue_raw
-        description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_normalized_position_raw
-        description: Raw CivicEngine GraphQL NormalizedPosition nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_party_raw
-        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_position_election_frequency_raw
-        description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
-      - name: ballotready_stance_raw
-        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
-        config:
-          loaded_at_field: loaded_at
-          freshness:
-            warn_after: { count: 36, period: hour }
-            error_after: { count: 72, period: hour }
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
 
   - name: dbt_source_haystaq
     schema: dbt_source
@@ -1288,6 +1180,79 @@ sources:
       - name: l2_s3_wy_haystaq_dna_scores
         description: raw data load for Wyoming Haystaq DNA scores
 
+  - name: airflow_source
+    schema: airflow_source
+    description: Raw tables landed by the extract_ballotready DAG
+    config:
+      loaded_at_field: loaded_at
+      freshness:
+        warn_after: { count: 36, period: hour }
+        error_after: { count: 72, period: hour }
+
+    tables:
+      - name: ballotready_candidacy_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_endorsement_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `endorsements` array on each Candidacy (there is no standalone Endorsement node)
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_filing_period_raw
+        description: Raw CivicEngine GraphQL FilingPeriod nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_geofence_raw
+        description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_issue_raw
+        description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_normalized_position_raw
+        description: Raw CivicEngine GraphQL NormalizedPosition nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_party_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_position_election_frequency_raw
+        description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_stance_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
+        columns:
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
 
   - name: model_predictions
     schema: model_predictions
