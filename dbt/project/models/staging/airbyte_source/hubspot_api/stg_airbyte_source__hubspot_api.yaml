@@ -1395,9 +1395,8 @@ models:
           HubSpot contact property `verified_candidate_status` (Verified Candidate
           Status). HubSpot property group: contactinformation.
 
-          int__civics_candidacy_gp_api admits a campaign on 'Yes', so a renamed
-          HubSpot option would silently shrink the candidacy set rather than
-          fail. The accepted_values test is that canary.
+          int__civics_candidacy_gp_api admits a campaign on 'Yes'. A renamed
+          option would shrink the candidacy set silently, so the test warns.
         data_tests:
           - accepted_values:
               arguments:

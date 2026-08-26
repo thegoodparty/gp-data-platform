@@ -3,8 +3,7 @@
 -- with int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
     latest_campaigns as (
-        -- 2026+ / non-demo / BR-anchored scope, used for the state rollup;
-        -- membership itself comes from int__civics_candidacy_gp_api.
+        -- Scope for the state rollup; membership comes from the candidacy model.
         select *
         from {{ ref("campaigns") }}
         where
@@ -14,8 +13,7 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    -- A user with no valid candidacy is not a candidate, so the candidacy model
-    -- (not the raw campaign list) defines the user universe here.
+    -- No valid candidacy means not a candidate.
     users_with_valid_candidacy as (
         select distinct c.user_id
         from latest_campaigns as c
@@ -48,7 +46,6 @@ with
         from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
-    -- A real HubSpot CONTACT id, and not on the users mart.
     user_hubspot as (
         select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}

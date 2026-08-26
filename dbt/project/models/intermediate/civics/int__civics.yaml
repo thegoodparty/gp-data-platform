@@ -2709,10 +2709,9 @@ models:
   - name: int__civics_candidate_gp_api
     description: >
       Product Database (gp_api_db) users transformed into the civics mart
-      candidate schema. Grain: one row per user with at least one valid
-      candidacy in int__civics_candidacy_gp_api. A user whose campaigns are all
-      uncorroborated has no candidacy, and so is not a candidate: they stay in
-      the people mart with no candidate, candidacy, or candidacy_stage rows.
+      candidate schema. Grain: one row per user with at least one candidacy in
+      int__civics_candidacy_gp_api. Users without one stay in the people mart
+      but get no candidate, candidacy, or candidacy_stage rows.
 
       gp_candidate_id is the person id from int__civics_person_canonical_ids
       (record_key gp_api|user_id), with a deterministic self-mint guard.
@@ -2785,11 +2784,9 @@ models:
     description: >
       Product Database campaigns transformed into the civics mart candidacy
       schema. Grain: one row per latest-version campaign with a non-null
-      election_date backed by outside evidence that the race is real: either the
-      entity-resolution cluster also holds a BallotReady, TechSpeed, or DDHQ
-      candidacy, or the user's HubSpot contact carries
-      verified_candidate_status = 'Yes'. A self-reported race with neither is
-      not a candidacy.
+      election_date that outside evidence backs: either a BallotReady,
+      TechSpeed, or DDHQ candidacy in the same entity-resolution cluster, or a
+      HubSpot contact with verified_candidate_status = 'Yes'.
 
       gp_candidate_id uses the user's derived state (most recent non-demo
       campaign), not the per-campaign state, so users with campaigns in

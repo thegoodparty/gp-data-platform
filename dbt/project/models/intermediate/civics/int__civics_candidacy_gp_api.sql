@@ -23,8 +23,7 @@ with
         where source_name in ('ballotready', 'techspeed', 'ddhq')
     ),
 
-    -- A self-reported race nobody else lists is not evidence that the person is
-    -- on a ballot, so a campaign needs a vendor candidacy in its cluster.
+    -- A race no vendor lists is not evidence the person is on a ballot.
     corroborated_campaigns as (
         select distinct cast(split(source_id, '__')[0] as bigint) as campaign_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }}
@@ -32,20 +31,16 @@ with
         where source_name = 'gp_api'
     ),
 
-    -- Sole owner of the user gate now that candidate_gp_api derives its universe
-    -- from this model: a candidacy the users mart can't resolve would have no
-    -- candidate row to point at.
+    -- The only user gate: candidate_gp_api takes its users from this model.
     users as (select user_id from {{ ref("users") }} where campaign_count > 0),
 
-    -- A real HubSpot CONTACT id, and not on the users mart.
     user_hubspot as (
         select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
-    -- Someone has independently confirmed the contact is running. Distinct from
-    -- the product's own campaign.is_verified, which is self-asserted. Contact
-    -- grain, so a user's 'Yes' vouches for every 2026+ campaign they hold.
+    -- Someone confirmed the person is running. Contact grain, so one 'Yes'
+    -- covers every campaign the user holds.
     hubspot_verified_campaigns as (
         select distinct c.campaign_id
         from latest_campaigns as c
@@ -56,7 +51,6 @@ with
         where trim(hc.verified_candidate_status) = 'Yes'
     ),
 
-    -- Either kind of outside evidence makes the campaign a candidacy.
     eligible_campaigns as (
         select campaign_id
         from corroborated_campaigns
