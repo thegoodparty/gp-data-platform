@@ -67,7 +67,15 @@ t_log = logging.getLogger("airflow.task")
     max_active_tasks=4,
     max_consecutive_failed_dag_runs=5,
     doc_md=__doc__,
-    default_args={"retries": 3, "retry_delay": duration(seconds=30)},
+    # Backoff rather than a flat delay: a retry is usually the API rate-limiting us or a
+    # transient network failure, and retrying three times 30s apart tends to re-hit whatever
+    # is still recovering. Capped so a run cannot stall for hours.
+    default_args={
+        "retries": 3,
+        "retry_delay": duration(seconds=30),
+        "retry_exponential_backoff": True,
+        "max_retry_delay": duration(minutes=10),
+    },
     tags=["ballotready", "civicengine", "ingestion"],
     is_paused_upon_creation=True,
     params={
