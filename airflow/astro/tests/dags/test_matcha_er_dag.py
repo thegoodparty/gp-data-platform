@@ -71,15 +71,23 @@ def test_match_tasks_share_the_serialising_pool():
 
 
 def test_entities_are_independent_of_each_other():
-    """No dbt model joins two entities' cluster tables, so one entity failing
-    must not block the others matching and swapping."""
+    """Within this DAG, each entity's match depends only on
+    dbt_refresh_prematch — one entity failing must not block another from
+    matching, gating, or swapping. This independence is scheduling-only: a
+    civics mart reading er_source downstream can still see one entity's
+    fresh vintage next to another's stale one, since nothing here gates a
+    mart on all three swaps."""
     for entity in _ENTITIES:
         upstream = {t.task_id for t in _DAG.get_task(f"{entity}.match").upstream_list}
         assert upstream == {"dbt_refresh_prematch"}
 
 
 def test_downstream_dbt_waits_for_every_swap():
-    """Withhold the downstream build rather than publish a mixed vintage."""
+    """Gates only THIS DAG's own staging rebuild on all three swaps — it does
+    not prevent er_source itself from holding a mixed vintage. If one
+    entity's swap fails after the other two already succeeded, those two are
+    already live; only this DAG's dbt_build_er_source is withheld until a
+    retry clears the failure."""
     upstream = {t.task_id for t in _DAG.get_task("dbt_build_er_source").upstream_list}
     assert upstream == {f"{e}.swap" for e in _ENTITIES}
 

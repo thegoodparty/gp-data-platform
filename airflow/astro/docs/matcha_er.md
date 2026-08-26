@@ -127,7 +127,10 @@ If every retry is exhausted, or you need it back sooner:
   crash shapes above because of the dated-table guard described there — a table already promoted is
   skipped rather than re-swapped, and only tables that genuinely still need swapping are touched.
 - **Rename `_old` back into place by hand** if you want the pre-crash vintage restored immediately
-  rather than waiting on the retry to install the new one:
+  rather than waiting on the retry to install the new one. **Do this before the automatic retry fires**
+  (10 minutes after the failure): the retry's own `swap_table` call drops `_old` as its first statement,
+  so once that retry runs there is nothing left to rename back. Mark the task instance failed (not just
+  cleared) or otherwise stop the automatic retry first if you need this window preserved:
 
 ```sql
 ALTER TABLE <catalog>.er_source.<table>_old RENAME TO <catalog>.er_source.<table>;
@@ -164,15 +167,13 @@ recovery path applies before reaching for one at 3am:
    ```
    then follow the two-statement rename sequence in path 1 once it's back.
 
-3. **Past the 7-day undrop window: Delta time travel on the live table itself.** The live table's own
-   history holds every version `swap_table`'s renames produced, independent of `_old`/vintage retention:
-   ```sql
-   -- find the version to restore (or use a TIMESTAMP AS OF instead of VERSION AS OF)
-   DESCRIBE HISTORY <catalog>.er_source.<table>;
-   RESTORE TABLE <catalog>.er_source.<table> TO VERSION AS OF <version>;
-   ```
-   Delta's own time-travel retention window (governed by the table's log/vacuum settings, not this DAG)
-   is the real limit here — check it before assuming a given version is still reachable.
+**Past the 7-day undrop window, there is no rollback table left.** Delta time travel does NOT help here:
+every vintage is a table matcha built fresh that run (`CREATE OR REPLACE TABLE` + `COPY INTO`), and a
+swap RENAMEs it into place rather than writing new versions onto the live name's existing history — so
+whatever table currently holds the live name has its OWN history starting from this run's create, not a
+record of prior weeks. Restoring the live table to an earlier version would only wind it back to its own
+pre-`COPY INTO` empty state, not to a previous vintage. Once `_old` is gone and 7 days have passed, the
+only recovery is a full re-match of that entity.
 
 Whichever path recovers the table, **re-run `dbt_build_er_source`** (or trigger the underlying dbt Cloud
 job's `dbt build --select path:models/staging/er_source+` step directly) before calling the rollback

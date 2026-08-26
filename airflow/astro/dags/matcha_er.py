@@ -82,7 +82,8 @@ t_log = logging.getLogger("airflow.task")
 # the default keeps today's behavior.
 MATCHA_IMAGE_TAG_VARIABLE = "matcha_image_tag"
 MATCHA_IMAGE = (
-    "ghcr.io/thegoodparty/gp-data-platform/matcha:" "{{ var.value.get('matcha_image_tag', 'latest') }}"
+    "ghcr.io/thegoodparty/gp-data-platform/matcha:"
+    f"{{{{ var.value.get('{MATCHA_IMAGE_TAG_VARIABLE}', 'latest') }}}}"
 )
 MATCHA_POOL = "matcha_er"
 # A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
