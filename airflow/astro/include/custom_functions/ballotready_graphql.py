@@ -7,8 +7,10 @@ of them.
 """
 
 import logging
+import threading
+import time
 from base64 import b64encode
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 logger = logging.getLogger("airflow.task")
@@ -28,3 +30,39 @@ def chunked(seq: list[Any], size: int) -> Iterator[list[Any]]:
         raise ValueError(f"chunk size must be >= 1, got {size}")
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
+
+
+class RateLimiter:
+    """Caps request rate across threads, and lets any thread pause all of them.
+
+    Worker count bounds how much is in flight; this bounds the load we actually
+    put on CivicEngine. The pause exists because a 429 handled by one worker
+    alone just means the other workers keep earning more of them.
+    """
+
+    def __init__(
+        self,
+        requests_per_second: float,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        if requests_per_second <= 0:
+            raise ValueError(f"requests_per_second must be > 0, got {requests_per_second}")
+        self._interval = 1.0 / requests_per_second
+        self._sleep = sleep
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._next_allowed = 0.0
+
+    def acquire(self) -> None:
+        """Block until this thread may issue a request."""
+        with self._lock:
+            wait = self._next_allowed - self._clock()
+            if wait > 0:
+                self._sleep(wait)
+            self._next_allowed = self._clock() + self._interval
+
+    def pause_for(self, seconds: float) -> None:
+        """Hold every worker for `seconds`, after a rate-limit response."""
+        with self._lock:
+            self._next_allowed = max(self._next_allowed, self._clock() + seconds)
