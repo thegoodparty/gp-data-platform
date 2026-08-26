@@ -1,0 +1,170 @@
+from unittest.mock import patch
+
+import boto3
+import pytest
+from botocore.config import Config
+from botocore.stub import Stubber
+
+from bedrock_clients.structured import BedrockStructuredContentClient, StructuredOutputError
+
+MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected_candidate_number": {"type": "number", "minimum": 0, "maximum": 3},
+        "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
+    },
+    "required": ["selected_candidate_number", "selection_confidence"],
+}
+
+
+def make_client_and_stubber():
+    client = boto3.client(
+        "bedrock-runtime",
+        region_name="us-east-1",
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+        config=Config(retries={"max_attempts": 1, "mode": "standard"}),
+    )
+    return client, Stubber(client)
+
+
+def expected_converse(prompt: str) -> dict:
+    return {
+        "modelId": MODEL_ID,
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {"temperature": 0.0, "maxTokens": 1024},
+        "toolConfig": {
+            "tools": [
+                {
+                    "toolSpec": {
+                        "name": "emit_match_selection",
+                        "description": "Return the selection as arguments to this tool.",
+                        "inputSchema": {"json": SCHEMA},
+                    }
+                }
+            ],
+            "toolChoice": {"tool": {"name": "emit_match_selection"}},
+        },
+    }
+
+
+def converse_response(tool_input: dict | None, stop_reason: str = "tool_use") -> dict:
+    content = [{"toolUse": {"toolUseId": "t1", "name": "emit_match_selection", "input": tool_input}}]
+    if tool_input is None:
+        content = [{"text": "I cannot use tools right now."}]
+    return {
+        "output": {"message": {"role": "assistant", "content": content}},
+        "stopReason": stop_reason,
+        "usage": {"inputTokens": 800, "outputTokens": 300, "totalTokens": 1100},
+        "metrics": {"latencyMs": 100},
+    }
+
+
+def make_llm(stub_client) -> BedrockStructuredContentClient:
+    return BedrockStructuredContentClient(bedrock_runtime=stub_client)
+
+
+def test_happy_path_returns_tool_input_verbatim():
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 2, "selection_confidence": 90}
+    stubber.add_response("converse", converse_response(payload), expected_converse("pick one"))
+    with stubber:
+        llm = make_llm(client)
+        out = llm.generate_structured_content(
+            prompt="pick one", response_schema=SCHEMA, trace_name="stitch-match-selection"
+        )
+    assert out == payload
+
+
+def test_no_tool_use_raises():
+    client, stubber = make_client_and_stubber()
+    stubber.add_response("converse", converse_response(None, stop_reason="end_turn"), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(StructuredOutputError, match="stop"):
+            llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+
+
+def test_schema_violation_raises_and_usage_still_counted():
+    client, stubber = make_client_and_stubber()
+    bad = {"selected_candidate_number": 2, "selection_confidence": 950}
+    stubber.add_response("converse", converse_response(bad), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(StructuredOutputError, match="schema"):
+            llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    stats = llm.get_usage_stats()
+    assert stats["api_calls"] == 1
+    assert stats["prompt_tokens"] == 800
+    assert stats["total_cost"] > 0
+
+
+def test_throttling_retried_then_succeeds():
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 1, "selection_confidence": 80}
+    stubber.add_client_error("converse", service_error_code="ThrottlingException")
+    stubber.add_response("converse", converse_response(payload), expected_converse("p"))
+    with stubber, patch("bedrock_clients._retry.random.uniform", return_value=0.0):
+        llm = make_llm(client)
+        out = llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    assert out == payload
+
+
+def test_access_denied_not_retried():
+    client, stubber = make_client_and_stubber()
+    stubber.add_client_error("converse", service_error_code="AccessDeniedException")
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(Exception) as excinfo:
+            llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    assert "AccessDeniedException" in str(excinfo.value)
+    stubber.assert_no_pending_responses()
+
+
+def test_usage_math():
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 0, "selection_confidence": 50}
+    stubber.add_response("converse", converse_response(payload), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    stats = llm.get_usage_stats()
+    assert stats["total_cost"] == pytest.approx(800 * 1.00 / 1_000_000 + 300 * 5.00 / 1_000_000)
+    assert stats["completion_tokens"] == 300
+
+
+def test_resolved_config_and_stable_fingerprint():
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 1, "selection_confidence": 70}
+    wider = {
+        "type": "object",
+        "properties": {
+            "selected_candidate_number": {"type": "number", "minimum": 0, "maximum": 13},
+            "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        },
+        "required": ["selected_candidate_number", "selection_confidence"],
+    }
+    stubber.add_response("converse", converse_response(payload), expected_converse("a"))
+    with stubber:
+        llm = make_llm(client)
+        llm.generate_structured_content(prompt="a", response_schema=SCHEMA)
+    first = llm.resolved_config()["schema_fingerprint"]
+
+    client2, stubber2 = make_client_and_stubber()
+    expected2 = expected_converse("b")
+    expected2["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"] = wider
+    stubber2.add_response("converse", converse_response(payload), expected2)
+    with stubber2:
+        llm2 = make_llm(client2)
+        llm2.generate_structured_content(prompt="b", response_schema=wider)
+    second = llm2.resolved_config()["schema_fingerprint"]
+
+    assert first == second  # bounds are normalized out of the fingerprint
+    cfg = llm2.resolved_config()
+    assert cfg["model_id"] == MODEL_ID
+    assert cfg["operation"] == "Converse"
+    assert cfg["thinking"] == "off"
+    assert cfg["temperature"] == 0.0
+    assert cfg["tool_name"] == "emit_match_selection"

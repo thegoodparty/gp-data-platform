@@ -1,3 +1,4 @@
 from .embedding import BedrockEmbeddingClient
+from .structured import BedrockStructuredContentClient
 
-__all__ = ["BedrockEmbeddingClient"]
+__all__ = ["BedrockEmbeddingClient", "BedrockStructuredContentClient"]
