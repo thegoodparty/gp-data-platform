@@ -145,13 +145,18 @@ def test_gate_task_checks_its_own_entitys_tables():
     Index 4 (the dated table name) is skipped: it's derived from args[3] in
     the same expression and cannot diverge from it independently.
     """
+    # autospec=True on every patch below: a plain MagicMock accepts any keyword argument
+    # silently, which is exactly how a wrong kwarg on a real call (e.g. Variable.get's
+    # Airflow-2 `default_var=` instead of `default=`) once passed every test here while
+    # raising TypeError at runtime. autospec enforces the real signatures so a call using a
+    # keyword/arity the function doesn't have fails the test instead of hiding.
     module = _dag_module()
     for entity in _ENTITY_SPECS:
         gate_fn = _DAG.get_task(f"{entity.entity_type}.gate").python_callable
         with (
-            patch.object(module, "open_connection", return_value=MagicMock()),
-            patch.object(module, "Variable") as mock_variable,
-            patch.object(module, "run_gate") as mock_run_gate,
+            patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
+            patch.object(module, "Variable", autospec=True) as mock_variable,
+            patch.object(module, "run_gate", autospec=True) as mock_run_gate,
         ):
             mock_variable.get.return_value = "cat"
             gate_fn("20260825")
@@ -173,10 +178,10 @@ def test_swap_task_swaps_its_own_entitys_tables():
     for entity in _ENTITY_SPECS:
         swap_fn = _DAG.get_task(f"{entity.entity_type}.swap").python_callable
         with (
-            patch.object(module, "swap_enabled", return_value=True),
-            patch.object(module, "open_connection", return_value=MagicMock()),
-            patch.object(module, "Variable") as mock_variable,
-            patch.object(module, "swap_table") as mock_swap_table,
+            patch.object(module, "swap_enabled", autospec=True, return_value=True),
+            patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
+            patch.object(module, "Variable", autospec=True) as mock_variable,
+            patch.object(module, "swap_table", autospec=True) as mock_swap_table,
         ):
             mock_variable.get.return_value = "cat"
             swap_fn("20260825")

@@ -144,13 +144,17 @@ class TestSwapEnabled:
         ],
     )
     def test_exact_literal_match_only(self, value, expected):
-        with patch.object(matcha_utils.Variable, "get", return_value=value):
+        # autospec=True: a plain MagicMock accepts any kwarg silently, which is exactly how
+        # a wrong keyword (e.g. the Airflow-2 `default_var=` instead of `default=`) once
+        # passed every test here while raising TypeError at runtime. autospec enforces the
+        # real Variable.get signature so that class of bug fails the test instead of hiding.
+        with patch.object(matcha_utils.Variable, "get", autospec=True, return_value=value):
             assert swap_enabled() is expected
 
     def test_unset_variable_is_rehearsal(self):
-        """An unset Variable resolves through default_var="" — same as an
+        """An unset Variable resolves through default="" — same as an
         explicit empty string, and must not accidentally arm the swap."""
-        with patch.object(matcha_utils.Variable, "get", return_value=""):
+        with patch.object(matcha_utils.Variable, "get", autospec=True, return_value=""):
             assert swap_enabled() is False
 
 

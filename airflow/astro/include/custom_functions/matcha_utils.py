@@ -182,7 +182,7 @@ def swap_enabled() -> bool:
     into rehearsal (match + gate still run) rather than going live by
     accident. Reads a Variable, so callable at task runtime only.
     """
-    return Variable.get(SWAP_GATE_VARIABLE, default_var="") == "true"
+    return Variable.get(SWAP_GATE_VARIABLE, default="") == "true"
 
 
 # ── Gate checks (pure) ──
@@ -345,7 +345,7 @@ def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
     `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
     prod), matching the other DAGs. Must not be called at DAG parse.
     """
-    conn_id = Variable.get(databricks_conn_id_var, default_var="databricks")
+    conn_id = Variable.get(databricks_conn_id_var, default="databricks")
     db_conn = BaseHook.get_connection(conn_id)
     http_path = db_conn.extra_dejson.get("http_path", "")
     if not (db_conn.host and db_conn.login and db_conn.password and http_path):
