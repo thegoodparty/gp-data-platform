@@ -69,6 +69,10 @@ _BR_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "extract_ballo
 with suppress_logging("airflow"):
     _BR_DAG = DagBag(dag_folder=_BR_DAG_FILE).dags.get("extract_ballotready")
 
+_PROBE_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "probe_ballotready_page_size.py")
+with suppress_logging("airflow"):
+    _PROBE_DAG = DagBag(dag_folder=_PROBE_DAG_FILE).dags.get("probe_ballotready_page_size")
+
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -188,3 +192,11 @@ def test_extract_ballotready_bounds_concurrent_tasks():
     """The concurrency budget is max_active_tasks times max_workers, so this must stay pinned."""
     assert _BR_DAG is not None
     assert _BR_DAG.max_active_tasks == 4
+
+
+def test_probe_ballotready_page_size_imports_and_never_schedules():
+    """Diagnostic DAG: must import cleanly and must never run except by manual trigger."""
+    assert _PROBE_DAG is not None, f"probe_ballotready_page_size failed to load from {_PROBE_DAG_FILE}"
+    assert _PROBE_DAG.timetable.__class__.__name__ == "NullTimetable"  # schedule=None
+    assert _PROBE_DAG.is_paused_upon_creation
+    assert "diagnostic" in _PROBE_DAG.tags
