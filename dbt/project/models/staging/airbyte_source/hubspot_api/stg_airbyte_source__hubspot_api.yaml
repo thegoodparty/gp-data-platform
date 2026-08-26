@@ -1400,10 +1400,13 @@ models:
         data_tests:
           - accepted_values:
               arguments:
+                # accepted_values drops each value into a SQL literal unescaped,
+                # and Databricks wants a backslash, not a doubled apostrophe:
+                # 'Can''t' parses as "Cant".
                 values:
                   - "Yes"
                   - "No"
-                  - "Can't Determine"
+                  - "Can\\'t Determine"
               config:
                 severity: warn
       - name: type
