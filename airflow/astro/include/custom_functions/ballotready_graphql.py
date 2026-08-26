@@ -15,6 +15,7 @@ from base64 import b64encode
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from include.custom_functions.databricks_utils import execute_with_retry
@@ -621,3 +622,32 @@ def issue_worklist_sql(
         ") "
         f"ORDER BY source_id ASC LIMIT {int(limit)}"
     )
+
+
+# Four entities share candidacy_worklist_sql: their selections are all inline
+# fragments on Candidacy, keyed off the same candidacy id set from the same feed.
+ENTITY_SPECS: dict[str, EntitySpec] = {
+    "candidacy": EntitySpec("candidacy", "Candidacy", CANDIDACY_SELECTION, 100, candidacy_worklist_sql),
+    "party": EntitySpec("party", "Candidacy", PARTY_SELECTION, 100, candidacy_worklist_sql),
+    "stance": EntitySpec("stance", "Candidacy", STANCE_SELECTION, 100, candidacy_worklist_sql),
+    "endorsement": EntitySpec("endorsement", "Candidacy", ENDORSEMENT_SELECTION, 100, candidacy_worklist_sql),
+    "geofence": EntitySpec("geofence", "Geofence", GEOFENCE_SELECTION, 100, geofence_worklist_sql),
+    "filing_period": EntitySpec(
+        "filing_period", "FilingPeriod", FILING_PERIOD_SELECTION, 100, race_derived_worklist_sql
+    ),
+    "normalized_position": EntitySpec(
+        "normalized_position",
+        "NormalizedPosition",
+        NORMALIZED_POSITION_SELECTION,
+        100,
+        partial(position_derived_worklist_sql, field="normalized_position"),
+    ),
+    "position_election_frequency": EntitySpec(
+        "position_election_frequency",
+        "PositionElectionFrequency",
+        POSITION_ELECTION_FREQUENCY_SELECTION,
+        100,
+        partial(position_derived_worklist_sql, field="election_frequencies"),
+    ),
+    "issue": EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql),
+}

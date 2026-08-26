@@ -6,6 +6,7 @@ import pytest
 from include.custom_functions.ballotready_graphql import (
     CANDIDACY_SELECTION,
     ENDORSEMENT_SELECTION,
+    ENTITY_SPECS,
     FILING_PERIOD_SELECTION,
     GEOFENCE_SELECTION,
     ISSUE_SELECTION,
@@ -733,3 +734,80 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     assert "ballotready_stance_raw" in sql
     assert "dbtint" not in sql
     assert "2026-08-01" not in sql
+
+
+EXPECTED_ENTITIES = {
+    "candidacy",
+    "endorsement",
+    "filing_period",
+    "geofence",
+    "issue",
+    "normalized_position",
+    "party",
+    "position_election_frequency",
+    "stance",
+}
+
+
+def test_registry_covers_exactly_the_nine_entities():
+    assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
+
+
+def test_every_spec_ships_at_the_proven_page_size():
+    """100 is the only size proven against the endpoint; raising it needs the probe."""
+    assert {s.batch_size for s in ENTITY_SPECS.values()} == {100}
+
+
+@pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
+def test_every_spec_has_a_selection_and_a_worklist_builder(entity):
+    spec = ENTITY_SPECS[entity]
+    assert spec.selection.strip()
+    assert callable(spec.worklist_sql)
+
+
+@pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
+def test_every_spec_key_matches_its_name(entity):
+    assert ENTITY_SPECS[entity].name == entity
+
+
+def test_candidacy_keyed_entities_share_the_candidacy_node_type():
+    for entity in ("candidacy", "party", "stance", "endorsement"):
+        assert ENTITY_SPECS[entity].node_type == "Candidacy"
+
+
+def test_node_types_match_the_ballotready_object_names():
+    assert ENTITY_SPECS["geofence"].node_type == "Geofence"
+    assert ENTITY_SPECS["issue"].node_type == "Issue"
+    assert ENTITY_SPECS["filing_period"].node_type == "FilingPeriod"
+    assert ENTITY_SPECS["normalized_position"].node_type == "NormalizedPosition"
+    assert ENTITY_SPECS["position_election_frequency"].node_type == "PositionElectionFrequency"
+
+
+@pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
+def test_every_worklist_builder_accepts_the_uniform_signature(entity):
+    """Every builder is called the same way, so the task body needs no branch.
+
+    candidacy_worklist_sql and issue_worklist_sql each raise ValueError when a
+    schema they specifically need is missing, so both intermediate_schema and
+    source_schema are passed here alongside the cursor kwargs and limit.
+    """
+    sql = ENTITY_SPECS[entity].worklist_sql(
+        "cat",
+        "dbt",
+        intermediate_schema="dbtint",
+        source_schema="src",
+        after_changed_at=None,
+        after_source_id=None,
+        limit=10,
+    )
+    assert isinstance(sql, str) and sql.strip()
+
+
+def test_position_derived_specs_are_bound_to_distinct_fields():
+    """A crossed binding would silently fetch the wrong id set for one of the two entities."""
+    normalized_sql = ENTITY_SPECS["normalized_position"].worklist_sql("cat", "dbt", limit=10)
+    frequency_sql = ENTITY_SPECS["position_election_frequency"].worklist_sql("cat", "dbt", limit=10)
+    assert "normalized_position.databaseId" in normalized_sql
+    assert "election_frequency.databaseId" not in normalized_sql
+    assert "election_frequency.databaseId" in frequency_sql
+    assert "normalized_position.databaseId" not in frequency_sql
