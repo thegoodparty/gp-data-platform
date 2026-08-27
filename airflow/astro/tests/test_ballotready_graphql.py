@@ -14,6 +14,7 @@ from include.custom_functions.ballotready_graphql import (
     GEOFENCE_SELECTION,
     INSERT_BATCH_SIZE,
     ISSUE_SELECTION,
+    MAX_INSERT_PARAM_CHARS,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
     POSITION_ELECTION_FREQUENCY_SELECTION,
@@ -24,8 +25,10 @@ from include.custom_functions.ballotready_graphql import (
     FetchedNode,
     RateLimiter,
     _redact,
+    _row_param_chars,
     build_insert_rows,
     candidacy_worklist_sql,
+    chunk_rows_for_insert,
     chunked,
     create_landing_table,
     encode_node_id,
@@ -1178,6 +1181,96 @@ def test_insert_rows_chunks_at_insert_batch_size():
     assert len(executed) == 2  # one full chunk, one with the single remaining row
     assert executed[0][0].count("(:requested_id_") == INSERT_BATCH_SIZE
     assert executed[1][0].count("(:requested_id_") == 1
+
+
+def test_row_param_chars_counts_none_as_zero():
+    assert _row_param_chars((None, None, None)) == 0
+    assert _row_param_chars((1, None, "ab")) == len("1") + len("ab")
+
+
+def test_chunk_rows_for_insert_chunks_small_rows_by_row_count():
+    rows = [(i, None, None, None, None, None, None) for i in range(5)]
+    chunks = list(chunk_rows_for_insert(rows, "issue", max_rows=2))
+    assert [len(chunk) for chunk in chunks] == [2, 2, 1]
+
+
+def test_chunk_rows_for_insert_chunks_large_rows_by_size():
+    big_payload = "x" * 300_000
+    rows = [(i, None, None, big_payload, None, None, None) for i in range(5)]
+
+    chunks = list(chunk_rows_for_insert(rows, "stance", max_chars=500_000, max_rows=1000))
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert sum(_row_param_chars(row) for row in chunk) <= 500_000
+
+
+def test_chunk_rows_for_insert_reproduces_the_stance_regression():
+    """200 rows at ~5,300 chars each is exactly what exceeded the server's 1,048,576-char
+    combined parameter limit in a single INSERT.
+    """
+    payload = "x" * 5300
+    rows = [
+        (i, "node", i, payload, "2026-08-01 00:00:00.000000", "2026-08-25T00:00:00", "run-1")
+        for i in range(200)
+    ]
+
+    chunks = list(chunk_rows_for_insert(rows, "stance"))
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert sum(_row_param_chars(row) for row in chunk) <= MAX_INSERT_PARAM_CHARS
+
+
+def test_chunk_rows_for_insert_preserves_row_order_across_the_split():
+    payload = "x" * 5300
+    rows = [
+        (i, "node", i, payload, "2026-08-01 00:00:00.000000", "2026-08-25T00:00:00", "run-1")
+        for i in range(200)
+    ]
+
+    chunks = list(chunk_rows_for_insert(rows, "stance"))
+
+    flattened = [row[0] for chunk in chunks for row in chunk]
+    assert flattened == list(range(200))
+
+
+def test_chunk_rows_for_insert_flushes_around_an_oversized_row_and_keeps_order(caplog):
+    """A row bigger than the whole budget can't be split: it goes out alone, loudly, and
+    the rows around it still land in order rather than being folded into its statement.
+    """
+    huge_payload = "x" * (MAX_INSERT_PARAM_CHARS + 1)
+    rows = [
+        (1, None, None, "small", None, None, None),
+        (2, None, None, huge_payload, None, None, None),
+        (3, None, None, "small", None, None, None),
+    ]
+
+    with caplog.at_level("WARNING"):
+        chunks = list(chunk_rows_for_insert(rows, "stance"))
+
+    assert chunks == [[rows[0]], [rows[1]], [rows[2]]]
+    assert any("stance" in record.message for record in caplog.records)
+
+
+def test_insert_rows_splits_a_stance_sized_batch_into_multiple_statements():
+    """Regression test for the reported failure at the insert_rows level: the combined
+    bound-parameter size of any one statement must stay under the server's limit.
+    """
+    payload = "x" * 5300
+    rows = [
+        (i, "node", i, payload, "2026-08-01 00:00:00.000000", "2026-08-25T00:00:00", "run-1")
+        for i in range(200)
+    ]
+    connection = FakeConnection([])
+
+    insert_rows(connection, "cat", "sch", "stance", rows)
+
+    executed = connection.cursor().executed
+    assert len(executed) > 1
+    for _, parameters in executed:
+        total = sum(0 if v is None else len(str(v)) for v in parameters.values())
+        assert total <= MAX_INSERT_PARAM_CHARS
 
 
 def _ddl_column_names(sql: str) -> list[str]:

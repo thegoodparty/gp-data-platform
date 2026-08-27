@@ -49,10 +49,17 @@ _NODE_ID_PREFIX = "gid://ballot-factory"
 # leaves a contiguous prefix committed rather than an out-of-order gap. See extract_entity.
 WINDOW_SIZE = 2000
 
-# 7 bound values per row; at 200 rows/statement that is 1400 parameters, deliberately
-# conservative because the connector's actual per-statement parameter cap could not be
-# verified from here. Trivially tunable if that turns out to be too small.
+# Secondary bound on rows/statement, kept so a very large number of tiny rows (e.g. a
+# nulled-out miss window) cannot separately trip some other per-statement limit. The
+# real constraint that forced batching here is MAX_INSERT_PARAM_CHARS, below.
 INSERT_BATCH_SIZE = 200
+
+# The server's actual limit is on combined bound-parameter character count, not parameter
+# count: Databricks rejects a statement whose parameters exceed 1,048,576 characters
+# combined. This budget sits well under that because our estimate only sums the string
+# form of each bound value, while payload sizes vary within a batch and the server's own
+# accounting may differ slightly from ours.
+MAX_INSERT_PARAM_CHARS = 800_000
 
 
 def encode_node_id(node_type: str, node_id: int) -> str:
@@ -66,6 +73,56 @@ def chunked(seq: list[Any], size: int) -> Iterator[list[Any]]:
         raise ValueError(f"chunk size must be >= 1, got {size}")
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
+
+
+def _row_param_chars(row: tuple[Any, ...]) -> int:
+    """Combined character size of a row's bound values, matching the server's limit axis.
+
+    `None` contributes zero: it binds as a null parameter, not the text "None". Every
+    column is summed, not just payload, so the estimate stays honest if the column set
+    changes and a different one comes to dominate.
+    """
+    return sum(len(str(value)) for value in row if value is not None)
+
+
+def chunk_rows_for_insert(
+    rows: list[tuple[Any, ...]],
+    entity: str,
+    max_chars: int = MAX_INSERT_PARAM_CHARS,
+    max_rows: int = INSERT_BATCH_SIZE,
+) -> Iterator[list[tuple[Any, ...]]]:
+    """Split rows into statement-sized batches bounded by bound-parameter characters first,
+    row count second, preserving row order both within and across batches.
+
+    A single row whose own size exceeds `max_chars` cannot be split further: it is still
+    emitted, alone, with a warning naming the entity and its size. The alternative is an
+    infinite loop trying to fit it under a budget it cannot meet, or silently dropping it;
+    this way it fails loudly at the server instead.
+    """
+    chunk: list[tuple[Any, ...]] = []
+    chunk_chars = 0
+    for row in rows:
+        row_chars = _row_param_chars(row)
+        if row_chars > max_chars:
+            if chunk:
+                yield chunk
+                chunk, chunk_chars = [], 0
+            logger.warning(
+                "%s: row's bound parameters (%d chars) exceed the %d-char insert budget on "
+                "their own; sending it as its own statement",
+                entity,
+                row_chars,
+                max_chars,
+            )
+            yield [row]
+            continue
+        if chunk and (chunk_chars + row_chars > max_chars or len(chunk) >= max_rows):
+            yield chunk
+            chunk, chunk_chars = [], 0
+        chunk.append(row)
+        chunk_chars += row_chars
+    if chunk:
+        yield chunk
 
 
 class RateLimiter:
@@ -773,10 +830,10 @@ def insert_rows(
 ) -> None:
     """Append rows to the landing table in one or more parameterized multi-row INSERTs.
 
-    Chunked at INSERT_BATCH_SIZE to stay well clear of the connector's per-statement
-    parameter cap (see the constant's comment). Always an INSERT, never a MERGE:
-    duplicates are expected on a full_reload or a genuine BallotReady change, and
-    downstream dedup on (requested_id, max(loaded_at)) resolves them.
+    Chunked by bound-parameter character size (see MAX_INSERT_PARAM_CHARS), with
+    INSERT_BATCH_SIZE as a secondary cap on rows per statement. Always an INSERT, never
+    a MERGE: duplicates are expected on a full_reload or a genuine BallotReady change,
+    and downstream dedup on (requested_id, max(loaded_at)) resolves them.
     """
     if not rows:
         return
@@ -785,7 +842,7 @@ def insert_rows(
     table = landing_table(catalog, schema, entity)
     cursor = connection.cursor()
     try:
-        for chunk in chunked(rows, INSERT_BATCH_SIZE):
+        for chunk in chunk_rows_for_insert(rows, entity):
             value_groups = []
             parameters: dict[str, Any] = {}
             for i, row in enumerate(chunk):
