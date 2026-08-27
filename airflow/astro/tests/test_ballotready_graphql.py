@@ -1,7 +1,7 @@
 import base64
 import json
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,6 +31,7 @@ from include.custom_functions.ballotready_graphql import (
     encode_node_id,
     extract_entity,
     fetch_nodes,
+    format_cursor_ts,
     geofence_worklist_sql,
     insert_rows,
     is_retryable_status,
@@ -618,6 +619,25 @@ def test_read_cursor_returns_the_highest_landed_pair():
     assert read_cursor(FakeConnection([(landed, 99)]), "cat", "sch", "issue") == (landed, 99)
 
 
+def test_format_cursor_ts_accepts_a_naive_datetime():
+    assert format_cursor_ts(datetime(2026, 8, 1, 9, 0, 0)) == "2026-08-01 09:00:00.000000"
+
+
+def test_format_cursor_ts_accepts_an_iso_8601_string_identically_to_the_equivalent_datetime():
+    assert format_cursor_ts("2026-08-01T09:00:00") == format_cursor_ts(datetime(2026, 8, 1, 9, 0, 0))
+
+
+def test_format_cursor_ts_normalizes_a_timezone_aware_string_the_same_as_the_equivalent_datetime():
+    aware = datetime(2026, 8, 1, 9, 0, 0, tzinfo=timezone(timedelta(hours=-4)))
+    assert format_cursor_ts("2026-08-01T09:00:00-04:00") == format_cursor_ts(aware)
+
+
+def test_format_cursor_ts_raises_a_clear_error_on_an_unparseable_string():
+    """A regression from AttributeError (the original bug) to a clean, actionable ValueError."""
+    with pytest.raises(ValueError, match="not a valid ISO-8601 timestamp"):
+        format_cursor_ts("not-a-timestamp")
+
+
 def test_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
     sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=500)
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
@@ -702,6 +722,26 @@ def test_candidacy_worklist_accepts_and_ignores_source_schema():
     assert "zzz_marker_schema" not in sql
 
 
+def test_candidacy_worklist_casts_the_s3_feed_branch_to_timestamp():
+    """candidacy_updated_at is STRING in staging; greatest() must be cast so this UNION
+    branch agrees in type with the (already-timestamp) upcoming-roster branch.
+    """
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert (
+        "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at" in sql
+    )
+
+
+def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert (
+        "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at" in sql
+    )
+    # race_updated_at (from stg_airbyte_source__ballotready_api_race) is already TIMESTAMP
+    # there via to_timestamp(), so this branch needs no cast of its own.
+    assert "race_updated_at AS source_changed_at" in sql
+
+
 def test_geofence_worklist_reads_geofence_ids_off_the_candidacies_table():
     """Many candidacies share one geofence; the freshest of them decides its due time."""
     sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
@@ -709,6 +749,12 @@ def test_geofence_worklist_reads_geofence_ids_off_the_candidacies_table():
     assert "br_geofence_id" in sql
     assert "IS NOT NULL" in sql
     assert "GROUP BY source_id" in sql
+
+
+def test_geofence_worklist_casts_source_changed_at_to_timestamp():
+    """candidacy_updated_at is STRING in staging; the worklist must produce a real timestamp."""
+    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "cast(candidacy_updated_at AS timestamp) AS source_changed_at" in sql
 
 
 def test_geofence_worklist_orders_by_the_keyset_pair_and_applies_the_limit():
@@ -1047,6 +1093,20 @@ def test_build_insert_rows_empty_dict_node_is_a_hit_not_a_miss():
     assert row["payload"] is not None
     assert row["node_id"] is None
     assert row["database_id"] is None
+
+
+def test_build_insert_rows_accepts_string_valued_changed_at_without_raising():
+    """Regression test: a STRING-typed staging column previously reached format_cursor_ts as a
+    str and raised AttributeError on .tzinfo (see format_cursor_ts). build_insert_rows must
+    handle string values in changed_at_by_id cleanly.
+    """
+    changed_at_by_id = {1: "2026-08-01T09:00:00", 2: "2026-08-01T10:00:00"}
+    fetched = [FetchedNode(1, {"databaseId": 11, "id": "abc"}), FetchedNode(2, None)]
+
+    rows = build_insert_rows(fetched, changed_at_by_id, "2026-08-25T00:00:00", "run-1")
+
+    assert _row_dict(rows[0])["source_changed_at"] == "2026-08-01 09:00:00.000000"
+    assert _row_dict(rows[1])["source_changed_at"] == "2026-08-01 10:00:00.000000"
 
 
 def test_create_landing_table_is_idempotent_and_fully_qualified():

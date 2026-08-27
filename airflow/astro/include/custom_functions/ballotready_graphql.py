@@ -456,11 +456,19 @@ def validate_identifier(name: str, value: str) -> str:
     return value
 
 
-def format_cursor_ts(value: datetime) -> str:
+def format_cursor_ts(value: datetime | str) -> str:
     """Render a Databricks timestamp as a tz-naive UTC literal, keeping sub-second precision.
 
-    Precision matters: the tiebreak is only exact if ties really are ties.
+    Precision matters: the tiebreak is only exact if ties really are ties. A `str` is
+    accepted too, and parsed as ISO-8601, so a staging column that regresses to STRING
+    (as happened once already) fails with a clear parse error here rather than an
+    AttributeError deep inside build_insert_rows.
     """
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(f"format_cursor_ts: not a valid ISO-8601 timestamp: {value!r}") from exc
     if value.tzinfo is not None:
         value = value.astimezone(UTC).replace(tzinfo=None)
     return value.isoformat(sep=" ", timespec="microseconds")
@@ -545,7 +553,9 @@ def candidacy_worklist_sql(
     )
     inner = (
         "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
-        "greatest(candidacy_created_at, candidacy_updated_at) AS source_changed_at "
+        # candidacy_updated_at is STRING in this staging model (candidacy_created_at is
+        # already cast there); cast the greatest() result so both UNION branches agree on type.
+        "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at "
         f"FROM {base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
         "WHERE br_candidacy_id IS NOT NULL "
         "UNION ALL "
@@ -576,7 +586,10 @@ def geofence_worklist_sql(
     validate_identifier("dbt_schema", dbt_schema)
     table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
     inner = (
-        "SELECT cast(br_geofence_id AS bigint) AS source_id, candidacy_updated_at AS source_changed_at "
+        "SELECT cast(br_geofence_id AS bigint) AS source_id, "
+        # candidacy_updated_at is STRING in this staging model; cast it so source_changed_at
+        # is always a real timestamp, matching every other worklist builder.
+        "cast(candidacy_updated_at AS timestamp) AS source_changed_at "
         f"FROM {table} WHERE br_geofence_id IS NOT NULL"
     )
     grouped = (
@@ -694,7 +707,7 @@ def issue_worklist_sql(
 
 def build_insert_rows(
     fetched: list[FetchedNode],
-    changed_at_by_id: dict[int, datetime],
+    changed_at_by_id: Mapping[int, datetime | str],
     extracted_at: str,
     dag_run_id: str,
 ) -> list[tuple[int, str | None, int | None, str | None, str | None, str, str]]:
