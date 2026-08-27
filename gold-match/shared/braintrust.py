@@ -380,9 +380,17 @@ class BraintrustClient:
                         project=self._project,
                         slug=prompt_name
                     )
+                resolved_version = None
+                if prompt_obj is not None:
+                    # braintrust 0.17 resolves LAZILY: load_prompt returns
+                    # instantly and the fetch happens on first use (verified
+                    # live). Touch .version here so a bad pin fails NOW, as a
+                    # failed load, instead of mid-run at the first call.
+                    resolved_version = prompt_obj.version
                 self._prompt_provenance[cache_key] = {
                     "slug": prompt_name,
                     "pinned_version": version,
+                    "resolved_version": resolved_version,
                     "loaded": prompt_obj is not None,
                 }
 
@@ -405,6 +413,7 @@ class BraintrustClient:
                 self._prompt_provenance[cache_key] = {
                     "slug": prompt_name,
                     "pinned_version": version,
+                    "resolved_version": None,
                     "loaded": False,
                 }
                 self._cached_prompts[cache_key] = None

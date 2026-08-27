@@ -41,8 +41,11 @@ PENDING_OFFICES_TABLE = "int__l2_br_match_pending_offices"
 DISTRICT_UNIVERSE_TABLE = "int__l2_district_universe"
 
 # The registry prompt is org-wide editable and its creator left the org, so
-# production loads THIS content-addressed version, never the live slug tip.
-PINNED_PROMPT_VERSION = "3a27a867"
+# production loads THIS pinned version, never the live slug tip. The value is
+# the Braintrust API's transaction id -- the UI displays this same version as
+# hash 3a27a867 -- because load_prompt pins by transaction id and 500s on the
+# UI hash (verified live 2026-08-27).
+PINNED_PROMPT_VERSION = "1000196719110653589"
 
 MENU_SIZE = 13
 STATE_QUERY_INSERT_INDEX = 10  # 11th slot
