@@ -189,4 +189,18 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=["State_Board_of_Equalization"],
         where=None,
     ),
+    # Voter-density heat map: the app's only query pattern is filter by district + resolution
+    # (people-api voter-density serve query, handoff §7/§8). DistrictVoterDensity is a `green`-schema
+    # serving table absent from the extraction-source cluster, so its index is carried here (like the
+    # Voter perf indexes) rather than the generated seed; build_indexes builds it directly (flat
+    # table, no partitions). DistrictVoterDensityMeta needs no extra index — its PK
+    # (district_id, resolution) already covers the same lookup.
+    IndexDef(
+        table="DistrictVoterDensity",
+        name="DistrictVoterDensity_district_id_resolution_idx",
+        sql='CREATE INDEX "DistrictVoterDensity_district_id_resolution_idx" ON public."DistrictVoterDensity" USING btree ("district_id", "resolution");',
+        unique=False,
+        columns=["district_id", "resolution"],
+        where=None,
+    ),
 ]

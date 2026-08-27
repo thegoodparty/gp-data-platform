@@ -14,8 +14,38 @@ from loader.people_api.schema.table_ddl import (
 )
 
 
-def test_all_four_tables_specced() -> None:
-    assert set(ss.TABLE_SPECS) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+def test_all_tables_specced() -> None:
+    assert set(ss.TABLE_SPECS) == {
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    }
+
+
+def test_density_specs() -> None:
+    # The voter-density serving tables are flat (queried by district_id + resolution, never by state),
+    # carry their PK on the spec (not in the extracted `public` seed — they live in Prisma `green`,
+    # like DistrictStats), and rename the mart's lowercase `state` -> serving "State" via
+    # mart_column_map (like DistrictVoter).
+    density = ss.TABLE_SPECS["DistrictVoterDensity"]
+    assert density.partition_by is None
+    assert density.mart_column_map["state"] == "State"
+    assert density.type_overrides["voter_count"] == "INTEGER"
+    assert density.type_overrides["state"] == '"USState"'
+    assert density.primary_key is not None
+    assert density.primary_key.columns == ["district_id", "resolution", "h3_index"]
+
+    meta = ss.TABLE_SPECS["DistrictVoterDensityMeta"]
+    assert meta.partition_by is None
+    assert meta.mart_column_map["state"] == "State"
+    # count/sum aggregates are bigint in the mart but the Prisma contract is Int.
+    for col in ("total_voters", "geocoded_voters", "rendered_voters", "suppressed_cells"):
+        assert meta.type_overrides[col] == "INTEGER"
+    assert meta.primary_key is not None
+    assert meta.primary_key.columns == ["district_id", "resolution"]
 
 
 def test_lookup_helpers_filter_by_table() -> None:
