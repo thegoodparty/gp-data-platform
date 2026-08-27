@@ -3364,28 +3364,31 @@ models:
     description: >
       Deterministic person edges. One row per typed edge between two record
       keys (record_key = source_name || '|' || source_id). Direction-agnostic
-      (record_key_1 <= record_key_2). No new matching: edges derive from native
-      ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
-      linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
-      Splink cluster co-membership (E5, hub to the cluster's min record key),
-      and within-source vendor keys (E7).
+      (record_key_1 <= record_key_2). No probabilistic matching: edges derive
+      from native ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the
+      elected-official linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge),
+      candidacy-stage Splink cluster co-membership (E5, hub to the cluster's
+      min record key), within-source vendor keys (E7), and exact contact-info
+      equality gated on name agreement (E8 shared email, E9 shared phone).
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [record_key_1, record_key_2, edge_type]
       # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
-      # (mostly DDHQ candidate_id reuse across cycles). Excluded from
+      # (mostly DDHQ candidate_id reuse across cycles) plus E8/E9 pairs whose
+      # contact key is ambiguous BR identity evidence (two BR people, or a key
+      # whose same-last-name members span >1 BR person). Excluded from
       # propagation and flagged. Warn on any; error on a large jump that would
-      # signal an E7-keying regression. Baseline is ~1188 over the all-time
-      # historical ER universe (was ~23 before pre-2026 candidacies were
-      # included). No severity override: severity warn would disable error_if.
+      # signal a keying regression. Baseline is ~5,770 (E7 ~1,190 + E8 ~1,820
+      # + E9 ~2,750). No severity override: severity warn would disable
+      # error_if.
       - dbt_utils.expression_is_true:
           name: person_edges_conflict_count_warn
           arguments:
             expression: "not is_conflict"
           config:
             warn_if: ">0"
-            error_if: ">2000"
+            error_if: ">9000"
     columns:
       - name: record_key_1
         description: Lower of the two endpoint record keys (source_name || '|' || source_id).
@@ -3418,10 +3421,15 @@ models:
                   - e5_cluster
                   - e6_eo_bridge
                   - e7_within_source
+                  - e8_email_name
+                  - e9_phone_name
       - name: is_conflict
         description: >
           true for E7 edges whose within-source key resolves to more than one
-          distinct br_candidate_id. Flagged and excluded from propagation.
+          distinct br_candidate_id, and for E8/E9 edges whose contact key is
+          ambiguous BR identity evidence (both endpoints are BR people, or the
+          key's same-last-name members span more than one BR person). Flagged
+          and excluded from propagation.
         data_tests:
           - not_null
 

@@ -1,8 +1,10 @@
 -- Deterministic person edges. One row per typed edge between two record keys
 -- (record_key = source_name || '|' || source_id). Edges are direction-agnostic
--- (record_key_1 <= record_key_2). No new matching: every edge derives from
--- native ids, candidacy-stage Splink cluster co-membership, or the
--- elected-official bridge. See canonical-person-plan.md decision 1.
+-- (record_key_1 <= record_key_2). No probabilistic matching: every edge
+-- derives from native ids, candidacy-stage Splink cluster co-membership, the
+-- elected-official bridge, or exact contact-info equality with name agreement
+-- (E8/E9). See canonical-person-plan.md decision 1.
+{% set contact_key_max_records = 25 %}
 with
     -- br_candidacy_id -> br_candidate_id (person grain).
     candidacies as (
@@ -207,6 +209,309 @@ with
             s.distinct_records > 1 and m.source_name || '|' || m.source_id <> h.hub_key
     ),
 
+    -- E8/E9: shared normalized email (E8) or phone (E9) plus name agreement.
+    -- A bare contact-key match over-merges: spouses share campaign inboxes and
+    -- family phones, and institutional keys (school-board inboxes, city
+    -- switchboards, placeholder numbers) span dozens of people. Audited
+    -- 2026-08: with the name gate below, 0 false positives in ~130 sampled
+    -- pairs; without it, the excluded bucket is dominated by real
+    -- two-person households.
+    nickname_pairs as (
+        select
+            {{ first_name_normalized("name1") }} as name_a,
+            {{ first_name_normalized("name2") }} as name_b
+        from {{ ref("nicknames") }}
+        union
+        select
+            {{ first_name_normalized("name2") }}, {{ first_name_normalized("name1") }}
+        from {{ ref("nicknames") }}
+    ),
+
+    -- Symmetric alias classes: the seed is directional (robert -> bob), but a
+    -- pair can arrive in either order, so close it both ways plus identity.
+    nickname_aliases as (
+        select
+            name_a as name,
+            array_distinct(array_append(collect_list(name_b), name_a)) as aliases
+        from nickname_pairs
+        group by name_a
+    ),
+
+    -- Generational suffix per BR person from the explicit suffix columns
+    -- (BR last names rarely embed the suffix as text).
+    br_suffixes as (
+        select
+            cast(br_candidate_id as string) as br_candidate_id,
+            max(nullif(trim(suffix), '')) as suffix_raw
+        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        where br_candidate_id is not null
+        group by br_candidate_id
+    ),
+
+    br_officeholder_contacts as (
+        select
+            cast(br_candidate_id as string) as br_candidate_id,
+            first_name,
+            last_name,
+            nullif(trim(suffix), '') as suffix_raw,
+            email,
+            phone
+        from {{ ref("int__civics_elected_official_ballotready_person") }}
+        where br_candidate_id is not null
+        qualify
+            row_number() over (
+                partition by br_candidate_id order by term_start_date desc nulls last
+            )
+            = 1
+    ),
+
+    -- TechSpeed contact rows keyed to their clustered candidacy-stage record
+    -- keys: recompute the prematch's candidate code and join it to the
+    -- stage-stripped clustered source_id, so E8/E9 endpoints are node keys.
+    ts_contact_codes as (
+        select
+            {{
+                generate_candidate_code(
+                    "first_name",
+                    "last_name",
+                    "state",
+                    "office_type",
+                    "city",
+                )
+            }} as candidate_code,
+            first_name,
+            last_name,
+            email,
+            coalesce(nullif(phone_clean, ''), nullif(phone, '')) as phone
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
+    ),
+
+    contact_sources as (
+        select
+            'hubspot|' || cast(id as string) as record_key,
+            first_name,
+            last_name,
+            cast(null as string) as suffix_raw,
+            email,
+            phone
+        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+        union all
+        select
+            'gp_api|' || cast(id as string),
+            first_name,
+            last_name,
+            cast(null as string),
+            email,
+            phone
+        from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+        union all
+        select
+            'ballotready|' || cast(i.br_candidate_id as string),
+            i.id_first_name,
+            i.id_last_name,
+            s.suffix_raw,
+            i.id_email,
+            i.id_phone
+        from {{ ref("int__ballotready_candidate_identity") }} as i
+        left join
+            br_suffixes as s on s.br_candidate_id = cast(i.br_candidate_id as string)
+        union all
+        select
+            'ballotready|' || br_candidate_id,
+            first_name,
+            last_name,
+            suffix_raw,
+            email,
+            phone
+        from br_officeholder_contacts
+        union all
+        select
+            'techspeed|' || cc.source_id,
+            tc.first_name,
+            tc.last_name,
+            cast(null as string),
+            tc.email,
+            tc.phone
+        from clustered as cc
+        inner join
+            ts_contact_codes as tc
+            on tc.candidate_code = {{ strip_ts_stage_suffix("cc.source_id") }}
+        where cc.source_name = 'techspeed'
+        union all
+        select
+            'techspeed_officeholder|' || cast(ts.ts_officeholder_id as string),
+            ts.first_name,
+            ts.last_name,
+            cast(null as string),
+            ts.email,
+            coalesce(nullif(ts.phone_clean, ''), nullif(ts.phone, ''))
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }} as ts
+        inner join
+            {{ ref("int__civics_elected_official_canonical_ids") }} as eo
+            on eo.ts_officeholder_id = ts.ts_officeholder_id
+            and not eo.ts_officeholder_id_is_reused
+    ),
+
+    contact_normalized as (
+        select
+            record_key,
+            substring_index(record_key, '|', 1) as source_name,
+            {{ first_name_normalized("first_name") }} as fn,
+            regexp_replace(
+                lower({{ remove_name_suffixes("last_name") }}), '[^a-z]', ''
+            ) as ln,
+            -- Suffix mismatch is a cannot-link: verified live father/son pairs
+            -- (both county officials) share a family phone and differ only by
+            -- Jr/Sr. '' means no suffix; both sides must agree exactly.
+            coalesce(
+                nullif(
+                    regexp_replace(
+                        upper(
+                            coalesce(
+                                suffix_raw,
+                                regexp_extract(
+                                    last_name,
+                                    '(?i)(?:^|[ ,])(jr|sr|ii|iii|iv|v)\\.?\\s*$',
+                                    1
+                                )
+                            )
+                        ),
+                        '[^A-Z]',
+                        ''
+                    ),
+                    ''
+                ),
+                ''
+            ) as suffix_token,
+            lower(trim(email)) as email_lower,
+            case
+                when
+                    email_lower like '%@%'
+                    -- Internal/test addresses sit on dozens of unrelated
+                    -- records (staff-created accounts).
+                    and email_lower not like '%@goodparty.org'
+                    and email_lower not like '%@goodparty.com'
+                    and email_lower not like '%@mailinator.com'
+                then
+                    concat(
+                        regexp_replace(split_part(email_lower, '@', 1), '\\+.*$', ''),
+                        '@',
+                        split_part(email_lower, '@', 2)
+                    )
+            end as email_key,
+            right(regexp_replace(phone, '[^0-9]', ''), 10) as phone_digits,
+            case
+                when
+                    length(regexp_replace(phone, '[^0-9]', '')) >= 10
+                    and phone_digits not in (
+                        '5555555555',
+                        '1234567890',
+                        '1111111111',
+                        '0000000000',
+                        '9999999999'
+                    )
+                then phone_digits
+            end as phone_key
+        from contact_sources
+        where
+            nullif(trim(first_name), '') is not null
+            and nullif(trim(last_name), '') is not null
+    ),
+
+    contact_records as (
+        select
+            n.record_key,
+            n.source_name,
+            n.fn,
+            n.ln,
+            n.suffix_token,
+            n.email_key,
+            n.phone_key,
+            coalesce(a.aliases, array(n.fn)) as fn_aliases
+        from contact_normalized as n
+        left join nickname_aliases as a on a.name = n.fn
+        where n.fn <> '' and n.ln <> ''
+    ),
+
+    contact_keyed as (
+        select distinct
+            'email' as key_type,
+            email_key as contact_key,
+            record_key,
+            source_name,
+            fn,
+            ln,
+            suffix_token,
+            fn_aliases
+        from contact_records
+        where email_key is not null
+        union all
+        select distinct
+            'phone',
+            phone_key,
+            record_key,
+            source_name,
+            fn,
+            ln,
+            suffix_token,
+            fn_aliases
+        from contact_records
+        where phone_key is not null
+    ),
+
+    -- Institutional inboxes and shared office lines span dozens of people;
+    -- cap how many records one key may connect.
+    contact_key_sizes as (
+        select key_type, contact_key, count(distinct record_key) as n_records
+        from contact_keyed
+        group by key_type, contact_key
+    ),
+
+    -- A key whose same-last-name members include >1 BR person is ambiguous
+    -- identity evidence (mirrors the E7 pre-filter): flag, don't merge.
+    contact_key_br as (
+        select key_type, contact_key, ln, count(distinct record_key) as n_br
+        from contact_keyed
+        where source_name = 'ballotready'
+        group by key_type, contact_key, ln
+    ),
+
+    e8_e9 as (
+        select
+            a.record_key as rk_a,
+            b.record_key as rk_b,
+            a.key_type,
+            (a.source_name = 'ballotready' and b.source_name = 'ballotready')
+            or coalesce(br.n_br, 0) > 1 as is_conflict
+        from contact_keyed as a
+        inner join
+            contact_keyed as b
+            on a.key_type = b.key_type
+            and a.contact_key = b.contact_key
+            and a.record_key < b.record_key
+        inner join
+            contact_key_sizes as s
+            on s.key_type = a.key_type
+            and s.contact_key = a.contact_key
+            and s.n_records <= {{ contact_key_max_records }}
+        left join
+            contact_key_br as br
+            on br.key_type = a.key_type
+            and br.contact_key = a.contact_key
+            and br.ln = a.ln
+        where
+            a.ln = b.ln
+            and a.suffix_token = b.suffix_token
+            and (
+                a.fn = b.fn
+                or arrays_overlap(a.fn_aliases, b.fn_aliases)
+                or (
+                    substr(a.fn, 1, 1) = substr(b.fn, 1, 1)
+                    and levenshtein(a.fn, b.fn) <= 2
+                )
+            )
+    ),
+
     all_edges as (
         select rk_a, rk_b, 'e1_hubspot_user' as edge_type, false as is_conflict
         from e1
@@ -225,6 +530,13 @@ with
         union all
         select rk_a, rk_b, 'e7_within_source', is_conflict
         from e7
+        union all
+        select
+            rk_a,
+            rk_b,
+            case key_type when 'email' then 'e8_email_name' else 'e9_phone_name' end,
+            is_conflict
+        from e8_e9
     )
 
 select

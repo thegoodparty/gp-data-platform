@@ -1,11 +1,13 @@
--- At most one distinct br_candidate_id per person group. A handful of
--- candidacy-stage clusters carry >1 distinct br_candidate_id (~223 of 460,443
--- BR-containing groups, 0.05% over the all-time historical ER universe; was
--- ~108 before pre-2026 candidacies were included); propagation resolves each
--- such group to its min br_candidate_id and this test flags the residual. Warn
--- on the known set, error on a regression that would indicate an edge bug. No
--- severity override: severity warn would disable error_if entirely.
-{{ config(warn_if="!= 0", error_if="> 400") }}
+-- At most one distinct br_candidate_id per person group. Baseline ~585 of
+-- ~460K BR-containing groups (0.13%): candidacy-stage clusters carrying >1
+-- br_candidate_id (~223), plus contact-edge (E8/E9) merges that are
+-- predominantly BR's own cross-cycle duplicates of one person (audited:
+-- same name + same state dominates; the residual traces to pre-existing bad
+-- native links and DDHQ id reuse, both conflict-flagged). Propagation
+-- resolves each group to its min br_candidate_id and this test flags the
+-- residual. Warn on the known set, error on a regression that would indicate
+-- an edge bug. No severity override: severity warn would disable error_if.
+{{ config(warn_if="!= 0", error_if="> 900") }}
 
 with
     br_records as (
