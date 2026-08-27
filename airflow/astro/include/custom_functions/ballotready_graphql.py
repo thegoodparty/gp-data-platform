@@ -187,7 +187,16 @@ def fetch_nodes(
             response = session.post(CIVIC_ENGINE_GRAPHQL_URL, json=payload, headers=headers, timeout=timeout)
         except requests.exceptions.RequestException as exc:
             if attempt == max_retries:
-                raise
+                # Re-raising `exc` itself (or chaining it with `from exc`) would let Airflow's
+                # own failure handler print its raw str() into the task log, which can carry
+                # the token (requests embeds the offending header value in exceptions like
+                # InvalidHeader). `from None` suppresses the chain so that traceback is never
+                # printed; this loses the original frames, accepted over leaking a token into
+                # logs that persist in S3.
+                raise RuntimeError(
+                    f"CivicEngine request failed for {len(ids)} {node_type} ids after "
+                    f"{max_retries} retries: {type(exc).__name__}: {_redact(str(exc), api_token)}"
+                ) from None
             wait = retry_wait_seconds({}, attempt)
             # requests embeds the offending header value in exceptions like InvalidHeader, so
             # the exception's own text could carry the bearer token; redact before logging it.

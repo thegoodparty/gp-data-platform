@@ -274,9 +274,10 @@ def test_fetch_nodes_retries_a_connection_error_then_succeeds():
 
 
 def test_fetch_nodes_reraises_a_persistent_request_exception_after_max_retries():
+    """The original exception is not propagated as-is; see the redaction tests below for why."""
     session = FakeSession([requests.exceptions.ConnectionError("boom")] * 3)
 
-    with pytest.raises(requests.exceptions.ConnectionError):
+    with pytest.raises(RuntimeError, match="ConnectionError"):
         fetch_nodes(
             [1], "Candidacy", SELECTION, "tok", _limiter(), session, max_retries=2, sleep=lambda s: None
         )
@@ -388,6 +389,50 @@ def test_fetch_nodes_failing_request_does_not_write_the_token_into_the_log(caplo
     assert result == [FetchedNode(requested_id=1, node={"databaseId": 1})]
     assert token not in caplog.text
     assert "InvalidHeader" in caplog.text
+
+
+def test_fetch_nodes_exhausted_retries_does_not_leak_the_token_in_the_message():
+    """The retry warnings are redacted, but the exception raised after giving up must be too."""
+    token = "test-token-value"
+    bad_header_error = requests.exceptions.InvalidHeader(
+        f"Invalid leading whitespace, reserved character(s), or return character(s) "
+        f"in header value: 'Bearer {token}\\n'"
+    )
+    session = FakeSession([bad_header_error] * 6)  # max_retries=5 -> 6 attempts
+
+    with pytest.raises(RuntimeError) as exc_info:
+        fetch_nodes([1], "Candidacy", SELECTION, token, _limiter(), session, sleep=lambda s: None)
+
+    message = str(exc_info.value)
+    assert token not in message
+    # The original exception's type name is the clue that makes this debuggable at all.
+    assert "InvalidHeader" in message
+
+
+def test_fetch_nodes_exhausted_retries_suppresses_the_exception_chain():
+    """`from exc` would still print the original (and its token) in the chained traceback."""
+    session = FakeSession([requests.exceptions.ConnectionError("boom")] * 6)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session, sleep=lambda s: None)
+
+    raised = exc_info.value
+    assert raised.__cause__ is None
+    assert raised.__context__ is None or raised.__suppress_context__ is True
+
+
+def test_fetch_nodes_exhausted_retries_writes_the_token_nowhere_in_the_log(caplog):
+    token = "test-token-value"
+    bad_header_error = requests.exceptions.InvalidHeader(
+        f"Invalid leading whitespace, reserved character(s), or return character(s) "
+        f"in header value: 'Bearer {token}\\n'"
+    )
+    session = FakeSession([bad_header_error] * 6)
+
+    with caplog.at_level("WARNING"), pytest.raises(RuntimeError):
+        fetch_nodes([1], "Candidacy", SELECTION, token, _limiter(), session, sleep=lambda s: None)
+
+    assert token not in caplog.text
 
 
 ALL_SELECTIONS = {
