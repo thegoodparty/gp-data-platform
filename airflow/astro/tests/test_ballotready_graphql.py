@@ -23,6 +23,7 @@ from include.custom_functions.ballotready_graphql import (
     ExtractConfig,
     FetchedNode,
     RateLimiter,
+    _redact,
     build_insert_rows,
     candidacy_worklist_sql,
     chunked,
@@ -315,6 +316,78 @@ def test_fetch_nodes_sends_encoded_ids_and_a_bearer_token():
     assert captured["url"] == "https://bpi.civicengine.com/graphql"
     assert captured["ids"] == [encode_node_id("Issue", 42)]
     assert captured["auth"] == "Bearer tok"
+
+
+def test_redact_replaces_the_secret_with_a_placeholder():
+    assert _redact("Authorization: Bearer test-token", "test-token") == "Authorization: Bearer ***"
+
+
+def test_redact_replaces_every_occurrence():
+    message = "test-token appears twice: test-token"
+    assert _redact(message, "test-token") == "*** appears twice: ***"
+
+
+def test_redact_leaves_the_message_unchanged_when_the_secret_is_empty():
+    assert _redact("nothing to redact here", "") == "nothing to redact here"
+
+
+def test_redact_leaves_the_message_unchanged_when_the_secret_is_none():
+    assert _redact("nothing to redact here", None) == "nothing to redact here"
+
+
+def test_fetch_nodes_strips_a_trailing_newline_from_the_token():
+    captured = {}
+
+    class CapturingSession(FakeSession):
+        def post(self, url, json, headers, timeout):
+            captured["auth"] = headers["Authorization"]
+            return super().post(url, json, headers, timeout)
+
+    session = CapturingSession([_ok([{"databaseId": 1}])])
+    fetch_nodes([1], "Candidacy", SELECTION, "test-token\n", _limiter(), session)
+
+    assert captured["auth"] == "Bearer test-token"
+
+
+def test_fetch_nodes_strips_leading_and_trailing_spaces_from_the_token():
+    captured = {}
+
+    class CapturingSession(FakeSession):
+        def post(self, url, json, headers, timeout):
+            captured["auth"] = headers["Authorization"]
+            return super().post(url, json, headers, timeout)
+
+    session = CapturingSession([_ok([{"databaseId": 1}])])
+    fetch_nodes([1], "Candidacy", SELECTION, "  test-token  ", _limiter(), session)
+
+    assert captured["auth"] == "Bearer test-token"
+
+
+@pytest.mark.parametrize("blank_token", ["", "   ", "\n", "\t\n "])
+def test_fetch_nodes_rejects_an_empty_or_whitespace_only_token(blank_token):
+    session = FakeSession([])
+
+    with pytest.raises(ValueError, match="empty or missing"):
+        fetch_nodes([1], "Candidacy", SELECTION, blank_token, _limiter(), session)
+
+
+def test_fetch_nodes_failing_request_does_not_write_the_token_into_the_log(caplog):
+    """Pins the leak: a header-validation-style failure must never put the raw token in
+    the task log, even though the exception's own message would otherwise carry it.
+    """
+    token = "test-token-value"
+    bad_header_error = requests.exceptions.InvalidHeader(
+        f"Invalid leading whitespace, reserved character(s), or return character(s) "
+        f"in header value: 'Bearer {token}\\n'"
+    )
+    session = FakeSession([bad_header_error, _ok([{"databaseId": 1}])])
+
+    with caplog.at_level("WARNING"):
+        result = fetch_nodes([1], "Candidacy", SELECTION, token, _limiter(), session, sleep=lambda s: None)
+
+    assert result == [FetchedNode(requested_id=1, node={"databaseId": 1})]
+    assert token not in caplog.text
+    assert "InvalidHeader" in caplog.text
 
 
 ALL_SELECTIONS = {

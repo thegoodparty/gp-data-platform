@@ -29,6 +29,19 @@ logger = logging.getLogger("airflow.task")
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
+
+def _redact(message: str, secret: str | None) -> str:
+    """Replace every occurrence of `secret` in `message` with a placeholder.
+
+    A falsy secret is returned unchanged: `"".replace("", "***")`-style logic would
+    otherwise insert the placeholder between every character instead of leaving the
+    message alone.
+    """
+    if not secret:
+        return message
+    return message.replace(secret, "***")
+
+
 CIVIC_ENGINE_GRAPHQL_URL = "https://bpi.civicengine.com/graphql"
 _NODE_ID_PREFIX = "gid://ballot-factory"
 
@@ -150,7 +163,14 @@ def fetch_nodes(
     was too large; it is not an error status. Bisect and retry rather than
     accept the loss, because the missing rows would land as null payloads that
     are indistinguishable from a genuine absence downstream.
+
+    `api_token` is stripped here regardless of what the caller already did, so a
+    stray newline or space from an Airflow Variable can never reach the header.
     """
+    api_token = api_token.strip()
+    if not api_token:
+        raise ValueError("civicengine_api_token is empty or missing")
+
     payload = {
         "query": _build_query(selection),
         "variables": {"ids": [encode_node_id(node_type, i) for i in ids]},
@@ -169,14 +189,17 @@ def fetch_nodes(
             if attempt == max_retries:
                 raise
             wait = retry_wait_seconds({}, attempt)
+            # requests embeds the offending header value in exceptions like InvalidHeader, so
+            # the exception's own text could carry the bearer token; redact before logging it.
             logger.warning(
-                "CivicEngine request failed for %d %s ids (attempt %d/%d); retrying in %.1fs: %s",
+                "CivicEngine request failed for %d %s ids (attempt %d/%d); retrying in %.1fs: %s: %s",
                 len(ids),
                 node_type,
                 attempt + 1,
                 max_retries,
                 wait,
-                exc,
+                type(exc).__name__,
+                _redact(str(exc), api_token),
             )
             sleep(wait)
             continue

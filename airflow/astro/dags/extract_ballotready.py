@@ -111,11 +111,13 @@ def extract_ballotready():
                 return {"entity": name, "skipped": True}
 
             run_id = context["dag_run"].run_id
+            # .strip(): an Airflow Variable pasted with a trailing newline or space is a
+            # copy-paste error, not an intentional value change, for every one of these.
             config = ExtractConfig(
-                catalog=Variable.get("databricks_catalog"),
-                dbt_schema=Variable.get("databricks_dbt_schema"),
-                source_schema=Variable.get("databricks_source_schema"),
-                api_token=Variable.get("civicengine_api_token"),
+                catalog=Variable.get("databricks_catalog").strip(),
+                dbt_schema=Variable.get("databricks_dbt_schema").strip(),
+                source_schema=Variable.get("databricks_source_schema").strip(),
+                api_token=Variable.get("civicengine_api_token").strip(),
                 max_ids=params["max_ids_per_entity"],
                 max_workers=params["max_workers"],
                 requests_per_second=params["requests_per_second"],
