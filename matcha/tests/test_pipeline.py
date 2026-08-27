@@ -644,12 +644,9 @@ def test_save_results_writes_expected_files(tmp_path):
 # ── Deterministic pregroups ──
 
 
-def test_build_settings_person_uses_dedupe():
-    assert build_settings(PERSON_CONFIG).link_type == "link_and_dedupe"
-
-
 def test_build_settings_leaves_other_entities_link_only():
-    """link_type defaults to the pre-existing behavior."""
+    """link_type defaults to the pre-existing behavior. The person side is
+    covered by the within-HubSpot dedupe test, which link_only cannot pass."""
     for config in (CANDIDACY_CONFIG, ELECTED_OFFICIAL_CONFIG):
         assert build_settings(config).link_type == "link_only"
 
@@ -748,13 +745,8 @@ def test_person_pipeline_rejects_household_pairs(person_results):
 
 
 def test_person_pipeline_scores_suffix_conflicts_instead_of_dropping_them(person_results):
-    """Father and son share a name and a family phone, differing only by Jr.
-
-    No suffix cannot-link ships yet: the study's five verified suffix-conflict
-    pairs split three same-person to two genuine father/son, which is too thin
-    to justify dropping the class. The pair has to stay scored and carry both
-    suffix tokens so the precision audit can size the trade on all 392 of them.
-    """
+    """No suffix cannot-link ships yet, so a Jr/Sr pair sharing a family phone
+    stays scored and carries both tokens for the precision audit to size."""
     pairwise_df, _, _ = person_results
 
     pair = _pair_rows(pairwise_df, "ballotready|20", "techspeed|21")
@@ -769,6 +761,17 @@ def test_person_pipeline_rejects_two_ballotready_people(person_results):
 
     assert _pair_rows(pairwise_df, "ballotready|30", "ballotready|31").empty
     assert cluster_of["ballotready|30"] != cluster_of["ballotready|31"]
+
+
+def test_person_pipeline_rejects_short_name_collisions(person_results):
+    """samuel and sue share a household phone but no alias or token.
+
+    Short first names sit close under edit distance, so this is the band where
+    a looser first-name level would start merging different people.
+    """
+    pairwise_df, _, _ = person_results
+
+    assert _pair_rows(pairwise_df, "hubspot|70", "techspeed|70").empty
 
 
 def test_person_pipeline_keeps_initial_changing_nicknames(person_results):
@@ -787,12 +790,9 @@ def test_person_pipeline_name_only_record_stays_a_singleton(person_results):
 
 
 def test_person_pipeline_admits_sibling_nickname_collision(person_results):
-    """Pins an accepted hazard rather than asserting it away.
-
-    christopher and christine both alias to "chris", so a brother and sister on
-    one household phone clear the filter. The precision audit measures what this
-    costs; a config change that alters it should surface here as a decision.
-    """
+    """Pins an accepted hazard: christopher and christine both alias to "chris",
+    so siblings on one household phone clear the filter. A config change that
+    alters this should surface here as a decision, not a surprise."""
     pairwise_df, _, _ = person_results
 
     assert not _pair_rows(pairwise_df, "hubspot|60", "hubspot|61").empty

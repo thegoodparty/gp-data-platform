@@ -58,25 +58,22 @@ PERSON_CONFIG = EntityConfig(
         # chain unrelated people.
         block_on("email"),
         block_on("phone"),
-        # The workhorse. A bare name or state+last_name rule is not affordable
-        # here: ~1M records under link_and_dedupe, and common surnames would
-        # generate hundreds of millions of pairs.
+        # The workhorse. Every rule needs a narrowing term beyond name and
+        # state: at ~1M records under link_and_dedupe, a common surname alone
+        # runs to hundreds of millions of pairs.
         block_on("state", "last_name", "substr(first_name, 1, 1)"),
         block_on("last_name", "substr(birth_date, 1, 4)"),
         # Nicknames that change the first initial ("bob"/"robert" agree, but
-        # "peggy"/"margaret" do not), which rule 3 cannot reach. Exploding the
-        # alias array keeps this an equi-join; as a list_has_any predicate it
-        # would materialize every state + last_name pair (~13M) and filter down.
+        # "peggy"/"margaret" do not), which rule 3 cannot reach.
         block_on("state", "last_name", "first_name_aliases", arrays_to_explode=["first_name_aliases"]),
-        # Same-group pairs are asserted after scoring, but blocking on the group
-        # too means Splink still scores them and their gammas stay auditable.
+        # Blocking on the group as well as asserting it keeps the gammas for
+        # same-group pairs available to the audit.
         block_on("pregroup_id"),
     ],
     additional_columns_to_retain=[
         "source_name",
         "source_id",
-        # Comparison columns are omitted on purpose: Splink retains those itself
-        # and listing them again duplicates the column.
+        # Splink retains comparison columns itself; listing one here duplicates it.
         "pregroup_id",
         "suffix_token",
         "br_candidate_id",

@@ -195,18 +195,12 @@ within-source cluster count is reported as a statistic rather than a warning.
 
 **Deterministic groups are asserted, not scored.** The dbt prematch carries a
 `pregroup_id` holding the person group that shared native ids already prove
-(`deterministic_grouping_column` in the config). After the post-prediction
-filters have run, the pipeline inserts one hub-to-minimum star edge per group at
-`match_probability=1.0`. Injecting after the filters is what makes a
-deterministic link unfilterable: two records the graph already resolved cluster
-even when every attribute disagrees. Pairs Splink scored on its own are left
-alone, so their gammas stay auditable.
-
-Injected rows carry the same `_l`/`_r` columns as any other pair. Their gammas,
-`match_weight`, and `match_key` are NULL, which is how you spot them: no
-blocking rule produced them and nothing was fit. A deterministic pair is
-identifiable downstream as `pregroup_id_l = pregroup_id_r`, which covers the
-ones Splink also scored.
+(`deterministic_grouping_column` in the config). Once the post-prediction filters
+have run, every same-group pair is raised to `match_probability=1.0` and any
+missing star edge is added, so two records the graph already resolved cluster
+even when every attribute disagrees. See `_inject_deterministic_group_edges` for
+the mechanics; a deterministic pair is identifiable downstream as
+`pregroup_id_l = pregroup_id_r`.
 
 Post-prediction filters here are deliberately sparse. A clause ships only once
 it has been measured to drop more false positives than true matches; until then

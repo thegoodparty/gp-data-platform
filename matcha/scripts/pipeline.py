@@ -121,10 +121,10 @@ def _inject_deterministic_group_edges(linker: Linker, config: EntityConfig, pred
 
     pred_columns = {d[0] for d in con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description}
     sides = [
-        f"{side}.{c.name} AS {getattr(c, f'name_{side}')}"
+        expr
         for c in concat.columns
-        for side in ("l", "r")
-        if f"{c.unquote().name}_{side}" in pred_columns
+        if f"{c.unquote().name}_l" in pred_columns
+        for expr in (f"l.{c.name} AS {c.name_l}", f"r.{c.name} AS {c.name_r}")
     ]
 
     # least/greatest normalizes the existing pair keys so the anti-join stays a
