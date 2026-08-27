@@ -33,7 +33,7 @@ Set on the Astro deployment as **Airflow Variables**:
 | `databricks_catalog` | Databricks catalog name the ER tables live in. |
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
-| `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. |
+| `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
 | `matcha_image_pull_secret` | Kubernetes image pull secret name from Astronomer support. Unset means the GHCR package is public and the kubelet pulls it anonymously. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
@@ -85,6 +85,28 @@ considering that deployment done.
 
 **Flip the GHCR package to private only once BOTH deployments are pulling successfully with their own
 secret.** Flipping it earlier breaks whichever deployment doesn't have a working secret yet.
+
+## Which build a run used
+
+The pod sets `image_pull_policy: Always`, so every pod pulls its tag fresh instead of reusing
+whatever a node already has cached. A cache hit would otherwise let a pod run a matcher build older
+than the tag now points at, silently and with nothing in the logs to say so.
+
+What `Always` does not fix is that `latest` is mutable. The pool runs the three entity pods one after
+another, so a merge touching `matcha/**` landing mid-run republishes `latest` and the later pods
+execute different matcher code than the earlier ones. No output is corrupted by that — each entity's
+tables come from a single pod, and each gate compares that entity's own vintage against its own live
+table — but a gate failure stops being attributable to the data rather than to a matcher change,
+which is the one call the vintage-and-gate design exists to let you make.
+
+So **pin the tag for any run whose provenance matters**: a cutover run, or reproducing a gate
+failure. CI publishes `ghcr.io/thegoodparty/gp-data-platform/matcha:<commit-sha>` beside `:latest` on
+every merge to main, so set `matcha_image_tag` to that sha (a `sha256:` digest works too) and unset
+it again afterwards to go back to tracking main.
+
+Either way the run's logs say which it was: the `match` task logs the resolved image before the pod
+starts, as `matcha image pinned for this run: ...` or as a warning that the tag is mutable. Read that
+line first when a gate fails — it is the fastest way to rule a matcher change in or out.
 
 **Rotation hazard.** The credential behind the secret is a GitHub classic PAT scoped to `read:packages`,
 which **expires**. When it does, every pod pull fails with `ImagePullBackOff` and `matcha_er` fails at

@@ -56,6 +56,7 @@ still builds and gates the dated tables.
 from __future__ import annotations
 
 import logging
+import re
 
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
@@ -78,6 +79,10 @@ from pendulum import duration
 
 t_log = logging.getLogger("airflow.task")
 
+# The tag CI publishes beside `latest` on every merge to main, i.e. the only tag form that
+# makes a run reproducible. A digest reference (`@sha256:...`) counts as pinned as well.
+_PINNED_TAG = re.compile(r"[0-9a-f]{40}")
+
 # `image` is a KPO template field, so the tag resolves at task runtime, not parse — any merge
 # touching matcha/** would otherwise silently change what the next scheduled run executes with
 # no code change to show for it. A deployment can pin a sha via the Variable with no redeploy;
@@ -88,6 +93,12 @@ MATCHA_IMAGE = (
     f"{{{{ var.value.get('{MATCHA_IMAGE_TAG_VARIABLE}', 'latest') }}}}"
 )
 MATCHA_POOL = "matcha_er"
+# Explicit because Kubernetes otherwise infers it from the tag (Always for `:latest`,
+# IfNotPresent for anything else), so pinning the tag Variable would flip pull behavior as a
+# side effect. Always over IfNotPresent: a node-local cache can hold a matcher build older
+# than the tag now points at and would run it silently, and it buys little coherence between
+# this run's pods, which the pool serializes onto generally separate nodes.
+MATCHA_IMAGE_PULL_POLICY = "Always"
 # A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
 # two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
@@ -132,7 +143,37 @@ class _MatchaPodOperator(KubernetesPodOperator):
         secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default="")
         if secret_name:
             self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
+        self._log_image_provenance()
         super().pre_execute(context)
+
+    def _log_image_provenance(self) -> None:
+        """Record which image this pod is about to run, and whether it is pinned.
+
+        `image` is a template field, so what a run actually executed is only
+        knowable from the run's own logs. A mutable tag additionally means the
+        three entity pods of one run are not guaranteed to be the same build:
+        the pool serializes them, so a merge touching `matcha/**` landing
+        between two pods republishes `latest` and the later pod runs different
+        matcher code. Nothing is corrupted by that — each entity's tables come
+        from a single pod — but a gate failure stops being attributable to the
+        data rather than to a matcher change, which is the one distinction the
+        vintage-and-gate design exists to make. Pinning the tag to the sha CI
+        publishes on every merge removes the ambiguity; the warning says so at
+        the point where the run is about to pay for not having done it.
+        """
+        image = self.image or ""
+        _, _, tag = image.rpartition(":")
+        if "@sha256:" in image or _PINNED_TAG.fullmatch(tag):
+            t_log.info("matcha image pinned for this run: %s", image)
+            return
+        t_log.warning(
+            "matcha image %s is a mutable tag: the pods in this run are not guaranteed to be "
+            "the same build, so a gate failure here cannot be attributed to the data over a "
+            "matcher change. Pin the %s Variable to the sha tag CI publishes beside `latest` "
+            "for a reproducible run.",
+            image,
+            MATCHA_IMAGE_TAG_VARIABLE,
+        )
 
 
 def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
@@ -144,6 +185,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
         task_id="match",
         name=f"matcha-{entity.entity_type.replace('_', '-')}",
         image=MATCHA_IMAGE,
+        image_pull_policy=MATCHA_IMAGE_PULL_POLICY,
         pool=MATCHA_POOL,
         arguments=[
             "match",

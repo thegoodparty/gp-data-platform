@@ -159,6 +159,61 @@ def test_pull_secret_set_attaches_exactly_one_reference():
     assert op.image_pull_secrets[0].name == "matcha-ghcr-pull"
 
 
+def test_match_pods_set_the_pull_policy_explicitly():
+    """Kubernetes derives an unset policy FROM THE TAG — Always for `:latest`,
+    IfNotPresent otherwise — so pinning `matcha_image_tag` to a sha would also
+    flip the pull behavior as a side effect. Always is the deliberate choice
+    over IfNotPresent: a node-local cache can hold a matcher build older than
+    the tag now points at and would run it silently, and it buys next to no
+    coherence between this run's pods, which the pool serializes onto
+    generally separate nodes. Coherence comes from pinning the tag instead.
+    """
+    for entity in _ENTITIES:
+        assert _DAG.get_task(f"{entity}.match").image_pull_policy == "Always"
+
+
+def test_a_mutable_tag_warns_that_the_run_is_not_reproducible():
+    """A merge touching matcha/** republishes `latest`, and the pool runs the
+    three pods one after another, so a run on a mutable tag can execute two
+    different matcher builds. The run's own logs have to say so — otherwise a
+    gate failure looks like a data problem.
+
+    `image` is set on the operator directly here rather than left as its Jinja
+    template: pre_execute runs after the task instance renders template
+    fields, so a real run sees the resolved string.
+    """
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    op.image = "ghcr.io/thegoodparty/gp-data-platform/matcha:latest"
+    with (
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+        patch.object(module, "t_log", autospec=True) as mock_log,
+    ):
+        mock_variable.get.return_value = ""
+        op.pre_execute({})
+    assert mock_log.warning.called
+    assert not mock_log.info.called
+    assert "latest" in mock_log.warning.call_args.args[1]
+
+
+def test_a_sha_pinned_tag_logs_the_image_without_warning():
+    module = _dag_module()
+    for image in (
+        f"ghcr.io/thegoodparty/gp-data-platform/matcha:{'a1b2c3d4' * 5}",
+        f"ghcr.io/thegoodparty/gp-data-platform/matcha@sha256:{'ab' * 32}",
+    ):
+        op = module._match_pod(_ENTITY_SPECS[0])
+        op.image = image
+        with (
+            patch.object(module, "Variable", autospec=True) as mock_variable,
+            patch.object(module, "t_log", autospec=True) as mock_log,
+        ):
+            mock_variable.get.return_value = ""
+            op.pre_execute({})
+        assert not mock_log.warning.called, image
+        assert mock_log.info.call_args.args[1] == image
+
+
 def test_gate_task_checks_its_own_entitys_tables():
     """`gate` and `swap` read `entity` from the enclosing closure at task
     EXECUTION time, unlike `match`'s eagerly-resolved arguments — so a bare
