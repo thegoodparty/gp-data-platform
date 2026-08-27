@@ -210,9 +210,13 @@ def train_model(linker: Linker, config: EntityConfig) -> int:
 
 
 def predict_and_cluster(
-    linker: Linker, config: EntityConfig, output_dir: Path | None = None
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Predict matches, apply post-prediction filters, cluster."""
+    linker: Linker, config: EntityConfig
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Predict matches, apply post-prediction filters, cluster.
+
+    Returns the pairwise, clustered, and filtered-out frames. The caller writes
+    them; nothing here touches the filesystem.
+    """
     predictions = linker.inference.predict(threshold_match_probability=config.predict_threshold)
 
     pred_table = predictions.physical_name
@@ -221,21 +225,15 @@ def predict_and_cluster(
 
     if pre_count == 0:
         print("WARNING: No predictions found.")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    # Apply post-prediction filters from config
-    pre_filter_table = f"{pred_table}_pre_filter"
+    # Injection runs first because the filters below exempt deterministic pairs
+    # outright. That keeps the kept and filtered sets exact complements of one
+    # predicate, and an exempted pair keeps the gammas Splink computed for it.
+    _inject_deterministic_group_edges(linker, config, pred_table)
+
+    filtered_df = pd.DataFrame()
     if config.post_prediction_filters:
-        # Snapshot the pre-filter pairs. The sidecar itself is written after the
-        # deterministic injection, so a pair the injection re-adds is not
-        # reported as filtered out.
-        if output_dir is not None:
-            linker._db_api._con.execute(f"""
-                CREATE OR REPLACE TABLE {pre_filter_table} AS
-                SELECT unique_id_l, unique_id_r, match_probability, match_weight
-                FROM {pred_table}
-            """)
-
         # Splink drops gamma_<col> from the prediction frame when a comparison
         # is never trained — e.g. a column used only as an exact-equality
         # blocking key (m never estimated) or one that is NULL across the whole
@@ -256,45 +254,29 @@ def predict_and_cluster(
                     "all-NULL columns); reference the raw _l/_r columns instead."
                 )
 
-        combined_filter = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
+        keep = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
+        if col := config.deterministic_grouping_column:
+            keep = f'("{col}_l" IS NOT NULL AND "{col}_l" = "{col}_r") OR ({keep})'
+        # coalesce so a NULL predicate lands in exactly one of the two sets
+        # rather than being dropped from both.
+        keep = f"coalesce({keep}, false)"
+
+        filtered_df = linker._db_api._con.execute(f"""
+            SELECT
+                least(unique_id_l, unique_id_r) AS unique_id_l,
+                greatest(unique_id_l, unique_id_r) AS unique_id_r,
+                match_probability AS match_probability_pre_filter,
+                match_weight AS match_weight_pre_filter
+            FROM {pred_table} WHERE NOT {keep}
+        """).fetchdf()
+
         linker._db_api._con.execute(f"""
             CREATE OR REPLACE TABLE {pred_table} AS
-            SELECT * FROM {pred_table}
-            WHERE {combined_filter}
+            SELECT * FROM {pred_table} WHERE {keep}
         """)
 
-        # Count where the filtering happens, so a later mutation of the
-        # predictions table cannot silently corrupt the number.
-        kept = linker._db_api._con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
-        if (dropped := pre_count - kept) > 0:
-            print(f"Post-prediction filters: removed {dropped:,} pairs")
-
-    # After the filters: a deterministic edge must not be filterable.
-    _inject_deterministic_group_edges(linker, config, pred_table)
-
-    # Sidecar of pairs the filters dropped and the injection did not restore.
-    # Injected rows can carry the opposite orientation, so pair keys are
-    # normalized on both sides rather than compared as raw tuples.
-    if config.post_prediction_filters and output_dir is not None:
-        sidecar = str(output_dir / "filtered_pairs.csv").replace("'", "''")
-        linker._db_api._con.execute(f"""
-            COPY (
-                SELECT
-                    least(pre.unique_id_l, pre.unique_id_r) AS unique_id_l,
-                    greatest(pre.unique_id_l, pre.unique_id_r) AS unique_id_r,
-                    pre.match_probability AS match_probability_pre_filter,
-                    pre.match_weight AS match_weight_pre_filter
-                FROM {pre_filter_table} AS pre
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {pred_table} AS p
-                    WHERE least(p.unique_id_l, p.unique_id_r)
-                          = least(pre.unique_id_l, pre.unique_id_r)
-                      AND greatest(p.unique_id_l, p.unique_id_r)
-                          = greatest(pre.unique_id_l, pre.unique_id_r)
-                )
-            ) TO '{sidecar}' (HEADER, DELIMITER ',')
-        """)
-        linker._db_api._con.execute(f"DROP TABLE {pre_filter_table}")
+        if len(filtered_df):
+            print(f"Post-prediction filters: removed {len(filtered_df):,} pairs")
 
     pairwise_df = predictions.as_pandas_dataframe()
 
@@ -310,13 +292,14 @@ def predict_and_cluster(
         prefix = "" if config.expects_within_source_duplicates else "WARNING: "
         print(f"{prefix}{within} within-source duplicate clusters found")
 
-    return pairwise_df, clustered_df
+    return pairwise_df, clustered_df, filtered_df
 
 
 def save_results(
     linker: Linker,
     pairwise_df: pd.DataFrame,
     clustered_df: pd.DataFrame,
+    filtered_df: pd.DataFrame,
     output_dir: Path,
     config: EntityConfig,
 ) -> None:
@@ -360,6 +343,8 @@ def save_results(
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
         clustered_df.to_csv(output_dir / config.clustered_output_name, index=False)
+    if config.post_prediction_filters:
+        filtered_df.to_csv(output_dir / "filtered_pairs.csv", index=False)
 
     for name, method in [
         ("match_weights", "match_weights_chart"),
@@ -382,6 +367,6 @@ def run(input_df: pd.DataFrame, output_dir: Path, config: EntityConfig) -> tuple
     settings = build_settings(config)
     linker = Linker(source_dfs, settings, _duckdb_api())
     train_model(linker, config)
-    pairwise_df, clustered_df = predict_and_cluster(linker, config, output_dir)
-    save_results(linker, pairwise_df, clustered_df, output_dir, config)
+    pairwise_df, clustered_df, filtered_df = predict_and_cluster(linker, config)
+    save_results(linker, pairwise_df, clustered_df, filtered_df, output_dir, config)
     return pairwise_df, clustered_df

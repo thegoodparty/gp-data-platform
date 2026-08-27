@@ -575,10 +575,11 @@ def test_predict_and_cluster_returns_empty_frames_when_no_predictions():
     linker.inference.predict.return_value.physical_name = "preds"
     linker._db_api._con.execute.return_value.fetchone.return_value = [0]
 
-    pairwise, clustered = predict_and_cluster(linker, CANDIDACY_CONFIG)
+    pairwise, clustered, filtered = predict_and_cluster(linker, CANDIDACY_CONFIG)
 
     assert pairwise.empty
     assert clustered.empty
+    assert filtered.empty
 
 
 # --- save_results: the list-column JSON serializer ----------------------------
@@ -625,7 +626,7 @@ def test_save_results_serializes_list_columns_to_json(tmp_path, cell, expected):
     pairwise, clustered = _saveable_frames([cell, np.array(["x"])])
 
     # linker is only used for the diagnostic charts, which are best-effort
-    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+    save_results(MagicMock(), pairwise, clustered, pd.DataFrame(), tmp_path, CANDIDACY_CONFIG)
 
     written = pd.read_csv(tmp_path / CANDIDACY_CONFIG.clustered_output_name)
     assert written["first_name_aliases"].iloc[0] == expected
@@ -635,7 +636,7 @@ def test_save_results_writes_expected_files(tmp_path):
     pairwise, clustered = _saveable_frames([["bob"], ["amy"]])
 
     # linker is only used for the diagnostic charts, which are best-effort
-    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+    save_results(MagicMock(), pairwise, clustered, pd.DataFrame(), tmp_path, CANDIDACY_CONFIG)
 
     assert (tmp_path / "pairwise_predictions.csv").exists()
     assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()
