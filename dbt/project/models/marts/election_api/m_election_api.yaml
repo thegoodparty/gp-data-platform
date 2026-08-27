@@ -838,9 +838,12 @@ models:
         description: "BallotReady person databaseId; null for GP-native people."
       - name: is_pledged
         description: >
-          Whether the person took the GoodParty pledge on any candidacy, rolled
-          up from candidacy.is_pledged on gp_person_id. The API column is NOT
-          NULL DEFAULT false, so the unpledged must be false, never null.
+          Whether the person took the GoodParty pledge on any of their product
+          records: a gp-api campaign with details.pledged, or a gp-api elected
+          office with pledged_at. Read from those records rather than from
+          candidacy, which drops an uncorroborated gp_api campaign and never
+          carried the elected-office pledge at all. The API column is NOT NULL
+          DEFAULT false, so the unpledged must be false, never null.
         tests:
           - not_null
       - name: gp_api_user_id
