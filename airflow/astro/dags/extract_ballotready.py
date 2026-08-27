@@ -97,7 +97,12 @@ def extract_ballotready():
     tasks = {}
     for name, spec in ENTITY_SPECS.items():
 
-        @task(task_id=f"extract_{name}")
+        @task(
+            task_id=f"extract_{name}",
+            # all_done for issue only: it reads the landed stance table, not the stance task's
+            # return value, so a stance failure must not strand it (default all_success would).
+            trigger_rule="all_done" if name == "issue" else "all_success",
+        )
         def _extract(name=name, spec=spec) -> dict:
             context = get_current_context()
             params = context["params"]

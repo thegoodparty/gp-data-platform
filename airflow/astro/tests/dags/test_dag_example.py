@@ -184,6 +184,16 @@ def test_extract_ballotready_only_orders_issue_after_stance():
         assert _BR_DAG.get_task(task_id).upstream_list == []
 
 
+def test_extract_ballotready_issue_runs_even_if_stance_fails():
+    """issue reads the landed stance table, not the stance task's return value, so a stance
+    failure must not strand it."""
+    assert _BR_DAG is not None
+    assert _BR_DAG.get_task("extract_issue").trigger_rule == "all_done"
+    other_task_ids = {t.task_id for t in _BR_DAG.tasks} - {"extract_issue"}
+    for task_id in other_task_ids:
+        assert _BR_DAG.get_task(task_id).trigger_rule == "all_success"
+
+
 def test_extract_ballotready_bounds_concurrent_tasks():
     """The concurrency budget is max_active_tasks times max_workers, so this must stay pinned."""
     assert _BR_DAG is not None
