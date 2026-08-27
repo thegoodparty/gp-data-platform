@@ -790,14 +790,22 @@ def test_candidacy_worklist_accepts_and_ignores_source_schema():
     assert "zzz_marker_schema" not in sql
 
 
-def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
-    """candidacy_updated_at is STRING in staging; greatest() must be cast so this UNION
-    branch agrees in type with the (already-timestamp) upcoming-roster branch.
+def test_candidacy_worklist_casts_each_greatest_argument_not_the_result():
+    """The live staging schema types candidacy_created_at as TIMESTAMP and
+    candidacy_updated_at as STRING. greatest() rejects mixed input types outright rather
+    than coercing, so casting its result is too late and the query fails to compile. This
+    pins the per-argument form, which works whichever way either column is typed.
     """
     sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
-    assert (
-        "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at" in sql
-    )
+    assert "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp))" in sql
+    assert "AS source_changed_at" in sql
+    # The regressed form: a single cast wrapped around greatest's result.
+    assert "cast(greatest(" not in sql
+
+
+def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    assert "cast(candidacy_updated_at AS timestamp)" in sql
     # race_updated_at (from stg_airbyte_source__ballotready_api_race) is already TIMESTAMP
     # there via to_timestamp(), so this branch needs no cast of its own.
     assert "race_updated_at AS source_changed_at" in sql
