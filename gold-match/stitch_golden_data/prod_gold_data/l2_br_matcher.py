@@ -29,7 +29,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from shared.braintrust import build_cached_prompt, cache_prompt, flush_logs, init_braintrust
+from bedrock_clients import BedrockEmbeddingClient, BedrockStructuredContentClient
+from shared.braintrust import build_cached_prompt, cache_prompt, flush_logs, get_prompt_provenance, init_braintrust
+from shared.braintrust import is_enabled as braintrust_is_enabled
 from shared.databricks_client import DatabricksClient
 from shared.llm_gemini import GeminiEmbeddingClient
 from shared.llm_gemini_3 import Gemini3Client, GeminiModelType, ThinkingLevel
@@ -37,6 +39,13 @@ from shared.logger import get_logger
 
 PENDING_OFFICES_TABLE = "int__l2_br_match_pending_offices"
 DISTRICT_UNIVERSE_TABLE = "int__l2_district_universe"
+
+# The registry prompt is org-wide editable and its creator left the org, so
+# production loads THIS pinned version, never the live slug tip. The value is
+# the Braintrust API's transaction id -- the UI displays this same version as
+# hash 3a27a867 -- because load_prompt pins by transaction id and 500s on the
+# UI hash (verified live 2026-08-27).
+PINNED_PROMPT_VERSION = "1000196719110653589"
 
 MENU_SIZE = 13
 STATE_QUERY_INSERT_INDEX = 10  # 11th slot
@@ -224,7 +233,7 @@ def _require_integral(value: Any, field_name: str) -> int:
     like `'95'` would pass straight through into a column typed as an
     integer.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{field_name} must be a non-boolean numeric value: {value!r}")
     if not math.isfinite(value):
         raise ValueError(f"{field_name} must be finite: {value!r}")
@@ -557,21 +566,36 @@ class L2BrMatcher:
     what is frozen and what changed in this PR.
     """
 
-    def __init__(self, catalog: str = "goodparty_data_catalog", schema: str = "dbt"):
+    def __init__(
+        self,
+        catalog: str = "goodparty_data_catalog",
+        schema: str = "dbt",
+        embedding_client: Any = None,
+        llm: Any = None,
+    ):
         self.logger = get_logger(__name__)
         self.databricks = DatabricksClient()
 
+        # Injection points for the model clients. The defaults construct the
+        # incumbent Gemini stack exactly as before (dormant unless a caller
+        # selects it); the CLI wires the Bedrock stack by default.
         target_concurrency = 1200
-        self.llm = Gemini3Client(
-            default_model=GeminiModelType.FLASH_3,
-            default_temperature=0.0,
-            thinking_level=ThinkingLevel.MINIMAL,
-            max_connections=target_concurrency,
-            max_keepalive_connections=target_concurrency // 4,
-            max_retries=11,
-            base_delay=1.0,
-        )
-        self.embedding_client = GeminiEmbeddingClient(max_retries=11, base_delay=1.0)
+        if llm is not None:
+            self.llm = llm
+        else:
+            self.llm = Gemini3Client(
+                default_model=GeminiModelType.FLASH_3,
+                default_temperature=0.0,
+                thinking_level=ThinkingLevel.MINIMAL,
+                max_connections=target_concurrency,
+                max_keepalive_connections=target_concurrency // 4,
+                max_retries=11,
+                base_delay=1.0,
+            )
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            self.embedding_client = GeminiEmbeddingClient(max_retries=11, base_delay=1.0)
 
         # An explicit pool, not the loop's default executor (asyncio.to_thread's
         # min(32, cpu_count + 4)), so the httpx pool above actually sees the
@@ -591,10 +615,20 @@ class L2BrMatcher:
 
     def _init_prompt_cache(self) -> None:
         self._prompt_name = "stitch-golden-data-matcher"
-        prompt_obj = cache_prompt(self._prompt_name)
+        prompt_obj = cache_prompt(self._prompt_name, version=PINNED_PROMPT_VERSION)
         if prompt_obj is not None:
-            self.logger.info("Braintrust prompt cached for stitch-golden-data-matcher")
+            self.prompt_provenance = get_prompt_provenance(self._prompt_name)
+            self.logger.info(f"Braintrust prompt pinned: {self.prompt_provenance}")
+        elif braintrust_is_enabled():
+            # Fail closed: with Braintrust live, silently running on the
+            # in-code fallback would swap which prompt the whole run used --
+            # the exact comparability the pin exists to protect.
+            raise RuntimeError(
+                f"Braintrust is enabled but the pinned prompt {self._prompt_name}@{PINNED_PROMPT_VERSION} "
+                "did not load; failing closed rather than running on the fallback"
+            )
         else:
+            self.prompt_provenance = None
             self.logger.warning("Braintrust prompt not available, using fallback")
 
     async def _run_in_pool(self, func: Any, *args: Any, **kwargs: Any) -> Any:
@@ -708,6 +742,7 @@ class L2BrMatcher:
         select state_postal_code, district_type, district_name
         from {self.district_universe_path}
         where upper(trim(state_postal_code)) in ('{states_str}')
+        order by state_postal_code, district_type, district_name
         """
         return self.databricks.execute_query(query)
 
@@ -827,6 +862,12 @@ class L2BrMatcher:
         # because they assumed a constant delay rather than the ratchet. Tuning these wants a measured run, not a
         # guess; that measured run is what the write-path PR and the
         # supervised cutover produce.
+        if len(texts) == 1:
+            # A one-text call is the QUERY path by the clients' len-dispatch
+            # convention. A single-row state universe (the synthetic State
+            # row alone, i.e. a delivery with no real districts) must fail
+            # loudly rather than embed a document into query space.
+            raise ValueError(f"state {state!r} universe has a single row; refusing a one-text document embed")
         embeddings = await self._run_in_pool(
             self.embedding_client.create_embeddings,
             texts,
@@ -1152,7 +1193,11 @@ Base decisions on semantic meaning, geography, and functional appropriateness.
                     )
                 )
                 results.extend(batch_results)
-                self.logger.info(f"Matched {len(results)}/{len(offices)} offices")
+                matched_so_far = sum(1 for r in results if r.l2_district_name is not None)
+                self.logger.info(
+                    f"Processed {len(results)}/{len(offices)} offices "
+                    f"({matched_so_far} matched, {len(results) - matched_so_far} abstained)"
+                )
 
             return results
         except Exception:
@@ -1228,7 +1273,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--embedding-batch-size",
         type=_positive_int,
         default=100,
-        help="District texts embedded per call when building the universe (positive; default: 100)",
+        help=(
+            "District texts embedded per call when building the universe (positive; default: 100). "
+            "Shapes the gemini config's client only; the Bedrock client is one text per call"
+        ),
     )
     parser.add_argument(
         "--enable-school-whole-assertion",
@@ -1238,12 +1286,41 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "the holdout adjudicates residency zones vs zoned electorates; the holdout runs both arms"
         ),
     )
+    parser.add_argument(
+        "--model-config",
+        choices=["bedrock", "bedrock-nova", "gemini"],
+        default="bedrock",
+        help=(
+            "Model stack: bedrock = Titan V2 + Haiku via Bedrock (default), bedrock-nova = Nova "
+            "embeddings + Haiku, gemini = the dormant incumbent (explicit selection only)"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _build_clients(model_config: str) -> tuple[Any, Any]:
+    """Construct the model stack for --model-config. The gemini config
+    returns (None, None) so L2BrMatcher's own defaults construct the
+    incumbent exactly as before. Nova has a 2,000 requests/min quota and no
+    published tokens/min quota; Titan's class defaults carry its 6,000/300k."""
+    if model_config == "bedrock":
+        return BedrockEmbeddingClient(model="titan"), BedrockStructuredContentClient()
+    if model_config == "bedrock-nova":
+        return (
+            BedrockEmbeddingClient(model="nova", requests_per_minute=2000, tokens_per_minute=None),
+            BedrockStructuredContentClient(),
+        )
+    if model_config == "gemini":
+        return None, None
+    # argparse choices guard the CLI only; a programmatic caller passing a
+    # typo must not silently receive the dormant Gemini stack.
+    raise ValueError(f"unknown model config {model_config!r}")
 
 
 async def main() -> None:
     args = _parse_args()
-    matcher = L2BrMatcher()
+    embedding_client, llm = _build_clients(args.model_config)
+    matcher = L2BrMatcher(embedding_client=embedding_client, llm=llm)
     try:
         results = await matcher.run(
             states=args.states,

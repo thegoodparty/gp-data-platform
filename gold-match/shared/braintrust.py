@@ -77,6 +77,7 @@ class BraintrustClient:
         self._project: Optional[str] = None
         self._initialized = False
         self._cached_prompts: Dict[str, Any] = {}
+        self._prompt_provenance: Dict[str, Any] = {}
         self._prompt_cache_lock = threading.Lock()
 
     @classmethod
@@ -105,6 +106,7 @@ class BraintrustClient:
         self._enabled = False
         self._initialized = False
         self._cached_prompts = {}
+        self._prompt_provenance = {}
 
     def init(self, project: str, api_key: Optional[str] = None) -> bool:
         if self._initialized:
@@ -332,10 +334,22 @@ class BraintrustClient:
             logger.warning(f"Prompt template format error: {e}")
             return prompt
 
+    def _require_same_pin(self, cache_key: str, prompt_name: str, version: Optional[str]) -> None:
+        """The cache holds one object per (project, slug); a second caller
+        requesting a DIFFERENT pin must fail loudly rather than silently
+        receive whatever version the first caller populated."""
+        recorded = self._prompt_provenance.get(cache_key)
+        if recorded is not None and recorded.get("pinned_version") != version:
+            raise ValueError(
+                f"prompt '{prompt_name}' is already cached with pin "
+                f"{recorded.get('pinned_version')!r}; refusing a conflicting load with {version!r}"
+            )
+
     def get_cached_prompt_object(
         self,
         prompt_name: str,
-        warmup_variables: Optional[Dict[str, Any]] = None
+        warmup_variables: Optional[Dict[str, Any]] = None,
+        version: Optional[str] = None
     ) -> Optional[Any]:
         if not self._enabled or self._braintrust_module is None:
             return None
@@ -343,17 +357,42 @@ class BraintrustClient:
         cache_key = f"{self._project}:{prompt_name}"
 
         if cache_key in self._cached_prompts:
+            self._require_same_pin(cache_key, prompt_name, version)
             return self._cached_prompts[cache_key]
 
         with self._prompt_cache_lock:
             if cache_key in self._cached_prompts:
+                self._require_same_pin(cache_key, prompt_name, version)
                 return self._cached_prompts[cache_key]
 
             try:
-                prompt_obj = self._braintrust_module.load_prompt(
-                    project=self._project,
-                    slug=prompt_name
-                )
+                # A pinned version protects production from live edits to the
+                # registry prompt; None keeps the unpinned behavior for other
+                # callers.
+                if version is not None:
+                    prompt_obj = self._braintrust_module.load_prompt(
+                        project=self._project,
+                        slug=prompt_name,
+                        version=version
+                    )
+                else:
+                    prompt_obj = self._braintrust_module.load_prompt(
+                        project=self._project,
+                        slug=prompt_name
+                    )
+                resolved_version = None
+                if prompt_obj is not None:
+                    # braintrust 0.17 resolves LAZILY: load_prompt returns
+                    # instantly and the fetch happens on first use (verified
+                    # live). Touch .version here so a bad pin fails NOW, as a
+                    # failed load, instead of mid-run at the first call.
+                    resolved_version = prompt_obj.version
+                self._prompt_provenance[cache_key] = {
+                    "slug": prompt_name,
+                    "pinned_version": version,
+                    "resolved_version": resolved_version,
+                    "loaded": prompt_obj is not None,
+                }
 
                 if prompt_obj is None:
                     logger.warning(f"Prompt '{prompt_name}' not found in Braintrust project '{self._project}'")
@@ -371,6 +410,12 @@ class BraintrustClient:
 
             except Exception as e:
                 logger.warning(f"Failed to cache prompt '{prompt_name}': {e}")
+                self._prompt_provenance[cache_key] = {
+                    "slug": prompt_name,
+                    "pinned_version": version,
+                    "resolved_version": None,
+                    "loaded": False,
+                }
                 self._cached_prompts[cache_key] = None
                 return None
 
@@ -385,25 +430,19 @@ class BraintrustClient:
         if prompt_obj is not None:
             try:
                 rendered = prompt_obj.build(**variables)
-
-                if isinstance(rendered, dict) and 'messages' in rendered:
-                    messages = rendered['messages']
-                    if messages and isinstance(messages[0], dict):
-                        return messages[0].get('content', '')
-                    elif messages and hasattr(messages[0], 'content'):
-                        return str(messages[0].content) if messages[0].content is not None else ''
-
-                if hasattr(rendered, 'messages') and rendered.messages:
-                    msg = rendered.messages[0]
-                    if isinstance(msg, dict):
-                        return msg.get('content', '')
-                    elif hasattr(msg, 'content'):
-                        return str(msg.content) if msg.content is not None else ''
-
-                return str(rendered)
+                # Flatten EVERY message (chat-shaped prompts carry the
+                # variables in later messages), and let an emptied prompt be
+                # falsy so the fallback below actually fires instead of a
+                # fragment or a dict repr shipping as the prompt.
+                flattened = flatten_prompt_messages(rendered)
+                if flattened:
+                    return flattened
+                logger.warning(
+                    f"Braintrust prompt '{prompt_name}' rendered empty; using the in-code fallback"
+                )
 
             except Exception as e:
-                logger.debug(f"Braintrust build failed for '{prompt_name}': {e}")
+                logger.warning(f"Braintrust build failed for '{prompt_name}': {e}; using the in-code fallback")
 
         if fallback_prompt:
             return self._render_prompt(fallback_prompt, variables)
@@ -419,6 +458,9 @@ class BraintrustClient:
 
     def is_enabled(self) -> bool:
         return self._enabled
+
+    def get_prompt_provenance(self, prompt_name: str) -> Optional[Dict[str, Any]]:
+        return self._prompt_provenance.get(f"{self._project}:{prompt_name}")
 
     def get_project(self) -> Optional[str]:
         return self._project
@@ -481,9 +523,14 @@ def trace_pipeline(
 
 def cache_prompt(
     prompt_name: str,
-    warmup_variables: Optional[Dict[str, Any]] = None
+    warmup_variables: Optional[Dict[str, Any]] = None,
+    version: Optional[str] = None
 ) -> Optional[Any]:
-    return BraintrustClient.get_instance().get_cached_prompt_object(prompt_name, warmup_variables)
+    return BraintrustClient.get_instance().get_cached_prompt_object(prompt_name, warmup_variables, version)
+
+
+def get_prompt_provenance(prompt_name: str) -> Optional[Dict[str, Any]]:
+    return BraintrustClient.get_instance().get_prompt_provenance(prompt_name)
 
 
 def build_cached_prompt(

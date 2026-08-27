@@ -1,7 +1,7 @@
 [project]
 name = "gold-match"
 version = "0.1.0"
-description = "L2-to-BallotReady district matcher (gold match), moved from omni as a frozen port"
+description = "L2-to-BallotReady district matcher (gold match) and its Bedrock model clients"
 requires-python = ">=3.14"
 # Floors are omni's locked versions; ceilings keep the byte-frozen code on
 # the series it was written and evaluated under. Python 3.14 forces only
@@ -12,10 +12,15 @@ requires-python = ">=3.14"
 # and without it databricks-sql-connector drops its arrow/cloud-fetch result
 # path and warns on every import. Relaxing any of this is client-PR work.
 dependencies = [
+    "boto3>=1.40.55,<2.0.0",
+    "botocore>=1.40.55,<2.0.0",
     "braintrust>=0.17.0,<0.18.0",
     "databricks-sql-connector>=4.4.0,<5.0.0",
     "google-genai>=1.56.0,<1.57.0",
     "httpx>=0.28.1",
+    # jsonschema is transitively present; declared because bedrock_clients
+    # imports it directly.
+    "jsonschema>=4.26.0",
     "numpy>=2.3.4",
     "pandas>=2.3.1,<3.0.0",
     "pillow>=12.3.0",
@@ -40,22 +45,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["shared", "stitch_golden_data"]
+packages = ["shared", "stitch_golden_data", "bedrock_clients"]
 
 [tool.pytest.ini_options]
-testpaths = ["stitch_golden_data/prod_gold_data/tests"]
+testpaths = ["stitch_golden_data/prod_gold_data/tests", "bedrock_clients/tests"]
 
-# The matcher and shared/ modules are byte-frozen copies from omni, excluded
-# from this repo's ruff entirely: they keep omni's newer-ruff lint and format
-# verbatim, and the older pinned hooks here must neither flag nor rewrite
-# them (0.7.4 still enforces since-removed rules and formats some constructs
-# differently). Both excludes are anchored -- a bare name would match at any
-# depth. Subproject-native code is linted under omni's envelope so ported
-# code keeps one style.
+# The matcher tree is owned here and linted like any other code. shared/
+# stays excluded: it is omni's client copies carrying omni's tracked lint
+# debt, dormant until the post-gate cleanup retires them. The exclude is
+# anchored -- a bare name would match at any depth.
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["./shared", "./stitch_golden_data"]
+extend-exclude = ["./shared"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP"]
