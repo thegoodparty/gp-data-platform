@@ -27,16 +27,7 @@ with
         from nodes
     ),
 
-    labels_0 as (select record_key, record_key as person_group_key from nodes),
-
-    {% for n in range(1, passes + 1) %}
-        labels_{{ n }} as (
-            select a.src as record_key, min(l.person_group_key) as person_group_key
-            from adjacency as a
-            inner join labels_{{ n - 1 }} as l on l.record_key = a.dst
-            group by a.src
-        ),
-    {% endfor %}
+    {{ min_label_propagation("adjacency", "nodes", passes) }},
 
     -- Groups touched by any conflict edge (E7 keys spanning >1 br person).
     -- Both endpoints: conflict edges are excluded from propagation, so the

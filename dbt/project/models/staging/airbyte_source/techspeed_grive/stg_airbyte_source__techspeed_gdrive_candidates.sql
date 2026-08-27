@@ -37,6 +37,18 @@ with
                 '(?<=[A-Za-z]) [A-Z]$',
                 ''
             ) as last_name,
+            -- Generational suffix, captured from the raw surname before the
+            -- stripping above discards it (Jr/Sr distinguish father and son).
+            upper(
+                nullif(
+                    regexp_extract(
+                        trim(src.last_name),
+                        '(?i)(?:^|[ ,])(jr|sr|ii|iii|iv|v)\\.?\\s*$',
+                        1
+                    ),
+                    ''
+                )
+            ) as name_suffix,
             trim(regexp_replace(src.state, '[^A-Za-z ]', '')) as state,
             coalesce(
                 cs.state_cleaned_postal_code,

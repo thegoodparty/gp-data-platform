@@ -3512,6 +3512,116 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_person_groups_deterministic
+    description: >
+      Deterministic-only person groups: the same min-label propagation as
+      int__civics_person_groups, but structurally restricted to the
+      deterministic edge model. This is the pregroup source for the Splink
+      person entity, so a published probabilistic person match can never feed
+      back into the next run's pregroups.
+    tests:
+      - dbt_utils.expression_is_true:
+          name: person_groups_deterministic_converged
+          arguments:
+            expression: "deterministic_group_key = pass_penultimate_key"
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: deterministic_group_key
+        description: >
+          Min record_key reachable over non-conflicting deterministic edges.
+        data_tests:
+          - not_null
+
+  - name: int__er_prematch_people
+    description: >
+      Entity resolution prematch for the person entity: HubSpot contacts,
+      gp_api users, BallotReady people, TechSpeed candidates (person grain via
+      the stage-stripped candidate code), and TechSpeed officeholders in one
+      standardized schema for Splink probabilistic matching. DDHQ has no person
+      id or contact fields and attaches via candidacy clusters; voter records
+      are out of scope.
+
+      Contact hygiene happens here so blocking cannot chain unrelated people:
+      internal/test email domains and placeholder phones are nulled,
+      plus-addressing is stripped, phones must be 10 digits (or 11 with a
+      leading country code), and any contact key on more than 25 records
+      (institutional inboxes, switchboards) is nulled.
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id. For
+          techspeed rows the source_id is the stage-stripped candidate code
+          (person grain), so unlike other sources it is not a person-graph
+          record key.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+      - name: first_name
+        description: Alpha-only normalized first name.
+        data_tests:
+          - not_null
+      - name: last_name
+        description: Lowercased surname with generational suffixes stripped.
+        data_tests:
+          - not_null
+      - name: suffix_token
+        description: >
+          Generational suffix ('' when none) from explicit source columns
+          where they exist (BR carries roman numerals up to XIV), else
+          extracted from the raw surname. A mismatch is a cannot-link in the
+          person matcher: father/son pairs share family phones and differ only
+          by Jr/Sr.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              name: prematch_people_suffix_token_shape
+              arguments:
+                expression: "rlike '^(JR|SR|[IVX]*)$'"
+      - name: br_candidate_id
+        description: >
+          BallotReady person id, ballotready rows only. Carried so the matcher
+          can refuse to link two distinct BR people directly.
+      - name: first_seen_at
+        description: >
+          Source-native creation timestamp, same constructions as the person
+          mint. Feeds earliest-member id minting.
+        data_tests:
+          - not_null
+      - name: pregroup_id
+        description: >
+          Deterministic person group of the record (falls back to unique_id
+          for records not yet in the graph). The matcher blocks on it and
+          injects same-group edges at p=1.0 before clustering.
+        data_tests:
+          - not_null
+
   - name: int__civics_person_canonical_ids
     description: >
       Canonical gp_person_id per record. One row per record_key. The id is minted
