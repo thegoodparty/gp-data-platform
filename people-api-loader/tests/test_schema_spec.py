@@ -5,7 +5,13 @@ from __future__ import annotations
 from loader.people_api.schema import _serving_seed as seed
 from loader.people_api.schema import _serving_seed_extra as seed_extra
 from loader.people_api.schema import schema_spec as ss
+from loader.people_api.schema import snapshot
 from loader.people_api.schema.index_specs import IndexDef
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 
 def test_all_four_tables_specced() -> None:
@@ -134,3 +140,23 @@ def test_primary_key_for_seed_wins_when_present() -> None:
     # District IS in the seed; spec carries no PK, seed value is used.
     pk = ss.primary_key_for("District")
     assert pk is not None and pk.columns == ["id"]
+
+
+def test_accepted_type_divergences_name_real_columns() -> None:
+    # A typo here is silent: the guardrail skips a column that does not exist, so the real
+    # column stays unguarded and the mismatch only surfaces when validate fails on a live run.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    creates = extract_create_tables(text)
+    for table, columns in ss.ACCEPTED_TYPE_DIVERGENCES.items():
+        served = set(extract_column_names(creates[table]))
+        assert columns <= served, f"{table}: {sorted(columns - served)} not in target_schema.sql"
+
+
+def test_address_directions_serve_as_text() -> None:
+    # L2 spells these N/S/E/W. Serving them INTEGER (as prod does) empties them for every voter
+    # in the country, which is what dropped cardinal directions from door-knocking addresses.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    types = extract_column_types(extract_create_tables(text)["Voter"])
+    for side in ("Mailing", "Residence"):
+        for position in ("Prefix", "Suffix"):
+            assert types[f"{side}_Addresses_{position}Direction"] == "TEXT"

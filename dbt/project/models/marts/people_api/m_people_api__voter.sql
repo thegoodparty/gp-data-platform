@@ -91,14 +91,11 @@ with
             `Mailing_Addresses_DPBC`,
             `Mailing_Addresses_ExtraAddressLine`,
             `Mailing_Addresses_HouseNumber`,
-            try_cast(
-                `Mailing_Addresses_PrefixDirection` as int
-            ) as `Mailing_Addresses_PrefixDirection`,
+            -- Directions are N/S/E/W, not digits: casting them to int nulls the column.
+            `Mailing_Addresses_PrefixDirection`,
             `Mailing_Addresses_State`,
             `Mailing_Addresses_StreetName`,
-            try_cast(
-                `Mailing_Addresses_SuffixDirection` as int
-            ) as `Mailing_Addresses_SuffixDirection`,
+            `Mailing_Addresses_SuffixDirection`,
             `Mailing_Addresses_Zip`,
             `Mailing_Addresses_ZipPlus4`,
             `Mailing_Families_FamilyID`,
@@ -136,14 +133,11 @@ with
             `Residence_Addresses_LatLongAccuracy`,
             `Residence_Addresses_Latitude`,
             `Residence_Addresses_Longitude`,
-            try_cast(
-                `Residence_Addresses_PrefixDirection` as int
-            ) as `Residence_Addresses_PrefixDirection`,
+            -- Directions are N/S/E/W, not digits: casting them to int nulls the column.
+            `Residence_Addresses_PrefixDirection`,
             `Residence_Addresses_State`,
             `Residence_Addresses_StreetName`,
-            try_cast(
-                `Residence_Addresses_SuffixDirection` as int
-            ) as `Residence_Addresses_SuffixDirection`,
+            `Residence_Addresses_SuffixDirection`,
             `Residence_Addresses_Zip`,
             `Residence_Addresses_ZipPlus4`,
             `Residence_HHParties_Description`,

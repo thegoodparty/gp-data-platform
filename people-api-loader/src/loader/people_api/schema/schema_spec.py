@@ -212,7 +212,19 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
 # Voter.State: served as the public."USState" enum (matching District/DistrictVoter and swain-db, so
 # the app needs no code change — the 2026-07-21 decision), while the current prod baseline still
 # stores Voter."State" as text. This is an intended forward migration, not drift.
-ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {"Voter": {"State"}}
+# The four *_Addresses_*Direction columns: prod stores them INTEGER, which is why they are empty
+# there. The values are N/S/E/W and no integer column can hold one. The mart now emits them as
+# strings and this cluster serves them TEXT. Also a forward migration; drop these once a prod
+# baseline built from this loader replaces the INTEGER one.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {
+    "Voter": {
+        "State",
+        "Mailing_Addresses_PrefixDirection",
+        "Mailing_Addresses_SuffixDirection",
+        "Residence_Addresses_PrefixDirection",
+        "Residence_Addresses_SuffixDirection",
+    }
+}
 
 
 def is_partitioned(table: str) -> bool:
