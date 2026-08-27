@@ -14,10 +14,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from splink import Linker, SettingsCreator, block_on
-from splink.internals.duckdb.database_api import DuckDBAPI
-from splink.internals.pipeline import CTEPipeline
-from splink.internals.vertically_concatenate import compute_df_concat_with_tf
+from splink import DuckDBAPI, Linker, SettingsCreator, block_on
 
 from scripts.entity_config import EntityConfig
 
@@ -85,71 +82,6 @@ def build_settings(config: EntityConfig) -> SettingsCreator:
         retain_intermediate_calculation_columns=True,
         additional_columns_to_retain=config.additional_columns_to_retain,
     )
-
-
-def _inject_deterministic_group_edges(linker: Linker, config: EntityConfig, pred_table: str) -> int:
-    """Add same-group edges to the predictions table at p=1.0.
-
-    Deterministic identity (shared native ids) must survive probabilistic
-    scoring: a pair the dbt graph already resolved has to cluster even when its
-    attributes disagree. One hub-to-minimum star edge per group is enough,
-    because clustering is transitive.
-
-    Scoring a same-group pair is not enough on its own. Splink scores plenty of
-    them below the cluster threshold — a BallotReady and a TechSpeed record for
-    one person, agreeing on nothing but the name, lands around 0.45 — so every
-    same-group pair is raised to 1.0, not just the ones with no row yet. Leaving
-    the scored ones alone splits the group. match_weight is left as Splink fit
-    it, so the original score stays recoverable.
-
-    Injected rows carry the same _l/_r columns Splink emits, so the audits and
-    every downstream consumer see one row shape. Only the gammas, match_weight,
-    and match_key stay NULL: those pairs were asserted, not scored, and no
-    blocking rule produced them.
-    """
-    col = config.deterministic_grouping_column
-    if not col:
-        return 0
-
-    concat = compute_df_concat_with_tf(linker, CTEPipeline())
-    con = linker._db_api._con
-
-    promoted = con.execute(f"""
-        UPDATE {pred_table} SET match_probability = 1.0
-        WHERE "{col}_l" IS NOT NULL AND "{col}_l" = "{col}_r" AND match_probability < 1.0
-    """).fetchone()[0]
-
-    pred_columns = {d[0] for d in con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description}
-    sides = [
-        expr
-        for c in concat.columns
-        if f"{c.unquote().name}_l" in pred_columns
-        for expr in (f"hub.{c.name} AS {c.name_l}", f"spoke.{c.name} AS {c.name_r}")
-    ]
-
-    # Match the existing pair keys with least/greatest rather than testing both
-    # orderings with an OR: the OR form cannot be decorrelated, and DuckDB falls
-    # back to a nested loop over the whole predictions table.
-    inserted = con.execute(f"""
-        INSERT INTO {pred_table} BY NAME
-        WITH spokes AS (
-            SELECT *, min(unique_id) OVER (PARTITION BY "{col}") AS hub_id
-            FROM {concat.physical_name}
-            WHERE "{col}" IS NOT NULL
-            QUALIFY hub_id <> unique_id
-        )
-        SELECT {", ".join(sides)}, 1.0 AS match_probability
-        FROM spokes AS spoke
-        JOIN {concat.physical_name} AS hub ON hub.unique_id = spoke.hub_id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM {pred_table} AS p
-            WHERE least(p.unique_id_l, p.unique_id_r) = spoke.hub_id
-              AND greatest(p.unique_id_l, p.unique_id_r) = spoke.unique_id
-        )
-    """).fetchone()[0]
-
-    print(f"Deterministic {col} edges: {inserted:,} injected, {promoted:,} scored pairs raised to 1.0")
-    return inserted + promoted
 
 
 def train_model(linker: Linker, config: EntityConfig) -> int:
@@ -227,11 +159,6 @@ def predict_and_cluster(
         print("WARNING: No predictions found.")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    # Injection runs first because the filters below exempt deterministic pairs
-    # outright. That keeps the kept and filtered sets exact complements of one
-    # predicate, and an exempted pair keeps the gammas Splink computed for it.
-    _inject_deterministic_group_edges(linker, config, pred_table)
-
     filtered_df = pd.DataFrame()
     if config.post_prediction_filters:
         # Splink drops gamma_<col> from the prediction frame when a comparison
@@ -254,12 +181,10 @@ def predict_and_cluster(
                     "all-NULL columns); reference the raw _l/_r columns instead."
                 )
 
-        keep = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
-        if col := config.deterministic_grouping_column:
-            keep = f'("{col}_l" IS NOT NULL AND "{col}_l" = "{col}_r") OR ({keep})'
         # coalesce so a NULL predicate lands in exactly one of the two sets
         # rather than being dropped from both.
-        keep = f"coalesce({keep}, false)"
+        inner = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
+        keep = f"coalesce({inner}, false)"
 
         filtered_df = linker._db_api._con.execute(f"""
             SELECT

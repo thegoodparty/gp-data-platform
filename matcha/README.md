@@ -193,14 +193,20 @@ routinely holds several HubSpot contacts, so collapsing those is the point of
 the run, not an anomaly — the config sets `link_type="link_and_dedupe"` and the
 within-source cluster count is reported as a statistic rather than a warning.
 
-**Deterministic groups are asserted, not scored.** The dbt prematch carries a
-`pregroup_id` holding the person group that shared native ids already prove
-(`deterministic_grouping_column` in the config). Once the post-prediction filters
-have run, every same-group pair is raised to `match_probability=1.0` and any
-missing star edge is added, so two records the graph already resolved cluster
-even when every attribute disagrees. See `_inject_deterministic_group_edges` for
-the mechanics; a deterministic pair is identifiable downstream as
-`pregroup_id_l = pregroup_id_r`.
+**These clusters are suggestions, not canonical identity.** Deterministic
+identity stays in dbt: `int__civics_person_groups` builds canonical clusters from
+direct native ids first, then candidacy and officeholder traversal, then appends
+these clusters as one more edge set. So the person output here is what Splink
+alone concludes, and its match rates and within-source counts are a diagnostic of
+the model rather than the final answer. Nothing should consume the person tables
+without going through that model.
+
+The prematch still carries a `pregroup_id`, and the config blocks on it. That is
+deliberately for scoring, not for asserting: pairs the dbt graph already resolved
+get scored anyway, which is the calibration signal. A BallotReady and a TechSpeed
+record for one person, agreeing on nothing but the name, lands around 0.45. The
+column rides through to the output so the groups model can union the two edge
+sets itself.
 
 Post-prediction filters here are deliberately sparse. A clause ships only once
 it has been measured to drop more false positives than true matches; until then

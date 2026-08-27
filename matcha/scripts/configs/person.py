@@ -66,8 +66,9 @@ PERSON_CONFIG = EntityConfig(
         # Nicknames that change the first initial ("bob"/"robert" agree, but
         # "peggy"/"margaret" do not), which rule 3 cannot reach.
         block_on("state", "last_name", "first_name_aliases", arrays_to_explode=["first_name_aliases"]),
-        # Blocking on the group as well as asserting it keeps the gammas for
-        # same-group pairs available to the audit.
+        # The dbt graph already resolved these pairs. Scoring them anyway is the
+        # calibration signal: a BallotReady and a TechSpeed record for one
+        # person, agreeing on nothing but the name, lands around 0.45.
         block_on("pregroup_id"),
     ],
     additional_columns_to_retain=[
@@ -89,7 +90,6 @@ PERSON_CONFIG = EntityConfig(
     # One person can hold several HubSpot contacts; deduping within a source is
     # the point here, not an anomaly.
     link_type="link_and_dedupe",
-    deterministic_grouping_column="pregroup_id",
     date_columns=["birth_date"],
     clustered_output_name="clustered_people.csv",
     post_prediction_filters=[PERSON_POST_PREDICTION_FILTER],

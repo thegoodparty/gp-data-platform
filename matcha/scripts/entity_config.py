@@ -29,12 +29,6 @@ class EntityConfig:
     # duplicates (HubSpot contacts of one person).
     link_type: str = "link_only"
 
-    # Column holding a deterministic group id. When set, the pipeline raises
-    # every same-group pair to p=1.0, so deterministic identity survives
-    # probabilistic scoring. Block on it too, in blocking_rules_for_prediction,
-    # to keep the gammas for those pairs available to the audit.
-    deterministic_grouping_column: str | None = None
-
     # Thresholds
     predict_threshold: float = 0.01
     cluster_threshold: float = 0.95

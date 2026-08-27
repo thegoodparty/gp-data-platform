@@ -685,57 +685,6 @@ def test_person_pipeline_dedupes_within_hubspot(person_results):
     assert cluster_of["hubspot|2"] == cluster_of["hubspot|3"]
 
 
-def test_person_pipeline_pregroup_group_clusters_despite_failing_scores(person_results):
-    """A deterministic group clusters even when every attribute disagrees.
-
-    The three members share a pregroup but no name, contact, or geography, so
-    the post-prediction filter drops every scored pair between them. The
-    injected edges are what hold them together, and the third member proves a
-    hub-to-minimum star is enough — the two spokes are never linked directly.
-    """
-    pairwise_df, clustered_df, _ = person_results
-    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
-
-    members = ["hubspot|40", "gp_api|40", "techspeed|40"]
-    assert len({cluster_of[m] for m in members}) == 1
-    # gp_api|40 is the group minimum, so it is the hub; the two spokes are
-    # joined only through it.
-    assert _pair_rows(pairwise_df, "hubspot|40", "techspeed|40").empty
-
-
-def test_person_pipeline_every_deterministic_group_lands_in_one_cluster(person_results):
-    """The guarantee the whole mechanism exists to provide.
-
-    A production run split 1,385 groups because same-group pairs Splink had
-    already scored below the cluster threshold were left at their own score
-    instead of being raised. Asserting it over the whole fixture rather than one
-    known pair is what makes the invariant hold for every group.
-    """
-    _, clustered_df, _ = person_results
-
-    per_group = clustered_df.groupby("pregroup_id")["cluster_id"].nunique()
-    split = per_group[per_group > 1]
-    assert split.empty, f"deterministic groups split across clusters: {list(split.index)}"
-
-
-def test_person_pipeline_injected_edges_keep_the_normal_row_shape(person_results):
-    """Injected rows carry the same _l/_r columns Splink emits.
-
-    audit_summary groups the pairwise frame on source_name_l/_r, and pandas
-    drops NaN group keys, so a row shape with those left NULL would erase every
-    deterministic merge from the audit that sizes the run.
-    """
-    pairwise_df, _, _ = person_results
-
-    pair = _pair_rows(pairwise_df, "hubspot|40", "gp_api|40")
-    assert len(pair) == 1
-    row = pair.iloc[0]
-    assert row["match_probability"] == 1.0
-    assert {row["source_name_l"], row["source_name_r"]} == {"hubspot", "gp_api"}
-    # Asserted, not scored: no blocking rule produced it and nothing was fit.
-    assert pd.isna(row["match_key"])
-
-
 def test_person_pipeline_rejects_household_pairs(person_results):
     """Spouses share an email and a phone; only the first name separates them."""
     pairwise_df, clustered_df, _ = person_results

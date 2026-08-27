@@ -9,9 +9,7 @@ dependencies = [
     "nameparser",
     "pandas>=2.3.1,<4.0.0",
     "pyarrow",
-    # Capped: the pipeline imports splink.internals, which carries no semver
-    # guarantee. A minor bump needs a rerun before it is allowed.
-    "splink>=4.0.15,<4.1.0",
+    "splink>=4.0.15,<5.0.0",
     "vl-convert-python>=1.9.0.post1",
     "databricks-sql-connector>=4.4.0,<5.0.0",
     "databricks-sdk>=0.128.0,<1.0.0",
