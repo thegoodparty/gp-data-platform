@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 from airflow.models import DagBag
+from airflow.operators.python import PythonOperator
+from include.custom_functions.ballotready_graphql import ENTITY_SPECS
 
 
 @contextmanager
@@ -64,6 +66,10 @@ with suppress_logging("airflow"):
 _L2_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_l2_voter_files.py")
 with suppress_logging("airflow"):
     _L2_DAG = DagBag(dag_folder=_L2_DAG_FILE).dags.get("load_l2_voter_files")
+
+_BR_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "extract_ballotready.py")
+with suppress_logging("airflow"):
+    _BR_DAG = DagBag(dag_folder=_BR_DAG_FILE).dags.get("extract_ballotready")
 
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
@@ -155,3 +161,64 @@ def test_load_l2_voter_files_sequence():
     assert {t.task_id for t in _L2_DAG.get_task("load").upstream_list} == {"plan_table_loads"}
     # One archive per worker, since sync downloads it whole to a fixed 10 GiB of local disk.
     assert _L2_DAG.get_task("sync").max_active_tis_per_dag == 1
+
+
+def test_extract_ballotready_has_a_task_per_entity():
+    assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
+    assert {t.task_id for t in _BR_DAG.tasks} == {f"extract_{name}" for name in ENTITY_SPECS}
+    # The registry is the authority; a shrunk one would otherwise make this vacuously true.
+    assert len(ENTITY_SPECS) == 9
+
+
+def test_extract_ballotready_orders_an_entity_after_the_ones_whose_tables_it_reads():
+    """Derived from spec.reads_tables, so a tenth entity gets its edges without a DAG edit.
+
+    Everything with no reads_tables builds its worklist from staging alone and needs no
+    ordering at all.
+    """
+    assert _BR_DAG is not None
+    for name, spec in ENTITY_SPECS.items():
+        upstream = {t.task_id for t in _BR_DAG.get_task(f"extract_{name}").upstream_list}
+        assert upstream == {f"extract_{other}" for other in spec.reads_tables}
+    assert ENTITY_SPECS["issue"].reads_tables == ("stance",)
+
+
+def test_extract_ballotready_does_not_strand_an_entity_when_its_upstream_fails():
+    """An entity with reads_tables reads landed rows, not the upstream task's return value, so
+    an upstream failure must not block it. Also derived, for the same reason as the edges."""
+    assert _BR_DAG is not None
+    for name, spec in ENTITY_SPECS.items():
+        expected = "all_done" if spec.reads_tables else "all_success"
+        assert _BR_DAG.get_task(f"extract_{name}").trigger_rule == expected
+
+
+def test_extract_ballotready_consults_should_extract_for_the_entities_param(monkeypatch):
+    """The `entities` rule lives in the registry module; this pins that the task actually calls
+    it, since a task body that skipped the call would pass every unit test of the rule itself.
+    """
+    assert _BR_DAG is not None
+    task = _BR_DAG.get_task("extract_party")
+    assert isinstance(task, PythonOperator)
+    func = task.python_callable
+
+    calls = []
+
+    def fake_should_extract(entity, requested):
+        calls.append((entity, list(requested)))
+        return False
+
+    monkeypatch.setitem(func.__globals__, "should_extract", fake_should_extract)
+    monkeypatch.setitem(
+        func.__globals__,
+        "get_current_context",
+        lambda: {"params": {"entities": ["issue"]}},
+    )
+
+    assert func() == {"entity": "party", "skipped": True}
+    assert calls == [("party", ["issue"])]
+
+
+def test_extract_ballotready_bounds_concurrent_tasks():
+    """The concurrency budget is max_active_tasks times max_workers, so this must stay pinned."""
+    assert _BR_DAG is not None
+    assert _BR_DAG.max_active_tasks == 4
