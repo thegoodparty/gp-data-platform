@@ -52,6 +52,12 @@ class EntityConfig:
     audit_gamma_columns: list[str] = field(default_factory=list)
     false_negative_group_cols: list[str] = field(default_factory=list)
 
+    @property
+    def expects_within_source_duplicates(self) -> bool:
+        """Under link_only Splink cannot pair a source with itself, so a
+        within-source cluster there means transitive chaining, not a duplicate."""
+        return self.link_type != "link_only"
+
 
 ENTITY_TYPES: list[str] = [
     "candidacy_stage",

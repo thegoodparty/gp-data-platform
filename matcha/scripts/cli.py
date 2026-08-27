@@ -165,7 +165,7 @@ def match(
         from scripts.audit_summary import run_summary
 
         for label, fn, args in [
-            ("summary", run_summary, (input_df, pairwise_df, clustered_df, output_dir)),
+            ("summary", run_summary, (input_df, pairwise_df, clustered_df, output_dir, config)),
             ("low-confidence", run_low_confidence, (pairwise_df, output_dir, config)),
             (
                 "false-negatives",
@@ -209,7 +209,7 @@ def audit_summary(entity_type: str, results_dir: Path | None) -> None:
     config = get_config(entity_type)
     results_dir = _resolve_results_dir(results_dir, config)
     input_df, pairwise_df, clustered_df = _load_results(results_dir, config)
-    run_summary(input_df, pairwise_df, clustered_df, results_dir)
+    run_summary(input_df, pairwise_df, clustered_df, results_dir, config)
 
 
 @audit.command("low-confidence")

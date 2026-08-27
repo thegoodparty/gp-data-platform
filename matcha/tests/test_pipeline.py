@@ -11,7 +11,6 @@ from scripts.configs.candidacy import CANDIDACY_CONFIG
 from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
 from scripts.configs.person import PERSON_CONFIG
 from scripts.pipeline import (
-    _pregroup_star_pairs,
     build_settings,
     load_and_prepare,
     predict_and_cluster,
@@ -645,76 +644,14 @@ def test_save_results_writes_expected_files(tmp_path):
 # ── Deterministic pregroups ──
 
 
-def _pregroup_frame(rows: list[tuple[str, str | None]]) -> pd.DataFrame:
-    return pd.DataFrame(rows, columns=["unique_id", "pregroup_id"])
-
-
-def test_pregroup_star_pairs_links_group_to_its_minimum():
-    """n members produce n-1 edges, all anchored on the group minimum."""
-    pairs = _pregroup_star_pairs(_pregroup_frame([("c", "g1"), ("a", "g1"), ("b", "g1")]), "pregroup_id")
-
-    assert set(zip(pairs["unique_id_l"], pairs["unique_id_r"])) == {("a", "b"), ("a", "c")}
-
-
-def test_pregroup_star_pairs_keys_are_ordered():
-    """Clustering canonicalizes on unique_id_l < unique_id_r."""
-    pairs = _pregroup_star_pairs(_pregroup_frame([("z", "g1"), ("a", "g1")]), "pregroup_id")
-
-    assert (pairs["unique_id_l"] < pairs["unique_id_r"]).all()
-
-
-def test_pregroup_star_pairs_ignores_singletons_and_nulls():
-    """A record in no deterministic group carries its own id as the pregroup."""
-    pairs = _pregroup_star_pairs(
-        _pregroup_frame([("a", "a"), ("b", "b"), ("c", None), ("d", "")]), "pregroup_id"
-    )
-
-    assert pairs.empty
-
-
-def test_pregroup_star_pairs_carries_source_dataset():
-    """Clustering identifies a node by (source_dataset, unique_id).
-
-    An injected edge that leaves source_dataset NULL joins to no node, so the
-    deterministic group silently fails to cluster.
-    """
-    df = pd.DataFrame(
-        {
-            "unique_id": ["a", "b"],
-            "pregroup_id": ["g1", "g1"],
-            "source_dataset": ["tbl_0", "tbl_1"],
-        }
-    )
-
-    pairs = _pregroup_star_pairs(df, "pregroup_id")
-
-    assert pairs.loc[0, "source_dataset_l"] == "tbl_0"
-    assert pairs.loc[0, "source_dataset_r"] == "tbl_1"
-
-
-def test_pregroup_star_pairs_missing_column_is_not_an_error():
-    pairs = _pregroup_star_pairs(pd.DataFrame({"unique_id": ["a", "b"]}), "pregroup_id")
-
-    assert pairs.empty
-
-
-def test_build_settings_person_uses_dedupe_and_blocks_on_pregroup():
-    settings = build_settings(PERSON_CONFIG)
-
-    assert settings.link_type == "link_and_dedupe"
-    assert len(settings.blocking_rules_to_generate_predictions) == (
-        len(PERSON_CONFIG.blocking_rules_for_prediction) + 1
-    )
+def test_build_settings_person_uses_dedupe():
+    assert build_settings(PERSON_CONFIG).link_type == "link_and_dedupe"
 
 
 def test_build_settings_leaves_other_entities_link_only():
-    """The new config fields default to the pre-existing behavior."""
+    """link_type defaults to the pre-existing behavior."""
     for config in (CANDIDACY_CONFIG, ELECTED_OFFICIAL_CONFIG):
-        settings = build_settings(config)
-        assert settings.link_type == "link_only"
-        assert len(settings.blocking_rules_to_generate_predictions) == len(
-            config.blocking_rules_for_prediction
-        )
+        assert build_settings(config).link_type == "link_only"
 
 
 # ── Person E2E smoke tests ──
@@ -750,20 +687,40 @@ def test_person_pipeline_dedupes_within_hubspot(person_results):
     assert cluster_of["hubspot|2"] == cluster_of["hubspot|3"]
 
 
-def test_person_pipeline_pregroup_edge_survives_a_failing_score(person_results):
-    """A deterministic pair clusters even when every attribute disagrees.
+def test_person_pipeline_pregroup_group_clusters_despite_failing_scores(person_results):
+    """A deterministic group clusters even when every attribute disagrees.
 
-    hubspot|40 and gp_api|40 share a pregroup but no name, contact, or
-    geography, so the post-prediction filter drops the scored pair. The injected
-    edge is what holds them together.
+    The three members share a pregroup but no name, contact, or geography, so
+    the post-prediction filter drops every scored pair between them. The
+    injected edges are what hold them together, and the third member proves a
+    hub-to-minimum star is enough — the two spokes are never linked directly.
     """
     pairwise_df, clustered_df, _ = person_results
     cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
 
-    assert cluster_of["hubspot|40"] == cluster_of["gp_api|40"]
+    members = ["hubspot|40", "gp_api|40", "techspeed|40"]
+    assert len({cluster_of[m] for m in members}) == 1
+    # gp_api|40 is the group minimum, so it is the hub; the two spokes are
+    # joined only through it.
+    assert _pair_rows(pairwise_df, "hubspot|40", "techspeed|40").empty
+
+
+def test_person_pipeline_injected_edges_keep_the_normal_row_shape(person_results):
+    """Injected rows carry the same _l/_r columns Splink emits.
+
+    audit_summary groups the pairwise frame on source_name_l/_r, and pandas
+    drops NaN group keys, so a row shape with those left NULL would erase every
+    deterministic merge from the audit that sizes the run.
+    """
+    pairwise_df, _, _ = person_results
+
     pair = _pair_rows(pairwise_df, "hubspot|40", "gp_api|40")
     assert len(pair) == 1
-    assert pair.iloc[0]["match_key"] == "pregroup"
+    row = pair.iloc[0]
+    assert row["match_probability"] == 1.0
+    assert {row["source_name_l"], row["source_name_r"]} == {"hubspot", "gp_api"}
+    # Asserted, not scored: no blocking rule produced it and nothing was fit.
+    assert pd.isna(row["match_key"])
 
 
 def test_person_pipeline_rejects_household_pairs(person_results):

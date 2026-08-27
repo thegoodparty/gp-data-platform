@@ -99,12 +99,7 @@ EO_POST_PREDICTION_FILTER = f"""
       )
 """
 
-# Person-level post-prediction filter. Deliberately minimal: a clause ships only
-# once it has been measured to remove more false positives than true matches.
-# An unmeasured filter trades an unknown number of real merges for an unknown
-# number of bad ones, and it hides its own cost, because the pairs it drops
-# never reach the precision audit. Candidate clauses stay out until the
-# prototype evaluation quantifies them against filtered_pairs.csv.
+# Person-level post-prediction filter.
 #
 # First-name agreement gates contact evidence. Households share an email and a
 # phone: the 2026-08 study found 1,239 email-sharing and 4,053 phone-sharing

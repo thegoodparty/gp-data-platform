@@ -16,6 +16,8 @@ import duckdb
 import pandas as pd
 from splink import Linker, SettingsCreator, block_on
 from splink.internals.duckdb.database_api import DuckDBAPI
+from splink.internals.pipeline import CTEPipeline
+from splink.internals.vertically_concatenate import compute_df_concat_with_tf
 
 from scripts.entity_config import EntityConfig
 
@@ -75,141 +77,70 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
 
 def build_settings(config: EntityConfig) -> SettingsCreator:
     """Build Splink SettingsCreator from entity config."""
-    blocking_rules = list(config.blocking_rules_for_prediction)
-    if config.deterministic_grouping_column:
-        blocking_rules.append(block_on(config.deterministic_grouping_column))
-
     return SettingsCreator(
         link_type=config.link_type,
         unique_id_column_name="unique_id",
         comparisons=config.comparisons,
-        blocking_rules_to_generate_predictions=blocking_rules,
+        blocking_rules_to_generate_predictions=config.blocking_rules_for_prediction,
         retain_intermediate_calculation_columns=True,
         additional_columns_to_retain=config.additional_columns_to_retain,
     )
 
 
-def _pregroup_star_pairs(input_df: pd.DataFrame, col: str) -> pd.DataFrame:
-    """Hub-to-min star pairs for each deterministic group with 2+ members.
-
-    A star is enough because clustering is transitive: n-1 edges hold an
-    n-member group together, and the pair count stays linear in group size
-    instead of quadratic. A source_dataset column, when present, is carried onto
-    both sides — clustering identifies a node by (source_dataset, unique_id),
-    so an edge missing it joins to nothing.
-    """
-    empty = pd.DataFrame({"unique_id_l": pd.Series(dtype=str), "unique_id_r": pd.Series(dtype=str)})
-    if col not in input_df.columns or "unique_id" not in input_df.columns:
-        return empty
-
-    keyed = "source_dataset" in input_df.columns
-    df = input_df[["unique_id", col] + (["source_dataset"] if keyed else [])].dropna(
-        subset=["unique_id", col]
-    )
-    df = df[df[col] != ""]
-    if df.empty:
-        return empty
-
-    df = df.drop_duplicates(subset="unique_id")
-    df = df.assign(hub=df.groupby(col)["unique_id"].transform("min"))
-    spokes = df[df["unique_id"] != df["hub"]]
-    if spokes.empty:
-        return empty
-
-    # The hub is the group minimum, so unique_id_l < unique_id_r already holds.
-    pairs = pd.DataFrame(
-        {
-            "unique_id_l": spokes["hub"].to_numpy(),
-            "unique_id_r": spokes["unique_id"].to_numpy(),
-        }
-    )
-    if keyed:
-        datasets = df.set_index("unique_id")["source_dataset"]
-        pairs["source_dataset_l"] = pairs["unique_id_l"].map(datasets).to_numpy()
-        pairs["source_dataset_r"] = pairs["unique_id_r"].map(datasets).to_numpy()
-
-    return pairs.drop_duplicates().reset_index(drop=True)
-
-
-def _concat_frame(linker: Linker, col: str) -> pd.DataFrame:
-    """Read unique_id (+ source_dataset) and `col` from Splink's concatenated input.
-
-    The predictions table lives in this id space, so the deterministic edges
-    have to be built from it rather than from the pandas input.
-    """
-    cache_key = "__splink__df_concat_with_tf"
-    cached = linker._intermediate_table_cache.get(cache_key)
-    if cached is None:
-        raise RuntimeError(
-            f"Cannot inject deterministic {col} edges: Splink did not cache "
-            f"{cache_key}. Without it the injected pairs would silently miss the "
-            "id space the predictions table uses."
-        )
-
-    con = linker._db_api._con
-    table = cached.physical_name
-    available = {d[0] for d in con.execute(f"SELECT * FROM {table} LIMIT 0").description}
-    cols = ["unique_id", col] + (["source_dataset"] if "source_dataset" in available else [])
-    return con.execute(f"SELECT {', '.join(cols)} FROM {table}").fetchdf()
-
-
-# Sentinel weight for injected deterministic edges. Splink's match_weight is a
-# log2 Bayes factor, so 40 is far above anything the model produces and marks
-# these rows as asserted rather than scored.
-PREGROUP_MATCH_WEIGHT = 40.0
-
-
 def _inject_pregroup_pairs(linker: Linker, config: EntityConfig, pred_table: str) -> int:
-    """Add same-pregroup edges to the predictions table at p=1.0.
+    """Add same-group edges to the predictions table at p=1.0.
 
     Deterministic identity (shared native ids) must survive probabilistic
     scoring: a pair the dbt graph already resolved has to cluster even when its
-    attributes disagree. Pairs Splink already scored are left alone so their
-    gammas stay auditable.
+    attributes disagree. One hub-to-minimum star edge per group is enough,
+    because clustering is transitive.
+
+    Injected rows carry the same _l/_r columns Splink emits, so the audits and
+    every downstream consumer see one row shape. Only the gammas, match_weight,
+    and match_key stay NULL: these pairs were asserted, not scored, and no
+    blocking rule produced them.
     """
     col = config.deterministic_grouping_column
     if not col:
         return 0
 
-    pairs = _pregroup_star_pairs(_concat_frame(linker, col), col)
-    if pairs.empty:
-        return 0
-
-    passthrough = [c for c in ("source_dataset_l", "source_dataset_r") if c in pairs.columns]
-    selected = ",\n                ".join(
-        [
-            "p.unique_id_l AS unique_id_l",
-            "p.unique_id_r AS unique_id_r",
-            *[f"p.{c} AS {c}" for c in passthrough],
-            "1.0 AS match_probability",
-            f"{PREGROUP_MATCH_WEIGHT} AS match_weight",
-            "'pregroup' AS match_key",
-        ]
-    )
-
+    concat = compute_df_concat_with_tf(linker, CTEPipeline())
     con = linker._db_api._con
-    con.register("pregroup_pairs", pairs)
-    try:
-        before = con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
-        con.execute(f"""
-            INSERT INTO {pred_table} BY NAME
-            SELECT
-                {selected}
-            FROM pregroup_pairs AS p
-            WHERE NOT EXISTS (
-                SELECT 1 FROM {pred_table} AS t
-                WHERE (t.unique_id_l = p.unique_id_l AND t.unique_id_r = p.unique_id_r)
-                   OR (t.unique_id_l = p.unique_id_r AND t.unique_id_r = p.unique_id_l)
-            )
-        """)
-        after = con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
-    finally:
-        con.unregister("pregroup_pairs")
 
-    inserted = after - before
-    print(
-        f"Deterministic {col} edges: {inserted:,} injected ({len(pairs):,} star pairs, rest already scored)"
-    )
+    pred_columns = {d[0] for d in con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description}
+    sides = [
+        f"{side}.{c.name} AS {getattr(c, f'name_{side}')}"
+        for c in concat.columns
+        for side in ("l", "r")
+        if f"{c.unquote().name}_{side}" in pred_columns
+    ]
+
+    # least/greatest normalizes the existing pair keys so the anti-join stays a
+    # conjunctive equality. Testing both orderings with an OR instead makes
+    # DuckDB fall back to a nested loop over the whole predictions table.
+    inserted = con.execute(f"""
+        INSERT INTO {pred_table} BY NAME
+        WITH stars AS (
+            SELECT min(unique_id) OVER w AS hub_id, unique_id AS spoke_id
+            FROM {concat.physical_name}
+            WHERE "{col}" IS NOT NULL AND "{col}" <> ''
+            WINDOW w AS (PARTITION BY "{col}")
+            QUALIFY unique_id <> min(unique_id) OVER w
+        ),
+        existing AS (
+            SELECT least(unique_id_l, unique_id_r) AS a, greatest(unique_id_l, unique_id_r) AS b
+            FROM {pred_table}
+        )
+        SELECT {", ".join(sides)}, 1.0 AS match_probability
+        FROM stars AS s
+        JOIN {concat.physical_name} AS l ON l.unique_id = s.hub_id
+        JOIN {concat.physical_name} AS r ON r.unique_id = s.spoke_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM existing AS e WHERE e.a = s.hub_id AND e.b = s.spoke_id
+        )
+    """).fetchone()[0]
+
+    print(f"Deterministic {col} edges: {inserted:,} injected (the rest were already scored)")
     return inserted
 
 
@@ -350,13 +281,16 @@ def predict_and_cluster(
                 ]
             ].to_csv(output_dir / "filtered_pairs.csv", index=False)
 
+        # Count where the filtering happens, so a later mutation of the
+        # predictions table cannot silently corrupt the number.
+        kept = linker._db_api._con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
+        if (dropped := pre_count - kept) > 0:
+            print(f"Post-prediction filters: removed {dropped:,} pairs")
+
     # After the filters: a deterministic edge must not be filterable.
-    injected = _inject_pregroup_pairs(linker, config, pred_table)
+    _inject_pregroup_pairs(linker, config, pred_table)
 
     pairwise_df = predictions.as_pandas_dataframe()
-    dropped = pre_count + injected - len(pairwise_df)
-    if dropped > 0:
-        print(f"Post-prediction filters: removed {dropped:,} pairs")
 
     clusters = linker.clustering.cluster_pairwise_predictions_at_threshold(
         predictions, threshold_match_probability=config.cluster_threshold
@@ -367,9 +301,7 @@ def predict_and_cluster(
     n_cross = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
     print(f"Matched clusters: {n_matched:,}  |  Cross-source: {n_cross:,}")
     if (within := n_matched - n_cross) > 0:
-        # Under link_and_dedupe, within-source clusters are the point (one
-        # person holding several HubSpot contacts), not an anomaly.
-        prefix = "WARNING: " if config.link_type == "link_only" else ""
+        prefix = "" if config.expects_within_source_duplicates else "WARNING: "
         print(f"{prefix}{within} within-source duplicate clusters found")
 
     return pairwise_df, clustered_df

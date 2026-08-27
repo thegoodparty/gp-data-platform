@@ -9,12 +9,15 @@ from pathlib import Path
 
 import pandas as pd
 
+from scripts.entity_config import EntityConfig
+
 
 def run_summary(
     input_df: pd.DataFrame,
     pairwise_df: pd.DataFrame,
     clustered_df: pd.DataFrame,
     results_dir: Path,
+    config: EntityConfig,
 ) -> None:
     """Print match statistics and write a summary CSV (from DataFrames)."""
     providers = sorted(input_df["source_name"].unique())
@@ -75,7 +78,8 @@ def run_summary(
     within_source = (cluster_providers[multi_mask] == 1).sum()
     print(f"  Cross-source matched clusters: {cross_source:,}")
     if within_source > 0:
-        print(f"  WARNING: Within-source duplicate clusters: {within_source:,}")
+        prefix = "" if config.expects_within_source_duplicates else "WARNING: "
+        print(f"  {prefix}Within-source duplicate clusters: {within_source:,}")
 
     # ── Write summary CSV ──
     summary_out = results_dir / "audit_summary.csv"

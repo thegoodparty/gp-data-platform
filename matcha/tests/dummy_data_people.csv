@@ -13,6 +13,7 @@ ballotready|30,9030,ballotready,james,"[""james"", ""jim"", ""jimmy""]","[""jame
 ballotready|31,9031,ballotready,james,"[""james"", ""jim"", ""jimmy""]","[""james""]",wilson,,jwilson@example.com,6085555005,WI,madison,53703,1982-07-07,democrat,9031,2023-04-12,ballotready|31
 hubspot|40,40,hubspot,robert,"[""robert"", ""bob"", ""rob"", ""bobby""]","[""robert""]",nguyen,,rnguyen@example.com,5125556006,TX,austin,78701,1990-02-02,independent,,2024-02-02,pg_deterministic_1
 gp_api|40,40,gp_api,roberta,"[""roberta"", ""bobbie""]","[""roberta""]",okafor,,,,,,,,,,2024-05-30,pg_deterministic_1
+techspeed|40,ferreira-luisa-ny-city-albany,techspeed,luisa,"[""luisa""]","[""luisa""]",ferreira,,,,NY,albany,12207,,,,2024-07-19,pg_deterministic_1
 hubspot|50,50,hubspot,margaret,"[""margaret"", ""peggy"", ""maggie"", ""meg""]","[""margaret""]",oconnell,,margaret.oconnell@example.com,2065557007,WA,seattle,98101,1971-11-11,democrat,,2024-03-15,hubspot|50
 techspeed|50,oconnell-peggy-wa-city-seattle,techspeed,peggy,"[""peggy"", ""margaret"", ""maggie"", ""meg""]","[""peggy""]",oconnell,,,2065557007,WA,seattle,98101,1971-11-11,democrat,,2024-04-01,techspeed|50
 hubspot|60,60,hubspot,christopher,"[""christopher"", ""chris"", ""topher""]","[""christopher""]",pasadyn,,cpasadyn@example.com,3055558008,FL,miami,33101,1979-09-09,republican,,2024-01-30,hubspot|60

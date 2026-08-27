@@ -4,7 +4,6 @@
 import splink.comparison_level_library as cll
 import splink.internals.comparison_library as cl
 from splink import block_on
-from splink.blocking_rule_library import CustomRule
 from splink.comparison_library import CustomComparison
 
 from scripts.constants import PERSON_POST_PREDICTION_FILTER
@@ -65,22 +64,19 @@ PERSON_CONFIG = EntityConfig(
         block_on("state", "last_name", "substr(first_name, 1, 1)"),
         block_on("last_name", "substr(birth_date, 1, 4)"),
         # Nicknames that change the first initial ("bob"/"robert" agree, but
-        # "peggy"/"margaret" do not), which rule 3 cannot reach.
-        CustomRule(
-            "l.state = r.state"
-            " AND l.last_name = r.last_name"
-            " AND list_has_any(l.first_name_aliases, r.first_name_aliases)",
-            sql_dialect="duckdb",
-        ),
-        # The pipeline appends a block on deterministic_grouping_column.
+        # "peggy"/"margaret" do not), which rule 3 cannot reach. Exploding the
+        # alias array keeps this an equi-join; as a list_has_any predicate it
+        # would materialize every state + last_name pair (~13M) and filter down.
+        block_on("state", "last_name", "first_name_aliases", arrays_to_explode=["first_name_aliases"]),
+        # Same-group pairs are asserted after scoring, but blocking on the group
+        # too means Splink still scores them and their gammas stay auditable.
+        block_on("pregroup_id"),
     ],
     additional_columns_to_retain=[
         "source_name",
         "source_id",
-        # NOTE: comparison columns (first_name, last_name, email, phone, state,
-        # city, zip5, party, birth_date) and the arrays the first_name
-        # comparison reads are NOT listed here — Splink retains them
-        # automatically and listing them duplicates the column.
+        # Comparison columns are omitted on purpose: Splink retains those itself
+        # and listing them again duplicates the column.
         "pregroup_id",
         "suffix_token",
         "br_candidate_id",
