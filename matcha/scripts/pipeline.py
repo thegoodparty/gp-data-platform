@@ -224,14 +224,17 @@ def predict_and_cluster(
         return pd.DataFrame(), pd.DataFrame()
 
     # Apply post-prediction filters from config
+    pre_filter_table = f"{pred_table}_pre_filter"
     if config.post_prediction_filters:
-        # Capture pre-filter pair IDs + scores for the filtered-pairs sidecar
-        pre_filter_pairs = None
+        # Snapshot the pre-filter pairs. The sidecar itself is written after the
+        # deterministic injection, so a pair the injection re-adds is not
+        # reported as filtered out.
         if output_dir is not None:
-            pre_filter_pairs = linker._db_api._con.execute(f"""
+            linker._db_api._con.execute(f"""
+                CREATE OR REPLACE TABLE {pre_filter_table} AS
                 SELECT unique_id_l, unique_id_r, match_probability, match_weight
                 FROM {pred_table}
-            """).fetchdf()
+            """)
 
         # Splink drops gamma_<col> from the prediction frame when a comparison
         # is never trained — e.g. a column used only as an exact-equality
@@ -260,38 +263,6 @@ def predict_and_cluster(
             WHERE {combined_filter}
         """)
 
-        # Write filtered-out pairs sidecar
-        if output_dir is not None and pre_filter_pairs is not None:
-            post_filter_pairs = linker._db_api._con.execute(f"""
-                SELECT unique_id_l, unique_id_r
-                FROM {pred_table}
-            """).fetchdf()
-            post_keys = set(zip(post_filter_pairs["unique_id_l"], post_filter_pairs["unique_id_r"]))
-            filtered_mask = ~pre_filter_pairs.apply(
-                lambda r: (r["unique_id_l"], r["unique_id_r"]) in post_keys, axis=1
-            )
-            filtered_out = pre_filter_pairs[filtered_mask].copy()
-
-            # Canonicalize pair keys: ensure unique_id_l < unique_id_r
-            swap = filtered_out["unique_id_l"] > filtered_out["unique_id_r"]
-            filtered_out.loc[swap, ["unique_id_l", "unique_id_r"]] = filtered_out.loc[
-                swap, ["unique_id_r", "unique_id_l"]
-            ].values
-            filtered_out = filtered_out.rename(
-                columns={
-                    "match_probability": "match_probability_pre_filter",
-                    "match_weight": "match_weight_pre_filter",
-                }
-            )
-            filtered_out[
-                [
-                    "unique_id_l",
-                    "unique_id_r",
-                    "match_probability_pre_filter",
-                    "match_weight_pre_filter",
-                ]
-            ].to_csv(output_dir / "filtered_pairs.csv", index=False)
-
         # Count where the filtering happens, so a later mutation of the
         # predictions table cannot silently corrupt the number.
         kept = linker._db_api._con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
@@ -300,6 +271,30 @@ def predict_and_cluster(
 
     # After the filters: a deterministic edge must not be filterable.
     _inject_deterministic_group_edges(linker, config, pred_table)
+
+    # Sidecar of pairs the filters dropped and the injection did not restore.
+    # Injected rows can carry the opposite orientation, so pair keys are
+    # normalized on both sides rather than compared as raw tuples.
+    if config.post_prediction_filters and output_dir is not None:
+        sidecar = str(output_dir / "filtered_pairs.csv").replace("'", "''")
+        linker._db_api._con.execute(f"""
+            COPY (
+                SELECT
+                    least(pre.unique_id_l, pre.unique_id_r) AS unique_id_l,
+                    greatest(pre.unique_id_l, pre.unique_id_r) AS unique_id_r,
+                    pre.match_probability AS match_probability_pre_filter,
+                    pre.match_weight AS match_weight_pre_filter
+                FROM {pre_filter_table} AS pre
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {pred_table} AS p
+                    WHERE least(p.unique_id_l, p.unique_id_r)
+                          = least(pre.unique_id_l, pre.unique_id_r)
+                      AND greatest(p.unique_id_l, p.unique_id_r)
+                          = greatest(pre.unique_id_l, pre.unique_id_r)
+                )
+            ) TO '{sidecar}' (HEADER, DELIMITER ',')
+        """)
+        linker._db_api._con.execute(f"DROP TABLE {pre_filter_table}")
 
     pairwise_df = predictions.as_pandas_dataframe()
 
