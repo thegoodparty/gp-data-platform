@@ -59,13 +59,19 @@ gates, the same dbt rebuild input available for inspection — until an operator
 switch. Leave it unset for verification runs; set it to `"true"` only once a run's dated tables have
 been reviewed and are trusted to go live.
 
-**Rehearsal does not pause `cleanup`.** `cleanup` drops each table's renamed-aside `_old` unconditionally,
-whether or not that week's swap actually ran. If a deployment does one live swap and then goes back to
-rehearsal mode (e.g. to test a matcha change before the next real cutover), the next rehearsal run's
-`cleanup` still drops `_old` even though no swap replaced it — the rollback position from the last live
-swap is gone a week later. There is no dated-vintage fallback for this: a table that swapped successfully
-no longer has a dated vintage (the rename consumed it), only whatever `_old`/Delta-history recovery
-paths "Rolling back a bad vintage" describes.
+**`cleanup` runs on a rehearsal run too, but it leaves `_old` alone.** It still reaps dated vintages past
+the 28-day window (a vintage a swap consumed was never a rollback position), and it still drops each
+table's renamed-aside `_old` after a live run, where `_old` is that run's own backup and dbt has already
+built against the replacement. On a rehearsal run it keeps `_old`: no swap promoted anything, so the
+`_old` sitting there belongs to whichever run last swapped for real, and dropping it would take away that
+vintage's only rollback path without putting a new one in its place. This matters whenever a deployment
+does a live swap and then goes back to rehearsal — testing a matcha change before the next cutover, say.
+Keeping it is safe: the next live swap pre-drops `_old` before renaming the live table aside, so a
+preserved backup never collides with it.
+
+Know what `_old` does and does not cover. A table that swapped successfully no longer has a dated vintage
+— the rename consumed it — so `_old` plus the recovery paths in "Rolling back a bad vintage" are the only
+routes back.
 
 ## Image pull
 

@@ -214,6 +214,45 @@ def test_a_sha_pinned_tag_logs_the_image_without_warning():
         assert mock_log.info.call_args.args[1] == image
 
 
+def _run_cleanup(module, *, swap_on: bool):
+    """Invoke the cleanup callable with its Databricks calls mocked out."""
+    cleanup_fn = _DAG.get_task("cleanup").python_callable
+    with (
+        patch.object(module, "swap_enabled", autospec=True, return_value=swap_on),
+        patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+        patch.object(module, "drop_old_table", autospec=True) as mock_drop_old,
+        patch.object(module, "drop_stale_vintages", autospec=True, return_value=[]) as mock_stale,
+    ):
+        mock_variable.get.return_value = "cat"
+        cleanup_fn("20260825")
+    return mock_drop_old, mock_stale
+
+
+_ALL_LIVE_TABLES = {t for e in _ENTITY_SPECS for t in (e.cluster_table, e.pairwise_table)}
+
+
+def test_live_cleanup_drops_the_backups_it_replaced():
+    """After a real swap, `_old` is this run's own backup and dbt has already
+    built against the new live table, so dropping it is the intent."""
+    mock_drop_old, mock_stale = _run_cleanup(_dag_module(), swap_on=True)
+    assert {call.args[3] for call in mock_drop_old.call_args_list} == _ALL_LIVE_TABLES
+    assert {call.args[3] for call in mock_stale.call_args_list} == _ALL_LIVE_TABLES
+
+
+def test_rehearsal_cleanup_keeps_the_last_live_swaps_rollback_position():
+    """`cleanup` is wired downstream of the dbt build unconditionally, so a
+    full rehearsal run (every swap skipped) still reaches it. The `_old` it
+    would find belongs to whichever run last swapped for real, and no new
+    vintage replaced it — dropping it would destroy that rollback path and
+    leave nothing in its place. Stale vintages are still reaped, since a
+    vintage consumed by a swap was never a rollback position.
+    """
+    mock_drop_old, mock_stale = _run_cleanup(_dag_module(), swap_on=False)
+    assert mock_drop_old.call_args_list == []
+    assert {call.args[3] for call in mock_stale.call_args_list} == _ALL_LIVE_TABLES
+
+
 def test_gate_task_checks_its_own_entitys_tables():
     """`gate` and `swap` read `entity` from the enclosing closure at task
     EXECUTION time, unlike `match`'s eagerly-resolved arguments — so a bare

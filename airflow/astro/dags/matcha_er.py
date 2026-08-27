@@ -256,8 +256,25 @@ def matcha_er():
 
         Runs only after the downstream build succeeds, so `_old` stays available
         as the rollback position for as long as it is useful.
+
+        A rehearsal run keeps `_old` instead: no swap promoted anything, so the
+        `_old` it would drop belongs to whichever run last swapped for real,
+        and dropping it would remove that vintage's only rollback path while
+        replacing it with nothing. Keeping it is safe because the next live
+        swap pre-drops `_old` before renaming aside, so a preserved one cannot
+        collide with it. Stale vintages are still reaped either way — they are
+        never a rollback position once a swap has consumed them.
         """
         catalog = Variable.get(CATALOG_VARIABLE)
+        # One read for the whole task: a mid-task flip would otherwise drop some entities'
+        # backups and keep others'.
+        drop_backups = swap_enabled()
+        if not drop_backups:
+            t_log.info(
+                "%s is not 'true' — rehearsal, so keeping every _old table as the rollback "
+                "position from the last live swap.",
+                SWAP_GATE_VARIABLE,
+            )
         cutoff = (
             pendulum_datetime(int(run_date[:4]), int(run_date[4:6]), int(run_date[6:8]))
             .subtract(days=VINTAGE_RETENTION_DAYS)
@@ -268,7 +285,8 @@ def matcha_er():
         try:
             for entity in ENTITIES:
                 for table in (entity.cluster_table, entity.pairwise_table):
-                    drop_old_table(conn, catalog, ER_SCHEMA, table)
+                    if drop_backups:
+                        drop_old_table(conn, catalog, ER_SCHEMA, table)
                     dropped[table] = drop_stale_vintages(conn, catalog, ER_SCHEMA, table, cutoff)
         finally:
             conn.close()
