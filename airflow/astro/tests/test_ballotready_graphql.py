@@ -440,6 +440,11 @@ def test_entity_spec_carries_its_fields():
     assert spec.worklist_sql is builder
 
 
+def test_entity_spec_reads_tables_defaults_to_empty():
+    spec = EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, lambda **kwargs: "")
+    assert spec.reads_tables == ()
+
+
 def test_landing_table_is_backtick_qualified():
     assert landing_table("cat", "sch", "issue") == "`cat`.`sch`.`ballotready_issue_raw`"
 
@@ -778,6 +783,32 @@ EXPECTED_ENTITIES = {
 
 def test_registry_covers_exactly_the_nine_entities():
     assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
+
+
+# issue's worklist reads ids out of stance's landing table (see issue_worklist_sql); every
+# other entity's worklist reads only dbt staging models. Spelled out per-entity, rather than
+# just asserting issue's value, so a future entity added here without a reads_tables decision
+# fails loudly instead of silently defaulting to ().
+EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
+    "candidacy": (),
+    "party": (),
+    "stance": (),
+    "endorsement": (),
+    "geofence": (),
+    "filing_period": (),
+    "normalized_position": (),
+    "position_election_frequency": (),
+    "issue": ("stance",),
+}
+
+
+def test_expected_reads_tables_covers_the_whole_registry():
+    assert set(EXPECTED_READS_TABLES) == set(ENTITY_SPECS)
+
+
+@pytest.mark.parametrize("entity,expected", sorted(EXPECTED_READS_TABLES.items()))
+def test_registry_declares_reads_tables_explicitly(entity, expected):
+    assert ENTITY_SPECS[entity].reads_tables == expected
 
 
 def test_every_spec_ships_at_the_proven_page_size():
@@ -1145,6 +1176,87 @@ def test_extract_entity_aborts_before_the_failing_windows_insert(monkeypatch):
     assert len(inserted_calls) == 2  # the two windows before the failing one committed
     assert [row[0] for row in inserted_calls[0]] == list(range(1, 101))
     assert [row[0] for row in inserted_calls[1]] == list(range(101, 201))
+
+
+_ALL_LANDING_TABLES = {name: landing_table("cat", "src", name) for name in ENTITY_SPECS}
+
+
+class _SchemaAwareCursor:
+    """Tracks which landing tables CREATE TABLE has touched and raises on a SELECT against
+    any landing table that has not been created, the way Databricks raises
+    TABLE_OR_VIEW_NOT_FOUND. Lets a test reproduce the original bug (a table read by one
+    entity's worklist but never created because the entity that owns it did not run).
+    """
+
+    def __init__(self, known_tables: set[str]):
+        self._known = known_tables
+        self._result: list[tuple] = []
+
+    def execute(self, sql, parameters=None):
+        if sql.startswith("CREATE TABLE IF NOT EXISTS"):
+            self._known.update(t for t in _ALL_LANDING_TABLES.values() if t in sql)
+            self._result = []
+            return
+        if sql.startswith("CREATE SCHEMA"):
+            self._result = []
+            return
+        referenced = {t for t in _ALL_LANDING_TABLES.values() if t in sql}
+        missing = referenced - self._known
+        if missing:
+            raise RuntimeError(f"TABLE_OR_VIEW_NOT_FOUND: {sorted(missing)}")
+        self._result = []
+
+    def fetchone(self):
+        return self._result[0] if self._result else None
+
+    def fetchall(self):
+        return self._result
+
+    def close(self):
+        pass
+
+
+class _SchemaAwareConnection:
+    def __init__(self, known_tables: set[str] | None = None):
+        self.known_tables: set[str] = known_tables if known_tables is not None else set()
+
+    def cursor(self, *args, **kwargs):
+        return _SchemaAwareCursor(self.known_tables)
+
+
+def test_extract_entity_for_issue_creates_its_own_table_and_the_stance_table(monkeypatch):
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    connection = _SchemaAwareConnection()
+
+    extract_entity(ENTITY_SPECS["issue"], connection, _config())
+
+    assert connection.known_tables == {
+        _ALL_LANDING_TABLES["issue"],
+        _ALL_LANDING_TABLES["stance"],
+    }
+
+
+def test_extract_entity_with_no_reads_tables_creates_only_its_own_table(monkeypatch):
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    connection = _SchemaAwareConnection()
+
+    extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
+
+    assert connection.known_tables == {_ALL_LANDING_TABLES["candidacy"]}
+
+
+def test_extract_entity_for_issue_against_an_existing_empty_stance_table_does_not_raise():
+    """The regression this guards: with entities=["issue"], stance's task never runs. If
+    extract_entity did not also create stance's table, issue_worklist_sql's anti-join against
+    it would raise TABLE_OR_VIEW_NOT_FOUND instead of reaching the empty-worklist return.
+    """
+    connection = _SchemaAwareConnection(known_tables={_ALL_LANDING_TABLES["stance"]})
+
+    summary = extract_entity(ENTITY_SPECS["issue"], connection, _config())
+
+    assert summary["ids_requested"] == 0
+    assert summary["rows_written"] == 0
+    assert summary["windows"] == 0
 
 
 class _LandingCursor:

@@ -406,6 +406,10 @@ class EntitySpec:
     selection: str
     batch_size: int
     worklist_sql: Callable[..., str]
+    # Other entities whose landing tables this entity's worklist reads (e.g. issue reads
+    # stance's). extract_entity must create these too, or an entities-filtered run that
+    # skips the other side never creates the table this one's worklist queries.
+    reads_tables: tuple[str, ...] = ()
 
 
 def landing_table(catalog: str, schema: str, entity: str) -> str:
@@ -787,7 +791,7 @@ ENTITY_SPECS: dict[str, EntitySpec] = {
         100,
         partial(position_derived_worklist_sql, field="election_frequencies"),
     ),
-    "issue": EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql),
+    "issue": EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql, reads_tables=("stance",)),
 }
 
 
@@ -869,6 +873,11 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     picks back up where the failure left off.
     """
     create_landing_table(connection, config.catalog, config.source_schema, spec.name)
+    # An entities-filtered run can skip the task that would normally create this table
+    # first; create it here too so this entity's worklist never queries a table that
+    # was never made.
+    for other in spec.reads_tables:
+        create_landing_table(connection, config.catalog, config.source_schema, other)
 
     after: tuple[datetime | None, int | None] = (
         (None, None)
