@@ -50,7 +50,12 @@ from datetime import UTC
 from datetime import datetime as dt
 
 from airflow.sdk import Param, Variable, dag, get_current_context, task
-from include.custom_functions.ballotready_graphql import ENTITY_SPECS, ExtractConfig, extract_entity
+from include.custom_functions.ballotready_graphql import (
+    ENTITY_SPECS,
+    ExtractConfig,
+    extract_entity,
+    should_extract,
+)
 from include.custom_functions.databricks_utils import connect_from_conn_id
 from pendulum import datetime, duration
 
@@ -96,24 +101,21 @@ t_log = logging.getLogger("airflow.task")
 def extract_ballotready():
     tasks = {}
     for name, spec in ENTITY_SPECS.items():
-
+        # reads_tables means this entity reads another's landed rows rather than that task's
+        # return value, so an upstream failure must not strand it (all_success would).
         @task(
             task_id=f"extract_{name}",
-            # all_done for issue only: it reads the landed stance table, not the stance task's
-            # return value, so a stance failure must not strand it (default all_success would).
-            trigger_rule="all_done" if name == "issue" else "all_success",
+            trigger_rule="all_done" if spec.reads_tables else "all_success",
         )
-        def _extract(name=name, spec=spec) -> dict:
+        def _extract(spec=spec) -> dict:
             context = get_current_context()
             params = context["params"]
 
-            requested = set(params["entities"])
-            unknown = requested - set(ENTITY_SPECS)
-            if unknown:
-                raise ValueError(f"Unknown entities in `entities` param: {sorted(unknown)}")
-            if requested and name not in requested:
-                t_log.info(f"{name} not in requested entities {sorted(requested)}; skipping")
-                return {"entity": name, "skipped": True}
+            if not should_extract(spec.name, params["entities"]):
+                t_log.info(
+                    f"{spec.name} not in requested entities {sorted(set(params['entities']))}; skipping"
+                )
+                return {"entity": spec.name, "skipped": True}
 
             run_id = context["dag_run"].run_id
             # .strip(): an Airflow Variable pasted with a trailing newline or space is a
@@ -139,7 +141,11 @@ def extract_ballotready():
 
         tasks[name] = _extract()
 
-    tasks["stance"] >> tasks["issue"]
+    # Ordering only (see the trigger rule above), so an entity that reads another's landing
+    # table sees the rows this run landed there.
+    for name, spec in ENTITY_SPECS.items():
+        for upstream in spec.reads_tables:
+            tasks[upstream] >> tasks[name]
 
 
 extract_ballotready()

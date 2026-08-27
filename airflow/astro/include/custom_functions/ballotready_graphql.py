@@ -14,12 +14,12 @@ import re
 import threading
 import time
 from base64 import b64encode
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import partial
-from typing import Any
+from itertools import batched
+from typing import Any, NamedTuple, TypeVar
 
 import requests
 from include.custom_functions.databricks_utils import execute_with_retry
@@ -50,8 +50,11 @@ _NODE_ID_PREFIX = "gid://ballot-factory"
 WINDOW_SIZE = 2000
 
 # Secondary bound on rows/statement, kept so a very large number of tiny rows (e.g. a
-# nulled-out miss window) cannot separately trip some other per-statement limit. The
-# real constraint that forced batching here is MAX_INSERT_PARAM_CHARS, below.
+# nulled-out miss window) cannot separately trip some other per-statement limit. At 7 bound
+# values per row this is 1,400 parameter markers, which dev runs have proven against the real
+# connector. Raising it trades ~5x fewer statements and Delta commits for reliance on a
+# per-statement parameter-marker cap that is still unverified from outside the deployment,
+# and on a miss-heavy window the character budget below would not bind first.
 INSERT_BATCH_SIZE = 200
 
 # The server's actual limit is on combined bound-parameter character count, not parameter
@@ -67,12 +70,57 @@ def encode_node_id(node_type: str, node_id: int) -> str:
     return b64encode(f"{_NODE_ID_PREFIX}/{node_type}/{node_id}".encode()).decode("utf-8")
 
 
-def chunked(seq: list[Any], size: int) -> Iterator[list[Any]]:
-    """Yield successive `size`-length chunks of `seq`."""
-    if size < 1:
-        raise ValueError(f"chunk size must be >= 1, got {size}")
-    for i in range(0, len(seq), size):
-        yield seq[i : i + size]
+_RowT = TypeVar("_RowT", bound=tuple[Any, ...])
+
+
+class LandedRow(NamedTuple):
+    """One landing table row, minus loaded_at, which the INSERT stamps server-side.
+
+    Named rather than a bare tuple because the windowed insert sorts on two of these
+    fields, and the ordering it produces is what makes the resume cursor correct. A
+    positional index there is wrong silently; a field name is wrong loudly.
+    """
+
+    requested_id: int
+    node_id: str | None
+    database_id: int | None
+    payload: str | None
+    source_changed_at: str | None
+    extracted_at: str
+    dag_run_id: str
+
+
+# The landing table's columns in table order, with their types. The DDL, the INSERT column
+# list and the bound-parameter names all derive from this, so a column added here reaches
+# every statement without a second edit.
+LANDING_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("requested_id", "BIGINT"),
+    ("node_id", "STRING"),
+    ("database_id", "BIGINT"),
+    ("payload", "STRING"),
+    ("source_changed_at", "TIMESTAMP"),
+    ("extracted_at", "TIMESTAMP"),
+    ("loaded_at", "TIMESTAMP"),
+    ("dag_run_id", "STRING"),
+)
+
+# Set server-side rather than bound, so no LandedRow field backs it.
+_SERVER_SET_COLUMNS = {"loaded_at": "current_timestamp()"}
+
+# Bound as strings, so the statement has to read them back as timestamps.
+_TIMESTAMP_COLUMNS = frozenset({"source_changed_at", "extracted_at"})
+
+INSERT_COLUMNS: tuple[str, ...] = tuple(
+    name for name, _ in LANDING_COLUMNS if name not in _SERVER_SET_COLUMNS
+)
+
+# A LandedRow field that stopped lining up with its column would bind every later value one
+# position off, which no test of either alone would catch. Raised rather than asserted so the
+# check survives python -O.
+if LandedRow._fields != INSERT_COLUMNS:
+    raise RuntimeError(
+        f"LandedRow fields {LandedRow._fields} must match the landing columns {INSERT_COLUMNS}, in order"
+    )
 
 
 def _row_param_chars(row: tuple[Any, ...]) -> int:
@@ -86,11 +134,11 @@ def _row_param_chars(row: tuple[Any, ...]) -> int:
 
 
 def chunk_rows_for_insert(
-    rows: list[tuple[Any, ...]],
+    rows: Sequence[_RowT],
     entity: str,
     max_chars: int = MAX_INSERT_PARAM_CHARS,
     max_rows: int = INSERT_BATCH_SIZE,
-) -> Iterator[list[tuple[Any, ...]]]:
+) -> Iterator[list[_RowT]]:
     """Split rows into statement-sized batches bounded by bound-parameter characters first,
     row count second, preserving row order both within and across batches.
 
@@ -99,7 +147,7 @@ def chunk_rows_for_insert(
     infinite loop trying to fit it under a budget it cannot meet, or silently dropping it;
     this way it fails loudly at the server instead.
     """
-    chunk: list[tuple[Any, ...]] = []
+    chunk: list[_RowT] = []
     chunk_chars = 0
     for row in rows:
         row_chars = _row_param_chars(row)
@@ -204,7 +252,7 @@ def _build_query(selection: str) -> str:
 
 
 def fetch_nodes(
-    ids: list[int],
+    ids: Sequence[int],
     node_type: str,
     selection: str,
     api_token: str,
@@ -540,8 +588,7 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
     table = landing_table(
         validate_identifier("catalog", catalog), validate_identifier("schema", schema), entity
     )
-    cursor = connection.cursor()
-    try:
+    with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(
             cursor,
             f"SELECT source_changed_at, requested_id FROM {table} "
@@ -549,8 +596,6 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
         )
         row = cursor.fetchone()
         return (row[0], int(row[1])) if row else (None, None)
-    finally:
-        cursor.close()
 
 
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
@@ -560,7 +605,7 @@ def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None)
     # worklist is safe and a raise here would stall a run over a partial value.
     if after_changed_at is None or after_source_id is None:
         return "source_changed_at IS NOT NULL"
-    ts = format_cursor_ts(datetime.fromisoformat(after_changed_at))
+    ts = format_cursor_ts(after_changed_at)
     sid = int(after_source_id)
     return (
         "source_changed_at IS NOT NULL AND ("
@@ -569,12 +614,64 @@ def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None)
     )
 
 
-def _worklist(inner_sql: str, predicate: str, limit: int) -> str:
+def _cursor_floor(
+    after_changed_at: str | None,
+    after_source_id: int | None,
+    column: str = "source_changed_at",
+) -> str:
+    """A `>=` filter on the cursor timestamp alone, for pushing below a GROUP BY.
+
+    Every keyed worklist collapses its scan to one row per id with max(source_changed_at),
+    then pages that by the cursor. Filtering the scan first keeps the aggregate off the
+    whole source table on an incremental run (two orders of magnitude fewer rows shuffled),
+    and cannot change the result: an id whose max is at or above the cursor keeps that same
+    max, and one whose max is below it is dropped either way. `>=` rather than the exact
+    pair predicate because rows at the cursor timestamp may still belong to ids above it.
+
+    Gated on the same both-halves-present rule as _keyset_predicate, so a partial cursor
+    still degrades to a genuinely full sweep rather than one silently floored by timestamp.
+    """
+    if after_changed_at is None or after_source_id is None:
+        return ""
+    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(after_changed_at)}'"
+
+
+def _keyed_worklist(
+    inner_sql: str,
+    *,
+    after_changed_at: str | None,
+    after_source_id: int | None,
+    limit: int,
+) -> str:
+    """Wrap an (source_id, source_changed_at) scan as a cursor-paged worklist.
+
+    Owns the parts every keyed builder needs identically: collapse to one row per id on
+    max(source_changed_at), push the cursor floor below that aggregate, then page the
+    result by the exact keyset pair. A builder supplies only its own scan.
+    """
+    grouped = (
+        "SELECT source_id, max(source_changed_at) AS source_changed_at "
+        f"FROM ({inner_sql}) scan "
+        f"WHERE source_changed_at IS NOT NULL{_cursor_floor(after_changed_at, after_source_id)} "
+        "GROUP BY source_id"
+    )
+    predicate = _keyset_predicate(after_changed_at, after_source_id)
     return (
-        f"WITH worklist AS ({inner_sql}) "
+        f"WITH worklist AS ({grouped}) "
         f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
         f"ORDER BY source_changed_at ASC, source_id ASC LIMIT {int(limit)}"
     )
+
+
+def _dbt_model(catalog: str, dbt_schema: str, model: str) -> str:
+    """Validated, backtick-quoted name of a dbt staging model.
+
+    Airflow reads dbt's staging layer only. Reaching into the intermediate layer would
+    invert the dependency, since dbt also reads the landing tables this DAG writes.
+    """
+    validate_identifier("catalog", catalog)
+    validate_identifier("dbt_schema", dbt_schema)
+    return f"`{catalog}`.`{dbt_schema}`.`{model}`"
 
 
 def candidacy_worklist_sql(
@@ -594,18 +691,22 @@ def candidacy_worklist_sql(
     intermediate model (an explode of two staging models), so this reads only
     staging rather than reaching into dbt's intermediate layer.
     """
-    validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    base = f"`{catalog}`.`{dbt_schema}`"
+    races = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_race")
+    elections = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_election")
+    candidacies = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_s3_candidacies_v3")
     upcoming = (
         "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
         "max(r.updated_at) AS race_updated_at "
-        f"FROM {base}.`stg_airbyte_source__ballotready_api_race` r "
+        f"FROM {races} r "
         "LATERAL VIEW explode(r.candidacies) AS candidacy "
         "WHERE r.election.databaseId IN (SELECT database_id "
-        f"FROM {base}.`stg_airbyte_source__ballotready_api_election` "
+        f"FROM {elections} "
         "WHERE election_day >= current_date()) "
-        "AND candidacy.databaseId IS NOT NULL "
+        "AND candidacy.databaseId IS NOT NULL"
+        # Same cursor floor as _keyed_worklist applies below its own GROUP BY, pushed one
+        # level further down: without it every run explodes the candidacies array of every
+        # upcoming race, which is the most expensive scan in the DAG.
+        f"{_cursor_floor(after_changed_at, after_source_id, 'r.updated_at')} "
         "GROUP BY cast(candidacy.databaseId AS bigint)"
     )
     inner = (
@@ -613,16 +714,48 @@ def candidacy_worklist_sql(
         # candidacy_updated_at is STRING in this staging model (candidacy_created_at is
         # already cast there); cast the greatest() result so both UNION branches agree on type.
         "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at "
-        f"FROM {base}.`stg_airbyte_source__ballotready_s3_candidacies_v3` "
+        f"FROM {candidacies} "
         "WHERE br_candidacy_id IS NOT NULL "
         "UNION ALL "
         "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
         f"FROM ({upcoming}) upcoming"
     )
-    grouped = (
-        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
+    return _keyed_worklist(
+        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
     )
-    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
+
+
+def _derived_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    model: str,
+    id_expr: str,
+    changed_at_expr: str,
+    explode: tuple[str, str] | None,
+    after_changed_at: str | None,
+    after_source_id: int | None,
+    limit: int,
+) -> str:
+    """Worklist for ids carried on another entity's staging rows.
+
+    Four entities have no update feed of their own: their ids appear as a field (or an
+    array field) of some other object, and the freshest row referencing an id decides when
+    it is next due for a refetch. `explode` names the array column and its alias when the
+    ids arrive one-to-many.
+    """
+    table = _dbt_model(catalog, dbt_schema, model)
+    from_clause = table
+    if explode is not None:
+        array_column, alias = explode
+        from_clause = f"{table} LATERAL VIEW explode({array_column}) AS {alias}"
+    inner = (
+        f"SELECT cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
+        f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
+    )
+    return _keyed_worklist(
+        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
+    )
 
 
 def geofence_worklist_sql(
@@ -634,28 +767,23 @@ def geofence_worklist_sql(
     after_source_id: int | None = None,
     limit: int,
 ) -> str:
-    """Geofence ids referenced by candidacies; geofences carry no update feed of their own.
-
-    Many candidacies share one geofence, so the freshest of them decides when
-    that geofence is next due for a refetch.
-    """
-    validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
-    inner = (
-        "SELECT cast(br_geofence_id AS bigint) AS source_id, "
+    """Geofence ids referenced by candidacies; geofences carry no update feed of their own."""
+    return _derived_worklist_sql(
+        catalog,
+        dbt_schema,
+        model="stg_airbyte_source__ballotready_s3_candidacies_v3",
+        id_expr="br_geofence_id",
         # candidacy_updated_at is STRING in this staging model; cast it so source_changed_at
         # is always a real timestamp, matching every other worklist builder.
-        "cast(candidacy_updated_at AS timestamp) AS source_changed_at "
-        f"FROM {table} WHERE br_geofence_id IS NOT NULL"
+        changed_at_expr="cast(candidacy_updated_at AS timestamp)",
+        explode=None,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        limit=limit,
     )
-    grouped = (
-        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
-    )
-    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
 
 
-def race_derived_worklist_sql(
+def filing_period_worklist_sql(
     catalog: str,
     dbt_schema: str,
     *,
@@ -664,61 +792,64 @@ def race_derived_worklist_sql(
     after_source_id: int | None = None,
     limit: int,
 ) -> str:
-    """Filing period ids exploded out of each race's `filing_periods` array.
-
-    Many races reference the same filing period, so the freshest referencing
-    race decides when that filing period is next due for a refetch.
-    """
-    validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_race`"
-    inner = (
-        "SELECT cast(filing_period.databaseId AS bigint) AS source_id, updated_at AS source_changed_at "
-        f"FROM {table} LATERAL VIEW explode(filing_periods) AS filing_period "
-        "WHERE filing_period.databaseId IS NOT NULL"
+    """Filing period ids exploded out of each race's `filing_periods` array."""
+    return _derived_worklist_sql(
+        catalog,
+        dbt_schema,
+        model="stg_airbyte_source__ballotready_api_race",
+        id_expr="filing_period.databaseId",
+        changed_at_expr="updated_at",
+        explode=("filing_periods", "filing_period"),
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        limit=limit,
     )
-    grouped = (
-        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
-    )
-    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
 
 
-def position_derived_worklist_sql(
+def normalized_position_worklist_sql(
     catalog: str,
     dbt_schema: str,
     *,
-    field: str,
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
     limit: int,
 ) -> str:
-    """Ids derived from one field of the position payload.
+    """Normalized position ids carried on each position row."""
+    return _derived_worklist_sql(
+        catalog,
+        dbt_schema,
+        model="stg_airbyte_source__ballotready_api_position",
+        id_expr="normalized_position.databaseId",
+        changed_at_expr="updated_at",
+        explode=None,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        limit=limit,
+    )
 
-    Two entities (normalized positions, position election frequencies) key off
-    this one staging model with different shapes, so `field` picks between
-    them; a later task binds it per entity with `functools.partial`, leaving
-    the call site identical to the other three builders.
-    """
-    validate_identifier("catalog", catalog)
-    validate_identifier("dbt_schema", dbt_schema)
-    table = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_api_position`"
-    if field == "normalized_position":
-        id_expr = "normalized_position.databaseId"
-        from_clause = table
-    elif field == "election_frequencies":
-        id_expr = "election_frequency.databaseId"
-        from_clause = f"{table} LATERAL VIEW explode(election_frequencies) AS election_frequency"
-    else:
-        raise ValueError(f"field must be 'normalized_position' or 'election_frequencies', got {field!r}")
-    inner = (
-        f"SELECT cast({id_expr} AS bigint) AS source_id, updated_at AS source_changed_at "
-        f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
+
+def position_election_frequency_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Election frequency ids exploded out of each position's `election_frequencies` array."""
+    return _derived_worklist_sql(
+        catalog,
+        dbt_schema,
+        model="stg_airbyte_source__ballotready_api_position",
+        id_expr="election_frequency.databaseId",
+        changed_at_expr="updated_at",
+        explode=("election_frequencies", "election_frequency"),
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        limit=limit,
     )
-    grouped = (
-        f"SELECT source_id, max(source_changed_at) AS source_changed_at FROM ({inner}) GROUP BY source_id"
-    )
-    return _worklist(grouped, _keyset_predicate(after_changed_at, after_source_id), limit)
 
 
 def issue_worklist_sql(
@@ -767,8 +898,8 @@ def build_insert_rows(
     changed_at_by_id: Mapping[int, datetime | str],
     extracted_at: str,
     dag_run_id: str,
-) -> list[tuple[int, str | None, int | None, str | None, str | None, str, str]]:
-    """One row per requested id, in landing table column order minus loaded_at.
+) -> list[LandedRow]:
+    """One row per requested id.
 
     A row is built for every requested id, with a null payload where the API
     returned nothing. Skipping those would leave the id below the cursor forever
@@ -780,45 +911,45 @@ def build_insert_rows(
         node = item.node
         changed_at = changed_at_by_id.get(item.requested_id)
         rows.append(
-            (
-                item.requested_id,
-                node.get("id") if node is not None else None,
-                node.get("databaseId") if node is not None else None,
-                json.dumps(node, default=str) if node is not None else None,
-                format_cursor_ts(changed_at) if changed_at is not None else None,
-                extracted_at,
-                dag_run_id,
+            LandedRow(
+                requested_id=item.requested_id,
+                node_id=node.get("id") if node is not None else None,
+                database_id=node.get("databaseId") if node is not None else None,
+                payload=json.dumps(node, default=str) if node is not None else None,
+                source_changed_at=format_cursor_ts(changed_at) if changed_at is not None else None,
+                extracted_at=extracted_at,
+                dag_run_id=dag_run_id,
             )
         )
     return rows
 
 
 def create_landing_table(connection, catalog: str, schema: str, entity: str) -> None:
-    """Create the append-only raw landing table for an entity if it is absent.
-
-    Column order matches insert_rows's column list.
-    """
+    """Create the append-only raw landing table for an entity if it is absent."""
     validate_identifier("catalog", catalog)
     validate_identifier("schema", schema)
     table = landing_table(catalog, schema, entity)
-    cursor = connection.cursor()
-    try:
+    with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
-        execute_with_retry(
-            cursor,
-            f"CREATE TABLE IF NOT EXISTS {table} ("
-            "  requested_id BIGINT,"
-            "  node_id STRING,"
-            "  database_id BIGINT,"
-            "  payload STRING,"
-            "  source_changed_at TIMESTAMP,"
-            "  extracted_at TIMESTAMP,"
-            "  loaded_at TIMESTAMP,"
-            "  dag_run_id STRING"
-            ") CLUSTER BY AUTO",
-        )
-    finally:
-        cursor.close()
+        columns = ", ".join(f"{name} {column_type}" for name, column_type in LANDING_COLUMNS)
+        execute_with_retry(cursor, f"CREATE TABLE IF NOT EXISTS {table} ({columns}) CLUSTER BY AUTO")
+
+
+def _value_group(index: int) -> str:
+    """One row's VALUES group, in landing table column order.
+
+    Server-set columns render their expression; bound columns render a named placeholder,
+    cast where the value binds as a string but the column is a timestamp.
+    """
+    values = []
+    for column, _ in LANDING_COLUMNS:
+        if column in _SERVER_SET_COLUMNS:
+            values.append(_SERVER_SET_COLUMNS[column])
+        elif column in _TIMESTAMP_COLUMNS:
+            values.append(f"cast(:{column}_{index} AS TIMESTAMP)")
+        else:
+            values.append(f":{column}_{index}")
+    return "(" + ", ".join(values) + ")"
 
 
 def insert_rows(
@@ -826,7 +957,7 @@ def insert_rows(
     catalog: str,
     schema: str,
     entity: str,
-    rows: list[tuple[int, str | None, int | None, str | None, str | None, str, str]],
+    rows: list[LandedRow],
 ) -> None:
     """Append rows to the landing table in one or more parameterized multi-row INSERTs.
 
@@ -840,61 +971,62 @@ def insert_rows(
     validate_identifier("catalog", catalog)
     validate_identifier("schema", schema)
     table = landing_table(catalog, schema, entity)
-    cursor = connection.cursor()
-    try:
+    columns = ", ".join(name for name, _ in LANDING_COLUMNS)
+    with contextlib.closing(connection.cursor()) as cursor:
         for chunk in chunk_rows_for_insert(rows, entity):
             value_groups = []
             parameters: dict[str, Any] = {}
             for i, row in enumerate(chunk):
-                requested_id, node_id, database_id, payload, source_changed_at, extracted_at, dag_run_id = row
-                value_groups.append(
-                    f"(:requested_id_{i}, :node_id_{i}, :database_id_{i}, :payload_{i}, "
-                    f"cast(:source_changed_at_{i} AS TIMESTAMP), cast(:extracted_at_{i} AS TIMESTAMP), "
-                    f"current_timestamp(), :dag_run_id_{i})"
+                value_groups.append(_value_group(i))
+                parameters.update(
+                    {f"{column}_{i}": value for column, value in zip(INSERT_COLUMNS, row, strict=True)}
                 )
-                parameters[f"requested_id_{i}"] = requested_id
-                parameters[f"node_id_{i}"] = node_id
-                parameters[f"database_id_{i}"] = database_id
-                parameters[f"payload_{i}"] = payload
-                parameters[f"source_changed_at_{i}"] = source_changed_at
-                parameters[f"extracted_at_{i}"] = extracted_at
-                parameters[f"dag_run_id_{i}"] = dag_run_id
-            sql = (
-                f"INSERT INTO {table} (requested_id, node_id, database_id, payload, "
-                "source_changed_at, extracted_at, loaded_at, dag_run_id) VALUES " + ", ".join(value_groups)
-            )
+            sql = f"INSERT INTO {table} ({columns}) VALUES " + ", ".join(value_groups)
             execute_with_retry(cursor, sql, parameters=parameters)
-    finally:
-        cursor.close()
 
 
 # Four entities share candidacy_worklist_sql: their selections are all inline
 # fragments on Candidacy, keyed off the same candidacy id set from the same feed.
-ENTITY_SPECS: dict[str, EntitySpec] = {
-    "candidacy": EntitySpec("candidacy", "Candidacy", CANDIDACY_SELECTION, 100, candidacy_worklist_sql),
-    "party": EntitySpec("party", "Candidacy", PARTY_SELECTION, 100, candidacy_worklist_sql),
-    "stance": EntitySpec("stance", "Candidacy", STANCE_SELECTION, 100, candidacy_worklist_sql),
-    "endorsement": EntitySpec("endorsement", "Candidacy", ENDORSEMENT_SELECTION, 100, candidacy_worklist_sql),
-    "geofence": EntitySpec("geofence", "Geofence", GEOFENCE_SELECTION, 100, geofence_worklist_sql),
-    "filing_period": EntitySpec(
-        "filing_period", "FilingPeriod", FILING_PERIOD_SELECTION, 100, race_derived_worklist_sql
-    ),
-    "normalized_position": EntitySpec(
+_SPECS: tuple[EntitySpec, ...] = (
+    EntitySpec("candidacy", "Candidacy", CANDIDACY_SELECTION, 100, candidacy_worklist_sql),
+    EntitySpec("party", "Candidacy", PARTY_SELECTION, 100, candidacy_worklist_sql),
+    EntitySpec("stance", "Candidacy", STANCE_SELECTION, 100, candidacy_worklist_sql),
+    EntitySpec("endorsement", "Candidacy", ENDORSEMENT_SELECTION, 100, candidacy_worklist_sql),
+    EntitySpec("geofence", "Geofence", GEOFENCE_SELECTION, 100, geofence_worklist_sql),
+    EntitySpec("filing_period", "FilingPeriod", FILING_PERIOD_SELECTION, 100, filing_period_worklist_sql),
+    EntitySpec(
         "normalized_position",
         "NormalizedPosition",
         NORMALIZED_POSITION_SELECTION,
         100,
-        partial(position_derived_worklist_sql, field="normalized_position"),
+        normalized_position_worklist_sql,
     ),
-    "position_election_frequency": EntitySpec(
+    EntitySpec(
         "position_election_frequency",
         "PositionElectionFrequency",
         POSITION_ELECTION_FREQUENCY_SELECTION,
         100,
-        partial(position_derived_worklist_sql, field="election_frequencies"),
+        position_election_frequency_worklist_sql,
     ),
-    "issue": EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql, reads_tables=("stance",)),
-}
+    EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql, reads_tables=("stance",)),
+)
+
+# Keyed by spec.name so the registry key and the landing table name cannot drift apart.
+ENTITY_SPECS: dict[str, EntitySpec] = {spec.name: spec for spec in _SPECS}
+
+
+def should_extract(entity: str, requested: Iterable[str]) -> bool:
+    """Whether `entity` runs, given the run's `entities` param. Empty means all of them.
+
+    Raises on an unrecognised name rather than silently no-opping every task, which is
+    what a typo would otherwise do. Lives here, with the registry that defines the valid
+    names, so it is callable without building a DagBag.
+    """
+    requested = set(requested)
+    unknown = requested - set(ENTITY_SPECS)
+    if unknown:
+        raise ValueError(f"Unknown entities in `entities` param: {sorted(unknown)}")
+    return not requested or entity in requested
 
 
 @dataclass(frozen=True)
@@ -953,12 +1085,9 @@ def read_worklist(
         after_source_id=after_source_id,
         limit=config.max_ids,
     )
-    cursor = connection.cursor()
-    try:
+    with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, sql)
         return [(int(row[0]), row[1]) for row in cursor.fetchall()]
-    finally:
-        cursor.close()
 
 
 def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
@@ -988,25 +1117,17 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     )
 
     worklist = read_worklist(connection, spec, config, after)
-    if not worklist:
-        return {
-            "entity": spec.name,
-            "ids_requested": 0,
-            "rows_written": 0,
-            "windows": 0,
-            "cursor_source_changed_at": format_cursor_ts(after[0]) if after[0] is not None else None,
-            "cursor_requested_id": after[1],
-        }
-
     changed_at_by_id = dict(worklist)
     ids = [source_id for source_id, _ in worklist]
 
     rows_written = 0
     windows = 0
+    # An empty worklist means this entity is caught up: the loop below does not execute and
+    # the summary reports the cursor unchanged.
     with contextlib.closing(make_session(config.max_workers)) as session:
         limiter = RateLimiter(config.requests_per_second)
 
-        def fetch_batch(batch: list[int]) -> list[FetchedNode]:
+        def fetch_batch(batch: Sequence[int]) -> list[FetchedNode]:
             return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
 
         # Each window's batches fan out across the pool concurrently (fine: order
@@ -1014,8 +1135,8 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         # one at a time and each is fully inserted before the next one starts. Do not
         # "optimize" this into one pool across every window -- that reintroduces the
         # out-of-order landing this loop exists to prevent (see the docstring above).
-        for window_ids in chunked(ids, WINDOW_SIZE):
-            batches = list(chunked(window_ids, spec.batch_size))
+        for window_ids in batched(ids, WINDOW_SIZE):
+            batches = list(batched(window_ids, spec.batch_size))
             fetched: list[FetchedNode] = []
             with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
                 futures = [executor.submit(fetch_batch, batch) for batch in batches]
@@ -1029,20 +1150,20 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
                     raise
 
             rows = build_insert_rows(fetched, changed_at_by_id, config.extracted_at, config.dag_run_id)
-            rows.sort(key=lambda row: (row[4], row[0]))
+            rows.sort(key=lambda row: (row.source_changed_at, row.requested_id))
             insert_rows(connection, config.catalog, config.source_schema, spec.name, rows)
             rows_written += len(rows)
             windows += 1
 
-    last_id, last_changed_at = worklist[-1]
+    cursor_id, cursor_changed_at = worklist[-1] if worklist else (after[1], after[0])
     return {
         "entity": spec.name,
         "ids_requested": len(worklist),
         "rows_written": rows_written,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.
-        "cursor_source_changed_at": format_cursor_ts(last_changed_at)
-        if last_changed_at is not None
+        "cursor_source_changed_at": format_cursor_ts(cursor_changed_at)
+        if cursor_changed_at is not None
         else None,
-        "cursor_requested_id": last_id,
+        "cursor_requested_id": cursor_id,
     }

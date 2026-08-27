@@ -1195,32 +1195,20 @@ sources:
     tables:
       - name: ballotready_candidacy_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG
-        columns:
+        columns: &ballotready_raw_columns
           - name: requested_id
             description: The BallotReady integer id this row was fetched for
           - name: payload
             description: Raw JSON of the returned node; null when the API returned no node
       - name: ballotready_endorsement_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `endorsements` array on each Candidacy (there is no standalone Endorsement node)
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_filing_period_raw
         description: Raw CivicEngine GraphQL FilingPeriod nodes landed by the extract_ballotready DAG
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_geofence_raw
         description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_issue_raw
         description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
         # issue has no cursor: the worklist is an anti-join of issue ids referenced
@@ -1228,39 +1216,19 @@ sources:
         # rows for months once the issue universe is captured. No threshold fits.
         config:
           freshness: null
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_normalized_position_raw
         description: Raw CivicEngine GraphQL NormalizedPosition nodes landed by the extract_ballotready DAG
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_party_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_position_election_frequency_raw
         description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
       - name: ballotready_stance_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
-        columns:
-          - name: requested_id
-            description: The BallotReady integer id this row was fetched for
-          - name: payload
-            description: Raw JSON of the returned node; null when the API returned no node
+        columns: *ballotready_raw_columns
 
   - name: model_predictions
     schema: model_predictions

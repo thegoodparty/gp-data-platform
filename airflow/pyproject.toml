@@ -24,6 +24,8 @@ dependencies = [
 dev = [
     "pytest>=9.1.1,<10.0.0",
     "mypy>=2.3.0",
+    # Read by the dbt-sources drift test; otherwise only present transitively via airflow.
+    "pyyaml>=6.0.0",
 ]
 
 [tool.uv]
