@@ -87,7 +87,7 @@ def build_settings(config: EntityConfig) -> SettingsCreator:
     )
 
 
-def _inject_pregroup_pairs(linker: Linker, config: EntityConfig, pred_table: str) -> int:
+def _inject_deterministic_group_edges(linker: Linker, config: EntityConfig, pred_table: str) -> int:
     """Add same-group edges to the predictions table at p=1.0.
 
     Deterministic identity (shared native ids) must survive probabilistic
@@ -95,9 +95,16 @@ def _inject_pregroup_pairs(linker: Linker, config: EntityConfig, pred_table: str
     attributes disagree. One hub-to-minimum star edge per group is enough,
     because clustering is transitive.
 
+    Scoring a same-group pair is not enough on its own. Splink scores plenty of
+    them below the cluster threshold — a BallotReady and a TechSpeed record for
+    one person, agreeing on nothing but the name, lands around 0.45 — so every
+    same-group pair is raised to 1.0, not just the ones with no row yet. Leaving
+    the scored ones alone splits the group. match_weight is left as Splink fit
+    it, so the original score stays recoverable.
+
     Injected rows carry the same _l/_r columns Splink emits, so the audits and
     every downstream consumer see one row shape. Only the gammas, match_weight,
-    and match_key stay NULL: these pairs were asserted, not scored, and no
+    and match_key stay NULL: those pairs were asserted, not scored, and no
     blocking rule produced them.
     """
     col = config.deterministic_grouping_column
@@ -106,6 +113,11 @@ def _inject_pregroup_pairs(linker: Linker, config: EntityConfig, pred_table: str
 
     concat = compute_df_concat_with_tf(linker, CTEPipeline())
     con = linker._db_api._con
+
+    promoted = con.execute(f"""
+        UPDATE {pred_table} SET match_probability = 1.0
+        WHERE "{col}_l" IS NOT NULL AND "{col}_l" = "{col}_r" AND match_probability < 1.0
+    """).fetchone()[0]
 
     pred_columns = {d[0] for d in con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description}
     sides = [
@@ -140,8 +152,8 @@ def _inject_pregroup_pairs(linker: Linker, config: EntityConfig, pred_table: str
         )
     """).fetchone()[0]
 
-    print(f"Deterministic {col} edges: {inserted:,} injected (the rest were already scored)")
-    return inserted
+    print(f"Deterministic {col} edges: {inserted:,} injected, {promoted:,} scored pairs raised to 1.0")
+    return inserted + promoted
 
 
 def train_model(linker: Linker, config: EntityConfig) -> int:
@@ -288,7 +300,7 @@ def predict_and_cluster(
             print(f"Post-prediction filters: removed {dropped:,} pairs")
 
     # After the filters: a deterministic edge must not be filterable.
-    _inject_pregroup_pairs(linker, config, pred_table)
+    _inject_deterministic_group_edges(linker, config, pred_table)
 
     pairwise_df = predictions.as_pandas_dataframe()
 

@@ -705,6 +705,21 @@ def test_person_pipeline_pregroup_group_clusters_despite_failing_scores(person_r
     assert _pair_rows(pairwise_df, "hubspot|40", "techspeed|40").empty
 
 
+def test_person_pipeline_every_deterministic_group_lands_in_one_cluster(person_results):
+    """The guarantee the whole mechanism exists to provide.
+
+    A production run split 1,385 groups because same-group pairs Splink had
+    already scored below the cluster threshold were left at their own score
+    instead of being raised. Asserting it over the whole fixture rather than one
+    known pair is what makes the invariant hold for every group.
+    """
+    _, clustered_df, _ = person_results
+
+    per_group = clustered_df.groupby("pregroup_id")["cluster_id"].nunique()
+    split = per_group[per_group > 1]
+    assert split.empty, f"deterministic groups split across clusters: {list(split.index)}"
+
+
 def test_person_pipeline_injected_edges_keep_the_normal_row_shape(person_results):
     """Injected rows carry the same _l/_r columns Splink emits.
 

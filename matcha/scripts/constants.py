@@ -106,10 +106,12 @@ EO_POST_PREDICTION_FILTER = f"""
 # pairs with the same last name and a different first name, and the audited
 # sample was dominated by genuine two-person households.
 #
-# Two distinct BallotReady people are never linked directly. This is an identity
-# constraint rather than a precision heuristic — BR is the one source with a
-# clean person id, so disagreement there is authoritative — and dbt already
-# asserts the same invariant on the resulting groups.
+# Two distinct BallotReady people are never linked directly, BR being the one
+# source with a clean person id. This is a precision heuristic on direct pairs,
+# not an invariant: a pair filter cannot stop BR1-X-BR2 chaining transitively,
+# and the deterministic group edges override it wherever dbt already resolved
+# two BR ids into one person. The dbt test on the resulting groups warns rather
+# than fails for that reason.
 PERSON_POST_PREDICTION_FILTER = """
     gamma_first_name > 0
       AND NOT (
