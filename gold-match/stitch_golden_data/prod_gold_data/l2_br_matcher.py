@@ -730,6 +730,7 @@ class L2BrMatcher:
         select state_postal_code, district_type, district_name
         from {self.district_universe_path}
         where upper(trim(state_postal_code)) in ('{states_str}')
+        order by state_postal_code, district_type, district_name
         """
         return self.databricks.execute_query(query)
 

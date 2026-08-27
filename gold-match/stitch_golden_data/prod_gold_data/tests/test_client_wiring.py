@@ -58,6 +58,17 @@ def test_cli_default_is_bedrock():
     assert _parse_args(["--model-config", "bedrock-nova"]).model_config == "bedrock-nova"
 
 
+def test_universe_query_orders_deterministically(patched_deps):
+    """Failure this catches: similarity ties break on row index, so an
+    unordered universe read makes tie outcomes depend on warehouse scan
+    order -- the reproducibility hole the determinism fix closes."""
+    matcher = L2BrMatcher()
+    matcher.databricks.execute_query = MagicMock()
+    matcher.load_district_universe(["DE"])
+    sql = matcher.databricks.execute_query.call_args.args[0]
+    assert "order by state_postal_code, district_type, district_name" in sql.lower()
+
+
 def test_build_clients_configs():
     with (
         patch("stitch_golden_data.prod_gold_data.l2_br_matcher.BedrockEmbeddingClient") as emb_cls,
