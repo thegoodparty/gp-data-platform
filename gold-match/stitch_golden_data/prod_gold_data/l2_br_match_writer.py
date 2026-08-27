@@ -60,8 +60,10 @@ def validate_results(results: list[MatchResult]) -> None:
     Raises ValueError naming every failing row and why, without writing
     anything.
 
-    Two rules, and only two, because only two are both unenforced elsewhere
-    and reachable from a batch this module can be handed:
+    Three rules, and only three, because only these are both unenforced
+    elsewhere and reachable from a batch this module can be handed (the
+    third: a set district field must be a real label, not a blank string --
+    see the inline comment at the check):
 
     - **The district key is all set or all null.** A partial key is a writer
       bug. It is deliberately not a dbt test or a Delta CHECK (that decision

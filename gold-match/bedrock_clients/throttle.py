@@ -16,6 +16,9 @@ from contextlib import contextmanager
 
 class RateLimiter:
     def __init__(self, max_concurrency: int, requests_per_minute: int, tokens_per_minute: int | None):
+        if tokens_per_minute is not None and tokens_per_minute <= 0:
+            # A falsy 0 would silently mean "unlimited"; reject it instead.
+            raise ValueError(f"tokens_per_minute must be positive or None, got {tokens_per_minute}")
         self.seconds_per_request = 60.0 / requests_per_minute
         self._semaphore = threading.Semaphore(max_concurrency)
         self._lock = threading.Lock()
@@ -36,6 +39,12 @@ class RateLimiter:
             self._token_level = min(self._tpm_capacity, self._token_level + elapsed * self._tpm_capacity / 60.0)
 
     def _wait_for_capacity(self, estimated_tokens: int) -> None:
+        if self._tpm_capacity is not None and estimated_tokens > self._tpm_capacity:
+            # The bucket can never hold this much; waiting would hang forever.
+            raise ValueError(
+                f"estimated_tokens {estimated_tokens} exceeds the tokens-per-minute "
+                f"capacity {self._tpm_capacity:.0f}; this call can never acquire"
+            )
         while True:
             with self._lock:
                 self._refill_locked()

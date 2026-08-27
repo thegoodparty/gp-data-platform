@@ -120,18 +120,22 @@ class BedrockEmbeddingClient:
 
     def _embed_one(self, text: str, purpose_key: str) -> np.ndarray:
         estimated = _estimate_tokens(text)
-        with self._limiter.acquire(estimated_tokens=estimated):
-            response = call_with_retries(
-                lambda: self._client.invoke_model(
+
+        def attempt() -> dict:
+            # One permit per PHYSICAL attempt (each hits the quota), and the
+            # streaming body is read while the permit and pool slot are held:
+            # the connection stays live until the body is consumed, and a
+            # transient failure during the read is part of the attempt.
+            with self._limiter.acquire(estimated_tokens=estimated):
+                response = self._client.invoke_model(
                     modelId=self.model_id,
                     contentType="application/json",
                     accept="application/json",
                     body=self._request_body(text, purpose_key),
-                ),
-                max_retries=self.max_retries,
-                max_elapsed_seconds=self.max_elapsed_seconds,
-            )
-        payload = json.loads(response["body"].read())
+                )
+                return json.loads(response["body"].read())
+
+        payload = call_with_retries(attempt, max_retries=self.max_retries, max_elapsed_seconds=self.max_elapsed_seconds)
         vector, reported_tokens = self._parse_response(payload)
         tokens = reported_tokens if reported_tokens is not None else estimated
         self._limiter.reconcile(estimated_tokens=estimated, actual_tokens=tokens)
@@ -154,8 +158,6 @@ class BedrockEmbeddingClient:
             return self._embed_one(texts[0], "single").reshape(1, -1)
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             rows = list(executor.map(lambda t: self._embed_one(t, "batch"), texts))
-        if len(rows) != len(texts):
-            raise EmbeddingValidationError(f"expected {len(texts)} embeddings, got {len(rows)}")
         return np.vstack(rows)
 
     # -- accounting and provenance ----------------------------------------

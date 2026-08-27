@@ -5,14 +5,21 @@ tool carrying the caller's JSON schema.
 The forced tool is the transport that guarantees schema-shaped output on
 every profile; a native JSON-schema response mode, if the profile turns out
 to support one, is an internal swap inside this class and changes nothing
-for callers. The complete tool input is validated with jsonschema and ANY
-miss raises StructuredOutputError -- the matcher's technical-failure
-contract: a run fails rather than recording a made-up answer. Thinking
-stays off: forced tool choice is incompatible with extended thinking, and
-the incumbent ran at minimal thinking with temperature 0.
+for callers. The complete tool input is validated with jsonschema. An
+output-shape miss (truncation, missing tool block, schema violation) gets
+exactly ONE re-ask -- the incumbent survived stochastic per-call misses via
+constrained decoding plus blind retries, and without a bounded re-ask a
+single miss among tens of thousands of calls aborts a multi-hour run -- and
+a second miss raises StructuredOutputError: the matcher's technical-failure
+contract, never an abstention. Thinking stays off (forced tool choice is
+incompatible with extended thinking; the incumbent ran minimal-thinking at
+temperature 0).
 
-Usage accounting reads the response's usage block (thread-safe) and counts
-billable calls even when their output is later rejected.
+Usage accounting reads each response's usage block (thread-safe) and counts
+every billable response, including ones whose output is then rejected. The
+model id is deliberately NOT configurable: the pricing constants below are
+this model's, and a different model silently mispricing itself is worse
+than adding a priced, tested id when one is actually needed.
 """
 
 import hashlib
@@ -27,9 +34,12 @@ from bedrock_clients.throttle import RateLimiter
 from shared.braintrust import get_client as get_braintrust_client
 from shared.braintrust import is_enabled as braintrust_enabled
 
+_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 _TOOL_NAME = "emit_match_selection"
 # Haiku 4.5 on Bedrock, us-east-1 on-demand, per 1M tokens.
 _PRICE_PER_MTOK = {"input": 1.00, "output": 5.00}
+# One re-ask for output-shape misses; the second miss raises.
+_OUTPUT_SHAPE_RETRIES = 1
 
 
 class StructuredOutputError(Exception):
@@ -37,18 +47,23 @@ class StructuredOutputError(Exception):
 
 
 def _schema_fingerprint(schema: dict) -> str:
-    """sha256 over the schema with numeric minimum/maximum bounds normalized
-    out: the matcher's schema varies only in its candidate-count bound per
-    call, and the fingerprint pins the structure, not the bound."""
+    """sha256 over the schema with ONLY the candidate-count bound normalized
+    out (the `maximum` values inside the selected_candidate_number property,
+    which vary per call with menu size). Any other bound change -- e.g. a
+    confidence maximum drifting -- is meaningful and stays in the hash."""
 
-    def normalize(node):
+    def normalize(node, in_candidate_property=False):
         if isinstance(node, dict):
             return {
-                k: ("<bound>" if k in ("maximum", "minimum") and isinstance(v, int | float) else normalize(v))
+                k: (
+                    "<bound>"
+                    if in_candidate_property and k == "maximum" and isinstance(v, int | float)
+                    else normalize(v, in_candidate_property or k == "selected_candidate_number")
+                )
                 for k, v in node.items()
             }
         if isinstance(node, list):
-            return [normalize(v) for v in node]
+            return [normalize(v, in_candidate_property) for v in node]
         return node
 
     return hashlib.sha256(json.dumps(normalize(schema), sort_keys=True).encode()).hexdigest()
@@ -57,10 +72,9 @@ def _schema_fingerprint(schema: dict) -> str:
 class BedrockStructuredContentClient:
     def __init__(
         self,
-        model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         region: str = "us-east-1",
         temperature: float = 0.0,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
         max_concurrency: int = 100,
         requests_per_minute: int = 10_000,
         tokens_per_minute: int | None = 5_000_000,
@@ -68,7 +82,7 @@ class BedrockStructuredContentClient:
         max_elapsed_seconds: float = 120.0,
         bedrock_runtime=None,
     ):
-        self.model_id = model_id
+        self.model_id = _MODEL_ID
         self.region = region
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -100,67 +114,8 @@ class BedrockStructuredContentClient:
                 ),
             )
 
-    def _converse(self, prompt: str, response_schema: dict) -> dict:
-        estimated_tokens = max(1, len(prompt) // 4) + self.max_tokens
-        with self._limiter.acquire(estimated_tokens=estimated_tokens):
-            response = call_with_retries(
-                lambda: self._client.converse(
-                    modelId=self.model_id,
-                    messages=[{"role": "user", "content": [{"text": prompt}]}],
-                    inferenceConfig={"temperature": self.temperature, "maxTokens": self.max_tokens},
-                    toolConfig={
-                        "tools": [
-                            {
-                                "toolSpec": {
-                                    "name": _TOOL_NAME,
-                                    "description": "Return the selection as arguments to this tool.",
-                                    "inputSchema": {"json": response_schema},
-                                }
-                            }
-                        ],
-                        "toolChoice": {"tool": {"name": _TOOL_NAME}},
-                    },
-                ),
-                max_retries=self.max_retries,
-                max_elapsed_seconds=self.max_elapsed_seconds,
-            )
-        usage = response.get("usage", {})
-        actual = usage.get("totalTokens", estimated_tokens)
-        self._limiter.reconcile(estimated_tokens=estimated_tokens, actual_tokens=actual)
-        return response
-
-    def generate_structured_content(
-        self,
-        prompt: str,
-        response_schema: dict,
-        trace_name: str | None = None,
-        **kwargs,
-    ) -> dict:
-        """Extra kwargs from the incumbent client's signature (model,
-        temperature overrides, thinking levels) are accepted and ignored --
-        this client is single-model, single-config by design; the resolved
-        config records what ran."""
-        self._last_schema_fingerprint = _schema_fingerprint(response_schema)
-
-        def llm_fn() -> dict:
-            return self._converse(prompt, response_schema)
-
-        if braintrust_enabled():
-            response = get_braintrust_client().traced_call(
-                name=trace_name or "generate_structured_content",
-                input_data={"prompt": prompt},
-                llm_call_fn=llm_fn,
-                prompt=prompt,
-                metadata={
-                    "model": self.model_id,
-                    "temperature": self.temperature,
-                    "environment": os.getenv("ENVIRONMENT", "local"),
-                },
-            )
-        else:
-            response = llm_fn()
-
-        # Billable before validated: record usage even for rejected output.
+    def _record_usage(self, response: dict) -> None:
+        # Billable before validated: every returned response was paid for.
         usage = response.get("usage", {})
         prompt_tokens = usage.get("inputTokens", 0)
         completion_tokens = usage.get("outputTokens", 0)
@@ -172,6 +127,7 @@ class BedrockStructuredContentClient:
                 prompt_tokens * _PRICE_PER_MTOK["input"] + completion_tokens * _PRICE_PER_MTOK["output"]
             ) / 1_000_000
 
+    def _extract_and_validate(self, response: dict, response_schema: dict) -> dict:
         stop_reason = response.get("stopReason")
         if stop_reason != "tool_use":
             raise StructuredOutputError(
@@ -188,6 +144,79 @@ class BedrockStructuredContentClient:
             raise StructuredOutputError(f"tool input failed schema validation: {e.message}") from e
         return result
 
+    def generate_structured_content(
+        self,
+        prompt: str,
+        response_schema: dict,
+        trace_name: str | None = None,
+        **kwargs,
+    ) -> dict:
+        """Extra kwargs from the incumbent client's signature (model,
+        temperature overrides, thinking levels) are accepted and ignored --
+        this client is single-model, single-config by design; the resolved
+        config records what ran."""
+        fingerprint = _schema_fingerprint(response_schema)
+        with self._usage_lock:
+            self._last_schema_fingerprint = fingerprint
+        estimated_tokens = max(1, len(prompt) // 4) + self.max_tokens
+
+        def attempt() -> dict:
+            # One permit per PHYSICAL attempt; each hits the quota.
+            with self._limiter.acquire(estimated_tokens=estimated_tokens):
+                return self._client.converse(
+                    modelId=self.model_id,
+                    messages=[{"role": "user", "content": [{"text": prompt}]}],
+                    inferenceConfig={"temperature": self.temperature, "maxTokens": self.max_tokens},
+                    toolConfig={
+                        "tools": [
+                            {
+                                "toolSpec": {
+                                    "name": _TOOL_NAME,
+                                    "description": "Return the selection as arguments to this tool.",
+                                    "inputSchema": {"json": response_schema},
+                                }
+                            }
+                        ],
+                        "toolChoice": {"tool": {"name": _TOOL_NAME}},
+                    },
+                )
+
+        def llm_fn() -> dict:
+            # Usage recording, extraction, and validation all live INSIDE the
+            # traced callable: a truncated or schema-invalid response must
+            # trace as the failure it is, and the traced output is the parsed
+            # selection (matching the incumbent), not the raw AWS envelope.
+            last_error: StructuredOutputError | None = None
+            for _ in range(1 + _OUTPUT_SHAPE_RETRIES):
+                response = call_with_retries(
+                    attempt, max_retries=self.max_retries, max_elapsed_seconds=self.max_elapsed_seconds
+                )
+                usage = response.get("usage", {})
+                self._limiter.reconcile(
+                    estimated_tokens=estimated_tokens,
+                    actual_tokens=usage.get("totalTokens", estimated_tokens),
+                )
+                self._record_usage(response)
+                try:
+                    return self._extract_and_validate(response, response_schema)
+                except StructuredOutputError as e:
+                    last_error = e
+            raise last_error
+
+        if braintrust_enabled():
+            return get_braintrust_client().traced_call(
+                name=trace_name or "generate_structured_content",
+                input_data={"prompt": prompt},
+                llm_call_fn=llm_fn,
+                prompt=prompt,
+                metadata={
+                    "model": self.model_id,
+                    "temperature": self.temperature,
+                    "environment": os.getenv("ENVIRONMENT", "local"),
+                },
+            )
+        return llm_fn()
+
     def get_usage_stats(self) -> dict:
         with self._usage_lock:
             return {
@@ -198,6 +227,8 @@ class BedrockStructuredContentClient:
             }
 
     def resolved_config(self) -> dict:
+        with self._usage_lock:
+            fingerprint = self._last_schema_fingerprint
         return {
             "provider": "bedrock",
             "region": self.region,
@@ -207,7 +238,8 @@ class BedrockStructuredContentClient:
             "max_tokens": self.max_tokens,
             "thinking": "off",
             "tool_name": _TOOL_NAME,
-            "schema_fingerprint": self._last_schema_fingerprint,
+            "output_shape_retries": _OUTPUT_SHAPE_RETRIES,
+            "schema_fingerprint": fingerprint,
             "max_concurrency": self.max_concurrency,
             "requests_per_minute": self.requests_per_minute,
             "tokens_per_minute": self.tokens_per_minute,

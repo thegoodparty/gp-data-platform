@@ -334,6 +334,17 @@ class BraintrustClient:
             logger.warning(f"Prompt template format error: {e}")
             return prompt
 
+    def _require_same_pin(self, cache_key: str, prompt_name: str, version: Optional[str]) -> None:
+        """The cache holds one object per (project, slug); a second caller
+        requesting a DIFFERENT pin must fail loudly rather than silently
+        receive whatever version the first caller populated."""
+        recorded = self._prompt_provenance.get(cache_key)
+        if recorded is not None and recorded.get("pinned_version") != version:
+            raise ValueError(
+                f"prompt '{prompt_name}' is already cached with pin "
+                f"{recorded.get('pinned_version')!r}; refusing a conflicting load with {version!r}"
+            )
+
     def get_cached_prompt_object(
         self,
         prompt_name: str,
@@ -346,10 +357,12 @@ class BraintrustClient:
         cache_key = f"{self._project}:{prompt_name}"
 
         if cache_key in self._cached_prompts:
+            self._require_same_pin(cache_key, prompt_name, version)
             return self._cached_prompts[cache_key]
 
         with self._prompt_cache_lock:
             if cache_key in self._cached_prompts:
+                self._require_same_pin(cache_key, prompt_name, version)
                 return self._cached_prompts[cache_key]
 
             try:

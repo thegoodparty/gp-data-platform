@@ -31,6 +31,7 @@ import pandas as pd
 
 from bedrock_clients import BedrockEmbeddingClient, BedrockStructuredContentClient
 from shared.braintrust import build_cached_prompt, cache_prompt, flush_logs, get_prompt_provenance, init_braintrust
+from shared.braintrust import is_enabled as braintrust_is_enabled
 from shared.databricks_client import DatabricksClient
 from shared.llm_gemini import GeminiEmbeddingClient
 from shared.llm_gemini_3 import Gemini3Client, GeminiModelType, ThinkingLevel
@@ -615,6 +616,14 @@ class L2BrMatcher:
         if prompt_obj is not None:
             self.prompt_provenance = get_prompt_provenance(self._prompt_name)
             self.logger.info(f"Braintrust prompt pinned: {self.prompt_provenance}")
+        elif braintrust_is_enabled():
+            # Fail closed: with Braintrust live, silently running on the
+            # in-code fallback would swap which prompt the whole run used --
+            # the exact comparability the pin exists to protect.
+            raise RuntimeError(
+                f"Braintrust is enabled but the pinned prompt {self._prompt_name}@{PINNED_PROMPT_VERSION} "
+                "did not load; failing closed rather than running on the fallback"
+            )
         else:
             self.prompt_provenance = None
             self.logger.warning("Braintrust prompt not available, using fallback")
@@ -850,6 +859,12 @@ class L2BrMatcher:
         # because they assumed a constant delay rather than the ratchet. Tuning these wants a measured run, not a
         # guess; that measured run is what the write-path PR and the
         # supervised cutover produce.
+        if len(texts) == 1:
+            # A one-text call is the QUERY path by the clients' len-dispatch
+            # convention. A single-row state universe (the synthetic State
+            # row alone, i.e. a delivery with no real districts) must fail
+            # loudly rather than embed a document into query space.
+            raise ValueError(f"state {state!r} universe has a single row; refusing a one-text document embed")
         embeddings = await self._run_in_pool(
             self.embedding_client.create_embeddings,
             texts,
@@ -1255,7 +1270,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--embedding-batch-size",
         type=_positive_int,
         default=100,
-        help="District texts embedded per call when building the universe (positive; default: 100)",
+        help=(
+            "District texts embedded per call when building the universe (positive; default: 100). "
+            "Shapes the gemini config's client only; the Bedrock client is one text per call"
+        ),
     )
     parser.add_argument(
         "--enable-school-whole-assertion",
@@ -1289,7 +1307,11 @@ def _build_clients(model_config: str) -> tuple[Any, Any]:
             BedrockEmbeddingClient(model="nova", requests_per_minute=2000, tokens_per_minute=None),
             BedrockStructuredContentClient(),
         )
-    return None, None
+    if model_config == "gemini":
+        return None, None
+    # argparse choices guard the CLI only; a programmatic caller passing a
+    # typo must not silently receive the dormant Gemini stack.
+    raise ValueError(f"unknown model config {model_config!r}")
 
 
 async def main() -> None:

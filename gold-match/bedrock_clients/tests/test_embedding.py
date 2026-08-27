@@ -168,6 +168,24 @@ def test_throttling_retried_then_succeeds():
     assert out.shape == (1, 8)
 
 
+def test_limiter_permit_per_physical_attempt():
+    """Each physical attempt hits the quota, so each must take its own
+    permit -- a retried call under one permit would amplify a throttling
+    wave instead of pacing through it."""
+    client, stubber = make_client_and_stubber()
+    stubber.add_client_error("invoke_model", service_error_code="ThrottlingException")
+    stubber.add_response(
+        "invoke_model", response_body({"embedding": [0.2] * 8, "inputTextTokenCount": 3}), titan_expected("y")
+    )
+    with stubber, patch("bedrock_clients._retry.random.uniform", return_value=0.0):
+        emb = make_titan(client)
+        acquires = []
+        real_acquire = emb._limiter.acquire
+        emb._limiter.acquire = lambda **kw: (acquires.append(1), real_acquire(**kw))[1]
+        emb.create_embeddings(["y"])
+    assert len(acquires) == 2
+
+
 def test_validation_exception_not_retried():
     client, stubber = make_client_and_stubber()
     stubber.add_client_error("invoke_model", service_error_code="ValidationException")

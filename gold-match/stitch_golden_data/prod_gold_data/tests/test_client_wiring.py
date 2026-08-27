@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from stitch_golden_data.prod_gold_data.l2_br_matcher import (
-    PINNED_PROMPT_VERSION,
     L2BrMatcher,
     _build_clients,
     _parse_args,
@@ -45,9 +44,19 @@ def test_default_construction_is_byte_preserved(patched_deps):
     assert kwargs["default_temperature"] == 0.0
 
 
-def test_prompt_cache_pins_version(patched_deps):
-    L2BrMatcher()
-    patched_deps["cache_prompt"].assert_called_once_with("stitch-golden-data-matcher", version=PINNED_PROMPT_VERSION)
+def test_pinned_prompt_failing_to_load_fails_closed_when_braintrust_enabled(patched_deps):
+    """A pin that does not load must stop the run when Braintrust is live:
+    silently proceeding on the in-code fallback would swap which prompt the
+    whole run used, defeating the pin's comparability purpose."""
+    patched_deps["cache_prompt"].return_value = None
+    with patch("stitch_golden_data.prod_gold_data.l2_br_matcher.braintrust_is_enabled", return_value=True):
+        with pytest.raises(RuntimeError, match="failing closed"):
+            L2BrMatcher()
+
+
+def test_build_clients_unknown_config_raises():
+    with pytest.raises(ValueError, match="unknown model config"):
+        _build_clients("bedrock-titan")
 
 
 def test_cli_default_is_bedrock():

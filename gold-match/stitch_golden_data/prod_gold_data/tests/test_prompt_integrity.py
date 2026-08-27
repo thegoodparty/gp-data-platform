@@ -5,6 +5,8 @@ and its creator has left; an unpinned slug is live risk)."""
 
 from unittest.mock import patch
 
+import pytest
+
 from shared.braintrust import (
     BraintrustClient,
     build_cached_prompt,
@@ -76,6 +78,16 @@ def test_provenance_recorded():
     enable_with(FakePromptObj("plain text prompt"))
     cache_prompt("p", version="3a27a867")
     assert get_prompt_provenance("p") == {"slug": "p", "pinned_version": "3a27a867", "loaded": True}
+
+
+def test_conflicting_pin_is_refused():
+    """The cache holds one object per slug; a second caller pinning a
+    different version must fail loudly, never silently receive the first
+    caller's version."""
+    enable_with(FakePromptObj("plain text prompt"))
+    cache_prompt("p", version="3a27a867")
+    with pytest.raises(ValueError, match="conflicting"):
+        cache_prompt("p", version="deadbeef")
 
 
 def test_provenance_records_failed_load():
