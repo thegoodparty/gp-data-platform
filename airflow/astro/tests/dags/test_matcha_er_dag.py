@@ -10,6 +10,7 @@ import logging
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from airflow.models import DagBag
@@ -128,6 +129,27 @@ def _dag_module():
     return sys.modules[_DAG.get_task("candidacy_stage.gate").python_callable.__module__]
 
 
+@contextmanager
+def _pod_runtime(module, *, pull_secret="", env=None):
+    """Patch what `_MatchaPodOperator.pre_execute` reaches for at task runtime.
+
+    It resolves two things from outside the operator — the image pull secret
+    Variable and the pod's Databricks environment — so every pre_execute test
+    has to stand both up or it reaches a real metastore.
+    """
+    with (
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+        patch.object(
+            module,
+            "pod_databricks_env",
+            autospec=True,
+            return_value=env if env is not None else {"DATABRICKS_HOST": "https://dbc.example"},
+        ),
+    ):
+        mock_variable.get.return_value = pull_secret
+        yield
+
+
 def test_pull_secret_unset_leaves_the_pod_pulling_anonymously():
     """image_pull_secrets holds Kubernetes client objects, not strings, so
     Jinja cannot template it — _MatchaPodOperator.pre_execute resolves it at
@@ -143,8 +165,7 @@ def test_pull_secret_unset_leaves_the_pod_pulling_anonymously():
     module = _dag_module()
     op = module._match_pod(_ENTITY_SPECS[0])
     assert op.image_pull_secrets == []  # KubernetesPodOperator's real instantiated default
-    with patch.object(module, "Variable", autospec=True) as mock_variable:
-        mock_variable.get.return_value = ""
+    with _pod_runtime(module):
         op.pre_execute({})
     assert op.image_pull_secrets == []
 
@@ -152,8 +173,7 @@ def test_pull_secret_unset_leaves_the_pod_pulling_anonymously():
 def test_pull_secret_set_attaches_exactly_one_reference():
     module = _dag_module()
     op = module._match_pod(_ENTITY_SPECS[0])
-    with patch.object(module, "Variable", autospec=True) as mock_variable:
-        mock_variable.get.return_value = "matcha-ghcr-pull"
+    with _pod_runtime(module, pull_secret="matcha-ghcr-pull"):
         op.pre_execute({})
     assert len(op.image_pull_secrets) == 1
     assert op.image_pull_secrets[0].name == "matcha-ghcr-pull"
@@ -185,11 +205,7 @@ def test_a_mutable_tag_warns_that_the_run_is_not_reproducible():
     module = _dag_module()
     op = module._match_pod(_ENTITY_SPECS[0])
     op.image = "ghcr.io/thegoodparty/gp-data-platform/matcha:latest"
-    with (
-        patch.object(module, "Variable", autospec=True) as mock_variable,
-        patch.object(module, "t_log", autospec=True) as mock_log,
-    ):
-        mock_variable.get.return_value = ""
+    with _pod_runtime(module), patch.object(module, "t_log", autospec=True) as mock_log:
         op.pre_execute({})
     assert mock_log.warning.called
     assert not mock_log.info.called
@@ -204,11 +220,7 @@ def test_a_sha_pinned_tag_logs_the_image_without_warning():
     ):
         op = module._match_pod(_ENTITY_SPECS[0])
         op.image = image
-        with (
-            patch.object(module, "Variable", autospec=True) as mock_variable,
-            patch.object(module, "t_log", autospec=True) as mock_log,
-        ):
-            mock_variable.get.return_value = ""
+        with _pod_runtime(module), patch.object(module, "t_log", autospec=True) as mock_log:
             op.pre_execute({})
         assert not mock_log.warning.called, image
         assert mock_log.info.call_args.args[1] == image
@@ -216,7 +228,8 @@ def test_a_sha_pinned_tag_logs_the_image_without_warning():
 
 def _run_cleanup(module, *, swap_on: bool):
     """Invoke the cleanup callable with its Databricks calls mocked out."""
-    cleanup_fn = _DAG.get_task("cleanup").python_callable
+    assert _DAG is not None
+    cleanup_fn = cast(Any, _DAG.get_task("cleanup")).python_callable
     with (
         patch.object(module, "swap_enabled", autospec=True, return_value=swap_on),
         patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
@@ -251,6 +264,46 @@ def test_rehearsal_cleanup_keeps_the_last_live_swaps_rollback_position():
     mock_drop_old, mock_stale = _run_cleanup(_dag_module(), swap_on=False)
     assert mock_drop_old.call_args_list == []
     assert {call.args[3] for call in mock_stale.call_args_list} == _ALL_LIVE_TABLES
+
+
+def test_the_pod_declares_no_credentials_before_it_runs():
+    """Airflow snapshots rendered template fields (and the KPO pod YAML) into
+    the metadata DB and the UI BEFORE pre_execute. `env_vars` is one of those
+    fields, so templating the Databricks credentials in put them in that
+    snapshot and left them relying on the secrets masker to come back `***`.
+    Resolved in pre_execute instead, there is nothing in the snapshot to
+    redact.
+    """
+    for entity in _ENTITIES:
+        assert _DAG.get_task(f"{entity}.match").env_vars == []
+
+
+def test_pre_execute_loads_the_pods_databricks_env():
+    """And loads it from the shared accessor, not a second reading of the
+    connection — the pod and the gate/swap tasks must not drift on which
+    fields they require."""
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    env = {
+        "DATABRICKS_HOST": "https://dbc.example",
+        "DATABRICKS_HTTP_PATH": "/sql/1.0/warehouses/abc",
+        "DATABRICKS_CLIENT_ID": "client",
+        "DATABRICKS_CLIENT_SECRET": "secret",
+    }
+    with _pod_runtime(module, env=env):
+        op.pre_execute({})
+    assert {var.name: var.value for var in op.env_vars} == env
+
+
+def test_a_retry_does_not_accumulate_env_vars():
+    """pre_execute runs again on every attempt, so the assignment has to
+    replace rather than append."""
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    with _pod_runtime(module):
+        op.pre_execute({})
+        op.pre_execute({})
+    assert [var.name for var in op.env_vars] == ["DATABRICKS_HOST"]
 
 
 def test_gate_task_checks_its_own_entitys_tables():

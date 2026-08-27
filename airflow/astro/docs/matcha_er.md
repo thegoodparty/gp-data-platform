@@ -92,6 +92,27 @@ considering that deployment done.
 **Flip the GHCR package to private only once BOTH deployments are pulling successfully with their own
 secret.** Flipping it earlier breaks whichever deployment doesn't have a working secret yet.
 
+## How the pod gets its Databricks credentials
+
+The match pod authenticates with the same `databricks` / `databricks_dev` Connection the gate and swap
+tasks use, read through one accessor so the pod and the tasks cannot drift on which fields they need.
+The four `DATABRICKS_*` values resolve in the operator's `pre_execute`, not as templated fields.
+
+That ordering is the point. Airflow snapshots an operator's rendered template fields — and the whole KPO
+pod YAML — into the metadata DB before `pre_execute` runs, then serves them in the UI. It redacts values
+the secrets masker knows, and a Connection registers its password with the masker as it loads, so a
+templated credential would come back `***` in practice. Resolving after the snapshot means there is
+nothing in it to redact.
+
+What remains is the pod spec itself: the client secret reaches the Kubernetes API as a plain `value:` on
+an env var, so it sits in etcd and shows up in `kubectl describe pod`. Closing that would mean putting
+the credentials in a Kubernetes Secret and referencing them with `secretKeyRef` — which on Astro Hosted
+is not self-serve (Astronomer support creates namespace secrets, the same as the image pull secret) and
+would make a second source of truth for a credential that already lives in the Airflow Connection, with
+its own support-ticket rotation path and a silent-drift failure when the two disagree. Not worth it while
+the only access that can read the pod spec is the same platform-level access that can already read the
+Airflow metadata DB. Revisit it if that stops being true.
+
 ## Which build a run used
 
 The pod sets `image_pull_policy: Always`, so every pod pulls its tag fresh instead of reusing

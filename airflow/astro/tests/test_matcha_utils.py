@@ -15,6 +15,7 @@ from include.custom_functions.matcha_utils import (
     check_nulls,
     check_sources,
     count_sql,
+    databricks_conn_fields,
     dated_name,
     distinct_count_sql,
     distinct_sources_sql,
@@ -24,6 +25,7 @@ from include.custom_functions.matcha_utils import (
     null_probe_sql,
     old_name,
     overlap_sql,
+    pod_databricks_env,
     run_gate,
     stale_vintages,
     swap_enabled,
@@ -540,3 +542,78 @@ class TestDropStaleVintages:
         cursor.fetchall.return_value = [("clustered_x_20260825",)]
         assert drop_stale_vintages(conn, "cat", "er_source", "clustered_x", "20260801") == []
         assert not [c for c in cursor.execute.call_args_list if "DROP TABLE" in c[0][0]]
+
+
+class TestDatabricksConnection:
+    """The single accessor the gate/swap tasks and the match pod both read."""
+
+    @staticmethod
+    def _conn(**overrides):
+        conn = MagicMock()
+        conn.host = overrides.get("host", "https://dbc.example")
+        conn.login = overrides.get("login", "client-id")
+        conn.password = overrides.get("password", "client-secret")
+        conn.extra_dejson = overrides.get("extra", {"http_path": "/sql/1.0/warehouses/abc"})
+        return conn
+
+    def test_fields_come_from_the_variable_named_connection(self):
+        with (
+            patch.object(matcha_utils, "Variable", autospec=True) as variable,
+            patch.object(matcha_utils, "BaseHook", autospec=True) as base_hook,
+        ):
+            variable.get.return_value = "databricks_dev"
+            base_hook.get_connection.return_value = self._conn()
+            fields = databricks_conn_fields()
+        assert base_hook.get_connection.call_args.args[0] == "databricks_dev"
+        assert fields == {
+            "host": "https://dbc.example",
+            "http_path": "/sql/1.0/warehouses/abc",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+        }
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [{"host": ""}, {"login": ""}, {"password": ""}, {"extra": {}}],
+        ids=["no_host", "no_login", "no_password", "no_http_path"],
+    )
+    def test_a_missing_field_fails_loudly(self, overrides):
+        """Better than a pod that starts and then cannot authenticate."""
+        with (
+            patch.object(matcha_utils, "Variable", autospec=True) as variable,
+            patch.object(matcha_utils, "BaseHook", autospec=True) as base_hook,
+        ):
+            variable.get.return_value = "databricks"
+            base_hook.get_connection.return_value = self._conn(**overrides)
+            with pytest.raises(ValueError, match="missing a required"):
+                databricks_conn_fields()
+
+    def test_pod_env_names_match_what_the_container_reads(self):
+        with (
+            patch.object(matcha_utils, "Variable", autospec=True) as variable,
+            patch.object(matcha_utils, "BaseHook", autospec=True) as base_hook,
+        ):
+            variable.get.return_value = "databricks"
+            base_hook.get_connection.return_value = self._conn()
+            env = pod_databricks_env()
+        assert env == {
+            "DATABRICKS_HOST": "https://dbc.example",
+            "DATABRICKS_HTTP_PATH": "/sql/1.0/warehouses/abc",
+            "DATABRICKS_CLIENT_ID": "client-id",
+            "DATABRICKS_CLIENT_SECRET": "client-secret",
+        }
+
+    def test_the_warehouse_connection_disables_cloud_fetch(self):
+        """get_databricks_connection defaults it ON, and every other caller in
+        the repo passes False. These queries are scalar COUNT/EXISTS and small
+        DISTINCTs, so CloudFetch would route them through pre-signed S3 URLs —
+        a pointless round-trip at best, a failure where it isn't permitted."""
+        with (
+            patch.object(matcha_utils, "Variable", autospec=True) as variable,
+            patch.object(matcha_utils, "BaseHook", autospec=True) as base_hook,
+            patch.object(matcha_utils, "get_databricks_connection", autospec=True) as connect,
+        ):
+            variable.get.return_value = "databricks"
+            base_hook.get_connection.return_value = self._conn()
+            matcha_utils.open_connection()
+        assert connect.call_args.kwargs["use_cloud_fetch"] is False

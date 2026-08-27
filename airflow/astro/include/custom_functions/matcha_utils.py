@@ -338,12 +338,16 @@ def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[
 # with the builders above, run, then hand the numbers to the pure checks.
 
 
-def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
-    """Open a warehouse connection from the deployment's Databricks connection.
+def databricks_conn_fields(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
+    """The host and OAuth credentials of the deployment's Databricks connection.
 
     WHICH connection is chosen at task runtime from the shared
     `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
     prod), matching the other DAGs. Must not be called at DAG parse.
+
+    One accessor for both consumers — the gate/swap tasks' own warehouse
+    connection and the match pod's environment — so the two cannot drift on
+    which fields they require or how they read them.
     """
     conn_id = Variable.get(databricks_conn_id_var, default="databricks")
     db_conn = BaseHook.get_connection(conn_id)
@@ -353,11 +357,44 @@ def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
             f"Databricks connection '{conn_id}' is missing a required "
             "host, login, password, or http_path (extra) field"
         )
+    return {
+        "host": db_conn.host,
+        "http_path": http_path,
+        "client_id": db_conn.login,
+        "client_secret": db_conn.password,
+    }
+
+
+def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
+    """The DATABRICKS_* variables the matcha container authenticates with.
+
+    Read at task runtime rather than templated into the operator, so the
+    credentials are never a rendered template value: Airflow snapshots
+    rendered fields (and the KPO pod YAML) into the metadata DB before
+    `pre_execute` runs, and while it redacts known secrets on the way in,
+    values that never reach the snapshot need no redaction to be safe.
+    """
+    fields = databricks_conn_fields(databricks_conn_id_var)
+    return {
+        "DATABRICKS_HOST": fields["host"],
+        "DATABRICKS_HTTP_PATH": fields["http_path"],
+        "DATABRICKS_CLIENT_ID": fields["client_id"],
+        "DATABRICKS_CLIENT_SECRET": fields["client_secret"],
+    }
+
+
+def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
+    """Open a warehouse connection from the deployment's Databricks connection.
+
+    `use_cloud_fetch=False` to match every other caller in the repo: this
+    connection only ever runs scalar COUNT/EXISTS and small DISTINCT queries,
+    and CloudFetch would route those through pre-signed S3 URLs — a pointless
+    round-trip at best, and a failure where the warehouse or VPC does not
+    allow it.
+    """
     return get_databricks_connection(
-        host=db_conn.host,
-        http_path=http_path,
-        client_id=db_conn.login,
-        client_secret=db_conn.password,
+        **databricks_conn_fields(databricks_conn_id_var),
+        use_cloud_fetch=False,
     )
 
 

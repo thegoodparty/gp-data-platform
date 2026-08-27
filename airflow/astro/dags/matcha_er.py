@@ -69,6 +69,7 @@ from include.custom_functions.matcha_utils import (
     drop_old_table,
     drop_stale_vintages,
     open_connection,
+    pod_databricks_env,
     run_gate,
     swap_enabled,
     swap_table,
@@ -109,26 +110,9 @@ CATALOG_VARIABLE = "databricks_catalog"
 # Weekly schedule, so this keeps roughly a month of vintages to audit against.
 VINTAGE_RETENTION_DAYS = 28
 
-# Databricks creds for the pod, reused from the SAME connection the other DAGs use.
-# WHICH connection is chosen at task RUNTIME from the shared `databricks_conn_id`
-# Variable, NOT from a parse-time env var — Astro does not expose deployment env vars
-# to the DAG processor at parse. login/password is the standard SP-OAuth storage, with
-# an extra_dejson fallback.
-_DBX_CONN_EXPR = "conn.get(var.value.get('databricks_conn_id', 'databricks'))"
-_DBX_ENV: dict[str, str] = {
-    "DATABRICKS_HOST": "{% set c = " + _DBX_CONN_EXPR + " %}{{ c.host }}",
-    "DATABRICKS_HTTP_PATH": "{% set c = " + _DBX_CONN_EXPR + " %}{{ c.extra_dejson.get('http_path', '') }}",
-    "DATABRICKS_CLIENT_ID": "{% set c = "
-    + _DBX_CONN_EXPR
-    + " %}{{ c.login or c.extra_dejson.get('client_id', '') }}",
-    "DATABRICKS_CLIENT_SECRET": "{% set c = "
-    + _DBX_CONN_EXPR
-    + " %}{{ c.password or c.extra_dejson.get('client_secret', '') }}",
-}
-
 
 class _MatchaPodOperator(KubernetesPodOperator):
-    """KPO that resolves its image pull secret at task runtime.
+    """KPO that resolves its pull secret and Databricks env at task runtime.
 
     Astro exposes neither Variables nor deployment env vars to the DAG
     processor at parse, and `image_pull_secrets` holds Kubernetes client
@@ -137,12 +121,24 @@ class _MatchaPodOperator(KubernetesPodOperator):
     its own secret: astro-dev receives one from Astronomer support before
     astro-prod does, and until a deployment has one the matcha GHCR package is
     public and the kubelet pulls it anonymously.
+
+    The Databricks credentials resolve here for a second reason. Airflow
+    snapshots an operator's rendered template fields — `env_vars` among them,
+    plus the whole KPO pod YAML — into the metadata DB before `pre_execute`
+    runs, and serves them in the UI. It redacts values the secrets masker
+    knows, and a connection password is registered with the masker the moment
+    the connection loads, so a templated credential would in practice come
+    back `***`. Resolving after the snapshot means there is nothing to redact:
+    the credential is only ever in the pod spec this operator submits.
     """
 
     def pre_execute(self, context) -> None:
         secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default="")
         if secret_name:
             self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
+        # Replaces rather than extends: these four values are the pod's whole environment,
+        # and pre_execute runs again on every retry.
+        self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
         self._log_image_provenance()
         super().pre_execute(context)
 
@@ -202,7 +198,6 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        env_vars=_DBX_ENV,
         container_resources=k8s.V1ResourceRequirements(
             requests={"memory": "8Gi", "cpu": "4"},
             limits={"memory": "8Gi", "cpu": "4"},
