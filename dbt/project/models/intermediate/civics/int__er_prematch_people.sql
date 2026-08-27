@@ -45,10 +45,7 @@ with
             state as state_raw,
             city,
             cast(null as string) as zip_raw,
-            coalesce(
-                try_cast(birth_date as date),
-                try_to_date(replace(birth_date, '/', '-'), 'M-d-yyyy')
-            ) as birth_date,
+            birth_date,
             party_affiliation as party_raw,
             cast(null as string) as br_candidate_id,
             coalesce(contact_created_at, created_at) as first_seen_at
@@ -195,7 +192,10 @@ with
         qualify
             row_number() over (
                 partition by candidate_code
-                order by date_processed_date asc nulls last, _ab_source_file_url asc
+                order by
+                    date_processed_date asc nulls last,
+                    _ab_source_file_url asc,
+                    _airbyte_raw_id asc
             )
             = 1
     ),
