@@ -273,8 +273,8 @@ with
                     lower({{ remove_name_suffixes("trim(u.last_name)") }}), ',$', ''
                 )
             ) as last_name,
-            -- '' means no suffix; a mismatch is a cannot-link downstream
-            -- (father/son share family phones and differ only by Jr/Sr).
+            -- '' means no suffix. Retained for audit: father/son pairs share a
+            -- family phone and differ only by Jr/Sr.
             coalesce(
                 nullif(
                     regexp_replace(
@@ -411,4 +411,10 @@ where
     -- Names that normalize to empty (punctuation-only) cannot be matched.
     n.first_name <> ''
     and n.last_name <> ''
+    -- Role inboxes ("<town> party registrar") and signup-form test fixtures
+    -- ("test user"), neither of which is a person. Both are confined to the
+    -- product sources and none carries a br_candidate_id, so nothing filed is
+    -- lost; left in, their shared name merged unrelated HubSpot contacts.
+    and n.last_name not like '%party registrar%'
+    and n.last_name <> 'user'
     and (n.source_name <> 'techspeed' or coalesce(tsg.n_groups, 1) = 1)
