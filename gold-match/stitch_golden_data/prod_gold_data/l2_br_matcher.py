@@ -29,7 +29,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from shared.braintrust import build_cached_prompt, cache_prompt, flush_logs, init_braintrust
+from bedrock_clients import BedrockEmbeddingClient, BedrockStructuredContentClient
+from shared.braintrust import build_cached_prompt, cache_prompt, flush_logs, get_prompt_provenance, init_braintrust
 from shared.databricks_client import DatabricksClient
 from shared.llm_gemini import GeminiEmbeddingClient
 from shared.llm_gemini_3 import Gemini3Client, GeminiModelType, ThinkingLevel
@@ -37,6 +38,10 @@ from shared.logger import get_logger
 
 PENDING_OFFICES_TABLE = "int__l2_br_match_pending_offices"
 DISTRICT_UNIVERSE_TABLE = "int__l2_district_universe"
+
+# The registry prompt is org-wide editable and its creator left the org, so
+# production loads THIS content-addressed version, never the live slug tip.
+PINNED_PROMPT_VERSION = "3a27a867"
 
 MENU_SIZE = 13
 STATE_QUERY_INSERT_INDEX = 10  # 11th slot
@@ -557,21 +562,36 @@ class L2BrMatcher:
     what is frozen and what changed in this PR.
     """
 
-    def __init__(self, catalog: str = "goodparty_data_catalog", schema: str = "dbt"):
+    def __init__(
+        self,
+        catalog: str = "goodparty_data_catalog",
+        schema: str = "dbt",
+        embedding_client: Any = None,
+        llm: Any = None,
+    ):
         self.logger = get_logger(__name__)
         self.databricks = DatabricksClient()
 
+        # Injection points for the model clients. The defaults construct the
+        # incumbent Gemini stack exactly as before (dormant unless a caller
+        # selects it); the CLI wires the Bedrock stack by default.
         target_concurrency = 1200
-        self.llm = Gemini3Client(
-            default_model=GeminiModelType.FLASH_3,
-            default_temperature=0.0,
-            thinking_level=ThinkingLevel.MINIMAL,
-            max_connections=target_concurrency,
-            max_keepalive_connections=target_concurrency // 4,
-            max_retries=11,
-            base_delay=1.0,
-        )
-        self.embedding_client = GeminiEmbeddingClient(max_retries=11, base_delay=1.0)
+        if llm is not None:
+            self.llm = llm
+        else:
+            self.llm = Gemini3Client(
+                default_model=GeminiModelType.FLASH_3,
+                default_temperature=0.0,
+                thinking_level=ThinkingLevel.MINIMAL,
+                max_connections=target_concurrency,
+                max_keepalive_connections=target_concurrency // 4,
+                max_retries=11,
+                base_delay=1.0,
+            )
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            self.embedding_client = GeminiEmbeddingClient(max_retries=11, base_delay=1.0)
 
         # An explicit pool, not the loop's default executor (asyncio.to_thread's
         # min(32, cpu_count + 4)), so the httpx pool above actually sees the
@@ -591,10 +611,12 @@ class L2BrMatcher:
 
     def _init_prompt_cache(self) -> None:
         self._prompt_name = "stitch-golden-data-matcher"
-        prompt_obj = cache_prompt(self._prompt_name)
+        prompt_obj = cache_prompt(self._prompt_name, version=PINNED_PROMPT_VERSION)
         if prompt_obj is not None:
-            self.logger.info("Braintrust prompt cached for stitch-golden-data-matcher")
+            self.prompt_provenance = get_prompt_provenance(self._prompt_name)
+            self.logger.info(f"Braintrust prompt pinned: {self.prompt_provenance}")
         else:
+            self.prompt_provenance = None
             self.logger.warning("Braintrust prompt not available, using fallback")
 
     async def _run_in_pool(self, func: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1152,7 +1174,11 @@ Base decisions on semantic meaning, geography, and functional appropriateness.
                     )
                 )
                 results.extend(batch_results)
-                self.logger.info(f"Matched {len(results)}/{len(offices)} offices")
+                matched_so_far = sum(1 for r in results if r.l2_district_name is not None)
+                self.logger.info(
+                    f"Processed {len(results)}/{len(offices)} offices "
+                    f"({matched_so_far} matched, {len(results) - matched_so_far} abstained)"
+                )
 
             return results
         except Exception:
@@ -1238,12 +1264,37 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "the holdout adjudicates residency zones vs zoned electorates; the holdout runs both arms"
         ),
     )
+    parser.add_argument(
+        "--model-config",
+        choices=["bedrock", "bedrock-nova", "gemini"],
+        default="bedrock",
+        help=(
+            "Model stack: bedrock = Titan V2 + Haiku via Bedrock (default), bedrock-nova = Nova "
+            "embeddings + Haiku, gemini = the dormant incumbent (explicit selection only)"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _build_clients(model_config: str) -> tuple[Any, Any]:
+    """Construct the model stack for --model-config. The gemini config
+    returns (None, None) so L2BrMatcher's own defaults construct the
+    incumbent exactly as before. Nova has a 2,000 requests/min quota and no
+    published tokens/min quota; Titan's class defaults carry its 6,000/300k."""
+    if model_config == "bedrock":
+        return BedrockEmbeddingClient(model="titan"), BedrockStructuredContentClient()
+    if model_config == "bedrock-nova":
+        return (
+            BedrockEmbeddingClient(model="nova", requests_per_minute=2000, tokens_per_minute=None),
+            BedrockStructuredContentClient(),
+        )
+    return None, None
 
 
 async def main() -> None:
     args = _parse_args()
-    matcher = L2BrMatcher()
+    embedding_client, llm = _build_clients(args.model_config)
+    matcher = L2BrMatcher(embedding_client=embedding_client, llm=llm)
     try:
         results = await matcher.run(
             states=args.states,

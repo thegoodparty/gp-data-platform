@@ -658,6 +658,7 @@ class TestMainForwardsTheSchoolGateFlag:
                 batch_size=100,
                 embedding_batch_size=100,
                 enable_school_whole_assertion=True,
+                model_config="gemini",
             )
             asyncio.run(main())
 
