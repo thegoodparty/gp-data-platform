@@ -124,31 +124,27 @@ def _inject_deterministic_group_edges(linker: Linker, config: EntityConfig, pred
         expr
         for c in concat.columns
         if f"{c.unquote().name}_l" in pred_columns
-        for expr in (f"l.{c.name} AS {c.name_l}", f"r.{c.name} AS {c.name_r}")
+        for expr in (f"hub.{c.name} AS {c.name_l}", f"spoke.{c.name} AS {c.name_r}")
     ]
 
-    # least/greatest normalizes the existing pair keys so the anti-join stays a
-    # conjunctive equality. Testing both orderings with an OR instead makes
-    # DuckDB fall back to a nested loop over the whole predictions table.
+    # Match the existing pair keys with least/greatest rather than testing both
+    # orderings with an OR: the OR form cannot be decorrelated, and DuckDB falls
+    # back to a nested loop over the whole predictions table.
     inserted = con.execute(f"""
         INSERT INTO {pred_table} BY NAME
-        WITH stars AS (
-            SELECT min(unique_id) OVER w AS hub_id, unique_id AS spoke_id
+        WITH spokes AS (
+            SELECT *, min(unique_id) OVER (PARTITION BY "{col}") AS hub_id
             FROM {concat.physical_name}
-            WHERE "{col}" IS NOT NULL AND "{col}" <> ''
-            WINDOW w AS (PARTITION BY "{col}")
-            QUALIFY unique_id <> min(unique_id) OVER w
-        ),
-        existing AS (
-            SELECT least(unique_id_l, unique_id_r) AS a, greatest(unique_id_l, unique_id_r) AS b
-            FROM {pred_table}
+            WHERE "{col}" IS NOT NULL
+            QUALIFY hub_id <> unique_id
         )
         SELECT {", ".join(sides)}, 1.0 AS match_probability
-        FROM stars AS s
-        JOIN {concat.physical_name} AS l ON l.unique_id = s.hub_id
-        JOIN {concat.physical_name} AS r ON r.unique_id = s.spoke_id
+        FROM spokes AS spoke
+        JOIN {concat.physical_name} AS hub ON hub.unique_id = spoke.hub_id
         WHERE NOT EXISTS (
-            SELECT 1 FROM existing AS e WHERE e.a = s.hub_id AND e.b = s.spoke_id
+            SELECT 1 FROM {pred_table} AS p
+            WHERE least(p.unique_id_l, p.unique_id_r) = spoke.hub_id
+              AND greatest(p.unique_id_l, p.unique_id_r) = spoke.unique_id
         )
     """).fetchone()[0]
 
