@@ -781,9 +781,13 @@ def candidacy_worklist_sql(
     )
     inner = (
         "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
-        # candidacy_updated_at is STRING in this staging model (candidacy_created_at is
-        # already cast there); cast the greatest() result so both UNION branches agree on type.
-        "cast(greatest(candidacy_created_at, candidacy_updated_at) AS timestamp) AS source_changed_at "
+        # Cast each argument, never the result. The live staging schema (`dbt`) types
+        # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
+        # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
+        # coercing, so casting the result is applied too late to help. Per-argument casts
+        # work whichever way either column is typed, and keep both UNION branches TIMESTAMP.
+        "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
+        "AS source_changed_at "
         f"FROM {candidacies} "
         "WHERE br_candidacy_id IS NOT NULL "
         "UNION ALL "
