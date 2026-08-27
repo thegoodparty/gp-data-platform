@@ -24,6 +24,16 @@ class EntityConfig:
     # EM training — each tuple is a set of columns to block_on
     em_training_blocks: list[tuple[str, ...]]
 
+    # "link_only" keeps Splink from comparing a source against itself.
+    # "link_and_dedupe" is for entities whose sources carry their own
+    # duplicates (HubSpot contacts of one person).
+    link_type: str = "link_only"
+
+    # Column holding a deterministic group id. When set, the pipeline blocks on
+    # it and injects same-group edges at p=1.0, so deterministic identity
+    # survives probabilistic scoring.
+    deterministic_grouping_column: str | None = None
+
     # Thresholds
     predict_threshold: float = 0.01
     cluster_threshold: float = 0.95
@@ -43,7 +53,12 @@ class EntityConfig:
     false_negative_group_cols: list[str] = field(default_factory=list)
 
 
-ENTITY_TYPES: list[str] = ["candidacy_stage", "elected_official", "election_stage"]
+ENTITY_TYPES: list[str] = [
+    "candidacy_stage",
+    "elected_official",
+    "election_stage",
+    "person",
+]
 
 
 def get_config(entity_type: str) -> EntityConfig:
@@ -61,4 +76,8 @@ def get_config(entity_type: str) -> EntityConfig:
         from scripts.configs.election_stage import ELECTION_STAGE_CONFIG
 
         return ELECTION_STAGE_CONFIG
+    if entity_type == "person":
+        from scripts.configs.person import PERSON_CONFIG
+
+        return PERSON_CONFIG
     raise ValueError(f"Unknown entity type '{entity_type}'. Available: {ENTITY_TYPES}")

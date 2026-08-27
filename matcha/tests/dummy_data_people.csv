@@ -1,0 +1,33 @@
+unique_id,source_id,source_name,first_name,first_name_aliases,first_name_tokens,last_name,suffix_token,email,phone,state,city,zip5,birth_date,party,br_candidate_id,first_seen_at,pregroup_id
+hubspot|1,1,hubspot,michael,"[""michael"", ""mike"", ""mickey""]","[""michael""]",smith,,michael.smith@example.com,4145551001,WI,milwaukee,53202,1975-03-04,democrat,,2024-01-05,hubspot|1
+gp_api|1,1,gp_api,michael,"[""michael"", ""mike"", ""mickey""]","[""michael""]",smith,,michael.smith@example.com,4145551001,,,53202,,,,2024-02-11,gp_api|1
+ballotready|1,9001,ballotready,mike,"[""mike"", ""michael"", ""mickey""]","[""mike""]",smith,,,4145551001,WI,milwaukee,53202,1975-03-04,democrat,9001,2023-08-01,ballotready|1
+hubspot|2,2,hubspot,sarah,"[""sarah"", ""sara""]","[""sarah""]",johnson,,sarah.johnson@example.com,4145552002,WI,madison,53703,1980-06-15,republican,,2024-03-02,hubspot|2
+hubspot|3,3,hubspot,sarah,"[""sarah"", ""sara""]","[""sarah""]",johnson,,s.johnson@work.example.com,4145552002,WI,madison,53703,1980-06-15,republican,,2024-04-19,hubspot|3
+ballotready|2,9002,ballotready,sarah,"[""sarah"", ""sara""]","[""sarah""]",johnson,,sarah.johnson@example.com,,WI,madison,53703,1980-06-15,republican,9002,2023-09-14,ballotready|2
+hubspot|10,10,hubspot,anne,"[""anne"", ""ann"", ""annie""]","[""anne""]",felber,,felber.family@example.com,9205553003,WI,green bay,54301,1968-01-01,independent,,2024-01-20,hubspot|10
+hubspot|11,11,hubspot,gregg,"[""gregg"", ""greg""]","[""gregg""]",felber,,felber.family@example.com,9205553003,WI,green bay,54301,1966-01-01,independent,,2024-01-21,hubspot|11
+ballotready|20,9020,ballotready,don,"[""don"", ""donald"", ""donnie""]","[""don""]",bartels,,don.bartels@example.com,9205554004,WI,oconto,54153,1948-05-02,republican,9020,2023-05-05,ballotready|20
+techspeed|21,bartels-don-wi-county-oconto,techspeed,don,"[""don"", ""donald"", ""donnie""]","[""don""]",bartels,JR,don.bartels@example.com,9205554004,WI,oconto,54153,1974-05-02,republican,,2024-06-01,techspeed|21
+ballotready|30,9030,ballotready,james,"[""james"", ""jim"", ""jimmy""]","[""james""]",wilson,,jwilson@example.com,6085555005,WI,madison,53703,1982-07-07,democrat,9030,2023-03-11,ballotready|30
+ballotready|31,9031,ballotready,james,"[""james"", ""jim"", ""jimmy""]","[""james""]",wilson,,jwilson@example.com,6085555005,WI,madison,53703,1982-07-07,democrat,9031,2023-04-12,ballotready|31
+hubspot|40,40,hubspot,robert,"[""robert"", ""bob"", ""rob"", ""bobby""]","[""robert""]",nguyen,,rnguyen@example.com,5125556006,TX,austin,78701,1990-02-02,independent,,2024-02-02,pg_deterministic_1
+gp_api|40,40,gp_api,roberta,"[""roberta"", ""bobbie""]","[""roberta""]",okafor,,,,,,,,,,2024-05-30,pg_deterministic_1
+hubspot|50,50,hubspot,margaret,"[""margaret"", ""peggy"", ""maggie"", ""meg""]","[""margaret""]",oconnell,,margaret.oconnell@example.com,2065557007,WA,seattle,98101,1971-11-11,democrat,,2024-03-15,hubspot|50
+techspeed|50,oconnell-peggy-wa-city-seattle,techspeed,peggy,"[""peggy"", ""margaret"", ""maggie"", ""meg""]","[""peggy""]",oconnell,,,2065557007,WA,seattle,98101,1971-11-11,democrat,,2024-04-01,techspeed|50
+hubspot|60,60,hubspot,christopher,"[""christopher"", ""chris"", ""topher""]","[""christopher""]",pasadyn,,cpasadyn@example.com,3055558008,FL,miami,33101,1979-09-09,republican,,2024-01-30,hubspot|60
+hubspot|61,61,hubspot,christine,"[""christine"", ""chris"", ""christy""]","[""christine""]",pasadyn,,cmpasadyn@example.com,3055558008,FL,miami,33101,1981-09-09,republican,,2024-02-14,hubspot|61
+hubspot|70,70,hubspot,samuel,"[""samuel"", ""sam"", ""sammy""]","[""samuel""]",reyes,,sreyes@example.com,7025559009,NV,reno,89501,1985-04-04,democrat,,2024-03-20,hubspot|70
+techspeed|70,reyes-sue-nv-city-reno,techspeed,sue,"[""sue"", ""susan"", ""susie""]","[""sue""]",reyes,,,7025559009,NV,reno,89501,1987-04-04,democrat,,2024-04-22,techspeed|70
+hubspot|80,80,hubspot,linda,"[""linda"", ""lindy""]","[""linda""]",brown,,lbrown@example.com,3175551010,IN,carmel,46032,1977-12-01,independent,,2024-02-25,hubspot|80
+ballotready|80,9080,ballotready,linda,"[""linda"", ""lindy""]","[""linda""]",brown,,lbrown@example.com,,IN,carmel,46032,1977-12-01,independent,9080,2023-06-18,ballotready|80
+techspeed|80,brown-linda-in-city-carmel,techspeed,linda,"[""linda"", ""lindy""]","[""linda""]",brown,,,3175551010,IN,carmel,46032,1977-12-01,independent,,2024-07-09,techspeed|80
+hubspot|90,90,hubspot,david,"[""david"", ""dave"", ""davey""]","[""david""]",martinez,,dmartinez@example.com,5205551111,AZ,tucson,85701,1983-10-10,democrat,,2024-01-11,hubspot|90
+ballotready|90,9090,ballotready,david,"[""david"", ""dave"", ""davey""]","[""david""]",martinez,,dmartinez@example.com,5205551111,AZ,tucson,85701,1983-10-10,democrat,9090,2023-02-02,ballotready|90
+techspeed|90,martinez-david-az-city-tucson,techspeed,dave,"[""dave"", ""david"", ""davey""]","[""dave""]",martinez,,,5205551111,AZ,tucson,85701,1983-10-10,democrat,,2024-08-08,techspeed|90
+hubspot|91,91,hubspot,david,"[""david"", ""dave"", ""davey""]","[""david""]",martinez,,dave.martinez@example.com,5205551111,AZ,tucson,85701,1983-10-10,democrat,,2024-03-03,hubspot|91
+hubspot|100,100,hubspot,james,"[""james"", ""jim"", ""jimmy""]","[""james""]",oliver,,joliver@example.com,3035551212,CO,denver,80202,1972-08-08,republican,,2024-02-08,hubspot|100
+ballotready|100,9100,ballotready,james,"[""james"", ""jim"", ""jimmy""]","[""james""]",oliver,,joliver@example.com,3035551212,CO,denver,80202,1972-08-08,republican,9100,2023-07-07,ballotready|100
+techspeed|110,quintero-xavier-nm-city-santa-fe,techspeed,xavier,"[""xavier""]","[""xavier""]",quintero,,,,NM,santa fe,87501,,,,2024-06-15,techspeed|110
+ballotready|120,9120,ballotready,patricia,"[""patricia"", ""pat"", ""patty"", ""trish""]","[""patricia""]",okonkwo,,pokonkwo@example.com,4045551313,GA,atlanta,30303,1969-03-03,democrat,9120,2023-01-19,ballotready|120
+hubspot|120,120,hubspot,patricia,"[""patricia"", ""pat"", ""patty"", ""trish""]","[""patricia""]",okonkwo,,pokonkwo@example.com,4045551313,GA,atlanta,30303,1969-03-03,democrat,,2024-05-05,hubspot|120

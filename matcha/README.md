@@ -43,6 +43,9 @@ uv run python -m scripts.cli match --entity-type elected_official --input input.
 
 # Election stage matching
 uv run python -m scripts.cli match --entity-type election_stage --input input.csv
+
+# Person matching
+uv run python -m scripts.cli match --entity-type person --input input.csv
 ```
 
 Set `MATCHA_DUCKDB_MEMORY_LIMIT` (e.g. `12GB`) to cap DuckDB's memory for
@@ -115,6 +118,14 @@ uv run python -m scripts.cli match \
   --output-cluster-table goodparty_data_catalog.er_source.clustered_election_stages_YYYYMMDD \
   --output-pairwise-table goodparty_data_catalog.er_source.pairwise_election_stages_YYYYMMDD \
   --overwrite
+
+# People
+uv run python -m scripts.cli match \
+  --entity-type person \
+  --input goodparty_data_catalog.dbt.int__er_prematch_people \
+  --output-cluster-table goodparty_data_catalog.er_source.clustered_people_YYYYMMDD \
+  --output-pairwise-table goodparty_data_catalog.er_source.pairwise_people_YYYYMMDD \
+  --overwrite
 ```
 
 dbt reads the live tables `er_source.clustered_<entity>` / `er_source.pairwise_<entity>`
@@ -130,7 +141,7 @@ every downstream dbt model reads it.
 Usage: cli.py match [OPTIONS]
 
 Options:
-  --entity-type [candidacy_stage|elected_official|election_stage]  Entity type to match (default: candidacy_stage).
+  --entity-type [candidacy_stage|elected_official|election_stage|person]  Entity type to match (default: candidacy_stage).
   --input TEXT                  Path to prematch CSV or Databricks FQN (catalog.schema.table). Required.
   --output-dir DIRECTORY        Directory for local results. Default: results/<entity-type>/
   --output-cluster-table TEXT   Databricks FQN to upload clustered results (catalog.schema.table).
@@ -172,6 +183,28 @@ or post-prediction filters:
 - `audit_summary.csv` — match coverage stats per source
 - `audit_low_confidence.csv` — most ambiguous pairs for review
 - `audit_false_negatives.csv` — plausible matches the model missed
+
+## The person lane
+
+Two things work differently for `--entity-type person`.
+
+**It dedupes within a source.** Every other entity runs `link_only`. One person
+routinely holds several HubSpot contacts, so collapsing those is the point of
+the run, not an anomaly — the config sets `link_type="link_and_dedupe"` and the
+within-source cluster count is reported as a statistic rather than a warning.
+
+**Deterministic groups are asserted, not scored.** The dbt prematch carries a
+`pregroup_id` holding the person group that shared native ids already prove
+(`deterministic_grouping_column` in the config). The pipeline blocks on it and,
+after the post-prediction filters have run, inserts one hub-to-minimum star edge
+per group at `match_probability=1.0` and `match_key='pregroup'`. Injecting after
+the filters is what makes a deterministic link unfilterable: two records the
+graph already resolved cluster even when every attribute disagrees. Pairs Splink
+scored on its own are left alone, so their gammas stay auditable.
+
+Post-prediction filters here are deliberately sparse. A clause ships only once
+it has been measured to drop more false positives than true matches; until then
+the candidate pairs stay in the output where the precision audit can size them.
 
 ## Authentication
 

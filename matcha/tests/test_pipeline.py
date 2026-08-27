@@ -9,7 +9,9 @@ import pytest
 
 from scripts.configs.candidacy import CANDIDACY_CONFIG
 from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
+from scripts.configs.person import PERSON_CONFIG
 from scripts.pipeline import (
+    _pregroup_star_pairs,
     build_settings,
     load_and_prepare,
     predict_and_cluster,
@@ -638,3 +640,187 @@ def test_save_results_writes_expected_files(tmp_path):
 
     assert (tmp_path / "pairwise_predictions.csv").exists()
     assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()
+
+
+# ── Deterministic pregroups ──
+
+
+def _pregroup_frame(rows: list[tuple[str, str | None]]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=["unique_id", "pregroup_id"])
+
+
+def test_pregroup_star_pairs_links_group_to_its_minimum():
+    """n members produce n-1 edges, all anchored on the group minimum."""
+    pairs = _pregroup_star_pairs(_pregroup_frame([("c", "g1"), ("a", "g1"), ("b", "g1")]), "pregroup_id")
+
+    assert set(zip(pairs["unique_id_l"], pairs["unique_id_r"])) == {("a", "b"), ("a", "c")}
+
+
+def test_pregroup_star_pairs_keys_are_ordered():
+    """Clustering canonicalizes on unique_id_l < unique_id_r."""
+    pairs = _pregroup_star_pairs(_pregroup_frame([("z", "g1"), ("a", "g1")]), "pregroup_id")
+
+    assert (pairs["unique_id_l"] < pairs["unique_id_r"]).all()
+
+
+def test_pregroup_star_pairs_ignores_singletons_and_nulls():
+    """A record in no deterministic group carries its own id as the pregroup."""
+    pairs = _pregroup_star_pairs(
+        _pregroup_frame([("a", "a"), ("b", "b"), ("c", None), ("d", "")]), "pregroup_id"
+    )
+
+    assert pairs.empty
+
+
+def test_pregroup_star_pairs_carries_source_dataset():
+    """Clustering identifies a node by (source_dataset, unique_id).
+
+    An injected edge that leaves source_dataset NULL joins to no node, so the
+    deterministic group silently fails to cluster.
+    """
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "pregroup_id": ["g1", "g1"],
+            "source_dataset": ["tbl_0", "tbl_1"],
+        }
+    )
+
+    pairs = _pregroup_star_pairs(df, "pregroup_id")
+
+    assert pairs.loc[0, "source_dataset_l"] == "tbl_0"
+    assert pairs.loc[0, "source_dataset_r"] == "tbl_1"
+
+
+def test_pregroup_star_pairs_missing_column_is_not_an_error():
+    pairs = _pregroup_star_pairs(pd.DataFrame({"unique_id": ["a", "b"]}), "pregroup_id")
+
+    assert pairs.empty
+
+
+def test_build_settings_person_uses_dedupe_and_blocks_on_pregroup():
+    settings = build_settings(PERSON_CONFIG)
+
+    assert settings.link_type == "link_and_dedupe"
+    assert len(settings.blocking_rules_to_generate_predictions) == (
+        len(PERSON_CONFIG.blocking_rules_for_prediction) + 1
+    )
+
+
+def test_build_settings_leaves_other_entities_link_only():
+    """The new config fields default to the pre-existing behavior."""
+    for config in (CANDIDACY_CONFIG, ELECTED_OFFICIAL_CONFIG):
+        settings = build_settings(config)
+        assert settings.link_type == "link_only"
+        assert len(settings.blocking_rules_to_generate_predictions) == len(
+            config.blocking_rules_for_prediction
+        )
+
+
+# ── Person E2E smoke tests ──
+
+
+@pytest.fixture(scope="module")
+def person_results(tmp_path_factory):
+    """One person pipeline run shared by the smoke tests below."""
+    df = pd.read_csv(Path(__file__).parent / "dummy_data_people.csv", dtype=str)
+    out = tmp_path_factory.mktemp("person")
+    pairwise_df, clustered_df = run(input_df=df, output_dir=out, config=PERSON_CONFIG)
+    return pairwise_df, clustered_df, out
+
+
+def _pair_rows(pairwise_df: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
+    return pairwise_df[(pairwise_df["unique_id_l"].isin([a, b])) & (pairwise_df["unique_id_r"].isin([a, b]))]
+
+
+def test_person_pipeline_smoke(person_results):
+    pairwise_df, clustered_df, out = person_results
+
+    assert len(pairwise_df) > 0
+    assert (out / "clustered_people.csv").exists()
+    for col in ("source_name", "pregroup_id", "suffix_token", "br_candidate_id"):
+        assert col in clustered_df.columns, f"Missing retained column: {col}"
+
+
+def test_person_pipeline_dedupes_within_hubspot(person_results):
+    """link_and_dedupe: two HubSpot contacts of one person must cluster."""
+    _, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert cluster_of["hubspot|2"] == cluster_of["hubspot|3"]
+
+
+def test_person_pipeline_pregroup_edge_survives_a_failing_score(person_results):
+    """A deterministic pair clusters even when every attribute disagrees.
+
+    hubspot|40 and gp_api|40 share a pregroup but no name, contact, or
+    geography, so the post-prediction filter drops the scored pair. The injected
+    edge is what holds them together.
+    """
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert cluster_of["hubspot|40"] == cluster_of["gp_api|40"]
+    pair = _pair_rows(pairwise_df, "hubspot|40", "gp_api|40")
+    assert len(pair) == 1
+    assert pair.iloc[0]["match_key"] == "pregroup"
+
+
+def test_person_pipeline_rejects_household_pairs(person_results):
+    """Spouses share an email and a phone; only the first name separates them."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert _pair_rows(pairwise_df, "hubspot|10", "hubspot|11").empty
+    assert cluster_of["hubspot|10"] != cluster_of["hubspot|11"]
+
+
+def test_person_pipeline_scores_suffix_conflicts_instead_of_dropping_them(person_results):
+    """Father and son share a name and a family phone, differing only by Jr.
+
+    No suffix cannot-link ships yet: the study's five verified suffix-conflict
+    pairs split three same-person to two genuine father/son, which is too thin
+    to justify dropping the class. The pair has to stay scored and carry both
+    suffix tokens so the precision audit can size the trade on all 392 of them.
+    """
+    pairwise_df, _, _ = person_results
+
+    pair = _pair_rows(pairwise_df, "ballotready|20", "techspeed|21")
+    assert len(pair) == 1
+    assert {pair.iloc[0]["suffix_token_l"], pair.iloc[0]["suffix_token_r"]} == {None, "JR"}
+
+
+def test_person_pipeline_rejects_two_ballotready_people(person_results):
+    """Distinct br_candidate_ids are a cannot-link even on identical contacts."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert _pair_rows(pairwise_df, "ballotready|30", "ballotready|31").empty
+    assert cluster_of["ballotready|30"] != cluster_of["ballotready|31"]
+
+
+def test_person_pipeline_keeps_initial_changing_nicknames(person_results):
+    """margaret/peggy share no prefix, so only the alias rule can block them."""
+    pairwise_df, _, _ = person_results
+
+    assert not _pair_rows(pairwise_df, "hubspot|50", "techspeed|50").empty
+
+
+def test_person_pipeline_name_only_record_stays_a_singleton(person_results):
+    _, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    solo = cluster_of[cluster_of == cluster_of["techspeed|110"]]
+    assert list(solo.index) == ["techspeed|110"]
+
+
+def test_person_pipeline_admits_sibling_nickname_collision(person_results):
+    """Pins an accepted hazard rather than asserting it away.
+
+    christopher and christine both alias to "chris", so a brother and sister on
+    one household phone clear the filter. The precision audit measures what this
+    costs; a config change that alters it should surface here as a decision.
+    """
+    pairwise_df, _, _ = person_results
+
+    assert not _pair_rows(pairwise_df, "hubspot|60", "hubspot|61").empty
