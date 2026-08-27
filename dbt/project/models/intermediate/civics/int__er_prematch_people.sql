@@ -265,7 +265,14 @@ with
             u.source_name || '|' || u.source_id as unique_id,
             {{ first_name_normalized("u.first_name") }} as first_name,
             {{ first_name_tokens("u.first_name") }} as first_name_tokens,
-            lower({{ remove_name_suffixes("trim(u.last_name)") }}) as last_name,
+            -- Comma-attached suffixes leave a trailing comma behind
+            -- ("Bartels, Jr." -> "Bartels,"); strip it so the surname agrees
+            -- across sources (same rule as TechSpeed staging).
+            trim(
+                regexp_replace(
+                    lower({{ remove_name_suffixes("trim(u.last_name)") }}), ',$', ''
+                )
+            ) as last_name,
             -- '' means no suffix; a mismatch is a cannot-link downstream
             -- (father/son share family phones and differ only by Jr/Sr).
             coalesce(
