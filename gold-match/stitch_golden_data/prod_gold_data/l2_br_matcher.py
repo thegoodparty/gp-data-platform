@@ -229,7 +229,7 @@ def _require_integral(value: Any, field_name: str) -> int:
     like `'95'` would pass straight through into a column typed as an
     integer.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{field_name} must be a non-boolean numeric value: {value!r}")
     if not math.isfinite(value):
         raise ValueError(f"{field_name} must be finite: {value!r}")

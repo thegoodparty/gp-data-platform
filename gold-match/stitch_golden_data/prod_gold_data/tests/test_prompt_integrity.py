@@ -69,9 +69,7 @@ def test_build_exception_falls_back_at_warning():
 def test_version_pin_reaches_load_prompt():
     _, fake = enable_with(FakePromptObj("plain text prompt"))
     cache_prompt("p", version="3a27a867")
-    assert fake.load_prompt_calls == [
-        {"project": "stitch-golden-data", "slug": "p", "version": "3a27a867"}
-    ]
+    assert fake.load_prompt_calls == [{"project": "stitch-golden-data", "slug": "p", "version": "3a27a867"}]
 
 
 def test_provenance_recorded():

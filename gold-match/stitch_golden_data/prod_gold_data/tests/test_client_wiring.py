@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from stitch_golden_data.prod_gold_data.l2_br_matcher import (
-    L2BrMatcher,
     PINNED_PROMPT_VERSION,
+    L2BrMatcher,
     _build_clients,
     _parse_args,
 )
@@ -47,9 +47,7 @@ def test_default_construction_is_byte_preserved(patched_deps):
 
 def test_prompt_cache_pins_version(patched_deps):
     L2BrMatcher()
-    patched_deps["cache_prompt"].assert_called_once_with(
-        "stitch-golden-data-matcher", version=PINNED_PROMPT_VERSION
-    )
+    patched_deps["cache_prompt"].assert_called_once_with("stitch-golden-data-matcher", version=PINNED_PROMPT_VERSION)
 
 
 def test_cli_default_is_bedrock():
