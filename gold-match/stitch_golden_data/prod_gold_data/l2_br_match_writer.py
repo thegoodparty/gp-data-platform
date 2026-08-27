@@ -103,6 +103,11 @@ def validate_results(results: list[MatchResult]) -> None:
                 "l2_state, l2_district_type and l2_district_name must be all set (a match) "
                 f"or all null (an attempt that found nothing), got {district_fields!r}"
             )
+        elif any(isinstance(f, str) and not f.strip() for f in district_fields):
+            # A blank label passes an is-None check but persists as a "match"
+            # that can never join the universe, reopening the office on every
+            # build; legit output is universe-verbatim and never blank.
+            row_errors.append(f"district fields must carry real labels, not blank strings, got {district_fields!r}")
 
         if row_errors:
             errors.append(f"row {i} (br_database_id={row.br_database_id!r}): " + "; ".join(row_errors))
