@@ -209,6 +209,28 @@ class RateLimiter:
             self._next_allowed = max(self._next_allowed, self._clock() + seconds)
 
 
+class BisectCounter:
+    """Counts short-page bisects across threads, so a degraded run is visible in the summary.
+
+    A bisect means the endpoint silently returned a short page and the batch size is above
+    its ceiling. It is handled rather than fatal, which is exactly why it needs counting: a
+    run that bisected repeatedly otherwise looks identical to one that never did.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._count = 0
+
+    def increment(self) -> None:
+        with self._lock:
+            self._count += 1
+
+    @property
+    def count(self) -> int:
+        with self._lock:
+            return self._count
+
+
 def is_retryable_status(status_code: int) -> bool:
     """429 (rate limited) and 5xx (server) responses are worth retrying."""
     return status_code == 429 or status_code >= 500
@@ -251,6 +273,47 @@ def _build_query(selection: str) -> str:
     return f"query GetNodesBatch($ids: [ID!]!) {{ nodes(ids: $ids) {{ {selection} }} }}"
 
 
+def _check_positional_mapping(fetched: list[FetchedNode], ids: Sequence[int], node_type: str) -> None:
+    """Refuse a response whose elements have been reordered against the request.
+
+    Results map positionally, and the length check above catches a short page. What neither
+    catches is a response that keeps its length but shifts or reorders its elements: every
+    later payload then lands against the wrong id, which is worse than a missing row because
+    it is wrong data rather than absent data.
+
+    A resolved node carries its own databaseId, so a shift is detectable without mapping by
+    it (which would reintroduce the truncation blindness this design avoids). The tell is
+    specific: a node whose databaseId is some *other* id from this same request is in the
+    wrong position. A databaseId outside the requested set is a different thing entirely,
+    likely the endpoint resolving an id to a canonical record, and positional mapping is
+    still correct there, so it warns rather than raises.
+    """
+    requested = set(ids)
+    for item in fetched:
+        if item.node is None:
+            continue
+        returned = item.node.get("databaseId")
+        if returned is None:
+            continue
+        returned = int(returned)
+        if returned == item.requested_id:
+            continue
+        if returned in requested:
+            raise RuntimeError(
+                f"CivicEngine returned {node_type} databaseId {returned} in the position "
+                f"requested for id {item.requested_id}, and {returned} was also requested in "
+                "this batch: the response is out of request order, so payloads would land "
+                "against the wrong ids"
+            )
+        logger.warning(
+            "%s id %s resolved to databaseId %s, which was not requested in this batch; "
+            "mapping it positionally as requested",
+            node_type,
+            item.requested_id,
+            returned,
+        )
+
+
 def fetch_nodes(
     ids: Sequence[int],
     node_type: str,
@@ -261,6 +324,7 @@ def fetch_nodes(
     timeout: int = 60,
     max_retries: int = 5,
     sleep: Callable[[float], None] = time.sleep,
+    bisects: BisectCounter | None = None,
 ) -> list[FetchedNode]:
     """Fetch `ids` in one nodes() call, mapping results positionally.
 
@@ -358,10 +422,16 @@ def fetch_nodes(
                 node_type,
                 midpoint,
             )
+            if bisects is not None:
+                bisects.increment()
             args = (node_type, selection, api_token, limiter, session, timeout, max_retries, sleep)
-            return fetch_nodes(ids[:midpoint], *args) + fetch_nodes(ids[midpoint:], *args)
+            return fetch_nodes(ids[:midpoint], *args, bisects=bisects) + fetch_nodes(
+                ids[midpoint:], *args, bisects=bisects
+            )
 
-        return [FetchedNode(requested_id=i, node=n) for i, n in zip(ids, nodes, strict=True)]
+        fetched = [FetchedNode(requested_id=i, node=n) for i, n in zip(ids, nodes, strict=True)]
+        _check_positional_mapping(fetched, ids, node_type)
+        return fetched
 
     raise RuntimeError("Unreachable: fetch_nodes exhausted retries without returning")
 
@@ -1122,13 +1192,23 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
 
     rows_written = 0
     windows = 0
+    unresolved = 0
+    bisects = BisectCounter()
     # An empty worklist means this entity is caught up: the loop below does not execute and
     # the summary reports the cursor unchanged.
     with contextlib.closing(make_session(config.max_workers)) as session:
         limiter = RateLimiter(config.requests_per_second)
 
         def fetch_batch(batch: Sequence[int]) -> list[FetchedNode]:
-            return fetch_nodes(batch, spec.node_type, spec.selection, config.api_token, limiter, session)
+            return fetch_nodes(
+                batch,
+                spec.node_type,
+                spec.selection,
+                config.api_token,
+                limiter,
+                session,
+                bisects=bisects,
+            )
 
         # Each window's batches fan out across the pool concurrently (fine: order
         # within a window is fixed up by the sort below), but windows themselves run
@@ -1153,13 +1233,24 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
             rows.sort(key=lambda row: (row.source_changed_at, row.requested_id))
             insert_rows(connection, config.catalog, config.source_schema, spec.name, rows)
             rows_written += len(rows)
+            unresolved += sum(1 for row in rows if row.payload is None)
             windows += 1
 
     cursor_id, cursor_changed_at = worklist[-1] if worklist else (after[1], after[0])
     return {
         "entity": spec.name,
         "ids_requested": len(worklist),
+        # Reported alongside the limit so a short worklist is self-describing: fewer ids than
+        # the limit means this entity is caught up, rather than something having truncated the
+        # read. Without both numbers the two are indistinguishable from the summary alone.
+        "ids_limit": config.max_ids,
+        "caught_up": len(worklist) < config.max_ids,
         "rows_written": rows_written,
+        # Ids the API returned nothing for, landed as NULL payloads rather than dropped.
+        "unresolved": unresolved,
+        # Non-zero means the endpoint returned short pages and batch_size is above its
+        # ceiling. Handled, not fatal, so it would otherwise only exist in the logs.
+        "bisects": bisects.count,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.
         "cursor_source_changed_at": format_cursor_ts(cursor_changed_at)

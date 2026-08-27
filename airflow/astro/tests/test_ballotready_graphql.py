@@ -23,6 +23,7 @@ from include.custom_functions.ballotready_graphql import (
     POSITION_ELECTION_FREQUENCY_SELECTION,
     STANCE_SELECTION,
     WINDOW_SIZE,
+    BisectCounter,
     EntitySpec,
     ExtractConfig,
     FetchedNode,
@@ -219,6 +220,58 @@ def test_fetch_nodes_does_not_key_results_by_database_id():
     result = fetch_nodes([1], "Candidacy", SELECTION, "tok", _limiter(), session)
 
     assert result == [FetchedNode(requested_id=1, node={"databaseId": 999})]
+
+
+def test_fetch_nodes_rejects_a_response_shifted_against_the_request():
+    """A full-length but reordered response would land every later payload on the wrong id.
+
+    The length check cannot see this, and mapping by databaseId to fix it would reintroduce
+    the truncation blindness positional mapping exists to avoid. So it raises instead.
+    """
+    session = FakeSession([_ok([{"databaseId": 2}, {"databaseId": 3}, {"databaseId": 4}])])
+
+    with pytest.raises(RuntimeError, match="out of request order"):
+        fetch_nodes([1, 2, 3], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+
+def test_fetch_nodes_allows_a_database_id_that_was_not_requested():
+    """Only an id from this same batch in the wrong position means a shift.
+
+    A databaseId outside the requested set is the endpoint resolving an id to some other
+    record, where positional mapping is still what we want, so it warns rather than raising.
+    """
+    session = FakeSession([_ok([{"databaseId": 999}, {"databaseId": 888}])])
+
+    result = fetch_nodes([1, 2], "Candidacy", SELECTION, "tok", _limiter(), session)
+
+    assert result == [
+        FetchedNode(requested_id=1, node={"databaseId": 999}),
+        FetchedNode(requested_id=2, node={"databaseId": 888}),
+    ]
+
+
+def test_fetch_nodes_counts_each_bisect():
+    """A handled bisect is invisible otherwise, so a degraded run looks like a clean one."""
+    session = FakeSession(
+        [
+            _ok([{"databaseId": 1}, {"databaseId": 2}]),  # 4 requested, 2 returned
+            _ok([{"databaseId": 1}, {"databaseId": 2}]),
+            _ok([{"databaseId": 3}, {"databaseId": 4}]),
+        ]
+    )
+    bisects = BisectCounter()
+
+    fetch_nodes([1, 2, 3, 4], "Candidacy", SELECTION, "tok", _limiter(), session, bisects=bisects)
+
+    assert bisects.count == 1
+
+
+def test_bisect_counter_starts_at_zero_and_accumulates():
+    counter = BisectCounter()
+    assert counter.count == 0
+    counter.increment()
+    counter.increment()
+    assert counter.count == 2
 
 
 def test_fetch_nodes_bisects_when_the_response_is_short():
@@ -1285,6 +1338,56 @@ def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
     assert summary["windows"] == 0
     assert summary["cursor_source_changed_at"] is None
     inserted.assert_not_called()
+
+
+def test_extract_entity_reports_the_limit_so_a_short_worklist_is_self_describing(monkeypatch):
+    """ids_requested below the limit means caught up; without the limit beside it, that is
+    indistinguishable from something having truncated the read."""
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(max_ids=2000))
+
+    assert summary["ids_limit"] == 2000
+    assert summary["caught_up"] is True
+
+
+def test_extract_entity_is_not_caught_up_when_the_worklist_fills_the_limit(monkeypatch):
+    worklist = [(i, datetime(2026, 8, 1, 9, 0, 0)) for i in range(1, 4)]
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", MagicMock())
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(max_ids=3))
+
+    assert summary["ids_limit"] == 3
+    assert summary["caught_up"] is False
+
+
+def test_extract_entity_counts_unresolved_ids_in_the_summary(monkeypatch):
+    """Ids the API returned nothing for land as NULL payloads; the count is otherwise only
+    discoverable by querying the landing table."""
+    worklist = [(i, datetime(2026, 8, 1, 9, 0, 0)) for i in (1, 2, 3)]
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [
+            FetchedNode(i, None if i == 2 else {"databaseId": i, "id": "x"}) for i in batch
+        ],
+    )
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", MagicMock())
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
+
+    assert summary["rows_written"] == 3
+    assert summary["unresolved"] == 1
+    assert summary["bisects"] == 0
 
 
 def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(monkeypatch):
