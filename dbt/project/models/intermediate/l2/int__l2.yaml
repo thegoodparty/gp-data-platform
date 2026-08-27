@@ -1,6 +1,70 @@
 version: 2
 
 models:
+  - name: int__l2_proposed_district_aggregations
+    description: >
+      Districts on a proposed map that the adoption seed records as the one
+      legally in force, aggregated to the same shape and id as
+      int__l2_district_aggregations so the dimension can union the two.
+
+      Separate from that model, and a full rebuild, for two reasons. A seed edit
+      does not move a voter's loaded_at, so an incremental branch would not pick
+      up a state flipped to verified until that state's data happened to reload.
+      And that model is incremental-merge and never deletes, so it holds
+      districts L2 has retired and a full refresh on it drops them, which breaks
+      the guard requiring every l2_br_match_overrides row to resolve. Keeping
+      these separate means a seed flip rebuilds only this.
+    columns:
+      - name: id
+        description: >
+          Salted hash of (state, district_type, district_name), the same
+          derivation int__l2_district_aggregations uses, so the dimension's
+          voter-count join works identically across both sources.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - not_null
+      - name: district_type
+        description: >
+          The minted type, suffixed with the election year rather than the term
+          the map governs (Congressional_District_2026,
+          State_Senate_District_2026), because every consumer joins on the
+          election. Derived by parsing the vendor value, never from the column
+          name, because one column carries both handled types.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  ["Congressional_District_2026", "State_Senate_District_2026"]
+      - name: shadowed_district_type
+        description: >
+          The existing type this district replaces, and what the adoption seed
+          records its decision against. Consumers needing the same-numbered
+          current district join on this rather than restating the pairing.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["US_Congressional_District", "State_Senate_District"]
+      - name: district_name
+        description: >
+          District number as a bare unpadded string, matching how every current
+          column names its districts, so "DIST 04" becomes "4".
+        tests:
+          - not_null
+      - name: voter_count
+        description: Distinct voters in the district.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
   - name: int__l2_district_aggregations
     description: Intermediate model that aggregates L2 district data for downstream use.
     columns:
@@ -82,6 +146,97 @@ models:
             state_column: state_postal_code
             district_type_column: district_type
             district_name_column: district_name
+
+  - name: int__l2_district_universe
+    description: >
+      One row per district in each state's latest L2 delivery, plus 51
+      synthetic statewide rows (district_type='State', district_name =
+      state_postal_code) that give Governor and US Senate seats something
+      to match to. This is the candidate menu the L2-to-BallotReady
+      matcher reads; it carries no voter counts because a menu needs
+      labels and types, not counts.
+    columns:
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          # Excludes the synthetic rows deliberately. Those are emitted per
+          # state unconditionally, so without the condition every state is
+          # present whether or not it contributed a single real district, and
+          # the test could never catch the state going missing from the menu.
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                row_condition: "district_type <> 'State'"
+      - name: district_type
+        description: "L2 district column name, or 'State' for the synthetic statewide row."
+      - name: district_name
+        description: "District identifier within district_type; state_postal_code again for the 'State' rows."
+      - name: loaded_at
+        description: >
+          Timestamp of the L2 delivery this district is current as of; the
+          join key used to filter to each state's latest delivery.
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state_postal_code
+              - district_type
+              - district_name
+      # Asserts the aggregation is CURRENT relative to this menu, not that the
+      # two spell labels alike: both derive district_name from the same ltrim
+      # in int__l2_nationwide_uniform, so a spelling cannot diverge between
+      # them. What can diverge is freshness — this model is a plain table and
+      # the aggregation is an incremental whose watermark only admits tuples
+      # with a newer loaded_at. A menu district the aggregation lacks carries
+      # no voter counts, which is the failure worth catching.
+      # COUPLING with get_l2_district_types() edits: see that macro's docstring.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state_postal_code
+            district_type_column: district_type
+            district_name_column: district_name
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+
+  - name: int__l2_br_match_pending_offices
+    description: >
+      One row per BallotReady office needing an L2 district match attempt:
+      never attempted, last attempt found nothing more than 30 days ago, or
+      matched to a district int__l2_district_universe no longer carries.
+      Computed from llm_l2_br_match_results, a dbt source written only by the
+      matcher. The matcher reads this list to build its next batch. Reads
+      stg_airbyte_source__ballotready_api_position directly, not
+      int__enhanced_position, to keep the geography fields (sub_area_name,
+      sub_area_value, is_judicial, has_unknown_boundaries) that
+      int__enhanced_position drops and the matcher's geography filters need.
+      Every office (~286,000) until the matcher has run at least once --
+      that is the expected starting state, not a defect.
+    columns:
+      - name: br_database_id
+        description: "BallotReady office database id."
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: "BallotReady office name."
+      - name: mtfcc
+        description: "Census MTFCC code for the office's geography; a menu-narrowing filter input for the matcher."
+      - name: geo_id
+        description: "Census geography id for the office; a menu-narrowing filter input for the matcher."
+      - name: sub_area_name
+        description: "BallotReady sub-area name. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: sub_area_value
+        description: "BallotReady sub-area value. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: is_judicial
+        description: "Whether the office is a judicial seat. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: has_unknown_boundaries
+        description: "Whether BallotReady flags the office's boundaries as unknown. Dropped by int__enhanced_position; carried here for the matcher's geography filters."
+      - name: state
+        description: "State postal code."
 
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
@@ -224,8 +379,6 @@ models:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-        # optional override if your user doesn't have permissions on the default source schema
-        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
@@ -241,8 +394,6 @@ models:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-        # optional override if your user doesn't have permissions on the default source schema
-        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
@@ -251,7 +402,13 @@ models:
           - unique
 
   - name: int__zip_code_to_br_office
-    description: "Zip code to BR office mapping"
+    description: >
+      Zip code to BR office mapping. Rows arrive by two paths: the LLM match,
+      and the l2_br_match_overrides seed for positions the LLM placed at the
+      wrong district or not at all. To see why a district was chosen, join
+      stg_model_predictions__llm_l2_br_match (a view) on br_database_id; a
+      position absent there, or carrying a different district than the row
+      shows, was placed by the seed.
     columns:
       - name: zip_code
         description: "Zip code"
@@ -293,8 +450,6 @@ models:
               arguments:
                 min_value: 1
                 inclusive: true
-      - name: confidence
-        description: "LLM confidence"
       - name: br_database_id
         description: "BallotReady/CivicEngine database ID"
       - name: br_position_id
@@ -484,6 +639,9 @@ models:
         description: State postal code
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
       - name: election_date
         description: The Primary date for this state/year, per BallotReady
         data_tests:

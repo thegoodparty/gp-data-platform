@@ -1321,6 +1321,10 @@ models:
         description: >
           HubSpot contact property `connected_with_rep` (Connected with rep).
           HubSpot property group: contactinformation.
+      - name: is_viable_state_leg
+        description: >
+          HubSpot contact property `viable_state_leg` (Viable State Leg). HubSpot
+          property group: contactinformation.
       - name: companies
         description: >
           HubSpot company ids associated with the contact (Airbyte record column,
@@ -1390,6 +1394,21 @@ models:
         description: >
           HubSpot contact property `verified_candidate_status` (Verified Candidate
           Status). HubSpot property group: contactinformation.
+
+          int__civics_candidacy_gp_api admits a campaign on 'Yes'. A renamed
+          option would shrink the candidacy set silently, so the test warns.
+        data_tests:
+          - accepted_values:
+              arguments:
+                # accepted_values drops each value into a SQL literal unescaped,
+                # and Databricks wants a backslash, not a doubled apostrophe:
+                # 'Can''t' parses as "Cant".
+                values:
+                  - "Yes"
+                  - "No"
+                  - "Can\\'t Determine"
+              config:
+                severity: warn
       - name: type
         description: >
           HubSpot contact property `type` (Type). HubSpot property group:

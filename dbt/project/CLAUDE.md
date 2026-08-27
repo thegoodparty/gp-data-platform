@@ -10,6 +10,27 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
   `cd dbt && git commit ...`
 - When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as expected.
+- **Rebuild stale dev copies locally before trusting a before/after comparison.**
+Deferral only applies to models *absent* from your dev schema; anything you built
+in an earlier session is reused silently, however stale. A weeks-old copy of an
+upstream mart in your dev schema masquerades as production and manufactures
+regressions that do not exist. Find the shadows and rebuild them:
+
+    ```sql
+    -- dbt ls --select "+my_model" --resource-type model --output name
+    select table_name, last_altered
+    from goodparty_data_catalog.information_schema.tables
+    where table_schema = '{{ target.schema }}' and table_name in (<those names>)
+    order by last_altered
+    ```
+
+    Then `dbt run --select "<the stale ones>"`. Rebuilding fixes the dev schema for
+every later run, so prefer it over masking the staleness per-invocation.
+- **Rebuild downstream models before trusting a referential test.** A dependent
+mart still materialized against the *previous* version of a model you changed
+will fail its relationship test for that reason alone, as will a stale dev copy
+of the model *holding* the foreign key. Select the dependents too, which is what
+CI's `state:modified+` does.
 - **Do not use the `+` (upstream) selector prefix during development.** dbt Cloud
 automatically defers to production artifacts, so unmodified upstream models do
 not need to be rebuilt. Using `+model_name` pulls the entire upstream DAG
@@ -24,6 +45,12 @@ When building multiple models, use quotes around the models in the `--select` ar
 
 ## Branch and PR Conventions
 
+- **Always branch from the latest `origin/main`.** Run `git fetch origin main` and
+fast-forward before creating a branch. Local `main` goes stale quickly, and a dev
+build on a stale base is compared against a *current* production relation, so
+missing upstream work reads as a huge regression in your own diff. Verify with
+`git rev-list --count HEAD..origin/main` (expect `0`) before trusting any
+before/after row count.
 - **Branch names:** `data-XXXX/short-slug` (lowercase `data`, slash separator, kebab-case slug). `XXXX` is the ClickUp ticket number.
 - **PR titles:** `[DATA-XXXX] Short title` (uppercase prefix, square brackets).
 - **Keep the ticket number out of the codebase.** The ClickUp ticket (`DATA-XXXX`) belongs in the branch name and PR title only — never in committed code: not in model SQL, YAML, tests, macros, or code comments/descriptions. Describe the behavior or a short rationale instead (e.g. "a known follow-up"), not the ticket id. (PR descriptions/commit messages may link the ticket; the rule is about the code itself.)
@@ -83,7 +110,11 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 - Utilize Databrick's support for lateral column references to reduce the number
   of chained CTEs by referencing a modified column lower in the same select
   block
-- Avoid subqueries in favor of CTEs
+- Avoid subqueries in favor of CTEs. This covers a nested `SELECT` in the `FROM`
+  clause, not just scalar and `IN` subqueries: name it as a CTE and select from
+  it, so each step is readable and referenceable on its own.
+    - Bad: `select ... from (select ... group by 1, 2) as aggregated`
+    - Good: `with aggregated as (select ... group by 1, 2) select ... from aggregated`
 - Prefer to keep join blocks flat with minimal transformations in the join
   condition by moving the needed transformation up to the SELECT clause
 - **Wrap generic test arguments under `arguments:`.** Top-level args on a

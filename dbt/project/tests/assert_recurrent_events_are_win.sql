@@ -13,7 +13,8 @@ with
         values
             ('Voter Outreach - Campaign Completed'),
             ('Dashboard - Candidate Dashboard Viewed'),
-            ('Dashboard - Campaign Plan Viewed')
+            ('Dashboard - Campaign Plan Viewed'),
+            ('Campaign Plan - Campaign Tracker Viewed')
     )
 
 select event_type, {{ amplitude_event_family("event_type") }} as family

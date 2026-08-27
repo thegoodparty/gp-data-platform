@@ -251,7 +251,23 @@ TABLE_SPECS: dict[str, TableSpec] = {
 # columns the serving schema gained while the prod baseline still predates them
 # ("hf_most_important_policy_item"). Keyed by serving table.
 LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
-    "Voter": {"geom", "hf_most_important_policy_item", "Voter_Turnout_Probability"}
+    "Voter": {
+        "geom",
+        "hf_most_important_policy_item",
+        "Voter_Turnout_Probability",
+        "4H_Livestock_District",
+        "Community_College",
+        "Judicial_Chancery_Court",
+        "Judicial_Justice_of_the_Peace",
+        "Soil_and_Water_District",
+        "Soil_and_Water_District_At_Large",
+        "State_Board_of_Equalization",
+        # Adopted 2026 maps, minted as their own district types. Present so
+        # m_people_api__districtvoter emits links for them: it derives the columns it
+        # unpivots by intersecting voter columns with district types.
+        "Congressional_District_2026",
+        "State_Senate_District_2026",
+    }
 }
 
 

@@ -99,6 +99,9 @@ models:
       win_agents:
         +schema: mart_win_agents
         +materialized: view
+      gp_api:
+        +schema: mart_gp_api
+        +materialized: view
     staging:
       airbyte_source:
         stripe_api:

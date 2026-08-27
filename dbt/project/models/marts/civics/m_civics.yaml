@@ -233,7 +233,13 @@ models:
         description: Political party affiliation
 
       - name: election_level
-        description: Level of election (city, county, state, federal)
+        description: >
+          Level of election (city, county, state, federal). Prefers the level
+          the app persisted on the campaign; where that is absent, falls back to
+          the raw BallotReady position level captured at onboarding, collapsed
+          to the same four buckets (federal/state/county pass through, every
+          other BallotReady level maps to city). Null for campaigns with neither
+          — mostly custom-office signups, where no BallotReady position exists.
         data_tests:
           - accepted_values:
               arguments:
@@ -576,9 +582,15 @@ models:
           Ballot). 'Runoff' = currently in a runoff that has not been called.
           NULL when the outcome is not yet determined — the candidacy won an
           earlier stage and advanced (e.g. won the primary while the general is
-          pending), or the race structure is unknown. Falls back to the
-          provider-rolled outcome only when no in-context candidacy_stage row
-          exists (e.g. the 2025 HubSpot archive). KNOWN GAP: a jurisdiction where
+          pending), or the race structure is unknown. Derived from
+          evidence-backed stage rows only: a candidacy_stage row sourced solely
+          from gp_api records the campaign's pledged race (product-signup
+          intent, not a ballot appearance) and never contributes to the
+          outcome. The provider-rolled outcome applies only to 2025 archive
+          rows: a populated archive outcome is authoritative and wins even
+          when stage evidence exists (archive rows with a NULL provider
+          outcome still fall through to the stage logic); non-archive rows
+          never use the provider rollup. KNOWN GAP: a jurisdiction where
           a majority at the primary wins the seat outright while a general is
           still scheduled reads NULL (not 'Won') until the general resolves
           (a known follow-up). To answer "did they win the seat / will they
@@ -627,12 +639,16 @@ models:
         description: >
           The deepest election stage the candidacy has REACHED in
           `candidacy_stage` — including a stage that has a row but no result yet
-          (an upcoming general, or a runoff not yet called). Funnel order:
-          primary < primary runoff < general < general runoff. Paired with
-          `latest_stage_result` (both columns are sourced from the same
-          `candidacy_stage` row), so this can be non-null while
+          (an upcoming general, or a runoff not yet called). Counts
+          evidence-backed rows only: a stage row sourced solely from gp_api
+          records the campaign's pledged (intended) race, not a ballot
+          appearance, and is excluded — so a product signup with no
+          vendor-confirmed stage row reads NULL here rather than 'general'.
+          Funnel order: primary < primary runoff < general < general runoff.
+          Paired with `latest_stage_result` (both columns are sourced from the
+          same `candidacy_stage` row), so this can be non-null while
           `latest_stage_result` is null when the reached stage is undecided.
-          Null only when no in-context stage row exists. Use
+          Null only when no in-context evidence-backed stage row exists. Use
           `general_election_result` for the common "did they win the general?"
           question; use this pair when funnel position itself matters.
         data_tests:
@@ -653,9 +669,10 @@ models:
       - name: latest_stage_result
         description: >
           The captured result at `latest_stage_reached`, sourced from the same
-          `candidacy_stage` row. Null when no stage row exists, or when the
-          deepest reached stage has not been decided yet (a reached-but-pending
-          stage).
+          `candidacy_stage` row (evidence-backed rows only — gp_api-only pledge
+          rows are excluded, as for `latest_stage_reached`). Null when no
+          evidence-backed stage row exists, or when the deepest reached stage
+          has not been decided yet (a reached-but-pending stage).
         data_tests:
           - accepted_values:
               arguments:
@@ -1414,6 +1431,10 @@ models:
 
       - name: seats_available
         description: Number of seats available in the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: term_start_date
         description: Start date of the term
@@ -2943,16 +2964,17 @@ models:
       portion of the DDHQ candidacy key.
 
       Attribute precedence:
-        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS >
-          TS officeholder > DDHQ (DDHQ carries no email/phone).
-        state, party: BR > HubSpot > TS > TS officeholder > DDHQ (gp_api
-          carries neither).
+        first_name, last_name, email, phone: gp_api > HubSpot > BR >
+          BR officeholder > TS > TS officeholder > DDHQ (DDHQ carries no
+          email/phone).
+        state, party: BR > BR officeholder > HubSpot > TS > TS officeholder >
+          DDHQ (gp_api carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at), so a source's fields stay internally consistent.
-      BR contact/state come from int__ballotready_candidate_identity (2026
-      candidacy grain), BR party from the candidacy feed; officeholder-only or
-      pre-2026 BR persons therefore have sparse attributes. HubSpot state is
-      the raw CRM value and may be a full state name rather than a postal code.
+      BR contact/state/party come from int__ballotready_candidate_identity
+      across all election years; a BR person whose only BR presence is a term
+      rather than a race falls to the officeholder feed tier. HubSpot and TS
+      officeholder state values are normalized via the clean_states seed.
       party is normalized to the parse_party_affiliation vocabulary in every
       tier; vendor abbreviations and minor parties outside it (e.g. IND,
       Unaffiliated, Working Families) coarsen to 'Other'.
@@ -2995,7 +3017,9 @@ models:
       - name: phone
         description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: state
-        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Format may vary (HubSpot free-text).
+        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Always a 2-letter postal code.
+        data_tests:
+          - is_state_abbreviation
       - name: party
         description: >
           Party affiliation, precedence BR > HubSpot > TS > TS officeholder >

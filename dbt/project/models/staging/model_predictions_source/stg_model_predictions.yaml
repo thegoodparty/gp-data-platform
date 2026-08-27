@@ -112,6 +112,60 @@ models:
                 'US_Congressional_District'
               )
 
+  - name: stg_model_predictions__llm_l2_br_match
+    description: >
+      One row per office: the newest attempt from the append-only,
+      matcher-written llm_l2_br_match_results table, ordered by attempted_at
+      desc and never by confidence or match state. A populated district is
+      what "matched" means now; there is no status column. Supersedes
+      stg_model_predictions__llm_l2_br_match_20260126 for every consumer
+      except candidates_outreach, which is retired separately. Accepted
+      skew: the matcher appends on its own schedule, so a build that
+      overlaps an append can hand consumers built before and after it
+      different newest rows until the next build; supervised runs pause the
+      scheduled job across the run, and the automated loop is expected to
+      schedule around the nightly build.
+    columns:
+      - name: br_database_id
+        description: BallotReady office database id; the model is one row per office.
+        data_tests:
+          - not_null
+          - unique
+      - name: l2_state
+        description: >
+          The matched DISTRICT's state, null on an abstain, completing the
+          (state, type, name) key. NOT the office's state: consumers take
+          that from the position side.
+      - name: is_matched
+        description: >
+          Derived from the district key (l2_district_name is not null).
+          There is no status column, and none should be reintroduced.
+      - name: attempted_at
+        description: When the attempt was made; also the run key.
+    data_tests:
+      # The publication-time label check: the universe is rebuilt just before
+      # publication and every published label is re-tested against it, so a
+      # label that was valid when matched and died before publication is
+      # caught instead of shipped. The seeded January baseline run is exempt
+      # by its run key -- its dead labels ARE the backlog this project
+      # re-attempts, already reopened by int__l2_br_match_pending_offices'
+      # dead-label branch, not a new regression -- and every other run is
+      # held to it. Severity warn, deliberately: post-publication, L2
+      # relabeling is a background condition the pending list reopens on its
+      # own, and at error severity a routine rename wave would make the
+      # nightly build skip all six consumers until a manual matcher re-run.
+      # The supervised cutover treats a nonzero warn count as a hard stop.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_universe')
+            state_column: l2_state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: "attempted_at <> timestamp'2026-01-26'"
+          config:
+            severity: warn
+
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions
     columns:

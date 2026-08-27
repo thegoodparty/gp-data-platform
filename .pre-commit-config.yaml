@@ -7,7 +7,11 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
+        # gold-match/shared/ is omni's client copies carrying upstream's
+        # lint-excluded whitespace debt; the rewriting hooks must not touch it.
+        exclude: ^gold-match/shared/
     -   id: end-of-file-fixer
+        exclude: ^gold-match/shared/
     -   id: check-yaml
     -   id: mixed-line-ending
         args: ['--fix=lf']
@@ -25,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
+        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -62,6 +66,13 @@ repos:
         entry: bash -c 'cd matcha && uv run pytest'
         language: system
         files: ^matcha/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-gold-match
+        name: gold-match tests (pre-push)
+        entry: bash -c 'cd gold-match && uv run pytest'
+        language: system
+        files: ^gold-match/
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-airflow

@@ -192,17 +192,6 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_updated_at
-        description: >
-          Un-bumped source updated_at, carried separately from updated_at so
-          the model's incremental watermark stays in the source-time domain.
-          updated_at is bumped to wall-clock when a row is new to the mart or
-          its slug changed (the election-api write model's publish gate);
-          gating ingestion on those bumped values would skip later source
-          updates whose BallotReady stamps lag wall-clock. Not published to
-          election-api (the writer's Place upsert selects explicit columns).
-        tests:
-          - not_null
 
   - name: m_election_api__position
     description: "Mart model that serves the Election API"
@@ -295,7 +284,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral", "Primary"]
+                values: ["General", "LocalOrMunicipal", "Primary"]
       - name: model_version
         description: The model version
         tests:
@@ -421,7 +410,9 @@ models:
           mart_civics.candidacy. The existing position_names[] array carries
           the BR position name(s) for the race; official_office_name is the
           civics-standardized single string. Null when civics has no
-          matching candidacy rows.
+          matching candidacy rows, and also null when those candidacies
+          disagree on the name and none of them matches this race's own
+          position name (a vendor row matched to the wrong race).
       - name: office_level
         description: >
           Civics (HubSpot-sourced) office level. Distinct from the BR
@@ -594,9 +585,9 @@ models:
     description: >
       District-level Haystaq issue scores per L2 district, covering every L2
       district with an `is_matched = true` row in the LLM L2-to-BallotReady
-      district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-      scoped to a single election cycle — districts with off-cycle offices
-      are included as well.
+      district match (`stg_model_predictions__llm_l2_br_match`). Not scoped
+      to a single election cycle — districts with off-cycle offices are
+      included as well.
 
       Each row carries four jurisdictional flags (is_local, is_regional,
       is_state, is_federal) indicating where the issue is actionable.
@@ -847,9 +838,12 @@ models:
         description: "BallotReady person databaseId; null for GP-native people."
       - name: is_pledged
         description: >
-          Whether the person took the GoodParty pledge on any candidacy, rolled
-          up from candidacy.is_pledged on gp_person_id. The API column is NOT
-          NULL DEFAULT false, so the unpledged must be false, never null.
+          Whether the person took the GoodParty pledge on any of their product
+          records: a gp-api campaign with details.pledged, or a gp-api elected
+          office with pledged_at. Read from those records rather than from
+          candidacy, which drops an uncorroborated gp_api campaign and never
+          carried the elected-office pledge at all. The API column is NOT NULL
+          DEFAULT false, so the unpledged must be false, never null.
         tests:
           - not_null
       - name: gp_api_user_id

@@ -9,6 +9,7 @@ databricks-sql-connector>=4.3.0,<5.0.0
 databricks-sdk>=0.117.0,<1.0.0
 psycopg2-binary>=2.9.12,<3.0.0
 sshtunnel>=0.4.0,<1.0.0
+sqlparse>=0.6.0
 
 # People-API loader CLI — installed from this monorepo's subdirectory so the
 # `loader` console script is on PATH for the load_people_api DAG's BashOperators.
@@ -24,3 +25,6 @@ people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@fea
 # run on the image's Python 3.14, and the full monorepo project needs ~24 parse-time env vars. This
 # provider ships the operator + the dbt_cloud connection type.
 apache-airflow-providers-dbt-cloud>=4.9.2,<5.0.0
+# S3Hook for the l2_voter_files DAG. Astro Runtime pre-installs it; pinned so a runtime image
+# that drops it fails the build rather than the DAG.
+apache-airflow-providers-amazon>=9.16.0,<10.0.0

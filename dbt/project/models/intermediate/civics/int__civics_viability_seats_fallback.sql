@@ -11,7 +11,9 @@
 -- scorer consumes fallback seats for multi_seat ONLY (both tiers): its
 -- opponent count is per-election grain and can span positions, so fallback
 -- seats must not activate log_n_losers. The tier and matched race are kept
--- for provenance and the opponent-count follow-up.
+-- for provenance and the opponent-count follow-up. matched_br_race_id is a
+-- position+date min-pick and is NOT roster-verified -- never use it to
+-- select a roster.
 with
     keyed_candidacies as (
         select
@@ -51,9 +53,10 @@ with
         -- Two keys into the same nullout seed, and either match rejects. The
         -- seed's own tested key is gp_election_id, so it rejects the curated
         -- rows directly. The position + date proxy is kept because it
-        -- additionally reaches candidacies with no election link at all -- 70%
-        -- of the coverage gap has no gp_election_id, which the election-id key
-        -- can never touch. Both fail closed.
+        -- additionally reaches candidacies with no election link at all --
+        -- ~70% (measured 2026-08-10) of the coverage gap has no
+        -- gp_election_id, which the election-id key can never touch. Both fail
+        -- closed.
         left join
             nullouts
             on keyed_candidacies.br_position_database_id
@@ -91,17 +94,7 @@ with
         inner join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
             on race.election.databaseid = election.database_id
-        where
-            -- Strict equality, not coalesce-to-false: a NULL flag is UNKNOWN
-            -- and fails closed. Verified 2026-08-10: all five flags are 100%
-            -- populated across staging, so this costs zero fills today and
-            -- guards against a future partial load.
-            race.is_disabled = false
-            and race.is_recall = false
-            and race.is_primary = false
-            and race.is_runoff = false
-            and race.is_unexpired = false
-            and race.seats > 0
+        where {{ clean_general_race_conditions("race") }}
     ),
 
     race_exact as (
@@ -124,34 +117,29 @@ with
         where seats > 0
         qualify
             row_number() over (partition by database_id order by updated_at desc) = 1
-    ),
-
-    resolved as (
-        -- Race tier wins. Ambiguity (same-date races disagreeing on seats) is
-        -- fail-closed: those candidacies get NO row at all -- they must not
-        -- fall through to the position tier, which would silently pick a side.
-        select
-            gp_candidacy_id,
-            fallback_seats,
-            'race_exact' as seats_source,
-            cast(matched_br_race_id as string) as matched_br_race_id
-        from race_exact
-        where n_seat_values = 1
-
-        union all
-
-        select
-            trusted.gp_candidacy_id,
-            position_seats.seats as fallback_seats,
-            'position' as seats_source,
-            cast(null as string) as matched_br_race_id
-        from trusted
-        inner join
-            position_seats
-            on trusted.br_position_database_id = position_seats.br_position_database_id
-        left join race_exact on trusted.gp_candidacy_id = race_exact.gp_candidacy_id
-        where race_exact.gp_candidacy_id is null
     )
 
-select gp_candidacy_id, fallback_seats, seats_source, matched_br_race_id
-from resolved
+-- Race tier wins. Ambiguity (same-date races disagreeing on seats) is
+-- fail-closed: those candidacies get NO row at all -- they must not fall
+-- through to the position tier, which would silently pick a side.
+select
+    gp_candidacy_id,
+    fallback_seats,
+    'race_exact' as seats_source,
+    cast(matched_br_race_id as string) as matched_br_race_id
+from race_exact
+where n_seat_values = 1
+
+union all
+
+select
+    trusted.gp_candidacy_id,
+    position_seats.seats as fallback_seats,
+    'position' as seats_source,
+    cast(null as string) as matched_br_race_id
+from trusted
+inner join
+    position_seats
+    on trusted.br_position_database_id = position_seats.br_position_database_id
+left join race_exact on trusted.gp_candidacy_id = race_exact.gp_candidacy_id
+where race_exact.gp_candidacy_id is null

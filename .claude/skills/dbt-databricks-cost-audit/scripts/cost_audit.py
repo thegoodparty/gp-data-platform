@@ -144,14 +144,31 @@ def label_principal(principal, spmap):
 
 def q_topnodes(since, wh, dbt_app):
     node = 'regexp_extract(statement_text, \'"node_id": ?"([^"]+)"\', 1)'
+    # `q` counts every statement dbt stamped with this node_id, most of which are
+    # trivial (SHOW/OPTIMIZE/metadata SELECTs). `heavy_q` counts only statements
+    # over a minute, which is the number that tracks "how often did this actually
+    # build". Ranking or reasoning on `q` alone badly misattributes cost.
+    #
+    # hr_per_tb separates the two failure modes: scan-bound nodes (wide reads,
+    # low ratio) want pruning/partitioning; compute-bound nodes (tiny reads, high
+    # ratio) are usually a bad join plan and pruning will not touch them.
     return (
         f"select {node} node, element_at(split({node},'[.]'),1) t, "
         f"round(sum(execution_duration_ms)/3600000,1) exec_hr, count(*) q, "
-        f"round(sum(read_bytes)/1e12,2) tb "
+        f"sum(case when execution_duration_ms>60000 then 1 else 0 end) heavy_q, "
+        f"round(sum(read_bytes)/1e12,2) tb, "
+        f"round((sum(execution_duration_ms)/3600000.0)"
+        f"/nullif(sum(read_bytes)/1e12,0),1) hr_per_tb "
         f"from system.query.history where compute.warehouse_id='{wh}' "
         f"and client_application='{dbt_app}' and start_time>='{since}' "
         f"and {node}!='' group by 1,2 order by exec_hr desc limit 25"
     )
+
+
+def short_node(node_id):
+    """`model.proj.name` / `test.proj.name.abc123` -> `name` (drops the test hash)."""
+    parts = (node_id or "").split(".")
+    return parts[2] if len(parts) > 2 else (parts[-1] if parts else node_id)
 
 
 def q_freq_windows(since, wh, dbt_app):
@@ -212,11 +229,15 @@ def collect(profile, warehouse, since, dbt_app):
         }
     data["topnodes"] = [
         {
-            "node": r[0].split(".")[-1],
+            # node_id is <type>.<project>.<name>[.<hash>]; generic tests carry a
+            # trailing hash, so taking the last segment renders them as bare hashes.
+            "node": short_node(r[0]),
             "type": r[1],
             "hr": float(r[2] or 0),
             "q": int(r[3]),
-            "tb": float(r[4] or 0),
+            "heavy_q": int(r[4] or 0),
+            "tb": float(r[5] or 0),
+            "hr_per_tb": float(r[6] or 0),
         }
         for r in run_sql(profile, warehouse, q_topnodes(since, warehouse, dbt_app))
     ]

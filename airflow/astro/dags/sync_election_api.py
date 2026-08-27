@@ -8,6 +8,7 @@ transaction. Each table is one task group with the same build lifecycle:
 1. **build_staging** — drop & recreate `staging."<Table>_new"` LIKE the live
    target (no indexes — fast bulk-insert).
 2. **load_staging** — stream the source mart from Databricks into staging.
+   Runs on the `election-api-sync` worker queue (see Worker queue below).
    The column list is the live table's own columns, so the mart must publish
    every one of them, with matching names and types — there is no per-table
    column mapping, row transform, or exclusion list in this DAG. A live column
@@ -65,6 +66,15 @@ rehearsal freezes ALL of them: keep the rehearsal window short.
   `dbt_staging` for in-flight artifacts). Override on a dev deployment to
   test unmerged mart changes end to end from a development schema.
 
+### Worker queue:
+`load_staging` runs on the `election-api-sync` queue, declared per environment
+in gp-terraform-dataplatform's `locals.tf`. Without it those tasks are never
+picked up and fail with no logs. A load task peaks around 400 MB
+(~250 MB of imports plus one `batch_size` fetch), so the queue is A5 at
+concurrency 2 — five on one 2 GiB A5 is what OOM-killed these tasks. Keep the
+concurrency low rather than widening it; Astro scales workers out from the
+queued-task count, so low concurrency gives the DAG more cores, not fewer.
+
 ### Deploy model:
 Branch-to-deployment mapping lives in Astro's Git Deploys settings; see
 `airflow/astro/README.md`.
@@ -101,6 +111,8 @@ t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
+# Loads run on their own worker queue at low concurrency; see the docstring.
+LOAD_QUEUE = "election-api-sync"
 
 
 def _open_pg():
@@ -267,7 +279,7 @@ TABLES: tuple[MartSync, ...] = (
             ),
         ),
         source_model="m_election_api__race",
-        # ~1M rows; one state at a time bounds worker memory.
+        # ~1M rows; one state at a time keeps each server-side result small.
         partition_column="state",
         gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         parents=("place", "position"),
@@ -354,8 +366,8 @@ TABLES: tuple[MartSync, ...] = (
             ),
         ),
         source_model="m_election_api__zip_to_position",
-        # Statewide coverage added ~260k rows; read one state at a time so
-        # the worker's peak memory stays bounded as the mart grows.
+        # Statewide coverage added ~260k rows; read one state at a time so each
+        # server-side result set stays small as the mart grows.
         partition_column="state",
         # No id-overlap floor: nothing references ZipToPosition ids (PK only;
         # the API reads by zip/position), and this change re-mints them (the
@@ -379,8 +391,8 @@ TABLES: tuple[MartSync, ...] = (
             ),
         ),
         source_model="m_election_api__district_top_issues",
-        # ~5.1M rows; read one issue at a time (~68 partitions) to keep the
-        # combined peak memory bounded when running alongside other loads.
+        # ~5.1M rows; read one issue at a time (~68 partitions) so no single
+        # server-side result set holds the whole mart.
         partition_column="issue",
         gate=QualityGate(
             cold_start_floor=100_000,
@@ -458,7 +470,7 @@ def _build_group(table: MartSync) -> dict:
             with _open_pg() as conn:
                 create_staging_table(conn, spec)
 
-        @task
+        @task(queue=LOAD_QUEUE)
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             schema = Variable.get("election_api_source_schema", default="dbt")

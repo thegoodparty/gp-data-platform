@@ -17,15 +17,46 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    -- Inner-joined below so the candidacy universe stays gated on users that
-    -- exist in the users mart (matches candidate_gp_api's user filter).
-    users as (select user_id from {{ ref("users") }}),
+    vendor_clusters as (
+        select distinct cluster_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        where source_name in ('ballotready', 'techspeed', 'ddhq')
+    ),
 
-    -- hubspotid lives in the user's meta_data JSON (a real HubSpot CONTACT id),
-    -- not on the users mart. Mirrors int__civics_candidate_gp_api.
+    -- A race no vendor lists is not evidence the person is on a ballot.
+    corroborated_campaigns as (
+        select distinct cast(split(source_id, '__')[0] as bigint) as campaign_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        inner join vendor_clusters using (cluster_id)
+        where source_name = 'gp_api'
+    ),
+
+    -- The only user gate: candidate_gp_api takes its users from this model.
+    users as (select user_id from {{ ref("users") }} where campaign_count > 0),
+
     user_hubspot as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+    ),
+
+    -- Someone confirmed the person is running. Contact grain, so one 'Yes'
+    -- covers every campaign the user holds.
+    hubspot_verified_campaigns as (
+        select distinct c.campaign_id
+        from latest_campaigns as c
+        inner join user_hubspot as uh on c.user_id = uh.user_id
+        inner join
+            {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as hc
+            on uh.hubspot_contact_id = hc.id
+        where trim(hc.verified_candidate_status) = 'Yes'
+    ),
+
+    eligible_campaigns as (
+        select campaign_id
+        from corroborated_campaigns
+        union
+        select campaign_id
+        from hubspot_verified_campaigns
     ),
 
     person_ids as (
@@ -106,6 +137,7 @@ with
             p.gp_person_id as user_gp_person_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
+        inner join eligible_campaigns as ec on c.campaign_id = ec.campaign_id
         left join
             person_ids as p on 'gp_api|' || cast(c.user_id as string) = p.record_key
         left join user_hubspot as uh on c.user_id = uh.user_id
@@ -207,23 +239,9 @@ with
         where enriched.general_election_date is not null
     ),
 
-    -- Referential integrity: drop candidacies whose gp_candidate_id doesn't
-    -- resolve (e.g. user filtered out by campaign_count > 0).
-    valid_candidates as (
-        select gp_candidate_id from {{ ref("int__civics_candidate_gp_api") }}
-    ),
-
-    filtered as (
-        select candidacies_with_ids.*
-        from candidacies_with_ids
-        inner join
-            valid_candidates
-            on candidacies_with_ids.gp_candidate_id = valid_candidates.gp_candidate_id
-    ),
-
     deduplicated as (
         select *
-        from filtered
+        from candidacies_with_ids
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
             = 1

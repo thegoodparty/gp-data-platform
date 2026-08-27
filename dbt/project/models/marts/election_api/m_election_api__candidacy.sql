@@ -1,12 +1,3 @@
-{{
-    config(
-        materialized="table",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
-
 with
     active_candidacy as (
         select

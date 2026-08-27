@@ -128,6 +128,67 @@ EXTRA_INDEXES: list[IndexDef] = [
         columns=["district_id"],
         where=None,
     ),
+    # Seven office-bearing L2 district columns that were missing from the Voter mart, so they
+    # never reached serving and have no index on the extraction-source cluster. Every other
+    # district column carries a plain btree in the generated seed; these mirror that pattern so
+    # a filter on them does not fall back to a full Voter scan. They move into the generated
+    # seed on the next extract-serving-structure, which then wins the name collision.
+    IndexDef(
+        table="Voter",
+        name="Voter_4H_Livestock_District_idx",
+        sql='CREATE INDEX "Voter_4H_Livestock_District_idx" ON public."Voter" USING btree ("4H_Livestock_District");',
+        unique=False,
+        columns=["4H_Livestock_District"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Community_College_idx",
+        sql='CREATE INDEX "Voter_Community_College_idx" ON public."Voter" USING btree ("Community_College");',
+        unique=False,
+        columns=["Community_College"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Judicial_Chancery_Court_idx",
+        sql='CREATE INDEX "Voter_Judicial_Chancery_Court_idx" ON public."Voter" USING btree ("Judicial_Chancery_Court");',
+        unique=False,
+        columns=["Judicial_Chancery_Court"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Judicial_Justice_of_the_Peace_idx",
+        sql='CREATE INDEX "Voter_Judicial_Justice_of_the_Peace_idx" ON public."Voter" USING btree ("Judicial_Justice_of_the_Peace");',
+        unique=False,
+        columns=["Judicial_Justice_of_the_Peace"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Soil_and_Water_District_idx",
+        sql='CREATE INDEX "Voter_Soil_and_Water_District_idx" ON public."Voter" USING btree ("Soil_and_Water_District");',
+        unique=False,
+        columns=["Soil_and_Water_District"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Soil_and_Water_District_At_Large_idx",
+        sql='CREATE INDEX "Voter_Soil_and_Water_District_At_Large_idx" ON public."Voter" USING btree ("Soil_and_Water_District_At_Large");',
+        unique=False,
+        columns=["Soil_and_Water_District_At_Large"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_State_Board_of_Equalization_idx",
+        sql='CREATE INDEX "Voter_State_Board_of_Equalization_idx" ON public."Voter" USING btree ("State_Board_of_Equalization");',
+        unique=False,
+        columns=["State_Board_of_Equalization"],
+        where=None,
+    ),
     # Voter-density heat map: the app's only query pattern is filter by district + resolution
     # (people-api voter-density serve query, handoff §7/§8). DistrictVoterDensity is a `green`-schema
     # serving table absent from the extraction-source cluster, so its index is carried here (like the
