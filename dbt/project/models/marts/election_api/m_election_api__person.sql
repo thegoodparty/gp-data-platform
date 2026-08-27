@@ -99,17 +99,31 @@ with
             = 1
     ),
 
-    -- The API contract is "pledged on any candidacy", so roll the candidacy
-    -- flag up to person grain. Keyed on gp_person_id, not gp_candidate_id: the
-    -- two ids agree only on candidate_id_source = 'gp_api' rows (2026+), while
-    -- every pre-2026 archive row carries its legacy source id, which never
-    -- matches a person. Joining on gp_candidate_id would therefore resolve 8.7k
-    -- of 35.4k pledged people. The group by keeps this one row per person.
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- The pledge is taken on a product record, so read it from the two records
+    -- that hold it rather than from candidacy. Candidacy drops a gp_api
+    -- campaign with no outside corroboration, which leaves 2.1k pledged
+    -- sign-ups reading as unpledged, and it never carried the elected-office
+    -- pledge that serve onboarding writes for holders who never ran with us.
+    -- The union keeps this one row per person.
     pledged as (
-        select gp_person_id, bool_or(coalesce(is_pledged, false)) as is_pledged
-        from {{ ref("candidacy") }}
-        where gp_person_id is not null
-        group by gp_person_id
+        select person.gp_person_id
+        from {{ ref("campaigns") }} as campaign
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(campaign.user_id as string)
+        where campaign.is_latest_version and campaign.is_pledged
+        union
+        select person.gp_person_id
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as office
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(office.user_id as string)
+        where office.pledged_at is not null
     )
 
 select
@@ -146,7 +160,7 @@ select
     br_person.experiences,
     people.state,
     -- NOT NULL in the API, so emit false rather than null for the unpledged.
-    coalesce(pledged.is_pledged, false) as is_pledged,
+    pledged.gp_person_id is not null as is_pledged,
     -- Digit string, not a uuid: the gp-api User.id is a numeric autoincrement.
     people.gp_api_user_id
 from public_people as people
