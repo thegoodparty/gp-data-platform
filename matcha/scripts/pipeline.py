@@ -154,7 +154,10 @@ def _inject_deterministic_group_edges(linker: Linker, config: EntityConfig, pred
 
 def train_model(linker: Linker, config: EntityConfig) -> int:
     """Estimate u via random sampling, then m via EM. Returns count of successful blocks."""
-    linker.training.estimate_u_using_random_sampling(max_pairs=5_000_000)
+    # Seeded so a rerun on unchanged input reproduces the same clusters.
+    # Unseeded, u sampling moved 451 of 986,360 person records between clusters
+    # across two runs, and published ids are minted from cluster membership.
+    linker.training.estimate_u_using_random_sampling(max_pairs=5_000_000, seed=20260827)
 
     successful_blocks = 0
     last_error = None
