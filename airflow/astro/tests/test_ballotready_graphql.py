@@ -1031,6 +1031,16 @@ def test_person_worklist_skips_unresolved_candidacies():
     assert "payload IS NOT NULL" in sql
 
 
+def test_person_worklist_guards_the_cast_against_non_numeric_database_ids():
+    """A non-numeric databaseId casts to NULL under Spark's non-ANSI mode; without a guard
+    it would form a NULL-keyed group that survives into read_worklist's int(row[0]).
+    """
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    cast_index = sql.index("cast(get_json_object")
+    guard_index = sql.index("source_id IS NOT NULL")
+    assert guard_index > cast_index
+
+
 def test_person_worklist_pages_by_the_keyset_cursor():
     sql = person_worklist_sql(
         "cat",

@@ -1,23 +1,26 @@
 """
 ## Extract BallotReady (CivicEngine)
 
-Pulls the nine BallotReady GraphQL entities by id and lands their raw node payloads in
+Pulls the ten BallotReady GraphQL entities by id and lands their raw node payloads in
 Databricks, replacing the direct-API dbt Python models those tables used to come from:
 
     extract_candidacy       extract_endorsement   extract_filing_period
     extract_geofence         extract_issue         extract_normalized_position
-    extract_party            extract_position_election_frequency
+    extract_party             extract_person        extract_position_election_frequency
     extract_stance
 
-Every task is independent except one: `extract_stance -> extract_issue`, because the issue
-worklist reads issue ids out of landed stance payloads (see `issue_worklist_sql`). The other
-three Candidacy-keyed entities (`party`, `endorsement`, `stance`) share `candidacy_worklist_sql`
-with `extract_candidacy`, and `geofence` builds its own worklist (`geofence_worklist_sql`)
-straight off the S3 candidacies feed. None of them wait on `extract_candidacy` — each builds its
-own worklist independently rather than from another task's output.
+Every task is independent except two: `extract_stance -> extract_issue`, because the issue
+worklist reads issue ids out of landed stance payloads (see `issue_worklist_sql`), and
+`extract_candidacy -> extract_person`, because person has no update feed of its own and its
+worklist reads person ids out of landed candidacy payloads instead (see `person_worklist_sql`).
+The other three Candidacy-keyed entities (`party`, `endorsement`, `stance`) share
+`candidacy_worklist_sql` with `extract_candidacy`, and `geofence` builds its own worklist
+(`geofence_worklist_sql`) straight off the S3 candidacies feed. None of them wait on
+`extract_candidacy` — each builds its own worklist independently rather than from another
+task's output.
 
 Concurrency against the CivicEngine GraphQL endpoint is bounded by `max_active_tasks` (how many
-of the nine tasks can run at once) times each task's own `max_workers` param (how many API calls
+of the ten tasks can run at once) times each task's own `max_workers` param (how many API calls
 that task makes concurrently) — with the defaults below, 4 x 4 = 16 concurrent callers.
 
 ### Configuration
@@ -32,17 +35,18 @@ Variables:
 - `databricks_dbt_schema` — holds the `stg_airbyte_source__ballotready_*` dbt models that every
   worklist query reads ids from.
 - `databricks_source_schema` — where this DAG's own `ballotready_*_raw` landing tables live
-  (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows back out of
-  this schema.
+  (`ExtractConfig.source_schema`). The issue worklist reads landed stance/issue rows, and the
+  person worklist reads landed candidacy rows, back out of this schema.
 
 ### Params
 
-`entities` narrows a manual run to a subset of the nine (empty runs all). An entity not in the
+`entities` narrows a manual run to a subset of the ten (empty runs all). An entity not in the
 list still runs its task, but as a cheap no-op rather than being removed from the graph — the
-task graph is fixed at parse time, and `extract_stance -> extract_issue` must keep working when
-only one side is requested (e.g. `entities: ["issue"]` alone still lets `extract_stance` execute,
-skip its own work, and hand off cleanly). `full_reload`, `max_ids_per_entity`, `max_workers`, and
-`requests_per_second` all forward straight into `ExtractConfig`.
+task graph is fixed at parse time, and both `extract_stance -> extract_issue` and
+`extract_candidacy -> extract_person` must keep working when only one side is requested (e.g.
+`entities: ["issue"]` alone still lets `extract_stance` execute, skip its own work, and hand off
+cleanly). `full_reload`, `max_ids_per_entity`, `max_workers`, and `requests_per_second` all
+forward straight into `ExtractConfig`.
 """
 
 import logging

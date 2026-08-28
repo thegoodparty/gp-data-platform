@@ -662,10 +662,9 @@ STANCE_SELECTION = """
 
 @dataclass(frozen=True)
 class EntitySpec:
-    """Everything that differs between the nine entity tasks.
+    """Everything that differs between the ten entity tasks.
 
-    The task body is identical for all of them; only this differs. Person slots
-    in later as a tenth spec with node_type "Candidate".
+    The task body is identical for all of them; only this differs.
     """
 
     name: str
@@ -1043,18 +1042,31 @@ def person_worklist_sql(
     uses. Read out of the landed candidacy payloads rather than a staging model, because
     the candidate id only exists inside the fetched Candidacy node. dbt_schema is accepted
     but unused, so this is callable identically to the rest.
+
+    Person is the only entity paging its own keyset cursor over a landing table that
+    candidacy's own cursor is still filling. If a candidacy run stops mid-way through a
+    group of rows sharing one `source_changed_at`, and person's cursor then advances past
+    that timestamp, persons first referenced by the rest of that tied group can never
+    satisfy `source_changed_at = T AND source_id > Z` and are skipped permanently. In
+    production this is rare and small (roughly 0.2% of truncation boundaries land inside a
+    tie, costing at most ~30 persons when it does); recover with a `full_reload: true` run
+    of person, which resets the cursor and re-sweeps — safe because the landing table is
+    append-only and downstream dedup resolves the resulting duplicates.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
         raise ValueError("source_schema is required: person ids are read out of the landed candidacy table")
     validate_identifier("source_schema", source_schema)
     candidacy = landing_table(catalog, source_schema, "candidacy")
-    inner = (
+    scanned = (
         "SELECT cast(get_json_object(payload, '$.candidate.databaseId') AS bigint) AS source_id, "
         "source_changed_at "
         f"FROM {candidacy} "
         "WHERE payload IS NOT NULL AND get_json_object(payload, '$.candidate.databaseId') IS NOT NULL"
     )
+    # A non-numeric databaseId casts to NULL under Spark's non-ANSI mode; guarded here so a
+    # NULL-keyed group never reaches read_worklist's int(row[0]), same as issue_worklist_sql.
+    inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
     return _keyed_worklist(
         inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
     )
