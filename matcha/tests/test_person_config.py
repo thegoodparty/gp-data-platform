@@ -41,9 +41,12 @@ def test_no_unbounded_blocking_rule():
     generate hundreds of millions of candidate pairs. Every rule has to carry a
     contact key, a first-name restriction, or a birth year.
     """
-    narrowing = ("email", "phone", "first_name", "birth_date", "pregroup_id")
+    # Word boundaries, not substring: "first_name" occurs inside
+    # "first_name_aliases", so a plain `in` passes any first_name_* column
+    # without ever checking that it narrows anything.
+    narrowing = ("email", "phone", "first_name", "first_name_aliases", "birth_date", "pregroup_id")
     for rule in PERSON_CONFIG.blocking_rules_for_prediction:
         sql = _rule_sql(rule)
         assert any(
-            token in sql for token in narrowing
+            re.search(rf"\b{re.escape(token)}\b", sql) for token in narrowing
         ), f"Blocking rule has no narrowing term beyond name/state: {sql!r}"
