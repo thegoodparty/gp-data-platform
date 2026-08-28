@@ -1121,7 +1121,7 @@ def test_every_worklist_builder_accepts_the_uniform_signature(entity):
     """Every builder is called the same way, so the task body needs no branch.
 
     issue_worklist_sql and person_worklist_sql both raise ValueError when source_schema is
-    missing, so it is passed here alongside the cursor kwargs and limit.
+    missing, so it is passed here alongside the cursor kwargs.
     """
     sql = ENTITY_SPECS[entity].worklist_sql(
         "cat",
