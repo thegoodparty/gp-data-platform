@@ -1064,8 +1064,8 @@ def person_worklist_sql(
         f"FROM {candidacy} "
         "WHERE payload IS NOT NULL AND get_json_object(payload, '$.candidate.databaseId') IS NOT NULL"
     )
-    # A non-numeric databaseId casts to NULL under Spark's non-ANSI mode; guarded here so a
-    # NULL-keyed group never reaches read_worklist's int(row[0]), same as issue_worklist_sql.
+    # Post-cast null filter for consistency with issue_worklist_sql. Defence-in-depth: on
+    # ANSI mode a malformed databaseId raises CAST_INVALID_INPUT rather than producing a null.
     inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
     return _keyed_worklist(
         inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit

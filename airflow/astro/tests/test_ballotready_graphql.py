@@ -1031,9 +1031,12 @@ def test_person_worklist_skips_unresolved_candidacies():
     assert "payload IS NOT NULL" in sql
 
 
-def test_person_worklist_guards_the_cast_against_non_numeric_database_ids():
-    """A non-numeric databaseId casts to NULL under Spark's non-ANSI mode; without a guard
-    it would form a NULL-keyed group that survives into read_worklist's int(row[0]).
+def test_person_worklist_filters_null_ids_after_the_cast_like_issue():
+    """Verifies the post-cast null filter is present and positioned after the cast.
+
+    On this warehouse (ANSI mode), a malformed databaseId raises CAST_INVALID_INPUT
+    rather than producing a null, so this filter is defence-in-depth and consistency
+    with issue_worklist_sql, not protection against a failure mode that occurs today.
     """
     sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
     cast_index = sql.index("cast(get_json_object")
