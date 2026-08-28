@@ -3557,7 +3557,9 @@ models:
       id or contact fields and attaches via candidacy clusters; voter records
       are out of scope.
 
-      Contact hygiene happens here so blocking cannot chain unrelated people:
+      Hygiene happens here so blocking cannot chain unrelated people. Records
+      that are not people are dropped: role inboxes and signup-form test
+      fixtures, identified by surname. Contact keys are then cleaned:
       internal/test email domains and placeholder phones are nulled,
       plus-addressing is stripped, phones must be 10 digits (or 11 with a
       leading country code), and any contact key on more than 25 records
@@ -3565,7 +3567,7 @@ models:
     columns:
       - name: unique_id
         description: >
-          Primary key for Splink — source_name || '|' || source_id. For
+          Primary key for Splink: source_name || '|' || source_id. For
           techspeed rows the source_id is the stage-stripped candidate code
           (person grain), so unlike other sources it is not a person-graph
           record key.
@@ -3595,9 +3597,10 @@ models:
         description: >
           Generational suffix ('' when none) from explicit source columns
           where they exist (BR carries roman numerals up to XIV), else
-          extracted from the raw surname. A mismatch is a cannot-link in the
-          person matcher: father/son pairs share family phones and differ only
-          by Jr/Sr.
+          extracted from the raw surname. Carried for audit, not as a
+          cannot-link: father and son share a family phone and differ only by
+          Jr/Sr, but of five hand-verified suffix-conflict pairs three were the
+          same person, so refusing the link would cost more than it buys.
         data_tests:
           - not_null
           - dbt_utils.expression_is_true:
@@ -3617,8 +3620,10 @@ models:
       - name: pregroup_id
         description: >
           Deterministic person group of the record (falls back to unique_id
-          for records not yet in the graph). The matcher blocks on it and
-          injects same-group edges at p=1.0 before clustering.
+          for records not yet in the graph). Splink blocks on it to score those
+          pairs, but does not assert them. Canonical identity is settled
+          downstream in int__civics_person_groups, which unions these groups
+          with the Splink clusters.
         data_tests:
           - not_null
 

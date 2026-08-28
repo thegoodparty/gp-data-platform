@@ -1,9 +1,9 @@
 -- Deterministic-only person groups: connected components over the
 -- deterministic edge model (native ids + candidacy-cluster co-membership),
 -- never over probabilistic person-matcher output. This is the pregroup source
--- for the Splink person entity: matcha injects these groups as p=1.0 edges, so
--- by DAG topology a published probabilistic merge can never feed back into the
--- next run's pregroups. Identical to int__civics_person_groups until a
+-- for the Splink person entity. Keeping it separate is what stops a published
+-- probabilistic merge from feeding back into the next run's pregroups: by DAG
+-- topology this model cannot see Splink output. Identical to
 -- probabilistic person edge model joins that model's adjacency.
 {% set passes = 15 %}
 with

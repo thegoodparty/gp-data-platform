@@ -2,13 +2,13 @@
 -- across HubSpot contacts, gp_api users, BallotReady people, TechSpeed
 -- candidates (person grain), and TechSpeed officeholders. DDHQ carries no
 -- person id or contact fields and attaches via candidacy clusters; voter
--- records are out of scope. All matching happens in Splink — this model only
--- normalizes fields and applies contact hygiene, so shared institutional
--- inboxes, placeholder phones, and internal accounts cannot chain unrelated
--- people through blocking.
--- pregroup_id carries the deterministic person group: matcha blocks on it and
--- injects same-group edges at p=1.0, so deterministic identity always survives
--- probabilistic matching.
+-- records are out of scope.
+-- Matching happens in Splink. This model normalizes fields and applies hygiene:
+-- it drops records that are not people, and nulls contact keys that many people
+-- share, so neither chains unrelated people together through blocking.
+-- pregroup_id carries the deterministic person group. Splink blocks on it to
+-- score those pairs but does not assert them: canonical identity is settled
+-- downstream in int__civics_person_groups, not here.
 {% set contact_key_max_records = 25 %}
 with
     -- Nickname aliases per canonical name (same construction as the candidacy
@@ -412,9 +412,9 @@ where
     n.first_name <> ''
     and n.last_name <> ''
     -- Role inboxes ("<town> party registrar") and signup-form test fixtures
-    -- ("test user"), neither of which is a person. Both are confined to the
-    -- product sources and none carries a br_candidate_id, so nothing filed is
-    -- lost; left in, their shared name merged unrelated HubSpot contacts.
+    -- ("test user"). Neither is a person. Both sit only in the product sources
+    -- and carry no br_candidate_id, so no filed candidate is lost. Left in,
+    -- their shared names merged unrelated HubSpot contacts.
     and n.last_name not like '%party registrar%'
     and n.last_name <> 'user'
     and (n.source_name <> 'techspeed' or coalesce(tsg.n_groups, 1) = 1)

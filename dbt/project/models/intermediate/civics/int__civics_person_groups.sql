@@ -1,19 +1,16 @@
--- Person groups. One row per record_key with its person_group_key: the min
--- record_key reachable over the non-conflicting edge list, via min-label
--- propagation across a fixed number of unrolled passes (Spark SQL, no
--- recursion). Labels stop changing after pass 5 on current data (pass 6 ==
--- pass 5, verified); 15 passes leaves headroom and the convergence test
--- (penultimate == final) proves it. See canonical-person-plan.md decision 1.
+-- Person groups. One row per record_key with its person_group_key: the minimum
+-- record_key reachable over the non-conflicting edges.
+-- Labels stop changing after pass 5 on current data (pass 6 == pass 5,
+-- verified). 15 passes leaves headroom, and the convergence test (penultimate
+-- == final) proves it held. See canonical-person-plan.md decision 1.
 {% set passes = 15 %}
 with
     nodes as (
         select record_key, source_name from {{ ref("int__civics_person_nodes") }}
     ),
 
-    -- Undirected adjacency with a self-loop per node, conflict edges excluded.
-    -- The self-loop lets each pass take min() over neighbors only (own label
-    -- included as a neighbor), so it references the prior pass exactly once —
-    -- a linear chain, not the exponential self+neighbor double reference.
+    -- Undirected adjacency, conflict edges excluded. The self-loop per node is
+    -- part of what min_label_propagation requires of its caller.
     adjacency as (
         select record_key_1 as src, record_key_2 as dst
         from {{ ref("int__civics_person_edges") }}
