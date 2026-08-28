@@ -15,7 +15,7 @@ models:
         data_tests:
           - not_null
       - name: candidacy_created_at
-        description: Anchors the ballotready_graphql_person_extract cursor; must stay populated so greatest(created, updated) never yields null.
+        description: One half of the candidacy worklist's freshness signal in extract_ballotready, which takes greatest(candidacy_created_at, candidacy_updated_at). Must stay populated, or affected candidacies never enter the worklist.
         data_tests:
           - not_null
       - name: candidacy_updated_at
@@ -75,7 +75,7 @@ models:
               config:
                 severity: warn
       - name: office_holder_created_at
-        description: Anchors the ballotready_graphql_person_extract cursor; must stay populated so greatest(created, updated) never yields null.
+        description: BallotReady office holder record creation timestamp. A null value signals a data integrity issue in the feed or staging layer.
         data_tests:
           - not_null
       - name: office_holder_updated_at
