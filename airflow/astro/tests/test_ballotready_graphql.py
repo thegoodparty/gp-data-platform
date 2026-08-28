@@ -1,5 +1,6 @@
 import base64
 import json
+from array import array
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1435,12 +1436,14 @@ def _config(**overrides):
 
 def _worklist(pairs):
     """Convert a list of (id, changed_at) pairs into the parallel-array shape read_worklist
-    returns, so tests can keep authoring worklists as pairs.
+    returns -- an actual array("q"), not a list -- so extract_entity tests exercise the real
+    type through slicing, ids[-1], and batched() instead of only the dedicated read_worklist
+    test doing so.
     """
     if not pairs:
-        return [], []
+        return array("q"), []
     ids, changed_at = zip(*pairs, strict=True)
-    return list(ids), list(changed_at)
+    return array("q", ids), list(changed_at)
 
 
 def test_read_worklist_drains_the_cursor_in_chunks_rather_than_all_at_once():

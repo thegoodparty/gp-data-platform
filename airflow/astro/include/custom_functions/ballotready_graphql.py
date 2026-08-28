@@ -1265,9 +1265,13 @@ def read_worklist(
 
     Drained in chunks and compacted as it goes, rather than with fetchall(). A fully
     materialised worklist is what OOM-killed a 200k-id prod run: a list of tuples plus the
-    dict built from it costs a few hundred bytes per id, against roughly 17 in an array,
-    and four of these run concurrently. Chunking also lets the connector release each
-    batch of row objects instead of holding every one until the end.
+    dict built from it costs a few hundred bytes per id, against roughly 64 here -- an
+    8-byte int in the array plus a ~48-byte datetime object and its 8-byte pointer in
+    changed_at -- a roughly fourfold cut, and four of these run concurrently. The bigger
+    win is not this arithmetic: chunking means the connector never holds the full result
+    set's row objects at once, which was likely the dominant cost in the OOM. (Packing
+    changed_at into a second array("q") of epoch microseconds would bring this to roughly
+    17 bytes per id, but isn't worth the per-row conversion unless that's actually needed.)
 
     Parallel arrays rather than one array of pairs because build_insert_rows needs the
     timestamp by id, and slicing two arrays per window is cheaper than rebuilding a dict
