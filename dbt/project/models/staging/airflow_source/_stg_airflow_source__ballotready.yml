@@ -42,18 +42,27 @@ models:
         data_tests: [not_null]
       - name: geo_id
         description: >
-          Census TIGER/Line geographic identifier the geofence boundary corresponds to;
-          null when BallotReady has not set one.
+          Geographic identifier for the geofence boundary. Shaped like a Census GEOID
+          (short, numeric) for the ~70% of rows carrying a Census mtfcc code; for the
+          remaining rows, which carry a BallotReady-specific mtfcc, it runs longer and
+          less uniform (observed up to 29 characters, some non-numeric).
       - name: mtfcc
         description: >
-          Census MAF/TIGER Feature Class Code identifying the type of geographic entity
-          the geofence represents; null when BallotReady has not set one.
+          Mostly a Census MAF/TIGER Feature Class Code identifying the type of geographic
+          entity the geofence represents (roughly 70% of rows, 11 distinct `G`-prefixed
+          codes as of this writing). The remaining rows carry a BallotReady-specific
+          `X`-prefixed code outside the Census set (roughly 30%, 72 distinct codes), whose
+          meaning is not documented by BallotReady.
       - name: updated_at
         description: Timestamp the geofence was last updated in BallotReady.
         data_tests: [not_null]
       - name: valid_from
-        description: Date the geofence boundary version became effective.
+        description: Start date of this row's effective boundary version, as reported by BallotReady.
       - name: valid_to
         description: >
-          Date the geofence boundary version stopped being effective; null when the
-          boundary is still current.
+          End date of this row's effective boundary version, as reported by BallotReady;
+          null for roughly 80% of rows. Whether null means "still current" is not
+          confirmed: many geo_ids carry more than one landed row, and a large share of
+          those have more than one row with a null valid_to, which is inconsistent with a
+          single current version per geofence. Treat the effective-dating semantics as
+          unconfirmed rather than assume them.
