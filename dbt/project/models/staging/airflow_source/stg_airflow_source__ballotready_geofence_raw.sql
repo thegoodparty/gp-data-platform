@@ -18,8 +18,11 @@ with
         from {{ source("airflow_source", "ballotready_geofence_raw") }}
         where
             payload is not null
+            -- >= not >: a merge on requested_id is idempotent, so reprocessing the
+            -- watermark boundary is free, but excluding a tied loaded_at with > would
+            -- strand that row past every future run.
             {% if is_incremental() %}
-                and loaded_at > (
+                and loaded_at >= (
                     select coalesce(max(loaded_at), timestamp '1970-01-01')
                     from {{ this }}
                 )
