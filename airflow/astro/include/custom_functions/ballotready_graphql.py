@@ -569,6 +569,66 @@ PARTY_SELECTION = """
 }
 """
 
+PERSON_SELECTION = """
+... on Person {
+    bioText
+    candidacies(includeUncertified: true) {
+        databaseId
+        id
+    }
+    contacts {
+        email
+        fax
+        phone
+        type
+    }
+    createdAt
+    databaseId
+    degrees {
+        databaseId
+        degree
+        gradYear
+        id
+        major
+        school
+    }
+    experiences {
+        databaseId
+        end
+        id
+        organization
+        start
+        title
+        type
+    }
+    firstName
+    fullName
+    id
+    images {
+        type
+        url
+    }
+    lastName
+    middleName
+    nickname
+    officeHolders {
+        nodes {
+            databaseId
+            id
+        }
+    }
+    slug
+    suffix
+    updatedAt
+    urls {
+        databaseId
+        id
+        type
+        url
+    }
+}
+"""
+
 POSITION_ELECTION_FREQUENCY_SELECTION = """
 ... on PositionElectionFrequency {
     databaseId

@@ -20,6 +20,7 @@ from include.custom_functions.ballotready_graphql import (
     MAX_INSERT_PARAM_CHARS,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
+    PERSON_SELECTION,
     POSITION_ELECTION_FREQUENCY_SELECTION,
     STANCE_SELECTION,
     WINDOW_SIZE,
@@ -495,6 +496,7 @@ ALL_SELECTIONS = {
     "Issue": ISSUE_SELECTION,
     "NormalizedPosition": NORMALIZED_POSITION_SELECTION,
     "Party": PARTY_SELECTION,
+    "Person": PERSON_SELECTION,
     "PositionElectionFrequency": POSITION_ELECTION_FREQUENCY_SELECTION,
     "Stance": STANCE_SELECTION,
 }
@@ -517,14 +519,15 @@ def _top_level_fields(selection: str) -> frozenset[str]:
     """Names of the fields directly inside the `... on Type { ... }` body.
 
     Ignores commented-out lines (`#...`) and anything nested inside a field's
-    own `{ ... }` sub-selection, so a dropped or added top-level field is
-    caught but renaming something two levels deep is not.
+    own `{ ... }` sub-selection or parenthesized arguments, so a dropped or added
+    top-level field is caught but renaming something two levels deep is not.
     """
     live = "\n".join(line for line in selection.splitlines() if not line.strip().startswith("#"))
     body = live[live.index("{") + 1 : live.rindex("}")]
 
     fields = []
     depth = 0
+    paren_depth = 0
     i = 0
     while i < len(body):
         char = body[i]
@@ -534,11 +537,17 @@ def _top_level_fields(selection: str) -> frozenset[str]:
         elif char == "}":
             depth -= 1
             i += 1
+        elif char == "(":
+            paren_depth += 1
+            i += 1
+        elif char == ")":
+            paren_depth -= 1
+            i += 1
         elif char.isalnum() or char == "_":
             j = i
             while j < len(body) and (body[j].isalnum() or body[j] == "_"):
                 j += 1
-            if depth == 0:
+            if depth == 0 and paren_depth == 0:
                 fields.append(body[i:j])
             i = j
         else:
@@ -579,6 +588,29 @@ EXPECTED_TOP_LEVEL_FIELDS = {
     "Issue": frozenset({"databaseId", "id", "key", "name", "pluginEnabled", "responseType", "rowOrder"}),
     "NormalizedPosition": frozenset({"databaseId", "description", "id", "issues", "mtfcc", "name"}),
     "Party": frozenset({"id", "databaseId", "parties"}),
+    "Person": frozenset(
+        {
+            "bioText",
+            "candidacies",
+            "contacts",
+            "createdAt",
+            "databaseId",
+            "degrees",
+            "experiences",
+            "firstName",
+            "fullName",
+            "id",
+            "images",
+            "lastName",
+            "middleName",
+            "nickname",
+            "officeHolders",
+            "slug",
+            "suffix",
+            "updatedAt",
+            "urls",
+        }
+    ),
     "PositionElectionFrequency": frozenset(
         {"databaseId", "frequency", "id", "referenceYear", "seats", "validFrom", "validTo"}
     ),
