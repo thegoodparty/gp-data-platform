@@ -47,6 +47,13 @@ select
         from both
         where not all_columns_match and old_updated_at <=> new_updated_at
     ) as transform_bugs,
+    -- Arithmetic residual, not another predicate: old_updated_at > new_updated_at (old
+    -- side newer, e.g. mid-backfill) and a null on only one side both fail every
+    -- predicate above (< is UNKNOWN, <=> is false), so a predicate-based bucket would
+    -- inherit the same null semantics that created the gap. Every non-matching row must
+    -- land in exactly one bucket; non-zero here means the classifier missed a case and
+    -- transform_bugs cannot be trusted until it is explained.
+    shared_ids - matching - old_side_stale - transform_bugs as unclassified,
     (
         select count(*)
         from new_model
