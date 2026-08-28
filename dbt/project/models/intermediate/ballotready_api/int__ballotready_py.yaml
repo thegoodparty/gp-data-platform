@@ -119,34 +119,6 @@ models:
       - name: type
         description: "CivicEngine filing period type"
 
-  - name: int__ballotready_geofence
-    description: >
-      This model retrieves and processes geofence data from the CivicEngine API.
-    config:
-      meta:
-        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-        owner: "Data Engineering Team"
-        contains_pii: false
-    columns:
-      - name: created_at
-        description: "Timestamp when the geofence was created in the CivicEngine system"
-        tests:
-          - not_null
-      - name: database_id
-        description: "Unique identifier for the geofence in the CivicEngine database"
-        tests:
-          - not_null
-          - unique
-      - name: id
-        description: "Encoded identifier for the geofence in the CivicEngine system"
-        tests:
-          - not_null
-          - unique
-      - name: updated_at
-        description: "Timestamp when the geofence was last updated"
-        tests:
-          - not_null
-
   - name: int__ballotready_issue
     description: >
       This model retrieves and processes issue data from the CivicEngine API: https://developers.civicengine.com/docs/api/graphql/reference/objects/issue
