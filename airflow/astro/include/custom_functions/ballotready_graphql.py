@@ -1027,6 +1027,39 @@ def issue_worklist_sql(
     )
 
 
+def person_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Person ids referenced by landed candidacies; persons carry no update feed of their own.
+
+    Many candidacies share one person, so the freshest referencing candidacy decides when
+    that person is next due for a refetch, which is the gate the dbt model this replaces
+    uses. Read out of the landed candidacy payloads rather than a staging model, because
+    the candidate id only exists inside the fetched Candidacy node. dbt_schema is accepted
+    but unused, so this is callable identically to the rest.
+    """
+    validate_identifier("catalog", catalog)
+    if source_schema is None:
+        raise ValueError("source_schema is required: person ids are read out of the landed candidacy table")
+    validate_identifier("source_schema", source_schema)
+    candidacy = landing_table(catalog, source_schema, "candidacy")
+    inner = (
+        "SELECT cast(get_json_object(payload, '$.candidate.databaseId') AS bigint) AS source_id, "
+        "source_changed_at "
+        f"FROM {candidacy} "
+        "WHERE payload IS NOT NULL AND get_json_object(payload, '$.candidate.databaseId') IS NOT NULL"
+    )
+    return _keyed_worklist(
+        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
+    )
+
+
 def build_insert_rows(
     fetched: list[FetchedNode],
     changed_at_by_id: Mapping[int, datetime | str],

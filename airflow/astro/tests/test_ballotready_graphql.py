@@ -47,6 +47,7 @@ from include.custom_functions.ballotready_graphql import (
     landing_table,
     make_session,
     normalized_position_worklist_sql,
+    person_worklist_sql,
     position_election_frequency_worklist_sql,
     read_cursor,
     retry_wait_seconds,
@@ -994,6 +995,55 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     )
     assert "ballotready_stance_raw" in sql
     assert "2026-08-01" not in sql
+
+
+def test_person_worklist_reads_person_ids_out_of_landed_candidacy_payloads():
+    """Persons carry no feed of their own; their ids only exist inside fetched Candidacy nodes."""
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "ballotready_candidacy_raw" in sql
+    assert "$.candidate.databaseId" in sql
+
+
+def test_person_worklist_keys_off_the_freshest_referencing_candidacy():
+    """Many candidacies share one person, so the freshest of them decides its due time.
+
+    This is the gate the int__ballotready_person model uses today, expressed as the same
+    grouped max every other keyed worklist uses.
+    """
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "max(source_changed_at) AS source_changed_at" in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_person_worklist_requires_a_source_schema():
+    with pytest.raises(ValueError, match="source_schema"):
+        person_worklist_sql("cat", "dbt", limit=100)
+
+
+def test_person_worklist_rejects_an_injected_source_schema():
+    with pytest.raises(ValueError, match="source_schema"):
+        person_worklist_sql("cat", "dbt", source_schema="src; drop table x", limit=100)
+
+
+def test_person_worklist_skips_unresolved_candidacies():
+    """A null payload is an id BallotReady returned nothing for; it carries no person."""
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "payload IS NOT NULL" in sql
+
+
+def test_person_worklist_pages_by_the_keyset_cursor():
+    sql = person_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        after_changed_at="2026-08-01 12:00:00.000000",
+        after_source_id=42,
+        limit=100,
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 42" in sql
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 100" in sql
 
 
 EXPECTED_ENTITIES = {
