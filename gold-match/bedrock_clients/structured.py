@@ -1,19 +1,19 @@
 """Bedrock structured-content client: Claude Haiku 4.5 via the Converse API
-on the account's GLOBAL cross-region inference profile, with ONE forced named
-tool carrying the caller's JSON schema.
+on the account's GLOBAL cross-region inference profile, in NATIVE JSON-schema
+output mode (additionalModelRequestFields.output_config).
 
-The forced tool is the transport that guarantees schema-shaped output on
-every profile; a native JSON-schema response mode, if the profile turns out
-to support one, is an internal swap inside this class and changes nothing
-for callers. The complete tool input is validated with jsonschema. An
-output-shape miss (truncation, missing tool block, schema violation) gets
-exactly ONE re-ask -- the incumbent survived stochastic per-call misses via
-constrained decoding plus blind retries, and without a bounded re-ask a
-single miss among tens of thousands of calls aborts a multi-hour run -- and
-a second miss raises StructuredOutputError: the matcher's technical-failure
-contract, never an abstention. Thinking stays off (forced tool choice is
-incompatible with extended thinking; the incumbent ran minimal-thinking at
-temperature 0).
+Native mode replaced the forced named tool after the 2026-08-28 dry runs: the
+forced tool deterministically omitted a required property on a small class of
+offices (identical re-sends missed identically at temperature 0), while native
+constrained decoding fixed every probed failure on the exact failing prompts.
+Constrained decoding cannot carry numeric minimum/maximum bounds (the service
+rejects them), so the WIRE schema is the caller's schema with numeric bounds
+stripped and additionalProperties pinned false, and the FULL schema is still
+enforced post-hoc with jsonschema -- an out-of-bounds value raises exactly as
+before. An output-shape miss (truncation, unparseable text, schema violation)
+gets exactly ONE re-ask, and a second miss raises StructuredOutputError: the
+matcher's technical-failure contract, never an abstention. Thinking stays off
+(the incumbent ran minimal-thinking at temperature 0).
 
 Usage accounting reads each response's usage block (thread-safe) and counts
 every billable response, including ones whose output is then rejected. The
@@ -35,11 +35,21 @@ from shared.braintrust import get_client as get_braintrust_client
 from shared.braintrust import is_enabled as braintrust_enabled
 
 _MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-_TOOL_NAME = "emit_match_selection"
 # Haiku 4.5 on Bedrock, us-east-1 on-demand, per 1M tokens.
 _PRICE_PER_MTOK = {"input": 1.00, "output": 5.00}
 # One re-ask for output-shape misses; the second miss raises.
 _OUTPUT_SHAPE_RETRIES = 1
+
+
+def _strip_numeric_bounds(node):
+    """The wire copy of the schema for native mode: constrained decoding
+    rejects numeric minimum/maximum (live ValidationException), so bounds are
+    removed here and enforced post-hoc against the caller's FULL schema."""
+    if isinstance(node, dict):
+        return {k: _strip_numeric_bounds(v) for k, v in node.items() if k not in ("minimum", "maximum")}
+    if isinstance(node, list):
+        return [_strip_numeric_bounds(v) for v in node]
+    return node
 
 
 class StructuredOutputError(Exception):
@@ -129,19 +139,25 @@ class BedrockStructuredContentClient:
 
     def _extract_and_validate(self, response: dict, response_schema: dict) -> dict:
         stop_reason = response.get("stopReason")
-        if stop_reason != "tool_use":
+        if stop_reason != "end_turn":
             raise StructuredOutputError(
-                f"expected the forced tool call, got stopReason={stop_reason!r} -- a technical failure, not an abstention"
+                f"expected a completed native-schema response, got stopReason={stop_reason!r} "
+                "-- a technical failure, not an abstention"
             )
         content = response.get("output", {}).get("message", {}).get("content", [])
-        tool_use = next((block["toolUse"] for block in content if "toolUse" in block), None)
-        if tool_use is None:
-            raise StructuredOutputError("stopReason was tool_use but no toolUse block was returned")
-        result = tool_use.get("input")
+        text = next((block["text"] for block in content if "text" in block), None)
+        if text is None:
+            raise StructuredOutputError("stopReason was end_turn but no text block was returned")
         try:
+            result = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise StructuredOutputError(f"native-schema response was not valid JSON: {e}") from e
+        try:
+            # The FULL schema, bounds included -- the wire schema cannot carry
+            # numeric bounds, so this is where an out-of-range value raises.
             jsonschema.validate(instance=result, schema=response_schema)
         except jsonschema.ValidationError as e:
-            raise StructuredOutputError(f"tool input failed schema validation: {e.message}") from e
+            raise StructuredOutputError(f"response failed schema validation: {e.message}") from e
         return result
 
     def generate_structured_content(
@@ -160,6 +176,8 @@ class BedrockStructuredContentClient:
             self._last_schema_fingerprint = fingerprint
         estimated_tokens = max(1, len(prompt) // 4) + self.max_tokens
 
+        wire_schema = {**_strip_numeric_bounds(response_schema), "additionalProperties": False}
+
         def attempt() -> dict:
             # One permit per PHYSICAL attempt; each hits the quota.
             with self._limiter.acquire(estimated_tokens=estimated_tokens):
@@ -167,17 +185,8 @@ class BedrockStructuredContentClient:
                     modelId=self.model_id,
                     messages=[{"role": "user", "content": [{"text": prompt}]}],
                     inferenceConfig={"temperature": self.temperature, "maxTokens": self.max_tokens},
-                    toolConfig={
-                        "tools": [
-                            {
-                                "toolSpec": {
-                                    "name": _TOOL_NAME,
-                                    "description": "Return the selection as arguments to this tool.",
-                                    "inputSchema": {"json": response_schema},
-                                }
-                            }
-                        ],
-                        "toolChoice": {"tool": {"name": _TOOL_NAME}},
+                    additionalModelRequestFields={
+                        "output_config": {"format": {"type": "json_schema", "schema": wire_schema}}
                     },
                 )
 
@@ -237,7 +246,7 @@ class BedrockStructuredContentClient:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "thinking": "off",
-            "tool_name": _TOOL_NAME,
+            "output_mode": "native_json_schema",
             "output_shape_retries": _OUTPUT_SHAPE_RETRIES,
             "schema_fingerprint": fingerprint,
             "max_concurrency": self.max_concurrency,

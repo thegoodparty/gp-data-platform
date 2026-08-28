@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import boto3
@@ -9,6 +10,7 @@ from bedrock_clients.structured import (
     BedrockStructuredContentClient,
     StructuredOutputError,
     _schema_fingerprint,
+    _strip_numeric_bounds,
 )
 
 MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -20,6 +22,18 @@ SCHEMA = {
         "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
     },
     "required": ["selected_candidate_number", "selection_confidence"],
+}
+
+# What native mode may send on the wire: constrained decoding rejects numeric
+# bounds, so they are stripped; the FULL schema above still validates post-hoc.
+WIRE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected_candidate_number": {"type": "number"},
+        "selection_confidence": {"type": "number"},
+    },
+    "required": ["selected_candidate_number", "selection_confidence"],
+    "additionalProperties": False,
 }
 
 
@@ -39,25 +53,17 @@ def expected_converse(prompt: str) -> dict:
         "modelId": MODEL_ID,
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
         "inferenceConfig": {"temperature": 0.0, "maxTokens": 2048},
-        "toolConfig": {
-            "tools": [
-                {
-                    "toolSpec": {
-                        "name": "emit_match_selection",
-                        "description": "Return the selection as arguments to this tool.",
-                        "inputSchema": {"json": SCHEMA},
-                    }
-                }
-            ],
-            "toolChoice": {"tool": {"name": "emit_match_selection"}},
-        },
+        "additionalModelRequestFields": {"output_config": {"format": {"type": "json_schema", "schema": WIRE_SCHEMA}}},
     }
 
 
-def converse_response(tool_input: dict | None, stop_reason: str = "tool_use") -> dict:
-    content = [{"toolUse": {"toolUseId": "t1", "name": "emit_match_selection", "input": tool_input}}]
-    if tool_input is None:
-        content = [{"text": "I cannot use tools right now."}]
+def converse_response(payload: dict | str | None, stop_reason: str = "end_turn") -> dict:
+    if payload is None:
+        content = [{"toolUse": {"toolUseId": "t1", "name": "stray_tool", "input": {}}}]
+    elif isinstance(payload, str):
+        content = [{"text": payload}]
+    else:
+        content = [{"text": json.dumps(payload)}]
     return {
         "output": {"message": {"role": "assistant", "content": content}},
         "stopReason": stop_reason,
@@ -70,7 +76,7 @@ def make_llm(stub_client) -> BedrockStructuredContentClient:
     return BedrockStructuredContentClient(bedrock_runtime=stub_client)
 
 
-def test_happy_path_returns_tool_input_verbatim():
+def test_happy_path_parses_the_native_text_block():
     client, stubber = make_client_and_stubber()
     payload = {"selected_candidate_number": 2, "selection_confidence": 90}
     stubber.add_response("converse", converse_response(payload), expected_converse("pick one"))
@@ -81,6 +87,43 @@ def test_happy_path_returns_tool_input_verbatim():
         )
     assert out == payload
     assert llm.get_usage_stats()["api_calls"] == 1
+
+
+def test_wire_schema_strips_bounds_but_validation_keeps_them():
+    """The named failure: bounds cannot ride the wire (service rejects them),
+    so an out-of-range value must be caught by the post-hoc FULL-schema check,
+    or removing the bounds silently widened the contract."""
+    client, stubber = make_client_and_stubber()
+    out_of_range = {"selected_candidate_number": 2, "selection_confidence": 950}
+    for _ in range(2):
+        stubber.add_response("converse", converse_response(out_of_range), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(StructuredOutputError, match="schema validation"):
+            llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    stats = llm.get_usage_stats()
+    assert stats["api_calls"] == 2
+    assert stats["prompt_tokens"] == 1600
+    assert stats["total_cost"] > 0
+
+
+def test_strip_numeric_bounds_is_recursive_and_total():
+    nested = {
+        "type": "object",
+        "properties": {
+            "xs": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 9}},
+            "n": {"type": "number", "minimum": 1},
+        },
+        "required": ["n"],
+    }
+    stripped = _strip_numeric_bounds(nested)
+    assert stripped == {
+        "type": "object",
+        "properties": {"xs": {"type": "array", "items": {"type": "number"}}, "n": {"type": "number"}},
+        "required": ["n"],
+    }
+    # The input is never mutated.
+    assert nested["properties"]["n"] == {"type": "number", "minimum": 1}
 
 
 def test_output_shape_miss_gets_exactly_one_reask():
@@ -108,29 +151,24 @@ def test_second_truncation_raises():
     stubber.assert_no_pending_responses()
 
 
-def test_no_tool_use_raises_after_reask():
+def test_missing_text_block_raises_after_reask():
     client, stubber = make_client_and_stubber()
     for _ in range(2):
-        stubber.add_response("converse", converse_response(None, stop_reason="end_turn"), expected_converse("p"))
+        stubber.add_response("converse", converse_response(None), expected_converse("p"))
     with stubber:
         llm = make_llm(client)
-        with pytest.raises(StructuredOutputError, match="stop"):
+        with pytest.raises(StructuredOutputError, match="no text block"):
             llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
 
 
-def test_schema_violation_raises_and_usage_still_counted():
+def test_unparseable_json_raises_after_reask():
     client, stubber = make_client_and_stubber()
-    bad = {"selected_candidate_number": 2, "selection_confidence": 950}
     for _ in range(2):
-        stubber.add_response("converse", converse_response(bad), expected_converse("p"))
+        stubber.add_response("converse", converse_response("{not json"), expected_converse("p"))
     with stubber:
         llm = make_llm(client)
-        with pytest.raises(StructuredOutputError, match="schema"):
+        with pytest.raises(StructuredOutputError, match="not valid JSON"):
             llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
-    stats = llm.get_usage_stats()
-    assert stats["api_calls"] == 2
-    assert stats["prompt_tokens"] == 1600
-    assert stats["total_cost"] > 0
 
 
 def test_validation_failure_raises_inside_the_traced_callable():
@@ -229,6 +267,7 @@ def test_resolved_config_shape():
     assert cfg["thinking"] == "off"
     assert cfg["temperature"] == 0.0
     assert cfg["max_tokens"] == 2048
-    assert cfg["tool_name"] == "emit_match_selection"
+    assert cfg["output_mode"] == "native_json_schema"
+    assert "tool_name" not in cfg
     assert cfg["output_shape_retries"] == 1
     assert cfg["schema_fingerprint"] == _schema_fingerprint(SCHEMA)
