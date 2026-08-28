@@ -569,6 +569,66 @@ PARTY_SELECTION = """
 }
 """
 
+PERSON_SELECTION = """
+... on Person {
+    bioText
+    candidacies(includeUncertified: true) {
+        databaseId
+        id
+    }
+    contacts {
+        email
+        fax
+        phone
+        type
+    }
+    createdAt
+    databaseId
+    degrees {
+        databaseId
+        degree
+        gradYear
+        id
+        major
+        school
+    }
+    experiences {
+        databaseId
+        end
+        id
+        organization
+        start
+        title
+        type
+    }
+    firstName
+    fullName
+    id
+    images {
+        type
+        url
+    }
+    lastName
+    middleName
+    nickname
+    officeHolders {
+        nodes {
+            databaseId
+            id
+        }
+    }
+    slug
+    suffix
+    updatedAt
+    urls {
+        databaseId
+        id
+        type
+        url
+    }
+}
+"""
+
 POSITION_ELECTION_FREQUENCY_SELECTION = """
 ... on PositionElectionFrequency {
     databaseId
@@ -602,10 +662,9 @@ STANCE_SELECTION = """
 
 @dataclass(frozen=True)
 class EntitySpec:
-    """Everything that differs between the nine entity tasks.
+    """Everything that differs between the ten entity tasks.
 
-    The task body is identical for all of them; only this differs. Person slots
-    in later as a tenth spec with node_type "Candidate".
+    The task body is identical for all of them; only this differs.
     """
 
     name: str
@@ -967,6 +1026,52 @@ def issue_worklist_sql(
     )
 
 
+def person_worklist_sql(
+    catalog: str,
+    dbt_schema: str,
+    *,
+    source_schema: str | None = None,
+    after_changed_at: str | None = None,
+    after_source_id: int | None = None,
+    limit: int,
+) -> str:
+    """Person ids referenced by landed candidacies; persons carry no update feed of their own.
+
+    Many candidacies share one person, so the freshest referencing candidacy decides when
+    that person is next due for a refetch, which is the gate the dbt model this replaces
+    uses. Read out of the landed candidacy payloads rather than a staging model, because
+    the candidate id only exists inside the fetched Candidacy node. dbt_schema is accepted
+    but unused, so this is callable identically to the rest.
+
+    Person is the only entity paging its own keyset cursor over a landing table that
+    candidacy's own cursor is still filling. If a candidacy run stops mid-way through a
+    group of rows sharing one `source_changed_at`, and person's cursor then advances past
+    that timestamp, persons first referenced by the rest of that tied group can never
+    satisfy `source_changed_at = T AND source_id > Z` and are skipped permanently. In
+    production this is rare and small (roughly 0.2% of truncation boundaries land inside a
+    tie, costing at most ~30 persons when it does); recover with a `full_reload: true` run
+    of person, which resets the cursor and re-sweeps — safe because the landing table is
+    append-only and downstream dedup resolves the resulting duplicates.
+    """
+    validate_identifier("catalog", catalog)
+    if source_schema is None:
+        raise ValueError("source_schema is required: person ids are read out of the landed candidacy table")
+    validate_identifier("source_schema", source_schema)
+    candidacy = landing_table(catalog, source_schema, "candidacy")
+    scanned = (
+        "SELECT cast(get_json_object(payload, '$.candidate.databaseId') AS bigint) AS source_id, "
+        "source_changed_at "
+        f"FROM {candidacy} "
+        "WHERE payload IS NOT NULL AND get_json_object(payload, '$.candidate.databaseId') IS NOT NULL"
+    )
+    # Post-cast null filter for consistency with issue_worklist_sql. Defence-in-depth: on
+    # ANSI mode a malformed databaseId raises CAST_INVALID_INPUT rather than producing a null.
+    inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
+    return _keyed_worklist(
+        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
+    )
+
+
 def build_insert_rows(
     fetched: list[FetchedNode],
     changed_at_by_id: Mapping[int, datetime | str],
@@ -1083,6 +1188,12 @@ _SPECS: tuple[EntitySpec, ...] = (
         position_election_frequency_worklist_sql,
     ),
     EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql, reads_tables=("stance",)),
+    # node_type is "Candidate", not "Person": that is the id namespace
+    # (gid://ballot-factory/Candidate/<id>) while the payload is a Person node. Person is
+    # the only entity where the two disagree.
+    EntitySpec(
+        "person", "Candidate", PERSON_SELECTION, 100, person_worklist_sql, reads_tables=("candidacy",)
+    ),
 )
 
 # Keyed by spec.name so the registry key and the landing table name cannot drift apart.

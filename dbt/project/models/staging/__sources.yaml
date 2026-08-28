@@ -1223,6 +1223,9 @@ sources:
       - name: ballotready_party_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
         columns: *ballotready_raw_columns
+      - name: ballotready_person_raw
+        description: Raw CivicEngine GraphQL Person nodes landed by the extract_ballotready DAG, fetched by the Candidate id carried on each landed Candidacy
+        columns: *ballotready_raw_columns
       - name: ballotready_position_election_frequency_raw
         description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
         columns: *ballotready_raw_columns

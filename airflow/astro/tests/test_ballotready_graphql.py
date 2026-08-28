@@ -20,6 +20,7 @@ from include.custom_functions.ballotready_graphql import (
     MAX_INSERT_PARAM_CHARS,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
+    PERSON_SELECTION,
     POSITION_ELECTION_FREQUENCY_SELECTION,
     STANCE_SELECTION,
     WINDOW_SIZE,
@@ -46,6 +47,7 @@ from include.custom_functions.ballotready_graphql import (
     landing_table,
     make_session,
     normalized_position_worklist_sql,
+    person_worklist_sql,
     position_election_frequency_worklist_sql,
     read_cursor,
     retry_wait_seconds,
@@ -495,6 +497,7 @@ ALL_SELECTIONS = {
     "Issue": ISSUE_SELECTION,
     "NormalizedPosition": NORMALIZED_POSITION_SELECTION,
     "Party": PARTY_SELECTION,
+    "Person": PERSON_SELECTION,
     "PositionElectionFrequency": POSITION_ELECTION_FREQUENCY_SELECTION,
     "Stance": STANCE_SELECTION,
 }
@@ -517,14 +520,15 @@ def _top_level_fields(selection: str) -> frozenset[str]:
     """Names of the fields directly inside the `... on Type { ... }` body.
 
     Ignores commented-out lines (`#...`) and anything nested inside a field's
-    own `{ ... }` sub-selection, so a dropped or added top-level field is
-    caught but renaming something two levels deep is not.
+    own `{ ... }` sub-selection or parenthesized arguments, so a dropped or added
+    top-level field is caught but renaming something two levels deep is not.
     """
     live = "\n".join(line for line in selection.splitlines() if not line.strip().startswith("#"))
     body = live[live.index("{") + 1 : live.rindex("}")]
 
     fields = []
     depth = 0
+    paren_depth = 0
     i = 0
     while i < len(body):
         char = body[i]
@@ -534,11 +538,17 @@ def _top_level_fields(selection: str) -> frozenset[str]:
         elif char == "}":
             depth -= 1
             i += 1
+        elif char == "(":
+            paren_depth += 1
+            i += 1
+        elif char == ")":
+            paren_depth -= 1
+            i += 1
         elif char.isalnum() or char == "_":
             j = i
             while j < len(body) and (body[j].isalnum() or body[j] == "_"):
                 j += 1
-            if depth == 0:
+            if depth == 0 and paren_depth == 0:
                 fields.append(body[i:j])
             i = j
         else:
@@ -579,6 +589,29 @@ EXPECTED_TOP_LEVEL_FIELDS = {
     "Issue": frozenset({"databaseId", "id", "key", "name", "pluginEnabled", "responseType", "rowOrder"}),
     "NormalizedPosition": frozenset({"databaseId", "description", "id", "issues", "mtfcc", "name"}),
     "Party": frozenset({"id", "databaseId", "parties"}),
+    "Person": frozenset(
+        {
+            "bioText",
+            "candidacies",
+            "contacts",
+            "createdAt",
+            "databaseId",
+            "degrees",
+            "experiences",
+            "firstName",
+            "fullName",
+            "id",
+            "images",
+            "lastName",
+            "middleName",
+            "nickname",
+            "officeHolders",
+            "slug",
+            "suffix",
+            "updatedAt",
+            "urls",
+        }
+    ),
     "PositionElectionFrequency": frozenset(
         {"databaseId", "frequency", "id", "referenceYear", "seats", "validFrom", "validTo"}
     ),
@@ -964,6 +997,68 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     assert "2026-08-01" not in sql
 
 
+def test_person_worklist_reads_person_ids_out_of_landed_candidacy_payloads():
+    """Persons carry no feed of their own; their ids only exist inside fetched Candidacy nodes."""
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "ballotready_candidacy_raw" in sql
+    assert "$.candidate.databaseId" in sql
+
+
+def test_person_worklist_keys_off_the_freshest_referencing_candidacy():
+    """Many candidacies share one person, so the freshest of them decides its due time.
+
+    This is the gate the int__ballotready_person model uses today, expressed as the same
+    grouped max every other keyed worklist uses.
+    """
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "max(source_changed_at) AS source_changed_at" in sql
+    assert "GROUP BY source_id" in sql
+
+
+def test_person_worklist_requires_a_source_schema():
+    with pytest.raises(ValueError, match="source_schema"):
+        person_worklist_sql("cat", "dbt", limit=100)
+
+
+def test_person_worklist_rejects_an_injected_source_schema():
+    with pytest.raises(ValueError, match="source_schema"):
+        person_worklist_sql("cat", "dbt", source_schema="src; drop table x", limit=100)
+
+
+def test_person_worklist_skips_unresolved_candidacies():
+    """A null payload is an id BallotReady returned nothing for; it carries no person."""
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    assert "payload IS NOT NULL" in sql
+
+
+def test_person_worklist_filters_null_ids_after_the_cast_like_issue():
+    """Verifies the post-cast null filter is present and positioned after the cast.
+
+    On this warehouse (ANSI mode), a malformed databaseId raises CAST_INVALID_INPUT
+    rather than producing a null, so this filter is defence-in-depth and consistency
+    with issue_worklist_sql, not protection against a failure mode that occurs today.
+    """
+    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    cast_index = sql.index("cast(get_json_object")
+    guard_index = sql.index("source_id IS NOT NULL")
+    assert guard_index > cast_index
+
+
+def test_person_worklist_pages_by_the_keyset_cursor():
+    sql = person_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        after_changed_at="2026-08-01 12:00:00.000000",
+        after_source_id=42,
+        limit=100,
+    )
+    assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
+    assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 42" in sql
+    assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+    assert "LIMIT 100" in sql
+
+
 EXPECTED_ENTITIES = {
     "candidacy",
     "endorsement",
@@ -972,19 +1067,21 @@ EXPECTED_ENTITIES = {
     "issue",
     "normalized_position",
     "party",
+    "person",
     "position_election_frequency",
     "stance",
 }
 
 
-def test_registry_covers_exactly_the_nine_entities():
+def test_registry_covers_exactly_the_ten_entities():
     assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
 
 
-# issue's worklist reads ids out of stance's landing table (see issue_worklist_sql); every
-# other entity's worklist reads only dbt staging models. Spelled out per-entity, rather than
-# just asserting issue's value, so a future entity added here without a reads_tables decision
-# fails loudly instead of silently defaulting to ().
+# issue and person are the two entities whose worklists read another entity's landing table
+# (stance and candidacy respectively); every other entity's worklist reads only dbt staging
+# models. Spelled out per-entity, rather than just asserting those two values, so a future
+# entity added here without a reads_tables decision fails loudly instead of silently
+# defaulting to ().
 EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
     "candidacy": (),
     "party": (),
@@ -993,6 +1090,7 @@ EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
     "geofence": (),
     "filing_period": (),
     "normalized_position": (),
+    "person": ("candidacy",),
     "position_election_frequency": (),
     "issue": ("stance",),
 }
@@ -1041,8 +1139,8 @@ def test_node_types_match_the_ballotready_object_names():
 def test_every_worklist_builder_accepts_the_uniform_signature(entity):
     """Every builder is called the same way, so the task body needs no branch.
 
-    issue_worklist_sql raises ValueError when source_schema is missing, so it
-    is passed here alongside the cursor kwargs and limit.
+    issue_worklist_sql and person_worklist_sql both raise ValueError when source_schema is
+    missing, so it is passed here alongside the cursor kwargs and limit.
     """
     sql = ENTITY_SPECS[entity].worklist_sql(
         "cat",
