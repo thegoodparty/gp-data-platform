@@ -5,8 +5,8 @@ models:
     description: >
       BallotReady geofences, transformed from the raw payloads the extract_ballotready DAG
       lands. Replaces the Python model that called the CivicEngine API directly; the
-      output schema is unchanged and enforced by contract so downstream marts cannot
-      silently break.
+      output schema is unchanged, and the contract keeps its name and schema stable
+      for consumers.
     config:
       contract:
         enforced: true

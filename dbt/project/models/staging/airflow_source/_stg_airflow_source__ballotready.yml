@@ -24,3 +24,6 @@ models:
         data_tests: [not_null, unique]
       - name: created_at
         data_tests: [not_null]
+      - name: updated_at
+        description: Timestamp the geofence was last updated in BallotReady.
+        data_tests: [not_null]
