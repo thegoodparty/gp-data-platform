@@ -1064,10 +1064,11 @@ def test_registry_covers_exactly_the_ten_entities():
     assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
 
 
-# issue's worklist reads ids out of stance's landing table (see issue_worklist_sql); every
-# other entity's worklist reads only dbt staging models. Spelled out per-entity, rather than
-# just asserting issue's value, so a future entity added here without a reads_tables decision
-# fails loudly instead of silently defaulting to ().
+# issue and person are the two entities whose worklists read another entity's landing table
+# (stance and candidacy respectively); every other entity's worklist reads only dbt staging
+# models. Spelled out per-entity, rather than just asserting those two values, so a future
+# entity added here without a reads_tables decision fails loudly instead of silently
+# defaulting to ().
 EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
     "candidacy": (),
     "party": (),
