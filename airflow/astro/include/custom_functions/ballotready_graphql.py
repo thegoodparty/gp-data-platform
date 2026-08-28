@@ -1176,6 +1176,12 @@ _SPECS: tuple[EntitySpec, ...] = (
         position_election_frequency_worklist_sql,
     ),
     EntitySpec("issue", "Issue", ISSUE_SELECTION, 100, issue_worklist_sql, reads_tables=("stance",)),
+    # node_type is "Candidate", not "Person": that is the id namespace
+    # (gid://ballot-factory/Candidate/<id>) while the payload is a Person node. Person is
+    # the only entity where the two disagree.
+    EntitySpec(
+        "person", "Candidate", PERSON_SELECTION, 100, person_worklist_sql, reads_tables=("candidacy",)
+    ),
 )
 
 # Keyed by spec.name so the registry key and the landing table name cannot drift apart.

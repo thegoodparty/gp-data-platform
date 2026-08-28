@@ -167,7 +167,14 @@ def test_extract_ballotready_has_a_task_per_entity():
     assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
     assert {t.task_id for t in _BR_DAG.tasks} == {f"extract_{name}" for name in ENTITY_SPECS}
     # The registry is the authority; a shrunk one would otherwise make this vacuously true.
-    assert len(ENTITY_SPECS) == 9
+    assert len(ENTITY_SPECS) == 10
+
+
+def test_person_is_addressed_under_the_candidate_id_namespace():
+    """Person is the only entity whose id namespace and inline fragment disagree: ids are
+    gid://ballot-factory/Candidate/<id> while the selection is `... on Person`."""
+    assert ENTITY_SPECS["person"].node_type == "Candidate"
+    assert ENTITY_SPECS["person"].selection.strip().startswith("... on Person")
 
 
 def test_extract_ballotready_orders_an_entity_after_the_ones_whose_tables_it_reads():
