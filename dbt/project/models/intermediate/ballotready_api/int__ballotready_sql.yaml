@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: int__ballotready_geofence
+    description: >
+      BallotReady geofences, transformed from the raw payloads the extract_ballotready DAG
+      lands. Replaces the Python model that called the CivicEngine API directly; the
+      output schema is unchanged and enforced by contract so downstream marts cannot
+      silently break.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: created_at
+        data_type: timestamp
+      - name: database_id
+        data_type: int
+      - name: geo_id
+        data_type: string
+      - name: id
+        data_type: string
+      - name: mtfcc
+        data_type: string
+      - name: updated_at
+        data_type: timestamp
+      - name: valid_from
+        data_type: date
+      - name: valid_to
+        data_type: date
