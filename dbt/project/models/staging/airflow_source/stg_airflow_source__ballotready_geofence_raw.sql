@@ -13,23 +13,39 @@
 -- not
 -- a total order.
 with
+
+    {% if is_incremental() %}
+        watermark as (
+            -- pulled into its own CTE, cross-joined below, so the incremental filter
+            -- never
+            -- needs a scalar subquery in the WHERE clause.
+            select coalesce(max(loaded_at), timestamp '1970-01-01') as max_loaded_at
+            from {{ this }}
+        ),
+    {% endif %}
+
     current_rows as (
-        select *
-        from {{ source("airflow_source", "ballotready_geofence_raw") }}
+        select raw.*
+        from {{ source("airflow_source", "ballotready_geofence_raw") }} as raw
+        {% if is_incremental() %} cross join watermark {% endif %}
         where
-            payload is not null
-            -- >= not >: a merge on requested_id is idempotent, so reprocessing the
-            -- watermark boundary is free, but excluding a tied loaded_at with > would
-            -- strand that row past every future run.
+            -- ids BallotReady returned nothing for land here with a null payload on
+            -- purpose,
+            -- so the landing table (not this transform) can tell "asked, got nothing"
+            -- from
+            -- "not fetched".
+            raw.payload is not null
             {% if is_incremental() %}
-                and loaded_at >= (
-                    select coalesce(max(loaded_at), timestamp '1970-01-01')
-                    from {{ this }}
-                )
+                -- >= not >: a merge on requested_id is idempotent, so reprocessing the
+                -- watermark boundary is free, but excluding a tied loaded_at with >
+                -- would
+                -- strand that row past every future run.
+                and raw.loaded_at >= watermark.max_loaded_at
             {% endif %}
         qualify
             row_number() over (
-                partition by requested_id order by loaded_at desc, dag_run_id desc
+                partition by raw.requested_id
+                order by raw.loaded_at desc, raw.dag_run_id desc
             )
             = 1
     )
