@@ -8,8 +8,13 @@
 
 -- One row per requested id. The landing table is append-only, so a full_reload
 -- or a genuine BallotReady change lands a second row; the newest load wins.
--- dag_run_id breaks ties because up to INSERT_BATCH_SIZE rows share a
--- loaded_at, so loaded_at alone is not a total order.
+-- dag_run_id breaks ties for the case that matters, not the batch itself: within
+-- one INSERT_BATCH_SIZE batch every row already has a distinct requested_id, since
+-- the client emits exactly one row per requested id, so loaded_at alone resolves
+-- that. The tiebreak is insurance against the same requested_id landing twice
+-- under a shared loaded_at across separate inserts in one run (e.g. a retried
+-- window), which this partition-by-requested_id window would otherwise see as a
+-- genuine tie.
 with
 
     {% if is_incremental() %}

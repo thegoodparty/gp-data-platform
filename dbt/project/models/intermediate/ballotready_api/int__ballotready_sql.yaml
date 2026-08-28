@@ -12,18 +12,32 @@ models:
         enforced: true
     columns:
       - name: created_at
+        description: Timestamp the geofence was created in BallotReady.
         data_type: timestamp
       - name: database_id
+        description: The BallotReady integer id for the geofence, echoed back from the requested id.
         data_type: int
       - name: geo_id
+        description: >
+          Census TIGER/Line geographic identifier the geofence boundary corresponds to
+          (e.g. a FIPS-style code); null when BallotReady has not set one.
         data_type: string
       - name: id
+        description: Base64 GraphQL global id for the geofence. The unique key this table exposes.
         data_type: string
       - name: mtfcc
+        description: >
+          Census MAF/TIGER Feature Class Code identifying the type of geographic entity the
+          geofence represents; null when BallotReady has not set one.
         data_type: string
       - name: updated_at
+        description: Timestamp the geofence was last updated in BallotReady.
         data_type: timestamp
       - name: valid_from
+        description: Date the geofence boundary version became effective.
         data_type: date
       - name: valid_to
+        description: >
+          Date the geofence boundary version stopped being effective; null when the
+          boundary is still current.
         data_type: date

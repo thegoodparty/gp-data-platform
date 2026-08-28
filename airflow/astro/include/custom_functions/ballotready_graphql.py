@@ -1093,7 +1093,12 @@ def build_insert_rows(
     rows = []
     for item in fetched:
         node = item.node
-        changed_at = changed_at_by_id.get(item.requested_id)
+        # Subscript, not .get(): every requested id is guaranteed present in this map by
+        # construction (it is built from the same window that produced `fetched`), and a
+        # missing key here would otherwise write a silent NULL source_changed_at that
+        # read_cursor's max() would then silently ignore, corrupting the resume cursor
+        # without a visible error.
+        changed_at = changed_at_by_id[item.requested_id]
         rows.append(
             LandedRow(
                 requested_id=item.requested_id,

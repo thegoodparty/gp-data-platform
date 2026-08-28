@@ -1,5 +1,15 @@
 -- Parity for int__ballotready_geofence: new SQL model against the Python-built table.
 --
+-- Must be run with `--target dev`. `new_model` resolves through `ref()`, but
+-- `old_model` is the hardcoded production relation, so on `--target prod` the two
+-- refs point at the same object: the harness compares the new view against itself
+-- and every count comes back as perfect, meaningless agreement.
+--
+-- The comparison is hand-rolled with `<=>` chains rather than audit_helper's
+-- compare_all_columns, which is installed here: that macro reports mismatched rows,
+-- not why they mismatch, and this harness needs the old-side-stale versus
+-- transform-bug split below to tell a stale API snapshot from an actual regression.
+--
 -- Row-count equality is the wrong bar. The Python model accumulated coverage
 -- over months of API calls; the new one reflects what the extraction DAG has
 -- landed. Where the two disagree on a shared id, the question is which side
