@@ -268,7 +268,11 @@ def save_results(
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
         clustered_df.to_csv(output_dir / config.clustered_output_name, index=False)
-    if config.post_prediction_filters:
+    # Columns, not rows: filters that ran and removed nothing still write a
+    # header, which the audit reads as "nothing was filtered". The no-column
+    # frame from the zero-prediction path would write a headerless file that
+    # read_csv rejects, so skip it and let the audit see no file at all.
+    if len(filtered_df.columns) > 0:
         filtered_df.to_csv(output_dir / "filtered_pairs.csv", index=False)
 
     for name, method in [

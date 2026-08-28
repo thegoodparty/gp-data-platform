@@ -702,7 +702,11 @@ def test_person_pipeline_scores_suffix_conflicts_instead_of_dropping_them(person
 
     pair = _pair_rows(pairwise_df, "ballotready|20", "techspeed|21")
     assert len(pair) == 1
-    assert {pair.iloc[0]["suffix_token_l"], pair.iloc[0]["suffix_token_r"]} == {None, "JR"}
+    row = pair.iloc[0]
+    # pd.isna rather than a set containing None: DuckDB's fetchdf may render
+    # SQL NULL as None, nan, or pd.NA depending on versions.
+    assert pd.isna(row["suffix_token_l"]) or pd.isna(row["suffix_token_r"])
+    assert "JR" in {row["suffix_token_l"], row["suffix_token_r"]}
 
 
 def test_person_pipeline_rejects_two_ballotready_people(person_results):
