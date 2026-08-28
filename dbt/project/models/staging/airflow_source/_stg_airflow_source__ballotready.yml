@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__ballotready_geofence_raw
+    description: >
+      Current BallotReady geofence per requested id, parsed from the raw GraphQL payloads
+      landed by the extract_ballotready DAG. All renaming and casting for geofence happens
+      here.
+    columns:
+      - name: requested_id
+        description: The BallotReady integer id this row was fetched for.
+        data_tests: [not_null, unique]
+      - name: database_id
+        description: >
+          The id BallotReady echoed back inside the payload. Equal to requested_id for
+          every row landed so far; the extraction client raises if a response comes back
+          out of request order, and this is the same invariant checked from the data side.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "= requested_id"
+      - name: id
+        description: Base64 GraphQL global id. The unique key the int__ model exposes.
+        data_tests: [not_null, unique]
+      - name: created_at
+        data_tests: [not_null]
