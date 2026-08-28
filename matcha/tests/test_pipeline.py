@@ -742,8 +742,14 @@ def test_person_pipeline_name_only_record_stays_a_singleton(person_results):
 
 def test_person_pipeline_admits_sibling_nickname_collision(person_results):
     """Pins an accepted hazard: christopher and christine both alias to "chris",
-    so siblings on one household phone clear the filter. A config change that
-    alters this should surface here as a decision, not a surprise."""
-    pairwise_df, _, _ = person_results
+    so siblings on one household phone score ~0.998 and merge into one person.
+    A config change that alters this should surface here as a decision, not a
+    surprise."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
 
     assert not _pair_rows(pairwise_df, "hubspot|60", "hubspot|61").empty
+    assert cluster_of["hubspot|60"] == cluster_of["hubspot|61"], (
+        "the accepted christopher/christine merge stopped happening; if that is "
+        "the intent, update this test and the hazard note rather than deleting them"
+    )
