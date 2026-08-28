@@ -50,6 +50,7 @@ from include.custom_functions.ballotready_graphql import (
     person_worklist_sql,
     position_election_frequency_worklist_sql,
     read_cursor,
+    read_worklist,
     retry_wait_seconds,
     should_extract,
     validate_identifier,
@@ -1432,8 +1433,60 @@ def _config(**overrides):
     return ExtractConfig(**base)
 
 
+def _worklist(pairs):
+    """Convert a list of (id, changed_at) pairs into the parallel-array shape read_worklist
+    returns, so tests can keep authoring worklists as pairs.
+    """
+    if not pairs:
+        return [], []
+    ids, changed_at = zip(*pairs, strict=True)
+    return list(ids), list(changed_at)
+
+
+def test_read_worklist_drains_the_cursor_in_chunks_rather_than_all_at_once():
+    """fetchall() on a large worklist is what OOM-killed a prod task; the reader must
+    release the connector's row objects incrementally."""
+    calls = []
+
+    class ChunkedCursor:
+        def __init__(self):
+            self.rows = [(i, datetime(2026, 8, 1, 9, 0, 0)) for i in range(1, 5001)]
+            self.pos = 0
+
+        def execute(self, sql, parameters=None):
+            pass
+
+        def fetchmany(self, size):
+            calls.append(size)
+            chunk = self.rows[self.pos : self.pos + size]
+            self.pos += len(chunk)
+            return chunk
+
+        def fetchall(self):
+            raise AssertionError("read_worklist must not call fetchall()")
+
+        def close(self):
+            pass
+
+    class Conn:
+        def __init__(self):
+            self.cur = ChunkedCursor()
+
+        def cursor(self, *a, **k):
+            return self.cur
+
+    ids, changed_at = read_worklist(Conn(), ENTITY_SPECS["geofence"], _config(), (None, None))
+
+    assert len(ids) == 5000
+    assert len(changed_at) == 5000
+    assert ids[0] == 1 and ids[-1] == 5000
+    assert len(calls) > 1, "the cursor was drained in one call, not in chunks"
+
+
 def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
+    )
     inserted = MagicMock()
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", inserted)
 
@@ -1449,7 +1502,9 @@ def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
 def test_extract_entity_reports_the_limit_so_a_short_worklist_is_self_describing(monkeypatch):
     """ids_requested below the limit means caught up; without the limit beside it, that is
     indistinguishable from something having truncated the read."""
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
+    )
 
     summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(max_ids=2000))
 
@@ -1458,7 +1513,7 @@ def test_extract_entity_reports_the_limit_so_a_short_worklist_is_self_describing
 
 
 def test_extract_entity_is_not_caught_up_when_the_worklist_fills_the_limit(monkeypatch):
-    worklist = [(i, datetime(2026, 8, 1, 9, 0, 0)) for i in range(1, 4)]
+    worklist = _worklist([(i, datetime(2026, 8, 1, 9, 0, 0)) for i in range(1, 4)])
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
     )
@@ -1477,7 +1532,7 @@ def test_extract_entity_is_not_caught_up_when_the_worklist_fills_the_limit(monke
 def test_extract_entity_counts_unresolved_ids_in_the_summary(monkeypatch):
     """Ids the API returned nothing for land as NULL payloads; the count is otherwise only
     discoverable by querying the landing table."""
-    worklist = [(i, datetime(2026, 8, 1, 9, 0, 0)) for i in (1, 2, 3)]
+    worklist = _worklist([(i, datetime(2026, 8, 1, 9, 0, 0)) for i in (1, 2, 3)])
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
     )
@@ -1501,7 +1556,9 @@ def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.read_cursor", lambda *a, **k: (cursor_ts, 5)
     )
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
+    )
 
     summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config())
 
@@ -1510,8 +1567,10 @@ def test_extract_entity_formats_the_cursor_timestamp_when_the_worklist_is_empty(
 
 def test_extract_entity_writes_one_insert_per_window_and_the_right_number_of_windows(monkeypatch):
     total_ids = WINDOW_SIZE * 2 + 50
-    ids = [(i, datetime(2026, 8, 1)) for i in range(1, total_ids + 1)]
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+    worklist = _worklist([(i, datetime(2026, 8, 1)) for i in range(1, total_ids + 1)])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
+    )
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.fetch_nodes",
         lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
@@ -1540,8 +1599,10 @@ def test_extract_entity_inserts_a_windows_rows_in_source_changed_at_requested_id
     base = datetime(2026, 8, 1)
     # changed_at decreases as id increases, so a correct sort reverses id order -- this would pass
     # by accident if it merely preserved fetch/submission order instead of actually sorting.
-    ids = [(i, base + timedelta(seconds=250 - i)) for i in range(1, 251)]
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+    worklist = _worklist([(i, base + timedelta(seconds=250 - i)) for i in range(1, 251)])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
+    )
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.fetch_nodes",
         lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
@@ -1569,7 +1630,7 @@ def test_extract_entity_skips_the_cursor_on_full_reload(monkeypatch):
         # `after` is (None, None), a truthy tuple, so `... or []` would never
         # fall through; record it and return the empty worklist explicitly.
         seen["after"] = after
-        return []
+        return [], []
 
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", _fake_read_worklist)
 
@@ -1583,8 +1644,10 @@ def test_extract_entity_aborts_before_the_failing_windows_insert(monkeypatch):
     committed, or the cursor would skip the failed window's ids forever.
     """
     monkeypatch.setattr("include.custom_functions.ballotready_graphql.WINDOW_SIZE", 100)
-    ids = [(i, datetime(2026, 8, 1)) for i in range(1, 301)]  # three windows of 100
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ids)
+    worklist = _worklist([(i, datetime(2026, 8, 1)) for i in range(1, 301)])  # three windows of 100
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
+    )
 
     def flaky_fetch(batch, *a, **k):
         if batch[0] == 201:
@@ -1640,6 +1703,12 @@ class _SchemaAwareCursor:
     def fetchall(self):
         return self._result
 
+    def fetchmany(self, size):
+        # This fake's _result is always empty by the time read_worklist runs, so one call
+        # draining it to [] is enough to end the loop -- no chunking behavior to fake here.
+        result, self._result = self._result, []
+        return result
+
     def close(self):
         pass
 
@@ -1653,7 +1722,9 @@ class _SchemaAwareConnection:
 
 
 def test_extract_entity_for_issue_creates_its_own_table_and_the_stance_table(monkeypatch):
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
+    )
     connection = _SchemaAwareConnection()
 
     extract_entity(ENTITY_SPECS["issue"], connection, _config())
@@ -1665,7 +1736,9 @@ def test_extract_entity_for_issue_creates_its_own_table_and_the_stance_table(mon
 
 
 def test_extract_entity_with_no_reads_tables_creates_only_its_own_table(monkeypatch):
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
+    )
     connection = _SchemaAwareConnection()
 
     extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
@@ -1749,12 +1822,14 @@ def _fake_read_worklist_over(full_worklist):
     def _read(conn, spec, config, after):
         after_changed_at, after_source_id = after
         if after_changed_at is None:
-            return list(full_worklist)
-        return [
-            (source_id, changed_at)
-            for source_id, changed_at in full_worklist
-            if (changed_at, source_id) > (after_changed_at, after_source_id)
-        ]
+            return _worklist(list(full_worklist))
+        return _worklist(
+            [
+                (source_id, changed_at)
+                for source_id, changed_at in full_worklist
+                if (changed_at, source_id) > (after_changed_at, after_source_id)
+            ]
+        )
 
     return _read
 

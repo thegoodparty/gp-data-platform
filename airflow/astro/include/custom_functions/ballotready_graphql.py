@@ -13,6 +13,7 @@ import random
 import re
 import threading
 import time
+from array import array
 from base64 import b64encode
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,6 +49,10 @@ _NODE_ID_PREFIX = "gid://ballot-factory"
 # Ids are fetched and inserted one window at a time, in cursor order, so a crash mid-run
 # leaves a contiguous prefix committed rather than an out-of-order gap. See extract_entity.
 WINDOW_SIZE = 2000
+
+# Chunk size for draining the worklist cursor. Independent of WINDOW_SIZE: this bounds how
+# many connector row objects are alive at once, not how many ids are fetched per API pass.
+WORKLIST_FETCH_CHUNK = 10_000
 
 # Secondary bound on rows/statement, kept so a very large number of tiny rows (e.g. a
 # nulled-out miss window) cannot separately trip some other per-statement limit. At 7 bound
@@ -1255,11 +1260,18 @@ def read_worklist(
     spec: EntitySpec,
     config: ExtractConfig,
     after: tuple[datetime | None, int | None],
-) -> list[tuple[int, datetime]]:
-    """Run one entity's worklist query for at most config.max_ids ids.
+) -> tuple[array, list[datetime]]:
+    """Run one entity's worklist query, returning ids and their timestamps as parallel arrays.
 
-    Every builder in ENTITY_SPECS takes the same keyword signature, so this
-    never branches on entity name.
+    Drained in chunks and compacted as it goes, rather than with fetchall(). A fully
+    materialised worklist is what OOM-killed a 200k-id prod run: a list of tuples plus the
+    dict built from it costs a few hundred bytes per id, against roughly 17 in an array,
+    and four of these run concurrently. Chunking also lets the connector release each
+    batch of row objects instead of holding every one until the end.
+
+    Parallel arrays rather than one array of pairs because build_insert_rows needs the
+    timestamp by id, and slicing two arrays per window is cheaper than rebuilding a dict
+    over the whole worklist.
     """
     after_changed_at, after_source_id = after
     sql = spec.worklist_sql(
@@ -1270,9 +1282,18 @@ def read_worklist(
         after_source_id=after_source_id,
         limit=config.max_ids,
     )
+    ids: array = array("q")
+    changed_at: list[datetime] = []
     with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, sql)
-        return [(int(row[0]), row[1]) for row in cursor.fetchall()]
+        while True:
+            chunk = cursor.fetchmany(WORKLIST_FETCH_CHUNK)
+            if not chunk:
+                break
+            for row in chunk:
+                ids.append(int(row[0]))
+                changed_at.append(row[1])
+    return ids, changed_at
 
 
 def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
@@ -1301,9 +1322,7 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         else read_cursor(connection, config.catalog, config.source_schema, spec.name)
     )
 
-    worklist = read_worklist(connection, spec, config, after)
-    changed_at_by_id = dict(worklist)
-    ids = [source_id for source_id, _ in worklist]
+    ids, changed_at = read_worklist(connection, spec, config, after)
 
     rows_written = 0
     windows = 0
@@ -1325,16 +1344,17 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
                 bisects=bisects,
             )
 
-        # Each window's batches fan out across the pool concurrently (fine: order
-        # within a window is fixed up by the sort below), but windows themselves run
-        # one at a time and each is fully inserted before the next one starts. Do not
-        # "optimize" this into one pool across every window -- that reintroduces the
+        # Windows run one at a time and each is fully inserted before the next starts. Do
+        # not "optimize" this into one pool across every window -- that reintroduces the
         # out-of-order landing this loop exists to prevent (see the docstring above).
-        for window_ids in batched(ids, WINDOW_SIZE):
-            batches = list(batched(window_ids, spec.batch_size))
+        for start in range(0, len(ids), WINDOW_SIZE):
+            window_ids = ids[start : start + WINDOW_SIZE]
+            window_changed_at = dict(zip(window_ids, changed_at[start : start + WINDOW_SIZE], strict=True))
             fetched: list[FetchedNode] = []
             with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-                futures = [executor.submit(fetch_batch, batch) for batch in batches]
+                futures = [
+                    executor.submit(fetch_batch, batch) for batch in batched(window_ids, spec.batch_size)
+                ]
                 try:
                     for future in as_completed(futures):
                         fetched.extend(future.result())  # raises before this window's INSERT
@@ -1344,22 +1364,23 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
                     executor.shutdown(wait=False, cancel_futures=True)
                     raise
 
-            rows = build_insert_rows(fetched, changed_at_by_id, config.extracted_at, config.dag_run_id)
+            rows = build_insert_rows(fetched, window_changed_at, config.extracted_at, config.dag_run_id)
             rows.sort(key=lambda row: (row.source_changed_at, row.requested_id))
             insert_rows(connection, config.catalog, config.source_schema, spec.name, rows)
             rows_written += len(rows)
             unresolved += sum(1 for row in rows if row.payload is None)
             windows += 1
 
-    cursor_id, cursor_changed_at = worklist[-1] if worklist else (after[1], after[0])
+    cursor_id = ids[-1] if len(ids) else after[1]
+    cursor_changed_at = changed_at[-1] if changed_at else after[0]
     return {
         "entity": spec.name,
-        "ids_requested": len(worklist),
+        "ids_requested": len(ids),
         # Reported alongside the limit so a short worklist is self-describing: fewer ids than
         # the limit means this entity is caught up, rather than something having truncated the
         # read. Without both numbers the two are indistinguishable from the summary alone.
         "ids_limit": config.max_ids,
-        "caught_up": len(worklist) < config.max_ids,
+        "caught_up": len(ids) < config.max_ids,
         "rows_written": rows_written,
         # Ids the API returned nothing for, landed as NULL payloads rather than dropped.
         "unresolved": unresolved,
