@@ -109,8 +109,8 @@ EO_POST_PREDICTION_FILTER = f"""
 # Two distinct BallotReady people are never linked directly, BR being the one
 # source with a clean person id. This is a precision heuristic on direct pairs,
 # not an invariant: a pair filter cannot stop BR1-X-BR2 chaining transitively,
-# and the deterministic group edges override it wherever dbt already resolved
-# two BR ids into one person. The dbt test on the resulting groups warns rather
+# and downstream the deterministic graph can still put two BR ids in one person
+# where it has the evidence. The dbt test on the resulting groups warns rather
 # than fails for that reason.
 PERSON_POST_PREDICTION_FILTER = """
     gamma_first_name > 0

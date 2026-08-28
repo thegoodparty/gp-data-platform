@@ -695,8 +695,9 @@ def test_person_pipeline_rejects_household_pairs(person_results):
 
 
 def test_person_pipeline_scores_suffix_conflicts_instead_of_dropping_them(person_results):
-    """No suffix cannot-link ships yet, so a Jr/Sr pair sharing a family phone
-    stays scored and carries both tokens for the precision audit to size."""
+    """A Jr/Sr pair sharing a family phone stays scored, and carries both tokens
+    so the precision audit can size the class. No suffix cannot-link ships: of
+    five hand-verified suffix-conflict pairs, three were the same person."""
     pairwise_df, _, _ = person_results
 
     pair = _pair_rows(pairwise_df, "ballotready|20", "techspeed|21")

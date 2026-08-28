@@ -190,7 +190,7 @@ Two things work differently for `--entity-type person`.
 
 **It dedupes within a source.** Every other entity runs `link_only`. One person
 routinely holds several HubSpot contacts, so collapsing those is the point of
-the run, not an anomaly — the config sets `link_type="link_and_dedupe"` and the
+the run, not an anomaly. The config sets `link_type="link_and_dedupe"`, and the
 within-source cluster count is reported as a statistic rather than a warning.
 
 **These clusters are suggestions, not canonical identity.** Deterministic
