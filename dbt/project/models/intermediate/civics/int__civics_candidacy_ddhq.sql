@@ -1,6 +1,13 @@
 -- DDHQ → Civics mart candidacy. Grain: one row per candidacy.
+-- The DDHQ stage model is all-time so candidacy_stage can enrich its <=2025
+-- archive era; this candidacy grain stays 2026+ (its all-time expansion is a
+-- later PR), keeping the candidacy / candidate / election marts byte-stable.
 with
-    source as (select * from {{ ref("int__civics_candidacy_stage_ddhq") }}),
+    source as (
+        select *
+        from {{ ref("int__civics_candidacy_stage_ddhq") }}
+        where election_date >= '2026-01-01'
+    ),
 
     candidacies as (
         select

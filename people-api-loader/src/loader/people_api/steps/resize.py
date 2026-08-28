@@ -1,24 +1,33 @@
-"""Step 6 — resize the loaded cluster to Serverless v2 + serve params, lock down (DATA-1854).
+"""Step 6 — resize the loaded cluster to its serving instance class + serve params, lock down.
 
-After the load/index phase on a provisioned db.r7g instance, flip the writer to
-db.serverless with the prod-matching ACU range, swap the load parameter group for the
-serve group (reboot applies it), bump backup retention to prod's 14 days, and enable
-deletion protection. The rds-s3-import role is intentionally left attached (future
-incremental loads reuse it).
+After the load/index phase on the provisioned load instance, flip the writer to
+`cfg.serve_instance_class` (a provisioned class, prod default db.r6g.4xlarge), swap the load
+parameter group for the serve group (reboot applies it), bump backup retention to prod's 14
+days, and enable deletion protection. The rds-s3-import role is intentionally left attached
+(future incremental loads reuse it).
+
+resize is now the pipeline's LAST step (validate runs before it — see steps/validate.py), so
+after the reboot settles we run one trivial `SELECT 1` against the resized cluster and log a
+confirmation. This is a connectivity smoke check only (is the freshly-resized writer actually
+reachable and serving), not a data check — that's validate's job, run earlier while the writer
+was still on the large index instance.
 
 Idempotent: a completed manifest short-circuits.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import UTC, datetime
 
-from botocore.exceptions import ClientError
-
-from loader.core.aws import rds
+from loader.core.aws import (
+    flip_writer_to_provisioned,
+    flip_writer_to_serverless,
+    rds,
+    retry_after_settle,
+)
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
+from loader.people_api.db import connect_new
 from loader.people_api.manifests import (
     ResizeManifest,
     manifest_uri,
@@ -28,8 +37,13 @@ from loader.people_api.manifests import (
 
 log = get_logger(__name__)
 
-_SERVERLESS_CLASS = "db.serverless"
 _BACKUP_RETENTION_DAYS = 14
+
+# Sentinel serve class: LOADER_SERVE_INSTANCE_CLASS=db.serverless (dev) makes resize leave the
+# writer on Serverless v2 instead of a provisioned class, so a dev cluster idles cheap after a
+# successful build the same way scale_down leaves it after a failed one. Prod keeps a provisioned
+# serve class. Matches scale_down._SERVERLESS_CLASS.
+_SERVERLESS_CLASS = "db.serverless"
 
 
 def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
@@ -57,73 +71,69 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
         # so cluster-level modifies must be gated on the cluster waiter, not the instance one.
         cluster_waiter.wait(DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
 
-    def _modify_settle(call: Callable[[], object], fault: str, settle: Callable[[], None]) -> None:
-        """Apply a modify, tolerating only a still-in-progress modify from a partial re-run.
-
-        On `fault` (InvalidDB{Cluster,Instance}StateFault) we wait (via `settle`, the matching
-        cluster/instance waiter) for the in-flight modify to settle, then RE-ISSUE the call so
-        our settings are actually applied. We do not swallow-and-skip: AWS uses the same fault
-        for creating/deleting/failed states, and a skipped modify would write a `complete`
-        manifest over a misconfigured cluster. A genuinely bad state re-raises on the retry.
-        """
-        try:
-            call()
-        except ClientError as e:
-            if e.response["Error"]["Code"] != fault:
-                raise
-            log.warning("resize.modify_retry_after_settle", fault=fault)
-            settle()
-            call()
-
-    # Serve param group + Serverless v2 scaling (cluster-level) + lock-down, applied now.
-    _modify_settle(
+    # Serve param group + lock-down (backup retention, deletion protection), applied now. This is
+    # resize's extra lockdown on top of the shared conversion below — retry_after_settle tolerates
+    # only a still-in-progress modify from a partial re-run (InvalidDBClusterStateFault -> wait for
+    # the cluster to settle -> re-issue so our settings are actually applied); a genuinely bad state
+    # re-raises on the retry.
+    retry_after_settle(
         lambda: rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id,
             DBClusterParameterGroupName=serve_pg,
-            ServerlessV2ScalingConfiguration={
-                "MinCapacity": cfg.serve_min_acu,
-                "MaxCapacity": cfg.serve_max_acu,
-            },
             BackupRetentionPeriod=_BACKUP_RETENTION_DAYS,
             DeletionProtection=True,
             ApplyImmediately=True,
         ),
-        "InvalidDBClusterStateFault",
-        _wait_cluster,
+        fault_code="InvalidDBClusterStateFault",
+        settle=_wait_cluster,
     )
-    # Gate on the CLUSTER waiter: the instance can be `available` while the cluster is still
-    # `modifying`, and modify_db_instance against a modifying cluster raises
-    # InvalidDBClusterStateFault (which the instance-fault guard below would not catch).
+    # The lockdown modify above puts the cluster into 'modifying'; wait for it to settle before
+    # issuing the writer's class-change modify_db_instance below. This keeps the class-change
+    # modify from landing while the cluster is still applying the lockdown settings.
     _wait_cluster()
-    # Flip the writer instance to serverless (instance-level class).
-    _modify_settle(
-        lambda: rds_client.modify_db_instance(
-            DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
-        ),
-        "InvalidDBInstanceStateFault",
-        _wait,
-    )
-    # The class change leaves the instance 'modifying' for minutes; a reboot now would be
-    # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
-    # parameter group, then wait for available again.
-    _wait()
+    # Flip the writer to the serve class. A provisioned class needs only the instance-level modify;
+    # db.serverless (dev) also needs the cluster's ServerlessV2 scaling config, which
+    # flip_writer_to_serverless sets — reusing the scale-down ACU band (nothing serves dev at scale).
+    if cfg.serve_instance_class == _SERVERLESS_CLASS:
+        flip_writer_to_serverless(
+            rds_client,
+            cluster_id,
+            instance_id,
+            min_acu=cfg.scale_down_min_acu,
+            max_acu=cfg.scale_down_max_acu,
+        )
+    else:
+        flip_writer_to_provisioned(
+            rds_client, cluster_id, instance_id, instance_class=cfg.serve_instance_class
+        )
+    # A single db_instance_available waiter is NOT enough here: Aurora keeps reporting the
+    # instance 'available' for a few seconds after a class-change modify before it flips to
+    # 'modifying' and reboots, so a plain `_wait()` can return on the stale state — and the
+    # explicit reboot below would then race the conversion's own delayed reboot
+    # (InvalidDBInstanceStateFault). Both flip helpers already ride through the class-change reboot
+    # via wait_instance_class_applied; reboot here applies the serve parameter group, then wait for
+    # available again.
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
     _wait()
-    log.info(
-        "resize.applied",
-        instance_class=_SERVERLESS_CLASS,
-        min_acu=cfg.serve_min_acu,
-        max_acu=cfg.serve_max_acu,
-    )
+    log.info("resize.applied", instance_class=cfg.serve_instance_class)
+
+    # Lightweight post-resize smoke check: the resized/rebooted writer actually accepts a
+    # connection and serves a trivial query. NOT a data check (row counts/schema/indexes were
+    # already validated pre-resize); this only guards against the resize itself leaving the
+    # cluster unreachable (e.g. a security-group or param-group misstep, or a reboot that didn't
+    # fully clear). A failure here raises and no "complete" manifest is written, same as any other
+    # resize failure.
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1")
+        cur.fetchone()
+    log.info("resize.smoke_check_ok")
 
     manifest = ResizeManifest(
         run_date=run_date,
         status="complete",
         started_at=started,
         finished_at=datetime.now(UTC),
-        final_instance_class=_SERVERLESS_CLASS,
-        min_acu=cfg.serve_min_acu,
-        max_acu=cfg.serve_max_acu,
+        final_instance_class=cfg.serve_instance_class,
         backup_retention_days=_BACKUP_RETENTION_DAYS,
         deletion_protection=True,
     )

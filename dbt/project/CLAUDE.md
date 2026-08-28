@@ -10,6 +10,27 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
   `cd dbt && git commit ...`
 - When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as expected.
+- **Rebuild stale dev copies locally before trusting a before/after comparison.**
+Deferral only applies to models *absent* from your dev schema; anything you built
+in an earlier session is reused silently, however stale. A weeks-old copy of an
+upstream mart in your dev schema masquerades as production and manufactures
+regressions that do not exist. Find the shadows and rebuild them:
+
+    ```sql
+    -- dbt ls --select "+my_model" --resource-type model --output name
+    select table_name, last_altered
+    from goodparty_data_catalog.information_schema.tables
+    where table_schema = '{{ target.schema }}' and table_name in (<those names>)
+    order by last_altered
+    ```
+
+    Then `dbt run --select "<the stale ones>"`. Rebuilding fixes the dev schema for
+every later run, so prefer it over masking the staleness per-invocation.
+- **Rebuild downstream models before trusting a referential test.** A dependent
+mart still materialized against the *previous* version of a model you changed
+will fail its relationship test for that reason alone, as will a stale dev copy
+of the model *holding* the foreign key. Select the dependents too, which is what
+CI's `state:modified+` does.
 - **Do not use the `+` (upstream) selector prefix during development.** dbt Cloud
 automatically defers to production artifacts, so unmodified upstream models do
 not need to be rebuilt. Using `+model_name` pulls the entire upstream DAG
@@ -24,10 +45,17 @@ When building multiple models, use quotes around the models in the `--select` ar
 
 ## Branch and PR Conventions
 
+- **Always branch from the latest `origin/main`.** Run `git fetch origin main` and
+fast-forward before creating a branch. Local `main` goes stale quickly, and a dev
+build on a stale base is compared against a *current* production relation, so
+missing upstream work reads as a huge regression in your own diff. Verify with
+`git rev-list --count HEAD..origin/main` (expect `0`) before trusting any
+before/after row count.
 - **Branch names:** `data-XXXX/short-slug` (lowercase `data`, slash separator, kebab-case slug). `XXXX` is the ClickUp ticket number.
 - **PR titles:** `[DATA-XXXX] Short title` (uppercase prefix, square brackets).
+- **Keep the ticket number out of the codebase.** The ClickUp ticket (`DATA-XXXX`) belongs in the branch name and PR title only — never in committed code: not in model SQL, YAML, tests, macros, or code comments/descriptions. Describe the behavior or a short rationale instead (e.g. "a known follow-up"), not the ticket id. (PR descriptions/commit messages may link the ticket; the rule is about the code itself.)
 - **Commits:** Run `git commit` from the `dbt/` directory. Pre-commit hooks invoke `uv run` automatically to find their dependencies.
-- **Do not use real people's names** in PR descriptions, commit messages, code comments, model descriptions, or any other written artifact in this repo. Refer to roles or teams instead (e.g. "the analytics owner", "the data team", "an analyst"). If a generic illustrative example genuinely needs named actors, use Alice, Bob, Charlie, etc.
+- **Do not use real people's names** in PR descriptions, commit messages, code comments, model descriptions, or any other written artifact in this repo. This targets *internal individuals* — colleagues, employees, staff, reviewers. Refer to roles or teams instead (e.g. "the analytics owner", "the data team", "an analyst"). If a generic illustrative example genuinely needs named actors, use Alice, Bob, Charlie, etc. **Exception:** public candidate and officeholder names that are the subject of the civic election data (a matter of public record) may be used where naming the specific candidacy is necessary — e.g. citing the exact candidacies a data fix corrects.
 
 **IMPORTANT** - When working on dbt models, inspect existing sources/models in
 Databricks, as well as models that you have added and modified after creating
@@ -82,7 +110,11 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 - Utilize Databrick's support for lateral column references to reduce the number
   of chained CTEs by referencing a modified column lower in the same select
   block
-- Avoid subqueries in favor of CTEs
+- Avoid subqueries in favor of CTEs. This covers a nested `SELECT` in the `FROM`
+  clause, not just scalar and `IN` subqueries: name it as a CTE and select from
+  it, so each step is readable and referenceable on its own.
+    - Bad: `select ... from (select ... group by 1, 2) as aggregated`
+    - Good: `with aggregated as (select ... group by 1, 2) select ... from aggregated`
 - Prefer to keep join blocks flat with minimal transformations in the join
   condition by moving the needed transformation up to the SELECT clause
 - **Wrap generic test arguments under `arguments:`.** Top-level args on a
@@ -250,6 +282,34 @@ etc.
 *   **DDHQ:**
     *   `candidacy_stage.ddhq_candidacy_id` | Provides candidacy-stage-level IDs for DDHQ Data
     *   `election_stage.ddhq_race_id` | Provides election-stage ID for DDHQ Data
+
+### Post-ER identifier derivation (earliest-member mint)
+
+The published `gp_*` identities are derived from entity-resolution clusters by
+an **earliest-member rule**, not per-source attribute hashes: an id is the
+salted-hash of the cluster member earliest by source-native `first_seen_at`
+(ties broken by `source_name`, `source_id`), shared by every co-member. First-in
+wins uniformly across sources, so the id is stable when a later record joins the
+cluster, deterministic under splits, and safe under full refresh. A record in no
+cluster mints from itself (single-member semantics).
+
+*   `gp_candidate_id` → **`gp_person_id`**, minted in `int__civics_person_canonical_ids`
+    from the person group's earliest member (person grain). `gp_candidate_id` is
+    kept as an alias of `gp_person_id`.
+*   `gp_candidacy_id` — minted in `int__civics_minted_candidacy_ids` from the
+    candidacy-stage cluster's earliest member. Clusters are single-stage
+    (election dates may differ within matcha's 10-day window), so the
+    candidacy-grain id is the min minted id over the candidacy's stages;
+    co-clustered candidacies converge because they share clusters.
+*   `gp_election_stage_id` — minted in `int__civics_minted_election_stage_ids`
+    from the election-stage cluster's earliest member (already stage grain).
+
+`first_seen_at` is computed inline where each record's native id and timestamp
+share a row (never rejoined): BR candidacy_created_at / office_holder_created_at,
+gp_api campaign & user created_at, HubSpot createdate, TechSpeed date_processed,
+DDHQ Airbyte extract time. Election stages use the BR race's native created_at;
+TS/DDHQ election-stage keys are feeder-derived hashes, so their first_seen_at is
+the source's first load time.
 
 
 ## Useful Links

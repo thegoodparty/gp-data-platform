@@ -5,6 +5,19 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
     ),
 
+    -- Typed URL array from the API person (normalized to {type, url}). The S3
+    -- office_holders feed carries almost no government-typed URLs (101 of ~533k
+    -- terms), so the array is sourced here and joined on br_candidate_id.
+    br_person_urls as (
+        select
+            database_id,
+            transform(
+                filter(urls, x -> x.url is not null),
+                x -> struct(x.type as type, x.url as url)
+            ) as urls
+        from {{ ref("int__ballotready_person") }}
+    ),
+
     derived_fields as (
         select
             office_holders.*,
@@ -87,6 +100,10 @@ with
             linkedin_url,
             facebook_url,
             twitter_url,
+            -- API-sourced typed URL array (see br_person_urls CTE); the S3 feed
+            -- lacks government-typed URLs. Distinguishes official/government
+            -- sites from campaign websites.
+            bp.urls,
             nullif(office_holder_mailing_address_line_1, '') as mailing_address_line_1,
             nullif(office_holder_mailing_address_line_2, '') as mailing_address_line_2,
             nullif(office_holder_mailing_city, '') as mailing_city,
@@ -98,6 +115,8 @@ with
             office_holder_created_at as created_at,
             office_holder_updated_at as updated_at
         from derived_fields
+        left join
+            br_person_urls as bp on derived_fields.br_candidate_id = bp.database_id
     ),
 
     -- BR candidacies keyed on br_candidacy_id, providing the election_day for
@@ -189,6 +208,7 @@ select
     linkedin_url,
     facebook_url,
     twitter_url,
+    urls,
     mailing_address_line_1,
     mailing_address_line_2,
     mailing_city,

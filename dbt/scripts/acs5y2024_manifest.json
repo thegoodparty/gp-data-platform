@@ -1,0 +1,85 @@
+{
+  "files": {
+    "2022blockcrosswalk.csv": {
+      "data_rows": 49861,
+      "sha256": "e78dbeb3fcbfd6cfa467819a70493b77ea02d4fda14baf0284a8e182bd0d0aeb",
+      "size_bytes": 10128488,
+      "url": "https://raw.githubusercontent.com/CT-Data-Collaborative/2022-block-crosswalk/main/2022blockcrosswalk.csv"
+    },
+    "acsdt5y2024-b01001.dat": {
+      "data_rows": 616690,
+      "sha256": "1637b18a96881b81e050df1cd3d5ac38a33208b9b69b40e1dbeb3c4e13718f0e",
+      "size_bytes": 200356282,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b01001.dat"
+    },
+    "acsdt5y2024-b03002.dat": {
+      "data_rows": 543579,
+      "sha256": "ef1a9310905393bf477820de8edb2935c1e9bdb356be65b5ee5fb6fceda911c1",
+      "size_bytes": 83256772,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b03002.dat"
+    },
+    "acsdt5y2024-b15002.dat": {
+      "data_rows": 543579,
+      "sha256": "ee15d1c3847bab67e3f57e11658adbbe69a0642df726784c66da24122ae558e0",
+      "size_bytes": 126617454,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b15002.dat"
+    },
+    "acsdt5y2024-b19001.dat": {
+      "data_rows": 543579,
+      "sha256": "1af421b3b9d0f85dbd938cd518ad5d01c693fa2870f24e1089552ea5c1e6683f",
+      "size_bytes": 68953041,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19001.dat"
+    },
+    "acsdt5y2024-b19013.dat": {
+      "data_rows": 543579,
+      "sha256": "b25a176b0e6c339b6f3a2a0d3d8446bf06f5f080b4395993ec9a8313efb1c229",
+      "size_bytes": 17917916,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19013.dat"
+    },
+    "acsdt5y2024-b19025.dat": {
+      "data_rows": 537657,
+      "sha256": "1b6a37b48fb5f80480ae88bd4a364343ac4c21576cef07be2751b7009cdbda35",
+      "size_bytes": 20727905,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19025.dat"
+    },
+    "acsdt5y2024-b23025.dat": {
+      "data_rows": 543579,
+      "sha256": "264a5bd9367c5f58d9773fa4966fa94fe1e02f9c7106bc2ab39168d6de7c3e4a",
+      "size_bytes": 39968046,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b23025.dat"
+    },
+    "acsdt5y2024-b25003.dat": {
+      "data_rows": 616690,
+      "sha256": "68e963e1ed60fcf6b0658579cefc6498b7a9eb780b9f3e87fd1b9775c4d4ac6c",
+      "size_bytes": 26901770,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b25003.dat"
+    },
+    "acsdt5y2024-b25008.dat": {
+      "data_rows": 543579,
+      "sha256": "caf0a0ed0ed04f462880589096143d9f89c2e870c0e9e75c99a993cb3bf9c751",
+      "size_bytes": 24671457,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b25008.dat"
+    },
+    "acsdt5y2024-b25077.dat": {
+      "data_rows": 543579,
+      "sha256": "89eb2153764a2330b23959d8bbc29b3a8f3016f087b990f2a8ea0d5096d9a816",
+      "size_bytes": 18496426,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b25077.dat"
+    },
+    "acsdt5y2024-b28002.dat": {
+      "data_rows": 543579,
+      "sha256": "12446ff0691b8818f5908cdc398817361772c5b3078c506d0409adc9c841840b",
+      "size_bytes": 58063218,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b28002.dat"
+    },
+    "acsdt5y2024-c17002.dat": {
+      "data_rows": 543579,
+      "sha256": "dc3dc675113683ec3ff2a0e29a840f43e03268151d7f14b922658d7306da5187",
+      "size_bytes": 42027042,
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-c17002.dat"
+    }
+  },
+  "generated_by": "dbt/scripts/load_acs_summary_file.py --write-manifest --verify-only",
+  "retrieved_on": "2026-07-20",
+  "vintage": "2020-2024 ACS 5-year"
+}

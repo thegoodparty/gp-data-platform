@@ -1,14 +1,20 @@
-"""Unit tests for the sync_election_api DAG row-transform helpers.
+"""Unit tests for the sync_election_api DAG declarations.
 
-The transforms are pure tuple-position mappings, so a column-order mistake
-silently corrupts Postgres data. These tests pin the field positions
-explicitly. Mocks airflow/databricks/etc. so the file collects without the
-Astro runtime installed.
+The declaration-consistency test guards the cross-group FK wiring: a
+MartSync whose fkeys and parents disagree would break the staging FK build
+in production. Mocks airflow/databricks/etc. so the file collects without
+the Astro runtime installed.
 """
 
 import sys
-from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
+
+# Captured before the stubbing below poisons sys.modules, so the array
+# adaptation test exercises the real adapter regardless of collection order.
+from psycopg2.extensions import adapt as psycopg2_adapt
 
 # Stub external modules so the DAG file can be imported in any environment.
 _STUBS = (
@@ -30,118 +36,59 @@ for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
 from dags.sync_election_api import (  # noqa: E402
-    DTI_COLUMNS,
-    EOS_COLUMNS,
-    ZTP_SOURCE_COLUMNS,
-    ZTP_TARGET_COLUMNS,
-    _ztp_transform_row,
+    TABLES,
+    _pt_extra_checks,
+    _ztp_extra_checks,
 )
 
 
-def test_ztp_transform_row_field_positions():
-    """Each input field lands at its expected index in the output tuple."""
-    source_values = {
-        "position_id": "pos-1",
-        "name": "Mayor",
-        "br_database_id": 12345,
-        "zip_code": "90210",
-        "election_year": 2026,
-        "election_date": "2026-11-03",
-        "display_office_level": "City",
-        "office_type": "Mayor",
-        "state": "CA",
-        "district": None,
-        "voters_in_zip": 15688,
-        "voters_in_zip_district": 9714,
-        "pct_districtzip_to_zip": 0.619,
-    }
-    # ZTP_SOURCE_COLUMNS pins the input order; the dict is just for
-    # readability — build the tuple by indexing into it.
-    row = tuple(source_values[c] for c in ZTP_SOURCE_COLUMNS)
-
-    out = _ztp_transform_row(row)
-
-    assert len(out) == len(ZTP_TARGET_COLUMNS)
-    out_by_name = dict(zip(ZTP_TARGET_COLUMNS, out, strict=False))
-
-    # Generated fields
-    assert isinstance(out_by_name["id"], str) and len(out_by_name["id"]) == 36
-    assert isinstance(out_by_name["updated_at"], datetime)
-
-    # Pass-through fields land in the correct positions
-    for col, expected in source_values.items():
-        assert out_by_name[col] == expected, f"{col} did not pass through"
+def test_parents_match_fkey_references():
+    """Every non-self FK must have its referenced table's group in `parents`
+    (and vice versa): a missing edge can build a staging FK before its
+    referenced staging table is loaded; a stale edge points at a group that
+    no longer exists."""
+    table_to_group = {t.spec.target_table: t.group_id for t in TABLES}
+    for t in TABLES:
+        referenced_groups = {
+            table_to_group[fk.ref_table] for fk in t.spec.fkeys if fk.ref_table != t.spec.target_table
+        }
+        assert referenced_groups == set(t.parents), t.group_id
 
 
-def test_ztp_transform_row_id_is_deterministic():
-    """uuid5(zip_code|position_id|election_date) — same input, same id."""
-    row = tuple(
-        {
-            "position_id": "pos-1",
-            "name": "Mayor",
-            "br_database_id": 12345,
-            "zip_code": "90210",
-            "election_year": 2026,
-            "election_date": "2026-11-03",
-            "display_office_level": "City",
-            "office_type": "Mayor",
-            "state": "CA",
-            "district": None,
-            "voters_in_zip": 15688,
-            "voters_in_zip_district": 9714,
-            "pct_districtzip_to_zip": 0.619,
-        }[c]
-        for c in ZTP_SOURCE_COLUMNS
-    )
-
-    id_first = _ztp_transform_row(row)[0]
-    id_second = _ztp_transform_row(row)[0]
-    assert id_first == id_second
+def _conn_returning(value):
+    """A conn whose query yields `value`. Each extra check reads one scalar, so
+    this drives the real function body, not a reimplementation of its decision."""
+    cur = MagicMock()
+    cur.fetchone.return_value = (value,)
+    conn = MagicMock()
+    conn.cursor.return_value = cur
+    return conn
 
 
-def test_ztp_source_columns_match_transform_arity():
-    """Guards against ZTP_SOURCE_COLUMNS / _ztp_transform_row drift."""
-    row = tuple(range(len(ZTP_SOURCE_COLUMNS)))
-    out = _ztp_transform_row(row)
-    assert len(out) == len(ZTP_TARGET_COLUMNS)
+def _spec(table):
+    return SimpleNamespace(staging_schema="staging", new_table=f"{table}_new")
 
 
-def test_dti_columns_pinned():
-    """Pin DTI_COLUMNS to catch silent column reorderings.
-
-    The DistrictTopIssue bulk-insert path passes values to
-    psycopg2.extras.execute_values positionally, so swapping or dropping a
-    DTI_COLUMNS entry would land the wrong value into Postgres without any
-    error at insert time. Pin the list so reorderings show up as a failing
-    test instead of a corrupted DistrictTopIssue table.
-    """
-    assert DTI_COLUMNS == [
-        "id",
-        "updated_at",
-        "district_id",
-        "issue",
-        "issue_label",
-        "score",
-        "is_local",
-        "is_regional",
-        "is_state",
-        "is_federal",
-        "issue_rank",
-    ]
+def test_pt_extra_checks_refuse_duplicate_keys():
+    """The election-api consumer does not disambiguate model_version, so a
+    duplicate (district_id, election_year, election_code) key would make it
+    serve an arbitrary row. Row counts and NULL probes cannot see this."""
+    _pt_extra_checks(_conn_returning(0), _spec("Projected_Turnout"), 1_000_000)
+    with pytest.raises(ValueError, match="duplicate"):
+        _pt_extra_checks(_conn_returning(1), _spec("Projected_Turnout"), 1_000_000)
 
 
-def test_eos_columns_pinned():
-    """Pin EOS_COLUMNS to catch silent column reorderings.
+def test_ztp_extra_checks_refuse_partial_state_coverage():
+    """A load that silently drops whole states can still clear the row-count
+    ratio, so coverage is checked separately."""
+    _ztp_extra_checks(_conn_returning(51), _spec("ZipToPosition"), 1_300_000)
+    with pytest.raises(ValueError, match="distinct states"):
+        _ztp_extra_checks(_conn_returning(29), _spec("ZipToPosition"), 1_300_000)
 
-    Elected_Office_Support loads with no row transform: EOS_COLUMNS drives both
-    the Databricks SELECT order and the positional Postgres insert, so a
-    reordering would land values in the wrong columns without an insert-time
-    error. The mart's column order must match this list.
-    """
-    assert EOS_COLUMNS == [
-        "elected_office_id",
-        "support_constituents",
-        "total_constituents",
-        "created_at",
-        "updated_at",
-    ]
+
+def test_psycopg2_adapts_python_lists_to_postgres_arrays():
+    """Array round-trips (Race frequency int[], Candidacy urls text[]): the
+    arrow-backed connector returns numpy arrays, the loader normalizes them
+    to Python lists, and those lists must adapt to ARRAY literals."""
+    assert psycopg2_adapt([1, 2]).getquoted() == b"ARRAY[1,2]"
+    assert psycopg2_adapt(["a", "b"]).getquoted() == b"ARRAY['a','b']"

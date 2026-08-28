@@ -7,7 +7,11 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
+        # gold-match/shared/ is omni's client copies carrying upstream's
+        # lint-excluded whitespace debt; the rewriting hooks must not touch it.
+        exclude: ^gold-match/shared/
     -   id: end-of-file-fixer
+        exclude: ^gold-match/shared/
     -   id: check-yaml
     -   id: mixed-line-ending
         args: ['--fix=lf']
@@ -25,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
+        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -48,7 +52,7 @@ repos:
     # job (default pre-commit stage), so CI is not duplicated — each directory's
     # own workflow is the CI coverage. Each hook runs the suite in that
     # directory's environment, so that env must be set up locally first
-    # (`uv sync` / `poetry install` / `pip install ...`). `files:` means a push
+    # (`uv sync`, or `pip install ...` for `airflow/astro`). `files:` means a push
     # only runs the suites for directories it actually touched.
     -   id: pytest-people-api-loader
         name: people-api-loader tests (pre-push)
@@ -62,6 +66,13 @@ repos:
         entry: bash -c 'cd matcha && uv run pytest'
         language: system
         files: ^matcha/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-gold-match
+        name: gold-match tests (pre-push)
+        entry: bash -c 'cd gold-match && uv run pytest'
+        language: system
+        files: ^gold-match/
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-airflow
@@ -97,5 +108,17 @@ repos:
         entry: bash -c 'cd apps/genie-slack-bot && uv run pytest'
         language: system
         files: ^apps/genie-slack-bot/
+        pass_filenames: false
+        stages: [pre-push]
+    # Governance guard: semantic_models:/metrics: content must live in a
+    # sem_*.yml so it cannot bypass the review gate and catalog. Broad `files:`
+    # (any yml under models) so it fires on a mis-named file, which is the
+    # violation. CI enforcement is semantic-layer-file-placement.yml; this is the
+    # local pre-push copy. Runs in the analytics env like the pytest hooks above.
+    -   id: semantic-file-placement
+        name: semantic definitions must live in sem_*.yml (pre-push)
+        entry: bash -c 'cd analytics && PYTHONPATH=diagnostics uv run python -m semantic_catalog.naming_guard'
+        language: system
+        files: ^dbt/project/models/.*\.ya?ml$
         pass_filenames: false
         stages: [pre-push]

@@ -1,14 +1,11 @@
--- Canonical BallotReady candidate identity inputs, one row per br_candidate_id.
--- Picks one deterministic identity value per br_candidate_id so both consumers
--- (int__civics_candidate_ballotready, int__civics_candidacy_ballotready) hash
--- identical gp_candidate_id inputs; otherwise a person resolves to different
--- ids and gets orphaned from their candidacies (S3 email/name/phone vary across
--- a person's candidacy rows).
+-- Canonical BallotReady candidate name/contact/party per br_candidate_id: one
+-- deterministic representative row, since S3 email/name/phone vary across a
+-- person's candidacy rows. Feeds the person mart's display attributes only.
+-- All election years: is_candidate is flagged all-time, so a date filter here
+-- left older candidates nameless and dropped them from the public profiles.
 with
     candidacies as (
-        select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where election_day >= '2026-01-01'
+        select * from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
     ),
 
     -- Per-person API email (keyed by br_candidate_id); used as the fallback
@@ -21,12 +18,6 @@ with
         where database_id is not null
     ),
 
-    -- One coherent representative candidacy row per person: the most recently
-    -- updated, with deterministic email/phone tie-breaks (mirrors the ordering
-    -- int__civics_candidate_ballotready used for its dedup). Taking a single
-    -- row keeps the identity fields internally consistent and uses the person's
-    -- freshest contact info, rather than a per-column min() that could stitch
-    -- together values from different candidacy rows.
     ranked as (
         select
             br_candidate_id,
@@ -35,6 +26,7 @@ with
             state,
             email as s3_email,
             phone,
+            parties,
             row_number() over (
                 partition by br_candidate_id
                 order by
@@ -55,7 +47,8 @@ select
     -- Prefer the representative row's S3 email, fall back to the API person
     -- email, matching the coalesce(email, api_email) the consumers used before.
     coalesce(ranked.s3_email, person_emails.api_email) as id_email,
-    ranked.phone as id_phone
+    ranked.phone as id_phone,
+    ranked.parties as id_party
 from ranked
 left join person_emails on ranked.br_candidate_id = person_emails.person_database_id
 where ranked.rn = 1

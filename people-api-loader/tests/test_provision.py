@@ -18,9 +18,9 @@ _CFG = cast(
         engine_version="16.8",
         db_subnet_group="subnets",
         security_group_id="sg-x",
-        prod_db_user="people_admin",
-        prod_db_name="people_prod",
-        prod_db_port=5432,
+        db_user="people_admin",
+        db_name="people_prod",
+        db_port=5432,
         kms_key_arn="arn:kms",
         load_instance_class="db.r7g.16xlarge",
         s3_import_role_arn="arn:aws:iam::1:role/rds-s3-import",
@@ -31,7 +31,7 @@ _CFG = cast(
         new_load_param_group=lambda rd: f"gp-people-db-{rd}-load",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
         new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
-        tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}],
+        tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}, {"Key": "Environment", "Value": "prod"}],
     ),
 )
 
@@ -53,12 +53,18 @@ class FakeRds:
         *,
         delete_raises: bool = False,
         param_group_exists: bool = False,
+        role_attach_raise_once: str | None = None,
     ) -> None:
         self.clusters: dict[str, dict] = dict(existing or {})
         self.instances: set[str] = set(instances or set())
         self.calls: list[tuple[str, dict]] = []
         self._delete_raises = delete_raises
         self._param_group_exists = param_group_exists
+        # Simulates a concurrent scale_down modify_db_cluster landing between provision's
+        # describe (ACTIVE-role check) and its add_role_to_db_cluster: the cluster is briefly
+        # `modifying`, so the add is rejected once with InvalidDBClusterStateFault.
+        self._role_attach_raise_once = role_attach_raise_once
+        self._role_attach_raised = False
 
     def describe_db_clusters(self, DBClusterIdentifier: str) -> dict:
         if DBClusterIdentifier not in self.clusters:
@@ -96,6 +102,12 @@ class FakeRds:
 
     def add_role_to_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("role", kw))
+        if self._role_attach_raise_once and not self._role_attach_raised:
+            self._role_attach_raised = True
+            raise ClientError(
+                {"Error": {"Code": self._role_attach_raise_once, "Message": "modifying"}},
+                "AddRoleToDBCluster",
+            )
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("delete_cluster", kw))
@@ -107,6 +119,7 @@ class FakeRds:
         self.clusters.pop(kw["DBClusterIdentifier"], None)
 
     def get_waiter(self, name: str) -> _FakeWaiter:
+        self.calls.append(("waiter", {"name": name}))
         return _FakeWaiter()
 
     def names(self) -> list[str]:
@@ -126,13 +139,40 @@ def _patch(monkeypatch: pytest.MonkeyPatch, rds_client: FakeRds, ec2_client: Fak
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "ec2", lambda cfg: ec2_client)
     monkeypatch.setattr(
-        step, "put_ssm_parameter", lambda cfg, name, value, **k: captured.update(param=name, conninfo=value)
+        step,
+        "put_ssm_parameter",
+        lambda cfg, name, value, **k: captured.update(param=name, conninfo=value, ssm_tags=k.get("tags")),
     )
     # The reuse branch reads the param back to fail fast; default it present.
     monkeypatch.setattr(step, "get_ssm_parameter", lambda cfg, name, **k: "postgresql://u:p@h:5432/d")
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     return captured
+
+
+def test_provision_fails_fast_on_missing_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A blank provision infra var should raise a clear, named error before any AWS call, not an
+    # opaque "MasterUsername must not be blank" from CreateDBCluster.
+    monkeypatch.setattr(step, "read_manifest", lambda *a, **k: None)
+    bad = cast(LoaderConfig, SimpleNamespace(**{**vars(_CFG), "db_user": ""}))
+    with pytest.raises(RuntimeError, match="LOADER_DB_USER"):
+        step.run(bad, "20260616")
+
+
+def test_provision_attaches_role_after_instance_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    # add_role_to_db_cluster is rejected while the cluster is still `creating`
+    # (InvalidDBClusterStateFault), so the role must be attached only AFTER the
+    # db_instance_available waiter — not right after create, which fails attempt 1 on
+    # every fresh cluster and burns a retry.
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    names = rds_client.names()
+    assert "waiter" in names and "role" in names
+    assert names.index("waiter") < names.index("role"), "role attached before the availability waiter"
 
 
 def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,11 +192,40 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
     assert (
         "cluster" in rds_client.names() and "instance" in rds_client.names() and "role" in rds_client.names()
     )
-    # the connection string was stored in SSM with the endpoint + master password embedded,
-    # and forces TLS so the password can't traverse a plaintext-negotiated channel
+    # the connection string was stored in SSM with the endpoint + master password embedded, and no
+    # sslmode (consumers choose their own TLS policy; the loader's psycopg defaults to `prefer`)
     assert captured["param"] == "people-db-connection-string-dev-20260616"
     assert captured["conninfo"].startswith("postgresql://people_admin:")
-    assert "@gp-people-db-20260616.rds.aws:5432/people_prod?sslmode=require" in captured["conninfo"]
+    assert captured["conninfo"].endswith("@gp-people-db-20260616.rds.aws:5432/people_prod")
+    assert "sslmode" not in captured["conninfo"]
+
+
+def test_provision_ssm_param_keeps_environment_tag_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Default (set_ssm_env_tag=True): the SSM param gets the full tag set including Environment.
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    captured = _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    assert {"Key": "Environment", "Value": "prod"} in captured["ssm_tags"]
+    cluster_kw = next(kw for name, kw in rds_client.calls if name == "cluster")
+    assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]
+
+
+def test_provision_no_ssm_env_tag_drops_only_the_ssm_param_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # set_ssm_env_tag=False (the --no-ssm-env-tag flag): provision drops Environment from the SSM
+    # param tags, but the RDS cluster still carries it (its create policy requires RequestTag/Environment).
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    captured = _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616", set_ssm_env_tag=False)
+
+    assert {"Key": "Environment", "Value": "prod"} not in captured["ssm_tags"]
+    assert {"Key": "Project", "Value": "gp-api"} in captured["ssm_tags"]
+    cluster_kw = next(kw for name, kw in rds_client.calls if name == "cluster")
+    assert {"Key": "Environment", "Value": "prod"} in cluster_kw["Tags"]  # RDS tag untouched
 
 
 def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -175,6 +244,26 @@ def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.Monkey
     assert "instance" not in rds_client.names()  # not re-created
     assert "param" not in captured  # no new connection string stored (password unknown on reuse)
     assert "role" in rds_client.names()  # role attach is still idempotently ensured
+
+
+def test_provision_retries_role_attach_after_concurrent_cluster_modify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A concurrent scale_down (one_failed trigger_rule) modify_db_cluster can land while
+    # provision is attaching the s3-import role, putting the cluster briefly into `modifying`
+    # and making add_role_to_db_cluster raise InvalidDBClusterStateFault. This must be retried
+    # after the cluster settles, not surfaced as a spurious provision failure.
+    rds_client, ec2_client = (
+        FakeRds(role_attach_raise_once="InvalidDBClusterStateFault"),
+        FakeEc2(),
+    )
+    _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    manifest = step.run(_CFG, "20260616")  # must not raise
+
+    assert manifest.status == "complete"
+    assert rds_client.names().count("role") == 2  # first raised the fault, retried after settle
 
 
 def test_provision_skips_role_attach_when_already_active(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,11 +8,14 @@ behind moto's RDS) and manifest S3 IO are patched.
 
 moto limitations worked around: it doesn't model the aurora-iopt1 storage type, so
 provision's _STORAGE_TYPE is overridden to a moto-supported value (the real value lives in
-the constant), and it doesn't model the provisioned->serverless instance-state transition,
-so resize's reboot-ordering is covered by static review + the unit test, not here.
+the constant), and it doesn't model the real Aurora class-change reboot sequencing (the
+stale-'available' race `wait_instance_class_applied` rides through), so resize's
+reboot-ordering is covered by static review + the unit test, not here.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import boto3
 import pytest
@@ -56,8 +59,8 @@ def _provision(monkeypatch: pytest.MonkeyPatch) -> LoaderConfig:
         "LOADER_VPC_ID": vpc_id,
         "LOADER_DB_SUBNET_GROUP": "loader-subnets",
         "LOADER_SECURITY_GROUP_ID": sg_id,
-        "LOADER_PROD_DB_USER": "people_admin",
-        "LOADER_PROD_DB_NAME": "people_prod",
+        "LOADER_DB_USER": "people_admin",
+        "LOADER_DB_NAME": "people_prod",
         "LOADER_KMS_KEY_ARN": kms_arn,
         "LOADER_S3_IMPORT_ROLE_ARN": "arn:aws:iam::123456789012:role/rds-s3-import",
     }.items():
@@ -104,10 +107,12 @@ def test_resize_applies_lockdown(monkeypatch: pytest.MonkeyPatch) -> None:
     rds = boto3.client("rds", region_name=_REGION)
     monkeypatch.setattr(resize_step, "read_manifest", lambda *a: None)
     monkeypatch.setattr(resize_step, "write_manifest", lambda cfg, m: "uri")
+    # No real DB behind moto's RDS: fake the post-resize smoke check's connection too.
+    monkeypatch.setattr(resize_step, "connect_new", fake_connect(FakeConn().queue_result((1,))))
 
     manifest = resize_step.run(cfg, _DATE)
 
-    assert manifest.final_instance_class == "db.serverless"
+    assert manifest.final_instance_class == cfg.serve_instance_class
     cluster = rds.describe_db_clusters(DBClusterIdentifier=cfg.new_cluster_id(_DATE))["DBClusters"][0]
     assert cluster["BackupRetentionPeriod"] == 14
     assert cluster["DeletionProtection"] is True
@@ -155,3 +160,84 @@ def test_put_ssm_parameter_overwrites_and_retags(monkeypatch: pytest.MonkeyPatch
     )
     tags = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)["TagList"]
     assert {"Key": "Environment", "Value": "dev"} in tags
+
+
+@mock_aws
+def test_put_ssm_parameter_reset_tags_removes_dropped_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A first write tags the param with Environment; a later write (set_ssm_env_tag=False) passes an
+    # Environment-less tag list. add_tags_to_resource only upserts, so it would leave Environment
+    # behind and the human ResourceTag/Environment deny would still fire. The already-exists path
+    # deletes + recreates to enforce the exact set, so the dropped key is actually gone.
+    from loader.core.aws import put_ssm_parameter
+
+    for k, v in {
+        "AWS_REGION": _REGION,
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+    }.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    cfg = LoaderConfig.from_env()
+    name = cfg.new_conn_param(_DATE)
+
+    put_ssm_parameter(cfg, name, "postgresql://u:p@h:5432/d?sslmode=require")  # full tags incl. Environment
+    env_less = [t for t in cfg.tags_as_aws() if t["Key"] != "Environment"]
+    put_ssm_parameter(cfg, name, "postgresql://u:p2@h:5432/d?sslmode=require", tags=env_less)  # exists path
+
+    ssm = boto3.client("ssm", region_name=_REGION)
+    tags = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=name)["TagList"]
+    assert all(t["Key"] != "Environment" for t in tags)  # the dropped key is actually removed
+    assert {"Key": "Project", "Value": "gp-api"} in tags  # non-Environment tags survive
+    assert ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"].endswith(
+        "p2@h:5432/d?sslmode=require"
+    )
+
+
+@mock_aws
+def test_put_ssm_parameter_restores_value_if_recreate_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The already-exists path deletes then recreates. If the recreate fails, the OLD value must be
+    # restored, not left missing (a missing param strands provision's reuse branch on ParameterNotFound).
+    import loader.core.aws as aws_mod
+    from loader.core.aws import put_ssm_parameter
+
+    for k, v in {
+        "AWS_REGION": _REGION,
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+    }.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    cfg = LoaderConfig.from_env()
+    name = cfg.new_conn_param(_DATE)
+    put_ssm_parameter(cfg, name, "postgresql://u:old@h:5432/d?sslmode=require")  # create with real client
+
+    real = boto3.client("ssm", region_name=_REGION)
+
+    class _FailRecreate:
+        # Fail the tagged put ONLY after a delete (the recreate), so the initial try still raises the
+        # real ParameterAlreadyExists and the except branch runs; everything else delegates to moto.
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+            self.exceptions = inner.exceptions
+            self._deleted = False
+
+        def __getattr__(self, n: str) -> Any:
+            return getattr(self._inner, n)
+
+        def delete_parameter(self, **kw: Any) -> Any:
+            self._deleted = True
+            return self._inner.delete_parameter(**kw)
+
+        def put_parameter(self, **kw: Any) -> Any:
+            if self._deleted and "Tags" in kw:
+                raise RuntimeError("simulated recreate failure")
+            return self._inner.put_parameter(**kw)
+
+    monkeypatch.setattr(aws_mod, "ssm", lambda cfg: _FailRecreate(real))
+    with pytest.raises(RuntimeError, match="simulated recreate failure"):
+        put_ssm_parameter(cfg, name, "postgresql://u:new@h:5432/d?sslmode=require")
+
+    # Param still present with the OLD value (restored), not missing and not the failed-new value.
+    assert real.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"].endswith(
+        "u:old@h:5432/d?sslmode=require"
+    )

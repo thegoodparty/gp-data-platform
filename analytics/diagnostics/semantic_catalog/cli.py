@@ -1,0 +1,329 @@
+"""Generate the semantic-layer catalog artifacts from the dbt sem_*.yml files.
+
+--check  : fail if the generated canonical_metrics.md region is stale (CI guard).
+--write  : splice the region into both knowledge skills' canonical_metrics.md.
+--emit-clickup / --emit-slack : write the rendered artifacts for the publish job.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+import yaml
+
+from semantic_catalog import composition, ratifications, recording, sigma_tasks, slack_reply
+from semantic_catalog import lifecycle as lc_mod
+from semantic_catalog.clickup_client import ClickUpClient
+from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
+from semantic_catalog.lifecycle import Lifecycle
+from semantic_catalog.md_catalog import render_region, splice_region
+from semantic_catalog.parser import parse_semantic_tree
+from semantic_catalog.records import MetricRecord
+from semantic_catalog.slack_diff import render_message
+
+# analytics/diagnostics/semantic_catalog/cli.py -> parents[0]=semantic_catalog,
+# [1]=diagnostics, [2]=analytics, [3]=repo root.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+# Parse EVERY sem_*.yml under models, not an allow-list of subdirs, so the
+# parser's coverage matches the CODEOWNERS glob (/dbt/project/models/**/sem_*.yml)
+# exactly. A governed file added under any subdir is auto-catalogued; the naming
+# guard (semantic_catalog.naming_guard) enforces that all semantic content lives
+# in a sem_*.yml so nothing can escape this scope.
+DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+SEM_ROOTS = [DBT_MODELS]
+SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
+# Repo-relative path to the ratification sidecar, used to locate the BEFORE
+# side's copy inside a base worktree. The sidecar sits under analytics/, not in
+# the dbt tree, so it has to be resolved separately from SEM_ROOTS.
+RATIFICATIONS_RELPATH = Path("analytics/diagnostics/semantic_catalog/config/ratifications.yml")
+
+# Each skill owns one canonical_metrics.md. The generated region is projected
+# PER SKILL so a product's cheat sheet lists only its own metrics, and each
+# row's detail_doc link resolves inside that skill's own references/ dir.
+MD_TARGET_BY_SKILL = {
+    "win-analytics-knowledge": SKILLS_ROOT
+    / "win-analytics-knowledge"
+    / "references"
+    / "canonical_metrics.md",
+    "serve-analytics-knowledge": SKILLS_ROOT
+    / "serve-analytics-knowledge"
+    / "references"
+    / "canonical_metrics.md",
+}
+
+# Which skill each governed sem_*.yml routes its metrics to. Civics outcome
+# metrics are documented in the Win skill (outcomes.md lives there), so they
+# route to win rather than to a civics-specific sheet. A sem file absent from
+# this map is a hard error (see records_by_target) so a new metric can never
+# silently land in the wrong sheet, or none at all.
+SKILL_BY_SEM_FILE = {
+    "sem_analytics__users_win.yml": "win-analytics-knowledge",
+    "sem_analytics__users_serve.yml": "serve-analytics-knowledge",
+    "sem_civics__candidacy_stage.yml": "win-analytics-knowledge",
+}
+PKG = Path(__file__).parent
+
+
+def region_is_current(target: Path, records: list[MetricRecord]) -> bool:
+    if not target.exists():
+        return False
+    try:
+        return splice_region(target.read_text(), render_region(records)) == target.read_text()
+    except ValueError:
+        # Half-marked/corrupt file (one marker present): report as not current
+        # so --check fails cleanly as stale, not with an uncaught traceback.
+        return False
+
+
+def write_region(target: Path, records: list[MetricRecord]) -> None:
+    existing = target.read_text() if target.exists() else ""
+    target.write_text(splice_region(existing, render_region(records)))
+
+
+def records_by_target(records: list[MetricRecord]) -> dict[Path, list[MetricRecord]]:
+    """Group records by the canonical_metrics.md they should render into.
+
+    Routes each record via its source sem file (SKILL_BY_SEM_FILE). Raises on an
+    unmapped sem file so a newly-added metric fails loudly rather than being
+    dropped from every sheet. Every known target appears in the result, with an
+    empty list when a skill currently has no metrics.
+    """
+    grouped: dict[Path, list[MetricRecord]] = {t: [] for t in MD_TARGET_BY_SKILL.values()}
+    for rec in records:
+        sem_file = Path(rec.yaml_file).name
+        skill = SKILL_BY_SEM_FILE.get(sem_file)
+        if skill is None:
+            raise ValueError(
+                f"{sem_file} has no route in SKILL_BY_SEM_FILE; add a mapping so its "
+                "metrics land in a canonical_metrics.md."
+            )
+        grouped[MD_TARGET_BY_SKILL[skill]].append(rec)
+    return grouped
+
+
+def _lifecycles(records: list[MetricRecord]) -> dict[str, Lifecycle]:
+    files = {r.yaml_file for r in records}
+    return {f: lc_mod.derive(f) for f in files}
+
+
+def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[MetricRecord]]:
+    """Records as of HEAD (after) and as of the merge base (before, empty if none).
+
+    The before side reads the base tree's OWN sidecar. Letting it fall back to
+    the current one would make every ratification compare equal to itself, so a
+    pending to dated change would vanish from the Slack summary and fire no
+    Sigma build task. A base commit predating the sidecar simply has no file,
+    which loads as "nothing ratified yet".
+    """
+    after = parse_semantic_tree(SEM_ROOTS)
+    before = (
+        parse_semantic_tree(
+            [base_dir / "dbt/project/models"],
+            ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+            legacy_ratified=True,
+        )
+        if base_dir
+        else []
+    )
+    return before, after
+
+
+def _record(args, records: list[MetricRecord]) -> int:
+    """Record the sign-offs this merge earned, if both groups approved it.
+
+    Writes into the WORKING TREE only. The publish workflow commits the result
+    to a branch and opens a PR; nothing here pushes to main. The Sigma step runs
+    after this one and re-parses the same working tree, which is how a build
+    task gets created on the definition PR's merge instead of waiting for the
+    ratification PR to land.
+    """
+    reviews = json.loads(args.reviews.read_text()) if args.reviews else []
+    date = composition.completion_date(
+        reviews,
+        [m for m in args.data_members.split(",") if m],
+        [m for m in args.business_members.split(",") if m],
+    )
+    earned: dict[str, ratifications.Ratification] = {}
+
+    if date is None:
+        print("review coverage incomplete; recording nothing.")
+    elif args.base_dir is None or not args.base_dir.is_dir():
+        # Without a base tree there is nothing to compare fingerprints against,
+        # so `before` is empty and EVERY pending metric looks newly earned:
+        # bystanders sharing a file with the reviewed metric would collect a
+        # sign-off nobody gave. A missing base is not evidence of approval, so
+        # record nothing. The workflow only passes --base-dir when /tmp/base
+        # exists, which is the path this guards.
+        print("no base tree to diff against; recording nothing.")
+    else:
+        before, after = _before_after(args.base_dir)
+        if not before:
+            # A base tree that parses to zero metrics is either the wrong path or
+            # a commit predating the semantic layer. Both leave every metric
+            # looking new, which is the same bystander hazard as having no base
+            # at all, so refuse here too rather than trust an empty diff.
+            print("base tree parsed no metrics; recording nothing.")
+        else:
+            earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
+            if not earned:
+                print("no metric was newly ratified by this merge.")
+
+    if earned:
+        sidecar = ratifications.DEFAULT_PATH
+        sidecar.write_text(recording.apply(sidecar.read_text(), earned, args.pr_number))
+        records = parse_semantic_tree(SEM_ROOTS)
+        for target, recs in records_by_target(records).items():
+            write_region(target, recs)
+
+        # Self-verify. catalog-freshness cannot run on a PR opened with the
+        # default token, so this is the only check the bot's own output gets.
+        by_name = {r.name: r for r in records}
+        for name in earned:
+            rec = by_name.get(name)
+            if rec is None or rec.ratified != date or rec.ratified_stale:
+                print(f"recorded {name} but it does not read as freshly ratified; aborting.", file=sys.stderr)
+                return 1
+        print(f"recorded {len(earned)}: {', '.join(sorted(earned))}")
+
+    if args.emit_recorded:
+        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, date, args.pr_number)))
+    if args.emit_pr_body and earned:
+        args.emit_pr_body.write_text(
+            recording.pr_body(
+                recording.manifest(earned, records, date, args.pr_number),
+                repo=os.environ.get("GITHUB_REPOSITORY", "thegoodparty/gp-data-platform"),
+            )
+        )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="semantic_catalog")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--write", action="store_true")
+    parser.add_argument("--emit-clickup", type=Path)
+    parser.add_argument("--emit-slack", type=Path)
+    parser.add_argument("--fingerprints", action="store_true")
+    parser.add_argument("--sync-sigma-tasks", action="store_true")
+    parser.add_argument("--emit-created", type=Path)
+    parser.add_argument("--reply-created", type=Path)
+    parser.add_argument("--base-dir", type=Path, default=None)
+    parser.add_argument("--pr-url", type=str, default="")
+    parser.add_argument("--coverage", type=str, default="")
+    parser.add_argument("--record-ratifications", action="store_true")
+    parser.add_argument("--reviews", type=Path)
+    parser.add_argument("--data-members", type=str, default="")
+    parser.add_argument("--business-members", type=str, default="")
+    parser.add_argument("--pr-number", type=int, default=0)
+    parser.add_argument("--emit-recorded", type=Path)
+    parser.add_argument("--emit-pr-body", type=Path)
+    args = parser.parse_args(argv)
+
+    try:
+        records = parse_semantic_tree(SEM_ROOTS)
+    except ValueError as exc:
+        # A malformed sidecar or a stray config.meta.ratified: report it as the
+        # config error it is, so --check fails the PR with a readable message
+        # rather than an uncaught traceback.
+        print(f"semantic layer config error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.fingerprints:
+        # What an author copies into the sidecar when recording a sign-off.
+        # Printed quoted, because the sidecar requires quotes: an all-digit
+        # hash left bare would be read back as an integer.
+        for rec in records:
+            print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
+        return 0
+
+    if args.record_ratifications:
+        return _record(args, records)
+
+    if args.check:
+        grouped = records_by_target(records)
+        stale = [t for t, recs in grouped.items() if not region_is_current(t, recs)]
+        if stale:
+            print("stale canonical_metrics.md region in:", file=sys.stderr)
+            for t in stale:
+                print(f"  {t}", file=sys.stderr)
+            return 1
+        print("catalog region up to date")
+        return 0
+
+    if args.write:
+        for t, recs in records_by_target(records).items():
+            write_region(t, recs)
+            print(f"wrote {t}")
+
+    if args.emit_clickup:
+        owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
+        sop_md = (PKG / "templates" / "sop.md").read_text()
+        footer_md = (PKG / "templates" / "footer.md").read_text()
+        page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
+        # The catalog markers exist for splice-based updates; the ClickUp publish
+        # is a full-page replace, and ClickUp's markdown parser glues a trailing
+        # HTML comment onto the next heading. Drop the markers from the emitted page.
+        page = (
+            "\n".join(ln for ln in page.splitlines() if ln.strip() not in (CATALOG_BEGIN, CATALOG_END)) + "\n"
+        )
+        args.emit_clickup.write_text(page)
+        print(f"wrote {args.emit_clickup}")
+
+    if args.emit_slack:
+        before, after = _before_after(args.base_dir)
+        coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
+        msg = render_message(before, after, args.pr_url, coverage)
+        args.emit_slack.write_text(msg)
+        print(f"wrote {args.emit_slack}")
+
+    if args.sync_sigma_tasks:
+        token = os.environ.get("CLICKUP_TASK_TOKEN")
+        if not token:
+            print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
+            return 0
+        cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
+        assignee_id = cfg.get("default_assignee_id")
+        assignee_ids = (int(assignee_id),) if assignee_id else ()
+        # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
+        before, after = _before_after(args.base_dir)
+        client = ClickUpClient(token)
+        result = sigma_tasks.sync(
+            client, cfg["list_id"], cfg["build_key_field_id"], before, after, assignee_ids=assignee_ids
+        )
+        created_names = [c.metric_name for c in result.created]
+        print(f"created {len(created_names)}: {', '.join(created_names) or '(none)'}")
+        print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
+        if args.emit_created:
+            # The workflow reads this to post one threaded Slack reply per created task.
+            args.emit_created.write_text(
+                json.dumps(
+                    [{"metric": c.metric_name, "task_id": c.task_id, "url": c.url} for c in result.created]
+                )
+            )
+        return 0
+
+    if args.reply_created:
+        # Secrets stay in the environment, never on the command line.
+        token = os.environ.get("SLACK_APP_BOT_TOKEN")
+        thread_ts = os.environ.get("SLACK_TS")
+        channel = os.environ.get("SLACK_CHANNEL_ID")
+        if not token or not thread_ts or not channel:
+            print("SLACK_APP_BOT_TOKEN/SLACK_TS/SLACK_CHANNEL_ID not all set; skipping thread replies.")
+            return 0
+        if not args.reply_created.exists():
+            print(f"{args.reply_created} not found; skipping thread replies.")
+            return 0
+        tasks = json.loads(args.reply_created.read_text())
+        slack_reply.reply_in_thread(token, channel, thread_ts, tasks)
+        print(f"posted {len(tasks)} thread repl{'y' if len(tasks) == 1 else 'ies'}")
+        return 0
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

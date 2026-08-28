@@ -2,23 +2,191 @@
 
 from __future__ import annotations
 
-from loader.people_api.schema.schema_spec import TABLE_SPECS, indexes_for, primary_key_for
+from loader.people_api.schema import _serving_seed as seed
+from loader.people_api.schema import _serving_seed_extra as seed_extra
+from loader.people_api.schema import schema_spec as ss
+from loader.people_api.schema import snapshot
+from loader.people_api.schema.index_specs import IndexDef
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 
-def test_spec_is_voter_only_with_overrides_partition_and_prisma_column() -> None:
-    # Scope is Voter-only: the District family is built by the dbt write path and
-    # DistrictStats isn't a serving table.
-    assert set(TABLE_SPECS) == {"Voter"}
-    voter = TABLE_SPECS["Voter"]
-    assert voter.partition_by == "State"
-    assert voter.type_overrides["id"] == "UUID"
-    # The one serving column the mart omits is declared as a Prisma-layer extra.
-    assert ("Mailing_HHGender_Description", "TEXT", True) in voter.extra_columns
+def test_all_tables_specced() -> None:
+    assert set(ss.TABLE_SPECS) == {
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    }
+
+
+def test_density_specs() -> None:
+    # The voter-density serving tables are flat (queried by district_id + resolution, never by state),
+    # carry their PK on the spec (not in the extracted `public` seed — they live in Prisma `green`,
+    # like DistrictStats), and rename the mart's lowercase `state` -> serving "State" via
+    # mart_column_map (like DistrictVoter).
+    density = ss.TABLE_SPECS["DistrictVoterDensity"]
+    assert density.partition_by is None
+    assert density.mart_column_map["state"] == "State"
+    assert density.type_overrides["voter_count"] == "INTEGER"
+    assert density.type_overrides["state"] == '"USState"'
+    assert density.primary_key is not None
+    assert density.primary_key.columns == ["district_id", "resolution", "h3_index"]
+
+    meta = ss.TABLE_SPECS["DistrictVoterDensityMeta"]
+    assert meta.partition_by is None
+    assert meta.mart_column_map["state"] == "State"
+    # count/sum aggregates are bigint in the mart but the Prisma contract is Int.
+    for col in ("total_voters", "geocoded_voters", "rendered_voters", "suppressed_cells"):
+        assert meta.type_overrides[col] == "INTEGER"
+    assert meta.primary_key is not None
+    assert meta.primary_key.columns == ["district_id", "resolution"]
 
 
 def test_lookup_helpers_filter_by_table() -> None:
     # Works whether the committed seed is the empty placeholder or populated.
-    assert isinstance(indexes_for("Voter"), list)
-    assert all(i.table == "Voter" for i in indexes_for("Voter"))
-    pk = primary_key_for("Voter")
+    assert isinstance(ss.indexes_for("Voter"), list)
+    assert all(i.table == "Voter" for i in ss.indexes_for("Voter"))
+    pk = ss.primary_key_for("Voter")
     assert pk is None or pk.table == "Voter"
+
+
+def test_hand_added_extras_merge_and_survive_regeneration() -> None:
+    # The extras live outside the generated seed (extract-serving-structure
+    # overwrites _serving_seed.py wholesale) and must be present in the
+    # composed spec via the extras path — the generated seed must NOT carry
+    # them, or _serving_seed_extra.py becomes dead code whose edits are
+    # silently ignored.
+    generated_names = {i.name for i in seed.INDEXES}
+    idxs = ss.indexes_for("Voter")
+    names = [i.name for i in idxs]
+    for expected in (
+        "Voter_firstname_lower_trgm_idx",
+        "Voter_lastname_lower_trgm_idx",
+        "Voter_last_first_id_idx",
+        "Voter_firstname_lower_idx",
+        "Voter_lastname_lower_idx",
+        "Voter_Parties_Description_trgm_idx",
+    ):
+        assert expected not in generated_names
+        assert expected in names
+    assert len(names) == len(set(names))
+    trgm = next(i for i in idxs if i.name == "Voter_firstname_lower_trgm_idx")
+    assert 'USING gin (lower("FirstName") gin_trgm_ops)' in trgm.sql
+    # The party filter is a case-insensitive substring match on the RAW column (gp-api emits
+    # `"Parties_Description" ILIKE '%..%'`), so the trgm GIN is on the raw column, not lower().
+    party_trgm = next(i for i in idxs if i.name == "Voter_Parties_Description_trgm_idx")
+    assert 'USING gin ("Parties_Description" gin_trgm_ops)' in party_trgm.sql
+
+
+def test_extras_merge_and_name_collision_suppression(monkeypatch) -> None:
+    # Both dedup branches, isolated from the committed contents: an extra whose
+    # name is absent from the generated seed merges in; a colliding name is
+    # suppressed and the generated entry wins.
+    novel = IndexDef(
+        table="Voter",
+        name="Voter_extra_only_idx",
+        sql='CREATE INDEX "Voter_extra_only_idx" ON public."Voter" USING btree ("Age");',
+        unique=False,
+        columns=["Age"],
+        where=None,
+    )
+    generated_name = seed.INDEXES[0].name
+    colliding = IndexDef(
+        table="Voter",
+        name=generated_name,
+        sql='CREATE INDEX "collide" ON public."Voter" USING btree ("Age");',
+        unique=False,
+        columns=["Age"],
+        where=None,
+    )
+    monkeypatch.setattr(seed_extra, "EXTRA_INDEXES", [novel, colliding])
+
+    idxs = ss.indexes_for("Voter")
+    assert any(i.name == "Voter_extra_only_idx" for i in idxs)
+    winner = next(i for i in idxs if i.name == generated_name)
+    assert winner.sql != colliding.sql
+    assert [i.name for i in idxs].count(generated_name) == 1
+
+
+def test_partition_flags() -> None:
+    assert ss.is_partitioned("Voter") is True
+    assert ss.is_partitioned("DistrictVoter") is True
+    assert ss.is_partitioned("District") is False
+    assert ss.is_partitioned("DistrictStats") is False
+    # Both partitioned tables use the serving "State" column (DistrictVoter's mart `state` is
+    # renamed to "State" via mart_column_map — see test_districtvoter_spec).
+    assert ss.partition_column("Voter") == "State"
+    assert ss.partition_column("DistrictVoter") == "State"
+    assert ss.partition_column("District") is None
+
+
+def test_districtvoter_spec() -> None:
+    # The DistrictVoter mart is denormalized; mart_column_map projects it to the 5-column Prisma
+    # serving shape and renames mart `state` -> serving "State".
+    spec = ss.TABLE_SPECS["DistrictVoter"]
+    assert spec.partition_by == "State"
+    assert spec.mart_column_map == {
+        "district_id": "district_id",
+        "voter_id": "voter_id",
+        "created_at": "created_at",
+        "updated_at": "updated_at",
+        "state": "State",
+    }
+    assert spec.type_overrides == {
+        "district_id": "UUID",
+        "voter_id": "UUID",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "state": '"USState"',
+    }
+    # The other tables' marts already match serving -> no column map.
+    assert ss.TABLE_SPECS["Voter"].mart_column_map == {}
+    assert ss.TABLE_SPECS["District"].mart_column_map == {}
+    assert ss.TABLE_SPECS["DistrictStats"].mart_column_map == {}
+
+
+def test_districtstats_spec() -> None:
+    spec = ss.TABLE_SPECS["DistrictStats"]
+    assert spec.partition_by is None
+    assert spec.type_overrides.get("buckets") == "jsonb"
+    # not a serving table -> PK carried on the spec, not the seed
+    assert spec.primary_key is not None
+    assert spec.primary_key.columns == ["district_id"]
+
+
+def test_primary_key_for_spec_fallback() -> None:
+    # DistrictStats is absent from _serving_seed; the spec PK is returned.
+    pk = ss.primary_key_for("DistrictStats")
+    assert pk is not None and pk.columns == ["district_id"]
+
+
+def test_primary_key_for_seed_wins_when_present() -> None:
+    # District IS in the seed; spec carries no PK, seed value is used.
+    pk = ss.primary_key_for("District")
+    assert pk is not None and pk.columns == ["id"]
+
+
+def test_accepted_type_divergences_name_real_columns() -> None:
+    # A typo here is silent: the guardrail skips a column that does not exist, so the real
+    # column stays unguarded and the mismatch only surfaces when validate fails on a live run.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    creates = extract_create_tables(text)
+    for table, columns in ss.ACCEPTED_TYPE_DIVERGENCES.items():
+        served = set(extract_column_names(creates[table]))
+        assert columns <= served, f"{table}: {sorted(columns - served)} not in target_schema.sql"
+
+
+def test_address_directions_serve_as_text() -> None:
+    # L2 spells these N/S/E/W. Serving them INTEGER (as prod does) empties them for every voter
+    # in the country, which is what dropped cardinal directions from door-knocking addresses.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    types = extract_column_types(extract_create_tables(text)["Voter"])
+    for side in ("Mailing", "Residence"):
+        for position in ("Prefix", "Suffix"):
+            assert types[f"{side}_Addresses_{position}Direction"] == "TEXT"

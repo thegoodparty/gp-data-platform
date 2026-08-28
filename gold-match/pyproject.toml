@@ -1,0 +1,67 @@
+[project]
+name = "gold-match"
+version = "0.1.0"
+description = "L2-to-BallotReady district matcher (gold match) and its Bedrock model clients"
+requires-python = ">=3.14"
+# Floors are omni's locked versions; ceilings keep the byte-frozen code on
+# the series it was written and evaluated under. Python 3.14 forces only
+# pandas (2.2.3 -> 2.3.x) and databricks-sql-connector (4.1.4 -> 4.4) past
+# omni's lock; nothing forces the rest, so the port doesn't move them, and
+# the two eval-critical SDKs (google-genai, braintrust) are held to omni's
+# exact minors. pyarrow is never imported directly: omni's env carries it,
+# and without it databricks-sql-connector drops its arrow/cloud-fetch result
+# path and warns on every import. Relaxing any of this is client-PR work.
+dependencies = [
+    "boto3>=1.40.55,<2.0.0",
+    "botocore>=1.40.55,<2.0.0",
+    "braintrust>=0.17.0,<0.18.0",
+    "databricks-sql-connector>=4.4.0,<5.0.0",
+    "google-genai>=1.56.0,<1.57.0",
+    "httpx>=0.28.1",
+    # jsonschema is transitively present; declared because bedrock_clients
+    # imports it directly.
+    "jsonschema>=4.26.0",
+    "numpy>=2.3.4",
+    "pandas>=2.3.1,<3.0.0",
+    "pillow>=12.3.0",
+    "pyarrow>=25.0.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "tqdm>=4.67.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+# omni installs `shared` into its env (its hatch wheel), which is the only
+# reason the README's `uv run stitch_golden_data/prod_gold_data/l2_br_matcher.py`
+# entrypoint resolves imports there. Mirror the mechanism, installing both
+# ported packages editable so every entrypoint works, not just pytest (which
+# puts the project root on sys.path itself).
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shared", "stitch_golden_data", "bedrock_clients"]
+
+[tool.pytest.ini_options]
+testpaths = ["stitch_golden_data/prod_gold_data/tests", "bedrock_clients/tests"]
+
+# The matcher tree is owned here and linted like any other code. shared/
+# stays excluded: it is omni's client copies carrying omni's tracked lint
+# debt, dormant until the post-gate cleanup retires them. The exclude is
+# anchored -- a bare name would match at any depth.
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["./shared"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

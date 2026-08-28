@@ -1,4 +1,4 @@
--- DATA-1950 (G5420): the boilerplate bug pinned many distinct districts onto one place
+-- (G5420): the boilerplate bug pinned many distinct districts onto one place
 -- (93 -> Broome). Guard the recurrence: no (state, county_name, population) shared by
 -- >= 12
 -- distinct resolved G5420 districts. Measured max legit cluster = 7 (SC/WY numbered

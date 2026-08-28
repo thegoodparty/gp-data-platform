@@ -114,12 +114,23 @@ def unload(
 
 
 @app.command()
-def provision(run_date: RunDateArg) -> None:
+def provision(
+    run_date: RunDateArg,
+    ssm_env_tag: Annotated[
+        bool,
+        typer.Option(
+            "--ssm-env-tag/--no-ssm-env-tag",
+            help="Tag the connection-string SSM parameter with Environment (default). Pass "
+            "--no-ssm-env-tag as a bring-up escape hatch to omit it, so a human role denied by "
+            "ResourceTag/Environment=prod can read the connection string. RDS resources keep the tag.",
+        ),
+    ] = True,
+) -> None:
     """Step 2 — provision Aurora cluster + IAM role + VPCE + param groups."""
     from loader.people_api.steps import provision as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date)
+    step.run(cfg, run_date, set_ssm_env_tag=ssm_env_tag)
 
 
 @app.command(name="create-schema")
@@ -151,20 +162,27 @@ def copy(
 def build_indexes(
     run_date: RunDateArg,
     parallelism: Annotated[
-        int,
-        typer.Option("--parallelism", help="Concurrent CREATE INDEX builds (peak memory scales with this)."),
-    ] = 32,
+        int | None,
+        typer.Option(
+            "--parallelism",
+            help=(
+                "Concurrent CREATE INDEX builds (peak memory scales with this). Defaults to "
+                "cfg.index_parallelism (LOADER_INDEX_PARALLELISM, else the loader default) "
+                "when omitted; passing this flag always overrides that."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Step 5 — PKs, non-unique indexes, FKs, ANALYZE."""
     from loader.people_api.steps import build_indexes as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date, parallelism=parallelism)
+    step.run(cfg, run_date, parallelism=parallelism if parallelism is not None else cfg.index_parallelism)
 
 
 @app.command()
 def resize(run_date: RunDateArg) -> None:
-    """Step 6 — swap writer to db.serverless + serve-tuned params."""
+    """Step 6 — swap writer to the serving instance class + serve-tuned params."""
     from loader.people_api.steps import resize as step
 
     cfg = _setup(run_date)
@@ -172,8 +190,35 @@ def resize(run_date: RunDateArg) -> None:
 
 
 @app.command()
+def analyze(run_date: RunDateArg) -> None:
+    """Step 7 — database-wide ANALYZE so every leaf partition has fresh planner stats."""
+    from loader.people_api.steps import analyze as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
+@app.command()
+def promote(run_date: RunDateArg) -> None:
+    """Serving cutover — overwrite the serving param to this run's connection string (new latest)."""
+    from loader.people_api.steps import promote as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
+@app.command(name="scale-down")
+def scale_down(run_date: RunDateArg) -> None:
+    """Failure cost guard — flip the writer to db.serverless (keeps the cluster + data)."""
+    from loader.people_api.steps import scale_down as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
+@app.command()
 def validate(run_date: RunDateArg) -> None:
-    """Step 7 — six validation checks. Exits non-zero if any fail."""
+    """Step 7 — validation checks. Exits non-zero if any blocking (non-warn-only) check fails."""
     from loader.people_api.steps import validate as step
 
     cfg = _setup(run_date)
@@ -184,11 +229,19 @@ def validate(run_date: RunDateArg) -> None:
 
 
 def _print_validate_report(manifest) -> None:
-    tbl = Table(title=f"Validation — {manifest.run_date}")
+    warns = sum(1 for c in manifest.checks if not c.passed and c.warn_only)
+    suffix = f" — {warns} warning(s)" if warns else ""
+    tbl = Table(title=f"Validation — {manifest.run_date}{suffix}")
     tbl.add_column("Check")
     tbl.add_column("Status")
     for c in manifest.checks:
-        tbl.add_row(c.name, "[green]PASS[/green]" if c.passed else "[red]FAIL[/red]")
+        if c.passed:
+            status = "[green]PASS[/green]"
+        elif c.warn_only:
+            status = "[yellow]WARN[/yellow]"
+        else:
+            status = "[red]FAIL[/red]"
+        tbl.add_row(c.name, status)
     console.print(tbl)
 
 
@@ -217,6 +270,29 @@ def teardown(
             help="Also delete the S3 gateway VPC endpoint. Default keeps it in place for future refreshes.",
         ),
     ] = False,
+    snapshot: Annotated[
+        bool,
+        typer.Option(
+            "--snapshot",
+            help="Take a final cluster snapshot (gp-people-db-{date}-{env}-final) before deleting, "
+            "kept until manually removed. Default skips it.",
+        ),
+    ] = False,
+    keep_ssm: Annotated[
+        bool,
+        typer.Option(
+            "--keep-ssm",
+            help="Keep the dated connection-string SSM parameter (for a restore-from-snapshot). "
+            "Default deletes it.",
+        ),
+    ] = False,
+    keep_param_groups: Annotated[
+        bool,
+        typer.Option(
+            "--keep-param-groups",
+            help="Keep the cluster's load/serve DB parameter groups. Default deletes them.",
+        ),
+    ] = False,
 ) -> None:
     """Delete loader-created resources for a run_date. Dry-run by default."""
     from loader.people_api.steps import teardown as step
@@ -228,6 +304,9 @@ def teardown(
         confirm=confirm,
         delete_s3=delete_s3,
         delete_vpce=delete_vpce,
+        snapshot=snapshot,
+        keep_ssm=keep_ssm,
+        keep_param_groups=keep_param_groups,
     )
 
 
@@ -241,9 +320,11 @@ def status(run_date: RunDateArg) -> None:
     cfg = _setup(run_date, verify_aws=False)
     from loader.core.manifest.io import read_manifest
     from loader.people_api.manifests import (
+        AnalyzeManifest,
         CopyManifest,
         IndexManifest,
         InspectManifest,
+        PromoteManifest,
         ProvisionManifest,
         ResizeManifest,
         SchemaManifest,
@@ -258,8 +339,10 @@ def status(run_date: RunDateArg) -> None:
         ("schema", SchemaManifest),
         ("copy", CopyManifest),
         ("indexes", IndexManifest),
-        ("resize", ResizeManifest),
         ("validate", ValidateManifest),
+        ("resize", ResizeManifest),
+        ("analyze", AnalyzeManifest),
+        ("promote", PromoteManifest),
     ]
     tbl = Table(title=f"Run {run_date} — step status")
     tbl.add_column("Step")

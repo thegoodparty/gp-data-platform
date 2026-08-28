@@ -1,0 +1,206 @@
+"""Hand-maintained IndexDefs merged onto the generated `_serving_seed`.
+
+`extract-serving-structure` overwrites `_serving_seed.py` wholesale, so anything not on the
+extraction-source cluster is lost on regeneration. Indexes from outside pg_catalog (e.g. omni
+prisma migrations, which don't run on loader clusters) live here and merge in via
+`schema_spec.indexes_for`.
+"""
+
+from __future__ import annotations
+
+from loader.people_api.schema.index_specs import IndexDef
+
+# Serving-only performance indexes, carried here because they don't come from a prisma migration
+# that runs on loader-built clusters. Two families:
+#   1. people-api name-search (first/last name): lower() expressions must match people-api's emitted
+#      SQL exactly or the planner skips them. The b-trees use text_pattern_ops so LIKE-'prefix%' uses
+#      them on the en_US.UTF-8 serving cluster (a default opclass can't) — a deliberate divergence
+#      from the prisma index, since the loader is becoming the source of truth. The trgm GIN serves
+#      the substring path no b-tree can.
+#   2. party-registration substring filter (Parties_Description): a trgm GIN serving the gp-api
+#      contacts ILIKE audience filter (see the IndexDef comment below).
+# pg_trgm is installed by create_schema and build_indexes (each step is independently re-runnable).
+EXTRA_INDEXES: list[IndexDef] = [
+    IndexDef(
+        table="Voter",
+        name="Voter_firstname_lower_idx",
+        sql='CREATE INDEX "Voter_firstname_lower_idx" ON public."Voter" USING btree (lower("FirstName") text_pattern_ops);',
+        unique=False,
+        columns=['lower("FirstName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_firstname_lower_trgm_idx",
+        sql='CREATE INDEX "Voter_firstname_lower_trgm_idx" ON public."Voter" USING gin (lower("FirstName") gin_trgm_ops);',
+        unique=False,
+        columns=['lower("FirstName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_last_first_id_idx",
+        sql='CREATE INDEX "Voter_last_first_id_idx" ON public."Voter" USING btree ("LastName", "FirstName", "id");',
+        unique=False,
+        columns=["LastName", "FirstName", "id"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_lastname_lower_idx",
+        sql='CREATE INDEX "Voter_lastname_lower_idx" ON public."Voter" USING btree (lower("LastName") text_pattern_ops);',
+        unique=False,
+        columns=['lower("LastName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_lastname_lower_trgm_idx",
+        sql='CREATE INDEX "Voter_lastname_lower_trgm_idx" ON public."Voter" USING gin (lower("LastName") gin_trgm_ops);',
+        unique=False,
+        columns=['lower("LastName")'],
+        where=None,
+    ),
+    # Party-registration substring filter. gp-api compiles a party audience to
+    # `"Parties_Description" ILIKE '%<substring>%'` (case-insensitive, ORed per rule —
+    # gp-api/src/peopleDb/utils/filters.sql.util.ts). The generated seed only carries a
+    # plain b-tree on this column (Voter_Parties_Description_idx), which a substring ILIKE
+    # can't use, so the contacts count/overlap-count/list-detail aggregates fall back to a
+    # full Voter scan and hit the app's statement-timeout fence. A trgm GIN on the raw column
+    # serves ILIKE directly (pg_trgm handles the case-folding), the same substring path the
+    # name-search trgm indexes above serve. On the raw column, not lower(), to match the
+    # emitted SQL exactly. Carried here (not the generated seed) because it doesn't yet exist
+    # on the extraction-source cluster; build_indexes re-issues it on every rebuild.
+    IndexDef(
+        table="Voter",
+        name="Voter_Parties_Description_trgm_idx",
+        sql='CREATE INDEX "Voter_Parties_Description_trgm_idx" ON public."Voter" USING gin ("Parties_Description" gin_trgm_ops);',
+        unique=False,
+        columns=["Parties_Description"],
+        where=None,
+    ),
+    # Geospatial lookups on the residence coordinates. GiST is the standard PostGIS point index:
+    # fast to build in bulk and fast to probe (unlike BRIN, which needs spatially-sorted data). The
+    # "geom" column it indexes is created by build_indexes (postgis + the generated column) before
+    # this builds. pg_trgm and postgis are installed by create_schema and build_indexes.
+    IndexDef(
+        table="Voter",
+        name="Voter_geom_idx",
+        sql='CREATE INDEX "Voter_geom_idx" ON public."Voter" USING gist ("geom");',
+        unique=False,
+        columns=["geom"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_hf_most_important_policy_item_idx",
+        sql='CREATE INDEX "Voter_hf_most_important_policy_item_idx" ON public."Voter" USING btree ("hf_most_important_policy_item");',
+        unique=False,
+        columns=["hf_most_important_policy_item"],
+        where=None,
+    ),
+    # DistrictVoter district lookups. The generated seed carries only the PK
+    # btree(district_id, voter_id, "State"); a `WHERE district_id = X [AND "State" = 'S']` scan can
+    # use it (district_id leads) but reads ~130x more index pages than a dedicated narrow index —
+    # ~83k buffers vs ~640 for a single ~700k-member district (measured). The wide PK can't
+    # deduplicate (every entry has a distinct voter_id); over a district's rows a narrow index shares
+    # one district_id, so btree dedup collapses it to a tiny posting list. Invisible warm (all cache
+    # hits) and to the planner (it costs both alike), but it drives cold / pool-pressure district
+    # timeouts. Both families, deliberately:
+    #   - (district_id, "State"): the one the planner actually picks for the app's queries, which
+    #     always carry the district's "State" — a plain (district_id) loses to the PK there because
+    #     the PK also contains "State". "State" is constant within a LIST partition, so this still
+    #     dedups (~430 MB).
+    #   - (district_id): covers any district_id-only pattern not carrying "State".
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_State_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_State_idx" ON public."DistrictVoter" USING btree (district_id, "State");',
+        unique=False,
+        columns=["district_id", "State"],
+        where=None,
+    ),
+    IndexDef(
+        table="DistrictVoter",
+        name="DistrictVoter_district_id_idx",
+        sql='CREATE INDEX "DistrictVoter_district_id_idx" ON public."DistrictVoter" USING btree (district_id);',
+        unique=False,
+        columns=["district_id"],
+        where=None,
+    ),
+    # Seven office-bearing L2 district columns that were missing from the Voter mart, so they
+    # never reached serving and have no index on the extraction-source cluster. Every other
+    # district column carries a plain btree in the generated seed; these mirror that pattern so
+    # a filter on them does not fall back to a full Voter scan. They move into the generated
+    # seed on the next extract-serving-structure, which then wins the name collision.
+    IndexDef(
+        table="Voter",
+        name="Voter_4H_Livestock_District_idx",
+        sql='CREATE INDEX "Voter_4H_Livestock_District_idx" ON public."Voter" USING btree ("4H_Livestock_District");',
+        unique=False,
+        columns=["4H_Livestock_District"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Community_College_idx",
+        sql='CREATE INDEX "Voter_Community_College_idx" ON public."Voter" USING btree ("Community_College");',
+        unique=False,
+        columns=["Community_College"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Judicial_Chancery_Court_idx",
+        sql='CREATE INDEX "Voter_Judicial_Chancery_Court_idx" ON public."Voter" USING btree ("Judicial_Chancery_Court");',
+        unique=False,
+        columns=["Judicial_Chancery_Court"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Judicial_Justice_of_the_Peace_idx",
+        sql='CREATE INDEX "Voter_Judicial_Justice_of_the_Peace_idx" ON public."Voter" USING btree ("Judicial_Justice_of_the_Peace");',
+        unique=False,
+        columns=["Judicial_Justice_of_the_Peace"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Soil_and_Water_District_idx",
+        sql='CREATE INDEX "Voter_Soil_and_Water_District_idx" ON public."Voter" USING btree ("Soil_and_Water_District");',
+        unique=False,
+        columns=["Soil_and_Water_District"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_Soil_and_Water_District_At_Large_idx",
+        sql='CREATE INDEX "Voter_Soil_and_Water_District_At_Large_idx" ON public."Voter" USING btree ("Soil_and_Water_District_At_Large");',
+        unique=False,
+        columns=["Soil_and_Water_District_At_Large"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_State_Board_of_Equalization_idx",
+        sql='CREATE INDEX "Voter_State_Board_of_Equalization_idx" ON public."Voter" USING btree ("State_Board_of_Equalization");',
+        unique=False,
+        columns=["State_Board_of_Equalization"],
+        where=None,
+    ),
+    # Voter-density heat map: the app's only query pattern is filter by district + resolution
+    # (people-api voter-density serve query, handoff §7/§8). DistrictVoterDensity is a `green`-schema
+    # serving table absent from the extraction-source cluster, so its index is carried here (like the
+    # Voter perf indexes) rather than the generated seed; build_indexes builds it directly (flat
+    # table, no partitions). DistrictVoterDensityMeta needs no extra index — its PK
+    # (district_id, resolution) already covers the same lookup.
+    IndexDef(
+        table="DistrictVoterDensity",
+        name="DistrictVoterDensity_district_id_resolution_idx",
+        sql='CREATE INDEX "DistrictVoterDensity_district_id_resolution_idx" ON public."DistrictVoterDensity" USING btree ("district_id", "resolution");',
+        unique=False,
+        columns=["district_id", "resolution"],
+        where=None,
+    ),
+]

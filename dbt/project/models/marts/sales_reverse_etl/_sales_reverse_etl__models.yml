@@ -10,7 +10,7 @@ models:
       BallotReady-only columns null-filled, partner-confirmed unused); appended are the 4-part
       match-back key (candidate_code), the reverse-ETL tracking-key inputs (election_year,
       election_stage), gp_candidacy_id / gp_candidate_id (internal forensic ids), is_keyable,
-      and last_activity_at. See .tickets/DATA-1523/46_layer1_models_design.md.
+      and last_activity_at.
     columns:
       - name: gp_candidacy_id
         description: GoodParty candidacy id; the model grain and internal match-back backstop.
@@ -45,6 +45,23 @@ models:
         description: True when candidate_code is non-null; the reverse-ETL diff filters on this.
         data_tests:
           - not_null
+      - name: last_activity_at
+        description: >
+          Basis of the 16-day rolling window, and the recency value ops sorts on. The
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: the BallotReady intermediate's
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
+          This feed has no TechSpeed leg by construction; see the model header.
+        data_tests:
+          - not_null
 
   - name: candidacy_hubspot
     description: >
@@ -54,8 +71,7 @@ models:
       m_techspeed__candidate_to_hubspot. Output is the Title-Case HubSpot import contract
       (fuzzy-match diagnostics dropped; ER replaces them); Type and the owner columns are set
       for all rows (owner via env_var); the match-back key (candidate_code), gp ids,
-      election_year/stage, and last_activity_at are appended. See
-      .tickets/DATA-1523/46_layer1_models_design.md.
+      election_year/stage, and last_activity_at are appended.
     data_tests:
       # Fail-closed owner: a misconfigured prod (blank env var) fails this rather than
       # silently shipping unassigned leads. Red until DBT_CIVICS_HUBSPOT_* env vars are set.
@@ -106,3 +122,19 @@ models:
                 max_value: 5
               config:
                 where: "viability_rating_2_0 is not null"
+      - name: last_activity_at
+        description: >
+          Basis of the 30-day rolling window, and the recency value ops sorts on. The
+          greatest of every provider EVENT time available for the candidacy, taken
+          simultaneously rather than in precedence order: both vendor intermediates'
+          vendor_activity_at, and the canonical product timestamps where gp_api is the
+          source. Falls back to the canonical timestamps only where no provider supplies
+          one. Deliberately NOT the canonical created_at/updated_at, which for
+          vendor-sourced rows are pipeline extract stamps -- a vendor re-delivering its
+          whole file would otherwise re-stamp its entire universe as active today and
+          flood this feed. The window is bounded above as well as below, so a
+          future-dated product timestamp cannot park a row on every export forever.
+          Resolution is uneven by source: TechSpeed captures a date rather than a time,
+          so those rows land at midnight and sorting on this column ties within a day.
+        data_tests:
+          - not_null

@@ -1,0 +1,86 @@
+# Ratification sign-offs for governed semantic-layer metrics (DATA-2249).
+#
+# One entry per RATIFIED metric, keyed by its `name` in the sem_*.yml. A metric
+# with no entry here is pending; absence is the only way to say pending.
+#
+# Why this file is not the sem_*.yml: CODEOWNERS covers those, so writing the
+# date there re-requests the very reviewers whose approval it records, and forces
+# you to write the date before the approval exists. This file is outside that
+# glob, so the recorded date can be the real one.
+#
+# Fields:
+#   ratified        UTC date the SECOND review group approved, i.e. the date
+#                   coverage completed. Not the date this line was typed.
+#   definition_sha  Fingerprint of the definition at sign-off. Get it from
+#                   `uv run python -m semantic_catalog.cli --fingerprints`
+#                   (run from analytics/ with PYTHONPATH=diagnostics). Copy it
+#                   deliberately when recording the sign-off; never restamp it
+#                   to silence a stale warning, because that is the warning
+#                   doing its job.
+#   approved_by_pr  The PR whose approvals this records. Human provenance.
+#
+# If the definition later changes without a new sign-off, the fingerprint stops
+# matching and every projection renders the date as stale.
+
+activated_serve_users:
+  # Both groups approved #765, which contained the restatement to the 1,026
+  # definition, so the restated definition is what is ratified here. The prior
+  # 2026-07-28 date came from #706 and certified the superseded definition.
+  ratified: 2026-08-05
+  definition_sha: '5e87555'
+  approved_by_pr: 765
+
+serve_users:
+  # Ratified on #801, which exists to carry this sign-off: the definition merged
+  # in #764 with only a bot approval, so neither review group had ever signed it
+  # off, and the auto-ratification hook cannot record it (it earns a sign-off
+  # only where a definition MOVED in the merge, and this one is unchanged).
+  #
+  # VERIFY THIS DATE BEFORE MERGING. It was written on 2026-08-11, when #801 was
+  # prepared, which is authorship and not approval. If the second group's
+  # approval lands on a later day this line is wrong by that much. Run, from
+  # analytics/ with PYTHONPATH=diagnostics, to get the real date from the review
+  # record:
+  #
+  #   gh api repos/thegoodparty/gp-data-platform/pulls/801/reviews --paginate \
+  #     --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+  #     | jq -s '.' > /tmp/r801.json
+  #   uv run python -c "import json;from semantic_catalog import composition as c;\
+  #   print(c.completion_date(json.load(open('/tmp/r801.json')),\
+  #   'danpelota,datawithtristan,swain,hhkarimi,sanjayr1'.split(','),\
+  #   'swain,amanda847,audrey-gp,JoeGoodParty2'.split(',')))"
+  #
+  # It prints None while coverage is incomplete, which is itself the signal that
+  # this must not merge yet.
+  ratified: 2026-08-11
+  definition_sha: '0b06710'
+  approved_by_pr: 801
+
+win_activated_users:
+  # Coverage completed across two PRs. The business group approved #708 on
+  # 2026-07-29, but no data-group approval existed, so the 2026-07-28 date that
+  # #708 carried was unbacked and DATA-2249 dropped it to pending. The data
+  # group approved #776 on 2026-08-07, which is what this records: that PR
+  # carried the metric's sidecar entry precisely so the missing approval could
+  # land on it. The definition itself is unchanged since #708.
+  ratified: 2026-08-07
+  definition_sha: '595940c'
+  approved_by_pr: 776
+
+win_active_candidates_30d:
+  # Approved by both groups on #760 and merged, but never recorded: the failure
+  # that prompted DATA-2249.
+  ratified: 2026-08-05
+  definition_sha: '8bfc0be'
+  approved_by_pr: 760
+
+win_users:
+  # Was recorded as 2026-08-03, the date the line was typed. Coverage actually
+  # completed 2026-08-04 when the data group approved #749.
+  ratified: 2026-08-04
+  definition_sha: '865d003'
+  approved_by_pr: 749
+
+# goodparty_win_rate and goodparty_cumulative_wins are deliberately absent, so
+# they read pending. Both were added pre-epic in #471 with a data-group approval
+# only, and no business-group approval exists for either definition.

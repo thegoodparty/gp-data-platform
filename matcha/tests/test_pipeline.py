@@ -9,7 +9,32 @@ import pytest
 
 from scripts.configs.candidacy import CANDIDACY_CONFIG
 from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
-from scripts.pipeline import build_settings, load_and_prepare, run
+from scripts.pipeline import (
+    build_settings,
+    load_and_prepare,
+    predict_and_cluster,
+    run,
+    save_results,
+)
+
+
+def _duckdb_nulls(df: pd.DataFrame, col: str) -> int:
+    """Count SQL NULLs in `col` after registering `df` with DuckDB.
+
+    Splink evaluates comparisons in DuckDB, so DuckDB's view of a missing
+    value is the contract that matters. pandas may carry it as None or NaN
+    depending on version and dtype; both register as NULL, and asserting
+    here keeps these tests from breaking on a representation change while
+    still catching a real leak such as the text \"nan\".
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    try:
+        con.register("t", df)
+        return con.execute(f'select count(*) from t where "{col}" is null').fetchone()[0]
+    finally:
+        con.close()
 
 
 def _make_input(rows: list[dict]) -> pd.DataFrame:
@@ -63,7 +88,9 @@ def test_load_and_prepare_null_normalization():
     )
     result = load_and_prepare(df, CANDIDACY_CONFIG)
     a_df = result[0]  # source "a"
-    assert a_df["email"].isna().all() or (a_df["email"] == None).all()  # noqa: E711
+    # Assert the contract Splink depends on -- SQL NULL -- rather than a
+    # particular pandas sentinel, which differs by pandas version.
+    assert _duckdb_nulls(a_df, "email") == 3
     b_df = result[1]  # source "b"
     assert b_df["email"].iloc[0] == "real@test.com"
 
@@ -276,6 +303,12 @@ def test_train_model_continues_on_partial_failure(capsys):
 
     mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = side_effect
 
+    # All comparisons still have m estimates, so the untrained guard stays quiet.
+    trained_comp = MagicMock()
+    trained_comp.output_column_name = "email"
+    trained_comp._some_m_are_trained = True
+    mock_linker._settings_obj.comparisons = [trained_comp]
+
     result = train_model(mock_linker, CANDIDACY_CONFIG)
 
     assert result == len(CANDIDACY_CONFIG.em_training_blocks) - 1
@@ -291,6 +324,33 @@ def test_train_model_returns_full_count_on_success():
     mock_linker = MagicMock()
     result = train_model(mock_linker, CANDIDACY_CONFIG)
     assert result == len(CANDIDACY_CONFIG.em_training_blocks)
+
+
+def test_train_model_raises_on_untrained_comparison():
+    """Partial EM failure raises if a comparison lost its only training block."""
+    from scripts.pipeline import train_model
+
+    mock_linker = MagicMock()
+    call_count = 0
+
+    def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("EM failed for first block")
+
+    mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = side_effect
+
+    untrained_comp = MagicMock()
+    untrained_comp.output_column_name = "email"
+    untrained_comp._some_m_are_trained = False
+    trained_comp = MagicMock()
+    trained_comp.output_column_name = "state"
+    trained_comp._some_m_are_trained = True
+    mock_linker._settings_obj.comparisons = [untrained_comp, trained_comp]
+
+    with pytest.raises(RuntimeError, match="no m estimates"):
+        train_model(mock_linker, CANDIDACY_CONFIG)
 
 
 def test_eo_pipeline_writes_filtered_pairs(tmp_path):
@@ -312,3 +372,269 @@ def test_eo_pipeline_writes_filtered_pairs(tmp_path):
         assert (
             row["unique_id_l"] <= row["unique_id_r"]
         ), f"Pair keys not canonicalized: {row['unique_id_l']} > {row['unique_id_r']}"
+
+
+def test_duckdb_api_default_when_env_unset(monkeypatch):
+    """Without MATCHA_DUCKDB_MEMORY_LIMIT, DuckDB keeps its default limit."""
+    import duckdb
+
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.delenv("MATCHA_DUCKDB_MEMORY_LIMIT", raising=False)
+    api = _duckdb_api()
+    limit = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
+
+    # Compare against a fresh unconfigured connection: equal limits mean no
+    # override was applied, independent of DuckDB's display format.
+    baseline_con = duckdb.connect()
+    baseline_limit = baseline_con.execute("select current_setting('memory_limit')").fetchone()[0]
+    baseline_con.close()
+
+    assert (
+        limit == baseline_limit
+    ), f"_duckdb_api() changed the default memory limit: got {limit!r}, expected {baseline_limit!r}"
+
+
+def test_duckdb_api_memory_limit_applied(monkeypatch):
+    """MATCHA_DUCKDB_MEMORY_LIMIT is applied to the DuckDB connection."""
+    import re
+
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.setenv("MATCHA_DUCKDB_MEMORY_LIMIT", "100MB")
+    api = _duckdb_api()
+    limit_str = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
+    # Parse "95.3 MiB", "100.0 MB", etc. into bytes so the assertion is not
+    # tied to a DuckDB-version-specific display format.
+    m = re.fullmatch(r"([\d.]+)\s*(KiB|MiB|GiB|KB|MB|GB)", limit_str)
+    assert m, f"Unexpected memory_limit format: {limit_str!r}"
+    value, unit = float(m.group(1)), m.group(2)
+    multipliers = {
+        "KiB": 1024,
+        "MiB": 1024**2,
+        "GiB": 1024**3,
+        "KB": 1000,
+        "MB": 1_000_000,
+        "GB": 1_000_000_000,
+    }
+    limit_bytes = value * multipliers[unit]
+    assert (
+        abs(limit_bytes - 100_000_000) < 5_000_000
+    ), f"memory_limit {limit_str!r} is not ~100 MB (got {limit_bytes:.0f} bytes)"
+
+
+def test_duckdb_api_memory_limit_invalid(monkeypatch):
+    """A garbage limit raises a ValueError naming the env var."""
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.setenv("MATCHA_DUCKDB_MEMORY_LIMIT", "garbage")
+    with pytest.raises(ValueError, match="MATCHA_DUCKDB_MEMORY_LIMIT"):
+        _duckdb_api()
+
+
+def test_candidacy_pipeline_smoke_year_guard(tmp_path):
+    """Same-year cross-source pairs cluster; cross-year pairs sharing phone and
+    email do not (year-guarded blocking + same-stage post-filter)."""
+    df = pd.read_csv(Path(__file__).parent / "dummy_data.csv", dtype=str)
+    pairwise_df, clustered_df = run(input_df=df, output_dir=tmp_path, config=CANDIDACY_CONFIG)
+
+    assert len(pairwise_df) > 0
+    assert "partisan_type" in clustered_df.columns
+
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+    assert cluster_of["br_001"] == cluster_of["ts_001"], "2024 pair should cluster"
+    assert cluster_of["br_010"] == cluster_of["ts_010"], "2026 pair should cluster"
+    assert cluster_of["br_001"] != cluster_of["br_010"], "cross-year records merged"
+
+    # Near-date cross-source pair (br_011/ts_011, 2 days apart) exercises the
+    # within-window path end-to-end. The pair carries no email / phone /
+    # br_race_id, so the only blocking rules that can generate it are the
+    # date-window CustomRules — deleting those rules drops it from pairwise_df
+    # and fails this test. Its presence in pairwise_df (the post-filter output)
+    # with gamma_election_date == 1 proves the date-window blocking rules, the
+    # within-window comparison level, and the gamma_election_date > 0 post-filter
+    # all work together. We assert on the scored pair, not a shared cluster: the
+    # within-window level's m is under-trained on this 22-row fixture (no gamma=1
+    # examples reach the email EM block), so its match_probability lands ~0.88,
+    # below the 0.95 cluster threshold; on production data these pairs score ~1.0.
+    near = pairwise_df[
+        pairwise_df["unique_id_l"].isin(["br_011", "ts_011"])
+        & pairwise_df["unique_id_r"].isin(["br_011", "ts_011"])
+    ]
+    assert len(near) == 1, "near-date pair must survive blocking + post-filters exactly once"
+    assert (
+        int(near.iloc[0]["gamma_election_date"]) == 1
+    ), "near-date pair must hit the within-window level (gamma=1), not exact (gamma=2)"
+
+    # The cross-year cross-source pairs (same phone + email, different years)
+    # must never be generated: link_only + year-guarded phone/email blocking.
+    bad_pairs = {
+        ("br_001", "ts_010"),
+        ("ts_010", "br_001"),
+        ("br_010", "ts_001"),
+        ("ts_001", "br_010"),
+    }
+
+    pairs = set(zip(pairwise_df["unique_id_l"], pairwise_df["unique_id_r"]))
+    for bad in bad_pairs:
+        assert bad not in pairs, f"cross-year pair {bad} survived post-filter"
+
+    # pairwise_df is post-filter output, so the same-stage filter could mask a
+    # broken blocking guard. filtered_pairs.csv holds pairs that were blocked
+    # and predicted but then filtered — cross-year pairs there mean blocking
+    # generated them.
+    filtered_df = pd.read_csv(tmp_path / "filtered_pairs.csv")
+    filtered_pairs = set(zip(filtered_df["unique_id_l"], filtered_df["unique_id_r"]))
+    for bad in {(min(a, b), max(a, b)) for a, b in bad_pairs}:
+        assert bad not in filtered_pairs, f"cross-year pair {bad} was generated by blocking"
+
+
+@pytest.mark.filterwarnings("ignore:Could not infer format")
+def test_load_and_prepare_unparseable_date_becomes_null():
+    """A date pandas cannot parse must reach Splink as NULL, not a sentinel string.
+
+    load_and_prepare stringifies dates, so a failed parse has to survive as a
+    null rather than the text "NaT"/"nan", which would compare equal to itself
+    and could join unrelated records.
+    """
+    df = _make_input(
+        [
+            {"unique_id": "1", "source_name": "a", "election_date": "not a date"},
+            {"unique_id": "2", "source_name": "a", "election_date": ""},
+            {"unique_id": "3", "source_name": "a", "election_date": "2026-11-03"},
+        ]
+    )
+
+    a_df = load_and_prepare(df, CANDIDACY_CONFIG)[0]
+
+    assert _duckdb_nulls(a_df, "election_date") == 2
+    kept = [v for v in a_df["election_date"].tolist() if isinstance(v, str)]
+    assert kept == ["2026-11-03"]
+
+
+@pytest.mark.parametrize(
+    "dates",
+    [
+        ["2026-11-03", "2026-12-25"],
+        ["11/03/2026", "12/25/2026"],
+        ["2026-11-03T10:30:00", "2026-12-25T00:00:00"],
+    ],
+)
+def test_load_and_prepare_parses_a_consistent_date_format(dates):
+    """A column in one consistent format parses to ISO dates, whichever format."""
+    df = _make_input(
+        [
+            {"unique_id": "1", "source_name": "a", "election_date": dates[0]},
+            {"unique_id": "2", "source_name": "a", "election_date": dates[1]},
+        ]
+    )
+
+    a_df = load_and_prepare(df, CANDIDACY_CONFIG)[0]
+
+    assert a_df["election_date"].tolist() == ["2026-11-03", "2026-12-25"]
+
+
+def test_load_and_prepare_mixed_date_formats_null_the_minority():
+    """Documents a lossy edge: pandas infers one format per column.
+
+    to_datetime infers the format from the first element, so rows in a second
+    format coerce to null rather than raising. A source that ever supplies a
+    different date format in the same column loses those dates silently, which
+    weakens the candidacy comparison rather than failing loudly. Pinned here so
+    the behavior is visible and a future change to it is deliberate.
+    """
+    df = _make_input(
+        [
+            {"unique_id": "1", "source_name": "a", "election_date": "2026-11-03"},
+            {"unique_id": "2", "source_name": "a", "election_date": "12/25/2026"},
+        ]
+    )
+
+    a_df = load_and_prepare(df, CANDIDACY_CONFIG)[0]
+
+    assert a_df["election_date"].iloc[0] == "2026-11-03"
+    assert _duckdb_nulls(a_df, "election_date") == 1
+
+
+def test_load_and_prepare_alias_columns_become_lists():
+    """JSON-array columns are parsed back to lists for ArrayIntersectLevel."""
+    df = _make_input([{"unique_id": "1", "source_name": "a", "first_name_aliases": '["bob", "robert"]'}])
+
+    a_df = load_and_prepare(df, CANDIDACY_CONFIG)[0]
+
+    assert a_df["first_name_aliases"].iloc[0] == ["bob", "robert"]
+
+
+# --- predict_and_cluster: the empty-prediction path ---------------------------
+
+
+def test_predict_and_cluster_returns_empty_frames_when_no_predictions():
+    """Zero pairs above the threshold is a valid outcome, not an error."""
+    linker = MagicMock()
+    linker.inference.predict.return_value.physical_name = "preds"
+    linker._db_api._con.execute.return_value.fetchone.return_value = [0]
+
+    pairwise, clustered = predict_and_cluster(linker, CANDIDACY_CONFIG)
+
+    assert pairwise.empty
+    assert clustered.empty
+
+
+# --- save_results: the list-column JSON serializer ----------------------------
+# save_results re-serializes list columns on the way out to CSV. Its `to_json`
+# takes the strict-ndarray approach on purpose, so that a numpy scalar inside a
+# list cell falls to the "[]" sentinel rather than emitting a bare NaN token
+# that is not valid JSON. Nested arrays are out of scope for it, unlike
+# cli._serialize_array_value, which handles them.
+
+
+def _saveable_frames(alias_values):
+    pairwise = pd.DataFrame(
+        {
+            "unique_id_l": ["b1"],
+            "unique_id_r": ["t1"],
+            "match_probability": [0.97],
+            "source_name_l": ["ballotready"],
+            "source_name_r": ["techspeed"],
+        }
+    )
+    clustered = pd.DataFrame(
+        {
+            "unique_id": ["b1", "t1"],
+            "cluster_id": [1, 1],
+            "source_name": ["ballotready", "techspeed"],
+            "first_name_aliases": alias_values,
+        }
+    )
+    return pairwise, clustered
+
+
+@pytest.mark.parametrize(
+    ("cell", "expected"),
+    [
+        (["bob", "robert"], '["bob", "robert"]'),
+        ('["already"]', '["already"]'),  # a prior run's JSON passes through
+        (None, "[]"),  # sentinel, never a bare null token
+        (float("nan"), "[]"),
+    ],
+)
+def test_save_results_serializes_list_columns_to_json(tmp_path, cell, expected):
+    import numpy as np
+
+    pairwise, clustered = _saveable_frames([cell, np.array(["x"])])
+
+    # linker is only used for the diagnostic charts, which are best-effort
+    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+
+    written = pd.read_csv(tmp_path / CANDIDACY_CONFIG.clustered_output_name)
+    assert written["first_name_aliases"].iloc[0] == expected
+
+
+def test_save_results_writes_expected_files(tmp_path):
+    pairwise, clustered = _saveable_frames([["bob"], ["amy"]])
+
+    # linker is only used for the diagnostic charts, which are best-effort
+    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+
+    assert (tmp_path / "pairwise_predictions.csv").exists()
+    assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()

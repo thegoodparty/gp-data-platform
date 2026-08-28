@@ -1,7 +1,7 @@
 # analytics/lib
 
-Committed, reusable building blocks for Win-product analyses, so ad-hoc notebooks
-stop rebuilding the same cohort and engagement logic from scratch each run.
+Committed, reusable building blocks for product analyses (Win and Serve), so ad-hoc
+notebooks stop rebuilding the same cohort and engagement logic from scratch each run.
 
 ## Why this exists
 
@@ -10,7 +10,7 @@ retyped in every analysis. That is a token cost, a time cost, and a transcriptio
 risk. This package holds one copy. The event classification is now sourced from the dbt
 model `int__amplitude_event_catalog` (DATA-1945) so there is a single source of truth
 shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
-`references/engagement.md` for the family taxonomy and the win-analytics-process skill's
+`references/engagement.md` for the family taxonomy and the analytics-process skill's
 `references/methodology.md` for the build-once-slice-many pattern.
 
 ## What's here
@@ -28,6 +28,20 @@ shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
   win-analytics-knowledge skill's `references/segmentation.md` so re-cuts (e.g. ICP vs not) need no new query. Win events are tagged via
   a LEFT JOIN to the taxonomy.
 - `wilson(k, n)` — Wilson 95% score interval.
+
+`serve_analysis.py` (DATA-2116):
+- `serve_engagement_predicate()` — the broad-Serve-engagement surface test as a SQL
+  predicate (2025 `family = 'serve'` events + the 2026 event generation by prefix +
+  `Viewed` on Serve-surface paths). Surface test only: population, post-activation
+  time-scope, in-session, and hygiene conditions are the caller's job — prefer the
+  builder below, which applies all of them.
+- `build_serve_working_set(run_query, cohorts, ...)` — one per-user
+  `cohort x engagement` DataFrame of broad Serve engagement: in-session
+  (`session_id != -1`, excludes server-emitted dispatches), scoped to
+  `event_time >= eo_activated_at` (default anchor), impersonation-tainted sessions
+  and `@goodparty.org` excluded. Definition and caveats: the
+  serve-analytics-knowledge skill's `references/methodology_defaults.md`.
+- `wilson` is re-exported from `win_analysis` (one implementation).
 
 ## Usage from a notebook
 
@@ -69,7 +83,11 @@ df = wa.build_win_working_set(run_query, cohorts)
   `Dashboard - Campaign Plan Viewed`). Pass a tighter `drift_cutoff` (e.g. relative to
   your cohort window) for a stricter coverage-comparability check. The former
   core/partial split is retired — a sensitivity check is just a second run with a
-  different cutoff.
+  different cutoff. ⚠ `Dashboard - Campaign Plan Viewed` is no longer incidental
+  drift: it is the successor dashboard event (the legacy `Dashboard - Candidate
+  Dashboard Viewed` died in-data 2026-06-13, DATA-2173), so dashboard-view metrics
+  touching 2026-05+ must include it (2-event union) rather than letting the default
+  cutoff drop it — see `references/engagement.md`, Dashboard surface migration.
 - Reads `goodparty_data_catalog.dbt.int__amplitude_event_catalog` (prod). That table
   must exist (a prod dbt run of the model); it does as of DATA-1945.
 - `build_win_working_set` is **election-anchored with a backward window** (it joins
@@ -78,7 +96,12 @@ df = wa.build_win_working_set(run_query, cohorts)
   only `win_event_predicate` + `wilson` and build the cohort logic notebook-local.
 - The `onboarded` funnel flag keys on `event_type = 'onboarding_complete'`, which is
   FALSE for users in the new onboarding flow (post 2026-05-07). For cross-cutover
-  onboarding analyses use `Onboarding - Candidate Pledge Completed` instead (win-analytics-knowledge skill's `references/engagement.md`).
+  onboarding analyses use the **era-resolved 3-event pledge union** (`Onboarding -
+  Candidate Pledge Completed` OR `Onboarding - Pledge Completed` OR `Onboarding V2 -
+  Pledge Completed`) instead of any single pledge event — using `Onboarding - Candidate
+  Pledge Completed` alone undercounts June-2026 completions by −67% (q02 gold run,
+  2026-07-21). See win-analytics-knowledge skill's `references/engagement.md` for the
+  era table.
 
 ## Single source of truth: the dbt event-taxonomy model
 

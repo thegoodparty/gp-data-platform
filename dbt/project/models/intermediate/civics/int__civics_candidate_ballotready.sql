@@ -1,11 +1,16 @@
--- BallotReady candidates → Civics mart candidate schema. Grain: one row per person.
--- UUID fields MUST match int__civics_candidate_2025 so the same person from
--- different sources resolves to the same gp_candidate_id.
+-- BallotReady candidates → Civics mart candidate schema. Grain: one row per
+-- person. gp_candidate_id is the person id (person-group earliest-member mint);
+-- cross-source dedupe happens via shared person groups, not attribute hashes.
 with
     candidacies as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where election_day >= '2026-01-01'
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
     br_person as (select * from {{ ref("int__ballotready_person") }}),
@@ -24,6 +29,12 @@ with
             get(filter(urls, x -> x.type = 'twitter'), 0).url as twitter_url,
             get(filter(urls, x -> x.type = 'facebook'), 0).url as facebook_url,
             get(filter(urls, x -> x.type = 'instagram'), 0).url as instagram_url,
+            -- Full typed URL array (normalized to {type, url}); lets marts
+            -- distinguish government/official sites from campaign websites.
+            transform(
+                filter(urls, x -> x.url is not null),
+                x -> struct(x.type as type, x.url as url)
+            ) as urls,
             get(filter(contacts, x -> x.email is not null), 0).email as api_email,
             nullif(
                 regexp_replace(
@@ -39,28 +50,22 @@ with
 
     candidates_with_id as (
         select
-            -- Primary identifier - matches HubSpot/TechSpeed pattern
-            -- HubSpot uses: first_name, last_name, state, birth_date, email,
-            -- phone_number
-            -- BallotReady has no birth_date, so it will be NULL (coalesced to '' by
-            -- macro)
-            -- Hash the canonical per-person identity inputs (one deterministic
-            -- value per br_candidate_id) so this model and
-            -- int__civics_candidacy_ballotready resolve a person to the same
-            -- gp_candidate_id. Hashing per-row contact fields here split a
-            -- person with varying email across candidacies into multiple ids.
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "identity.id_first_name",
-                        "identity.id_last_name",
-                        "identity.id_state",
-                        "cast(null as string)",
-                        "identity.id_email",
-                        "identity.id_phone",
-                    ]
-                )
-            }} as gp_candidate_id,
+            -- Person id shared with int__civics_candidacy_ballotready. Every
+            -- br_candidate_id is in the person universe by construction; the
+            -- coalesce is a full-refresh guard with identical single-member
+            -- semantics.
+            coalesce(
+                p.gp_person_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "'ballotready'",
+                            "cast(candidacies.br_candidate_id as string)",
+                        ],
+                        salt="person",
+                    )
+                }}
+            ) as gp_candidate_id,
 
             -- BR person database_id (S3 candidacies carry this as br_candidate_id).
             -- Exposed so downstream marts can map a BR candidacy row to its
@@ -94,6 +99,7 @@ with
             person_urls.twitter_url as twitter_handle,
             person_urls.facebook_url as facebook_url,
             person_urls.instagram_url as instagram_handle,
+            person_urls.urls,
 
             coalesce(
                 person_urls.person_created_at, candidacies._airbyte_extracted_at
@@ -106,8 +112,9 @@ with
         left join
             person_urls on candidacies.br_candidate_id = person_urls.person_database_id
         left join
-            {{ ref("int__ballotready_candidate_identity") }} as identity
-            on candidacies.br_candidate_id = identity.br_candidate_id
+            person_ids as p
+            on 'ballotready|' || cast(candidacies.br_candidate_id as string)
+            = p.record_key
     ),
 
     deduplicated as (
@@ -141,6 +148,7 @@ select
     twitter_handle,
     facebook_url,
     instagram_handle,
+    urls,
     created_at,
     updated_at
 from deduplicated

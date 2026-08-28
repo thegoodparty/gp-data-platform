@@ -1,6 +1,6 @@
 # Airflow (Astro)
 
-Apache Airflow DAGs managed via [Astronomer](https://www.astronomer.io/). This project uses [Astro Runtime 3.1](https://docs.astronomer.io/astro/runtime-release-notes) (based on Airflow 3.x).
+Apache Airflow DAGs managed via [Astronomer](https://www.astronomer.io/). This project uses [Astro Runtime 3.3](https://docs.astronomer.io/astro/runtime-release-notes) (based on Airflow 3.x).
 
 ## Project Structure
 
@@ -25,6 +25,11 @@ airflow/astro/
 | Prod | `astro-prod` | `main` |
 
 Infrastructure for both deployments is managed in [gp-terraform-dataplatform](https://github.com/thegoodparty/gp-terraform-dataplatform).
+
+Worker queues are part of that infrastructure, declared per environment in `locals.tf`. A task that
+sets `queue=` to a queue no environment declares is never picked up: the executor fails it after a
+few minutes with no logs, no retry, and a zero duration. Add the queue to Terraform before merging
+the DAG that uses it, and add it to both environments so the DAG runs the same way in dev.
 
 ## Deployment
 
@@ -107,6 +112,6 @@ If Astronomer upgrades the runtime, update the tag in the `Dockerfile` to match.
 ## Adding Dependencies
 
 1. Add the Python package to `requirements.txt`
-2. Add the matching pinned version to `airflow/pyproject.toml` (used by the local poetry dev environment)
+2. Add the matching pinned version to `airflow/pyproject.toml` (used by the local uv dev environment)
 3. For OS-level dependencies, add to `packages.txt`
 4. Test locally with `astro dev start` to verify the image builds

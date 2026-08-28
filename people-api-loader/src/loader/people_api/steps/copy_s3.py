@@ -1,22 +1,26 @@
-"""Step 4 — parallel COPY S3 → Aurora into the unified Voter table (DATA-1851).
+"""Step 4 — parallel COPY S3 → Aurora across every unload table (DATA-1851/DATA-2100).
 
-A ThreadPoolExecutor issues one `aws_s3.table_import_from_s3` per file, all
-targeting `public."Voter"`; the `"State"` column comes from the data. PG's COPY
-is single-threaded per statement, so file-level parallelism is the lever.
+A ThreadPoolExecutor issues one `aws_s3.table_import_from_s3` per file, targeting
+`public."<table>"` for whichever table the file belongs to; the `"State"` column (when
+present) comes from the data. PG's COPY is single-threaded per statement, so file-level
+parallelism is the lever.
 
 Column contract: we pass an EXPLICIT column list (derived from the committed, generated
 `target_schema.sql` (emit-ddl output) via `extract_column_names`) rather than an empty list. An empty list makes COPY
 map file columns positionally against the table's physical DDL order, which is a
 silent-corruption trap here — the Prisma-managed columns `created_at`, `id`, and
-`updated_at` sit MID-table (not at the end), so any unload whose layout differs
+`updated_at` sit MID-table (not at the end) on Voter, so any unload whose layout differs
 would write data into the wrong columns. The explicit list pins the contract: the
-unload (DATA-1907/unload, still a stub) must emit exactly these columns, in this
+unload (DATA-1907/unload, DATA-2100) must emit exactly each table's columns, in this
 order. `id` (PK, no default) and `updated_at` (no default) must be present;
 `created_at` has a default but is included for a faithful full-table copy.
 
-Idempotency is per-state on the `"State"` column: count rows for the state vs
-the unload baseline. Equal → skip. Zero → load. Partial → DELETE that state's
-rows, then reload.
+Idempotency is per (table, unit) — a "unit" is a state for a partitioned table (Voter,
+DistrictVoter) or the single "" unit for a flat table (District, DistrictStats), mirroring
+UnloadFile/UnloadTable's state="" convention. For a partitioned unit: count rows for the
+state vs the unload baseline. Equal → skip. Zero → load. Partial → DELETE that state's
+rows, then reload. For a flat unit (state==""), the same count/delete/reload sequence
+runs over the WHOLE table (no `WHERE "State"`).
 """
 
 from __future__ import annotations
@@ -38,15 +42,19 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
+from loader.people_api.schema.schema_spec import is_partitioned, partition_column
 from loader.people_api.schema.snapshot import load_target_schema
-from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 log = get_logger(__name__)
 
 _DEFAULT_PARALLELISM = 128
-_TARGET_TABLE = "Voter"
 
-# Arbitrary namespace for the per-state pg_advisory_lock so it can't collide with
+# Arbitrary namespace for the per-(table, unit) pg_advisory_lock so it can't collide with
 # any other advisory lock taken on the cluster.
 _COPY_LOCK_NAMESPACE = 0x564F  # "VO"
 
@@ -58,18 +66,63 @@ _SESSION_SQL: tuple[str, ...] = (
     "SET idle_in_transaction_session_timeout = 0",
 )
 
-# PG `aws_s3.table_import_from_s3` options — CSV (tab-delimited) to match the unload's Spark CSV
-# writer: quoting/escaping (both '"') handle embedded tab/newline/quote in free-text fields;
+# PG `aws_s3.table_import_from_s3` base options — CSV (tab-delimited) to match the unload's Spark
+# CSV writer: quoting/escaping (both '"') handle embedded tab/newline/quote in free-text fields;
 # NULL '' pairs with the unload's nullValue=''. MUST stay in sync with unload_sql._CSV_OPTIONS;
-# test_format_contract.py pins the pairing so a one-sided edit fails CI.
+# test_format_contract.py pins the pairing so a one-sided edit fails CI. The per-run FORCE_NULL
+# clause (see `_import_options`) is appended to this base at runtime.
 _IMPORT_OPTIONS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
 
 
-def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: str) -> None:
-    """Import one S3 file into public."Voter" on its own backend.
+# Tables whose feeding mart source-nulls every string empty (only m_people_api__voter's
+# `source_nulled` CTE). Their text columns' quoted-empties are mart NULLs to restore, so force-null
+# text columns too; other tables keep genuine text empties (see `_force_null_columns`).
+_SOURCE_NULLED_TABLES = frozenset({"Voter"})
+
+# Target types that can hold an empty string. On a table WITHOUT a source-null guarantee an empty
+# CSV field on these stays '' (the null-vs-empty distinction is preserved); every OTHER type
+# (INTEGER/BOOLEAN/DATE/TIMESTAMPTZ/DOUBLE/UUID/...) cannot parse '' and must import as NULL via
+# FORCE_NULL, or the COPY cast fails.
+_TEXT_TYPE_PREFIXES = ("TEXT", "VARCHAR", "CHAR", "CHARACTER", "CITEXT", "BPCHAR", "NAME")
+
+
+def _force_null_columns(column_types: dict[str, str], *, source_nulled: bool) -> list[str]:
+    """Columns (in DDL order) whose quoted-empty CSV field must import as NULL.
+
+    Typed (non-text) columns are ALWAYS force-nulled: PG's `NULL ''` reads a quoted-empty "" as ''
+    (fine for TEXT) but a fatal cast error for INTEGER/BOOLEAN/DATE/etc.
+
+    When the source mart source-nulls every string empty (`source_nulled=True` — only the voter
+    mart's `source_nulled` CTE), a quoted-empty on a TEXT column is a mart NULL that Spark wrote as
+    "", so force-null text columns too; otherwise they'd land '' where green.Voter wants NULL. Tables
+    without that guarantee (District/DistrictStats/DistrictVoter) keep any genuine text empty intact.
+    """
+    if source_nulled:
+        return list(column_types)
+    return [
+        col
+        for col, typ in column_types.items()
+        if not typ.upper().split("(", 1)[0].strip().startswith(_TEXT_TYPE_PREFIXES)
+    ]
+
+
+def _import_options(force_null_columns: list[str]) -> str:
+    """Base CSV options with a FORCE_NULL clause for the given columns appended inside the option
+    parens. With no columns, returns the base options unchanged."""
+    if not force_null_columns:
+        return _IMPORT_OPTIONS
+    cols = ", ".join(f'"{c}"' for c in force_null_columns)
+    return f"{_IMPORT_OPTIONS[:-1]}, FORCE_NULL ({cols}))"
+
+
+def _copy_one_file(
+    cfg: LoaderConfig, run_date: str, s3_key: str, table: str, column_list: str, options: str
+) -> None:
+    """Import one S3 file into `public."<table>"` on its own backend.
 
     `column_list` is the explicit, DDL-ordered column list (see module docstring);
     it must name exactly the columns the unload file contains, in file order.
+    `options` is the COPY options string (base CSV + per-run FORCE_NULL), built once in `run()`.
     """
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         for stmt in _SESSION_SQL:
@@ -84,9 +137,9 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: s
             )
             """,
             {
-                "table": f'public."{_TARGET_TABLE}"',
+                "table": f'public."{table}"',
                 "columns": column_list,
-                "options": _IMPORT_OPTIONS,
+                "options": options,
                 "bucket": cfg.s3_bucket,
                 "key": s3_key,
                 "region": cfg.aws_region,
@@ -94,55 +147,83 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: s
         )
 
 
-def _acquire_state_lock(cur: psycopg.Cursor, state: str) -> None:
-    """Take the session advisory lock for `state` (released when the conn closes).
+def _acquire_unit_lock(cur: psycopg.Cursor, table: str, state: str) -> None:
+    """Take the session advisory lock for (table, state) (released when the conn closes).
+
+    hashtext is fed a table-qualified key so two tables loading the same state don't
+    share a lock — e.g. Voter:TX and DistrictVoter:TX must be independent.
 
     ::int4 cast is required: psycopg3 binds the Python int as bigint, and PG has no
     pg_advisory_lock(bigint, int4) overload — only (bigint) or (int4, int4).
     """
-    cur.execute("SELECT pg_advisory_lock(%s::int4, hashtext(%s))", (_COPY_LOCK_NAMESPACE, state))
+    cur.execute("SELECT pg_advisory_lock(%s::int4, hashtext(%s))", (_COPY_LOCK_NAMESPACE, f"{table}:{state}"))
 
 
-def _count_state_rows(conn: psycopg.Connection, state: str) -> int:
+def _unit_where(table: str, state: str) -> tuple[str, tuple[str, ...]]:
+    """WHERE fragment (+ params) selecting a copy unit's rows: empty for a flat unit (state == ""),
+    else `WHERE "<partition col>" = %s`.
+
+    A non-empty `state` implies a partitioned table, so `partition_column(table)` is its real
+    LIST-partition column (Voter/DistrictVoter both "State") — never a hardcoded literal. `table`
+    comes from the unload manifest's known TABLE_SPECS names, so the f-string is safe.
+    """
+    if not state:
+        return "", ()
+    pcol = partition_column(table)
+    assert pcol is not None  # a non-empty state unit only exists for a partitioned table
+    return f' WHERE "{pcol}" = %s', (state,)
+
+
+def _count_state_rows(conn: psycopg.Connection, table: str, state: str) -> int:
+    """Row count for a unit: whole-table when `state == ""` (flat table), else state-filtered."""
+    where, params = _unit_where(table, state)
+    sql = f'SELECT count(*) FROM public."{table}"{where}'
     with conn.cursor() as cur:
-        cur.execute('SELECT count(*) FROM public."Voter" WHERE "State" = %s', (state,))
+        cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
         row = cur.fetchone()
         return int(row[0]) if row else 0
 
 
-def _delete_state(conn: psycopg.Connection, state: str) -> None:
+def _delete_state(conn: psycopg.Connection, table: str, state: str) -> None:
+    """Delete a unit's rows: whole-table when `state == ""` (flat table), else state-filtered."""
+    where, params = _unit_where(table, state)
+    sql = f'DELETE FROM public."{table}"{where}'
     with conn.cursor() as cur:
-        cur.execute('DELETE FROM public."Voter" WHERE "State" = %s', (state,))
+        cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
 
 
-def _load_state(
+def _load_unit(
     *,
     cfg: LoaderConfig,
     run_date: str,
+    table: str,
     state: str,
     expected_rows: int,
     s3_keys: list[str],
     parallelism: int,
     column_list: str,
+    options: str,
 ) -> CopyTableResult:
-    bind(state=state)
+    """Load one (table, unit): `state` is a state code for a partitioned table, or "" for a flat
+    table's single whole-table unit. Idempotent count/skip/delete/reload sequence either way."""
+    bind(table=table, state=state)
     started = time.time()
 
-    # Hold a session advisory lock on the state for the whole count→delete→load
+    # Hold a session advisory lock on (table, state) for the whole count→delete→load
     # sequence. Without it, two concurrent invocations could both read count=0 and
-    # both load — silently doubling the state's rows, since the PK/unique that would
+    # both load — silently doubling the unit's rows, since the PK/unique that would
     # reject dupes is not built until build-indexes runs later. hashtext() is computed
     # server-side, so the key is stable across processes (Python's hash() is not).
     # The lock releases automatically when lock_conn closes.
     with connect_new(cfg, run_date) as lock_conn:
         with lock_conn.cursor() as cur:
-            _acquire_state_lock(cur, state)
+            _acquire_unit_lock(cur, table, state)
 
-        actual = _count_state_rows(lock_conn, state)
+        actual = _count_state_rows(lock_conn, table, state)
         if actual == expected_rows and expected_rows > 0:
-            log.info("copy.skip", state=state, rows=actual)
+            log.info("copy.skip", table=table, state=state, rows=actual)
             return CopyTableResult(
-                table=_TARGET_TABLE,
+                table=table,
                 state=state,
                 expected_rows=expected_rows,
                 actual_rows=actual,
@@ -151,30 +232,40 @@ def _load_state(
             )
         if actual > 0:
             # Partial load (an exact match already returned above) — reset and reload.
-            log.info("copy.partial_reload", state=state, existing_rows=actual, expected=expected_rows)
-            _delete_state(lock_conn, state)
+            log.info(
+                "copy.partial_reload", table=table, state=state, existing_rows=actual, expected=expected_rows
+            )
+            _delete_state(lock_conn, table, state)
 
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
             futures = {
-                executor.submit(_copy_one_file, cfg, run_date, key, column_list): key for key in s3_keys
+                executor.submit(_copy_one_file, cfg, run_date, key, table, column_list, options): key
+                for key in s3_keys
             }
             errors: list[tuple[str, Exception]] = []
             for fut in as_completed(futures):
                 key = futures[fut]
                 try:
                     fut.result()
-                    log.info("copy.file_done", state=state, key=key)
+                    log.info("copy.file_done", table=table, state=state, key=key)
                 except Exception as e:  # broad by design: aggregate worker failures, re-raise below
-                    log.error("copy.file_failed", state=state, key=key, error=str(e))
+                    log.error("copy.file_failed", table=table, state=state, key=key, error=str(e))
                     errors.append((key, e))
             if errors:
-                raise RuntimeError(f"{state}: {len(errors)} files failed — first: {errors[0][1]!r}")
+                raise RuntimeError(f"{table}:{state}: {len(errors)} files failed — first: {errors[0][1]!r}")
 
-        actual = _count_state_rows(lock_conn, state)
+        actual = _count_state_rows(lock_conn, table, state)
     elapsed = time.time() - started
-    log.info("copy.state_done", state=state, rows=actual, files=len(s3_keys), seconds=round(elapsed, 1))
+    log.info(
+        "copy.unit_done",
+        table=table,
+        state=state,
+        rows=actual,
+        files=len(s3_keys),
+        seconds=round(elapsed, 1),
+    )
     return CopyTableResult(
-        table=_TARGET_TABLE,
+        table=table,
         state=state,
         expected_rows=expected_rows,
         actual_rows=actual,
@@ -200,57 +291,89 @@ def run(
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 4 requires a completed unload manifest.")
 
-    # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
-    # position — see module docstring. Quote every name uniformly; "id" == id in PG.
-    tables = extract_create_tables(load_target_schema(cfg, run_date))
-    if _TARGET_TABLE not in tables:
-        raise RuntimeError(f'target_schema.sql has no CREATE TABLE public."{_TARGET_TABLE}"')
-    columns = extract_column_names(tables[_TARGET_TABLE])
-    if not columns:
-        raise RuntimeError(f'could not parse any columns from the "{_TARGET_TABLE}" DDL')
-    column_list = ", ".join(f'"{c}"' for c in columns)
+    tables_ddl = extract_create_tables(load_target_schema(cfg, run_date))
 
     started = datetime.now(UTC)
     log.info(
         "copy.start",
         state_filter=state_filter,
         parallelism=parallelism,
-        columns=len(columns),
+        tables=len(unload.tables),
     )
 
-    files_by_state: dict[str, list[str]] = {}
-    for f in unload.files:
-        if f.size_bytes == 0:
-            continue
-        files_by_state.setdefault(f.state, []).append(f.s3_key)
+    results: list[CopyTableResult] = []
+    covered: set[tuple[str, str]] = set()
+    expected_units: set[tuple[str, str]] = set()
 
-    states_to_load = [state_filter] if state_filter else sorted(files_by_state.keys())
-    if state_filter and state_filter not in files_by_state:
-        raise RuntimeError(
-            f"--state {state_filter!r} requested but the unload manifest has no loadable "
-            "files for it (all zero-size or absent)."
+    for unload_table in unload.tables:
+        table = unload_table.table
+        # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
+        # position — see module docstring. Quote every name uniformly; "id" == id in PG.
+        if table not in tables_ddl:
+            raise RuntimeError(f'target_schema.sql has no CREATE TABLE public."{table}"')
+        columns = extract_column_names(tables_ddl[table])
+        if not columns:
+            raise RuntimeError(f'could not parse any columns from the "{table}" DDL')
+        column_list = ", ".join(f'"{c}"' for c in columns)
+
+        # Spark writes the mart's NULLs as a quoted-empty "" CSV field; PG's `NULL ''` only nulls an
+        # UNQUOTED empty, so without FORCE_NULL a quoted-empty lands '' (text) or fails the cast
+        # (typed). The voter mart source-nulls all string empties, so force-null every column there;
+        # other tables force-null only typed columns and keep genuine text empties. See
+        # `_force_null_columns` / `_import_options`.
+        force_null = _force_null_columns(
+            extract_column_types(tables_ddl[table]), source_nulled=table in _SOURCE_NULLED_TABLES
         )
+        options = _import_options(force_null)
 
-    # No manifest carry-forward: resume is DB-driven — `_load_state` re-counts each
-    # state and skips those already fully loaded. A partial manifest is never
-    # persisted (below), so `existing` is only ever a complete manifest (returned
-    # above) or absent.
-    results: list[CopyTableResult] = [
-        _load_state(
-            cfg=cfg,
-            run_date=run_date,
-            state=state,
-            expected_rows=unload.per_state_row_counts.get(state, 0),
-            s3_keys=files_by_state.get(state, []),
-            parallelism=parallelism,
-            column_list=column_list,
-        )
-        for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0))
-    ]
+        files_by_state: dict[str, list[str]] = {}
+        for f in unload_table.files:
+            if f.size_bytes == 0:
+                continue
+            files_by_state.setdefault(f.state, []).append(f.s3_key)
 
-    covered = {r.state for r in results}
-    expected_states = {s for s, count in unload.per_state_row_counts.items() if count > 0}
-    all_loaded = covered >= expected_states
+        if is_partitioned(table):
+            if state_filter:
+                if state_filter in files_by_state:
+                    units_to_load = [state_filter]
+                elif unload_table.row_counts.get(state_filter, 0) > 0:
+                    # Rows were expected for this state but no loadable files exist -> a real unload
+                    # gap; fail the retry rather than silently skip it.
+                    raise RuntimeError(
+                        f"--state {state_filter!r} requested but the unload manifest has no loadable "
+                        f'files for table "{table}" (all zero-size or absent).'
+                    )
+                else:
+                    # No rows expected for this state (e.g. DistrictVoter for a state with no district
+                    # assignments): nothing to load, so skip rather than aborting the whole --state
+                    # retry. Consistent with `expected_units` below, which already excludes 0-row states.
+                    units_to_load = []
+            else:
+                units_to_load = sorted(files_by_state.keys())
+        else:
+            # Flat table: whole-table unit "", loaded only on a full run — a --state run
+            # doesn't apply to a table with no State dimension (mirrors unload's behavior).
+            units_to_load = [] if state_filter else list(files_by_state.keys())
+
+        table_expected = {s for s, count in unload_table.row_counts.items() if count > 0}
+        expected_units |= {(table, s) for s in table_expected}
+
+        for state in sorted(units_to_load, key=lambda s: -unload_table.row_counts.get(s, 0)):
+            result = _load_unit(
+                cfg=cfg,
+                run_date=run_date,
+                table=table,
+                state=state,
+                expected_rows=unload_table.row_counts.get(state, 0),
+                s3_keys=files_by_state.get(state, []),
+                parallelism=parallelism,
+                column_list=column_list,
+                options=options,
+            )
+            results.append(result)
+            covered.add((table, state))
+
+    all_loaded = covered >= expected_units
 
     manifest = CopyManifest(
         run_date=run_date,
@@ -260,18 +383,18 @@ def run(
         results=results,
     )
     if all_loaded:
-        # Persist ONLY when the whole table is loaded — manifest existence is the
+        # Persist ONLY when every table is loaded — manifest existence is the
         # orchestration "step complete" signal (people-api-loader CLAUDE.md). We
         # never write an in_progress manifest, so a poller can't advance on partial data.
         uri = write_manifest(cfg, manifest)
-        log.info("copy.complete", uri=uri, covered=len(covered), expected=len(expected_states))
+        log.info("copy.complete", uri=uri, covered=len(covered), expected=len(expected_units))
     elif state_filter is None:
-        # A full run that didn't cover every expected state is an anomaly (a state
-        # with rows but no loadable files). Surface it; write no manifest.
-        missing = sorted(expected_states - covered)
-        raise RuntimeError(f"copy incomplete: {len(missing)} state(s) not loaded: {missing[:10]}")
+        # A full run that didn't cover every expected unit is an anomaly (a unit with rows
+        # but no loadable files). Surface it; write no manifest.
+        missing = sorted(expected_units - covered)
+        raise RuntimeError(f"copy incomplete: {len(missing)} unit(s) not loaded: {missing[:10]}")
     else:
-        # Intentional single-state (--state) load: the whole table isn't done, so no
+        # Intentional single-state (--state) load: not every table/unit is done, so no
         # manifest is written; a later full run completes it.
         log.info("copy.state_loaded", state=state_filter, covered=sorted(covered))
     return manifest

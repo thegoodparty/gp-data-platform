@@ -7,9 +7,11 @@
 --
 -- The new civics scorer (int__civics_viability_scoring) is canonical
 -- and OVERWRITES the old candidacy value wherever it scored the row; the old
--- value gap-fills rows the new scorer could not score, so coverage never
--- regresses. The scorer reads candidacy + election as leaves, so layering its
--- output here (downstream) is ACYCLIC -- the score never flows back onto candidacy.
+-- value gap-fills where the scorer could not score. Only 2025-archive rows
+-- carry an old value since the TechSpeed fuzzy-dedupe removal, so the gap-fill
+-- is archive-only. The scorer reads candidacy + election as leaves, so layering
+-- its output here (downstream) is ACYCLIC -- the score never flows back onto
+-- candidacy.
 --
 -- Column list mirrors candidacy.sql's final SELECT verbatim and in order; only
 -- the two viability columns are overridden. They are gated on the SAME condition

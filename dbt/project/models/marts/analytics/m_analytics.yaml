@@ -582,8 +582,8 @@ models:
 
   - name: users_serve_active
     description: >
-      Canonical gold-layer membership view for "active serve users" (epic
-      DATA-1359): one row per user who completed Serve onboarding by sending
+      Canonical gold-layer membership view for "active serve users": one row
+      per user who completed Serve onboarding by sending
       an SMS poll AND has pledged. Thin projection of int__serve_active_user,
       which owns the definition; exists so dashboards read the definition
       from a gold schema (Sigma is losing staging/intermediate access).
@@ -674,7 +674,7 @@ models:
       - name: has_pledged
         description: >
           TRUE if the user owns at least one pledged campaign. From
-          int__serve_active_user (epic DATA-1359).
+          int__serve_active_user.
         data_tests:
           - not_null
 
@@ -843,34 +843,37 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          # warn, not error: one pre-existing campaign has null user_* fields
-          # (a known data-quality gap in `campaigns`, present in prod). It only
-          # blocks on a full-refresh rebuild of this downstream model; the real
-          # fix belongs in `campaigns`, not here.
+          # Orphaned user_* rows (user deleted in product) propagate from
+          # `campaigns`. Match the source not_null threshold (#546): warn on
+          # any, error above 20. Fix belongs in `campaigns`.
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_email
         description: User's email address (lowercased)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_first_name
         description: User's first name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_last_name
         description: User's last name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_phone
         description: User's phone number
@@ -883,7 +886,8 @@ models:
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: campaign_created_at
         description: Timestamp when this campaign was created
@@ -1014,7 +1018,9 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
           Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
@@ -1134,7 +1140,9 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
           Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
@@ -1299,9 +1307,16 @@ models:
         data_tests:
           - not_null
       - name: hs_contact_id
-        description: HubSpot contact ID of the respondent
+        description: >
+          HubSpot contact ID of the respondent; null when the survey was
+          submitted without an associated contact.
         data_tests:
-          - not_null
+          # Unattributed responses are a real and expected outcome for a web
+          # survey, so a null here must not block the build. Severity warn keeps
+          # a rise in unattributed submissions visible without failing prod.
+          - not_null:
+              config:
+                severity: warn
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')
@@ -1398,8 +1413,33 @@ models:
         data_tests: [not_null]
       - name: win_activated_user_hs_flag
         data_tests: [not_null]
-      - name: has_won_general_election
-        data_tests: [not_null]
+      - name: has_won_election
+        description: >
+          Whether the contact won the seat in any of their candidacies (won the
+          race's final stage, including decisive single-stage primaries). Derived
+          from civics.candidacy.candidacy_result (bare 'Won'), OR-merged across
+          the candidate-identity link (gp_candidate_id, which covers BR-sourced
+          candidacies) and the product-user link (prod_db_user_id). Three-valued:
+          TRUE = won at least one seat; FALSE = a candidate whose candidacies are
+          all decided without a win; NULL = no decided outcome yet (pending /
+          Cannot Determine) or not a candidate. NULL is deliberately not "lost";
+          use has_candidacy to tell a pending candidate from a non-candidate.
+          Renamed from has_won_general_election, which only counted general-cycle
+          wins.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: has_candidacy
+        description: >
+          Whether the contact is a candidate at all — has at least one candidacy,
+          via the candidate identity (gp_candidate_id, incl. BR-sourced) or the
+          product user (prod_db_user_id). Distinguishes a real candidacy from a
+          non-candidate sales contact, which has_won_election's NULL alone cannot
+          (most prospects are candidates). Non-null boolean.
+        data_tests:
+          - not_null
       - name: gp_user_id
         description: Resolved product-DB user_id via candidate.prod_db_user_id.
         data_tests:
@@ -1476,19 +1516,28 @@ models:
                 min_value: 1
                 max_value: 5
       - name: hs_contact_id
-        description: HubSpot contact ID of the respondent
+        description: >
+          HubSpot contact ID of the respondent; null when the survey was
+          submitted without an associated contact.
         data_tests:
-          - not_null
+          # Same rationale as the PMF survey mart: unattributed web-survey
+          # responses are expected, so surface them rather than blocking.
+          - not_null:
+              config:
+                severity: warn
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')
                 field: id
 
-  - name: amplitude_events
+  - name: amplitude_api_events
     description: >
-      Passthrough exposure of stg_airbyte_source__amplitude_api_events
-      into mart_analytics for Sigma BI POV. View materialization, no
-      transformations. Columns documented at the upstream staging model.
+      Passthrough exposure of stg_airbyte_source__amplitude_api_events into
+      mart_analytics so consumers read the mart, not the staging layer. View
+      materialization, no transformations — the raw Amplitude event stream
+      without the taxonomy-derived family / is_win / is_recurrent columns
+      (those live on amplitude_events). Columns documented at the upstream
+      staging model.
 
       Source: stg_airbyte_source__amplitude_api_events.
     columns:
@@ -1497,6 +1546,133 @@ models:
         data_tests:
           - not_null
           - unique
+
+  - name: amplitude_events
+    description: >
+      Exposure of stg_airbyte_source__amplitude_api_events into
+      mart_analytics (Sigma reads marts only), enriched with the governed
+      event taxonomy: family, is_win, is_serve, is_recurrent and
+      is_dashboard_view derive from the amplitude_event_taxonomy macros so BI
+      consumers never re-derive serve/win classification from event_type
+      strings. Passthrough columns
+      are documented at the upstream staging model; the event_type-grain
+      catalog (volume, recency, Govern metadata) is
+      int__amplitude_event_catalog, built from the same macros.
+
+      Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: uuid
+        description: Unique identifier for the event (primary key).
+        data_tests:
+          - not_null
+          - unique
+
+      - name: family
+        description: >
+          Product-feature bucket from the amplitude_event_family macro. Win
+          families are prefixed `win_`; non-Win buckets cover serve,
+          auth/settings, navigation, and anonymous noise. Unmatched
+          event_types fall through to 'other' for triage. Closed set by
+          construction; the accepted_values contract is tested on
+          int__amplitude_event_catalog, which derives from the same macro.
+        data_tests:
+          - not_null
+
+      - name: is_win
+        description: >
+          True for Win-product candidate-attributed families (family like
+          'win_%'); false for serve / cross-product / noise. Event-level
+          filter only — user-level "Win active" questions belong on
+          users_win_activity / users_win_base, not on raw event counts.
+        data_tests:
+          - not_null
+
+      - name: is_serve
+        description: >
+          True for Serve-product events (family = 'serve'). Serve is a single
+          flat family, hence the equality check rather than a prefix like
+          is_win. Superset of Serve user actions: some Serve events are
+          server-emitted (session_id = -1), so engagement filtering stays with
+          the consumer. Event-level filter only — user-level "Serve active"
+          questions belong on users_serve_base, not on raw event counts.
+        data_tests:
+          - not_null
+
+      - name: is_recurrent
+        description: >
+          True for recurrent-activity events (vs one-off lifecycle
+          milestones) — exactly the events the Win activity rollups count.
+          Event-level allowlist (amplitude_event_is_recurrent macro), not a
+          pattern. False, never null, when event_type is null.
+
+          Does NOT cover dashboard views: use is_dashboard_view for those. The
+          dashboard-view union includes a page-path leg that an event-name
+          allowlist cannot express.
+        data_tests:
+          - not_null
+
+      - name: is_dashboard_view
+        description: >
+          True for a candidate-dashboard view, from the is_dashboard_view_event
+          macro. Anchored on the page path ('Viewed' where
+          event_properties:path = '/dashboard') OR'd with the three generations
+          of named dashboard event, because the product renamed that event on
+          every rebuild of the surface and each rename zeroed the metrics built
+          on it. False, never null, when event_type is null.
+
+          Do NOT combine with is_win. The page-path leg fires on event_type
+          'Viewed', which classifies to family 'viewed_generic', so is_win is
+          FALSE on those rows. `where is_win and is_dashboard_view` drops the
+          path leg and reintroduces the undercount this column exists to
+          prevent: from 2026-08-07 the path leg carries 2,033 of 2,762
+          dashboard-view events (74%). Filter on is_dashboard_view alone.
+
+          Raw counts over this flag over-count, because a single visit fires
+          both the page event and whichever named event is live. Per-user
+          MIN/MAX/EXISTS and COUNT(DISTINCT date) are safe; for view counts use
+          the deduped columns on int__amplitude_win_activity, or prefer
+          distinct view-days.
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_win and is_serve)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_win or not is_recurrent"
+
+  - name: amplitude_event_catalog
+    description: >
+      Passthrough exposure of int__amplitude_event_catalog into mart_analytics
+      so governance consumers read the mart, not the intermediate layer. View
+      materialization, no transformations. The event_type-grain catalog: firing
+      volume, recency, and Govern metadata, with family / is_win from the
+      amplitude_event_taxonomy macros. Columns documented at the upstream int
+      model.
+
+      Source: int__amplitude_event_catalog.
+    columns:
+      - name: event_type
+        description: Amplitude event name (grain of this model).
+        data_tests:
+          - not_null
+          - unique
+
+  - name: amplitude_taxonomy_event_type
+    description: >
+      Passthrough exposure of stg_airbyte_source__amplitude_taxonomy_event_type
+      into mart_analytics so governance consumers read the mart, not the staging
+      layer. View materialization, no transformations. The Amplitude Govern
+      declared event universe (~434 events, all active), synced from Amplitude
+      via Airbyte. Columns documented at the upstream staging model.
+
+      Source: stg_airbyte_source__amplitude_taxonomy_event_type.
+    columns:
+      - name: event_type
+        description: Amplitude event name from the Govern taxonomy.
+        data_tests:
+          - not_null
 
   - name: hubspot_contacts
     description: >
@@ -1512,23 +1688,45 @@ models:
           - not_null
           - unique
 
+  - name: hubspot_calls
+    description: >
+      Call-grain exposure of int__hubspot_calls into mart_analytics for Sigma
+      BI. One row per HubSpot call engagement, already deduped upstream and
+      carrying disposition_label, disposition_label_source and outcome_family
+      from the hubspot_call_dispositions seed. View materialization, no
+      transformations; columns documented at the upstream intermediate, where
+      the grain and disposition tests also live.
+
+      Per-contact call aggregates are in the prospects mart, not here.
+
+      Source: int__hubspot_calls.
+    columns:
+      - name: id
+        description: HubSpot call engagement ID (primary key).
+      - name: outcome_family
+        description: >
+          Disjoint outcome classification: connected_pledge, connected_reject,
+          connected_other, not_connected, unmapped (disposition GUID not yet in
+          the seed), or null_disposition (no disposition set on the call). Use
+          this rather than re-deriving outcomes from hs_call_disposition.
+
   - name: people_served
     description: >
-      The People Served metrics (DATA-1993, epic DATA-1359): one row per
+      The People Served metrics: one row per
       (cohort, metric_variant, office_type). cohort is 'all' (every resolved serve
       org) or 'active' (the active People Served cohort: in_people_served_cohort);
       'active' is the canonical North Star and BOTH are present, so BI consumers MUST
       filter or group by cohort -- omitting it double-counts. count_once is the
       distinct-person union (from int__serve_block_coverage); the count_multiple
-      variants are sums off the substrate via district_census_stats. Ordering holds
+      variants are sums off the allocation via district_census_stats. Ordering holds
       within every (cohort, office_type): count_once <=
       count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
-      cohort-wide North Star headline) or one of the substrate's L2 district types, PLUS 'State'
+      cohort-wide North Star headline) or one of the allocation's L2 district types, PLUS 'State'
       for statewide officials, which are read from the EXACT T5 'State' census totals and
       reported SEPARATELY (TDD 4.5) -- never folded into 'all'. Filter office_type !=
       'State' for the local reading, = 'State' for the statewide breakout. The live 'all'
       numbers include population from a few known wrong-scope matches (requires_review,
-      pending the DATA-1989 upstream overrides) -- those officials are flagged on
+      pending upstream overrides) -- those officials are flagged on
       int__serve_district_resolution; the conservative reading excludes them. Thin by design;
       variants may migrate to the dbt semantic layer.
     columns:
@@ -1597,6 +1795,7 @@ models:
           config:
             # wide catastrophic-breakage guard on the ACTIVE local North Star
             # (count_once, de-duplicated, below the ~14.1M additive per_district);
-            # headline HELD until DATA-2018, so this is only a breakage guard.
+            # headline HELD until the census-direct population backtest validates it,
+            # so this is only a breakage guard.
             where: "cohort = 'active' and metric_variant = 'count_once' and office_type = 'all'"
             severity: warn

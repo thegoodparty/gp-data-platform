@@ -12,7 +12,7 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 
 - IF you need to attach outcomes to a Win user → `users_win_candidacy.campaign_id = candidacy.product_campaign_id` (recipe below).
 - IF you need to attach a HubSpot survey response → use the 2-hop via `candidate`, **NOT** `users_win_candidacy.hubspot_id` (that is the company id; see below and [gotchas.md](gotchas.md)).
-- IF you need viability on a forward-stable path → join `int__techspeed_viability_scoring` via `techspeed_candidate_code`; see [viability.md](viability.md).
+- IF you need viability → `users_win_candidacy.viability_score`, or `mart_civics.candidacy_scored` via `product_campaign_id` + election-date; see [viability.md](viability.md).
 - IF the question is about what a metric *means* rather than how to join → see [canonical_metrics.md](canonical_metrics.md).
 - IF you have an external or ad-hoc table (emails, BallotReady race IDs) that needs ICP flags attached → use the **data-matching** skill, which owns the email→campaigns and race-id→position entry paths. This doc covers only the Win-entity ICP path (`candidacy.br_position_database_id`, below).
 
@@ -27,7 +27,7 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 | **Candidate (GP-internal)** | `gp_candidate_id` (uuid) | `candidate.gp_candidate_id`, `candidacy.gp_candidate_id` | A `gp_candidate_id` can have many `gp_candidacy_id` rows (one per cycle). |
 | **Election (GP-internal)** | `gp_election_id` (uuid) | `election.gp_election_id`, `candidacy.gp_election_id` | The election year × position. |
 | **Election stage** | `gp_election_stage_id` (uuid) | `election_stage.gp_election_stage_id`, `candidacy_stage.gp_election_stage_id` | One per stage. |
-| **TechSpeed candidate code** | `techspeed_candidate_code` (string) | `int__civics_candidacy_techspeed.candidate_code`, `int__techspeed_viability_scoring.techspeed_candidate_code` | Hashed first/last/state/office/city. Use to join TS-side viability directly. |
+| **TechSpeed candidate code** | `techspeed_candidate_code` (string) | `int__civics_candidacy_techspeed.candidate_code` | Hashed first/last/state/office/city. |
 | **HubSpot contact** | `hubspot_contact_id` (int) on candidate side; `hs_contact_id` (string, cast to BIGINT) on survey staging | `candidate.hubspot_contact_id`, `stg_airbyte_source__hubspot_api_feedback_submissions.hs_contact_id` | Same logical key, two column names by source. Use this to attach survey responses to candidates. |
 | **HubSpot company** | `hubspot_company_id` (int) | `candidacy.hubspot_company_ids` (array), `users_win_candidacy.hubspot_id` | Used in 2025-archive viability join: `tbl_companies.company_id ↔ stg_model_predictions__viability_scores.id`. **Note `users_win_candidacy.hubspot_id` is the COMPANY id, not the contact id** — joining survey `hs_contact_id` to it returns zero matches; use the 2-hop recipe below. |
 | **BR position** | `br_position_database_id` (int) | `candidacy.br_position_database_id` | Join key to `int__icp_offices` (district-grain L2 context, ICP flags). |
@@ -43,7 +43,7 @@ Use `users_win_candidacy` if you only need outcomes + segmentation that's alread
 **Win user → engagement (Amplitude weekly):**
 ```
 users_win_candidacy.user_id = int__amplitude_win_activity.user_id  (both BIGINT)
--- A weekly variant (int__amplitude_win_activity_weekly) now exists in prod `dbt` (as of 2026-06-01; coverage week_start_date 2025-06-23+). Same 2 recurrent events as the monthly model (dashboard_views, campaigns_sent). Still verify the live catalog before relying on it.
+-- Weekly variant: int__amplitude_win_activity_weekly (same join key). Coverage and caveats owned by engagement.md (modeling layers).
 ```
 
 **Win user → lifecycle milestones:**
@@ -56,11 +56,33 @@ users_win_candidacy.user_id = int__amplitude_user_milestones.user_id
 candidacy.gp_candidacy_id = candidacy_stage.gp_candidacy_id  (one-to-many)
 ```
 
-**Candidacy → viability (TS-side, forward-stable):**
+**Candidacy → corroboration (external match) flag:**
 ```
-candidacy.candidate_code = int__techspeed_viability_scoring.techspeed_candidate_code
+-- roll up to gp_candidacy_id:
+MAX(CASE WHEN candidacy_stage.br_candidacy_id IS NOT NULL
+          OR candidacy_stage.ts_source_candidate_id IS NOT NULL
+          OR candidacy_stage.ddhq_candidate_id IS NOT NULL THEN 1 ELSE 0 END)
 ```
-Use this rather than `candidacy.viability_score` if you need a path that survives a future mart rebuild (see [viability.md](viability.md) and [gotchas.md](gotchas.md)).
+"Has a BallotReady, TechSpeed, or DDHQ record" is the corroboration signal. Do **NOT** use
+`candidate_id_source` for this — it is identity-mint provenance (the earliest-member ER rule), so a
+product-sourced (`gp_api`) candidacy still carries BR/DDHQ matches and outcomes yet reads as
+`gp_api`; using it as a match flag undercounts external corroboration massively.
+
+This is the match flag *only*. The **corroborated-candidate** definition also requires the
+retrospective time gate: `candidacy.general_election_date` clamped to `[2020-01-01, 2050-01-01]`
+and `< CURRENT_DATE` (election happened), OR `election_stage.filing_period_end_on < CURRENT_DATE`
+joined via `candidacy_stage.gp_election_stage_id` (deadline passed; 2026+ only). Without the gate
+this counts matches, not corroborated candidates. Full definition in [sources.md](sources.md).
+
+**Campaign → viability (canonical):**
+```
+c.campaign_id = candidacy_scored.product_campaign_id
+and (c.election_date = candidacy_scored.general_election_date or c.election_date is null)
+```
+`users_win_candidacy` already implements this join; prefer reading it directly. See [viability.md](viability.md).
+Caution: when `c.election_date` is null the join matches on `campaign_id` alone, so it can fan out
+to several candidacies or attribute a score from the wrong cycle; `users_win_candidacy` internalizes
+the dedupe.
 
 **Candidacy → ICP / L2 district context:**
 ```
@@ -90,7 +112,7 @@ For user-level analyses, collapse with explicit handling of "which candidacy rep
 ## Cross-references
 
 - [sources.md](sources.md) — what each table is and when to start there.
-- [viability.md](viability.md) — the forward-stable viability join rationale.
+- [viability.md](viability.md) — the canonical viability read and join rationale.
 - [outcomes.md](outcomes.md) — the PMF/CSAT survey join in context.
 - [gotchas.md](gotchas.md) — the `hubspot_id` company-vs-contact trap and multi-cycle traps.
-- [data-matching skill](../../data-matching/SKILL.md) — matching external tables to ICP flags by email / race ID / position ID.
+- the data-matching skill (when installed) — matching external tables to ICP flags by email / race ID / position ID.

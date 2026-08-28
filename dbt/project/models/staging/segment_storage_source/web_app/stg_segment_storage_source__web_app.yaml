@@ -86,3 +86,31 @@ models:
         description: Timestamp when Segment received the event
         data_tests:
           - not_null
+
+  - name: stg_segment_storage_source__web_app__10_dlc_compliance_pin_verification_completed
+    description: Segment web app event fired when 10DLC compliance PIN verification completes
+    columns:
+      - name: id
+        description: Unique identifier for the event
+        data_tests:
+          - not_null
+          - unique
+      - name: event
+        description: Name of the tracked event, always 10_dlc_compliance_pin_verification_completed
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["10_dlc_compliance_pin_verification_completed"]
+      - name: user_id
+        description: Segment user ID associated with the event
+        data_tests:
+          - not_null
+      - name: timestamp
+        description: Timestamp when the event occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null

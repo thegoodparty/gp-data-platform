@@ -147,6 +147,9 @@ models:
         description: "HubSpot ID of the contact from the source system"
         tests:
           - not_null
+          # One row per contact is the model's grain and the incremental merge
+          # key; this guards the row_rank dedup against silently fanning out.
+          - unique
       - name: gp_candidacy_id
         description: "GoodParty Candidacy ID of the contact"
         tests:
@@ -156,48 +159,6 @@ models:
         description: "Indicates whether the candidate has been verified"
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
-    tests:
-    - dbt_utils.unique_combination_of_columns:
-        arguments:
-          combination_of_columns:
-            - contact_id
-            - gp_candidacy_id
-
-  - name: int__hubspot_contest
-    description: >
-        "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Contest."
-    columns:
-      - name: contact_id
-        description: "HubSpot ID of the contact from the source system"
-        tests:
-          - unique
-          - not_null
-      - name: official_office_name
-        description: "Official office name of the contact"
-        tests:
-          - not_null
-      - name: candidate_office
-        description: "Candidate office of the contact"
-        tests:
-          - not_null
-      - name: office_type
-        description: "Office type of the contact"
-        tests:
-          - not_null
-      - name: office_level
-        description: "Office level of the contact"
-        tests:
-          - not_null:
-              config:
-                severity: warn
-      - name: election_year
-        description: "Year of the election"
-        tests:
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 2010
-                max_value: 2199
-                inclusive: true
 
   - name: int__hubspot_companies_archive_2025
     description: >

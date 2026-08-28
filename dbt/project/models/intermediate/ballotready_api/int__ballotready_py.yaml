@@ -2,6 +2,39 @@ version: 2
 
 models:
 
+  - name: int__ballotready_upcoming_candidacy_ids
+    description: >
+      Candidacy ids for still-upcoming BallotReady races, read from the API race
+      roster (race.candidacies). The S3 candidacies feed omits many upcoming
+      general-stage rosters the API already carries; int__ballotready_candidacy
+      and int__ballotready_party union this source into their fetch worklist so
+      those candidacies reach election-api instead of being dropped.
+    config:
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        owner: "Data Engineering Team"
+        contains_pii: false
+    columns:
+      - name: br_candidacy_id
+        description: "BallotReady candidacy database id from an upcoming race roster"
+        tests:
+          - not_null
+          - unique
+          # The point of the fix: every candidacy an upcoming race roster
+          # carries should be ingested into int__ballotready_candidacy. Warn
+          # (not error) because incremental lag between a roster appearing and
+          # the candidacy model's next run, and API-dropped/withdrawn
+          # candidacies, can leave a small transient gap that should surface
+          # for monitoring rather than fail the build.
+          - relationships:
+              arguments:
+                to: ref('int__ballotready_candidacy')
+                field: database_id
+              config:
+                severity: warn
+      - name: race_updated_at
+        description: "updated_at of the race the candidacy belongs to; used to refetch changed rosters incrementally"
+
   - name: int__ballotready_candidacy
     description: >
       This model retrieves and processes candidate data from the CivicEngine API since the source
@@ -22,6 +55,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: feed_extracted_at
+        description: "Airbyte ingest time of the candidacy's newest S3 feed row; the incremental cutoff (null when the feed has never delivered the candidacy)"
 
   - name: int__ballotready_endorsement
     description: >
@@ -42,25 +77,47 @@ models:
 
   - name: int__ballotready_filing_period
     description: >
-      This model retrieves and processes filing period data from the CivicEngine API.
-      It contains filing period information for political candidates, including their endorsements
-      from various organizations.
+      Filing period records (candidate filing window start and end dates) fetched by id
+      from the CivicEngine API. Races reference filing periods by id only, so this table
+      is the lookup that turns a race into a filing deadline.
+
+      An incremental run fetches the ids referenced by recently updated races, then spends
+      whatever is left of `max_ids_per_run` on the backlog of referenced ids that are not
+      here yet, newest ids first since those carry the deadlines for current cycles. The
+      recently updated races are never capped away, so the fetch set is always a superset
+      of what the race watermark alone would have selected.
+
+      A full refresh is uncapped and fetches every referenced id, because it replaces the
+      table: bounding it would drop every id outside the bound rather than merely making
+      the run shorter. Expect roughly two hours.
+
+      Because an id that fails to resolve simply stays absent, the next run picks it up
+      again and coverage converges over successive runs. Raise the incremental bound with
+      `--vars '{br_filing_period_max_ids_per_run: 250000}'` to close a large backlog
+      faster, at the cost of a longer run on the shared cluster.
     config:
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         owner: "Data Engineering Team"
         contains_pii: false
+        max_ids_per_run: "{{ var('br_filing_period_max_ids_per_run', 100000) }}"
     columns:
       - name: database_id
-        description: "Unique identifier for the normalized position in the CivicEngine database"
+        description: "Unique identifier for the filing period in the CivicEngine database"
         tests:
           - not_null
           - unique
       - name: id
-        description: "Encoded identifier for the normalized position in the CivicEngine system"
+        description: "Encoded identifier for the filing period in the CivicEngine system"
         tests:
           - not_null
           - unique
+      - name: start_on
+        description: "First day of the filing window"
+      - name: end_on
+        description: "Last day of the filing window, i.e. the filing deadline"
+      - name: type
+        description: "CivicEngine filing period type"
 
   - name: int__ballotready_geofence
     description: >
@@ -170,6 +227,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: feed_extracted_at
+        description: "Newest feed_extracted_at across the person's candidacies; the incremental cutoff"
 
   - name: int__ballotready_position_election_frequency
     description: >

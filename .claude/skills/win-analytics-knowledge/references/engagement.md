@@ -8,13 +8,15 @@ stream they're computed from.
 
 - **Business context:** how engaged a Win candidate is — from "appears in Amplitude" through onboarding, dashboard activity, and outreach activation (the OKR metrics).
 - **Entity grain:** stored metrics are user-grain (`users_win_base`); the raw stream is event-grain; the Win activity intermediates are user×month (and user×week).
-- **Standard hygiene filter:** for candidate-attributed analysis, exclude anonymous/auto-track families (`[Amplitude]%`, `Scroll Depth`, `session_*`) and require a numeric `user_id`.
+- **Standard hygiene filter:** for candidate-attributed analysis, exclude anonymous/auto-track families (`[Amplitude]%`, `Scroll Depth`, `session_*`) and require a numeric `user_id`. **Co-firing caveat:** generic families (`viewed_generic`, `navigation`, `auth_or_settings`) co-fire in virtually every session that contains a dashboard view or send, so an "activity excluding X events" metric that still counts them passes vacuously - restrict exclusion/orthogonality variants to win-family non-definitional events (DATA-2183: the loose variant read 0.9pp delta by construction; the strict one read up to 13pp).
 
 ## Routing triggers
 
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
-- IF the analysis spans the **2026-05-07 onboarding cutover** → use version-agnostic anchors (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`.
+- IF the analysis spans the **2026-05-07 onboarding cutover or the 2026-06-08 Onboarding V2 rebuild** → resolve events per era (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`, and do NOT treat any single completion event as version-agnostic.
+- IF a dashboard-view metric touches **2026-05 or later** → use the 2-event dashboard union; the legacy event died 2026-06-13 (see Dashboard surface migration).
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
+- IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see `event-lifecycle-assets.md` in the analytics-process skill (cross-product; when installed). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
 - IF the question is about self-reported win/loss from the Did-You-Win modal → that's an outcome; see [outcomes.md](outcomes.md).
 
@@ -29,21 +31,23 @@ caveats and deprecations the one-line registry definitions don't carry.
 - **`has_amplitude_data`** misses the broader onboarding-progress family (`Onboarding -%` steps), so it materially **undercounts** true coverage (Nov-2025 cohort: 36% by this flag vs ~79% with ≥1 raw candidate-attributed event). Don't use it as a funnel top — compute "any Win evidence" from the raw stream instead.
 - **`is_post_amplitude_registration`** (`user_created_at >= 2023-12-10`, the documented Amplitude tracking start) is **too loose** for engagement analyses — Win-product event instrumentation actually started ~2025-05-28.
 - **`has_completed_onboarding_flow`** (`onboarding_completed_at IS NOT NULL`, event `onboarding_complete`) and **`is_onboarded`** (US user, dashboard viewed within 14d of *Amplitude registration*) are both **⚠ NEW-FLOW-BLIND** across the 2026-05-07 cutover. Deprecated as cohort filters — use the canonical **Onboarded** metric instead.
-- **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses.
-- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). Do not conflate with the colloquial "activated."
-- **Onboarding completed (pledge)** is version-agnostic across both eras but first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
+- **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses. ⚠ Repaired for the 2026-06-13 break (DATA-2173, merged 2026-07-24), but **degrading again from 2026-07-31** — read "Third era" below before using them for any window touching August 2026 or later.
+- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff (`first_campaign_sent_at <= election_date`, or `<= month-end`) for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). **Activation lands late:** ~59% of ever-activated users send their first campaign >14 days after signup (verified 2026-06-11, 705/1,201), so activation cannot share the 14-day-of-signup window used for the dashboard-view / pledge milestones — anchor it point-in-time to the period end instead. Do not conflate with the colloquial "activated."
+- **Activation is Pro-gated in the product** (code-verified in omni, 2026-07-23): every real voter-contact channel (text, robocall, door knocking, phone banking) has UI-required Pro since 2025-06-24 (voter file since ≥2024-08); server-side Pro checks were *added* 2025-10 and 2026-05/06 — the gate never loosened. Social posts are the only free channel; texts are additionally pay-per-send via Stripe since 2025-09. So **activated ⊆ Pro is approximately true in both 2025 and 2026**; "activated but not Pro" cells are churned ex-Pros plus undatable/comped Pros (see the `is_pro` row in [segmentation.md](segmentation.md) for Pro dating), NOT evidence of a free outreach tier. Don't read Pro-evidence coverage trends as gating changes — coverage improved with instrumentation (Amplitude milestone 2025-05-29+, Stripe events 2025-08-25+, P2P self-serve 2025-09).
+- **Win W+1 Retention (OKR O2 KR1)** = share of Win-ICP users who return to the dashboard about a week after their **first voter outreach send** (Amplitude chart `owc6mfnp`: start `ce:Voter Outreach - All`, return `Viewed` path=/dashboard, segment = Win ICP cohort; target 60%). **Method matters and the two differ ~5x:** the ~55–60% we report (and the June All Hands deck) is **rolling** retention — returned in W+1 *or any later week* — reconciled at ~64.5% on 2026-08-03. The chart is currently **saved as N-day** (returned specifically in the day 7–13 window), which reads ~12.6%. The gap is method only: the return event (`Viewed` path=/dashboard) is alive and stable (~800–1,100/wk through mid-2026), not an instrumentation break. The chart should be re-saved to rolling so the artifact matches the reported KR. It conditions on activated ICP users **by construction** — weekly cohorts run ~10–25 users — so never read it as a population retention rate. The honest chain: registered → activated (~3–5% all-accounts) → ~55–60% (rolling) of those return in W+1 (resolved 2026-07-23 from the June All Hands deck + chart definition; N-day-vs-rolling method reconciled 2026-08-03).
+- **Onboarding completed (pledge)** is an era-resolved union (see Onboarding flow versions) — no single pledge event spans all three eras. The union's oldest member is first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
 
 ### Terminology
 
 Two distinct onboarding concepts — keep them named separately so they stop drifting across analyses:
 - **"onboarding dashboard viewed"** (canonical **Onboarded**) = viewed the candidate dashboard within 14 days of account creation (the broad cohort filter).
-- **"onboarding completed (pledge)"** = fired `Onboarding - Candidate Pledge Completed` within 14 days (the strict funnel metric).
+- **"onboarding completed (pledge)"** = fired any era-resolved pledge-completion event (union: `Onboarding - Candidate Pledge Completed`, `Onboarding - Pledge Completed`, `Onboarding V2 - Pledge Completed`) within 14 days (the strict funnel metric).
 
-Both are recomputed from durable, version-agnostic events, not the stored `is_onboarded` / `has_completed_onboarding_flow` flags (new-flow-blind across the cutover; see Onboarding flow versions below).
+Both are recomputed from durable raw events (era-resolved where needed), not the stored `is_onboarded` / `has_completed_onboarding_flow` flags (new-flow-blind across the cutover; see Onboarding flow versions below).
 
 ### Point-in-time caveat for retrospective cohorts
 
-`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today.)
+`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today. ⚠ Those 21% figures are **scoped-cohort rates** (activation among onboarded-type cohorts runs ~17-21%), not all-accounts rates, which run ~5% on election-date-bucketed populations (2026-07-22). Name the denominator when citing either, or the two reads look contradictory — this caused a reviewer blocker in the win_topline_reporting run.)
 
 ### "Any evidence" vs "engaged beyond account creation"
 
@@ -59,7 +63,7 @@ The signup-anchored, forward-window analog is **"one-and-done"**: signed up but 
 |---|---|---|
 | Staging (raw) | `stg_airbyte_source__amplitude_api_events` | **Full universe.** ~300+ distinct `event_type` values in any reasonable window. |
 | Staging (catalog) | `stg_airbyte_source__amplitude_api_events_list` | Amplitude's own event catalog (name, totals, hidden flags). |
-| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) now exists in prod `dbt` (coverage week_start_date 2025-06-23+); verify the live catalog before use. | **Only 2 event types** (the recurrent-activity allowlist, authoritative in the `amplitude_event_is_recurrent` macro): `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. One-off lifecycle milestones live in `int__amplitude_user_milestones`. |
+| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) is in prod `dbt` (coverage `week_start_date` 2025-06-23+). | **Only 2 event types** (the recurrent-activity allowlist, authoritative in the `amplitude_event_is_recurrent` macro): `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. One-off lifecycle milestones live in `int__amplitude_user_milestones`. |
 | Intermediate (lifecycle) | `int__amplitude_user_milestones` | ~12 lifecycle milestones (registration, dashboard, onboarding complete, campaign sent, pro upgrade, Serve onboarding). One row per user. |
 | Intermediate (Serve) | `int__amplitude_serve_activity` | Filters `Viewed` event to `event_properties:path = '/dashboard/polls'` + `user_properties:Serve Activated = true`. |
 | Mart passthrough | `mart_analytics.amplitude_events` | Thin alias of the staging events for Sigma BI consumption. No transformation. |
@@ -76,7 +80,13 @@ Membership is **not** maintained here. `is_win` (Win membership) and `first_seen
 
 **Win families** (`is_win = true`, prefixed `win_`): `win_onboarding`, `win_dashboard`, `win_voter_outreach`, `win_outreach_planning`, `win_outreach_scheduling`, `win_content_builder`, `win_voter_data`, `win_candidate_profile`, `win_pro_upgrade`, `win_p2p_upgrade`, `win_candidate_website`, `win_candidacy_self_report` (the Did-You-Win modal — see [outcomes.md](outcomes.md) for outcomes use), `win_compliance_or_planning`, `win_ai_assistant`, `win_briefings`, `win_contacts`, `win_resources`. Families first seen after the cutoff (e.g. `win_briefings`, and `Dashboard - Campaign Plan Viewed` within `win_dashboard`) fall out as drift unless you widen `drift_cutoff`.
 
-**Non-Win families** (`is_win = false`): `serve` (Serve product, covered in the Serve runbook), `auth_or_settings`, `navigation` (cross-product); `viewed_generic`, `amplitude_autotrack`, `session_or_browser` (noise — skip for candidate-attributed analysis); `experiment_assignment` (noise, but usable as an A/B-exposure stratification covariate). Anything unmatched falls through to `other`.
+**Family touch is not comparable across families.** Families are instrumented to wildly different depths — `win_onboarding` carries 72 event types against `win_resources`' 1 (verified 2026-08-17) — so "share of users who fired any event in family X" partly measures how thoroughly X was instrumented. Read the event set behind a family before quoting a rate off it, and never rank a thin family against a thick one. Three instances, each of which has produced a wrong read:
+
+- **`win_pro_upgrade` is impression-dominated:** its top event by users is the passively-shown `Pro Upgrade - Modal: Modal Shown` (4,004 users of ~6.5k family-touchers), so family touch overstates upgrade intent. For intent reads use the deliberate actions `Pro Upgrade - Splash Page: Click upgrade` and `Pro Upgrade: Confirm office` (DATA-2183: family touch 79% vs deliberate action 44.5% on the same cohort).
+- **`win_resources` is one event, and it is dead.** `Resources - Resource Clicked` is the only member, live 2025-10-15 to 2026-02-27 and silent since. Any resources rate measures instrumentation rather than usage, and a rate computed over a window opening before 2025-10-15 is measuring the missing instrument.
+- **`win_voter_data` swapped event sets mid-2026.** The legacy `Voter Data -%` set went dark 2026-07-06..07-18 and was replaced from 2026-07-21 by `Voter Data - Contact Searched` / `- Send Outreach Clicked` / `- List Created`. **A family-level availability check does not catch this** — the successors keep the family's own first/last-seen span continuous. Split any voter-data read at 2026-07-06.
+
+**Non-Win families** (`is_win = false`): `serve` (Serve product, covered in the Serve runbook), `auth_or_settings`, `navigation` (cross-product; classified by the nav event's own name, never by destination, so a nav click never reaches the `win_*` family of the surface it opens — a win-family touch rate measures **use**, not visitation); `viewed_generic`, `amplitude_autotrack`, `session_or_browser` (noise — skip for candidate-attributed analysis); `experiment_assignment` (noise, but usable as an A/B-exposure stratification covariate). Anything unmatched falls through to `other`.
 
 ### Instrumentation start date
 
@@ -87,17 +97,74 @@ Newer families:
 - `Dashboard - Campaign Plan Viewed` (since 2026-04-09)
 - `Briefings - *` (since 2026-04-10)
 
-### Onboarding flow versions (2026-05-07 cutover)
+### Onboarding flow versions (three eras: 2026-05-07 cutover, 2026-06-08 V2 rebuild)
 
-The Win onboarding flow was rebuilt in a clean same-night switch ~**2026-05-07 01:54 UTC** (no overlap / holdback observed in-data; DATA-1947). Event names changed across the cutover, so any onboarding analysis spanning it must use **version-agnostic** anchors:
+The Win onboarding flow was rebuilt **twice**: a clean same-night switch ~**2026-05-07 01:54 UTC** (no overlap / holdback observed in-data; DATA-1947), then the **Onboarding V2 rebuild** instrumented **2026-06-08** (era-2 call sites removed 2026-06-09, omni PRs #920/#1790; era-2 events last fired in-data 2026-06-10, so eras 2/3 overlap 06-08→06-10 — count distinct users across the union). No completion event spans all three eras; resolve per era via the omni event-lifecycle assets:
 
-| Role | Old flow (pre) | New flow (post) | Version-agnostic (both eras) |
+| Role | Era 1 (→2026-05-07) | Era 2 (2026-05-07→2026-06-10) | Era 3 (2026-06-08→) |
 |---|---|---|---|
-| Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` (post only) | **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed |
-| Completion / bottom | `onboarding_complete`, `Onboarding - Complete Step: Click Go to Dashboard` (died at cutover) | per-step `*Completed` events (pledge is the final step) | **`Onboarding - Candidate Pledge Completed`** (final step, both eras) |
-| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | No single version-agnostic event — use old-flow `Invalid Party` (pre-cutover) and new-flow `Onboarding - Party Selection Completed` (post-cutover) separately. `Onboarding - Candidate Affiliation Completed` has not been verified in-data (DATA-1947). |
+| Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` | `Onboarding V2 - Welcome Viewed`/`Completed` (per provenance; not re-verified in-data) |
+| Completion / bottom | **`Onboarding - Candidate Pledge Completed`** (since 2025-09); legacy `onboarding_complete` is a strict subset (retired 2026-05-05) | **`Onboarding - Candidate Pledge Completed`**, co-firing with era-2 alias `Onboarding - Pledge Completed` | **`Onboarding V2 - Pledge Completed`** |
+| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | `Onboarding V2 - Party Designation Completed`/`Blocked` (per provenance). `Onboarding - Candidate Affiliation Completed` has not been verified in-data (DATA-1947). |
 
-**`onboarding_complete` / `has_completed_onboarding_flow` / `is_onboarded` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-cutover user — so using them across the cutover fakes a completion collapse to zero. (`is_onboarded` is anchored on `Onboarding - Registration Completed`, which died ~2026-04-20, so it reads 0.0% for 2026-05/06 registrants vs ~54% recomputed; prod-flag fix ticketed.) Recompute via the canonical **Onboarded** metric (broad cohort) or **`Onboarding - Candidate Pledge Completed`** (strict completion) instead — see Canonical engagement metrics above. The party gate is *not* gate-equivalent across the cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
+Cross-era anchors: top-of-funnel = **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed at each rebuild; strict completion = the **3-event pledge union** in the completion row. Verified 2026-07-21 (q02 gold run): trusting `Onboarding - Candidate Pledge Completed` alone reads June-2026 14-day completions at 96 vs 292 true (−67%).
+
+**`onboarding_complete` / `has_completed_onboarding_flow` / `is_onboarded` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-2026-05-07 user — so using them across the cutover fakes a completion collapse to zero. (`is_onboarded` is anchored on `Onboarding - Registration Completed`, which died ~2026-04-20, so it reads 0.0% for 2026-05/06 registrants vs ~54% recomputed; prod-flag fix ticketed.) Recompute via the canonical **Onboarded** metric (broad cohort) or the era-resolved pledge union (strict completion) instead — see Canonical engagement metrics above. The party gate is *not* gate-equivalent across the 2026-05-07 cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
+
+### Dashboard surface migration (2026-05/06)
+
+`Dashboard - Candidate Dashboard Viewed` last fired in-data **2026-06-13**; code-retired 2026-07-13 (omni PR #732) — the call site was orphaned by the dashboard rebuild, so code provenance dates the break a month late. Successor: **`Dashboard - Campaign Plan Viewed`** (in code 2026-04-01, first in-data 2026-04-09). Divergence starts with May-2026 signup cohorts (plan-only viewers by cohort month, Jan→May 2026: 0/0/0/0/68 — the events co-fired before that). Any dashboard-view metric spanning the migration — the canonical **Onboarded**, **Active Candidates**, and the activity intermediates — must use the **2-event union**; per-user MAX/EXISTS logic is co-fire-safe, naive event counts double-count Apr–Jun. Verified 2026-07-22 (q04 gold run): the legacy event alone reads May-2026 14-day dashboard views at 157 vs 225 true (−30%).
+
+### Third era: the 2026-07-31 break (LIVE — verified 2026-08-17)
+
+DATA-2173 (PR #685, merged 2026-07-24) repaired the 2026-06-13 death; the flags recovered and the
+2-event union is correct for that era. **A third break is now live.**
+`Dashboard - Campaign Plan Viewed` fell from 122 events / 42 users (2026-07-30) to 6 / 4 (07-31)
+and single digits since. Successor per gp-meta supersession:
+**`Campaign Plan - Campaign Tracker Viewed`** (instrumented 2026-08-07, omni PR 1185), with a
+7-day measurement hole (07-31 → 08-06) carrying no dashboard-view instrument at all.
+
+Two traps in the successor. It is classified `win_compliance_or_planning` with
+`is_recurrent = false`, so the 2-event union **and** any family-based dashboard read both miss it.
+And the damage is already visible rather than pending: `is_active_candidate_7d` reads **24** against
+~168 weekly dashboard viewers before the break; `_30d` reads 382 and is decaying; `_90d` follows.
+Repair (union extension + taxonomy fix + a liveness guard) is ticketed **DATA-2337**, urgent — two
+OKR metrics, Active Candidates and Onboarded, sit on this counter.
+
+**Resolve eras from the omni event-lifecycle assets, not from volume.** The provenance CSV and the
+gp-meta supersession record named this successor in one lookup; reconstructing it empirically from
+event volume took considerably longer and produced a wrong successor list on the first pass.
+
+### Dashboard view COUNTS measure instrumentation as much as behaviour
+
+The 30-second dedup (`dashboard_view_is_new`) removes **67–68%** of all raw dashboard events
+(2025: 115,494 → 38,114; 2026: 75,853 → 24,105). In 2025 only one dashboard event existed, so that
+is not the Apr–Jun 2026 co-fire — it is the same event re-firing within seconds. The collapse rate
+falls to ~18% from 2026-07, after the rebuild replaced the surface, so the behaviour belonged to
+the legacy implementation.
+
+Consequence: **prefer distinct view-days to any view count** for an engagement threshold. The 30s
+boundary has no natural valley (2.8% of events sit at 31–60s, 5.5% at 61–300s), so even the deduped
+count still carries rapid repeats just above the gap, and a count-based bar is not refresh-proof.
+Worked example: `DASH_P90_PINNED = 14.0` in the win_power_users project is p90 of the *undeduped*
+count; when the dedup landed beneath it the same literal silently became ~2.8x stricter.
+(Verified 2026-08-17, DATA-2206.)
+
+### Sales impersonation: the marker, and the era it does not cover
+
+`event_properties.impersonation` (`'true'` / `'false'`) is present on **all** event types from
+**2026-03-24** in-data (frontend marking merged 2026-03-23, omni ENG-5943). The **capability is ~18
+months older**: impersonation shipped 2024-08 (omni WEB-2536) as a client-side user-context swap
+wired into `UserProvider` / `PageWrapper` — where Segment/Amplitude identify runs — so pre-marker
+impersonated sessions fired **as the impersonated user with no flag**. Never assume the pre-marker
+era is clean on the grounds that the feature is new.
+
+Rates where measured (DATA-2206 scoped population, marked era): **9.0%** of deduped dashboard views
+are impersonated (286 users) against **0.2%** of outreach sends (2 users) — roughly 45:1 in rate,
+so contamination is viewer-side and biases any view-count qualifier far more than a send-based one.
+`users_win_base.total_campaigns_sent` and `is_activated` come from `int__amplitude_user_milestones`
+(Amplitude counts, not product-DB counters), so **both** legs are impersonation-subtractable on
+this marker.
 
 ### Channel / UTM (acquisition source)
 
@@ -111,7 +178,7 @@ UTM lives only in the `user_properties` JSON on `stg_airbyte_source__amplitude_a
 
 The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
 
-Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see the process skill's `methodology.md`).
+Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see [methodology_defaults.md](methodology_defaults.md)).
 
 ## Cross-references
 

@@ -1,0 +1,14 @@
+id: q00_smoke
+as_of: "2026-07-17"
+numbers:
+  # The floor inventory shows 874 tables (it excludes __dbt_tmp), while a live
+  # count of the dbt schema returns 875. The 5% tolerance absorbs the gap.
+  - name: dbt_table_count
+    value: 875
+    tolerance_pct: 5.0
+required_resolutions: {}
+mandatory_sources: []
+severity1_patterns: []
+required_assumptions: []
+intent_card: |
+  Harness smoke test only. Any arm should get this right.

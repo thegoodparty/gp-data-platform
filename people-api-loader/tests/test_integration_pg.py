@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
@@ -32,10 +33,15 @@ import psycopg
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema import _serving_seed_extra
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
-from loader.people_api.steps.create_schema import build_partitioned_ddl
+from loader.people_api.steps.create_schema import (
+    build_green_view_ddl,
+    build_partitioned_ddl,
+    build_usstate_enum_ddl,
+)
 from tests._fakes import fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
@@ -54,10 +60,42 @@ _DDL = (
 )
 _STATES = ["TX", "CA"]
 
+# A minimal Voter shape with "State" typed against the public."USState" enum (rather than text),
+# for the enum-specific partitioning/domain test below.
+_DDL_ENUM_STATE = 'CREATE TABLE public."Voter" (\n    "id" uuid NOT NULL,\n    "State" "USState" NOT NULL\n);'
+
+# A partitioned Voter carrying the columns referenced by Voter EXTRA_INDEXES (name-search
+# plus plain-btree columns). Separate from _DDL (which omits them) so the extras test can drive
+# the real committed EXTRA_INDEXES SQL through the partitioned build path against a table that
+# actually has the indexed columns.
+_DDL_NAMES = (
+    'CREATE TABLE public."Voter" (\n'
+    '    "id" uuid NOT NULL,\n'
+    '    "State" text NOT NULL,\n'
+    '    "FirstName" text,\n'
+    '    "LastName" text,\n'
+    '    "Parties_Description" text,\n'
+    '    "hf_most_important_policy_item" text,\n'
+    '    "4H_Livestock_District" text,\n'
+    '    "Community_College" text,\n'
+    '    "Judicial_Chancery_Court" text,\n'
+    '    "Judicial_Justice_of_the_Peace" text,\n'
+    '    "Soil_and_Water_District" text,\n'
+    '    "Soil_and_Water_District_At_Large" text,\n'
+    '    "State_Board_of_Equalization" text\n'
+    ");"
+)
+
 
 def _exec(cur: psycopg.Cursor, sql: str, params: object = None) -> None:
     """Execute dynamic SQL (test drives raw strings; same ignore the prod code uses)."""
     cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
+
+
+def _explain(cur: psycopg.Cursor, sql: str) -> str:
+    """Return the full EXPLAIN plan text for a query (all rows joined)."""
+    cur.execute("EXPLAIN " + sql)  # ty: ignore[no-matching-overload]
+    return "\n".join(row[0] for row in cur.fetchall())
 
 
 def _scalar(cur: psycopg.Cursor, sql: str) -> object:
@@ -125,7 +163,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     create_sql = extract_create_tables(_DDL)["Voter"]
 
     # 1. create-schema: partitioned parent + per-state children apply, and partitions attach.
-    parent, children = build_partitioned_ddl(create_sql, "Voter", _STATES)
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
     with pg_conn.cursor() as cur:
         _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')  # idempotent vs a reused DB
         _exec(cur, parent)
@@ -152,15 +190,12 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
 
     # 3. build-indexes: the composite PK (id, State) and unique (LALVOTERID, State) must apply
     #    on the partitioned table — this is the partition-key-in-constraint requirement that
-    #    only a real PG enforces.
-    fc = fake_connect(pg_conn)  # ty: ignore[invalid-argument-type]
-    monkeypatch.setattr(build_indexes, "connect_new", fc)
+    #    only a real PG enforces. The builder helpers now take a live connection directly.
     build_indexes._add_primary_key(
-        _CFG, "20260609", PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+        pg_conn, PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     )
     build_indexes._create_index(
-        _CFG,
-        "20260609",
+        pg_conn,
         IndexDef(
             table="Voter",
             name="Voter_LALVOTERID_key",
@@ -169,6 +204,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
             columns=["LALVOTERID"],
             where=None,
         ),
+        partition_key="State",  # Voter is partitioned -> unique is (LALVOTERID, State)
     )
     with pg_conn.cursor() as cur:
         pk = _scalar(
@@ -192,11 +228,12 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     # 4. advisory lock: the exact SQL the loader runs must resolve to a valid overload.
     #    Without the ::int4 cast this raises UndefinedFunction against real PG.
     with pg_conn.cursor() as cur:
-        copy_s3._acquire_state_lock(cur, "TX")
+        copy_s3._acquire_unit_lock(cur, "Voter", "TX")
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
+    fc = fake_connect(pg_conn)
     monkeypatch.setattr(validate, "connect_new", fc)
-    counts = validate._new_voter_counts_by_state(_CFG, "20260609")
+    counts = validate._new_counts_by_state(_CFG, "20260609", "Voter")
     assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)
     assert validate._compare_counts("prod_row_counts", counts, {"TX": 5, "CA": 4}).passed is True
 
@@ -215,3 +252,202 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
         nostate_ti = inspect_prod._inspect_table(cur, "NoStateTbl")
     assert nostate_ti.total_row_count == 2
     assert nostate_ti.per_state_row_counts == {}
+
+
+def test_green_views_pass_through_public_table(pg_conn: psycopg.Connection) -> None:
+    """The `green` compatibility views expose a public table unchanged: same rows,
+    real Postgres view catalog entry (not a table)."""
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP VIEW IF EXISTS green."T"')
+        _exec(cur, 'DROP TABLE IF EXISTS public."T" CASCADE')
+        _exec(cur, 'CREATE TABLE public."T" (id int NOT NULL, label text)')
+        _exec(cur, "INSERT INTO public.\"T\" (id, label) VALUES (1, 'a'), (2, 'b')")
+
+        for stmt in build_green_view_ddl(["T"]):
+            _exec(cur, stmt)
+
+        relkind = _scalar(
+            cur,
+            "SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'green' AND c.relname = 'T'",
+        )
+        assert relkind == "v"  # a view, not a table
+
+        _exec(cur, 'SELECT id, label FROM green."T" ORDER BY id')
+        rows = cur.fetchall()
+        assert rows == [(1, "a"), (2, "b")]
+
+
+def _name_search_sql(pattern: str) -> str:
+    """people-api's exact name-search predicate shape (buildVoterWhereSql.utils.ts): an OR of
+    lower() LIKE on both name columns, with LIKE metacharacters escaped via ESCAPE '\\'. The
+    caller passes a fully-formed pattern ('%tok%' for substring, 'tok%' for anchored prefix)."""
+    esc = "ESCAPE '\\'"
+    # SELECT * (like production) so no covering index-only scan hides which name index is used.
+    return (
+        'SELECT * FROM public."Voter" v WHERE '
+        f"(lower(v.\"FirstName\") LIKE '{pattern}' {esc} OR lower(v.\"LastName\") LIKE '{pattern}' {esc})"
+    )
+
+
+def test_name_search_indexes_build_and_serve(pg_conn: psycopg.Connection) -> None:
+    """The committed name-search extras build through the real partitioned parent-only +
+    per-partition child + ATTACH path, and the planner serves people-api's lower(col) LIKE
+    predicates on public."Voter" — DB semantics the FakeConn unit tests can't reach. Substring rides
+    the trigram GIN; anchored-prefix rides the lower() b-trees, which must carry text_pattern_ops
+    (asserted from the catalog, not inferred from the plan, since a default-opclass b-tree happens
+    to serve LIKE-prefix under a C collation) so prefix search works on a non-C collation like prod.
+    """
+    create_sql = extract_create_tables(_DDL_NAMES)["Voter"]
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')
+        _exec(cur, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        _exec(cur, parent)
+        for child in children:
+            _exec(cur, child)
+        insert = 'INSERT INTO public."Voter" ("id", "State", "FirstName", "LastName") VALUES (%s, %s, %s, %s)'
+        # 300 varied rows so the planner prefers a selective name index over scanning a tiny
+        # relation, keeping the plan assertions stable; names include "ohn"/"jo" matches.
+        names = ["John", "Johnny", "Jane", "Bob", "Bobby", "Smith", "Jones", "Adams", "Cohen", "Baker"]
+        for i in range(300):
+            state = _STATES[i % len(_STATES)]
+            first, last = names[i % len(names)], names[(i * 3) % len(names)]
+            _exec(cur, insert, (str(uuid.uuid4()), state, first, last))
+        _exec(cur, 'ANALYZE public."Voter"')
+
+    # Build the committed extras (3 trigram GIN — first/last name lower() + Parties_Description,
+    # 2 lower() b-tree, 1 multicolumn b-tree, 8 plain b-tree) via the exact partitioned path
+    # build_indexes.run uses: parent ON ONLY, then a child
+    # per state attached. The spatial GiST index on "geom" is excluded here — it needs postgis and
+    # the generated column, which this names-only fixture doesn't set up (it's covered by the
+    # build_indexes unit tests instead).
+    extras = [i for i in _serving_seed_extra.EXTRA_INDEXES if i.table == "Voter" and i.columns != ["geom"]]
+    assert extras  # sanity: the name-search extras are still present
+    for idx in extras:
+        build_indexes._create_plain_parent_only(pg_conn, idx)
+        for state in _STATES:
+            build_indexes._build_and_attach_child(pg_conn, (idx, state))
+
+    with pg_conn.cursor() as cur:
+        for idx in extras:
+            # indisvalid flips true only once a child is attached for EVERY partition -> attaches ran.
+            valid = _scalar(
+                cur,
+                "SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            assert valid is True, f"{idx.name}: parent index not valid (a child attach is missing)"
+            attached = _scalar(
+                cur,
+                "SELECT count(*) FROM pg_inherits ih JOIN pg_class c ON c.oid = ih.inhparent "
+                f"WHERE c.relname = '{idx.name}'",
+            )
+            want = len(_STATES)
+            assert attached == want, f"{idx.name}: {attached} children attached, want {want}"
+
+        # The lower() b-trees must carry text_pattern_ops or they can't serve LIKE-prefix on a
+        # non-C collation. Assert the opclass straight from the catalog so it holds regardless of
+        # the test cluster's locale (a plan-based check would pass tautologically under C).
+        for name in ("Voter_firstname_lower_idx", "Voter_lastname_lower_idx"):
+            opclass = _scalar(
+                cur,
+                "SELECT o.opcname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                f"JOIN pg_opclass o ON o.oid = i.indclass[0] WHERE c.relname = '{name}'",
+            )
+            assert opclass == "text_pattern_ops", f"{name}: opclass is {opclass}, want text_pattern_ops"
+
+    # seqscan off makes the plan reveal whether the predicate is index-servable at all; a mismatched
+    # index expression would leave only a (now-penalized) seq scan.
+    with pg_conn.cursor() as cur:
+        _exec(cur, "SET enable_seqscan = off")
+        try:
+            # substring: only the trigram GIN can serve lower(col) LIKE '%tok%' (>=3 chars so a real
+            # trigram is extracted), so both trgm indexes appear via the BitmapOr across the name OR.
+            sub_plan = _explain(cur, _name_search_sql("%ohn%"))
+            assert "Voter_firstname_lower_trgm_idx" in sub_plan, sub_plan
+            assert "Voter_lastname_lower_trgm_idx" in sub_plan, sub_plan
+            # anchored prefix: the whole OR is index-served (no seq scan). Which index the planner
+            # picks is cost-dependent; the opclass that makes the b-tree eligible is asserted above.
+            pre_plan = _explain(cur, _name_search_sql("jo%"))
+            assert "Seq Scan" not in pre_plan, pre_plan
+        finally:
+            _exec(cur, "SET enable_seqscan = on")
+
+
+def test_state_column_is_a_real_usstate_enum(pg_conn: psycopg.Connection) -> None:
+    """ "State" is typed against public."USState" (not text): the column's catalog type is the
+    enum, partition routing on it still works, and an out-of-domain label is rejected by the
+    enum itself — proving it's a real enum, not text riding on the partition CHECK."""
+    with pg_conn.cursor() as cur:
+        _exec(cur, build_usstate_enum_ddl())  # guarded CREATE TYPE; safe if already present
+
+    create_sql = extract_create_tables(_DDL_ENUM_STATE)["Voter"]
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", ["TX"])
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')
+        _exec(cur, parent)
+        for child in children:
+            _exec(cur, child)
+
+    # (a) the column's real catalog type is public."USState", not text.
+    with pg_conn.cursor() as cur:
+        udt_schema = _scalar(
+            cur,
+            "SELECT udt_schema FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='Voter' AND column_name='State'",
+        )
+        udt_name = _scalar(
+            cur,
+            "SELECT udt_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='Voter' AND column_name='State'",
+        )
+    assert (udt_schema, udt_name) == ("public", "USState")
+
+    # (b) a row with State='TX' routes to the TX child partition.
+    column_list = ", ".join(f'"{c}"' for c in extract_column_names(create_sql))
+    insert = f'INSERT INTO public."Voter" ({column_list}) VALUES (%s, %s)'
+    with pg_conn.cursor() as cur:
+        _exec(cur, insert, (str(uuid.uuid4()), "TX"))
+        assert _scalar(cur, 'SELECT count(*) FROM ONLY public."Voter_TX"') == 1
+
+    # (c) an out-of-domain label ('ZZ') is rejected by the enum type itself (invalid input for
+    # the enum), not merely by the partition's implicit CHECK.
+    with pg_conn.cursor() as cur, pytest.raises(psycopg.errors.InvalidTextRepresentation):
+        _exec(cur, insert, (str(uuid.uuid4()), "ZZ"))
+
+
+def test_vacuum_analyze_runs_under_autocommit(
+    pg_conn: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_indexes._vacuum_analyze` must execute `VACUUM (ANALYZE)` against a real connection.
+
+    VACUUM has a hard requirement — it cannot run inside a transaction block — so this guards the
+    reliance on `connect_new` defaulting to autocommit. `pg_conn` is autocommit=True, mirroring
+    that default. Also asserts the ANALYZE side effect (planner stats populated) landed.
+    """
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'DROP TABLE IF EXISTS public."VacTgt" CASCADE')
+        _exec(cur, 'CREATE TABLE public."VacTgt" (k int)')
+        _exec(cur, 'INSERT INTO public."VacTgt" (k) VALUES (1), (2), (3)')
+
+    # Spy on connect_new so we also enforce that _vacuum_analyze does NOT override the autocommit
+    # default to False — otherwise VACUUM would raise "cannot run inside a transaction block" in
+    # prod, and yielding the (always-autocommit) pg_conn would hide that.
+    captured_kwargs: list[dict[str, object]] = []
+
+    @contextmanager
+    def spy_connect_new(*args: object, **kwargs: object) -> Iterator[psycopg.Connection]:
+        captured_kwargs.append(dict(kwargs))
+        yield pg_conn
+
+    monkeypatch.setattr(build_indexes, "connect_new", spy_connect_new)
+    build_indexes._vacuum_analyze(_CFG, "20260609", "VacTgt")
+
+    # _vacuum_analyze must rely on connect_new's autocommit default, never force autocommit=False.
+    assert captured_kwargs, "connect_new was not called"
+    assert all(kw.get("autocommit", True) is True for kw in captured_kwargs), captured_kwargs
+
+    # VACUUM sets reltuples to the exact live-tuple count; ANALYZE alone only estimates.
+    with pg_conn.cursor() as cur:
+        assert _scalar(cur, "SELECT reltuples FROM pg_class WHERE relname='VacTgt'") == 3

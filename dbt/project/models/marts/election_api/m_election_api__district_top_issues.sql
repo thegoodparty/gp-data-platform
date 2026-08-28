@@ -1,9 +1,9 @@
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady
-    district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-    scoped to a single election cycle — districts with off-cycle offices are
-    included as well.
+    district match (`stg_model_predictions__llm_l2_br_match`). Not scoped to
+    a single election cycle — districts with off-cycle offices are included
+    as well.
 
     Grain: up to one row per (district, issue) where the district has at
     least one voter with a non-null score for that issue. Spark UNPIVOT
@@ -112,9 +112,18 @@
 
 with
     target_districts as (
-        select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
+        select distinct m.l2_state, m.l2_district_type, m.l2_district_name
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as m
         where m.is_matched
+        union
+        -- The match layer structurally cannot produce a proposed-map district:
+        -- its menu is int__l2_district_universe, which carries no minted
+        -- 2026-map types (an owner decision). So without this union, adopted-map
+        -- districts score nothing and the onboarding voter-issues endpoint comes
+        -- back empty for every campaign on the new map. No gate needed here:
+        -- only districts the adoption seed cleared exist in that model at all.
+        select state_postal_code, district_type, district_name
+        from {{ ref("int__l2_proposed_district_aggregations") }}
     ),
 
     l2_voter_data as (
@@ -144,6 +153,19 @@ with
             state_postal_code as l2_district_name,
             {{ issue_columns | join(",\n            ") }}
         from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        union all
+        -- Proposed-map districts. The unpivot above is driven by column name and
+        -- so cannot reach these: one vendor column carries both handled types, so
+        -- the type has to come from parsing the value. The join to
+        -- target_districts is what restricts these to adopted districts.
+        select
+            state_postal_code as l2_state,
+            {{ proposed_district_minted_type("proposed_district") }}
+            as l2_district_type,
+            {{ proposed_district_number("proposed_district") }} as l2_district_name,
+            {{ issue_columns | join(",\n            ") }}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        where {{ is_proposed_handled_district("proposed_district") }}
     ),
 
     district_avg_scores as (

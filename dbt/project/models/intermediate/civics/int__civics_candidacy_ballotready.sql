@@ -7,13 +7,28 @@
 -- primary, general, runoff). We roll up to the CANDIDACY grain by grouping on
 -- candidate + position + election, then extracting stage-specific dates.
 --
--- UUID fields MUST match int__civics_candidacy_2025 / int__civics_candidacy_techspeed
--- to ensure same candidacy from different sources gets same gp_candidacy_id
+-- Ids are cluster-derived (earliest-member mint): gp_candidacy_id rolls up the
+-- stage-grain mint, gp_candidate_id is the person id. Matched TS/DDHQ/gp_api
+-- rows adopt these values via int__civics_er_canonical_ids, so cross-source
+-- alignment no longer relies on matching attribute hashes.
 with
     candidacies as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where election_day >= '2026-01-01'
+    ),
+
+    -- Stage-grain cluster mint; stages that never went through ER self-mint
+    -- from br_candidacy_id (single-member semantics).
+    candidacy_mint as (
+        select source_id as br_candidacy_id, minted_gp_candidacy_id
+        from {{ ref("int__civics_minted_candidacy_ids") }}
+        where source_name = 'ballotready' and cluster_br_members = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
     br_position as (
@@ -33,6 +48,18 @@ with
     candidacies_with_fields as (
         select
             candidacies.*,
+            coalesce(
+                cm.minted_gp_candidacy_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "'ballotready'",
+                            "cast(candidacies.br_candidacy_id as string)",
+                        ],
+                        salt="candidacy",
+                    )
+                }}
+            ) as stage_minted_candidacy_id,
             person_emails.api_email,
             {{
                 generate_candidate_office_from_position(
@@ -57,8 +84,36 @@ with
             -- to distinct IDs (matching int__civics_election_stage_ballotready).
             coalesce(
                 lower(candidacies.election_name) like '%special%', false
-            ) as is_special
+            ) as is_special,
+            -- Vendor event time, kept separate from created_at/updated_at (which
+            -- are extract stamps, so a re-delivery of an unchanged record reads
+            -- as fresh). An implausible future update time falls back to the
+            -- vendor's own creation time rather than to our extract stamp, which
+            -- advances on every full-file re-delivery and would drag the row along
+            -- with it. NULL, never an extract stamp, where neither vendor timestamp
+            -- is usable: ingestion time here would outrank a correctly-dated
+            -- sibling provider in the feeds' greatest(). A null result means "no
+            -- vendor signal", and consumers coalesce it to the canonical
+            -- timestamps, keeping those rows on documented status-quo behavior.
+            -- The day of slack absorbs ordinary clock and pipeline skew between the
+            -- vendor's clock and ours: without it a record updated minutes after
+            -- the file was cut would fall to its creation time, months earlier, and
+            -- flip back the following week -- a row leaving and re-entering the
+            -- window is a duplicate send, since the window IS the interim dedup.
+            case
+                when
+                    try_cast(candidacies.candidacy_updated_at as timestamp)
+                    <= candidacies._airbyte_extracted_at + interval 1 day
+                then try_cast(candidacies.candidacy_updated_at as timestamp)
+                when
+                    candidacies.candidacy_created_at
+                    <= candidacies._airbyte_extracted_at + interval 1 day
+                then candidacies.candidacy_created_at
+            end as vendor_activity_at
         from candidacies
+        left join
+            candidacy_mint as cm
+            on cast(candidacies.br_candidacy_id as string) = cm.br_candidacy_id
         left join br_position on candidacies.br_position_id = br_position.database_id
         left join
             person_emails
@@ -77,6 +132,27 @@ with
             br_position_id,
             year(election_day) as election_year,
             bool_or(is_special) as is_special,
+
+            -- Candidacy-grain rollup of the stage-grain mint: candidacy-stage
+            -- clusters are single-date, so the candidacy id is the min minted
+            -- id over the candidacy's stages (co-clustered candidacies
+            -- converge because they share clusters). Restricted to rows
+            -- meeting the ER name/state filter so the same min is
+            -- reproducible in int__civics_candidacy_stage_ballotready (which
+            -- drops those rows); groups with no qualifying row fall back to
+            -- the unrestricted min.
+            coalesce(
+                min(
+                    case
+                        when
+                            first_name is not null
+                            and last_name is not null
+                            and state is not null
+                        then stage_minted_candidacy_id
+                    end
+                ),
+                min(stage_minted_candidacy_id)
+            ) as rolled_gp_candidacy_id,
 
             -- Take candidate fields from any row (they're the same across stages)
             any_value(first_name) as first_name,
@@ -119,7 +195,11 @@ with
                 max(case when is_primary then election_result end)
             ) as raw_election_result,
 
-            max(candidacy_updated_at) as candidacy_updated_at,
+            -- Latest usable vendor event across the candidacy's stages. max(), not
+            -- any_value(): the value has to be deterministic because a
+            -- destination-facing recency window filters on it. Null where no stage
+            -- carried a usable vendor timestamp; max() skips nulls.
+            max(vendor_activity_at) as vendor_activity_at,
 
             -- BallotReady native IDs (one per stage; take any for candidacy grain)
             any_value(br_candidacy_id) as br_candidacy_id,
@@ -196,41 +276,25 @@ with
 
     candidacies_with_ids as (
         select
-            -- gp_candidacy_id - matches HubSpot/TechSpeed pattern
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "first_name",
-                        "last_name",
-                        "state",
-                        "party_affiliation",
-                        "candidate_office",
-                        "cast(coalesce(general_election_date, primary_election_date, general_runoff_election_date, primary_runoff_election_date) as string)",
-                        "district",
-                    ]
-                )
-            }}
-            as gp_candidacy_id,
+            rolled_gp_candidacy_id as gp_candidacy_id,
 
-            -- gp_candidate_id - hash the canonical per-person identity inputs
-            -- (one deterministic value per br_candidate_id) shared with
-            -- int__civics_candidate_ballotready via
-            -- int__ballotready_candidate_identity, so a person resolves to the
-            -- same id in both models. Hashing the rolled-up any_value(email)
-            -- here previously diverged from the candidate model and orphaned
-            -- candidates whose email varied across candidacy rows.
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "identity.id_first_name",
-                        "identity.id_last_name",
-                        "identity.id_state",
-                        "cast(null as string)",
-                        "identity.id_email",
-                        "identity.id_phone",
-                    ]
-                )
-            }} as gp_candidate_id,
+            -- gp_candidate_id is the person id (person-group earliest-member
+            -- mint), shared with int__civics_candidate_ballotready. Every
+            -- br_candidate_id is in the person universe by construction; the
+            -- coalesce is a full-refresh guard with identical single-member
+            -- semantics.
+            coalesce(
+                p.gp_person_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "'ballotready'",
+                            "cast(br_candidate_id as string)",
+                        ],
+                        salt="person",
+                    )
+                }}
+            ) as gp_candidate_id,
 
             -- gp_election_id - use the generate_gp_election_id macro
             -- The macro expects columns without table prefix in the current
@@ -284,14 +348,19 @@ with
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
 
-            -- Timestamps
+            -- Timestamps. created_at/updated_at are extract stamps and stay that
+            -- way: the whole provider precedence chain and every civics consumer
+            -- reads them. vendor_activity_at is the additive event-time column
+            -- for consumers that need real candidate activity instead.
             _airbyte_extracted_at as created_at,
-            _airbyte_extracted_at as updated_at
+            _airbyte_extracted_at as updated_at,
+            vendor_activity_at
 
         from candidacies_enriched
         left join
-            {{ ref("int__ballotready_candidate_identity") }} as identity
-            on candidacies_enriched.br_candidate_id = identity.br_candidate_id
+            person_ids as p
+            on 'ballotready|' || cast(candidacies_enriched.br_candidate_id as string)
+            = p.record_key
         where
             -- Must have at least a general or primary election date for ID generation
             coalesce(
@@ -303,13 +372,23 @@ with
             is not null
     ),
 
-    -- gp_candidate_id is sourced from int__ballotready_candidate_identity (the
-    -- same model int__civics_candidate_ballotready hashes), so every candidacy's
-    -- gp_candidate_id is in the candidate table by construction. The prior
-    -- valid_candidates referential inner join is therefore redundant; the
-    -- candidate <-> candidacy relationships tests guard the invariant instead.
+    -- gp_candidate_id is the same person lookup int__civics_candidate_ballotready
+    -- performs, so every candidacy's gp_candidate_id is in the candidate table
+    -- by construction; the candidate <-> candidacy relationships tests guard
+    -- the invariant.
     deduplicated as (
-        select *
+        select
+            * except (vendor_activity_at),
+            -- Re-max at gp_candidacy_id grain. The rollup above groups on
+            -- (br_candidate_id, br_position_id, election_year), but the published
+            -- grain is the cluster-derived id, and two rollup groups can mint the
+            -- same one -- which is why the picker below exists. Without this the
+            -- picker would discard the losing group's vendor event time, so a
+            -- candidacy could lose its most recent vendor activity and drop out of
+            -- a destination window. Mirrors the TechSpeed sibling.
+            max(vendor_activity_at) over (
+                partition by gp_candidacy_id
+            ) as vendor_activity_at
         from candidacies_with_ids
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
@@ -347,5 +426,6 @@ select
     win_number,
     win_number_model,
     created_at,
-    updated_at
+    updated_at,
+    vendor_activity_at
 from deduplicated

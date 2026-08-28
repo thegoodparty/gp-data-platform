@@ -4,7 +4,7 @@ Every step writes one of these to S3 at
 `s3://{bucket}/voter_export_{date}/_manifest/{step}.json`. Step re-entry
 reads the manifest first and no-ops if `status == "complete"`.
 
-Shape matches PLAN_LOADER.md section 5. Keep in sync — external review
+Shape is the loader's manifest contract. Keep in sync — external review
 (the validate.md human-readable report) depends on these field names.
 
 Step modules import everything they need from this module: both the
@@ -28,12 +28,14 @@ from loader.core.manifest.io import (
 from loader.core.manifest.models import ManifestBase, Status
 
 __all__ = [
+    "AnalyzeManifest",
     "CopyManifest",
     "CopyTableResult",
     "IndexManifest",
     "IndexSpec",
     "InspectManifest",
     "ManifestBase",
+    "PromoteManifest",
     "ProvisionManifest",
     "ResizeManifest",
     "SchemaManifest",
@@ -41,6 +43,7 @@ __all__ = [
     "TableInspection",
     "UnloadFile",
     "UnloadManifest",
+    "UnloadTable",
     "ValidateManifest",
     "ValidationCheck",
     "load_artifact_json",
@@ -71,19 +74,27 @@ class InspectManifest(ManifestBase):
 
 
 class UnloadFile(BaseModel):
-    state: str
+    table: str
+    state: str  # "" for a flat (non-partitioned) table's single unit
     s3_key: str
     size_bytes: int
     row_count: int
 
 
-class UnloadManifest(ManifestBase):
-    step: Literal["unload"] = "unload"
+class UnloadTable(BaseModel):
+    table: str
     databricks_table: str
+    partition_by: str | None
     columns: list[str]
     column_types_pg: dict[str, str]
-    per_state_row_counts: dict[str, int]
-    files: list[UnloadFile]
+    # {state: n} for a partitioned table; {"": total} for a flat table.
+    row_counts: dict[str, int] = Field(default_factory=dict)
+    files: list[UnloadFile] = Field(default_factory=list)
+
+
+class UnloadManifest(ManifestBase):
+    step: Literal["unload"] = "unload"
+    tables: list[UnloadTable]
 
 
 class ProvisionManifest(ManifestBase):
@@ -140,15 +151,32 @@ class IndexManifest(ManifestBase):
 class ResizeManifest(ManifestBase):
     step: Literal["resize"] = "resize"
     final_instance_class: str
-    min_acu: float
-    max_acu: float
     backup_retention_days: int
     deletion_protection: bool
+
+
+class AnalyzeManifest(ManifestBase):
+    step: Literal["analyze"] = "analyze"
+    # public base tables + leaf partitions with fresh manual-ANALYZE stats after the run.
+    tables_analyzed: int
+
+
+class PromoteManifest(ManifestBase):
+    step: Literal["promote"] = "promote"
+    # The single serving parameter this cutover wrote (people-db-connection-string-{env}).
+    serving_param: str
+    # The new SSM version this write produced (people-api reads the parameter's latest version) and
+    # the labels that actually stuck on it — the per-refresh `build-{run_date}` anchor, or empty if
+    # labeling was rejected (labels are best-effort bookkeeping; the overwrite is the real cutover).
+    version: int
+    labels: list[str]
 
 
 class ValidationCheck(BaseModel):
     name: str
     passed: bool
+    # A failing warn_only check is surfaced (WARN) but does NOT set all_passed=False / block handoff.
+    warn_only: bool = False
     details: dict = Field(default_factory=dict)
 
 

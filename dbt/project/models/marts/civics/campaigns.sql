@@ -36,7 +36,8 @@ with
             u.zip as _user_zip,
             u.created_at as _user_created_at,
             p.name as _position_name,
-            p.br_database_id as _position_br_database_id,
+            -- back to numeric: the election-api mart publishes it as string
+            cast(p.br_database_id as bigint) as _position_br_database_id,
             c.details:office::string as _legacy_office,
             cast(
                 regexp_extract(
@@ -120,7 +121,28 @@ with
             try_cast(details:electiondate::string as date) as election_date,
             details:state::string as campaign_state,
             details:party::string as campaign_party,
-            details:level::string as election_level,
+            -- details:level was only ever written by the path-to-victory
+            -- enqueue step, which renamed the key to electionLevel in late 2025
+            -- and stopped writing it in early 2026. details:ballotLevel is the
+            -- raw BallotReady position level, written by onboarding since 2024,
+            -- so it covers both the gap and most older versions. Collapsing the
+            -- non-federal/state/county levels to city reproduces the app's
+            -- historical 4-bucket mapping.
+            coalesce(
+                details:level::string,
+                details:electionlevel::string,
+                case
+                    when nullif(details:ballotlevel::string, '') is null
+                    then null
+                    when upper(details:ballotlevel::string) = 'FEDERAL'
+                    then 'federal'
+                    when upper(details:ballotlevel::string) = 'STATE'
+                    then 'state'
+                    when upper(details:ballotlevel::string) = 'COUNTY'
+                    then 'county'
+                    else 'city'
+                end
+            ) as election_level,
             details:partisantype::string as partisan_type,
 
             -- For latest versions: prefer org->position, fall back to legacy

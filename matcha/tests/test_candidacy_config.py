@@ -1,7 +1,50 @@
 # tests/test_candidacy_config.py
 """Tests for the candidacy ER config (DATA-1880 follow-up: office_level comparison)."""
 
-from scripts.configs.candidacy import CANDIDACY_CONFIG
+from scripts.configs.candidacy import CANDIDACY_CONFIG, ELECTION_DATE_WINDOW_DAYS
+
+
+def _election_date_comparison():
+    return next(
+        c
+        for c in CANDIDACY_CONFIG.comparisons
+        if c.get_comparison("duckdb").output_column_name == "election_date"
+    )
+
+
+def test_election_date_has_within_window_level():
+    """election_date is not exact-only: it carries a within-window level between
+    the exact match and ElseLevel, so near-duplicate dates score gamma 1. The
+    level thresholds the date difference at ELECTION_DATE_WINDOW_DAYS (in
+    seconds) so it agrees with the blocking-rule window."""
+    cmp = _election_date_comparison().get_comparison("duckdb").as_dict()
+    window_seconds = ELECTION_DATE_WINDOW_DAYS * 86400
+    assert any(
+        "epoch" in level.get("sql_condition", "").lower()
+        and str(window_seconds) in level.get("sql_condition", "")
+        for level in cmp["comparison_levels"]
+    ), f"Expected a within-{ELECTION_DATE_WINDOW_DAYS}-day (<= {window_seconds}s) level"
+
+
+def test_election_date_window_sql_is_idempotent():
+    """Resolving the comparison repeatedly must not re-wrap the date column.
+
+    AbsoluteDateDifference*Level(input_is_string=True) parses the string via
+    try_strptime; a stateful implementation would re-wrap that column on each
+    resolution, stacking try_strptime() until the string double-parses to NULL.
+    The comparison builder must resolve to stable SQL (one try_strptime per side).
+    """
+    cmp = _election_date_comparison()
+    counts = []
+    for _ in range(3):
+        d = cmp.get_comparison("duckdb").as_dict()
+        sql = next(
+            level["sql_condition"]
+            for level in d["comparison_levels"]
+            if "epoch" in level.get("sql_condition", "").lower()
+        )
+        counts.append(sql.lower().count("try_strptime"))
+    assert counts == [2, 2, 2], f"date-window SQL not idempotent: try_strptime counts {counts}"
 
 
 def test_office_level_in_comparisons():

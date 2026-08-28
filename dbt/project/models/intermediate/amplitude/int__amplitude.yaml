@@ -29,8 +29,9 @@ models:
 
       - name: first_dashboard_viewed_at
         description: >
-          Earliest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Numerator timestamp for onboarding conversion.
+          Earliest dashboard view per user, over the dashboard-view union
+          (page path '/dashboard' plus the named surface events). Numerator
+          timestamp for onboarding conversion.
 
       - name: registration_country
         description: >
@@ -68,13 +69,17 @@ models:
 
       - name: last_dashboard_viewed_at
         description: >
-          Latest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Supports active-candidate recency logic.
+          Latest dashboard view per user, over the dashboard-view union
+          (page path '/dashboard' plus the named surface events). Supports
+          active-candidate recency logic.
 
       - name: dashboard_view_count
         description: >
-          Count of event_type = 'Dashboard - Candidate Dashboard Viewed' per user.
-          Supports active-candidate usage intensity logic.
+          Deduped count of dashboard views per user, over the dashboard-view
+          union. Legs that co-fire on one visit collapse to a single view.
+          Supports active-candidate usage intensity logic. Prefer distinct
+          view-days for any engagement threshold: this count is sensitive to
+          in-page re-firing, which the 30s gap only partly removes.
         data_tests:
           - not_null
 
@@ -123,6 +128,15 @@ models:
             expression: "first_dashboard_viewed_at <= last_dashboard_viewed_at"
           config:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+      # At user grain the earliest dashboard event always has lag = null, so it
+      # always counts as a new view. Any user with a dashboard view must have
+      # dashboard_view_count >= 1; a value of 0 here would mean the co-fire
+      # dedup logic zeroed out a real view.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dashboard_view_count >= 1"
+          config:
+            where: "last_dashboard_viewed_at is not null"
 
   - name: int__amplitude_serve_activity
     description: >
@@ -192,7 +206,7 @@ models:
     description: >
       User x month intermediate aggregating Win product engagement from Amplitude.
       Captures campaign sends (Voter Outreach - Campaign Completed), and dashboard views
-      (Dashboard - Candidate Dashboard Viewed).
+      (unioning the legacy and current dashboard-view event names, deduped).
 
       Grain: One row per user_id x activity_month_year.
 
@@ -238,7 +252,9 @@ models:
 
       - name: dashboard_views
         description: >
-          Count of 'Dashboard - Candidate Dashboard Viewed' events in this month.
+          Deduped count of dashboard views in this month, over the
+          dashboard-view union (page path '/dashboard' plus the named surface
+          events). Legs that co-fire on one visit collapse to a single view.
           Zero if user had only campaign events this month.
         data_tests:
           - not_null
@@ -255,7 +271,10 @@ models:
                 min_value: 0
 
       - name: total_events
-        description: Total Win engagement events (campaigns + dashboard views) in this month.
+        description: >
+          Total raw Win engagement events (campaigns + dashboard views) in
+          this month, undeduped; can exceed campaigns_sent + dashboard_views
+          when one visit fired several legs of the dashboard-view union.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -306,7 +325,9 @@ models:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "campaigns_sent + dashboard_views = total_events"
+            # dashboard_views is deduped; total_events is raw, so equality
+            # only holds outside co-fire windows where both event names fired.
+            expression: "campaigns_sent + dashboard_views <= total_events"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "dashboard_view_days <= activity_days"
@@ -383,7 +404,9 @@ models:
 
       - name: dashboard_views
         description: >
-          Count of 'Dashboard - Candidate Dashboard Viewed' events in this week.
+          Deduped count of dashboard views in this week, over the
+          dashboard-view union (page path '/dashboard' plus the named surface
+          events). Legs that co-fire on one visit collapse to a single view.
           Zero if user had only campaign events this week.
         data_tests:
           - not_null
@@ -400,7 +423,10 @@ models:
                 min_value: 0
 
       - name: total_events
-        description: Total Win engagement events (campaigns + dashboard views) in this week.
+        description: >
+          Total raw Win engagement events (campaigns + dashboard views) in
+          this week, undeduped; can exceed campaigns_sent + dashboard_views
+          when one visit fired several legs of the dashboard-view union.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -455,7 +481,9 @@ models:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "campaigns_sent + dashboard_views = total_events"
+            # dashboard_views is deduped; total_events is raw, so equality
+            # only holds outside co-fire windows where both event names fired.
+            expression: "campaigns_sent + dashboard_views <= total_events"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "dashboard_view_days <= activity_days"
@@ -469,11 +497,11 @@ models:
     description: >
       Read-only catalog of Amplitude events: macro-derived family classification
       plus volume/recency from the event stream, joined to Amplitude Govern
-      metadata, one row per event_type. Renamed from int__amplitude_event_taxonomy
-      (DATA-2005). Pattern-based so new event_types in known families classify
+      metadata, one row per event_type. Renamed from int__amplitude_event_taxonomy.
+      Pattern-based so new event_types in known families classify
       automatically. Does not compute a staleness verdict; code-presence provenance
       lives as a CSV in the omni repo
-      (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv, DATA-2014)
+      (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv)
       and the relevance / up-to-dateness judgment is made at check time by an agent
       or the health monitor reconciling that CSV with this table. family is
       authoritative for classification; govern_category is descriptive metadata only.
@@ -528,6 +556,15 @@ models:
         description: >
           True for Win-product candidate-attributed families (family like 'win_%').
           False for serve / cross-product / noise.
+        data_tests:
+          - not_null
+
+      - name: is_serve
+        description: >
+          True for Serve-product events (family = 'serve'). Serve is a single
+          flat family, hence the equality check rather than a prefix like is_win.
+          Superset of Serve user actions: some Serve events are server-emitted
+          (session_id = -1), so engagement filtering stays with the consumer.
         data_tests:
           - not_null
 
@@ -604,3 +641,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "is_win or not is_recurrent"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_win and is_serve)"

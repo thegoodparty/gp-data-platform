@@ -1,4 +1,4 @@
--- Statewide binding (DATA-1994): each statewide (district_type='State') row's
+-- Statewide binding: each statewide (district_type='State') row's
 -- district_population and n_census_blocks must equal the direct census rollup over
 -- the 50 + DC fips_codes states (Puerto Rico excluded by the inner join). The 2020
 -- census frame is static, so this is a fixed binding (TDD 7.3 -- fixed tests on the

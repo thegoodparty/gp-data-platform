@@ -1,8 +1,9 @@
 -- Civics mart candidate table.
 -- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
--- joined on gp_candidate_id (matched providers adopt BR's canonical via
--- int__civics_er_canonical_ids). Per-column precedence rules: see the
--- candidate model description in m_civics.yaml.
+-- joined on gp_candidate_id. On 2026+ rows gp_candidate_id IS the person id
+-- (kept as an alias of gp_person_id; dropping the alias outright is a merge
+-- review call), so the FOJ merges by person; archive rows keep HubSpot-derived
+-- ids. Per-column precedence rules: see m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "first_name",
@@ -64,6 +65,8 @@ with
             ) as birth_date,
             facebook_url,
             phone_number,
+            -- 2025 HubSpot archive has no BR typed URLs.
+            cast(null as array<struct<type:string, url:string>>) as urls,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
             ) as source_systems
@@ -85,10 +88,10 @@ with
         from {{ ref("int__civics_candidate_ddhq") }}
     ),
 
-    -- All four provider int models adopt BR's canonical gp_candidate_id via
-    -- int__civics_er_canonical_ids, so a 4-way full outer join on
-    -- gp_candidate_id auto-merges matched quadruples. Unmatched rows on any
-    -- side pass through with NULLs on absent providers.
+    -- All four provider int models emit the person id as gp_candidate_id,
+    -- so a 4-way full outer join on gp_candidate_id auto-merges matched
+    -- quadruples. Unmatched rows on any side pass through with NULLs on
+    -- absent providers.
     merged_since_2026 as (
         select
             coalesce(
@@ -120,6 +123,8 @@ with
             coalesce(
                 gp_api.phone_number, ts.phone_number, br.phone_number
             ) as phone_number,
+            -- Typed BR URL array (BR is the only source that carries it).
+            br.urls,
             array_compact(
                 array(
                     case when br.gp_candidate_id is not null then 'ballotready' end,
@@ -155,10 +160,27 @@ with
         qualify
             row_number() over (partition by gp_candidate_id order by updated_at desc)
             = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- Rollup of the person resolved on the candidate's candidacies (covers the
+    -- BR / DDHQ / TS grains). One person per candidate by construction.
+    candidacy_person as (
+        select gp_candidate_id, min(gp_person_id) as gp_person_id
+        from {{ ref("candidacy") }}
+        where gp_person_id is not null
+        group by gp_candidate_id
     )
 
 select
-    gp_candidate_id,
+    deduplicated.gp_candidate_id,
+    -- gp_person_id: min over the person reached by HubSpot contact,
+    -- prod_db user, and the candidate's candidacies.
+    least(hp.gp_person_id, gpp.gp_person_id, cp.gp_person_id) as gp_person_id,
     hubspot_contact_id,
     prod_db_user_id,
     candidate_id_tier,
@@ -175,8 +197,16 @@ select
     twitter_handle,
     facebook_url,
     instagram_handle,
+    urls,
     source_systems,
     created_at,
     updated_at
 
 from deduplicated
+left join
+    person_ids as hp
+    on hp.record_key = 'hubspot|' || cast(deduplicated.hubspot_contact_id as string)
+left join
+    person_ids as gpp
+    on gpp.record_key = 'gp_api|' || cast(deduplicated.prod_db_user_id as string)
+left join candidacy_person as cp on cp.gp_candidate_id = deduplicated.gp_candidate_id

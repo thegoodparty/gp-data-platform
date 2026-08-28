@@ -18,10 +18,16 @@ def _column_type(spec: TableSpec, col: MartColumn) -> str:
 
 def render_create_table(spec: TableSpec, columns: list[MartColumn]) -> str:
     header = f'CREATE TABLE public."{spec.pg_table}" ('
+    cmap = spec.mart_column_map
     rendered = []
     for col in columns:
+        # With a mart_column_map, only mapped mart columns are kept (others dropped) and each is
+        # rendered under its serving name. Without one, columns pass through by their mart name.
+        if cmap and col.name not in cmap:
+            continue
+        pg_name = cmap[col.name] if cmap else col.name
         nn = "" if col.nullable else " NOT NULL"
-        rendered.append(f'    "{col.name}" {_column_type(spec, col)}{nn}')
+        rendered.append(f'    "{pg_name}" {_column_type(spec, col)}{nn}')
     # App/Prisma-managed columns the mart omits, appended verbatim from the spec.
     for name, pg_type, nullable in spec.extra_columns:
         nn = "" if nullable else " NOT NULL"

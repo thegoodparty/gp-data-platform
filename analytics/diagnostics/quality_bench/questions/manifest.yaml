@@ -1,0 +1,61 @@
+# Question bank (DATA-2144). q00_smoke is the harness smoke test only — real
+# batches should exclude it (run_matrix.py --questions q01_win_metric ... ).
+# key_file entries for q01-q08 are authored one gold-run at a time (design §5);
+# a missing key file only matters at grade time, not at run time.
+# Holdout rule: `split: holdout` questions are NEVER cited in skill fixes or
+# calibration passes (README).
+questions:
+  - id: q00_smoke
+    product: win
+    trap: none
+    split: calibration
+    prompt_file: q00_smoke.md
+    key_file: q00_smoke_key.yaml
+  - id: q01_win_metric
+    product: win
+    trap: none
+    split: calibration
+    prompt_file: q01_win_metric.md
+    key_file: q01_win_metric_key.yaml
+  - id: q02_win_provenance
+    product: win
+    trap: provenance
+    split: calibration
+    prompt_file: q02_win_provenance.md
+    key_file: q02_win_provenance_key.yaml
+  - id: q03_win_pit
+    product: win
+    trap: point_in_time
+    split: holdout
+    prompt_file: q03_win_pit.md
+    key_file: q03_win_pit_key.yaml
+  - id: q04_win_denominator
+    product: win
+    trap: denominator
+    split: calibration
+    prompt_file: q04_win_denominator.md
+    key_file: q04_win_denominator_key.yaml
+  - id: q05_serve_metric
+    product: serve
+    trap: none
+    split: calibration
+    prompt_file: q05_serve_metric.md
+    key_file: q05_serve_metric_key.yaml
+  - id: q06_serve_overlap
+    product: serve
+    trap: overlap
+    split: holdout
+    prompt_file: q06_serve_overlap.md
+    key_file: q06_serve_overlap_key.yaml
+  - id: q07_serve_denominator
+    product: serve
+    trap: denominator
+    split: calibration
+    prompt_file: q07_serve_denominator.md
+    key_file: q07_serve_denominator_key.yaml
+  - id: q08_serve_provenance
+    product: serve
+    trap: provenance
+    split: calibration
+    prompt_file: q08_serve_provenance.md
+    key_file: q08_serve_provenance_key.yaml

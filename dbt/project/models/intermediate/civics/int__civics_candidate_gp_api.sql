@@ -1,16 +1,9 @@
 -- Product DB users -> Civics mart candidate schema.
--- Grain: one row per user with campaign_count > 0. Schema aligns with
--- int__civics_candidate_ballotready / _techspeed for the downstream union.
+-- Grain: one row per user with at least one valid candidacy. Schema aligns
+-- with int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
     latest_campaigns as (
-        -- 2026+ / non-demo / BR-anchored scope: matches
-        -- int__civics_candidacy_gp_api so user_state and user_er_canonical
-        -- below derive `state` and the canonical lookup from the same
-        -- campaign universe the candidacy model uses. Without this match,
-        -- a user with a more-recent pre-2026 campaign in state A and a
-        -- qualifying 2026+ campaign in state B would hash to two different
-        -- gp_candidate_ids across the two int models, and the candidacy
-        -- would be silently dropped by the valid_candidates inner join.
+        -- Scope for the state rollup; membership comes from the candidacy model.
         select *
         from {{ ref("campaigns") }}
         where
@@ -20,7 +13,14 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    users_with_real_campaign as (select distinct user_id from latest_campaigns),
+    -- No valid candidacy means not a candidate.
+    users_with_valid_candidacy as (
+        select distinct c.user_id
+        from latest_campaigns as c
+        inner join
+            {{ ref("int__civics_candidacy_gp_api") }} as cy
+            on c.campaign_id = cy.product_campaign_id
+    ),
 
     users_filtered as (
         select
@@ -32,8 +32,7 @@ with
             u.created_at,
             u.updated_at
         from {{ ref("users") }} as u
-        inner join users_with_real_campaign as uw on u.user_id = uw.user_id
-        where u.campaign_count > 0
+        inner join users_with_valid_candidacy as uw on u.user_id = uw.user_id
     ),
 
     user_state as (
@@ -42,72 +41,56 @@ with
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 
-    -- max() across a user's campaigns: all stages of a campaign resolve to
-    -- the same canonical candidate so any non-null wins.
-    user_er_canonical as (
-        select c.user_id, max(xw.canonical_gp_candidate_id) as canonical_gp_candidate_id
-        from latest_campaigns as c
-        inner join
-            {{ ref("int__civics_er_canonical_ids") }} as xw
-            on c.campaign_id = xw.gp_api_campaign_id
-        group by c.user_id
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
-    -- hubspotid lives in the user's meta_data JSON, not on the users mart.
     user_hubspot as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
     -- candidate_id_tier: PD's campaign.tier is WIN/LOSE/TOSSUP, not the
     -- HubSpot viability tier — leave null until a real tier source lands.
-    candidates_pre as (
+    candidates_with_id as (
         select
+            -- Person id (every staged user is in the person universe; the
+            -- coalesce is a full-refresh guard with identical single-member
+            -- semantics). Must match int__civics_candidacy_gp_api.
+            coalesce(
+                p.gp_person_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(u.user_id as string)"],
+                        salt="person",
+                    )
+                }}
+            ) as gp_candidate_id,
+
+            uh.hubspot_contact_id,
             u.user_id as prod_db_user_id,
+            cast(null as string) as candidate_id_tier,
             u.first_name,
             u.last_name,
+            concat(u.first_name, ' ', u.last_name) as full_name,
+            cast(null as date) as birth_date,
             us.state,
             u.email,
             u.phone as phone_number,
-            uh.hubspot_contact_id,
-            cast(null as string) as candidate_id_tier,
-            uer.canonical_gp_candidate_id,
-            u.created_at,
-            u.updated_at
-        from users_filtered as u
-        left join user_state as us on u.user_id = us.user_id
-        left join user_er_canonical as uer on u.user_id = uer.user_id
-        left join user_hubspot as uh on u.user_id = uh.user_id
-    ),
-
-    candidates_with_id as (
-        select
-            coalesce(
-                max(canonical_gp_candidate_id) over (
-                    partition by {{ generate_gp_api_gp_candidate_id() }}
-                ),
-                {{ generate_gp_api_gp_candidate_id() }}
-            ) as gp_candidate_id,
-
-            hubspot_contact_id,
-            prod_db_user_id,
-            candidate_id_tier,
-            first_name,
-            last_name,
-            concat(first_name, ' ', last_name) as full_name,
-            cast(null as date) as birth_date,
-            state,
-            email,
-            phone_number,
             cast(null as string) as street_address,
             cast(null as string) as website_url,
             cast(null as string) as linkedin_url,
             cast(null as string) as twitter_handle,
             cast(null as string) as facebook_url,
             cast(null as string) as instagram_handle,
-            created_at,
-            updated_at
-        from candidates_pre
+            u.created_at,
+            u.updated_at
+        from users_filtered as u
+        left join user_state as us on u.user_id = us.user_id
+        left join user_hubspot as uh on u.user_id = uh.user_id
+        left join
+            person_ids as p on 'gp_api|' || cast(u.user_id as string) = p.record_key
     ),
 
     deduplicated as (

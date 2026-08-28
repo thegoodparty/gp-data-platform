@@ -48,6 +48,7 @@ def setup_environment(
             "cli.caller",
             account=identity["Account"],
             arn=identity["Arn"],
+            assume_role_arn=cfg.assume_role_arn or "(ambient)",
         )
     except Exception as e:
         console.print(

@@ -1,23 +1,7 @@
 models:
 
-  - name: stg_model_predictions__candidacy_br_matches_20251204
-    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
-        data_tests:
-          - not_null
-
-  - name: stg_model_predictions__candidacy_br_matches_prenov2025_20251205
-    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
-        data_tests:
-          - not_null
-
   - name: stg_model_predictions__candidacy_ddhq_matches_20250826
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -25,7 +9,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20250909
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -33,7 +17,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20250916
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -41,7 +25,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251016
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -49,7 +33,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251112
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -57,7 +41,7 @@ models:
           - not_null
 
   - name: stg_model_predictions__candidacy_ddhq_matches_20251202
-    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    description: gemini outputs to string match DDHQ election results and candidacies
     columns:
       - name: gp_candidacy_id
         description: unique id
@@ -91,22 +75,96 @@ models:
         tests:
           - not_null
           - unique
-
-  - name: stg_model_predictions__manual_llm_election_results_20251208
-    description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
-    columns:
-      - name: hubspot_contact_id
-        description: HubSpot contact id
+      - name: is_matched
+        description: >
+          Whether the model resolved this position to an L2 district. This is the
+          only predicate for match state: do not infer it from the district
+          columns being populated.
         data_tests:
           - not_null
-      - name: manual_llm_general_election_result
-        description: Manual LLM general election result
-      - name: manual_llm_election_decision_result_page
-        description: Manual LLM election decision result page
-      - name: manual_llm_votes_received
-        description: Manual LLM votes received
-      - name: manual_llm_votes_in_race
-        description: Manual LLM votes in race
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: l2_district_type
+        description: >
+          L2 district column name, null when is_matched is false. The raw snapshot
+          spells no-match as the literal NOT_MATCHED here; staging nulls it so the
+          column cannot be mistaken for a real district.
+      - name: l2_district_name
+        description: >
+          L2 district name, null when is_matched is false. Zero padding is stripped
+          (the snapshot is not self-consistent about it) and the NOT_MATCHED
+          sentinel is nulled.
+    data_tests:
+      # Earliest guard on name drift; other district types have a legitimate unresolvable tail.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_aggregations')
+            state_column: state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: >
+              is_matched and l2_district_type in (
+                'State_House_District',
+                'State_Senate_District',
+                'State_Legislative_District',
+                'US_Congressional_District'
+              )
+
+  - name: stg_model_predictions__llm_l2_br_match
+    description: >
+      One row per office: the newest attempt from the append-only,
+      matcher-written llm_l2_br_match_results table, ordered by attempted_at
+      desc and never by confidence or match state. A populated district is
+      what "matched" means now; there is no status column. Supersedes
+      stg_model_predictions__llm_l2_br_match_20260126 for every consumer
+      except candidates_outreach, which is retired separately. Accepted
+      skew: the matcher appends on its own schedule, so a build that
+      overlaps an append can hand consumers built before and after it
+      different newest rows until the next build; supervised runs pause the
+      scheduled job across the run, and the automated loop is expected to
+      schedule around the nightly build.
+    columns:
+      - name: br_database_id
+        description: BallotReady office database id; the model is one row per office.
+        data_tests:
+          - not_null
+          - unique
+      - name: l2_state
+        description: >
+          The matched DISTRICT's state, null on an abstain, completing the
+          (state, type, name) key. NOT the office's state: consumers take
+          that from the position side.
+      - name: is_matched
+        description: >
+          Derived from the district key (l2_district_name is not null).
+          There is no status column, and none should be reintroduced.
+      - name: attempted_at
+        description: When the attempt was made; also the run key.
+    data_tests:
+      # The publication-time label check: the universe is rebuilt just before
+      # publication and every published label is re-tested against it, so a
+      # label that was valid when matched and died before publication is
+      # caught instead of shipped. The seeded January baseline run is exempt
+      # by its run key -- its dead labels ARE the backlog this project
+      # re-attempts, already reopened by int__l2_br_match_pending_offices'
+      # dead-label branch, not a new regression -- and every other run is
+      # held to it. Severity warn, deliberately: post-publication, L2
+      # relabeling is a background condition the pending list reopens on its
+      # own, and at error severity a routine rename wave would make the
+      # nightly build skip all six consumers until a manual matcher re-run.
+      # The supervised cutover treats a nonzero warn count as a hard stop.
+      - l2_district_tuple_exists:
+          arguments:
+            to: ref('int__l2_district_universe')
+            state_column: l2_state
+            to_state_column: state_postal_code
+            to_district_type_column: district_type
+            to_district_name_column: district_name
+            row_condition: "attempted_at <> timestamp'2026-01-26'"
+          config:
+            severity: warn
 
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions
@@ -333,3 +391,178 @@ models:
             - election_code
             - model_version
             - inference_at
+
+  - name: stg_model_predictions__voter_turnout_scores_20260730
+    description: In-house per-voter turnout propensity scores (prob_vote) for 2026 General
+    columns:
+      - name: LALVOTERID
+        description: L2 voter id; join key to m_people_api__voter
+        data_tests:
+          - not_null
+          - unique
+      - name: prob_vote
+        description: Modeled turnout probability in [0, 1] for the 2026 General
+        data_tests:
+          - not_null
+
+  - name: stg_model_predictions__web_verify_verdicts_20260813
+    description: >
+      Web verification of uncorroborated Win signups against official election sources
+      (filing lists, certified results, sample ballots, Ballotpedia, local news), as of
+      2026-08-13. Four waves of one blind protocol: a 30-row pilot and a 150-row
+      score-stratified run on 2026-08-07, then a full sweep of the high-confidence
+      flag population plus a mop-up of access-blocked rows on 2026-08-13.
+
+      This is label evidence, not model input. Every verdict was established by looking
+      up what happened at or after the election, so nothing here is knowable at signup
+      and no column is legal as a feature.
+
+      Two things a consumer must not do. First, do not pool the waves into a rate: they
+      are separate sampling frames (the sweep is high-score flags only, the stratified
+      run is 30 rows per score bin, the pilot mixes three groups), so condition on wave,
+      oof_hgb or score_bin. Second, do not read verification as corroboration: whether
+      web verification becomes a fourth corroboration channel is an open governance
+      question, and this snapshot deliberately changes no definition.
+
+      Grain is the campaign. One person holding two campaigns appears twice, so user_id
+      is intentionally not unique.
+    columns:
+      - name: verify_id
+        description: >
+          Batch bookkeeping id, unique within the snapshot. Prefixes are meaningful:
+          V pilot, S stratified, F sweep. Mop-up rows keep their original S id because
+          they are re-verifications of stratified rows, not new draws.
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: gp_api campaign under verification; the grain of this table
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: >
+          gp_api user who owns the campaign. Not unique by design: the verification ran
+          at campaign grain, and one person can hold two campaigns. Collapse on this
+          column before computing any person-level rate.
+        data_tests:
+          - not_null
+      - name: wave
+        description: Which verification run produced the verdict
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["pilot", "stratified", "sweep", "mopup"]
+      - name: method_version
+        description: >
+          Protocol version and wave. One protocol across all four waves, so the version
+          is constant and only the wave suffix varies.
+        data_tests:
+          - not_null
+      - name: verdict
+        description: >
+          CONFIRMED (official filing, result or ballot evidence they ran), LIKELY
+          (strong but indirect evidence), CONTRADICTED (roster-level evidence they did
+          not run in the recorded race), NOT_FOUND (searched, nothing found),
+          NOT_FOUND_BUDGET (search ended before the evidence was exhausted, often a
+          source that was down). The last two are undecided, not negative.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "CONFIRMED", "LIKELY", "CONTRADICTED",
+                  "NOT_FOUND", "NOT_FOUND_BUDGET",
+                ]
+      - name: evidence_url
+        description: >
+          Source backing the verdict. Null in the pilot and stratified waves, which
+          recorded no url, and null for not-found verdicts in the evidenced waves. Use
+          is_evidence_recorded to tell those two cases apart rather than reading the
+          null directly.
+      - name: source_type
+        description: Kind of evidence; null exactly where evidence_url is null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [
+                  "official_filing", "certified_results", "ballot", "ballotpedia",
+                  "news", "campaign_site", "other",
+                ]
+      - name: is_evidence_recorded
+        description: >
+          Whether this row's wave captured evidence at all. False for the pilot and
+          stratified waves, which recorded the verdict only.
+        data_tests:
+          - not_null
+      - name: notes
+        description: >
+          Verifier narrative, left as written. Populated in the evidenced waves only.
+          This is the audit trail for the verdict, including the reasoning behind a
+          CONTRADICTED where a full roster was enumerated.
+      - name: adjudication_note
+        description: >
+          Populated only where a verdict or url was changed after the run, with the
+          reason. Null means the verifier's call stands as recorded. Five rows carry
+          one: three where the only evidence was a source derived from our own data
+          (a page on a corroboration channel, or our own site) and so could not
+          independently corroborate anything, one where an inference from a term cycle
+          was downgraded for want of a direct filing, and one where a wrong url was
+          corrected on re-verification.
+      - name: verified_at
+        description: Day the wave was completed
+        data_tests:
+          - not_null
+      - name: oof_hgb
+        description: >
+          Out-of-fold model score the row was sampled on. Sampling metadata: it defines
+          which rows were verified, so it can never be evidence about the group it
+          selected.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_cleanlab_flagged
+        description: Row was flagged as a probable label error. Sampling metadata.
+        data_tests:
+          - not_null
+      - name: is_high_confidence_flag
+        description: Row was in the high-confidence flag population. Sampling metadata.
+        data_tests:
+          - not_null
+      - name: score_bin
+        description: >
+          Score bin for the stratified frame only; null where the wave was not
+          bin-sampled. Non-null exactly where bin_population is.
+      - name: bin_population
+        description: Population of the row's score bin. Stratified frame only.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+    data_tests:
+      # A decided verdict without a url would be an unfalsifiable claim, and a url in a
+      # wave that recorded none would mean the wave metadata is wrong. Both directions
+      # of the evidence contract are pinned here.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              case
+                  when not is_evidence_recorded then evidence_url is null
+                  when verdict in ('NOT_FOUND', 'NOT_FOUND_BUDGET') then evidence_url is null
+                  else evidence_url is not null
+              end
+          name: web_verify_verdicts_evidence_url_matches_wave_and_verdict
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: (evidence_url is null) = (source_type is null)
+          name: web_verify_verdicts_source_type_accompanies_url
+      # score_bin and bin_population are one fact about the stratified frame, so they
+      # must appear and disappear together.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: (score_bin is null) = (bin_population is null)
+          name: web_verify_verdicts_score_bin_pairs_with_population

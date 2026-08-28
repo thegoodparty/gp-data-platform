@@ -33,22 +33,42 @@ models:
           person + position.
       - name: gp_candidate_id
         description: >
-          Canonical civics candidate UUID. Resolved via
-          int__civics_candidate_ballotready (BR person.database_id ->
-          gp_candidate_id). Pre-aggregated by br_candidate_id with
-          max(gp_candidate_id) for deterministic selection when a single BR
-          person produced multiple gp_candidate_ids upstream. Null when the
-          BR candidate is not present in civics.
+          Canonical person id (gp_person_id, the earliest-member cluster mint),
+          resolved via the int__civics_person_canonical_ids crosswalk
+          (record_key 'ballotready|<br_candidate_id>' -> gp_person_id). One id
+          per person, so candidacies of the same person share it. Null only
+          when the BR candidate is absent from the person universe.
+        tests:
+          # Fill-rate guard: a record_key format drift upstream would silently
+          # null this column. A couple of person-universe-absent BR candidates
+          # are tolerated (2 known).
+          - not_null:
+              config:
+                warn_if: ">10"
+                error_if: ">1000"
+      - name: person_id
+        description: >
+          Person UUID for the election-api Candidacy.person_id FK. Equal to
+          gp_candidate_id when that person is served by
+          m_election_api__person, else null, so the FK always resolves.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
           (which itself coalesces S3 candidacy email with the BR API
-          person.contacts email). Surfaced by the campaign-strategy-context
+          person.contacts email). Keyed on the person, not br_candidate_id, so
+          the value can originate from a merged-away br_candidate_id in the
+          same person group. Surfaced by the campaign-strategy-context
           endpoint so the caller can match the requesting user.
       - name: website_url
         description: >
           Candidate website URL, sourced from int__civics_candidate_ballotready
-          (extracted from BR person.urls where type='website').
+          (extracted from BR person.urls where type='website'). Person-keyed,
+          same as email.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
@@ -150,7 +170,13 @@ models:
           - unique
           - is_uuid
       - name: slug
-        description: "Slug of the place"
+        description: >
+          URL slug of the place, globally unique (election-api Place.slug is
+          a unique routing key). When distinct geographies share a raw slug
+          (e.g. a city and a same-named school district), one canonical owner
+          keeps the clean slug — an incorporated place (mtfcc G4110) wins,
+          otherwise the latest-updated row — and every other member carries a
+          deterministic '-<geoid>' suffix instead of being dropped.
         tests:
           - not_null
           - unique
@@ -258,7 +284,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral"]
+                values: ["General", "LocalOrMunicipal", "Primary"]
       - name: model_version
         description: The model version
         tests:
@@ -283,6 +309,17 @@ models:
               - election_year
               - election_code
               - model_version
+      # API invariant: the election-api consumer (projectedTurnout.service.ts
+      # findFirst/getMany) does NOT disambiguate model_version, so there must be exactly one
+      # row per (district_id, election_year, election_code). The table materialization
+      # rebuilds from int__model_prediction_voter_turnout every run, so this only fails if
+      # the intermediate itself emits a superseded model_version for a district+election.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - election_year
+              - election_code
 
   - name: m_election_api__race
     description: "Mart model that serves the Election API"
@@ -300,6 +337,28 @@ models:
               arguments:
                 to: ref('int__enhanced_race')
                 field: br_database_id
+      - name: place_id
+        description: >
+          UUID of the place the race belongs to. Foreign key to
+          m_election_api__place: the race mart inner-joins the place mart, so
+          every emitted race resolves to a served place (races whose place is
+          not served are dropped rather than shipped with a dangling FK).
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__place')
+                field: id
+      - name: slug
+        description: >
+          Race slug, <place slug>/<position slug>, built from the
+          disambiguated m_election_api__place slug so it always extends the
+          place slug election-api serves. Indexed but not unique in
+          election-api; the place slug is the unique routing key. Consistency
+          with the place slug is guarded by
+          assert_race_slug_prefix_matches_place_slug.
+        tests:
+          - not_null
       - name: position_id
         description: >
           UUID of the BallotReady position the race is for. Foreign key to
@@ -324,11 +383,12 @@ models:
                 inclusive: true
       - name: win_number
         description: >
-          BallotReady viability_score.win_number passed through from
-          mart_civics.candidacy. Sparse in practice; null for nearly all
-          small non-partisan local races. The consuming app computes a
-          fallback estimate from projected_turnout / number_of_seats; do not
-          coalesce here.
+          Path-to-victory vote target. No live source supplies it: BallotReady
+          carries no win number, and the only values that ever existed come
+          from 2023-2025 HubSpot-archive candidacies. Their races fall inside
+          the six-year window, but archive candidacies rarely resolve to a
+          BallotReady race id, so in practice the column remains null across
+          the mart and consumers fall back to a computed estimate.
         tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -350,7 +410,9 @@ models:
           mart_civics.candidacy. The existing position_names[] array carries
           the BR position name(s) for the race; official_office_name is the
           civics-standardized single string. Null when civics has no
-          matching candidacy rows.
+          matching candidacy rows, and also null when those candidacies
+          disagree on the name and none of them matches this race's own
+          position name (a vendor row matched to the wrong race).
       - name: office_level
         description: >
           Civics (HubSpot-sourced) office level. Distinct from the BR
@@ -358,6 +420,57 @@ models:
           STATE / TOWNSHIP); office_level uses the civics taxonomy and can
           be null even when positionLevel is populated. Aggregated from
           mart_civics.candidacy by gp_election_id.
+      - name: election_code
+        description: >
+          Day type of the race's own election date: the even-year November
+          rule (Tuesday after the first Monday in November) says General; a
+          date matching the state's derived primary day says Primary;
+          everything else is LocalOrMunicipal. Provenance for the projection
+          join; spelled in the API's ElectionCode enum vocabulary.
+          ConsolidatedGeneral is deliberately never emitted: the frozen
+          consolidated rows are a legacy serving-path concept.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary", "LocalOrMunicipal"]
+      - name: projected_turnout
+        description: >
+          Projected ballots for this race's (district, year, day type) from
+          the turnout model output, integer-cast for the Postgres delivery
+          contract. NULL when the race's year is outside the model horizon or
+          its district has no model coverage: no fallback, nothing invented.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_lower
+        description: >
+          Lower prediction bound (p25) from the same model row as the point.
+          NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_upper
+        description: >
+          Upper prediction bound (p95), the risk-relevant band for win-number
+          planning. NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: inference_at
+        description: >
+          When the joined projection was produced (freshness stamp; staleness
+          is detectable on the row rather than only in pipeline logs). NULL
+          exactly when projected_turnout is NULL. Accepted skew: race
+          attributes and projections are joined from the same nightly build,
+          but BallotReady race edits land next-build; that skew is bounded to
+          one build and matches the legacy serving path's behavior.
 
   - name: m_election_api__zip_to_position
     description: >
@@ -369,6 +482,15 @@ models:
       Grain: One row per (zip_code, position_id, election_date). Positions
       without zip coverage will have a null zip_code.
     columns:
+      - name: id
+        description: >
+          Deterministic UUID on the natural key (zip_code, position_id,
+          election_date); primary key in the election-api ZipToPosition
+          table, stable across daily rebuilds.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
       - name: position_id
         description: >
           Election API position UUID. Foreign key to m_election_api__position.
@@ -463,9 +585,9 @@ models:
     description: >
       District-level Haystaq issue scores per L2 district, covering every L2
       district with an `is_matched = true` row in the LLM L2-to-BallotReady
-      district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-      scoped to a single election cycle — districts with off-cycle offices
-      are included as well.
+      district match (`stg_model_predictions__llm_l2_br_match`). Not scoped
+      to a single election cycle — districts with off-cycle offices are
+      included as well.
 
       Each row carries four jurisdictional flags (is_local, is_regional,
       is_state, is_federal) indicating where the issue is actionable.
@@ -685,3 +807,77 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__person
+    description: >
+      Person records for public /people profiles (election-api "Person" table).
+      One row per canonical person (id = gp_person_id, the same id space
+      Candidacy.gp_candidate_id publishes), scoped to people with a candidacy
+      or office term and at least one name part. BallotReady-rich fields
+      (bio, headshot, links, degrees, experiences) come from
+      int__ballotready_person, which is fetched candidacy-first, so elected
+      officials with no BR candidacy carry only the fallback fields from the
+      office_holders_v3 feed (a known follow-up). Stale ids are not deleted
+      from the API (accepted gap).
+    columns:
+      - name: id
+        description: "Canonical person UUID (gp_person_id). Primary key."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: slug
+        description: >
+          slugify(first_name-last_name) with an 8-hex suffix from the person id.
+          The /people/<slug> URL resolves on slug alone, so it is globally
+          unique. If uniqueness ever fails, widen the suffix beyond 8 hex.
+        tests:
+          - not_null
+          - unique
+      - name: br_person_id
+        description: "BallotReady person databaseId; null for GP-native people."
+      - name: is_pledged
+        description: >
+          Whether the person took the GoodParty pledge on any of their product
+          records: a gp-api campaign with details.pledged, or a gp-api elected
+          office with pledged_at. Read from those records rather than from
+          candidacy, which drops an uncorroborated gp_api campaign and never
+          carried the elected-office pledge at all. The API column is NOT NULL
+          DEFAULT false, so the unpledged must be false, never null.
+        tests:
+          - not_null
+      - name: gp_api_user_id
+        description: >
+          gp-api User.id for this person, carried from people.gp_api_user_id.
+          A digit string, not a uuid (the gp-api id is a numeric autoincrement).
+          gp-api reads it to set its own User.person_id, which is what unlocks
+          the public profile editor. Null when the person has no gp-api user, or
+          when the person's cluster maps to more than one gp-api user (people
+          only makes the id scalar when it is unambiguous).
+
+  - name: m_election_api__office_holder
+    description: >
+      Office terms for public /people profiles (election-api "OfficeHolder"
+      table). One row per BallotReady office-holder term (id =
+      gp_elected_official_term_id). Inner-joins m_election_api__person because
+      person_id is a required FK in the API; vacancies and no-name people drop
+      here rather than failing the load.
+    columns:
+      - name: id
+        description: "Term-grain canonical UUID (gp_elected_official_term_id). Primary key."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: person_id
+        description: "Canonical person UUID. Required FK to m_election_api__person."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+      - name: position_id
+        description: >
+          Election API position UUID. Nullable FK to m_election_api__position
+          (selected off the joined position mart, so referential by construction).

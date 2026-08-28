@@ -17,21 +17,51 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    -- Source user fields from the users mart, not campaigns' denormalized
-    -- user_* fields, to keep the person hash aligned with candidate_gp_api
-    -- (the two marts can be built at different times).
-    users as (
-        select user_id, first_name, last_name, email, phone from {{ ref("users") }}
+    vendor_clusters as (
+        select distinct cluster_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        where source_name in ('ballotready', 'techspeed', 'ddhq')
     ),
 
-    -- Must match user_state in int__civics_candidate_gp_api.
-    user_state as (
-        -- latest_campaigns is already filtered to non-demo / 2026+ / BR-anchored;
-        -- mirror is in int__civics_candidate_gp_api so both models hash
-        -- gp_candidate_id over the same campaign universe.
-        select user_id, campaign_state as state
-        from latest_campaigns
-        qualify row_number() over (partition by user_id order by created_at desc) = 1
+    -- A race no vendor lists is not evidence the person is on a ballot.
+    corroborated_campaigns as (
+        select distinct cast(split(source_id, '__')[0] as bigint) as campaign_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        inner join vendor_clusters using (cluster_id)
+        where source_name = 'gp_api'
+    ),
+
+    -- The only user gate: candidate_gp_api takes its users from this model.
+    users as (select user_id from {{ ref("users") }} where campaign_count > 0),
+
+    user_hubspot as (
+        select id as user_id, hubspot_contact_id
+        from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+    ),
+
+    -- Someone confirmed the person is running. Contact grain, so one 'Yes'
+    -- covers every campaign the user holds.
+    hubspot_verified_campaigns as (
+        select distinct c.campaign_id
+        from latest_campaigns as c
+        inner join user_hubspot as uh on c.user_id = uh.user_id
+        inner join
+            {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as hc
+            on uh.hubspot_contact_id = hc.id
+        where trim(hc.verified_candidate_status) = 'Yes'
+    ),
+
+    eligible_campaigns as (
+        select campaign_id
+        from corroborated_campaigns
+        union
+        select campaign_id
+        from hubspot_verified_campaigns
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
     -- All stages of a campaign in the crosswalk resolve to the same
@@ -42,8 +72,7 @@ with
         select
             gp_api_campaign_id,
             max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
-            max(canonical_gp_election_id) as canonical_gp_election_id,
-            max(canonical_gp_candidate_id) as canonical_gp_candidate_id
+            max(canonical_gp_election_id) as canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
@@ -77,27 +106,13 @@ with
         group by br_position_id, year(election_date)
     ),
 
-    -- Must mirror user_er_canonical in int__civics_candidate_gp_api so
-    -- candidacy.gp_candidate_id matches candidate.gp_candidate_id.
-    user_er_canonical as (
-        select c.user_id, max(xw.canonical_gp_candidate_id) as canonical_gp_candidate_id
-        from latest_campaigns as c
-        inner join
-            {{ ref("int__civics_er_canonical_ids") }} as xw
-            on c.campaign_id = xw.gp_api_campaign_id
-        group by c.user_id
-    ),
-
     enriched as (
         -- Aliases below match the unprefixed column names that
         -- generate_gp_election_id() expects in scope.
         select
             c.campaign_id,
             c.user_id,
-            u.first_name as user_first_name,
-            u.last_name as user_last_name,
-            u.email as user_email,
-            u.phone as user_phone,
+            uh.hubspot_contact_id,
             c.hubspot_id,
             c.is_verified,
             c.is_pledged,
@@ -106,7 +121,6 @@ with
             c.ballotready_position_id,
             c.created_at,
             c.updated_at,
-            us.state as user_state,
             c.campaign_state as state,
             c.normalized_position_name as official_office_name,
             c.campaign_office as candidate_office,
@@ -120,49 +134,37 @@ with
             c.election_date as general_election_date,
             {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation,
             c.partisan_type,
-            uec.canonical_gp_candidate_id as user_canonical_gp_candidate_id
+            p.gp_person_id as user_gp_person_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
-        left join user_state as us on c.user_id = us.user_id
-        left join user_er_canonical as uec on c.user_id = uec.user_id
+        inner join eligible_campaigns as ec on c.campaign_id = ec.campaign_id
+        left join
+            person_ids as p on 'gp_api|' || cast(c.user_id as string) = p.record_key
+        left join user_hubspot as uh on c.user_id = uh.user_id
     ),
 
     candidacies_with_ids as (
         select
-            -- Salt field order matches int__civics_candidacy_ballotready.
+            -- Matched campaigns adopt the cluster canonical via the crosswalk;
+            -- unmatched self-mint from campaign_id (single-member semantics).
+            -- Must match int__civics_candidacy_stage_gp_api.
             coalesce(
                 xw.canonical_gp_candidacy_id,
                 {{
-                    generate_gp_api_gp_candidacy_id(
-                        first_name="user_first_name",
-                        last_name="user_last_name",
-                        general_election_date="enriched.general_election_date",
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(campaign_id as string)"],
+                        salt="candidacy",
                     )
                 }}
             ) as gp_candidacy_id,
 
-            -- Window over the person hash matches the cross-user cascade in
-            -- candidate_gp_api, so hash-collision users share canonical IDs.
+            -- Person id; must match int__civics_candidate_gp_api.
             coalesce(
-                max(user_canonical_gp_candidate_id) over (
-                    partition by
-                        {{
-                            generate_gp_api_gp_candidate_id(
-                                first_name="user_first_name",
-                                last_name="user_last_name",
-                                state="user_state",
-                                email="user_email",
-                                phone="user_phone",
-                            )
-                        }}
-                ),
+                user_gp_person_id,
                 {{
-                    generate_gp_api_gp_candidate_id(
-                        first_name="user_first_name",
-                        last_name="user_last_name",
-                        state="user_state",
-                        email="user_email",
-                        phone="user_phone",
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(user_id as string)"],
+                        salt="person",
                     )
                 }}
             ) as gp_candidate_id,
@@ -182,8 +184,10 @@ with
             ) as gp_election_id,
 
             campaign_id as product_campaign_id,
-            hubspot_id as hubspot_contact_id,
-            cast(null as string) as hubspot_company_ids,
+            hubspot_contact_id,
+            case
+                when hubspot_id is not null then to_json(array(hubspot_id))
+            end as hubspot_company_ids,
             'gp_api' as candidate_id_source,
             party_affiliation,
             cast(null as boolean) as is_incumbent,
@@ -235,23 +239,9 @@ with
         where enriched.general_election_date is not null
     ),
 
-    -- Referential integrity: drop candidacies whose gp_candidate_id doesn't
-    -- resolve (e.g. user filtered out by campaign_count > 0).
-    valid_candidates as (
-        select gp_candidate_id from {{ ref("int__civics_candidate_gp_api") }}
-    ),
-
-    filtered as (
-        select candidacies_with_ids.*
-        from candidacies_with_ids
-        inner join
-            valid_candidates
-            on candidacies_with_ids.gp_candidate_id = valid_candidates.gp_candidate_id
-    ),
-
     deduplicated as (
         select *
-        from filtered
+        from candidacies_with_ids
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
             = 1

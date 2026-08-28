@@ -1,0 +1,171 @@
+-- Person records for public /people profiles (election-api "Person" table).
+-- Grain: one row per canonical person (id = gp_person_id), scoped to people
+-- with a candidacy or office term and a name part (slug is NOT NULL in the
+-- API). BR-rich fields fall back to the office feed: int__ballotready_person
+-- is candidacy-first, so elected officials with no BR candidacy are absent
+-- from it, and their bio/headshot/degrees/experiences stay null (known
+-- follow-up).
+with
+    public_people as (
+        select p.*, try_cast(p.br_person_id as int) as br_person_id_int
+        from {{ ref("people") }} as p
+        left join
+            {{ ref("int__civics_internal_persons") }} as internal
+            on internal.gp_person_id = p.gp_person_id
+        where
+            (p.is_candidate or p.is_elected_official)
+            and (p.first_name is not null or p.last_name is not null)
+            -- staff and test accounts must never get a public profile
+            and internal.gp_person_id is null
+    ),
+
+    br_person as (
+        select
+            database_id,
+            bio_text,
+            middle_name,
+            nickname,
+            suffix,
+            full_name,
+            get(
+                filter(images, x -> x.type = 'default' and x.url is not null), 0
+            ).url as headshot_url,
+            get(
+                filter(urls, x -> x.type = 'website' and x.url is not null), 0
+            ).url as website_url,
+            get(
+                filter(urls, x -> x.type = 'linkedin' and x.url is not null), 0
+            ).url as linkedin_url,
+            get(
+                filter(urls, x -> x.type = 'facebook' and x.url is not null), 0
+            ).url as facebook_url,
+            get(
+                filter(urls, x -> x.type = 'twitter' and x.url is not null), 0
+            ).url as twitter_url,
+            get(
+                filter(urls, x -> x.type = 'instagram' and x.url is not null), 0
+            ).url as instagram_url,
+            -- JSON strings (not native arrays): Spark's Postgres JDBC writer
+            -- does not round-trip array<struct>; the writer casts to jsonb.
+            case
+                when size(degrees) > 0
+                then
+                    to_json(
+                        transform(
+                            degrees,
+                            d -> struct(
+                                d.degree, d.major, d.school, d.gradyear as `gradYear`
+                            )
+                        )
+                    )
+            end as degrees,
+            case
+                when size(experiences) > 0
+                then
+                    to_json(
+                        transform(
+                            experiences,
+                            e -> struct(e.title, e.organization, e.start, e.end, e.type)
+                        )
+                    )
+            end as experiences
+        from {{ ref("int__ballotready_person") }}
+    ),
+
+    -- Fallback person fields from the office feed, one row per BR person
+    -- (latest term wins). The feed uses '' (not null) for absent name parts.
+    office_holder_person as (
+        select
+            br_candidate_id,
+            nullif(middle_name, '') as middle_name,
+            nullif(nickname, '') as nickname,
+            nullif(suffix, '') as suffix,
+            nullif(website_url, '') as website_url,
+            nullif(linkedin_url, '') as linkedin_url,
+            nullif(facebook_url, '') as facebook_url,
+            nullif(twitter_url, '') as twitter_url,
+            nullif(
+                get(
+                    filter(urls, x -> x.type = 'instagram' and x.url is not null), 0
+                ).url,
+                ''
+            ) as instagram_url
+        from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
+        where br_candidate_id is not null
+        qualify
+            row_number() over (
+                partition by br_candidate_id order by office_holder_updated_at desc
+            )
+            = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- The pledge is taken on a product record, so read it from the two records
+    -- that hold it rather than from candidacy. Candidacy drops a gp_api
+    -- campaign with no outside corroboration, which leaves 2.1k pledged
+    -- sign-ups reading as unpledged, and it never carried the elected-office
+    -- pledge that serve onboarding writes for holders who never ran with us.
+    -- The union keeps this one row per person.
+    pledged as (
+        select person.gp_person_id
+        from {{ ref("campaigns") }} as campaign
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(campaign.user_id as string)
+        where campaign.is_latest_version and campaign.is_pledged
+        union
+        select person.gp_person_id
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as office
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(office.user_id as string)
+        where office.pledged_at is not null
+    )
+
+select
+    people.gp_person_id as id,
+    -- build timestamps: the table is swap-replaced wholesale each run
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at,
+    people.br_person_id_int as br_person_id,
+    -- Globally unique: the /people/<slug> URL resolves on slug alone (no
+    -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
+    {{
+        slugify(
+            "people.first_name", "people.last_name", "left(people.gp_person_id, 8)"
+        )
+    }} as slug,
+    people.first_name,
+    coalesce(br_person.middle_name, office_holder.middle_name) as middle_name,
+    people.last_name,
+    coalesce(br_person.nickname, office_holder.nickname) as nickname,
+    coalesce(br_person.suffix, office_holder.suffix) as suffix,
+    coalesce(
+        br_person.full_name, trim(concat_ws(' ', people.first_name, people.last_name))
+    ) as full_name,
+    br_person.bio_text,
+    br_person.headshot_url,
+    coalesce(br_person.website_url, office_holder.website_url) as website_url,
+    coalesce(br_person.linkedin_url, office_holder.linkedin_url) as linkedin_url,
+    coalesce(br_person.facebook_url, office_holder.facebook_url) as facebook_url,
+    coalesce(br_person.twitter_url, office_holder.twitter_url) as twitter_url,
+    coalesce(br_person.instagram_url, office_holder.instagram_url) as instagram_url,
+    people.email,
+    people.phone,
+    br_person.degrees,
+    br_person.experiences,
+    people.state,
+    -- NOT NULL in the API, so emit false rather than null for the unpledged.
+    pledged.gp_person_id is not null as is_pledged,
+    -- Digit string, not a uuid: the gp-api User.id is a numeric autoincrement.
+    people.gp_api_user_id
+from public_people as people
+left join br_person on people.br_person_id_int = br_person.database_id
+left join
+    office_holder_person as office_holder
+    on people.br_person_id_int = office_holder.br_candidate_id
+left join pledged on people.gp_person_id = pledged.gp_person_id

@@ -1,0 +1,286 @@
+name: semantic-layer-publish
+# On merge to main touching a governed sem_*.yml, post a change summary to
+# #data-alignment. The ClickUp reference page is refreshed out-of-band via the
+# ClickUp MCP (no CI token), matching the omni analytics-governance pattern; the
+# in-repo canonical_metrics.md is the source of truth, kept fresh by the
+# blocking catalog-freshness PR check.
+# DATA-2218: when the governance thread exists (semantic-layer-thread.yml), the
+# summary posts as a threaded reply under its anchor.
+on:
+  push:
+    branches: [main]
+    # The ratification sidecar is included: since DATA-2249 a sign-off is
+    # recorded there, not in the sem_*.yml, so a sem-only filter would let the
+    # pending-to-dated edge merge unannounced and fire no Sigma build task.
+    paths:
+      - 'dbt/project/models/**/sem_*.yml'
+      - 'analytics/diagnostics/semantic_catalog/config/ratifications.yml'
+
+permissions:
+  contents: write        # open the ratification PR branch (never pushes to main)
+  pull-requests: write   # DATA-2218: update the thread marker's merged flag
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Single source of truth for the #data-alignment channel. The summary post
+    # and its thread replies both read this, so they can never target different
+    # channels (which would break threading).
+    env:
+      SLACK_CHANNEL_ID: C08K22X9ZNH
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Re-derive review coverage for the merged PR
+        id: coverage
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Until ORG_READ_TOKEN is provisioned, GH_TOKEN is empty and the gh
+          # calls below would fail the job. Record conservative coverage and
+          # skip cleanly instead of red-failing the first governed merge.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ORG_READ_TOKEN not provisioned; recording conservative coverage."
+            {
+              echo 'COV={"data":false,"business":false}'
+              echo 'PR_URL=(coverage unavailable until ORG_READ_TOKEN is provisioned)'
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Cross-run outputs from the composition-check workflow are not
+          # available here, so re-derive coverage from the live GitHub API
+          # against the PR that introduced this merge commit.
+          PR=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')
+          if [ -n "$PR" ]; then
+            # Count only each reviewer's LATEST review, so a superseded or
+            # dismissed approval no longer counts as current coverage.
+            # Every call here paginates, and every aggregation happens AFTER the
+            # pages are collapsed. Grouping inside --jq would group per page, so
+            # "latest review per reviewer" would silently become "latest per
+            # reviewer per page" once a PR passes 30 reviews.
+            APPROVERS=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+              --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+              | jq -rs 'group_by(.login) | map(max_by(.submitted_at)) | map(select(.state=="APPROVED").login) | join(",")')
+            DATA=$(gh api --paginate "orgs/thegoodparty/teams/semantic-layer-data/members" --jq '.[].login' | paste -sd, -)
+            BIZ=$(gh api --paginate "orgs/thegoodparty/teams/semantic-layer-business/members" --jq '.[].login' | paste -sd, -)
+            COV=$(cd analytics && APPROVERS="$APPROVERS" DATA="$DATA" BIZ="$BIZ" PYTHONPATH="diagnostics" \
+              uv run python -m semantic_catalog.composition)
+            PR_URL="https://github.com/$REPO/pull/$PR"
+            echo "PR_NUM=$PR" >> "$GITHUB_ENV"
+          else
+            # No PR found for this commit (e.g. a direct push to main): fall
+            # back to the conservative "incomplete" default rather than
+            # guessing at approval state.
+            COV='{"data":false,"business":false}'
+            PR_URL="(direct push to main — no PR)"
+          fi
+          echo "COV=$COV" >> "$GITHUB_ENV"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+      - name: Prepare base tree for diffing
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git worktree add --detach /tmp/base "$BEFORE"
+          fi
+      - name: Build Slack change summary
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+        run: |
+          set -euo pipefail
+          if [ -d /tmp/base ]; then
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --base-dir /tmp/base --pr-url "$PR_URL" --coverage "$COV"
+          else
+            uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
+          fi
+      - name: Read governance thread marker
+        # DATA-2218: recover the anchor ts written at PR-open so the merge
+        # summary lands as a threaded reply. Empty marker => top-level post
+        # (the pre-thread behavior is the permanent fallback).
+        if: ${{ env.PR_NUM != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.thread --emit-marker /tmp/marker.json --pr "$PR_NUM"
+          {
+            echo "SLACK_THREAD_TS=$(python3 -c 'import json;print(json.load(open("/tmp/marker.json")).get("ts",""))')"
+            echo "MARKER_MERGED=$(python3 -c 'import json;print(str(json.load(open("/tmp/marker.json")).get("merged",False)).lower())')"
+          } >> "$GITHUB_ENV"
+          # The marker pins the channel the anchor was posted to. Honor it here
+          # (overriding the job-level SLACK_CHANNEL_ID default for the
+          # remaining steps) so a mid-PR #data-alignment channel change never
+          # splits the merge-summary reply from its anchor thread.
+          MARKER_CHANNEL=$(python3 -c 'import json;print(json.load(open("/tmp/marker.json")).get("channel",""))')
+          if [ -n "$MARKER_CHANNEL" ]; then
+            echo "SLACK_CHANNEL_ID=$MARKER_CHANNEL" >> "$GITHUB_ENV"
+          fi
+      - name: Post Slack change summary
+        env:
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # SLACK_APP_BOT_TOKEN was provisioned and live-verified 2026-07-28.
+          # The empty-token guard below is a deliberate graceful-degrade seam
+          # (e.g. fork PRs, which don't get repo secrets), not a provisioning
+          # gap — keep it so a missing secret skips cleanly instead of
+          # red-failing the job.
+          if [ -z "${SLACK_APP_BOT_TOKEN:-}" ]; then
+            echo "SLACK_APP_BOT_TOKEN not provisioned; skipping Slack notification."
+            exit 0
+          fi
+          if [ "${MARKER_MERGED:-false}" = "true" ]; then
+            echo "Thread already marked merged; skipping duplicate merge post."
+            exit 0
+          fi
+          RESP=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
+            -H "Content-type: application/json; charset=utf-8" \
+            --data "$(python3 -c '
+          import json, os
+          p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": open("/tmp/slack.txt").read()}
+          t = os.environ.get("SLACK_THREAD_TS")
+          if t:
+              p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
+          print(json.dumps(p))')")
+          # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
+          # channel, missing scope, auth), so check the body, not just status.
+          TS=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown")); print(d["ts"])')
+          # Sigma replies thread under the anchor when it exists, else under
+          # this post (pre-thread behavior).
+          echo "SLACK_TS=${SLACK_THREAD_TS:-$TS}" >> "$GITHUB_ENV"
+      - name: Mark governance thread merged
+        # SLACK_TS is only exported once "Post Slack change summary" actually
+        # posts (threaded or fallback), so gating on it here guards against
+        # publish re-runs double-posting the merge summary, and also skips
+        # cleanly when the bot token is absent. Deliberately NOT gated on
+        # SLACK_THREAD_TS: when no anchor thread exists, --mark-merged
+        # bootstraps a merged marker from this run's post (SLACK_TS /
+        # SLACK_CHANNEL_ID env), so even fallback top-level posts are re-run
+        # idempotent.
+        if: ${{ env.PR_NUM != '' && env.SLACK_TS != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.thread --mark-merged --pr "$PR_NUM"
+      - name: Record the ratifications this merge earned
+        # Writes the sidecar + regenerated catalog into the WORKING TREE only.
+        # The next step's Sigma sync re-parses that tree, so a build task is
+        # created on THIS merge rather than waiting on the ratification PR.
+        # Placed after the thread marker update, not straight after the Slack
+        # post: this step exits 1 on a self-verification failure, and between
+        # those two steps that would leave the thread unmarked and make a re-run
+        # double-post the merge summary.
+        if: ${{ env.PR_NUM != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+            set -euo pipefail
+            if [ -z "${GH_TOKEN:-}" ]; then
+              echo "ORG_READ_TOKEN not provisioned; skipping ratification recording."
+              exit 0
+            fi
+            # --paginate emits ONE ARRAY PER PAGE, so a PR with more than 30
+            # reviews would write `[...]\n[...]` and break json.loads. Emit one
+            # object per line and slurp them into a single array instead.
+            # (`gh --slurp` is not usable here: it is rejected with --jq.)
+            gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
+              --jq '.[] | {login: .user.login, state: .state, submitted_at: .submitted_at}' \
+              | jq -s '.' > /tmp/reviews.json
+            # Paginated for the same reason as the reviews call above: a member
+            # past position 30 would be missing from the list, could never match
+            # an approver, and coverage would read as incomplete forever.
+            DATA=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-data/members --jq '.[].login' | paste -sd, -)
+            BIZ=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-business/members --jq '.[].login' | paste -sd, -)
+            ARGS=(--record-ratifications --reviews /tmp/reviews.json \
+                  --data-members "$DATA" --business-members "$BIZ" \
+                  --pr-number "$PR_NUM" \
+                  --emit-recorded /tmp/recorded.json --emit-pr-body /tmp/ratify-body.md)
+            if [ -d /tmp/base ]; then ARGS+=(--base-dir /tmp/base); fi
+            uv run python -m semantic_catalog.cli "${ARGS[@]}"
+      - name: Create Sigma build tasks for newly ratified metrics
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          CLICKUP_TASK_TOKEN: ${{ secrets.CLICKUP_TASK_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLICKUP_TASK_TOKEN:-}" ]; then
+            echo "CLICKUP_TASK_TOKEN not provisioned; skipping Sigma build-task creation."
+            exit 0
+          fi
+          if [ -d /tmp/base ]; then
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base --emit-created /tmp/created_tasks.json
+          else
+            uv run python -m semantic_catalog.cli --sync-sigma-tasks --emit-created /tmp/created_tasks.json
+          fi
+      - name: Reply in the Slack thread with created Sigma task links
+        # Only when the summary posted (SLACK_TS set). No created tasks => the
+        # emitted JSON is an empty list and reply_in_thread posts nothing, so a
+        # workflow re-run (dedupe skips creation) never double-posts the thread.
+        # The bot token stays in env (never on the command line) and the reply
+        # logic lives in semantic_catalog.slack_reply so it is unit-tested.
+        if: ${{ env.SLACK_TS != '' }}
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run python -m semantic_catalog.cli --reply-created /tmp/created_tasks.json
+      - name: Open the ratification PR
+        # Branch is keyed on the source PR so a workflow re-run updates the same
+        # branch in place instead of opening a rival PR. Never pushes to main.
+        if: ${{ env.PR_NUM != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+            if [ ! -s /tmp/recorded.json ]; then
+              echo "nothing recorded; no PR to open."
+              exit 0
+            fi
+            COUNT=$(python3 -c 'import json;print(len(json.load(open("/tmp/recorded.json"))["metrics"]))')
+            if [ "$COUNT" = "0" ]; then
+              echo "nothing recorded; no PR to open."
+              exit 0
+            fi
+            BRANCH="auto/ratify-pr-${PR_NUM}"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add analytics/diagnostics/semantic_catalog/config/ratifications.yml \
+                    '.claude/skills/*/references/canonical_metrics.md'
+            git commit -m "Record the ratifications earned by #${PR_NUM}"
+            git fetch origin "$BRANCH" || true
+            git push --force-with-lease origin "$BRANCH"
+            if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // ""')" ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Record the ratifications earned by #${PR_NUM}" \
+                --body-file /tmp/ratify-body.md
+            else
+              echo "PR for $BRANCH already open; branch updated in place."
+            fi
+      - name: Clean up base tree
+        if: always()
+        run: git worktree remove --force /tmp/base || true

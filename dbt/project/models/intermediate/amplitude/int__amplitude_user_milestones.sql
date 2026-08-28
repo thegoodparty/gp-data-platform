@@ -9,6 +9,7 @@ with
             event_type,
             event_time,
             country,
+            event_properties:path::string as page_path,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -31,25 +32,49 @@ with
             -- single-source classifier is int__amplitude_event_catalog; a singular
             -- test (assert_milestone_events_classified) guards that every event
             -- below classifies to a non-'other' family.
-            and event_type in (
-                'Onboarding - Registration Completed',
-                'onboarding_complete',
-                'pro_upgrade_complete',
-                'Voter Outreach - Campaign Completed',
-                'Dashboard - Candidate Dashboard Viewed',
-                'Serve Onboarding - Getting Started Viewed',
-                'Serve Onboarding - Constituency Profile Viewed',
-                'Serve Onboarding - Poll Value Props Viewed',
-                'Serve Onboarding - Poll Strategy Viewed',
-                'Serve Onboarding - Add Image Viewed',
-                'Serve Onboarding - Poll Preview Viewed',
-                'Serve Onboarding - SMS Poll Sent'
+            and (
+                event_type in (
+                    'Onboarding - Registration Completed',
+                    'onboarding_complete',
+                    'pro_upgrade_complete',
+                    'Voter Outreach - Campaign Completed',
+                    'Dashboard - Candidate Dashboard Viewed',
+                    'Dashboard - Campaign Plan Viewed',
+                    'Campaign Plan - Campaign Tracker Viewed',
+                    'Serve Onboarding - Getting Started Viewed',
+                    'Serve Onboarding - Constituency Profile Viewed',
+                    'Serve Onboarding - Poll Value Props Viewed',
+                    'Serve Onboarding - Poll Strategy Viewed',
+                    'Serve Onboarding - Add Image Viewed',
+                    'Serve Onboarding - Poll Preview Viewed',
+                    'Serve Onboarding - SMS Poll Sent'
+                )
+                -- Page-path leg of the dashboard-view union. The path predicate has
+                -- to be here rather than downstream: 'Viewed' is site-wide (4.5M
+                -- rows) and only its ~106k '/dashboard' rows are dashboard views.
+                or (
+                    event_type = 'Viewed'
+                    and event_properties:path::string = '/dashboard'
+                )
             )
+    ),
+
+    dashboard_view_flags as (
+        select
+            user_id, {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
+        from milestone_events
+        where {{ is_dashboard_view_event("event_type", "page_path") }}
+    ),
+
+    dashboard_views_dedup as (
+        select user_id, count_if(is_new_view) as dashboard_view_count
+        from dashboard_view_flags
+        group by 1
     ),
 
     final as (
         select
-            user_id,
+            me.user_id,
 
             -- Onboarding CVR
             min(
@@ -60,7 +85,7 @@ with
             ) as amplitude_registration_completed_at,
             min(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
                     then event_time
                 end
             ) as first_dashboard_viewed_at,
@@ -97,15 +122,11 @@ with
             -- Active Candidates
             max(
                 case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed'
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
                     then event_time
                 end
             ) as last_dashboard_viewed_at,
-            count(
-                case
-                    when event_type = 'Dashboard - Candidate Dashboard Viewed' then 1
-                end
-            ) as dashboard_view_count,
+            coalesce(max(dv.dashboard_view_count), 0) as dashboard_view_count,
 
             -- Supplemental
             min(
@@ -154,8 +175,9 @@ with
                     then event_time
                 end
             ) as serve_poll_preview_at
-        from milestone_events
-        group by 1
+        from milestone_events me
+        left join dashboard_views_dedup dv on me.user_id = dv.user_id
+        group by me.user_id
     )
 
 select *

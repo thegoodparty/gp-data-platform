@@ -125,6 +125,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
           freshness: null
+      - name: gp_api_db_artifact_review
+        description: raw data load from gp_api_db postgres db from table `artifact_review`
+        config:
+          freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_chat_conversation
@@ -193,6 +197,27 @@ sources:
         description: raw data load from gp_api_db postgres db from table `website_contact`
       - name: gp_api_db_website_view
         description: raw data load from gp_api_db postgres db from table `website_view`
+      # The race_opponent family is written on demand (campaigns exercising
+      # those flows), so rows can stop landing for arbitrary stretches:
+      # contrast and research are still empty, and any of the four would read
+      # ERROR STALE after a usage lull outlasts the inherited error_after.
+      # Suppress inherited freshness for the whole family.
+      - name: gp_api_db_race_opponent_contrast
+        description: raw data load from gp_api_db postgres db from table `race_opponent_contrast`
+        config:
+          freshness: null
+      - name: gp_api_db_race_opponent_research
+        description: raw data load from gp_api_db postgres db from table `race_opponent_research`
+        config:
+          freshness: null
+      - name: gp_api_db_race_opponent_standout_action
+        description: raw data load from gp_api_db postgres db from table `race_opponent_standout_action`
+        config:
+          freshness: null
+      - name: gp_api_db_race_opponent_summary
+        description: raw data load from gp_api_db postgres db from table `race_opponent_summary`
+        config:
+          freshness: null
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
@@ -327,7 +352,7 @@ sources:
 
   - name: dbt_source
     schema: dbt_source
-    description: Raw data loaded from dbt models
+    description: Raw data staged in S3 and loaded into Databricks by the load_l2_voter_files DAG
 
     tables:
       - name: l2_s3_ak_demographic
@@ -438,6 +463,8 @@ sources:
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_de_vote_history_data_dictionary
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
+      - name: l2_s3_expired_voters
+        description: raw nationwide load of the L2 voter IDs flagged as expired, from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_demographic
         description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_demographic_data_dictionary
@@ -944,8 +971,8 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
   - name: dbt_source_haystaq
-    schema: "{{ var('l2_haystaq_databricks_schema', 'dbt_source') }}"
-    description: Raw Haystaq issue model tables loaded by dbt from S3 into Databricks
+    schema: dbt_source
+    description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
     tables:
       - name: l2_s3_al_haystaq_dna_flags
@@ -1153,42 +1180,92 @@ sources:
       - name: l2_s3_wy_haystaq_dna_scores
         description: raw data load for Wyoming Haystaq DNA scores
 
-
   - name: airflow_source
-    schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA') }}"
-    description: Raw data loaded by Airflow DAGs into Databricks
+    schema: airflow_source
+    description: Raw tables landed by the extract_ballotready DAG
+    config:
+      loaded_at_field: loaded_at
+      # These tables only gain rows when something changes upstream at BallotReady;
+      # a quiet day with zero new rows is normal, not a pipeline failure. Freshness
+      # here is a dead-pipeline backstop, not a daily heartbeat.
+      freshness:
+        warn_after: { count: 14, period: day }
+        error_after: { count: 30, period: day }
 
     tables:
-      - name: l2_expired_voters
-        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
-      - name: l2_expired_voters_loads
-        description: Load metadata for the l2_expired_voters DAG. One row per successful DAG run, written only after all batch inserts complete. Used by the DAG for idempotency checks.
-
+      - name: ballotready_candidacy_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG
+        columns: &ballotready_raw_columns
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_endorsement_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `endorsements` array on each Candidacy (there is no standalone Endorsement node)
+        columns: *ballotready_raw_columns
+      - name: ballotready_filing_period_raw
+        description: Raw CivicEngine GraphQL FilingPeriod nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_geofence_raw
+        description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_issue_raw
+        description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
+        # issue has no cursor: the worklist is an anti-join of issue ids referenced
+        # by landed stances but not yet landed, so it can legitimately return zero
+        # rows for months once the issue universe is captured. No threshold fits.
+        config:
+          freshness: null
+        columns: *ballotready_raw_columns
+      - name: ballotready_normalized_position_raw
+        description: Raw CivicEngine GraphQL NormalizedPosition nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_party_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
+        columns: *ballotready_raw_columns
+      - name: ballotready_position_election_frequency_raw
+        description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_stance_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
+        columns: *ballotready_raw_columns
 
   - name: model_predictions
     schema: model_predictions
     description: Raw data loaded from model predictions
     tables:
-      - name: candidacy_br_matches_20251204
-        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-      - name: candidacy_br_matches_prenov2025_20251205
-        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250826
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20250909
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20250916
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251016
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251112
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251202
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: llm_l2_br_match_20260126
         description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: manual_llm_election_results_20251208
-        description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
+      - name: llm_l2_br_match_results
+        description: >
+          One row per attempt and office, append-only. A populated district
+          means matched; an empty one means the attempt found nothing. The
+          matcher creates and writes this table; dbt only reads it.
+        columns:
+          # The schema of record now lives with the matcher, so the two columns
+          # nothing downstream can work without are pinned from this side.
+          - name: br_database_id
+            description: BallotReady office database id.
+            data_tests:
+              - not_null
+          - name: attempted_at
+            description: >
+              When the attempt was made, and the run key: one run stamps one
+              value across every row it writes.
+            data_tests:
+              - not_null
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd
@@ -1201,6 +1278,14 @@ sources:
         description: raw data load from voter turnout projections for 2027
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+      - name: voter_turnout_scores_20260730
+        description: In-house per-voter turnout propensity scores (prob_vote) for 2026 General
+      - name: web_verify_verdicts_20260813
+        description: >
+          Web verification of uncorroborated Win signups against official election sources,
+          as of 2026-08-13. Label evidence, not model input: every verdict was established
+          by looking up what happened at or after the election. The four waves are separate
+          sampling frames and must not be pooled into a rate.
 
   - name: segment_storage_source
     database: segment_storage
@@ -1230,6 +1315,8 @@ sources:
         description: Segment user profiles with traits and properties
       - name: voter_outreach_10dlc_compliance_completed
         description: Segment event fired when 10DLC compliance is completed
+      - name: voter_outreach_10dlc_compliance_pin_submitted
+        description: Segment event fired when a user submits their 10DLC compliance PIN
 
   - name: segment_storage_source_web_app
     database: segment_storage
@@ -1237,6 +1324,8 @@ sources:
     description: Event data from Segment's web app source synced to dedicated catalog
 
     tables:
+      - name: _10_dlc_compliance_pin_verification_completed
+        description: Segment web app event - 10 dlc compliance pin verification completed
       - name: _10_dlc_compliance_registration_submitted
         description: Segment web app event -  10 dlc compliance registration submitted
       - name: account_password_reset_completed
@@ -1588,7 +1677,6 @@ sources:
           unmatched records.
 
       - name: pairwise_candidacy_stages
-        identifier: pairwise_candidacy_stages20260527
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
           after post-prediction filters for person identity, race-level agreement, and
@@ -1655,3 +1743,114 @@ sources:
           Second of the two files of the 2020 census block population extract. Columns
           are typed; GEOCODE is stored as a number, which drops leading zeros, so always
           zero-pad to the 15-character block GEOID on read.
+
+  - name: census_acs
+    schema: sandbox
+    description: >
+      Census Bureau ACS 2020-2024 5-year table-based Summary File, loaded one time
+      from the public bulk directory
+      (https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/,
+      files acsdt5y2024-<table>.dat) by dbt/scripts/load_acs_summary_file.py on
+      2026-07-20 (see the committed manifest beside the script for hashes and row
+      counts). Tables are raw all-string: GEO_ID plus interleaved estimate/margin
+      columns (<TABLE>_E###/<TABLE>_M###) for every published summary level and
+      geographic component. Values still carry the raw negative jam-code sentinels
+      (insufficient sample, not applicable, not computable, controlled-to-total,
+      and the median-specific codes); they are mapped once, in staging. This is a
+      one-time load for the 2020-2024 vintage, not a refreshing feed: re-run the
+      documented loader for a future vintage, which verifies sha256 and row counts
+      against the manifest before replacing anything. Dollar-denominated tables are
+      2024 inflation-adjusted dollars.
+    tables:
+      - name: acs5y2024_b01001
+        description: >
+          Sex by age (B01001), universe total population. 49 estimate columns and
+          their margins. Feeds total population and the under-18 / 65-plus
+          bracket combinations.
+      - name: acs5y2024_b03002
+        description: >
+          Hispanic or Latino origin by race (B03002), universe total population.
+          Feeds the non-Hispanic race shares and the Hispanic-or-Latino share.
+      - name: acs5y2024_b15002
+        description: >
+          Sex by educational attainment for the population 25 years and over
+          (B15002). Chosen over the collapsed single-sex-axis education table
+          because this one is in the Census variance-replicate program, keeping
+          exact margins reachable later; identical derived estimates from more
+          bracket components.
+      - name: acs5y2024_b19001
+        description: >
+          Household income brackets in the past 12 months (B19001), universe
+          households, 2024 inflation-adjusted dollars. Staged for future
+          bracket-interpolated medians and possible income-band shares; not
+          shipped to any mart yet.
+      - name: acs5y2024_b19013
+        description: >
+          Median household income (B19013), 2024 inflation-adjusted dollars.
+          Staged for published-geography surfaces only: medians are not additive
+          and are never allocated to districts.
+      - name: acs5y2024_b19025
+        description: >
+          Aggregate household income (B19025), universe households, 2024
+          inflation-adjusted dollars. An additive dollar total: the safe
+          allocation primitive behind mean household income.
+      - name: acs5y2024_b23025
+        description: >
+          Employment status for the population 16 years and over (B23025).
+          Feeds civilian labor force and unemployed counts.
+      - name: acs5y2024_b25003
+        description: >
+          Housing tenure (B25003), universe occupied housing units (households).
+          Feeds households and owner-occupied households.
+      - name: acs5y2024_b25008
+        description: >
+          Total population in occupied housing units by tenure (B25008). Feeds
+          the average-household-size numerator.
+      - name: acs5y2024_b25077
+        description: >
+          Median home value of owner-occupied housing units (B25077). Staged for
+          published-geography surfaces only; never allocated.
+      - name: acs5y2024_b28002
+        description: >
+          Presence and types of internet subscriptions in household (B28002),
+          universe households. Feeds the broadband-subscription share (note:
+          subscription, not availability).
+      - name: acs5y2024_c17002
+        description: >
+          Ratio of income to poverty level in the past 12 months (C17002),
+          universe population for whom poverty status is determined (excludes
+          institutionalized group quarters, military quarters, and college
+          dormitories). Feeds the below-poverty share.
+      - name: census_ct_block_to_planning_region_2022
+        description: >
+          State-republished (CTData) copy of the Census 2022 Connecticut
+          county-equivalent-change block-level equivalency mapping. Not a
+          Census-hosted file: the Census publishes the change but no block-level
+          relationship file at a stable public URL, so the state data
+          collaborative's republication is loaded instead (URL and hash pinned
+          in the loader manifest; loaded 2026-07-20 by the same loader), and
+          its CONTENT is verified against the decennial block staging and the
+          published code structure by singular tests. One row per 2020 Connecticut
+          census block: block_fips_2020 carries the legacy-county block geoid,
+          block_fips_2022 the planning-region-coded geoid whose first 12
+          characters are the recoded block group. Contract: unique on
+          block_fips_2020; each block maps to exactly one planning-region block
+          group (many-to-one, never one-to-many). The republication omits
+          unpopulated water-only blocks, so the contract tests bind populated
+          geographies bidirectionally and separately prove that any block group
+          the mapping cannot reach carries no ACS population or households. The
+          2020-2024 ACS codes all CT geography under planning regions, so this
+          mapping (never string surgery on geoid suffixes) is what joins
+          legacy-coded decennial blocks to ACS block groups downstream.
+        columns:
+          - name: block_fips_2020
+            description: 2020 census block geoid under legacy CT county codes (15 characters).
+            data_tests:
+              - not_null
+              - unique
+          - name: block_fips_2022
+            description: >
+              The same block re-coded under 2022 planning-region county codes
+              (15 characters); first 12 characters are the ACS-era block group.
+            data_tests:
+              - not_null

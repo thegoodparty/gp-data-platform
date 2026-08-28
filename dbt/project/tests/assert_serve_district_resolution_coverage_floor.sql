@@ -1,4 +1,4 @@
--- Alerting guard on the serve-cohort district resolution rate (DATA-1988).
+-- Alerting guard on the serve-cohort district resolution rate.
 -- Fails when the resolved share drops below 95%, or when the model is empty
 -- (count(*) = 0, a total upstream break). A share floor, not a fixed count,
 -- so cohort growth alone never trips it; a real drop means an upstream break

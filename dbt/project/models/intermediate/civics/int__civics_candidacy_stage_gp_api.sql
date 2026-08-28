@@ -84,9 +84,6 @@ with
             and canonical_gp_election_stage_id is not null
     ),
 
-    -- Columns aliased to match what generate_gp_api_gp_candidacy_id expects
-    -- in scope, so the unclustered fallback hash matches the corresponding
-    -- hash in int__civics_candidacy_gp_api.
     enriched as (
         select
             c.campaign_id,
@@ -117,12 +114,14 @@ with
 
     with_ids as (
         select
-            -- Must match int__civics_candidacy_gp_api's hash for unclustered.
+            -- Must match int__civics_candidacy_gp_api: crosswalk canonical,
+            -- else self-mint from campaign_id.
             coalesce(
                 canonical_gp_candidacy_id,
                 {{
-                    generate_gp_api_gp_candidacy_id(
-                        first_name="user_first_name", last_name="user_last_name"
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(campaign_id as string)"],
+                        salt="candidacy",
                     )
                 }}
             ) as gp_candidacy_id,

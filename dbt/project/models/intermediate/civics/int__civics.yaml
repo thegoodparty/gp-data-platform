@@ -36,6 +36,11 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [br_position_database_id, election_date]
+          config:
+            where: "br_position_database_id is not null"
 
   - name: int__civics_election_stage_2025
     description: >
@@ -361,9 +366,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district (matches HubSpot pattern).
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered candidacies (cluster earliest-member mint); unmatched
+          candidacies self-mint from (candidate_code, election date).
         data_tests:
           - unique
           - not_null
@@ -469,6 +474,27 @@ models:
           surfaces one for the matched BR race (TS form data does not capture
           runoffs).
 
+      - name: br_race_id
+        description: >
+          BallotReady race id as supplied on the TechSpeed form row (stage-level
+          BR identifier; the gp_candidacy_id dedup keeps the latest form row's
+          value). Surfaced for the HubSpot feed's br_race_id fallback since the
+          fuzzy-pipeline removal.
+
+      - name: postal_code
+        description: >
+          Candidate zip as supplied on the TechSpeed form row (the
+          gp_candidacy_id dedup keeps the latest form row's value). Surfaced for
+          the HubSpot feed's postal_code since the fuzzy-pipeline removal; no
+          other provider carries candidate-level zip.
+
+      - name: election_type
+        description: >
+          Stage label ('Primary'/'General') derived from the TechSpeed form's
+          is_primary flag, preserving the legacy feed semantics (what election
+          the row was researched for, not which stage is upcoming). Surfaced for
+          the HubSpot feed's Election Type since the fuzzy-pipeline removal.
+
       - name: br_position_database_id
         description: >
           BallotReady position id, recovered from the BR election_stage row
@@ -497,6 +523,26 @@ models:
         data_tests:
           - not_null
 
+      - name: vendor_activity_at
+        description: >
+          Latest TechSpeed event time for the candidacy: the max across its stages of
+          the form's date_processed, taken only where it is not implausibly later than
+          the extract that carried it (a day of slack for clock skew, matching the
+          BallotReady leg). DAY
+          RESOLUTION ONLY -- the form captures a date, not a time, so values land at
+          midnight and consumers sorting on this will see ties within a day.
+          NULLABLE BY DESIGN: null means the form date is missing, unparseable, or
+          implausibly future, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted -- as a non-null value it would
+          outrank a correctly-dated sibling provider wherever consumers take the
+          greatest across providers, and because it advances with every delivery the
+          row would tick forward forever, sweeping the whole affected cohort back into
+          a recency window on each re-delivery. Parse failures are not rare: the staging rule
+          accepts slash-separated US dates but not hyphen-separated ones, which is a
+          known follow-up. Additive and destination-facing -- created_at/updated_at
+          stay extract stamps for the provider precedence chain, so consumers that
+          need real candidate activity (the sales export windows) read this instead.
+
     tests:
       - dbt_utils.expression_is_true:
           name: techspeed_candidacy_has_general_or_primary_date
@@ -507,18 +553,19 @@ models:
     description: >
       TechSpeed candidates transformed into civics mart candidate schema.
 
-      Grain: One row per unique person (deduplicated on identity fields).
+      Grain: One row per unique person (deduplicated on gp_candidate_id).
 
       Source: stg_airbyte_source__techspeed_gdrive_candidates
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state, birth_date, email, phone_number
+      gp_candidate_id is the person id: min gp_person_id over the
+      stage-stripped candidate_code's clustered records, self-mint for codes
+      absent from ER (own-person semantics).
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date, email, phone_number.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint from ('techspeed', candidate_code) when absent from ER.
         data_tests:
           - unique
           - not_null
@@ -659,7 +706,7 @@ models:
           Opponent count for the race (number_of_candidates - 1 from the
           TechSpeed source), stored as a string to match the BR/DDHQ/2025
           election models and the scorer's parsing. Null when the source count
-          is missing, non-numeric, or < 1. DATA-1938: previously hardcoded
+          is missing, non-numeric, or < 1. Previously hardcoded
           null, which forced solo-ingested TechSpeed candidacies onto the
           weaker viabilitynoopponentdata fallback in
           int__civics_viability_scoring.
@@ -682,7 +729,7 @@ models:
           - not_null
 
     data_tests:
-      # Well-formedness of the DATA-1938 opponent count: null or a non-negative
+      # Well-formedness of the opponent count: null or a non-negative
       # integer string (opponents = number_of_candidates - 1, so >= 0). Model
       # level rather than column level so the expression can reference the
       # column by name without the column-test macro prepending the column.
@@ -739,9 +786,9 @@ models:
           cluster, the mart's dedup keeps one and drops the other's natural
           keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               # Warn-severity: multi-TS-record Splink clusters keep one
               # ts_source_candidate_id in the mart row by design (cluster
@@ -913,6 +960,61 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_election_estimated_opponents
+    description: >
+      Estimated opponent count per election, from counting the active
+      candidacies loaded within an election-stage. Feeds a contested-direction
+      fallback for number_of_opponents / is_uncontested on the election mart
+      (both come only from TechSpeed/DDHQ today; BallotReady hardcodes them
+      NULL).
+
+      Grain: One row per gp_election_id that has at least one loaded
+      candidacy-stage row.
+
+      One-directional by design: an estimate is present only when a stage has
+      >= 2 active candidates (>= 1 opponent). A field of <= 1 stays NULL because
+      it means the rest of the roster is not loaded, not that the race is
+      uncontested. Counts are per stage instance (not pooled across a
+      gp_election_id that spans several offices), and the rollup prefers the
+      general stage, falling back to the largest loaded stage only when no
+      general-stage candidacies exist.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: estimated_field_size
+        description: >
+          Active-candidate count of the chosen stage (general preferred, else
+          largest loaded stage). Always >= 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: estimated_number_of_opponents
+        description: >
+          estimated_field_size - 1, populated only when the chosen stage has
+          >= 2 active candidates. NULL otherwise (never asserts 0 opponents).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: estimated_opponents_stage_basis
+        description: >
+          Which stage the estimate came from: 'general' (general-family stage)
+          or 'largest_stage' (fallback max). NULL when no estimate.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["general", "largest_stage"]
+
   - name: int__civics_candidate_ddhq
     description: >
       DDHQ candidates transformed into civics mart candidate schema.
@@ -921,14 +1023,14 @@ models:
 
       Derived from int__civics_candidacy_stage_ddhq.
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state (birth_date, email, phone are NULL for DDHQ).
+      gp_candidate_id is the person id from the stage model; cross-source
+      dedupe happens via shared person groups, not attribute hashes.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, null, null, null.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint per record when absent from ER (own-person semantics).
         data_tests:
           - unique
           - not_null
@@ -975,9 +1077,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered rows (cluster earliest-member mint); unmatched rows
+          share the candidacy group's min self-mint.
         data_tests:
           - unique
           - not_null
@@ -1064,9 +1166,9 @@ models:
           candidate_ids into the same cluster, the mart's dedup keeps one
           and drops the other's natural keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1074,6 +1176,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: source_race_id
         description: >
@@ -1081,9 +1186,9 @@ models:
           as source_candidate_id, paired with it as DDHQ's compound natural
           key. Same warn-vs-error thresholds for the same reason.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1091,6 +1196,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won or Lost)
@@ -1123,12 +1231,9 @@ models:
 
   - name: int__ballotready_candidate_identity
     description: >
-      Canonical BallotReady candidate identity inputs, one deterministic row per
-      br_candidate_id. int__civics_candidate_ballotready and
-      int__civics_candidacy_ballotready both hash these columns for
-      gp_candidate_id, so a person resolves to the same id in both models
-      (previously they picked divergent per-row vs rolled-up contact values and
-      orphaned candidates whose email varied across candidacy rows).
+      Canonical BallotReady candidate name/contact/party per br_candidate_id: one
+      deterministic representative row, since S3 email/name/phone vary across a
+      person's candidacy rows. Feeds the person mart's display attributes only.
 
       Grain: One row per br_candidate_id.
     columns:
@@ -1150,8 +1255,8 @@ models:
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date (null), email, phone.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint), looked up via br_candidate_id; deterministic self-mint guard.
         data_tests:
           - unique
           - not_null
@@ -1209,9 +1314,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Candidacy-grain rollup of the stage-grain cluster mint:
+          min minted id over the candidacy's stages (mirrored in
+          int__civics_candidacy_stage_ballotready).
         data_tests:
           - unique
           - not_null
@@ -1272,6 +1377,24 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+      - name: vendor_activity_at
+        description: >
+          Latest BallotReady event time for the candidacy: the max across its stages
+          of the vendor's own candidacy_updated_at, or -- where that sits implausibly
+          later than the row's extract stamp -- the vendor's candidacy_created_at,
+          with a day of slack for ordinary clock skew between the vendor's clock and
+          ours. Both values are vendor-owned, so a re-delivery of an unchanged record
+          does not move them; anchoring to the extract stamp instead would drag the
+          value forward on every weekly full-file re-delivery and keep the row
+          perpetually fresh. NULLABLE BY DESIGN: null means this provider supplied no
+          usable event time, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted here -- as a non-null value it
+          would outrank a correctly-dated sibling provider wherever consumers take
+          the greatest across providers. Additive and destination-facing:
+          created_at/updated_at stay extract stamps for the provider precedence
+          chain, so consumers that need real candidate activity (the sales export
+          windows) read this instead.
 
   - name: int__civics_elected_official_ballotready
     description: >
@@ -1970,7 +2093,8 @@ models:
         description: >
           Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
           DDHQ: candidate_id_race_id; GP API: campaign_id (one row per
-          latest-version campaign).
+          latest-version campaign). TS rows whose candidate code is null
+          (a blank component) are dropped, since they cannot be keyed.
         data_tests:
           - not_null
 
@@ -2030,14 +2154,16 @@ models:
       - name: office_level
         description: >
           Normalized office level matching BallotReady's 7-bucket PositionLevel
-          taxonomy (City/Local/County/Township/State/Regional/Federal). BR and
-          TS sources emit initcap(level) directly. The gp-api source prefers
-          initcap(br_position_level) when available (deterministic left-join
-          on ballotready_position_id to BR's position table; coverage is
-          near-100% since gp-api rows carry that FK natively). Otherwise
-          falls back to campaigns.election_level which collapses to a
-          4-bucket subset (Local/County/State/Federal — City/Town/Township
-          are not distinguishable at gp-api granularity). DDHQ emits a
+          taxonomy (City/Local/County/Township/State/Regional/Federal). BR
+          emits initcap(level) directly; TS trims and initcaps its raw value
+          and nulls anything outside the vocabulary, since delivery files
+          occasionally shift a date or race id into the level column. The
+          gp-api source prefers initcap(br_position_level) when available
+          (deterministic left-join on ballotready_position_id to BR's position
+          table; coverage is near-100% since gp-api rows carry that FK
+          natively). Otherwise falls back to campaigns.election_level which
+          collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity). DDHQ emits a
           3-value subset (Local/County/State) from race_name parsing. Null
           is permitted for sources that cannot resolve a level.
         data_tests:
@@ -2051,6 +2177,14 @@ models:
                   - State
                   - Regional
                   - Federal
+
+      - name: first_seen_at
+        description: >
+          Source-native record timestamp for the person id mint. Populated only
+          for techspeed (min processing date across delivery duplicates, airbyte
+          extract as parse fallback) and ddhq (airbyte extract time); null for
+          ballotready and gp_api, whose values are computed in
+          int__civics_person_canonical_ids from their native person-grain ids.
 
   - name: int__er_prematch_elected_officials
     description: >
@@ -2167,8 +2301,7 @@ models:
 
       ballotready_position_id is NULL on the DDHQ and TS branches in V1.
       DDHQ has no native BR position FK, and resolving it requires the
-      election_stage ER clusters that this view itself seeds; revisit once
-      int__civics_er_canonical_election_stages exists.
+      election_stage ER clusters that this view itself seeds.
 
       first_name_aliases is emitted as an empty array because matcha's
       shared pipeline.load_and_prepare unconditionally reads the column even
@@ -2176,7 +2309,7 @@ models:
 
       Output of matcha lands at
       goodparty_data_catalog.er_source.er_clustered_election_stages and is
-      consumed by int__civics_er_canonical_election_stages in a follow-up PR.
+      consumed by int__civics_minted_election_stage_ids.
 
     columns:
       - name: unique_id
@@ -2434,10 +2567,14 @@ models:
         description: Foreign key to candidacy table
         data_tests:
           - not_null
+          # 2026+ only: <=2025 rows are emitted for candidacy_stage archive
+          # enrichment and carry BR ids absent from the 2026-gated BR candidacy.
           - relationships:
               arguments:
                 to: ref('int__civics_candidacy_ballotready')
                 field: gp_candidacy_id
+              config:
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
@@ -2449,6 +2586,7 @@ models:
                 field: gp_election_stage_id
               config:
                 error_if: ">=100"
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: br_candidacy_id
         description: >
@@ -2471,6 +2609,9 @@ models:
               config:
                 severity: warn
                 error_if: ">100"
+                # 2026+ only: <=2025 BR rows enrich the archive era rather than
+                # surfacing standalone, so their br_candidacy_id is not a mart PK.
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
@@ -2496,8 +2637,14 @@ models:
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
-                min_value: "'2026-01-01'"
+                min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
+
+      - name: election_stage
+        description: >
+          Election stage derived from BallotReady is_primary / is_runoff.
+          BR S3 carries no 'special' variants, so only primary, general,
+          primary runoff, and general runoff appear.
 
       - name: created_at
         data_tests:
@@ -2510,7 +2657,7 @@ models:
   - name: int__civics_position_office_type
     description: >
       One row per BallotReady position with the canonical office_type, derived
-      from the normalized position name (DATA-1972). Source of office_type for
+      from the normalized position name. Source of office_type for
       positioned candidacies in the civics marts.
     columns:
       - name: br_position_database_id
@@ -2562,18 +2709,18 @@ models:
   - name: int__civics_candidate_gp_api
     description: >
       Product Database (gp_api_db) users transformed into the civics mart
-      candidate schema. Grain: one row per user with campaign_count > 0.
+      candidate schema. Grain: one row per user with at least one candidacy in
+      int__civics_candidacy_gp_api. Users without one stay in the people mart
+      but get no candidate, candidacy, or candidacy_stage rows.
 
-      ER canonicalization: canonical_gp_candidate_id from
-      int__civics_er_canonical_ids is looked up via the user's latest campaigns
-      and propagated across users sharing the same person hash.
+      gp_candidate_id is the person id from int__civics_person_canonical_ids
+      (record_key gp_api|user_id), with a deterministic self-mint guard.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - UUID generated from (first_name, last_name, state,
-          null birth_date, email, phone). Cross-source compatible with
-          int__civics_candidate_ballotready / _techspeed.
+          Primary key - the user's gp_person_id (person-group earliest-member
+          mint). Cross-source alignment comes from shared person groups.
         data_tests:
           - unique
           - not_null
@@ -2637,7 +2784,9 @@ models:
     description: >
       Product Database campaigns transformed into the civics mart candidacy
       schema. Grain: one row per latest-version campaign with a non-null
-      election_date.
+      election_date that outside evidence backs: either a BallotReady,
+      TechSpeed, or DDHQ candidacy in the same entity-resolution cluster, or a
+      HubSpot contact with verified_candidate_status = 'Yes'.
 
       gp_candidate_id uses the user's derived state (most recent non-demo
       campaign), not the per-campaign state, so users with campaigns in
@@ -3130,17 +3279,17 @@ models:
 
   - name: int__civics_er_canonical_ids
     description: >
-      Entity resolution crosswalk: provider raw keys → BallotReady canonical
-      gp_* IDs. Wide schema covering TechSpeed (keyed by ts_source_candidate_id
-      + ts_stage_election_date) and Product DB (keyed by gp_api_campaign_id +
-      gp_api_stage_election_date). Provider columns are null on rows from
-      other providers.
+      Entity resolution crosswalk: provider raw keys → canonical gp_* IDs
+      (BR's cluster-derived ids on BR-anchored clusters, the earliest-member
+      mint on non-BR clusters). Wide schema covering TechSpeed (keyed by
+      ts_source_candidate_id + ts_stage_election_date), Product DB (keyed by
+      gp_api_campaign_id + gp_api_stage_election_date), and DDHQ (keyed by
+      ddhq_candidate_id + ddhq_race_id). Provider columns are null on rows
+      from other providers. Candidate grain is not here: gp_candidate_id is
+      the person id, resolved per provider via
+      int__civics_person_canonical_ids.
 
     columns:
-      - name: canonical_gp_candidate_id
-        data_tests:
-          - not_null
-
       - name: canonical_gp_candidacy_id
         data_tests:
           - not_null
@@ -3182,47 +3331,322 @@ models:
           config:
             where: "gp_api_campaign_id is not null"
 
-  - name: int__civics_er_canonical_election_stages
+  - name: int__civics_person_nodes
     description: >
-      Direct election-stage ER crosswalk: maps DDHQ / TechSpeed election stages
-      that clustered with a BallotReady race (gp-data-matcha election_stage
-      entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
-      than int__civics_er_canonical_ids's candidacy-derived
-      canonical_gp_election_stage_id (links races even without a matched
-      candidacy). BR-anchored clusters adopt BR's id; non-BR cross-source
-      clusters (DDHQ <-> TS, no BR member) adopt a representative member's id so
-      they still collapse. Single-record clusters keep their natural id.
-
-      Grain: one row per non-BR provider election stage (source_name +
-      gp_election_stage_id). Note: DDHQ and TS can share a natural
-      gp_election_stage_id for the same race, so the id is unique only within a
-      source. A small number (~41) of such shared ids map to different BR
-      canonicals (the matcher anchored the DDHQ vs TS record to different BR
-      races); consumers join per-source so the mapping stays deterministic.
+      Person record universe. One row per record_key (source_name || '|' ||
+      source_id) participating in person identity: BR persons (all-time
+      candidacies + officeholder terms), gp_api users, HubSpot contacts,
+      non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
+      Also unions in the cluster- and bridge-derived gp_api user ids so every
+      edge endpoint is guaranteed a label seed in the propagation.
+      Deterministically derived, no probabilistic matching.
     columns:
+      - name: record_key
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
       - name: source_name
+        description: Source system, parsed from record_key.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ddhq", "techspeed"]
-      - name: gp_election_stage_id
-        description: The provider's own gp_election_stage_id (the matched non-BR record).
-        data_tests:
-          - not_null
-      - name: canonical_gp_election_stage_id
-        description: BR's gp_election_stage_id for the cluster; consumers coalesce against this.
-        data_tests:
-          - not_null
-    data_tests:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+
+  - name: int__civics_person_edges
+    description: >
+      Deterministic person edges. One row per typed edge between two record
+      keys (record_key = source_name || '|' || source_id). Direction-agnostic
+      (record_key_1 <= record_key_2). No new matching: edges derive from native
+      ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
+      linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
+      Splink cluster co-membership (E5, hub to the cluster's min record key),
+      and within-source vendor keys (E7).
+    tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [source_name, gp_election_stage_id]
+            combination_of_columns: [record_key_1, record_key_2, edge_type]
+      # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
+      # (mostly DDHQ candidate_id reuse across cycles). Excluded from
+      # propagation and flagged. Warn on any; error on a large jump that would
+      # signal an E7-keying regression. Baseline is ~1188 over the all-time
+      # historical ER universe (was ~23 before pre-2026 candidacies were
+      # included). No severity override: severity warn would disable error_if.
+      - dbt_utils.expression_is_true:
+          name: person_edges_conflict_count_warn
+          arguments:
+            expression: "not is_conflict"
+          config:
+            warn_if: ">0"
+            error_if: ">2000"
+    columns:
+      - name: record_key_1
+        description: Lower of the two endpoint record keys (source_name || '|' || source_id).
+        data_tests:
+          - not_null
+          # Every endpoint must exist in the node universe; a missing endpoint
+          # silently drops a propagation neighbor in one direction.
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
+      - name: record_key_2
+        description: Higher of the two endpoint record keys.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
+      - name: edge_type
+        description: Trust-ordered edge provenance.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - e1_hubspot_user
+                  - e3_hubspot_br_candidacy
+                  - e4_ts_officeholder
+                  - e5_cluster
+                  - e6_eo_bridge
+                  - e7_within_source
+      - name: is_conflict
+        description: >
+          true for E7 edges whose within-source key resolves to more than one
+          distinct br_candidate_id. Flagged and excluded from propagation.
+        data_tests:
+          - not_null
+
+  - name: int__civics_internal_persons
+    description: >
+      Persons that must never reach a public-facing feed: GoodParty staff and
+      test accounts. One row per person, so a public mart can anti-join it and a
+      test can assert the same set is absent, from one definition.
+
+      Matched on the email domain, never the whole address: a substring match
+      on the address silently hard-excludes real candidates who put "goodparty"
+      in the local part. Matching the domain also covers every GoodParty
+      spelling without enumerating them, including the legacy thegoodparty.org
+      and typos. mailinator is a disposable-address service used for test
+      signups. The admin and sales roles additionally catch internal users who
+      signed up with a personal address; campaignManager is a product role held
+      by a candidate's own staff and is deliberately not internal.
+
+      Resolved through every gp_api member of the person group rather than the
+      scalar people.gp_api_user_id, which is null whenever a group holds more
+      than one account, so a staff member with two logins is still covered.
+
+      Demo campaigns are handled at their own grain, not here: a demo-only
+      account is not a candidate, so the is_demo filters on the gp_api candidacy
+      feeds keep it out of the role flags and out of any mart scoped to them.
+
+      Known tradeoff: the domain match also hides a staff member who genuinely
+      runs for office. Rare, and the Serve models accept the same tradeoff.
+    tests:
+      # A floor, because every other guard here passes vacuously on an empty
+      # relation: not_null and unique hold, and the mart's exclusion test is an
+      # inner join that finds no leaks because there is nothing to leak. A
+      # schema change upstream could empty this model and silently republish
+      # every internal account instead of failing.
+      - dbt_utils.expression_is_true:
+          name: internal_persons_not_silently_empty
+          arguments:
+            expression: "(select count(*) from {{ ref('int__civics_internal_persons') }}) >= 500"
+    columns:
+      - name: gp_person_id
+        description: Person excluded from public-facing feeds.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: int__civics_person_groups
+    description: >
+      Person groups. One row per int__civics_person_nodes record_key with its
+      person_group_key: the min record_key reachable over the non-conflicting
+      edges, via min-label propagation across 15 unrolled passes (Spark SQL,
+      no recursion). Pass count exceeds the largest component's diameter with
+      headroom; convergence is tested (penultimate pass == final).
+      had_conflict rolls up E7 conflict edges to the group (both endpoints).
+    tests:
+      # Propagation converged: the last two passes agree for every record.
+      - dbt_utils.expression_is_true:
+          name: person_groups_converged
+          arguments:
+            expression: "person_group_key = pass_penultimate_key"
+      # At most one distinct br_candidate_id per group. ~223 known cluster
+      # conflicts resolve to the min br_candidate_id (plan decision 1); warn
+      # on the known set, error on a regression. See the singular test
+      # assert_person_group_single_br_candidate.
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: person_group_key
+        description: Min record_key reachable over non-conflicting edges. Stable person label.
+        data_tests:
+          - not_null
+      - name: had_conflict
+        description: true when the group is touched by an E7 conflict edge.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_canonical_ids
+    description: >
+      Canonical gp_person_id per record. One row per record_key. The id is minted
+      from the group member earliest by first_seen_at (ties: source_name,
+      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
+      so first-in wins uniformly and the id survives a later record joining the
+      group. first_seen_at is computed inline where each record's native id and
+      source timestamp share a row.
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - not_null
+      - name: person_group_key
+        description: The record's person group (from int__civics_person_groups).
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          Earliest source-native timestamp for the record. Drives the mint.
+          Derived from source data only (never current_timestamp), so a full
+          refresh reproduces it; the ddhq value can still shift if Airbyte
+          re-extracts the master CSV. The snapshot is the churn detector.
+        data_tests:
+          - not_null
+      - name: minting_source_name
+        description: source_name of the group's earliest member (mints the id).
+        data_tests:
+          - not_null
+      - name: minting_source_id
+        description: source_id of the group's earliest member.
+        data_tests:
+          - not_null
+      - name: group_size
+        description: Number of records in the person group.
+        data_tests:
+          - not_null
+      - name: gp_person_id
+        description: Canonical person UUID, salted-hash of the minting member's (source_name, source_id).
+        data_tests:
+          - not_null
+
+  - name: int__civics_minted_candidacy_ids
+    description: >
+      Minted gp_candidacy_id per clustered candidacy-stage record. One row per
+      candidacy-stage unique_id. The id is the salted-hash of the cluster
+      member earliest by first_seen_at (ties: source_name, source_id), shared by
+      all members, so it is stable under cluster churn. Clusters are
+      single-stage (election dates may differ within matcha's 10-day window),
+      so consuming provider models roll this up to candidacy grain (min over
+      their candidacy grouping); records in no cluster mint from themselves via
+      the provider self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id (stage grain).
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Candidacy-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (prematch first, then keyed
+          native-created / pinned first-load fallbacks). Null means every
+          fallback missed; the member ranks last for minting.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving). Guarded by the singular test
+          assert_multi_br_clusters_never_adopt_cluster_mint.
+        data_tests:
+          - not_null
+      - name: minted_gp_candidacy_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability (every cluster -> one minted id) is checked by the singular test
+    # assert_minted_ids_one_per_cluster.
+
+  - name: int__civics_minted_election_stage_ids
+    description: >
+      Minted gp_election_stage_id per clustered election-stage record. One row
+      per election-stage unique_id. Same earliest-member rule as the candidacy
+      mint; election-stage clusters are already at stage grain, so no rollup is
+      needed. Records in no cluster mint from themselves via the provider
+      self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Election-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (BR race created_at keyed
+          by br_race_id; TS/DDHQ pinned first-load). Null ranks last for
+          minting; BR nulls in mixed clusters are guarded by
+          assert_mint_br_first_seen_in_mixed_clusters.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving).
+        data_tests:
+          - not_null
+      - name: minted_gp_election_stage_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability checked by the singular test assert_minted_ids_one_per_cluster.
 
   - name: int__serve_active_user
     description: >
       The single source of truth for the "active serve user" behavioral
-      definition (epic DATA-1359), one row per user. A user is an active serve
+      definition, one row per user. A user is an active serve
       user when they completed Serve onboarding by sending an SMS poll AND have
       pledged. This is the behavioral half of the People Served cohort; the office
       half (Serve-ICP) and the internal-email exclusion are applied at
@@ -3266,10 +3690,9 @@ models:
   - name: int__serve_district_resolution
     description: >
       Resolves each serve org to its L2 district: the serve-cohort entry point
-      onto the District/Census substrate (a downstream consumer; election-api
-      quarantined here, not in the substrate). Part of the Constituents Served
-      pipeline
-      (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
+      onto the district population allocation (a downstream consumer; election-api
+      quarantined here, not in the allocation). Part of the Constituents Served
+      pipeline. One row per serve org (organizations mart,
       organization_type = 'serve'), resolved to the L2 district the official
       serves: override-first through the org's election-api district record
       (coalesce(override_district_id, district_id), which bakes in the manual
@@ -3281,7 +3704,7 @@ models:
       is_statewide (reported separately downstream), and is_internal_email.
       Rows are never excluded here; pending cohort decisions are var-driven
       filters plus flags, and flagged rows flow through for downstream review.
-      Carries in_people_served_cohort (epic DATA-1359): the active People Served
+      Carries in_people_served_cohort: the active People Served
       cohort gate -- active serve user (int__serve_active_user) AND Serve-ICP
       office (int__icp_offices, a unique join) AND not internal email -- as a flag,
       never a row exclusion.
@@ -3449,7 +3872,7 @@ models:
 
   - name: int__district_census_allocation
     description: >
-      THE SUBSTRATE (DATA-1992, epic DATA-1359). One row per (census block,
+      THE DISTRICT POPULATION ALLOCATION. One row per (census block,
       district_type, normalized district_name) with the 2020 decennial
       population allocated to that district in that block: allocated_population
       = pct_of_geo * block_population, where pct_of_geo is the within-(block,
@@ -3477,7 +3900,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (the curated substrate subset)
+        description: L2 district column name (the curated allocated type set)
         data_tests:
           - not_null
       - name: district_name
@@ -3554,19 +3977,72 @@ models:
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
 
+  - name: int__district_population
+    description: >
+      The local-district rollup of the allocation: one row per
+      (state_postal_code, district_type, district_name), a pure GROUP BY over
+      int__district_census_allocation. Because the allocation conserves mass per
+      (block, district_type), district_population is the
+      block-population-weighted district total, and it is fractional by design.
+      Local (curated allocated) types only; statewide rows use a different
+      population basis (exact whole-state census including zero-voter blocks)
+      and live in district_census_stats, which unions this rollup with that
+      branch. Extracted out of that mart so district-grain consumers in the
+      intermediate layer can join population without an intermediate model
+      reading a mart. Read one district_type at a time: each type independently
+      tiles the country, so summing across types double-counts.
+    columns:
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: L2 district column name (the curated allocated type set)
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name
+        data_tests:
+          - not_null
+      - name: district_population
+        description: >
+          Census population allocated to the district (fractional by design;
+          round for display). Voter-block allocated, so it carries the
+          allocation's documented zero-voter-block undercount.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: n_census_blocks
+        description: Distinct census blocks contributing to the district
+        data_tests:
+          - not_null
+      - name: registered_voters
+        description: L2 registered voters in the district, summed over its blocks
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_population_unique_key
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
   - name: int__serve_block_coverage
     description: >
-      The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
+      The count-once engine. One row per (census block,
       served_set) with the count of DISTINCT cohort-served voters and the block's total
       voters; people_served reads it as count-once(set) = sum(served_voters /
       total_voters * block_population) over served blocks. Count-once is a
       distinct-PERSON union across overlapping district types, which the counts-only
-      substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
+      allocation cannot produce (cross-type voter dedup needs voter IDs), so this model
       scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
       TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
-      district types as the substrate (get_l2_major_district_columns), so count-once <=
+      district types as the allocation (get_l2_district_columns, scope='allocated'), so count-once <=
       count-multiple holds. served_set is 'all' (served by any cohort district) or one
-      of the substrate's L2 district types; statewide officials are read from the exact T5
+      of the allocation's L2 district types; statewide officials are read from the exact T5
       'State' rows in people_served, not here. served_voters_active is the same count
       restricted to the active cohort (in_people_served_cohort on the resolver); active
       <= all block-for-block.
@@ -3602,7 +4078,7 @@ models:
                 inclusive: true
       - name: total_voters
         description: >
-          Distinct voters in this block carrying >=1 of the substrate's district values
+          Distinct voters in this block carrying >=1 of the allocation's district values
           (the count-once denominator; ~= the block's total voters since County covers
           essentially all)
         data_tests:
@@ -3624,6 +4100,121 @@ models:
           name: serve_block_coverage_active_le_served
           arguments:
             expression: "served_voters_active <= served_voters"
+
+  - name: int__civics_viability_seats_fallback
+    description: >
+      BallotReady-derived seat counts keyed on the candidacy's
+      br_position_database_id, holding a row for every keyed candidacy that
+      passes the trust gates. int__civics_viability_scoring consumes it only
+      where the candidacy's civics election link cannot supply seats_available
+      (no election row, or an election row without seats), so most rows here are
+      shadowed by native election seats and never read. Fail-closed: curated
+      archive nullouts, office-type contradictions against the position
+      crosswalk, and same-date races that disagree on seats yield no row rather
+      than a guess. Grain: zero or one row per gp_candidacy_id.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_seats
+        description: >
+          Seat count for the candidacy's race. Positive by construction: a zero
+          here would manufacture a single-seat feature downstream instead of
+          blocking the score.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: seats_source
+        description: >
+          Which BallotReady source supplied the count — race_exact (a clean race
+          on the candidacy's general election date, same-cycle data) or position
+          (the position's standing office capacity, not a count for any one
+          cycle). Both tiers are consumed for multi_seat only.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - race_exact
+                  - position
+      - name: matched_br_race_id
+        description: >
+          BallotReady race database id evidencing a race_exact count: one race of
+          the seats-agreeing set for the candidacy's position and general
+          election date (the min database id where several agree), and null on
+          the position tier. Provenance evidence, not a roster-safe race link —
+          it is NOT verified against the race's candidacy membership, so the
+          candidacy need not appear on this race.
+    data_tests:
+      # Provenance well-formedness: a matched race id appears exactly when the
+      # count came from the race tier. Model level so the expression can name
+      # both columns without the column-test macro prepending one.
+      - dbt_utils.expression_is_true:
+          name: viability_seats_fallback_race_id_iff_race_tier
+          arguments:
+            expression: "(seats_source = 'race_exact') = (matched_br_race_id is not null)"
+
+  - name: int__civics_viability_opponents_fallback
+    description: >
+      Opponent-count inputs for the viability scorer, selected by roster
+      membership: the candidacy's own BR candidacy ids (via candidacy_stage)
+      found inside the candidacies array of exactly one clean BallotReady
+      race (latest race version). Unlike the seats fallback's
+      matched_br_race_id (a position+date min-pick, not roster-verified),
+      roster_br_race_id is a race the candidacy provably belongs to.
+      Fail-closed: multi-race membership, office-type contradictions against
+      the roster race's position, and rosters smaller than two members yield
+      no row. The scorer consumes the count and seats as a same-race-row pair
+      for log_n_losers where the native computation is missing, and the seats
+      as the last multi_seat coalesce arm. Grain: zero or one row per
+      gp_candidacy_id. Town Council and City Council are treated as one
+      compatible municipal category in that gate.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_n_candidates
+        description: >
+          Member count of the roster (the candidacy itself included). At
+          least 2 by construction: a one-member roster is not evidence of an
+          uncontested race while BallotReady is still discovering the field.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2
+      - name: fallback_race_seats
+        description: >
+          Seat count of the same race row; pairs with fallback_n_candidates
+          so log_n_losers never mixes grains. Positive by construction via
+          the clean-race predicate.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: roster_br_race_id
+        description: >
+          The single clean race whose roster contains the candidacy.
+          Roster-verified provenance, safe to join for audits.
+        data_tests:
+          - not_null
 
   - name: int__civics_viability_scoring
     description: >
@@ -3678,6 +4269,30 @@ models:
           Resolved model_predictions registered version of scoring_model for this
           row. Latest-version load is a moving pointer, so this records the exact
           version that scored the row for traceability and a code-pin rollback target.
+      - name: log_n_losers_source
+        description: >
+          Which source computed log_n_losers for this row -- the native
+          per-election pair or the roster fallback's same-race pair. Internal
+          provenance; null when the feature is unavailable; not surfaced on
+          candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - roster
+      - name: multi_seat_source
+        description: >
+          Which seat source won the multi_seat coalesce -- native election
+          seats, the position+date seats fallback, or the roster fallback's
+          race seats. Internal provenance; not surfaced on candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - seats_fallback
+                  - roster
       - name: updated_at
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:

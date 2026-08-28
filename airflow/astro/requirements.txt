@@ -1,11 +1,29 @@
 # Astro Runtime pre-installed provider packages: https://docs.astronomer.io/astro/runtime-image-architecture#provider-packages
-apache-airflow-providers-amazon>=9.0.0,<10.0.0
-duckdb==1.5.4
+duckdb==1.5.5
 tabulate==0.10.0
 pyarrow
+numpy>=2.0.0,<3.0.0
 pandas>=2.3.1,<3.0.0
 paramiko>=5.0.0,<6.0.0
-databricks-sql-connector>=4.2.6,<5.0.0
+databricks-sql-connector>=4.3.0,<5.0.0
 databricks-sdk>=0.117.0,<1.0.0
 psycopg2-binary>=2.9.12,<3.0.0
 sshtunnel>=0.4.0,<1.0.0
+sqlparse>=0.6.0
+
+# People-API loader CLI — installed from this monorepo's subdirectory so the
+# `loader` console script is on PATH for the load_people_api DAG's BashOperators.
+# Pinned to @main so the loader co-versions with the DAG and survives feature-branch deletion.
+# Repin to a feature branch only for a temporary astro-dev run, and put it back before merge.
+# cache-bust: bump this token whenever the loader source or this pin changes so the image reinstalls
+# (the install layer is keyed on this file; an unchanged file = a stale loader). A moving ref does
+# NOT self-bust: the ref moves while this file stays byte-identical, so bump on every loader push
+# while pinned to a branch. bust=2026-08-27.1
+people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@main#subdirectory=people-api-loader
+# The voter-data gate runs in dbt Cloud (DbtCloudRunJobOperator) rather than locally — dbt cannot
+# run on the image's Python 3.14, and the full monorepo project needs ~24 parse-time env vars. This
+# provider ships the operator + the dbt_cloud connection type.
+apache-airflow-providers-dbt-cloud>=4.9.2,<5.0.0
+# S3Hook for the l2_voter_files DAG. Astro Runtime pre-installs it; pinned so a runtime image
+# that drops it fails the build rather than the DAG.
+apache-airflow-providers-amazon>=9.16.0,<10.0.0

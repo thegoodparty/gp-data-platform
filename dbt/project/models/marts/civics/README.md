@@ -12,7 +12,7 @@ All models materialize as tables in the `mart_civics` schema.
 | `campaigns` | campaign_version_id | GP campaigns with historical version tracking |
 | `organizations` | organization_slug | Links users to Win campaigns or Serve elected offices |
 | `candidacy` | gp_candidacy_id | Candidacies from HubSpot archive (2025) and BallotReady (2026+) |
-| `candidate` | gp_candidate_id | Unique persons, deduped across BallotReady and HubSpot |
+| `candidate` | gp_candidate_id | Unique persons; on 2026+ rows the id is the person id (`gp_person_id` alias) |
 | `candidacy_stage` | gp_candidacy_stage_id | Per-stage election results (primary, general, runoff) |
 | `election` | gp_election_id | Full election cycles with pivoted stage dates |
 | `positions` | br_position_database_id | Every BallotReady position (office) with L2 district match and ICP flags |
@@ -22,6 +22,7 @@ All models materialize as tables in the `mart_civics` schema.
 
 ## Key Concepts
 
+- **Post-ER ids** (`gp_candidate_id`, `gp_candidacy_id`, `gp_election_stage_id`) are cluster-derived: each is the salted hash of its entity-resolution cluster's earliest member (by source-native `first_seen_at`), shared by all co-members; records outside any cluster mint from themselves. `gp_candidate_id` equals `gp_person_id` on 2026+ rows (2025 archive rows keep HubSpot-derived ids). See the id derivation section in `dbt/project/CLAUDE.md`.
 - **Candidate** = a person. **Candidacy** = a person running for a specific office in a specific year.
 - A candidate can have many candidacies. A candidacy belongs to exactly one election.
 - **Candidacy Stage** = results for one candidacy in one election phase (primary, general, etc.)

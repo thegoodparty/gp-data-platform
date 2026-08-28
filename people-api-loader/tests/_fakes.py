@@ -56,11 +56,15 @@ class FakeConn:
         return None
 
 
-def fake_connect(conn: FakeConn):
-    """Return a connect_* replacement that always yields `conn`."""
+def fake_connect(conn: object):
+    """Return a connect_* replacement that always yields `conn`.
+
+    `conn` is typed `object` so tests can install this for connect_new/connect_prod (a FakeConn),
+    for open_new_tunnel (None, the no-bastion forward), or a real psycopg connection.
+    """
 
     @contextmanager
-    def _connect(*args: object, **kwargs: object) -> Iterator[FakeConn]:
+    def _connect(*args: object, **kwargs: object) -> Iterator[object]:
         yield conn
 
     return _connect

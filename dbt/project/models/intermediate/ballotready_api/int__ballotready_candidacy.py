@@ -3,12 +3,14 @@ import random
 import time
 from base64 import b64encode
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, current_date, lit, pandas_udf
+from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import (
     ArrayType,
     BooleanType,
@@ -70,6 +72,12 @@ CANDIDACY_SCHEMA = StructType(
         StructField("updated_at", TimestampType(), True),
         StructField("withdrawn", BooleanType(), True),
     ]
+)
+
+# The model output appends the feed's ingest timestamp to the API-sourced
+# columns; the UDF schema above stays API-only.
+CANDIDACY_OUTPUT_SCHEMA = StructType(
+    [*CANDIDACY_SCHEMA.fields, StructField("feed_extracted_at", TimestampType(), True)]
 )
 
 
@@ -284,19 +292,87 @@ def model(dbt, session) -> DataFrame:
     if not ce_api_token:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
-    # get candidacies
+    # get candidacies from the S3 feed
     candidacies_s3: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
+
+    # Upcoming general-stage rosters the S3 feed omits but the BallotReady API
+    # race object carries. Seeding the worklist from both keeps those
+    # candidacies from being silently dropped before election-api. The roster
+    # arm has no feed stamp of its own: null feed_extracted_at means the feed
+    # has never delivered the candidacy.
+    upcoming_ids: DataFrame = dbt.ref("int__ballotready_upcoming_candidacy_ids").withColumn(
+        "feed_extracted_at", lit(None).cast("timestamp")
+    )
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
-        max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
-        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+        # Cut over on our ingest clock, not the vendor's: backfilled files
+        # carry old vendor timestamps, so a vendor-timestamp watermark skips
+        # them forever, while ingest time is monotonic on our side.
+        max_feed_row = existing_table.agg({"feed_extracted_at": "max"}).collect()[0]
+        max_feed_extracted_at = max_feed_row[0] if max_feed_row else None
 
-        if max_updated_at:
-            candidacies_s3 = candidacies_s3.filter(candidacies_s3["candidacy_updated_at"] >= max_updated_at)
+        if max_feed_extracted_at:
+            # Strict ">": the ingest stamp is constant across a sync batch, so
+            # ">=" would re-select the entire newest batch every run until the
+            # next file lands. Ties lose nothing: a re-delivered row arrives in
+            # a new sync with a new stamp.
+            candidacies_s3 = candidacies_s3.filter(
+                candidacies_s3["_airbyte_extracted_at"] > max_feed_extracted_at
+            )
+            # Scope any re-admission sweep (an Airbyte reset re-stamps all
+            # history) to still-upcoming elections. Null election days stay in
+            # scope: staging nulls far-future placeholders, so null means
+            # unknown, not past.
+            candidacies_s3 = candidacies_s3.filter(
+                (candidacies_s3["election_day"] >= current_date()) | candidacies_s3["election_day"].isNull()
+            )
+            # Fetch an upcoming candidacy when its race changed since the last
+            # run, or when it is not yet stored (first-time backfill of the
+            # gap). The same join carries each stored row's feed_extracted_at:
+            # the merge rewrites every column, so a roster-only refetch must
+            # write the stored stamp back instead of nulling it.
+            max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
+            max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+            existing_rows = existing_table.select(
+                col("database_id").alias("existing_id"),
+                col("feed_extracted_at").alias("stored_feed_extracted_at"),
+            )
+            upcoming_ids = (
+                upcoming_ids.join(
+                    existing_rows,
+                    upcoming_ids["br_candidacy_id"] == existing_rows["existing_id"],
+                    "left",
+                )
+                .filter((col("race_updated_at") >= max_updated_at) | col("existing_id").isNull())
+                .select("br_candidacy_id", col("stored_feed_extracted_at").alias("feed_extracted_at"))
+            )
+        else:
+            # Empty-table incremental run (manual truncation, or a new
+            # environment where full-refresh has not run): bound the S3 side to
+            # a 30-day ingest window instead of re-fetching all history.
+            # Upcoming ids pass through in full so the roster gap is still
+            # backfilled.
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            candidacies_s3 = candidacies_s3.filter(candidacies_s3["_airbyte_extracted_at"] >= thirty_days_ago)
+            logging.info(f"INFO: No feed cutoff found. Filtered to files ingested since {thirty_days_ago}")
 
-    # get distinct candidacy IDs
-    candidacy_ids = candidacies_s3.select("br_candidacy_id").distinct()
+    # union both sources into a single deduplicated worklist of candidacy IDs,
+    # keeping each candidacy's newest feed ingest time
+    candidacy_ids = (
+        candidacies_s3.select(
+            col("br_candidacy_id").cast("int").alias("br_candidacy_id"),
+            col("_airbyte_extracted_at").alias("feed_extracted_at"),
+        )
+        .unionByName(
+            upcoming_ids.select(
+                col("br_candidacy_id").cast("int").alias("br_candidacy_id"),
+                col("feed_extracted_at"),
+            )
+        )
+        .groupBy("br_candidacy_id")
+        .agg(spark_max("feed_extracted_at").alias("feed_extracted_at"))
+    )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if candidacy_id is empty, return empty DataFrame
@@ -305,7 +381,7 @@ def model(dbt, session) -> DataFrame:
 
     if candidacy_ids_count == 0:
         logging.info("INFO: No new or updated candidacies to process")
-        return session.createDataFrame([], CANDIDACY_SCHEMA)
+        return session.createDataFrame([], CANDIDACY_OUTPUT_SCHEMA)
 
     # get candidacy data from API
     # this is a slow operation; it helps to downsample during development with
@@ -329,6 +405,7 @@ def model(dbt, session) -> DataFrame:
         col("candidacy.stances").alias("stances"),
         col("candidacy.updated_at").alias("updated_at"),
         col("candidacy.withdrawn").alias("withdrawn"),
+        col("feed_extracted_at"),
     )
 
     # Remove cases where database_id is -1 which was a placeholder

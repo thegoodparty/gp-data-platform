@@ -1,4 +1,4 @@
--- Drift guard for DATA-1945: every event_type that int__amplitude_user_milestones
+-- Drift guard: every event_type that int__amplitude_user_milestones
 -- aggregates must classify to a real (non-'other') family in the single-source
 -- taxonomy. Classification is checked directly through the amplitude_event_family
 -- macro (not via the materialized model), so this guards the pattern logic itself
@@ -6,15 +6,21 @@
 --
 -- Fails (returns rows) if a milestone event falls through to 'other', i.e. the
 -- pattern set no longer covers it. Keep this list in sync with the event_type
--- filter in int__amplitude_user_milestones.sql.
+-- filter in int__amplitude_user_milestones.sql. 'Viewed' is admitted there only
+-- for page path '/dashboard' (the path-anchored leg of the dashboard-view union);
+-- the path condition is not restated here because this guards classification of
+-- the event_type alone.
 with
     milestone_events(event_type) as (
         values
+            ('Viewed'),
             ('Onboarding - Registration Completed'),
             ('onboarding_complete'),
             ('pro_upgrade_complete'),
             ('Voter Outreach - Campaign Completed'),
             ('Dashboard - Candidate Dashboard Viewed'),
+            ('Dashboard - Campaign Plan Viewed'),
+            ('Campaign Plan - Campaign Tracker Viewed'),
             ('Serve Onboarding - Getting Started Viewed'),
             ('Serve Onboarding - Constituency Profile Viewed'),
             ('Serve Onboarding - Poll Value Props Viewed'),

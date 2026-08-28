@@ -1,11 +1,14 @@
-"""DAG integrity tests: every DAG imports without error and sets task retries >= 2."""
+"""Example DAGs test. This test ensures that all Dags have tags, retries set to two, and no import errors. This is an example pytest and may not be fit the context of your DAGs. Feel free to add and remove tests."""
 
 import logging
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 from airflow.models import DagBag
+from airflow.operators.python import PythonOperator
+from include.custom_functions.ballotready_graphql import ENTITY_SPECS
 
 
 @contextmanager
@@ -24,7 +27,7 @@ def get_import_errors():
     Generate a tuple for import errors in the dag bag
     """
     with suppress_logging("airflow"):
-        dag_bag = DagBag(include_examples=False)
+        dag_bag = DagBag()
 
         def strip_path_prefix(path):
             return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))
@@ -38,7 +41,7 @@ def get_dags():
     Generate a tuple of dag_id, <DAG objects> in the DagBag
     """
     with suppress_logging("airflow"):
-        dag_bag = DagBag(include_examples=False)
+        dag_bag = DagBag()
 
     def strip_path_prefix(path):
         return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))
@@ -46,16 +49,176 @@ def get_dags():
     return [(k, v, strip_path_prefix(v.fileloc)) for k, v in dag_bag.dags.items()]
 
 
-@pytest.mark.parametrize("rel_path,rv", get_import_errors(), ids=[x[0] for x in get_import_errors()])
+# Built once at collection time (real Airflow), before sibling tests stub `airflow` in
+# sys.modules — so reading DAG structure here is safe. Reused across the tests below to avoid
+# rebuilding the DagBag per parametrize/ids call.
+_IMPORT_ERRORS = get_import_errors()
+_ALL_DAGS = get_dags()
+
+# Load the loader DAG from its file directly — CI does not point the configured dags_folder at
+# astro/dags (so get_dags() is empty there), but the file path is stable. Collection-time build
+# means real Airflow (before the sibling airflow stub) and no metastore dependency.
+_LOADER_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_people_api.py")
+with suppress_logging("airflow"):
+    # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
+    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
+
+_L2_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_l2_voter_files.py")
+with suppress_logging("airflow"):
+    _L2_DAG = DagBag(dag_folder=_L2_DAG_FILE).dags.get("load_l2_voter_files")
+
+_BR_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "extract_ballotready.py")
+with suppress_logging("airflow"):
+    _BR_DAG = DagBag(dag_folder=_BR_DAG_FILE).dags.get("extract_ballotready")
+
+
+@pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
     """Test for import errors on a file"""
     if rel_path and rv:
         raise Exception(f"{rel_path} failed to import with message \n {rv}")
 
 
-@pytest.mark.parametrize("dag_id,dag, fileloc", get_dags(), ids=[x[2] for x in get_dags()])
+APPROVED_TAGS: dict[str, str] = {}
+
+
+@pytest.mark.parametrize("dag_id,dag,fileloc", _ALL_DAGS, ids=[x[2] for x in _ALL_DAGS])
+def test_dag_tags(dag_id, dag, fileloc):
+    """
+    Test if a DAG is tagged and if those TAGs are in the approved list
+    """
+    assert dag.tags, f"{dag_id} in {fileloc} has no tags"
+    if APPROVED_TAGS:
+        assert not set(dag.tags) - APPROVED_TAGS
+
+
+@pytest.mark.parametrize("dag_id,dag, fileloc", _ALL_DAGS, ids=[x[2] for x in _ALL_DAGS])
 def test_dag_retries(dag_id, dag, fileloc):
     """
     Test if a DAG has retries set
     """
     assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."
+
+
+def test_load_people_api_sequence():
+    """The loader DAG gates unload/provision on the dbt test and ends build_indexes -> validate ->
+    resize -> analyze -> promote: validate runs BEFORE resize so its heavy per-state counts run on
+    the big index instance, and promote (the serving cutover) is the automated final step, after
+    resize + analyze, so `live` only ever moves to a resized cluster with fresh stats.
+    """
+    assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
+    assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
+    assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("provision").upstream_list}
+    assert "build_indexes" in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+    assert "validate" in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
+    # resize must not be upstream of validate anymore (the old order is fully gone).
+    assert "resize" not in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+    # promote is the automated final cutover: downstream of analyze, and it is the sink (no task
+    # depends on it).
+    assert "analyze" in {t.task_id for t in _LOADER_DAG.get_task("promote").upstream_list}
+    assert _LOADER_DAG.get_task("promote").downstream_list == []
+
+
+def test_load_people_api_scale_down_on_failure():
+    """scale_down_on_failure is the on-failure cost guard: downstream of every task after which a
+    cluster can exist (provision, unload, the serial load chain, AND validate — which now runs on
+    the scaled-up writer before resize, so a validate failure must flip it to serverless too),
+    firing via trigger_rule=one_failed if any of them fails, but NOT upstream of resize (a
+    successful run skips it since resize already made the writer serverless). `unload` must be a
+    direct upstream: one_failed fires only on a FAILED direct upstream, and an unload failure with
+    provision success leaves the rest UPSTREAM_FAILED, which does not satisfy one_failed.
+    """
+    assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
+    scale_down_task = _LOADER_DAG.get_task("scale_down_on_failure")
+    assert scale_down_task.trigger_rule == "one_failed"
+    upstream_ids = {t.task_id for t in scale_down_task.upstream_list}
+    assert upstream_ids == {
+        "provision",
+        "unload",
+        "create_schema",
+        "copy",
+        "build_indexes",
+        "validate",
+        "resize",
+        "analyze",
+    }
+    # promote runs after resize (cluster already serving-ready); a promote failure must NOT scale
+    # the writer down, so promote is deliberately not a scale_down upstream.
+    assert "promote" not in upstream_ids
+    assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
+
+
+def test_load_l2_voter_files_sequence():
+    """The load plan runs after the sync, and runs even when a sync fails.
+
+    Databricks reads S3 rather than the sync's results, so a state that fails to copy must not
+    strand the states that copied.
+    """
+    assert _L2_DAG is not None, f"load_l2_voter_files failed to load from {_L2_DAG_FILE}"
+    plan_table_loads = _L2_DAG.get_task("plan_table_loads")
+    assert plan_table_loads.trigger_rule == "all_done"
+    assert {t.task_id for t in plan_table_loads.upstream_list} == {"sync"}
+    assert {t.task_id for t in _L2_DAG.get_task("load").upstream_list} == {"plan_table_loads"}
+    # One archive per worker, since sync downloads it whole to a fixed 10 GiB of local disk.
+    assert _L2_DAG.get_task("sync").max_active_tis_per_dag == 1
+
+
+def test_extract_ballotready_has_a_task_per_entity():
+    assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
+    assert {t.task_id for t in _BR_DAG.tasks} == {f"extract_{name}" for name in ENTITY_SPECS}
+    # The registry is the authority; a shrunk one would otherwise make this vacuously true.
+    assert len(ENTITY_SPECS) == 9
+
+
+def test_extract_ballotready_orders_an_entity_after_the_ones_whose_tables_it_reads():
+    """Derived from spec.reads_tables, so a tenth entity gets its edges without a DAG edit.
+
+    Everything with no reads_tables builds its worklist from staging alone and needs no
+    ordering at all.
+    """
+    assert _BR_DAG is not None
+    for name, spec in ENTITY_SPECS.items():
+        upstream = {t.task_id for t in _BR_DAG.get_task(f"extract_{name}").upstream_list}
+        assert upstream == {f"extract_{other}" for other in spec.reads_tables}
+    assert ENTITY_SPECS["issue"].reads_tables == ("stance",)
+
+
+def test_extract_ballotready_does_not_strand_an_entity_when_its_upstream_fails():
+    """An entity with reads_tables reads landed rows, not the upstream task's return value, so
+    an upstream failure must not block it. Also derived, for the same reason as the edges."""
+    assert _BR_DAG is not None
+    for name, spec in ENTITY_SPECS.items():
+        expected = "all_done" if spec.reads_tables else "all_success"
+        assert _BR_DAG.get_task(f"extract_{name}").trigger_rule == expected
+
+
+def test_extract_ballotready_consults_should_extract_for_the_entities_param(monkeypatch):
+    """The `entities` rule lives in the registry module; this pins that the task actually calls
+    it, since a task body that skipped the call would pass every unit test of the rule itself.
+    """
+    assert _BR_DAG is not None
+    task = _BR_DAG.get_task("extract_party")
+    assert isinstance(task, PythonOperator)
+    func = task.python_callable
+
+    calls = []
+
+    def fake_should_extract(entity, requested):
+        calls.append((entity, list(requested)))
+        return False
+
+    monkeypatch.setitem(func.__globals__, "should_extract", fake_should_extract)
+    monkeypatch.setitem(
+        func.__globals__,
+        "get_current_context",
+        lambda: {"params": {"entities": ["issue"]}},
+    )
+
+    assert func() == {"entity": "party", "skipped": True}
+    assert calls == [("party", ["issue"])]
+
+
+def test_extract_ballotready_bounds_concurrent_tasks():
+    """The concurrency budget is max_active_tasks times max_workers, so this must stay pinned."""
+    assert _BR_DAG is not None
+    assert _BR_DAG.max_active_tasks == 4

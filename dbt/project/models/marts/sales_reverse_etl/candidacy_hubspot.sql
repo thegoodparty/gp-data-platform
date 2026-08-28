@@ -1,8 +1,15 @@
 -- Civics -> HubSpot lead feed (reverse-ETL mart `candidacy_hubspot`). One row per
 -- gp_candidacy_id regardless of whether BallotReady, TechSpeed, DDHQ, or gp_api
 -- identified the candidacy, replacing the per-provider legacy feeds. Output is the
--- Title-Case HubSpot import contract with owner/Type set for all rows. 30-day rolling
--- window on greatest(created_at, updated_at).
+-- Title-Case HubSpot import contract with owner/Type set for all rows.
+--
+-- WINDOW: 30-day rolling on feed_activity_at -- the latest real provider EVENT time.
+-- For vendor-sourced rows created_at/updated_at are pipeline extract stamps, so a
+-- vendor re-delivering its whole file re-stamps its entire universe as active today
+-- and floods this feed with old candidacies. The vendor intermediates' additive
+-- vendor_activity_at columns carry the event time instead; gp_api rows already carry
+-- real product timestamps. The DDHQ intermediate exposes no event-time column, so
+-- DDHQ-only rows fall through the coalesce below and keep status-quo behavior.
 with
     icp_ts_offices as (
         select
@@ -57,6 +64,26 @@ with
             ) as ts_office
     ),
 
+    -- HubSpot de-dupe keys, normalized once per contact rather than once per
+    -- comparison. Each set is distinct, so the anti-joins below cannot fan out.
+    hs_email_keys as (
+        select distinct lower(trim(email)) as email_key
+        from {{ ref("int__hubspot_contacts") }}
+        where email is not null
+    ),
+
+    hs_phone_keys as (
+        select distinct regexp_replace(phone_number, '[^0-9]', '') as phone_key
+        from {{ ref("int__hubspot_contacts") }}
+        where length(regexp_replace(phone_number, '[^0-9]', '')) >= 10
+    ),
+
+    hs_br_candidacy_ids as (
+        select distinct br_candidacy_id
+        from {{ ref("int__hubspot_contacts") }}
+        where br_candidacy_id is not null
+    ),
+
     civics_base as (
         select
             cy.gp_candidacy_id,
@@ -69,6 +96,7 @@ with
             cy.party_affiliation,
             cy.is_partisan,
             cy.is_open_seat,
+            cy.is_incumbent,
             cy.is_win_icp,
             cy.is_serve_icp,
             cy.is_win_supersize_icp,
@@ -92,19 +120,58 @@ with
             c.twitter_handle,
             c.facebook_url,
             c.instagram_handle,
-            -- the existing 5-part TechSpeed code; internal-only join key to the
-            -- TS-passthrough
-            -- table (aliased to free `candidate_code` for the emitted 4-part
-            -- match-back key).
-            ts_int.candidate_code as candidate_code_ts,
+            -- TS form values: BR-race-id fallback leg, zip, and the legacy
+            -- form-time stage label for `Election Type`.
+            ts_int.br_race_id as br_race_id_ts,
+            ts_int.postal_code as postal_code_ts,
+            ts_int.election_type as election_type_ts,
             br_int.br_candidacy_id,
             br_int.br_race_id as br_race_id_br,
+            -- Destination-facing recency: greatest available provider EVENT time,
+            -- falling back to the extract-stamped canonical timestamps only where
+            -- no provider supplies one (DDHQ-only rows). Both greatest() calls
+            -- skip nulls, so the fallback fires only when every leg is null,
+            -- which keeps this non-null.
+            coalesce(
+                greatest(
+                    br_int.vendor_activity_at,
+                    ts_int.vendor_activity_at,
+                    case
+                        when cy.candidate_id_source = 'gp_api'
+                        then greatest(cy.created_at, cy.updated_at)
+                    end
+                ),
+                greatest(cy.created_at, cy.updated_at)
+            ) as feed_activity_at,
             e.population,
             e.city,
             e.district,
             e.filing_deadline,
             e.seats_available,
-            e.election_date
+            e.election_date,
+            e.is_uncontested,
+            e.number_of_opponents,
+            -- nearest-upcoming stage, needed by both `Election Type` and the
+            -- appended election_stage (select-list lateral refs can't look ahead).
+            case
+                when cy.primary_election_date >= current_date()
+                then 'primary'
+                when cy.general_election_date >= current_date()
+                then 'general'
+            end as election_stage,
+            -- Candidate-side de-dupe keys. Null where the leg does not apply, so
+            -- the anti-joins below simply do not match (null never equals a key).
+            case
+                when c.email is not null and c.email != '' then lower(trim(c.email))
+            end as hs_email_key,
+            case
+                when
+                    c.phone_number is not null
+                    and c.phone_number != ''
+                    and length(regexp_replace(c.phone_number, '[^0-9]', '')) >= 10
+                then regexp_replace(c.phone_number, '[^0-9]', '')
+            end as hs_phone_key,
+            try_cast(br_int.br_candidacy_id as int) as hs_br_candidacy_id
         from {{ ref("candidacy_scored") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
@@ -120,9 +187,8 @@ with
             {{ ref("int__civics_candidacy_techspeed") }} as ts_int
             on cy.gp_candidacy_id = ts_int.gp_candidacy_id
         where
-            greatest(cy.created_at, cy.updated_at) >= current_date() - interval 30 day
             -- HS-eligible: has email or phone
-            and (
+            (
                 (c.email is not null and c.email != '')
                 or (c.phone_number is not null and c.phone_number != '')
             )
@@ -136,34 +202,56 @@ with
             )
             -- belt-and-suspenders not-already-in-HubSpot
             and cy.hubspot_contact_id is null
-            and not exists (
-                select 1
-                from {{ ref("int__hubspot_contacts") }} as hs
-                where
-                    (
-                        c.email is not null
-                        and c.email != ''
-                        and lower(trim(hs.email)) = lower(trim(c.email))
-                    )
-                    or (
-                        c.phone_number is not null
-                        and c.phone_number != ''
-                        and length(regexp_replace(c.phone_number, '[^0-9]', '')) >= 10
-                        and regexp_replace(hs.phone_number, '[^0-9]', '')
-                        = regexp_replace(c.phone_number, '[^0-9]', '')
-                    )
-                    or (
-                        br_int.br_candidacy_id is not null
-                        and hs.br_candidacy_id = try_cast(br_int.br_candidacy_id as int)
-                    )
-            )
+    ),
+
+    -- Recency filter lives here rather than in civics_base's WHERE so the window
+    -- basis is defined exactly once: the same expression is filtered on and emitted,
+    -- and the two cannot drift apart.
+    --
+    -- This costs real work. The old basis referenced only the candidacy relation, so
+    -- it pushed into that scan and pruned before any join; the new one spans the two
+    -- vendor intermediates and cannot push below them wherever it is written, so the
+    -- join tree now processes roughly 2.5-3x more rows. The remaining candidacy-only
+    -- predicates above still push down. Judged worth it: a duplicated expression can
+    -- drift between filter and output, which is the defect class being fixed here.
+    in_window as (
+        select *
+        from civics_base
+        where
+            feed_activity_at >= current_date() - interval 30 day
+            -- Bounded above as well: gp_api product timestamps and the canonical
+            -- fallback are not clamped the way the vendor legs are, and a single
+            -- future-dated value would otherwise satisfy the lower bound forever,
+            -- putting one row on every export indefinitely.
+            and feed_activity_at <= current_date() + interval 1 day
+    ),
+
+    -- Not-already-in-HubSpot, as three hash anti-joins instead of one correlated
+    -- `not exists` that ORs the three keys together. Spark cannot hash-join an OR
+    -- across disjoint keys, so the OR form planned as a
+    -- BroadcastNestedLoopJoin LeftAnti -- every candidacy in the window compared
+    -- against every HubSpot contact, with the phone regexp re-evaluated per pair.
+    not_in_hubspot as (
+        select b.*
+        from in_window as b
+        left join hs_email_keys as he on b.hs_email_key = he.email_key
+        left join hs_phone_keys as hp on b.hs_phone_key = hp.phone_key
+        left join hs_br_candidacy_ids as hb on b.hs_br_candidacy_id = hb.br_candidacy_id
+        where
+            he.email_key is null and hp.phone_key is null and hb.br_candidacy_id is null
     )
 
 select
     coalesce(b.candidate_id_source, '') as `Candidate ID Source`,
     coalesce(b.first_name, '') as `First Name`,
     coalesce(b.last_name, '') as `Last Name`,
-    coalesce(f.candidate_type, '') as `Candidate Type`,
+    case
+        when b.is_incumbent
+        then 'Incumbent'
+        when not b.is_incumbent
+        then 'Challenger'
+        else ''
+    end as `Candidate Type`,
     coalesce(b.party_affiliation, '') as `Party Affiliation`,
     coalesce(b.email, '') as `Email`,
     coalesce(b.phone_number, '') as `Phone Number`,
@@ -177,7 +265,7 @@ select
     coalesce(b.street_address, '') as `Street Address`,
     coalesce(b.state, '') as `State/Region`,
     coalesce(
-        right(concat('00000', cast(f.postal_code as varchar(10))), 5), ''
+        right(concat('00000', cast(b.postal_code_ts as varchar(10))), 5), ''
     ) as postal_code,
     coalesce(b.district, '') as `District`,
     coalesce(b.city, '') as `City`,
@@ -188,14 +276,25 @@ select
     coalesce(b.office_level, '') as `Office Level`,
     coalesce(cast(b.filing_deadline as string), '') as `Filing Deadline`,
     coalesce(
-        cast(b.br_race_id_br as string), cast(f.br_race_id as string), ''
+        cast(b.br_race_id_br as string), cast(b.br_race_id_ts as string), ''
     ) as br_race_id,
     coalesce(cast(b.primary_election_date as string), '') as `Primary Election Date`,
     coalesce(cast(b.general_election_date as string), '') as `General Election Date`,
     coalesce(cast(b.election_date as string), '') as `Election Date`,
-    coalesce(f.election_type, '') as `Election Type`,
-    coalesce(f.uncontested, '') as `Uncontested`,
-    f.number_of_candidates as `Number of Candidates`,
+    -- TS form value where present (legacy semantics); date-derived stage otherwise.
+    coalesce(b.election_type_ts, initcap(b.election_stage), '') as `Election Type`,
+    case
+        when b.is_uncontested
+        then 'Uncontested'
+        when not b.is_uncontested
+        then 'Contested'
+        else ''
+    end as `Uncontested`,
+    -- election carries number_of_opponents as string (DDHQ null-cast widens the
+    -- coalesce); round-trip through int keeps this column string-typed as before.
+    cast(
+        try_cast(b.number_of_opponents as int) + 1 as string
+    ) as `Number of Candidates`,
     b.seats_available as `Number of Seats Available`,
     case
         when b.is_open_seat then 'Yes' when not b.is_open_seat then 'No' else ''
@@ -217,14 +316,11 @@ select
     'Self-Filer Lead' as `Type`,
     '{{ env_var("DBT_CIVICS_HUBSPOT_CONTACT_OWNER", "") }}' as `Contact Owner`,
     '{{ env_var("DBT_CIVICS_HUBSPOT_OWNER_NAME", "") }}' as `Owner Name`,
-    f._ab_source_file_url as _ab_source_file_url,
-    f.uploaded as uploaded,
-    f._airbyte_extracted_at as _airbyte_extracted_at,
     current_timestamp() as added_to_mart_at,
     -- Viability comes from candidacy_scored (the broad civics viability source of
-    -- truth). Its civics scorer is canonical and gap-fills with the prior
-    -- candidacy value, so coverage never regresses and this feed inherits the broad
-    -- scorer's higher fill. Scale is unchanged (0 to 5), so accepted_range still holds.
+    -- truth). Its civics scorer is canonical; the prior-value gap-fill is
+    -- 2025-archive-only since the TechSpeed fuzzy-dedupe removal. Scale is
+    -- unchanged (0 to 5), so accepted_range still holds.
     b.viability_score as viability_rating_2_0,
     b.score_viability_automated as score_viability_automated,
     coalesce(
@@ -273,14 +369,8 @@ select
             b.primary_election_date
         )
     ) as election_year,
-    case
-        when b.primary_election_date >= current_date()
-        then 'primary'
-        when b.general_election_date >= current_date()
-        then 'general'
-    end as election_stage,
-    greatest(b.created_at, b.updated_at) as last_activity_at
-from civics_base as b
-left join
-    {{ ref("int__techspeed_candidates_fuzzy_deduped") }} as f
-    on b.candidate_code_ts = f.techspeed_candidate_code
+    b.election_stage,
+    -- Name kept: ops sorts and filters on it. Only the basis improves -- it is now
+    -- the provider event time rather than the pipeline extract stamp.
+    b.feed_activity_at as last_activity_at
+from not_in_hubspot as b

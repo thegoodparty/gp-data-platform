@@ -6,7 +6,13 @@
 -- Uses a representative-row approach: picks one candidacy_stage row per
 -- gp_election_id, preferring general stage and the latest timestamp.
 with
-    source as (select * from {{ ref("int__civics_candidacy_stage_ddhq") }}),
+    -- 2026+ only; the stage model is all-time for candidacy_stage enrichment,
+    -- but the election grain's all-time expansion is a later PR.
+    source as (
+        select *
+        from {{ ref("int__civics_candidacy_stage_ddhq") }}
+        where election_date >= '2026-01-01'
+    ),
 
     representative_row as (
         select *

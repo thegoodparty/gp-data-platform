@@ -1,26 +1,50 @@
 """
 ## Sync election-api marts from Databricks to PostgreSQL
 
-Builds and atomically swaps election-api Postgres tables from their dbt marts
-in Databricks. Each table is its own task group following the same lifecycle:
+Builds a complete staging copy of every election-api Postgres table from its
+dbt mart in Databricks, then swaps the entire set into place in one atomic
+transaction. Each table is one task group with the same build lifecycle:
 
 1. **build_staging** — drop & recreate `staging."<Table>_new"` LIKE the live
    target (no indexes — fast bulk-insert).
 2. **load_staging** — stream the source mart from Databricks into staging.
-3. **build_indexes_and_fk** — add PK, indexes, and FK constraints.
-4. **quality_checks** — gate the swap on row-count / coverage floors.
-5. **swap** — atomic rename swap (`_new` -> live, live -> `_old`) with all
-   indexes and constraints renamed to canonical Prisma names.
-6. **drop_old** — drop the renamed-aside `_old` table.
+   Runs on the `election-api-sync` worker queue (see Worker queue below).
+   The column list is the live table's own columns, so the mart must publish
+   every one of them, with matching names and types — there is no per-table
+   column mapping, row transform, or exclusion list in this DAG. A live column
+   the mart lacks fails the load; a new live column whose data the mart already
+   publishes starts flowing automatically. Adding a column therefore lands
+   mart-side first, then in Postgres.
+3. **build_indexes_and_fk** — add PK, indexes, and FK constraints, generated
+   from the table's declarative spec. Cross-table FKs reference the sibling
+   STAGING table, so the staging set is self-contained and validates against
+   its own vintage.
+4. **quality_checks** — gate the swap on generic count / id-overlap /
+   NULL-probe floors plus optional per-table extras.
+
+Once every table's quality gate is green, a single **swap** task renames the
+whole set in atomically (live -> `_old`, `_new` -> live, all indexes and
+constraints renamed to canonical Prisma names; constraints follow their
+tables through the renames, so the fresh vintage's FKs arrive pointing at
+fresh siblings and the old vintage's leave with it). No child rows are ever
+mutated and the API only ever sees one complete, referentially consistent
+vintage. **drop_old** then drops the renamed-aside set. Leftover `_old`
+tables from a crashed run are pre-dropped inside the swap transaction, so a
+crashed run never wedges subsequent ones.
 
 The shared lifecycle lives in
-`include/custom_functions/election_api_utils.py`. Each task group below is
-a thin per-table wrapper that supplies the source query, transform, and
-constraint DDL.
+`include/custom_functions/election_api_utils.py`; each table below is a
+declarative `MartSync` entry (spec, mart, gate, FK parents) consumed by a
+single task-group factory. The only cross-group ordering is
+`parent.build_indexes_and_fk >> child.build_indexes_and_fk`: a staging FK
+needs the referenced staging table loaded with its PK in place. Loads run in
+parallel.
 
-This is the prototype for migrating the legacy
-`dbt/project/models/write/write__election_api_db.py` (which writes 8 election
-tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
+The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
+mode unless it is exactly "true"): every night while disabled is a full
+dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
+only the swap is withheld. This DAG is the only writer to these tables, so
+rehearsal freezes ALL of them: keep the rehearsal window short.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -34,34 +58,49 @@ tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
 - `election_api_bastion_conn_id` (optional) — SSH bastion to tunnel through.
   Defaults to `gp_bastion_host`. Set to an empty string for local dev on VPN
   where the Postgres host is reachable directly.
+- `election_api_swap_enabled` — cutover switch for the set-wise swap.
+  Anything but "true" is rehearsal mode (no table is swapped).
+- `election_api_source_schema` (optional) — Databricks schema holding the
+  marts. Defaults to `dbt`, the canonical production-quality build, in both
+  dev and prod (deliberately not `databricks_dbt_schema`, which points at
+  `dbt_staging` for in-flight artifacts). Override on a dev deployment to
+  test unmerged mart changes end to end from a development schema.
 
-The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
-points at `dbt_staging` for in-flight dbt build artifacts). The election-api
-sync reads the production-quality version of the marts in both dev and prod.
+### Worker queue:
+`load_staging` runs on the `election-api-sync` queue, declared per environment
+in gp-terraform-dataplatform's `locals.tf`. Without it those tasks are never
+picked up and fail with no logs. A load task peaks around 400 MB
+(~250 MB of imports plus one `batch_size` fetch), so the queue is A5 at
+concurrency 2 — five on one 2 GiB A5 is what OOM-killed these tasks. Keep the
+concurrency low rather than widening it; Astro scales workers out from the
+queued-task count, so low concurrency gives the DAG more cores, not fewer.
 
 ### Deploy model:
-- `main` → `astro-prod`. `astro-dev`'s branch mapping is set manually in the
-  Astro Cloud UI's Git Deploys settings. Astro's webhook fires on push events
-  to the mapped branch, so a branch-mapping change alone does not redeploy —
-  a subsequent push to the new branch (or a manual redeploy via the Astro UI)
-  is what triggers the sync.
-- The election-api Postgres schema is owned by the election-api repo. Prisma
-  migrations apply when election-api is deployed to the corresponding env,
-  not on PR merge alone. Check status via the `_prisma_migrations` table on
-  the target Postgres before kicking a sync that depends on new columns.
+Branch-to-deployment mapping lives in Astro's Git Deploys settings; see
+`airflow/astro/README.md`.
+
+The election-api Postgres schema is owned by the election-api repo. Prisma
+migrations apply when election-api is deployed to the corresponding env, not
+on PR merge alone. Check `_prisma_migrations` on the target Postgres before
+kicking a sync that depends on new columns.
 """
 
 import logging
-import uuid
-from datetime import UTC, datetime
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
+    ForeignKey,
+    Index,
+    QualityGate,
     TableSyncSpec,
     apply_ddl,
     bulk_insert_from_databricks,
     create_staging_table,
-    drop_old_table,
+    drop_old_tables,
+    run_quality_checks,
+    staging_columns,
     swap_staging_into_target,
 )
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
@@ -71,15 +110,9 @@ from pendulum import duration
 t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
-DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
-
-# Memory note: load_staging streams a mart into Postgres, but
-# bulk_insert_from_databricks reads one partition at a time over a single
-# connection, so each task's peak memory is bounded to ~one partition (tens of
-# MB on top of the worker's shared base). Under the Astro executor, tasks run as
-# subprocesses on shared worker nodes sized via the deployment's worker queue
-# (see astro.tf), so no per-task pod override (executor_config) is needed —
-# pod_override is a Kubernetes-executor feature and is ignored here anyway.
+SWAP_GATE_VARIABLE = "election_api_swap_enabled"
+# Loads run on their own worker queue at low concurrency; see the docstring.
+LOAD_QUEUE = "election-api-sync"
 
 
 def _open_pg():
@@ -95,187 +128,388 @@ def _open_pg():
     )
 
 
+@dataclass(frozen=True)
+class MartSync:
+    """One mart-to-table sync: everything the task-group factory needs."""
+
+    group_id: str
+    spec: TableSyncSpec
+    source_model: str
+    gate: QualityGate
+    partition_column: str | None = None
+    # Extra per-table checks run after the generic gate: (conn, spec, loaded).
+    extra_checks: Callable[..., None] | None = None
+    # group_ids of the tables this table's staging FKs reference; wired as
+    # parent.build_indexes_and_fk >> this.build_indexes_and_fk (the FK add
+    # needs the referenced staging table loaded with its PK in place).
+    parents: tuple[str, ...] = ()
+
+
 # ---------------------------------------------------------------------------
-# ZipToPosition
+# Per-table extra quality checks (beyond the generic gate)
 # ---------------------------------------------------------------------------
 
-ZTP = TableSyncSpec(
-    target_table="ZipToPosition",
-    indexes=(
-        "ZipToPosition_zip_code_idx",
-        "ZipToPosition_position_id_idx",
-        "ZipToPosition_zip_code_pct_districtzip_to_zip_idx",
-        "ZipToPosition_zip_code_position_id_election_date_key",
+
+def _ztp_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """Statewide coverage: a partial load can pass the count ratio while
+    silently dropping whole states."""
+    cur = conn.cursor()
+    try:
+        cur.execute(f'SELECT COUNT(DISTINCT state) FROM "{spec.staging_schema}"."{spec.new_table}"')
+        distinct_states = cur.fetchone()[0]
+    finally:
+        cur.close()
+    if distinct_states < 30:
+        raise ValueError(f"Only {distinct_states} distinct states — refusing to swap")
+
+
+def _pt_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """The election-api consumer does not disambiguate model_version, so a
+    duplicate (district_id, election_year, election_code) key would make it
+    serve an arbitrary row — the invariant the swap delivery exists to
+    guarantee (the legacy upsert writer could not)."""
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"SELECT COUNT(*) FROM ("
+            f"SELECT district_id, election_year, election_code "
+            f'FROM "{spec.staging_schema}"."{spec.new_table}" '
+            f"GROUP BY district_id, election_year, election_code "
+            f"HAVING COUNT(*) > 1"
+            f") AS dupe_keys"
+        )
+        dup_keys = cur.fetchone()[0]
+    finally:
+        cur.close()
+    if dup_keys > 0:
+        raise ValueError(
+            f"{dup_keys} duplicate (district_id, election_year, "
+            f"election_code) keys in staging — refusing to swap"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Table declarations
+# ---------------------------------------------------------------------------
+
+# Staged-vs-live id overlap floor for the Prisma-graph tables, whose minted
+# ids are deterministic and may be held by external consumers. 0.90 leaves
+# headroom for the first enabled run, which prunes rows the legacy writer
+# could never delete.
+_GRAPH_ID_OVERLAP = 0.90
+
+TABLES: tuple[MartSync, ...] = (
+    MartSync(
+        group_id="place",
+        spec=TableSyncSpec(
+            target_table="Place",
+            indexes=(
+                Index("Place_slug_key", "(slug)", unique=True),
+                Index("Place_geoid_key", "(geoid)", unique=True),
+            ),
+            fkeys=(ForeignKey("Place_parent_id_fkey", "parent_id", "Place"),),
+        ),
+        source_model="m_election_api__place",
+        gate=QualityGate(cold_start_floor=40_000, min_id_overlap=_GRAPH_ID_OVERLAP),
     ),
-    fkeys=("ZipToPosition_position_id_fkey",),
+    MartSync(
+        group_id="district",
+        spec=TableSyncSpec(
+            target_table="District",
+            indexes=(
+                Index(
+                    "District_state_l2_district_type_l2_district_name_key",
+                    "(state, l2_district_type, l2_district_name)",
+                    unique=True,
+                ),
+            ),
+        ),
+        source_model="m_election_api__district",
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        partition_column="state",
+    ),
+    MartSync(
+        group_id="issue",
+        spec=TableSyncSpec(
+            target_table="Issue",
+            fkeys=(ForeignKey("Issue_parent_id_fkey", "parent_id", "Issue"),),
+        ),
+        source_model="m_election_api__issue",
+        # The BR issue taxonomy is ~20 rows; the ratio gate does the real work.
+        gate=QualityGate(cold_start_floor=10, min_id_overlap=_GRAPH_ID_OVERLAP),
+    ),
+    MartSync(
+        group_id="person",
+        spec=TableSyncSpec(
+            target_table="Person",
+            indexes=(
+                Index("Person_slug_idx", "(slug)"),
+                Index("Person_gp_api_user_id_idx", "(gp_api_user_id)"),
+            ),
+        ),
+        source_model="m_election_api__person",
+        partition_column="state",
+        gate=QualityGate(cold_start_floor=200_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+    ),
+    MartSync(
+        group_id="position",
+        spec=TableSyncSpec(
+            target_table="Position",
+            indexes=(Index("Position_br_position_id_key", "(br_position_id)", unique=True),),
+            fkeys=(ForeignKey("Position_district_id_fkey", "district_id", "District"),),
+        ),
+        source_model="m_election_api__position",
+        partition_column="state",
+        gate=QualityGate(cold_start_floor=200_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        parents=("district",),
+    ),
+    MartSync(
+        group_id="race",
+        spec=TableSyncSpec(
+            target_table="Race",
+            indexes=(
+                Index("Race_br_hash_id_idx", "(br_hash_id)"),
+                Index("Race_place_id_idx", "(place_id)"),
+                Index("Race_position_id_idx", "(position_id)"),
+                Index("Race_slug_idx", "(slug)"),
+            ),
+            fkeys=(
+                ForeignKey("Race_place_id_fkey", "place_id", "Place"),
+                ForeignKey("Race_position_id_fkey", "position_id", "Position"),
+            ),
+        ),
+        source_model="m_election_api__race",
+        # ~1M rows; one state at a time keeps each server-side result small.
+        partition_column="state",
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        parents=("place", "position"),
+    ),
+    MartSync(
+        group_id="candidacy",
+        spec=TableSyncSpec(
+            target_table="Candidacy",
+            indexes=(
+                Index("Candidacy_slug_key", "(slug)", unique=True),
+                Index("Candidacy_person_id_idx", "(person_id)"),
+                Index("Candidacy_race_id_idx", "(race_id)"),
+            ),
+            fkeys=(
+                ForeignKey("Candidacy_person_id_fkey", "person_id", "Person"),
+                ForeignKey("Candidacy_race_id_fkey", "race_id", "Race"),
+            ),
+        ),
+        source_model="m_election_api__candidacy",
+        partition_column="state",
+        gate=QualityGate(cold_start_floor=150_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        parents=("person", "race"),
+    ),
+    MartSync(
+        group_id="office_holder",
+        spec=TableSyncSpec(
+            target_table="OfficeHolder",
+            indexes=(
+                Index("OfficeHolder_person_id_idx", "(person_id)"),
+                Index("OfficeHolder_position_id_idx", "(position_id)"),
+            ),
+            fkeys=(
+                ForeignKey("OfficeHolder_person_id_fkey", "person_id", "Person", on_delete="CASCADE"),
+                ForeignKey("OfficeHolder_position_id_fkey", "position_id", "Position"),
+            ),
+        ),
+        source_model="m_election_api__office_holder",
+        partition_column="state",
+        gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        parents=("person", "position"),
+    ),
+    MartSync(
+        group_id="stance",
+        spec=TableSyncSpec(
+            target_table="Stance",
+            indexes=(
+                Index("Stance_candidacy_id_idx", "(candidacy_id)"),
+                Index("Stance_issue_id_idx", "(issue_id)"),
+            ),
+            fkeys=(
+                ForeignKey("Stance_issue_id_fkey", "issue_id", "Issue", on_delete="RESTRICT"),
+                ForeignKey("Stance_candidacy_id_fkey", "candidacy_id", "Candidacy"),
+            ),
+        ),
+        source_model="m_election_api__stance",
+        partition_column="issue_id",
+        gate=QualityGate(cold_start_floor=50_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+        parents=("issue", "candidacy"),
+    ),
+    MartSync(
+        group_id="zip_to_position",
+        spec=TableSyncSpec(
+            target_table="ZipToPosition",
+            indexes=(
+                Index("ZipToPosition_zip_code_idx", "(zip_code)"),
+                Index("ZipToPosition_position_id_idx", "(position_id)"),
+                Index(
+                    "ZipToPosition_zip_code_pct_districtzip_to_zip_idx",
+                    "(zip_code, pct_districtzip_to_zip)",
+                ),
+                Index(
+                    "ZipToPosition_zip_code_position_id_election_date_key",
+                    "(zip_code, position_id, election_date) NULLS NOT DISTINCT",
+                    unique=True,
+                ),
+            ),
+            fkeys=(
+                ForeignKey(
+                    "ZipToPosition_position_id_fkey",
+                    "position_id",
+                    "Position",
+                    on_delete="RESTRICT",
+                ),
+            ),
+        ),
+        source_model="m_election_api__zip_to_position",
+        # Statewide coverage added ~260k rows; read one state at a time so each
+        # server-side result set stays small as the mart grows.
+        partition_column="state",
+        # No id-overlap floor: nothing references ZipToPosition ids (PK only;
+        # the API reads by zip/position), and this change re-mints them (the
+        # mart now derives them from the natural key).
+        gate=QualityGate(cold_start_floor=1_000),
+        extra_checks=_ztp_extra_checks,
+        parents=("position",),
+    ),
+    MartSync(
+        group_id="district_top_issues",
+        spec=TableSyncSpec(
+            target_table="DistrictTopIssue",
+            indexes=(Index("DistrictTopIssue_district_id_issue_key", "(district_id, issue)", unique=True),),
+            fkeys=(
+                ForeignKey(
+                    "DistrictTopIssue_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                ),
+            ),
+        ),
+        source_model="m_election_api__district_top_issues",
+        # ~5.1M rows; read one issue at a time (~68 partitions) so no single
+        # server-side result set holds the whole mart.
+        partition_column="issue",
+        gate=QualityGate(
+            cold_start_floor=100_000,
+            # The mart's LEFT JOIN to haystaq_issue_tags only emits NULL flags
+            # on drift; belt-and-suspenders over the dbt-side tests.
+            not_null_columns=("is_local", "is_regional", "is_state", "is_federal"),
+        ),
+        parents=("district",),
+    ),
+    MartSync(
+        group_id="elected_official_support",
+        spec=TableSyncSpec(
+            target_table="Elected_Office_Support",
+            # elected_office_id is the gp-api elected_office instance; it is
+            # not an enforced FK (elected_office lives in gp-api, not the
+            # Election API), so the table has only a primary key.
+            pk_column="elected_office_id",
+        ),
+        source_model="m_election_api__elected_official_support",
+        # ~1.1k rows; coverage is intentionally low (the support score needs
+        # an election vote tally). The ratio gate does the real work; the PK
+        # added in build_indexes enforces elected_office_id unique + non-null.
+        gate=QualityGate(cold_start_floor=500),
+    ),
+    MartSync(
+        group_id="projected_turnout",
+        spec=TableSyncSpec(
+            target_table="Projected_Turnout",
+            indexes=(
+                Index(
+                    "Projected_Turnout_district_id_election_year_idx",
+                    "(district_id, election_year)",
+                ),
+            ),
+            fkeys=(
+                ForeignKey(
+                    "Projected_Turnout_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                ),
+            ),
+        ),
+        source_model="m_election_api__projected_turnout",
+        partition_column="election_year",
+        # No id-overlap floor: rows legitimately re-key on model-version
+        # supersessions.
+        gate=QualityGate(
+            cold_start_floor=100_000,
+            not_null_columns=("district_id", "election_year", "election_code"),
+        ),
+        extra_checks=_pt_extra_checks,
+        parents=("district",),
+    ),
 )
 
-ZTP_SOURCE_COLUMNS = [
-    "position_id",
-    "name",
-    "br_database_id",
-    "zip_code",
-    "election_year",
-    "election_date",
-    "display_office_level",
-    "office_type",
-    "state",
-    "district",
-    "voters_in_zip",
-    "voters_in_zip_district",
-    "pct_districtzip_to_zip",
-]
-ZTP_TARGET_COLUMNS = ["id", "updated_at", *ZTP_SOURCE_COLUMNS]
-
-# Stable namespace so uuid5 produces the same id across runs.
-_UUID_NAMESPACE = uuid.UUID("0a3f9b2c-7d1e-4c5a-9e8d-1f7e6a4c2b30")
-
-
-def _ztp_transform_row(row: tuple) -> tuple:
-    (
-        position_id,
-        name,
-        br_database_id,
-        zip_code,
-        election_year,
-        election_date,
-        display_office_level,
-        office_type,
-        state,
-        district,
-        voters_in_zip,
-        voters_in_zip_district,
-        pct_districtzip_to_zip,
-    ) = row
-    row_id = uuid.uuid5(
-        _UUID_NAMESPACE,
-        f"{zip_code}|{position_id}|{election_date}",
-    )
-    return (
-        str(row_id),
-        datetime.now(UTC),
-        position_id,
-        name,
-        br_database_id,
-        zip_code,
-        election_year,
-        election_date,
-        display_office_level,
-        office_type,
-        state,
-        district,
-        voters_in_zip,
-        voters_in_zip_district,
-        pct_districtzip_to_zip,
-    )
-
 
 # ---------------------------------------------------------------------------
-# DistrictTopIssue
+# Task-group factory
 # ---------------------------------------------------------------------------
 
-DTI = TableSyncSpec(
-    target_table="DistrictTopIssue",
-    indexes=("DistrictTopIssue_district_id_issue_key",),
-    fkeys=("DistrictTopIssue_district_id_fkey",),
-)
 
-# Eleven columns: seven from the pre-DATA-1903 shape plus the four
-# jurisdictional flags added by election-api PR #164.
-DTI_COLUMNS = [
-    "id",
-    "updated_at",
-    "district_id",
-    "issue",
-    "issue_label",
-    "score",
-    "is_local",
-    "is_regional",
-    "is_state",
-    "is_federal",
-    "issue_rank",
-]
+def _build_group(table: MartSync) -> dict:
+    """One build->load->index->gate task group for a table's staging copy.
 
+    Returns handles to the tasks that participate in cross-group wiring.
+    """
+    spec = table.spec
+    handles: dict = {}
 
-def _dti_constraint_ddl() -> list[str]:
-    sn, nt = DTI.staging_schema, DTI.new_table
-    target_schema = DTI.target_schema
-    return [
-        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{DTI.stage_name(DTI.pk_name)}" PRIMARY KEY (id)'),
-        (
-            f"CREATE UNIQUE INDEX "
-            f'"{DTI.stage_name("DistrictTopIssue_district_id_issue_key")}" '
-            f'ON "{sn}"."{nt}" (district_id, issue)'
-        ),
-        (
-            f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{DTI.stage_name("DistrictTopIssue_district_id_fkey")}" '
-            f"FOREIGN KEY (district_id) "
-            f'REFERENCES "{target_schema}"."District"(id) '
-            f"ON UPDATE CASCADE ON DELETE RESTRICT"
-        ),
-    ]
+    @task_group(group_id=table.group_id)
+    def group():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, spec)
 
+        @task(queue=LOAD_QUEUE)
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            schema = Variable.get("election_api_source_schema", default="dbt")
+            with _open_pg() as conn:
+                # The live table's own columns drive the load: dbt must publish
+                # every one of them, with matching names and types.
+                columns = staging_columns(conn, spec)
+                col_list = ", ".join(f"`{c}`" for c in columns)
+                query = f"SELECT {col_list} " f"FROM `{catalog}`.`{schema}`.`{table.source_model}`"
+                return bulk_insert_from_databricks(
+                    conn,
+                    spec,
+                    source_query=query,
+                    target_columns=columns,
+                    partition_column=table.partition_column,
+                )
 
-def _ztp_constraint_ddl() -> list[str]:
-    sn, nt = ZTP.staging_schema, ZTP.new_table
-    target_schema = ZTP.target_schema
-    return [
-        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{ZTP.stage_name(ZTP.pk_name)}" PRIMARY KEY (id)'),
-        (f'CREATE INDEX "{ZTP.stage_name("ZipToPosition_zip_code_idx")}" ' f'ON "{sn}"."{nt}" (zip_code)'),
-        (
-            f'CREATE INDEX "{ZTP.stage_name("ZipToPosition_position_id_idx")}" '
-            f'ON "{sn}"."{nt}" (position_id)'
-        ),
-        (
-            f"CREATE INDEX "
-            f'"{ZTP.stage_name("ZipToPosition_zip_code_pct_districtzip_to_zip_idx")}" '
-            f'ON "{sn}"."{nt}" (zip_code, pct_districtzip_to_zip)'
-        ),
-        (
-            f"CREATE UNIQUE INDEX "
-            f'"{ZTP.stage_name("ZipToPosition_zip_code_position_id_election_date_key")}" '
-            f'ON "{sn}"."{nt}" '
-            f"(zip_code, position_id, election_date) NULLS NOT DISTINCT"
-        ),
-        (
-            f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{ZTP.stage_name("ZipToPosition_position_id_fkey")}" '
-            f"FOREIGN KEY (position_id) "
-            f'REFERENCES "{target_schema}"."Position"(id) '
-            f"ON UPDATE CASCADE ON DELETE RESTRICT"
-        ),
-    ]
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, spec.constraint_ddl())
 
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            with _open_pg() as conn:
+                run_quality_checks(conn, spec, table.gate, loaded_count)
+                if table.extra_checks:
+                    table.extra_checks(conn, spec, loaded_count)
 
-# ---------------------------------------------------------------------------
-# Elected_Office_Support
-# ---------------------------------------------------------------------------
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        s >> loaded >> idx >> qc
+        handles["build_indexes_and_fk"] = idx
+        handles["quality_checks"] = qc
 
-# elected_office_id is the gp-api elected_office instance; it is not an enforced
-# FK (elected_office lives in gp-api, not the Election API), so the table has only
-# a primary key — no secondary indexes or foreign keys.
-EOS = TableSyncSpec(target_table="Elected_Office_Support")
-
-# The mart emits these columns directly, so rows pass through with no transform
-# (source order must match this list).
-EOS_COLUMNS = [
-    "elected_office_id",
-    "support_constituents",
-    "total_constituents",
-    "created_at",
-    "updated_at",
-]
-
-
-def _eos_constraint_ddl() -> list[str]:
-    sn, nt = EOS.staging_schema, EOS.new_table
-    return [
-        (
-            f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (elected_office_id)'
-        ),
-    ]
+    group()
+    return handles
 
 
 @dag(
@@ -287,364 +521,42 @@ def _eos_constraint_ddl() -> list[str]:
     catchup=False,
     default_args={
         "owner": "Data Engineering Team",
-        "retries": 3,
+        # Two attempts: a step that fails twice is not a transient blip.
+        "retries": 1,
         "retry_delay": duration(seconds=30),
     },
     tags=["election_api", "postgres"],
     is_paused_upon_creation=True,
 )
 def sync_election_api():
-    @task_group(group_id="zip_to_position")
-    def zip_to_position():
-        @task
-        def build_staging() -> None:
-            with _open_pg() as conn:
-                create_staging_table(conn, ZTP)
+    handles = {table.group_id: _build_group(table) for table in TABLES}
+    # Self-references need no edge: the PK lands in the same transaction,
+    # before the FK.
+    for table in TABLES:
+        for parent in table.parents:
+            handles[parent]["build_indexes_and_fk"] >> handles[table.group_id]["build_indexes_and_fk"]
 
-        @task
-        def load_staging() -> int:
-            catalog = Variable.get("databricks_catalog")
-            col_list = ", ".join(ZTP_SOURCE_COLUMNS)
-            query = (
-                f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__zip_to_position`"
-            )
-            with _open_pg() as conn:
-                return bulk_insert_from_databricks(
-                    conn,
-                    ZTP,
-                    source_query=query,
-                    target_columns=ZTP_TARGET_COLUMNS,
-                    transform_row=_ztp_transform_row,
-                    # Statewide coverage (DATA-1986) added ~260k rows; read one
-                    # state at a time so the worker's peak memory stays bounded
-                    # as the mart grows, instead of buffering the full result.
-                    partition_column="state",
-                )
+    @task.short_circuit
+    def cutover_enabled() -> bool:
+        enabled = Variable.get(SWAP_GATE_VARIABLE, default="false").strip().lower() == "true"
+        if not enabled:
+            t_log.info("Swap disabled (rehearsal mode); staging left for parity checks")
+        return enabled
 
-        @task
-        def build_indexes_and_fk() -> None:
-            with _open_pg() as conn:
-                apply_ddl(conn, _ztp_constraint_ddl())
+    @task
+    def swap() -> None:
+        with _open_pg() as conn:
+            swap_staging_into_target(conn, [table.spec for table in TABLES])
 
-        @task
-        def quality_checks(loaded_count: int) -> None:
-            if loaded_count < 1_000:
-                raise ValueError(f"Only {loaded_count} rows loaded (<1000) — refusing to swap")
-            with _open_pg() as conn:
-                cur = conn.cursor()
-                try:
-                    cur.execute(
-                        f"SELECT COUNT(DISTINCT state) " f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
-                    )
-                    distinct_states = cur.fetchone()[0]
-                    if distinct_states < 30:
-                        raise ValueError(f"Only {distinct_states} distinct states " f"— refusing to swap")
-                    cur.execute(
-                        f"SELECT MIN(election_date), MAX(election_date) "
-                        f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
-                    )
-                    min_date, max_date = cur.fetchone()
-                    t_log.info(
-                        "Quality checks passed: %d rows, %d states, %s..%s",
-                        loaded_count,
-                        distinct_states,
-                        min_date,
-                        max_date,
-                    )
-                finally:
-                    cur.close()
+    @task
+    def drop_old() -> None:
+        with _open_pg() as conn:
+            drop_old_tables(conn, [table.spec for table in TABLES])
 
-        @task
-        def swap() -> None:
-            with _open_pg() as conn:
-                swap_staging_into_target(conn, ZTP)
-
-        @task
-        def drop_old() -> None:
-            with _open_pg() as conn:
-                drop_old_table(conn, ZTP)
-
-        s = build_staging()
-        loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
-        sw = swap()
-        do = drop_old()
-        s >> loaded >> idx >> qc >> sw >> do
-
-    @task_group(group_id="district_top_issues")
-    def district_top_issues():
-        @task
-        def build_staging() -> None:
-            with _open_pg() as conn:
-                create_staging_table(conn, DTI)
-
-        @task
-        def load_staging() -> int:
-            catalog = Variable.get("databricks_catalog")
-            col_list = ", ".join(DTI_COLUMNS)
-            query = (
-                f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__district_top_issues`"
-            )
-            with _open_pg() as conn:
-                return bulk_insert_from_databricks(
-                    conn,
-                    DTI,
-                    source_query=query,
-                    target_columns=DTI_COLUMNS,
-                    # ~5.1M rows; this load runs concurrently with
-                    # zip_to_position on the same worker, so read one issue at a
-                    # time (~68 partitions, <=~96k rows each) to keep the
-                    # combined peak memory bounded and avoid OOM (the zip-only
-                    # partition in #493 left this load unbounded).
-                    partition_column="issue",
-                )
-
-        @task
-        def build_indexes_and_fk() -> None:
-            with _open_pg() as conn:
-                apply_ddl(conn, _dti_constraint_ddl())
-
-        @task
-        def quality_checks(loaded_count: int) -> None:
-            # Shape-aware: compare staging to the prior live table so the
-            # thresholds auto-track the table's natural size as it grows.
-            # Catches catastrophic regressions (e.g., a partial Databricks
-            # load that drops most rows) without hardcoding numbers that
-            # will drift as the seed grows or shrinks.
-            with _open_pg() as conn:
-                cur = conn.cursor()
-                try:
-                    cur.execute(
-                        f"SELECT "
-                        f"COUNT(DISTINCT issue), "
-                        f"MIN(issue_rank), MAX(issue_rank), "
-                        f"COUNT(*) FILTER ("
-                        f"  WHERE is_local IS NULL OR is_regional IS NULL"
-                        f"  OR is_state IS NULL OR is_federal IS NULL) "
-                        f'FROM "{DTI.staging_schema}"."{DTI.new_table}"'
-                    )
-                    distinct_issues, min_rank, max_rank, null_flag_rows = cur.fetchone()
-
-                    # Prior live state (may be absent on a true cold start).
-                    # Both identifiers must be double-quoted in the regclass
-                    # argument — Postgres folds unquoted mixed-case to lowercase,
-                    # so `public.DistrictTopIssue` would resolve to
-                    # `public.districttopissue` and always return NULL.
-                    cur.execute(
-                        "SELECT to_regclass(%s)",
-                        (f'"{DTI.target_schema}"."{DTI.target_table}"',),
-                    )
-                    prior_exists = cur.fetchone()[0] is not None
-                    if prior_exists:
-                        cur.execute(
-                            f"SELECT COUNT(*), COUNT(DISTINCT issue) "
-                            f'FROM "{DTI.target_schema}"."{DTI.target_table}"'
-                        )
-                        prior_count, prior_issues = cur.fetchone()
-                    else:
-                        prior_count, prior_issues = 0, 0
-
-                    # Row count: refuse on a >50% drop vs prior live;
-                    # absolute floor only used on cold start. High-ratio
-                    # syncs (>3x prior) log a warning but do not refuse —
-                    # the DATA-1903 phase-c cutover is intentionally ~6.8x
-                    # (970K legacy top-10 rows -> 6.6M full-mart rows), so
-                    # blocking on growth would self-DOS the cutover. After
-                    # cutover the ratio stabilizes near 1.0; future >3x
-                    # excursions are worth on-call attention.
-                    if prior_count > 0:
-                        ratio = loaded_count / prior_count
-                        if ratio < 0.5:
-                            raise ValueError(
-                                f"Loaded {loaded_count} rows, prior live had "
-                                f"{prior_count} (ratio {ratio:.2f}) "
-                                f"— refusing to swap"
-                            )
-                        if ratio > 3:
-                            t_log.warning(
-                                "High-ratio sync: loaded %d rows, prior live "
-                                "had %d (ratio %.2f). Sometimes intentional "
-                                "(e.g., DATA-1903 phase-c cutover) — sometimes "
-                                "a JOIN fan-out or duplication bug. Verify "
-                                "the source mart's grain before trusting.",
-                                loaded_count,
-                                prior_count,
-                                ratio,
-                            )
-                    elif loaded_count < 100_000:
-                        raise ValueError(
-                            f"Cold-start load of {loaded_count} rows is "
-                            f"implausibly small — refusing to swap"
-                        )
-
-                    # Distinct issues: stay at-or-above prior. Allows growth
-                    # (e.g., seed adds new issues) and catches regression.
-                    if distinct_issues < prior_issues:
-                        raise ValueError(
-                            f"Staging has {distinct_issues} distinct issues, "
-                            f"prior live had {prior_issues} — refusing to swap"
-                        )
-
-                    # Flag integrity: every row should have all four flags
-                    # populated. The mart's LEFT JOIN to haystaq_issue_tags
-                    # only emits NULLs on drift, which the dbt-side tests
-                    # catch — this check is a belt-and-suspenders gate.
-                    if null_flag_rows > 0:
-                        raise ValueError(
-                            f"{null_flag_rows} staging rows have a NULL "
-                            f"jurisdictional flag — refusing to swap"
-                        )
-
-                    t_log.info(
-                        "Quality checks passed: %d rows (prior %d), "
-                        "%d distinct issues (prior %d), "
-                        "issue_rank %s..%s, all flags populated",
-                        loaded_count,
-                        prior_count,
-                        distinct_issues,
-                        prior_issues,
-                        min_rank,
-                        max_rank,
-                    )
-                finally:
-                    cur.close()
-
-        @task
-        def swap() -> None:
-            with _open_pg() as conn:
-                swap_staging_into_target(conn, DTI)
-
-        @task
-        def drop_old() -> None:
-            with _open_pg() as conn:
-                drop_old_table(conn, DTI)
-
-        s = build_staging()
-        loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
-        sw = swap()
-        do = drop_old()
-        s >> loaded >> idx >> qc >> sw >> do
-
-    @task_group(group_id="elected_official_support")
-    def elected_official_support():
-        @task
-        def build_staging() -> None:
-            with _open_pg() as conn:
-                create_staging_table(conn, EOS)
-
-        @task
-        def load_staging() -> int:
-            catalog = Variable.get("databricks_catalog")
-            col_list = ", ".join(EOS_COLUMNS)
-            query = (
-                f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__elected_official_support`"
-            )
-            # ~1.1k rows; no partitioning needed (one small result fits easily).
-            with _open_pg() as conn:
-                return bulk_insert_from_databricks(
-                    conn,
-                    EOS,
-                    source_query=query,
-                    target_columns=EOS_COLUMNS,
-                )
-
-        @task
-        def build_indexes_and_fk() -> None:
-            with _open_pg() as conn:
-                apply_ddl(conn, _eos_constraint_ddl())
-
-        @task
-        def quality_checks(loaded_count: int) -> None:
-            # Coverage is intentionally low: the support score needs an election
-            # vote tally, which exists for only a small share of offices (see the
-            # model docs / DATA-2000 PR). A flat floor can't catch a regression
-            # that halves a ~1.1k-row table (a ~550-row load would clear 500), so
-            # gate on the ratio to the prior live table (same pattern as the
-            # DistrictTopIssue block); the absolute floor is the cold-start
-            # fallback only.
-            with _open_pg() as conn:
-                cur = conn.cursor()
-                try:
-                    cur.execute(
-                        f"SELECT COUNT(*), COUNT(DISTINCT elected_office_id), "
-                        f"COUNT(*) FILTER (WHERE elected_office_id IS NULL) "
-                        f'FROM "{EOS.staging_schema}"."{EOS.new_table}"'
-                    )
-                    n, distinct_pos, null_pos = cur.fetchone()
-
-                    # Prior live state (absent on a true cold start). Both
-                    # identifiers must be double-quoted in the regclass argument
-                    # so Postgres does not fold the mixed-case name to lowercase.
-                    cur.execute(
-                        "SELECT to_regclass(%s)",
-                        (f'"{EOS.target_schema}"."{EOS.target_table}"',),
-                    )
-                    prior_exists = cur.fetchone()[0] is not None
-                    if prior_exists:
-                        cur.execute(f'SELECT COUNT(*) FROM "{EOS.target_schema}"."{EOS.target_table}"')
-                        prior_count = cur.fetchone()[0]
-                    else:
-                        prior_count = 0
-
-                    if prior_count > 0:
-                        ratio = loaded_count / prior_count
-                        if ratio < 0.5:
-                            raise ValueError(
-                                f"Loaded {loaded_count} rows, prior live had "
-                                f"{prior_count} (ratio {ratio:.2f}) — refusing to swap"
-                            )
-                    elif loaded_count < 500:
-                        raise ValueError(f"Cold-start load of {loaded_count} rows (<500) — refusing to swap")
-
-                    if null_pos > 0:
-                        raise ValueError(
-                            f"{null_pos} staging rows have a NULL elected_office_id — refusing to swap"
-                        )
-                    if distinct_pos != n:
-                        raise ValueError(
-                            f"elected_office_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
-                        )
-                    t_log.info(
-                        "Quality checks passed: %d rows (prior %d), elected_office_id unique and non-null",
-                        n,
-                        prior_count,
-                    )
-                finally:
-                    cur.close()
-
-        @task
-        def swap() -> None:
-            with _open_pg() as conn:
-                swap_staging_into_target(conn, EOS)
-
-        @task
-        def drop_old() -> None:
-            with _open_pg() as conn:
-                drop_old_table(conn, EOS)
-
-        s = build_staging()
-        loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
-        sw = swap()
-        do = drop_old()
-        s >> loaded >> idx >> qc >> sw >> do
-
-    # The pipelines run in parallel; under the Kubernetes executor each task
-    # is its own pod, and each load_staging reads one partition at a time, so
-    # they don't contend for memory.
-    zip_to_position()
-    district_top_issues()
-    elected_official_support()
+    gate = cutover_enabled()
+    for table in TABLES:
+        handles[table.group_id]["quality_checks"] >> gate
+    gate >> swap() >> drop_old()
 
 
 sync_election_api()

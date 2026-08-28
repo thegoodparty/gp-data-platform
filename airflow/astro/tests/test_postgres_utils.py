@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Stub external modules so the test file can be collected by pytest
-# in any environment (the Astro runtime, the dbt poetry env, or bare).
-# Using direct assignment (not setdefault) because the dbt poetry env
+# in any environment (the Astro runtime, the airflow or dbt uv env, or bare).
+# Using direct assignment (not setdefault) because the dbt uv env
 # ships an incompatible airflow.sdk that lacks BaseHook/Variable.
 _STUBS = (
     "airflow",

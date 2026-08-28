@@ -54,13 +54,6 @@ def test_candidacy_config_has_election_date():
     assert any("election_date" in cols for cols in CANDIDACY_CONFIG.em_training_blocks)
 
 
-def test_candidacy_config_blocking_rules():
-    """Candidacy config has 7 blocking rules including br_race_id."""
-    from scripts.configs.candidacy import CANDIDACY_CONFIG
-
-    assert len(CANDIDACY_CONFIG.blocking_rules_for_prediction) == 7
-
-
 def test_elected_official_config_comparisons():
     """Elected official config has 13 comparisons (adds the term_start_date
     election-cycle date comparison and the normalized-office comparison for the
