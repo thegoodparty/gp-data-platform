@@ -775,7 +775,6 @@ def _keyed_worklist(
     *,
     after_changed_at: str | None,
     after_source_id: int | None,
-    limit: int,
 ) -> str:
     """Wrap an (source_id, source_changed_at) scan as a cursor-paged worklist.
 
@@ -793,7 +792,7 @@ def _keyed_worklist(
     return (
         f"WITH worklist AS ({grouped}) "
         f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
-        f"ORDER BY source_changed_at ASC, source_id ASC LIMIT {int(limit)}"
+        "ORDER BY source_changed_at ASC, source_id ASC"
     )
 
 
@@ -815,7 +814,6 @@ def candidacy_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Candidacy ids from the S3 feed plus the upcoming-race roster.
 
@@ -858,9 +856,7 @@ def candidacy_worklist_sql(
         "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
         f"FROM ({upcoming}) upcoming"
     )
-    return _keyed_worklist(
-        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
-    )
+    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
 
 
 def _derived_worklist_sql(
@@ -873,7 +869,6 @@ def _derived_worklist_sql(
     explode: tuple[str, str] | None,
     after_changed_at: str | None,
     after_source_id: int | None,
-    limit: int,
 ) -> str:
     """Worklist for ids carried on another entity's staging rows.
 
@@ -891,9 +886,7 @@ def _derived_worklist_sql(
         f"SELECT cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
         f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
     )
-    return _keyed_worklist(
-        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
-    )
+    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
 
 
 def geofence_worklist_sql(
@@ -903,7 +896,6 @@ def geofence_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Geofence ids referenced by candidacies; geofences carry no update feed of their own."""
     return _derived_worklist_sql(
@@ -917,7 +909,6 @@ def geofence_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
-        limit=limit,
     )
 
 
@@ -928,7 +919,6 @@ def filing_period_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Filing period ids exploded out of each race's `filing_periods` array."""
     return _derived_worklist_sql(
@@ -940,7 +930,6 @@ def filing_period_worklist_sql(
         explode=("filing_periods", "filing_period"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
-        limit=limit,
     )
 
 
@@ -951,7 +940,6 @@ def normalized_position_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Normalized position ids carried on each position row."""
     return _derived_worklist_sql(
@@ -963,7 +951,6 @@ def normalized_position_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
-        limit=limit,
     )
 
 
@@ -974,7 +961,6 @@ def position_election_frequency_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Election frequency ids exploded out of each position's `election_frequencies` array."""
     return _derived_worklist_sql(
@@ -986,7 +972,6 @@ def position_election_frequency_worklist_sql(
         explode=("election_frequencies", "election_frequency"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
-        limit=limit,
     )
 
 
@@ -997,7 +982,6 @@ def issue_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Issue ids referenced by landed stances that have not been fetched yet.
 
@@ -1027,7 +1011,7 @@ def issue_worklist_sql(
         "WHERE source_id IS NOT NULL AND NOT EXISTS ("
         f"SELECT 1 FROM {issue} landed WHERE landed.requested_id = referenced.source_id"
         ") "
-        f"ORDER BY source_id ASC LIMIT {int(limit)}"
+        "ORDER BY source_id ASC"
     )
 
 
@@ -1038,7 +1022,6 @@ def person_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
-    limit: int,
 ) -> str:
     """Person ids referenced by landed candidacies; persons carry no update feed of their own.
 
@@ -1072,9 +1055,7 @@ def person_worklist_sql(
     # Post-cast null filter for consistency with issue_worklist_sql. Defence-in-depth: on
     # ANSI mode a malformed databaseId raises CAST_INVALID_INPUT rather than producing a null.
     inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
-    return _keyed_worklist(
-        inner, after_changed_at=after_changed_at, after_source_id=after_source_id, limit=limit
-    )
+    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
 
 
 def build_insert_rows(
@@ -1238,7 +1219,6 @@ class ExtractConfig:
     dbt_schema: str
     source_schema: str
     api_token: str
-    max_ids: int
     max_workers: int
     requests_per_second: float
     full_reload: bool
@@ -1289,7 +1269,6 @@ def read_worklist(
         source_schema=config.source_schema,
         after_changed_at=format_cursor_ts(after_changed_at) if after_changed_at is not None else None,
         after_source_id=after_source_id,
-        limit=config.max_ids,
     )
     ids: array = array("q")
     changed_at: list[datetime] = []
@@ -1385,11 +1364,6 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     return {
         "entity": spec.name,
         "ids_requested": len(ids),
-        # Reported alongside the limit so a short worklist is self-describing: fewer ids than
-        # the limit means this entity is caught up, rather than something having truncated the
-        # read. Without both numbers the two are indistinguishable from the summary alone.
-        "ids_limit": config.max_ids,
-        "caught_up": len(ids) < config.max_ids,
         "rows_written": rows_written,
         # Ids the API returned nothing for, landed as NULL payloads rather than dropped.
         "unresolved": unresolved,

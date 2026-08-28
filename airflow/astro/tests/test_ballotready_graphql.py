@@ -725,7 +725,7 @@ def test_format_cursor_ts_raises_a_clear_error_on_an_unparseable_string():
 
 
 # Every entity except issue pages its worklist by the same keyset cursor, so the ordering,
-# limit, predicate and identifier-validation assertions belong to all of them at once.
+# predicate and identifier-validation assertions belong to all of them at once.
 KEYED_BUILDERS = [
     candidacy_worklist_sql,
     geofence_worklist_sql,
@@ -740,22 +740,19 @@ def keyed_builder(request):
     return request.param
 
 
-def test_keyed_worklist_orders_by_the_keyset_pair_and_applies_the_limit(keyed_builder):
-    sql = keyed_builder("cat", "dbt", after_changed_at=None, after_source_id=None, limit=500)
+def test_keyed_worklist_orders_by_the_keyset_pair(keyed_builder):
+    sql = keyed_builder("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
-    assert "LIMIT 500" in sql
 
 
 def test_keyed_worklist_emits_a_keyset_predicate_when_a_cursor_is_present(keyed_builder):
-    sql = keyed_builder(
-        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99, limit=10
-    )
+    sql = keyed_builder("cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99)
     assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 99" in sql
 
 
 def test_keyed_worklist_collapses_to_one_row_per_id(keyed_builder):
-    sql = keyed_builder("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = keyed_builder("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "max(source_changed_at) AS source_changed_at" in sql
     assert "GROUP BY source_id" in sql
 
@@ -767,9 +764,7 @@ def test_keyed_worklist_pushes_the_cursor_floor_below_the_group_by(keyed_builder
     and one whose max is below it is dropped by the outer predicate anyway. `>=`, not `>`,
     because rows at the cursor timestamp can still belong to ids above it.
     """
-    sql = keyed_builder(
-        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99, limit=10
-    )
+    sql = keyed_builder("cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99)
     floor = "source_changed_at >= TIMESTAMP '2026-08-01 12:00:00.000000'"
     assert floor in sql
     assert sql.index(floor) < sql.index("GROUP BY source_id")
@@ -781,7 +776,7 @@ def test_keyed_worklist_pushes_the_cursor_floor_below_the_group_by(keyed_builder
 )
 def test_keyed_worklist_rejects_an_injected_identifier(keyed_builder, catalog, dbt_schema, expected):
     with pytest.raises(ValueError, match=expected):
-        keyed_builder(catalog, dbt_schema, after_changed_at=None, after_source_id=None, limit=10)
+        keyed_builder(catalog, dbt_schema, after_changed_at=None, after_source_id=None)
 
 
 @pytest.mark.parametrize(
@@ -792,15 +787,13 @@ def test_keyed_worklist_treats_a_partial_cursor_as_no_cursor(
     keyed_builder, after_changed_at, after_source_id
 ):
     """Only one half of the pair supplied degrades to a full sweep, not an error."""
-    sql = keyed_builder(
-        "cat", "dbt", after_changed_at=after_changed_at, after_source_id=after_source_id, limit=10
-    )
+    sql = keyed_builder("cat", "dbt", after_changed_at=after_changed_at, after_source_id=after_source_id)
     assert "TIMESTAMP '" not in sql
 
 
 def test_candidacy_worklist_unions_the_upcoming_ids_source():
     """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
-    sql = candidacy_worklist_sql("cat", "dbt_staging", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql("cat", "dbt_staging", after_changed_at=None, after_source_id=None)
     assert "`dbt_staging`.`stg_airbyte_source__ballotready_s3_candidacies_v3`" in sql
     assert "`dbt_staging`.`stg_airbyte_source__ballotready_api_race`" in sql
     assert "`dbt_staging`.`stg_airbyte_source__ballotready_api_election`" in sql
@@ -808,7 +801,7 @@ def test_candidacy_worklist_unions_the_upcoming_ids_source():
 
 def test_candidacy_worklist_no_longer_reads_the_dbt_intermediate_layer():
     """The upcoming-ids source used to live in an int_ model; it is now inlined from staging only."""
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "int__ballotready_upcoming_candidacy_ids" not in sql
 
 
@@ -820,7 +813,6 @@ def test_candidacy_worklist_accepts_and_ignores_source_schema():
         source_schema="zzz_marker_schema",
         after_changed_at=None,
         after_source_id=None,
-        limit=10,
     )
     assert "zzz_marker_schema" not in sql
 
@@ -831,7 +823,7 @@ def test_candidacy_worklist_casts_each_greatest_argument_not_the_result():
     than coercing, so casting its result is too late and the query fails to compile. This
     pins the per-argument form, which works whichever way either column is typed.
     """
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp))" in sql
     assert "AS source_changed_at" in sql
     # The regressed form: a single cast wrapped around greatest's result.
@@ -839,7 +831,7 @@ def test_candidacy_worklist_casts_each_greatest_argument_not_the_result():
 
 
 def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
-    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = candidacy_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "cast(candidacy_updated_at AS timestamp)" in sql
     # race_updated_at (from stg_airbyte_source__ballotready_api_race) is already TIMESTAMP
     # there via to_timestamp(), so this branch needs no cast of its own.
@@ -849,14 +841,14 @@ def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
 def test_candidacy_worklist_pushes_the_cursor_floor_into_the_upcoming_roster_scan():
     """Without it, every run explodes the candidacies array of every upcoming race."""
     sql = candidacy_worklist_sql(
-        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99, limit=10
+        "cat", "dbt", after_changed_at="2026-08-01 12:00:00.000000", after_source_id=99
     )
     assert "r.updated_at >= TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
 
 
 def test_geofence_worklist_reads_geofence_ids_off_the_candidacies_table():
     """Many candidacies share one geofence; the freshest of them decides its due time."""
-    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "stg_airbyte_source__ballotready_s3_candidacies_v3" in sql
     assert "br_geofence_id" in sql
     assert "LATERAL VIEW" not in sql
@@ -864,31 +856,27 @@ def test_geofence_worklist_reads_geofence_ids_off_the_candidacies_table():
 
 def test_geofence_worklist_casts_source_changed_at_to_timestamp():
     """candidacy_updated_at is STRING in staging; the worklist must produce a real timestamp."""
-    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "cast(candidacy_updated_at AS timestamp) AS source_changed_at" in sql
 
 
 def test_filing_period_worklist_explodes_filing_periods():
     """Filing period ids only exist nested in each race's filing_periods array."""
-    sql = filing_period_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None, limit=10)
+    sql = filing_period_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "stg_airbyte_source__ballotready_api_race" in sql
     assert "LATERAL VIEW explode(filing_periods) AS filing_period" in sql
     assert "filing_period.databaseId" in sql
 
 
 def test_normalized_position_worklist_reads_the_struct_without_exploding():
-    sql = normalized_position_worklist_sql(
-        "cat", "dbt", after_changed_at=None, after_source_id=None, limit=10
-    )
+    sql = normalized_position_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "stg_airbyte_source__ballotready_api_position" in sql
     assert "normalized_position.databaseId" in sql
     assert "LATERAL VIEW" not in sql
 
 
 def test_position_election_frequency_worklist_explodes_election_frequencies():
-    sql = position_election_frequency_worklist_sql(
-        "cat", "dbt", after_changed_at=None, after_source_id=None, limit=10
-    )
+    sql = position_election_frequency_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "stg_airbyte_source__ballotready_api_position" in sql
     assert "LATERAL VIEW explode(election_frequencies) AS election_frequency" in sql
     assert "election_frequency.databaseId" in sql
@@ -923,11 +911,9 @@ def test_should_extract_raises_before_deciding_to_skip():
 
 def test_the_two_position_builders_key_off_different_fields():
     """Their specs used to be bound with functools.partial, which is easy to cross by hand."""
-    normalized = normalized_position_worklist_sql(
-        "cat", "dbt", after_changed_at=None, after_source_id=None, limit=10
-    )
+    normalized = normalized_position_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     frequencies = position_election_frequency_worklist_sql(
-        "cat", "dbt", after_changed_at=None, after_source_id=None, limit=10
+        "cat", "dbt", after_changed_at=None, after_source_id=None
     )
     assert "normalized_position.databaseId" in normalized
     assert "normalized_position.databaseId" not in frequencies
@@ -936,13 +922,13 @@ def test_the_two_position_builders_key_off_different_fields():
 
 
 def test_issue_worklist_reads_issue_ids_out_of_landed_stance_payloads():
-    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src")
     assert "ballotready_stance_raw" in sql
     assert "payload" in sql
 
 
 def test_issue_worklist_excludes_ids_already_landed():
-    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src")
     assert "ballotready_issue_raw" in sql
     assert "NOT EXISTS" in sql or "LEFT ANTI" in sql
 
@@ -955,7 +941,7 @@ def test_issue_worklist_correlates_the_anti_join_on_matching_ids():
     exclude nothing real; either regression would still pass a substring check
     that only looks for "NOT EXISTS" and the table name somewhere in the SQL.
     """
-    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src")
     issue_table = landing_table("cat", "src", "issue")
     correlation = (
         f"NOT EXISTS (SELECT 1 FROM {issue_table} landed WHERE landed.requested_id = referenced.source_id)"
@@ -964,24 +950,20 @@ def test_issue_worklist_correlates_the_anti_join_on_matching_ids():
     assert "SELECT source_id, current_timestamp() AS source_changed_at FROM referenced" in sql
 
 
-def test_issue_worklist_applies_the_limit():
-    assert "LIMIT 100" in issue_worklist_sql("cat", "dbt", source_schema="src", limit=100)
-
-
 def test_issue_worklist_rejects_an_injected_source_schema():
     with pytest.raises(ValueError, match="source_schema"):
-        issue_worklist_sql("cat", "dbt", source_schema="src; drop table x", limit=10)
+        issue_worklist_sql("cat", "dbt", source_schema="src; drop table x")
 
 
 def test_issue_worklist_requires_source_schema():
     """Issue ids only exist in the landed stance table; there is no safe default schema."""
     with pytest.raises(ValueError, match="source_schema"):
-        issue_worklist_sql("cat", "dbt", limit=10)
+        issue_worklist_sql("cat", "dbt")
 
 
 def test_issue_worklist_excludes_null_payloads():
     """A null payload records an id the API returned nothing for; it has no stances to read."""
-    sql = issue_worklist_sql("cat", "dbt", source_schema="src", limit=10)
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src")
     assert "payload IS NOT NULL" in sql
 
 
@@ -993,7 +975,6 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
         source_schema="src",
         after_changed_at="2026-08-01 12:00:00.000000",
         after_source_id=99,
-        limit=10,
     )
     assert "ballotready_stance_raw" in sql
     assert "2026-08-01" not in sql
@@ -1001,7 +982,7 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
 
 def test_person_worklist_reads_person_ids_out_of_landed_candidacy_payloads():
     """Persons carry no feed of their own; their ids only exist inside fetched Candidacy nodes."""
-    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = person_worklist_sql("cat", "dbt", source_schema="src")
     assert "ballotready_candidacy_raw" in sql
     assert "$.candidate.databaseId" in sql
 
@@ -1012,24 +993,24 @@ def test_person_worklist_keys_off_the_freshest_referencing_candidacy():
     This is the gate the int__ballotready_person model uses today, expressed as the same
     grouped max every other keyed worklist uses.
     """
-    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = person_worklist_sql("cat", "dbt", source_schema="src")
     assert "max(source_changed_at) AS source_changed_at" in sql
     assert "GROUP BY source_id" in sql
 
 
 def test_person_worklist_requires_a_source_schema():
     with pytest.raises(ValueError, match="source_schema"):
-        person_worklist_sql("cat", "dbt", limit=100)
+        person_worklist_sql("cat", "dbt")
 
 
 def test_person_worklist_rejects_an_injected_source_schema():
     with pytest.raises(ValueError, match="source_schema"):
-        person_worklist_sql("cat", "dbt", source_schema="src; drop table x", limit=100)
+        person_worklist_sql("cat", "dbt", source_schema="src; drop table x")
 
 
 def test_person_worklist_skips_unresolved_candidacies():
     """A null payload is an id BallotReady returned nothing for; it carries no person."""
-    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = person_worklist_sql("cat", "dbt", source_schema="src")
     assert "payload IS NOT NULL" in sql
 
 
@@ -1040,7 +1021,7 @@ def test_person_worklist_filters_null_ids_after_the_cast_like_issue():
     rather than producing a null, so this filter is defence-in-depth and consistency
     with issue_worklist_sql, not protection against a failure mode that occurs today.
     """
-    sql = person_worklist_sql("cat", "dbt", source_schema="src", limit=100)
+    sql = person_worklist_sql("cat", "dbt", source_schema="src")
     cast_index = sql.index("cast(get_json_object")
     guard_index = sql.index("source_id IS NOT NULL")
     assert guard_index > cast_index
@@ -1053,12 +1034,10 @@ def test_person_worklist_pages_by_the_keyset_cursor():
         source_schema="src",
         after_changed_at="2026-08-01 12:00:00.000000",
         after_source_id=42,
-        limit=100,
     )
     assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 42" in sql
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
-    assert "LIMIT 100" in sql
 
 
 EXPECTED_ENTITIES = {
@@ -1150,7 +1129,6 @@ def test_every_worklist_builder_accepts_the_uniform_signature(entity):
         source_schema="src",
         after_changed_at=None,
         after_source_id=None,
-        limit=10,
     )
     assert isinstance(sql, str) and sql.strip()
 
@@ -1423,7 +1401,6 @@ def _config(**overrides):
         dbt_schema="dbt",
         source_schema="src",
         api_token="tok",
-        max_ids=1000,
         max_workers=2,
         requests_per_second=1000.0,
         full_reload=False,
@@ -1500,36 +1477,6 @@ def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
     assert summary["windows"] == 0
     assert summary["cursor_source_changed_at"] is None
     inserted.assert_not_called()
-
-
-def test_extract_entity_reports_the_limit_so_a_short_worklist_is_self_describing(monkeypatch):
-    """ids_requested below the limit means caught up; without the limit beside it, that is
-    indistinguishable from something having truncated the read."""
-    monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
-    )
-
-    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(max_ids=2000))
-
-    assert summary["ids_limit"] == 2000
-    assert summary["caught_up"] is True
-
-
-def test_extract_entity_is_not_caught_up_when_the_worklist_fills_the_limit(monkeypatch):
-    worklist = _worklist([(i, datetime(2026, 8, 1, 9, 0, 0)) for i in range(1, 4)])
-    monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: worklist
-    )
-    monkeypatch.setattr(
-        "include.custom_functions.ballotready_graphql.fetch_nodes",
-        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
-    )
-    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", MagicMock())
-
-    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(max_ids=3))
-
-    assert summary["ids_limit"] == 3
-    assert summary["caught_up"] is False
 
 
 def test_extract_entity_counts_unresolved_ids_in_the_summary(monkeypatch):
