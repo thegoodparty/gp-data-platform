@@ -45,8 +45,8 @@ list still runs its task, but as a cheap no-op rather than being removed from th
 task graph is fixed at parse time, and both `extract_stance -> extract_issue` and
 `extract_candidacy -> extract_person` must keep working when only one side is requested (e.g.
 `entities: ["issue"]` alone still lets `extract_stance` execute, skip its own work, and hand off
-cleanly). `full_reload`, `max_ids_per_entity`, `max_workers`, and `requests_per_second` all
-forward straight into `ExtractConfig`.
+cleanly). `full_reload`, `max_workers`, and `requests_per_second` all forward straight into
+`ExtractConfig`.
 """
 
 import logging
@@ -96,7 +96,6 @@ t_log = logging.getLogger("airflow.task")
                 "cursor and always fetches only what is not yet landed."
             ),
         ),
-        "max_ids_per_entity": Param(50000, type="integer", minimum=1),
         "entities": Param([], type="array", description="Run only these entities; empty runs all."),
         "max_workers": Param(4, type="integer", minimum=1, maximum=16),
         "requests_per_second": Param(8.0, type="number", minimum=0.1),
@@ -129,7 +128,6 @@ def extract_ballotready():
                 dbt_schema=Variable.get("databricks_dbt_schema").strip(),
                 source_schema=Variable.get("databricks_source_schema").strip(),
                 api_token=Variable.get("civicengine_api_token").strip(),
-                max_ids=params["max_ids_per_entity"],
                 max_workers=params["max_workers"],
                 requests_per_second=params["requests_per_second"],
                 full_reload=params["full_reload"],
