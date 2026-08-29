@@ -35,29 +35,6 @@ models:
       - name: race_updated_at
         description: "updated_at of the race the candidacy belongs to; used to refetch changed rosters incrementally"
 
-  - name: int__ballotready_candidacy
-    description: >
-      This model retrieves and processes candidate data from the CivicEngine API since the source
-      candidacies_v3 csv file does not contain all the fields needed.
-    config:
-      meta:
-        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-        owner: "Data Engineering Team"
-        contains_pii: true
-    columns:
-      - name: database_id
-        description: "Unique identifier for the candidacy in the CivicEngine database"
-        tests:
-          - not_null
-          - unique
-      - name: id
-        description: "Encoded identifier for the candidacy in the CivicEngine system"
-        tests:
-          - not_null
-          - unique
-      - name: feed_extracted_at
-        description: "Airbyte ingest time of the candidacy's newest S3 feed row; the incremental cutoff (null when the feed has never delivered the candidacy)"
-
   - name: int__ballotready_endorsement
     description: >
       This model retrieves and processes candidate endorsement data from the CivicEngine API.

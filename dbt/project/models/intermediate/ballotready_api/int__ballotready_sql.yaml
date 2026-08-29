@@ -211,3 +211,65 @@ models:
           End of this row's effective validity window, as reported by BallotReady; populated for
           roughly 3% of rows.
         data_type: timestamp
+
+  - name: int__ballotready_candidacy
+    description: >
+      BallotReady candidacies, transformed from the raw payloads the extract_ballotready DAG
+      lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidate_database_id
+        description: The BallotReady integer id of the candidate this candidacy belongs to.
+        data_type: int
+      - name: created_at
+        description: Timestamp the candidacy was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: The BallotReady integer id for the candidacy, echoed back from the requested id.
+        data_type: int
+      - name: election_database_id
+        description: The BallotReady integer id of the election this candidacy belongs to.
+        data_type: int
+      - name: endorsements
+        description: The endorsements of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: id
+        description: Base64 GraphQL global id for the candidacy.
+        data_type: string
+      - name: is_certified
+        description: Whether the candidacy's result has been certified by BallotReady.
+        data_type: boolean
+      - name: is_hidden
+        description: Whether BallotReady flags this candidacy as hidden.
+        data_type: boolean
+      - name: parties
+        description: The parties of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: position_database_id
+        description: The BallotReady integer id of the position this candidacy is running for.
+        data_type: int
+      - name: race_database_id
+        description: The BallotReady integer id of the race this candidacy belongs to.
+        data_type: int
+      - name: result
+        description: >
+          The candidacy's result as reported by BallotReady (e.g. "WON", "LOST"); populated for
+          roughly 88% of rows.
+        data_type: string
+      - name: stances
+        description: The issue stances of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: updated_at
+        description: Timestamp the candidacy was last updated in BallotReady.
+        data_type: timestamp
+      - name: withdrawn
+        description: Whether the candidate has withdrawn from this candidacy.
+        data_type: boolean
+      - name: feed_extracted_at
+        description: >
+          When our pipeline last obtained this candidacy; loaded_at from the landing table,
+          carried through unchanged.
+        data_type: timestamp

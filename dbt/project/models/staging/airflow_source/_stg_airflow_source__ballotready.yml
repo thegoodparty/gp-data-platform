@@ -67,6 +67,29 @@ models:
           single current version per geofence. Treat the effective-dating semantics as
           unconfirmed rather than assume them.
 
+  - name: stg_airflow_source__ballotready_candidacy_raw
+    description: One row per BallotReady candidacy id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 300000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null]
+      - name: endorsements
+        data_tests: [not_null]
+      - name: parties
+        data_tests: [not_null]
+      - name: stances
+        data_tests: [not_null]
+
   - name: stg_airflow_source__ballotready_filing_period_raw
     description: One row per BallotReady filing period id landed by the extraction DAG.
     data_tests:
