@@ -9,6 +9,7 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -29,6 +30,10 @@ from stitch_golden_data.prod_gold_data.backlog_run import (
 from stitch_golden_data.prod_gold_data.l2_br_matcher import MatchResult
 
 ATTEMPTED_AT = "2026-01-01T00:00:00+00:00"
+# The `run` subcommand's other required flags, so a --model-config parse
+# test fails on an invalid CHOICE, not a missing argument. argparse only
+# converts these to Path/int; nothing needs to exist on disk to parse.
+_REQUIRED_RUN_ARGS = ["--cohort-predicate-file", "x.sql", "--cohort-expected-count", "0", "--out-dir", "out"]
 
 
 def _match(br_database_id: int) -> MatchResult:
@@ -162,6 +167,34 @@ class TestAnswerRowsIntegrityGuard:
         with pytest.raises(RuntimeError, match="expected exactly one result per office"):
             _answer_rows(pending_df, results)
 
+    def test_boolean_fields_survive_stdlib_json_from_a_numpy_bool_cell(self):
+        """Failure this catches: is_judicial/has_unknown_boundaries copied
+        straight off the pending frame without coercion. An object-dtype
+        column carrying a raw numpy.bool_ cell (verified: itertuples()
+        passes it through unchanged, unlike a properly astype(bool)'d
+        column) crashes stdlib json.dumps -- the run would die writing
+        answers.json AFTER the paid matching, not before it.
+        """
+        pending_df = pd.DataFrame(
+            {
+                "br_database_id": [1],
+                "name": ["Office"],
+                "state": ["DE"],
+                "mtfcc": ["G4110"],
+                "geo_id": ["1000000"],
+                "sub_area_name": [None],
+                "sub_area_value": [None],
+                "is_judicial": pd.array([np.bool_(True)], dtype=object),
+                "has_unknown_boundaries": pd.array([np.bool_(False)], dtype=object),
+            }
+        )
+
+        rows = _answer_rows(pending_df, [_match(1)])
+
+        assert type(rows[0]["is_judicial"]) is bool
+        assert type(rows[0]["has_unknown_boundaries"]) is bool
+        json.dumps(rows)  # must not raise
+
 
 class _State:
     def __init__(self, states, district_types, district_names):
@@ -290,6 +323,21 @@ class TestManifestCompare:
             compare_runs(_manifest(pin_version="xact-NEW"), [_answer_row(1)], prior_dir)
 
 
+class TestModelConfigRestriction:
+    def test_only_bedrock_is_an_accepted_choice(self):
+        """Failure this catches: --model-config gemini or bedrock-nova
+        reaching _build_clients -- gemini's clients lack resolved_config()
+        (a crash after the paid matching), and bedrock-nova's embeddings
+        never passed the holdout gate, so either is a semantics change the
+        STOP rule exists to block, not something argparse should allow
+        production to select at all.
+        """
+        assert _parse_args(["run", *_REQUIRED_RUN_ARGS]).model_config == "bedrock"
+        for rejected in ("gemini", "bedrock-nova"):
+            with pytest.raises(SystemExit):
+                _parse_args(["run", "--model-config", rejected, *_REQUIRED_RUN_ARGS])
+
+
 class TestOutDirFreshnessGuard:
     @pytest.mark.parametrize("existing_name", ["manifest.json", "answers.json", "run-record.json"])
     def test_refuses_when_any_run_artifact_already_exists(self, existing_name, tmp_path):
@@ -378,8 +426,8 @@ def patched_rollback_deps():
         patch("stitch_golden_data.prod_gold_data.backlog_run._trigger_election_api_sync_and_wait") as sync_trigger,
     ):
         writer = writer_cls.return_value
-        # No later run keys by default -- _assert_no_later_runs (F3) reads
-        # this before every delete_run call in these tests.
+        # No later run keys by default -- _assert_no_later_runs reads this
+        # before every delete_run call in these tests.
         writer.databricks.execute_query.return_value = pd.DataFrame({"n": [0]})
         yield {"writer_cls": writer_cls, "writer": writer, "dbt": dbt_trigger, "sync": sync_trigger}
 
@@ -390,10 +438,10 @@ class TestRollbackDelegatesCountCheckToDeleteRun:
         self, delete_run_effect, should_raise, rollback_env, patched_rollback_deps
     ):
         """Failure this catches: this module recomputing (or dropping) the
-        count check after it moved into delete_run itself (F1) -- rollback
-        must pass its recorded expected_count through and trust delete_run's
-        own pre-delete verification, never re-deriving or ignoring it, and
-        must not rebuild when that verification rejects the count.
+        count check now that it lives in delete_run itself -- rollback must
+        pass its recorded expected_count through and trust delete_run's own
+        pre-delete verification, never re-deriving or ignoring it, and must
+        not rebuild when that verification rejects the count.
         """
         rollback_env.set_dbt()
         if should_raise:
@@ -411,6 +459,24 @@ class TestRollbackDelegatesCountCheckToDeleteRun:
             patched_rollback_deps["dbt"].assert_called_once()
         call = patched_rollback_deps["writer"].delete_run.call_args
         assert call.kwargs["expected_count"] == 7
+
+
+class TestRollbackTeardown:
+    def test_close_raising_does_not_prevent_the_rebuild_trigger(self, rollback_env, patched_rollback_deps):
+        """Failure this catches: a raise from writer.close() inside the
+        finally propagating out and skipping the dbt rebuild trigger
+        entirely -- the delete already succeeded by that point, so this
+        would leave the rows gone but every consumer unrebuilt until the
+        next scheduled build.
+        """
+        rollback_env.set_dbt()
+        patched_rollback_deps["writer"].delete_run.return_value = 5
+        patched_rollback_deps["writer"].close.side_effect = RuntimeError("connection already closed")
+        args = _parse_args(["rollback", "--run-key", ATTEMPTED_AT, "--expected-count", "5"])
+
+        _rollback(args)
+
+        patched_rollback_deps["dbt"].assert_called_once()
 
 
 class TestRollbackPublishGating:

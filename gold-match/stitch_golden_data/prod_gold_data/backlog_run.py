@@ -271,8 +271,14 @@ def _answer_rows(pending_df: "pd.DataFrame", results: list[MatchResult]) -> list
                 "geo_id": row.geo_id,
                 "sub_area_name": row.sub_area_name,
                 "sub_area_value": row.sub_area_value,
-                "is_judicial": row.is_judicial,
-                "has_unknown_boundaries": row.has_unknown_boundaries,
+                # bool(...), not the raw cell: an object-dtype boolean column
+                # (upstream of the matcher's own astype(bool) boundary) can
+                # carry numpy.bool_, which stdlib json cannot encode -- this
+                # would otherwise crash writing answers.json AFTER the paid
+                # matching, not before it. Native types also keep the
+                # pending/answers sha256 hashing clean and portable.
+                "is_judicial": bool(row.is_judicial),
+                "has_unknown_boundaries": bool(row.has_unknown_boundaries),
                 "l2_state": answer.l2_state,
                 "l2_district_type": answer.l2_district_type,
                 "l2_district_name": answer.l2_district_name,
@@ -609,7 +615,14 @@ def _rollback(args: argparse.Namespace) -> None:
         _assert_no_later_runs(writer.databricks, run_key)
         writer.delete_run(run_key, expected_count=expected_count)
     finally:
-        writer.close()
+        # A raise here must not skip the rebuild trigger below: the delete
+        # already happened, so rows are gone either way, and swallowing a
+        # teardown failure is better than leaving every consumer unrebuilt
+        # until the next scheduled build.
+        try:
+            writer.close()
+        except Exception:
+            writer.logger.warning("writer.close() raised during teardown", exc_info=True)
 
     _trigger_dbt_rebuild_and_wait()
     if published:
@@ -651,9 +664,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     run_p.add_argument(
         "--model-config",
-        choices=["bedrock", "bedrock-nova", "gemini"],
+        choices=["bedrock"],
         default="bedrock",
-        help="Model stack (default: bedrock)",
+        help="the gate-evaluated stack; the only choice production accepts -- any other config is a "
+        "semantics change requiring a fresh gating decision (bedrock-nova's embeddings never passed "
+        "the gate and gemini's clients lack resolved_config())",
     )
     run_p.add_argument(
         "--cohort-predicate-file",
