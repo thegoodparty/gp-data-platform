@@ -123,11 +123,11 @@ models:
         data_type: int
       - name: created_at
         description: >
-          Timestamp the issue was created in BallotReady; not populated in any row landed
-          so far.
+          Ingestion timestamp, not a BallotReady source field: the issue payload carries
+          no createdAt, so this is stamped at staging build time.
         data_type: timestamp
       - name: updated_at
         description: >
-          Timestamp the issue was last updated in BallotReady; not populated in any row
-          landed so far.
+          Ingestion timestamp, not a BallotReady source field: the issue payload carries
+          no updatedAt, so this is stamped at staging build time.
         data_type: timestamp

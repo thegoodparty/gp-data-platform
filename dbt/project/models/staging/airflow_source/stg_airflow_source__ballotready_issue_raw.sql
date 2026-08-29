@@ -18,6 +18,8 @@ select
     cast(get_json_object(payload, '$.pluginEnabled') as boolean) as plugin_enabled,
     get_json_object(payload, '$.responseType') as response_type,
     cast(get_json_object(payload, '$.rowOrder') as int) as row_order,
-    cast(get_json_object(payload, '$.createdAt') as timestamp) as created_at,
-    cast(get_json_object(payload, '$.updatedAt') as timestamp) as updated_at
+    -- ingestion timestamps, not source timestamps: the issue payload carries no
+    -- createdAt/updatedAt, and the model this replaces stamped both at run time.
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at
 from current_rows
