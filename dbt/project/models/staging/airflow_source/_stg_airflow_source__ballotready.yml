@@ -178,3 +178,15 @@ models:
         data_tests: [not_null, unique]
       - name: candidacies
         data_tests: [not_null]
+      - name: contacts
+        data_tests: [not_null]
+      - name: degrees
+        data_tests: [not_null]
+      - name: experiences
+        data_tests: [not_null]
+      - name: images
+        data_tests: [not_null]
+      - name: office_holders
+        data_tests: [not_null]
+      - name: urls
+        data_tests: [not_null]

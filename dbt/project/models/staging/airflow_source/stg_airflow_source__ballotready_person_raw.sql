@@ -38,7 +38,12 @@ select
     get_json_object(payload, '$.lastName') as last_name,
     get_json_object(payload, '$.middleName') as middle_name,
     get_json_object(payload, '$.nickname') as nickname,
-    {{ br_id_ref_array("$.officeHolders") }} as office_holders,
+    -- officeHolders arrives wrapped in a connection object rather than as a bare
+    -- array, unlike every other array on this payload.
+    from_json(
+        get_json_object(payload, '$.officeHolders.nodes'),
+        'array<struct<databaseId:int,id:string>>'
+    ) as office_holders,
     get_json_object(payload, '$.slug') as slug,
     get_json_object(payload, '$.suffix') as suffix,
     cast(get_json_object(payload, '$.updatedAt') as timestamp) as updated_at,
