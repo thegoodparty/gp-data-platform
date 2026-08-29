@@ -355,3 +355,88 @@ models:
           When our pipeline last obtained this person; loaded_at from the landing table, carried
           through unchanged.
         data_type: timestamp
+
+  - name: int__ballotready_stance
+    description: >
+      BallotReady candidacy stances, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these stances belong to.
+        data_type: int
+      - name: stances
+        description: >
+          The candidacy's issue stances, as reported by BallotReady, with the candidacy's own id
+          and encoded id injected onto each element (the payload does not carry them).
+        data_type: array<struct<databaseId:int,id:string,issue:struct<databaseId:int,id:string>,locale:string,referenceUrl:string,statement:string,candidacy_id:int,encoded_candidacy_id:string>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the stance payload carries no
+          per-candidacy createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the stance payload carries no
+          per-candidacy updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_endorsement
+    description: >
+      BallotReady candidacy endorsements, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these endorsements belong to.
+        data_type: int
+      - name: endorsements
+        description: >
+          The candidacy's endorsements, as reported by BallotReady, with the candidacy's own id
+          and encoded id injected onto each element (the payload does not carry them). Each
+          element carries its own createdAt/updatedAt, distinct from this row's created_at/updated_at.
+        data_type: array<struct<databaseId:int,id:string,createdAt:timestamp,endorser:string,recommendation:string,status:string,updatedAt:timestamp,organization:struct<databaseId:int,id:string>,candidacy_id:int,encoded_candidacy_id:string>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_party
+    description: >
+      BallotReady candidacy parties, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these parties belong to.
+        data_type: int
+      - name: parties
+        description: >
+          The candidacy's parties, as reported by BallotReady. Most candidacies carry exactly
+          one; a minority (fusion candidacies) carry more than one.
+        data_type: array<struct<createdAt:timestamp,databaseId:int,id:string,name:string,shortName:string,updatedAt:timestamp>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
