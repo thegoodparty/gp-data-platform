@@ -105,7 +105,7 @@ models:
       - name: database_id
         data_tests: [not_null]
       - name: id
-        data_tests: [not_null]
+        data_tests: [not_null, unique]
 
   - name: stg_airflow_source__ballotready_issue_raw
     description: One row per BallotReady issue id referenced by a landed stance payload.
@@ -122,7 +122,7 @@ models:
       - name: database_id
         data_tests: [not_null]
       - name: id
-        data_tests: [not_null]
+        data_tests: [not_null, unique]
 
   - name: stg_airflow_source__ballotready_normalized_position_raw
     description: One row per BallotReady normalized position id landed by the extraction DAG.
@@ -138,6 +138,8 @@ models:
         data_tests: [not_null, unique]
       - name: database_id
         data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
       - name: issues
         data_tests: [not_null]
 
