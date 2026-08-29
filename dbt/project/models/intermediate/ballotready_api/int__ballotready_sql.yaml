@@ -275,3 +275,81 @@ models:
           When our pipeline last obtained this candidacy; loaded_at from the landing table,
           carried through unchanged.
         data_type: timestamp
+
+  - name: int__ballotready_person
+    description: >
+      BallotReady persons, transformed from the raw payloads the extract_ballotready DAG lands.
+      Replaces the Python model that called the CivicEngine API directly; the output schema is
+      unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+      meta:
+        contains_pii: false
+    columns:
+      - name: bio_text
+        description: Freeform biography text for the person, as reported by BallotReady.
+        data_type: string
+      - name: candidacies
+        description: The candidacies of this person, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: contacts
+        description: Contact methods for the person, as reported by BallotReady.
+        data_type: array<struct<email:string,fax:string,phone:string,type:string>>
+      - name: created_at
+        description: Timestamp the person was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: The BallotReady integer id for the person, echoed back from the requested id.
+        data_type: int
+      - name: degrees
+        description: >
+          Educational degrees held by the person; not populated for a person with no degrees on
+          file.
+        data_type: array<struct<databaseId:int,degree:string,gradYear:int,id:string,major:string,school:string>>
+      - name: experiences
+        description: Professional and civic experience entries for the person.
+        data_type: array<struct<databaseId:int,end:string,id:string,organization:string,start:string,title:string,type:string>>
+      - name: first_name
+        description: The person's first name.
+        data_type: string
+      - name: full_name
+        description: The person's full name.
+        data_type: string
+      - name: id
+        description: Base64 GraphQL global id for the person. The unique key this table exposes.
+        data_type: string
+      - name: images
+        description: Images associated with the person, as reported by BallotReady.
+        data_type: array<struct<type:string,url:string>>
+      - name: last_name
+        description: The person's last name.
+        data_type: string
+      - name: middle_name
+        description: The person's middle name; populated for a minority of rows.
+        data_type: string
+      - name: nickname
+        description: The person's nickname; populated for a minority of rows.
+        data_type: string
+      - name: office_holders
+        description: >
+          The office-holder records for this person, as id-reference pairs. Observed as exactly
+          one entry per person in the currently landed set.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: slug
+        description: URL slug for the person's BallotReady profile.
+        data_type: string
+      - name: suffix
+        description: The person's name suffix (e.g. "Jr."); populated for a minority of rows.
+        data_type: string
+      - name: updated_at
+        description: Timestamp the person was last updated in BallotReady.
+        data_type: timestamp
+      - name: urls
+        description: External URLs associated with the person, as reported by BallotReady.
+        data_type: array<struct<databaseId:int,id:string,type:string,url:string>>
+      - name: feed_extracted_at
+        description: >
+          When our pipeline last obtained this person; loaded_at from the landing table, carried
+          through unchanged.
+        data_type: timestamp

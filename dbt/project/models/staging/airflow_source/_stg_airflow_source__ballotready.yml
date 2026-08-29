@@ -157,3 +157,24 @@ models:
         data_tests: [not_null, unique]
       - name: database_id
         data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_person_raw
+    description: One row per BallotReady person id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 220000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        # the model this replaces tested unique on id as well as database_id;
+        # requested_id's unique test does not cover it.
+        data_tests: [not_null, unique]
+      - name: candidacies
+        data_tests: [not_null]
