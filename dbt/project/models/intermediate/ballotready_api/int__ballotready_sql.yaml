@@ -333,8 +333,10 @@ models:
         data_type: string
       - name: office_holders
         description: >
-          The office-holder records for this person, as id-reference pairs. Observed as exactly
-          one entry per person in the currently landed set.
+          The office-holder records for this person, as id-reference pairs. Arrives
+          wrapped in a connection object rather than as a bare array, unlike every
+          other array on this payload. Most people have none; the observed maximum
+          is 19.
         data_type: array<struct<databaseId:int,id:string>>
       - name: slug
         description: URL slug for the person's BallotReady profile.
