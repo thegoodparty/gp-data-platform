@@ -4,6 +4,7 @@ live AWS/Databricks/Airflow/dbt-Cloud calls -- every collaborator here is a
 double or a monkeypatched module function.
 """
 
+import asyncio
 import hashlib
 import json
 from datetime import datetime
@@ -20,8 +21,10 @@ from stitch_golden_data.prod_gold_data.backlog_run import (
     _assert_swap_succeeded,
     _maybe_install_exclusion,
     _parse_args,
+    _prior_answers_sha256,
     _require_pinned_prompt,
     _rollback,
+    _run,
     _strict_build_cached_prompt,
     _universe_sha256,
     apply_cohort_filter,
@@ -376,6 +379,51 @@ class TestNoLaterRunsGuard:
         _assert_no_later_runs(databricks, datetime.fromisoformat(ATTEMPTED_AT))
 
 
+class TestTimestampLiteralsPreserveOffset:
+    """strftime's format codes drop the UTC offset; Databricks then reads
+    an unzoned timestamp literal in the SESSION timezone, which
+    DatabricksClient.connect() never pins -- a non-UTC session shifts
+    either boundary by the full offset.
+    """
+
+    def test_prior_answers_sha256_renders_the_utc_offset(self):
+        """Failure this catches: the prior-answers boundary silently
+        covering the wrong row set under a non-UTC session timezone.
+        """
+        databricks = MagicMock()
+        databricks.execute_query.return_value = pd.DataFrame(
+            columns=["br_database_id", "l2_state", "l2_district_type", "l2_district_name", "confidence"]
+        )
+
+        _prior_answers_sha256(databricks, datetime.fromisoformat(ATTEMPTED_AT))
+
+        query = databricks.execute_query.call_args.args[0]
+        assert "2026-01-01 00:00:00+00:00" in query
+
+    def test_assert_no_later_runs_renders_the_utc_offset(self):
+        """Failure this catches: the same boundary bug in the rollback
+        guard -- a non-UTC session could miscount later rows in either
+        direction.
+        """
+        databricks = MagicMock()
+        databricks.execute_query.return_value = pd.DataFrame({"n": [0]})
+
+        _assert_no_later_runs(databricks, datetime.fromisoformat(ATTEMPTED_AT))
+
+        query = databricks.execute_query.call_args.args[0]
+        assert "2026-01-01 00:00:00+00:00" in query
+
+
+class TestRunKeyParsing:
+    def test_naive_run_key_is_rejected_at_parse_time(self):
+        """Failure this catches: a naive --run-key reaching
+        _assert_no_later_runs' own SQL before delete_run's _require_aware
+        check would ever get a chance to reject it.
+        """
+        with pytest.raises(SystemExit):
+            _parse_args(["rollback", "--run-key", "2026-01-01T00:00:00", "--expected-count", "5"])
+
+
 class TestElectionApiSwapVerification:
     @pytest.mark.parametrize(("task_state", "should_raise"), [("success", False), ("skipped", True)])
     def test_a_skipped_swap_task_is_not_accepted_as_a_completed_sync(self, task_state, should_raise):
@@ -434,14 +482,17 @@ def patched_rollback_deps():
 
 class TestRollbackDelegatesCountCheckToDeleteRun:
     @pytest.mark.parametrize(("delete_run_effect", "should_raise"), [(7, False), (RuntimeError("mismatch"), True)])
-    def test_expected_count_is_passed_through_and_a_raise_is_propagated(
+    def test_expected_count_is_passed_through_and_the_rebuild_still_runs_on_a_raise(
         self, delete_run_effect, should_raise, rollback_env, patched_rollback_deps
     ):
         """Failure this catches: this module recomputing (or dropping) the
         count check now that it lives in delete_run itself -- rollback must
         pass its recorded expected_count through and trust delete_run's own
-        pre-delete verification, never re-deriving or ignoring it, and must
-        not rebuild when that verification rejects the count.
+        pre-delete verification. On a raise, Delta DELETE commits atomically
+        (the raise could be the pre-check OR a transient on delete_run's own
+        post-delete verification query), so the rebuild must still run --
+        an idempotent no-op if nothing actually changed -- while the
+        original error still surfaces to the operator.
         """
         rollback_env.set_dbt()
         if should_raise:
@@ -453,10 +504,9 @@ class TestRollbackDelegatesCountCheckToDeleteRun:
         if should_raise:
             with pytest.raises(RuntimeError, match="mismatch"):
                 _rollback(args)
-            patched_rollback_deps["dbt"].assert_not_called()
         else:
             _rollback(args)
-            patched_rollback_deps["dbt"].assert_called_once()
+        patched_rollback_deps["dbt"].assert_called_once()
         call = patched_rollback_deps["writer"].delete_run.call_args
         assert call.kwargs["expected_count"] == 7
 
@@ -480,6 +530,23 @@ class TestRollbackTeardown:
 
 
 class TestRollbackPublishGating:
+    def test_sync_is_skipped_when_delete_run_raises_even_if_published(self, rollback_env, patched_rollback_deps):
+        """Failure this catches: pushing a delete of UNCERTAIN outcome out
+        to PostgreSQL -- delete_run raising means the delete's outcome
+        cannot be confirmed, so the sync must never run regardless of
+        --published, even though the (idempotent) rebuild still does.
+        """
+        rollback_env.set_dbt()
+        rollback_env.set_airflow()
+        patched_rollback_deps["writer"].delete_run.side_effect = RuntimeError("mismatch")
+        args = _parse_args(["rollback", "--run-key", ATTEMPTED_AT, "--expected-count", "5", "--published"])
+
+        with pytest.raises(RuntimeError, match="mismatch"):
+            _rollback(args)
+
+        patched_rollback_deps["dbt"].assert_called_once()
+        patched_rollback_deps["sync"].assert_not_called()
+
     def test_sync_is_not_triggered_when_the_run_was_not_published(self, rollback_env, patched_rollback_deps):
         """Failure this catches: rolling back an unpublished run re-swapping
         PostgreSQL anyway -- there is nothing there to undo, and the DAG's
@@ -521,3 +588,127 @@ class TestRollbackPublishGating:
             _rollback(args)
 
         patched_rollback_deps["writer_cls"].assert_not_called()
+
+
+class TestRunComposition:
+    """Every helper _run calls has its own unit test above, but nothing
+    else pins that _run WIRES them together correctly -- a one-character
+    slip (`append_results(results)` instead of `append_results(filtered)`)
+    would bypass the whole cohort gate while every one of those stays
+    green. One test, not a matrix: this pins the composition, not the
+    helpers' own logic.
+    """
+
+    @staticmethod
+    def _create_embeddings_side_effect(texts, **kwargs):
+        # Mirrors test_braintrust_integration.py's TestRunEndToEnd: the real
+        # client's multi-text path calls asyncio.run(...) internally, safe
+        # only because build_universe dispatches through a thread pool, not
+        # the running event loop. Reproducing that here catches a
+        # regression in that dispatch without needing the real client.
+        if len(texts) != 1:
+            asyncio.run(asyncio.sleep(0))
+        return np.array([[1.0, 0.0]] * len(texts))
+
+    def test_writes_only_the_cohort_filtered_subset_with_reconciled_counts(self, tmp_path):
+        """Failure this catches: _run handing the writer the matcher's raw
+        results instead of the cohort-filtered subset, or the recorded
+        counts (results_count / intersection_count / written) silently
+        drifting apart -- either would ship an unreviewed office or make
+        the run-record lie about what was actually published.
+        """
+        pending_df = pd.DataFrame(
+            {
+                "br_database_id": [1, 2, 3],
+                "name": ["Office 1", "Office 2", "Office 3"],
+                "state": ["DE", "DE", "DE"],
+                "mtfcc": ["Z9999", "Z9999", "Z9999"],
+                "geo_id": [None, None, None],
+                "sub_area_name": [None, None, None],
+                "sub_area_value": [None, None, None],
+                "is_judicial": [False, False, False],
+                "has_unknown_boundaries": [False, False, False],
+            }
+        )
+        universe_df = pd.DataFrame(
+            {
+                "state_postal_code": ["DE", "DE"],
+                "district_type": ["House", "State"],
+                "district_name": ["District 5", "Delaware"],
+            }
+        )
+        prior_answers_df = pd.DataFrame(
+            columns=["br_database_id", "l2_state", "l2_district_type", "l2_district_name", "confidence"]
+        )
+        approved_df = pd.DataFrame({"br_database_id": [1, 2]})  # office 3 is the strict exclusion
+
+        predicate_file = tmp_path / "approved.sql"
+        predicate_file.write_text("select br_database_id from dry_run_table")
+
+        with (
+            patch("stitch_golden_data.prod_gold_data.l2_br_matcher.DatabricksClient") as mock_db_cls,
+            patch("stitch_golden_data.prod_gold_data.l2_br_matcher.init_braintrust"),
+            patch("stitch_golden_data.prod_gold_data.l2_br_matcher.cache_prompt", return_value=MagicMock()),
+            patch(
+                "stitch_golden_data.prod_gold_data.l2_br_matcher.get_prompt_provenance",
+                return_value={"slug": "p", "resolved_version": "xact-1", "loaded": True},
+            ),
+            patch("stitch_golden_data.prod_gold_data.backlog_run._orig_build_cached_prompt", return_value="prompt"),
+            # _run() permanently reassigns l2_br_matcher.build_cached_prompt
+            # (its own fail-loud install, not a mock) -- bracket it so this
+            # patch's own exit restores the ORIGINAL, undoing that leak for
+            # every test that runs after this one in the same session.
+            patch("stitch_golden_data.prod_gold_data.l2_br_matcher.build_cached_prompt"),
+            patch("stitch_golden_data.prod_gold_data.backlog_run._build_clients") as mock_build_clients,
+            patch("stitch_golden_data.prod_gold_data.backlog_run.MatchResultWriter") as mock_writer_cls,
+        ):
+            mock_db_cls.return_value.execute_query.side_effect = [
+                pending_df,  # load_pending_offices, via run()'s own (wrapped) call
+                universe_df,  # build_universe -> load_district_universe
+                prior_answers_df,  # _prior_answers_sha256
+                approved_df,  # the cohort predicate
+            ]
+
+            mock_embedding, mock_llm = MagicMock(), MagicMock()
+            mock_embedding.create_embeddings.side_effect = self._create_embeddings_side_effect
+            mock_embedding.get_cost_stats.return_value = {"total_cost": 0.0}
+            mock_embedding.resolved_config.return_value = {"model": "test-embedding"}
+            mock_llm.get_usage_stats.return_value = {"total_cost": 0.0}
+            mock_llm.resolved_config.return_value = {"model": "test-llm"}
+            mock_llm.generate_structured_content.return_value = {
+                "selected_candidate_number": 1,
+                "selection_confidence": 90,
+                "reasoning": "Clean match",
+                "is_exact_district_match": True,
+            }
+            mock_build_clients.return_value = (mock_embedding, mock_llm)
+            mock_writer_cls.return_value.append_results.return_value = 2
+
+            args = _parse_args(
+                [
+                    "run",
+                    "--cohort-predicate-file",
+                    str(predicate_file),
+                    "--cohort-expected-count",
+                    "2",
+                    "--out-dir",
+                    str(tmp_path),
+                ]
+            )
+            asyncio.run(_run(args))
+
+            written_results = mock_writer_cls.return_value.append_results.call_args.args[0]
+
+        # (a) the writer received exactly the filtered subset.
+        assert {r.br_database_id for r in written_results} == {1, 2}
+
+        # (b) the artifacts were written.
+        assert (tmp_path / "manifest.json").exists()
+        assert (tmp_path / "answers.json").exists()
+        assert (tmp_path / "run-record.json").exists()
+
+        # (c) the recorded counts reconcile.
+        record = json.loads((tmp_path / "run-record.json").read_text())
+        assert record["results_count"] == 3
+        assert record["cohort"] == {"approved_count": 2, "results_count": 3, "intersection_count": 2}
+        assert record["written"] == 2 == record["cohort"]["intersection_count"]

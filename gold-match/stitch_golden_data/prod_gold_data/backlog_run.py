@@ -110,7 +110,12 @@ def _prior_answers_sha256(databricks: DatabricksClient, before: datetime) -> str
     -- the staging model's own ordering -- so two runs can be compared on the
     same notion of "the state this run found things in".
     """
-    boundary = before.strftime("%Y-%m-%d %H:%M:%S")
+    # isoformat, not strftime: strftime's format codes drop the UTC offset,
+    # and Databricks interprets an unzoned timestamp literal in the SESSION
+    # timezone (never pinned by DatabricksClient.connect()) -- a non-UTC
+    # session would shift this boundary by the full offset. isoformat keeps
+    # "+00:00", which Databricks accepts inside a timestamp literal.
+    boundary = before.isoformat(sep=" ", timespec="seconds")
     df = databricks.execute_query(
         f"""
         select br_database_id, l2_state, l2_district_type, l2_district_name, confidence
@@ -580,7 +585,9 @@ def _assert_no_later_runs(databricks: DatabricksClient, run_key: datetime) -> No
     later run's answers un-rolled-back and the table's newest-row-wins
     contract half-undone. Fail closed rather than doing the partial version.
     """
-    boundary = run_key.strftime("%Y-%m-%d %H:%M:%S")
+    # isoformat, not strftime: see _prior_answers_sha256 -- the same session-
+    # timezone risk applies to any unzoned timestamp literal built here.
+    boundary = run_key.isoformat(sep=" ", timespec="seconds")
     df = databricks.execute_query(
         f"select count(*) as n from {RESULTS_TABLE_PATH} where attempted_at > timestamp'{boundary}'"
     )
@@ -611,22 +618,42 @@ def _rollback(args: argparse.Namespace) -> None:
         _require_env(_AIRFLOW_ENV_VARS)
 
     writer = MatchResultWriter()
+    delete_error: Exception | None = None
     try:
         _assert_no_later_runs(writer.databricks, run_key)
-        writer.delete_run(run_key, expected_count=expected_count)
+        try:
+            writer.delete_run(run_key, expected_count=expected_count)
+        except Exception as exc:
+            # Delta DELETE commits atomically, so a raise here -- the
+            # pre-check, or a transient on delete_run's own post-delete
+            # verification query -- does not mean nothing changed. The
+            # rebuild below must still run (rebuilding when nothing
+            # actually changed is an idempotent no-op); the sync must
+            # NOT run regardless of --published, since it would push a
+            # delete of uncertain outcome out to PostgreSQL.
+            delete_error = exc
+            writer.logger.warning(
+                f"delete_run raised for {run_key.isoformat()}; proceeding to the rebuild and skipping "
+                "the sync (see the final raise after it)",
+                exc_info=True,
+            )
     finally:
-        # A raise here must not skip the rebuild trigger below: the delete
-        # already happened, so rows are gone either way, and swallowing a
-        # teardown failure is better than leaving every consumer unrebuilt
-        # until the next scheduled build.
+        # A raise here must not skip the rebuild trigger below either: the
+        # delete attempt already happened, so swallowing a teardown failure
+        # is better than leaving every consumer unrebuilt until the next
+        # scheduled build.
         try:
             writer.close()
         except Exception:
             writer.logger.warning("writer.close() raised during teardown", exc_info=True)
 
     _trigger_dbt_rebuild_and_wait()
-    if published:
+    if published and delete_error is None:
         _trigger_election_api_sync_and_wait()
+    if delete_error is not None:
+        raise RuntimeError(
+            f"delete_run raised for {run_key.isoformat()} (rebuild ran; sync skipped): {delete_error}"
+        ) from delete_error
 
 
 # -- CLI --
@@ -634,9 +661,14 @@ def _rollback(args: argparse.Namespace) -> None:
 
 def _iso_timestamp(value: str) -> datetime:
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"not a valid ISO-8601 timestamp: {value!r}") from exc
+    # Reject here, not later: a naive value would reach _assert_no_later_runs'
+    # own SQL before delete_run's _require_aware ever sees it.
+    if parsed.tzinfo is None:
+        raise argparse.ArgumentTypeError(f"--run-key must be timezone-aware, got a naive timestamp: {value!r}")
+    return parsed
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
