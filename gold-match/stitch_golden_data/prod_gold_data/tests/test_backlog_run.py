@@ -6,7 +6,7 @@ double or a monkeypatched module function.
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -14,12 +14,15 @@ import pytest
 
 from stitch_golden_data.prod_gold_data.backlog_run import (
     _answer_rows,
-    _filter_and_write,
+    _assert_fresh_out_dir,
+    _assert_no_later_runs,
+    _assert_swap_succeeded,
     _maybe_install_exclusion,
     _parse_args,
     _require_pinned_prompt,
     _rollback,
     _strict_build_cached_prompt,
+    _universe_sha256,
     apply_cohort_filter,
     compare_runs,
 )
@@ -59,37 +62,6 @@ class TestCohortFilter:
         with pytest.raises(RuntimeError, match="recorded count is 3"):
             apply_cohort_filter(databricks, "select ...", expected_count=3, results=[_match(1)])
 
-    def test_filter_runs_before_the_write_excludes_non_approved_offices(self):
-        """Failure this catches: the writer receiving the matcher's raw
-        output instead of the filtered set -- a quarantined office reaching
-        the table because the filter was wired after the write, not before.
-        """
-        databricks = MagicMock()
-        databricks.execute_query.return_value = pd.DataFrame({"br_database_id": [1, 2]})
-        writer = MagicMock()
-        writer.append_results.return_value = 2
-        results = [_match(1), _match(2), _match(3)]  # 3 is NOT in the approved set
-
-        cohort_counts, written = _filter_and_write(
-            databricks, writer, results, "select ...", expected_count=2, run_key=datetime(2026, 1, 1, tzinfo=UTC)
-        )
-
-        written_results = writer.append_results.call_args.args[0]
-        assert {r.br_database_id for r in written_results} == {1, 2}
-        assert written == 2
-        assert cohort_counts["intersection_count"] == 2
-
-
-class _FakeMatcherClass:
-    """Standalone class-level target for `_maybe_install_exclusion`'s
-    patching, so its tests never touch the real `L2BrMatcher` -- a leaked
-    patch on the shared class would silently affect every other test in
-    this suite that constructs one.
-    """
-
-    def load_pending_offices(self, states=None, limit=None):
-        return pd.DataFrame({"br_database_id": [1, 2, 3, 4]})
-
 
 class TestOfficeExclusion:
     def test_listed_ids_are_dropped_and_counts_recorded(self, tmp_path):
@@ -100,29 +72,38 @@ class TestOfficeExclusion:
         """
         exclude_file = tmp_path / "exclude.txt"
         exclude_file.write_text("2\n# a note about this one\n\n3  # inline comment\n")
+        matcher = MagicMock()
+        matcher.load_pending_offices.return_value = pd.DataFrame({"br_database_id": [1, 2, 3, 4]})
 
-        exclude_ids, info = _maybe_install_exclusion(_FakeMatcherClass, exclude_file)
-        df = _FakeMatcherClass().load_pending_offices()
+        exclude_ids, captured = _maybe_install_exclusion(matcher, exclude_file)
+        df = matcher.load_pending_offices()
 
         assert exclude_ids == {2, 3}
         assert sorted(df["br_database_id"]) == [1, 4]
-        assert info["id_count"] == 2
-        assert info["dropped"] == 2
-        assert info["file_sha256"] == hashlib.sha256(exclude_file.read_bytes()).hexdigest()
+        assert captured["id_count"] == 2
+        assert captured["dropped"] == 2
+        assert captured["file_sha256"] == hashlib.sha256(exclude_file.read_bytes()).hexdigest()
+        assert captured["pending_df"] is df
 
-    def test_no_file_leaves_the_matcher_class_untouched(self):
-        """Failure this catches: patching the class even when no exclusion
-        was requested -- an empty-set wrapper is observably identical on
-        output but is still a global side effect on `L2BrMatcher` that
-        every other caller in the process would silently inherit.
+    def test_no_file_applies_no_filtering(self):
+        """Failure this catches: the wrap dropping rows (or raising) when no
+        exclusion file was given -- it must always be a faithful passthrough
+        in that case, differing from the underlying read only when a real
+        exclusion file says to. The wrap is still installed (there is no
+        second read left to fall back to for the manifest's input echo).
         """
-        original = _FakeMatcherClass.load_pending_offices
+        matcher = MagicMock()
+        matcher.load_pending_offices.return_value = pd.DataFrame({"br_database_id": [1, 2, 3]})
 
-        exclude_ids, info = _maybe_install_exclusion(_FakeMatcherClass, None)
+        exclude_ids, captured = _maybe_install_exclusion(matcher, None)
+        df = matcher.load_pending_offices()
 
-        assert _FakeMatcherClass.load_pending_offices is original
-        assert exclude_ids == frozenset()
-        assert info == {"file_sha256": None, "id_count": 0, "dropped": 0}
+        assert exclude_ids == set()
+        assert sorted(df["br_database_id"]) == [1, 2, 3]
+        assert captured["file_sha256"] is None
+        assert captured["id_count"] == 0
+        assert captured["dropped"] == 0
+        assert captured["pending_df"] is df
 
 
 class TestPinnedPromptFailLoud:
@@ -155,16 +136,14 @@ class TestPinnedPromptFailLoud:
 
 
 class TestAnswerRowsIntegrityGuard:
-    def test_pending_and_results_id_mismatch_raises_an_operator_actionable_message(self):
-        """Failure this catches: a bare KeyError (a results-lacking office)
-        or a silently dropped row that corrupts answers_sha256 and the
-        offices/matched/abstained counts (a pending-only office) if the
-        worklist changes between this entry point's own read and run()'s
-        internal one -- a violated freeze, not a case this module should
-        paper over by reconciling the two reads itself.
+    def test_length_mismatch_between_pending_and_results_raises(self):
+        """Failure this catches: a silently dropped or extra row corrupting
+        answers_sha256 and the offices/matched/abstained counts. With a
+        single shared read (the exclusion wrap's capture), a length
+        mismatch can only mean run() itself broke its one-result-per-office
+        contract -- this must not paper over that by zipping past the
+        shorter list.
         """
-        # id 3 is pending-only, id 4 is results-only: one fixture, both
-        # directions of the set inequality this check must catch.
         pending_df = pd.DataFrame(
             {
                 "br_database_id": [1, 2, 3],
@@ -178,10 +157,38 @@ class TestAnswerRowsIntegrityGuard:
                 "has_unknown_boundaries": [False, False, False],
             }
         )
-        results = [_match(1), _match(2), _match(4)]
+        results = [_match(1), _match(2)]  # one short
 
-        with pytest.raises(RuntimeError, match="is the freeze in place"):
+        with pytest.raises(RuntimeError, match="expected exactly one result per office"):
             _answer_rows(pending_df, results)
+
+
+class _State:
+    def __init__(self, states, district_types, district_names):
+        self.states, self.district_types, self.district_names = states, district_types, district_names
+
+
+class TestUniverseSha256:
+    def test_matches_the_two_stage_dry_run_algorithm(self):
+        """Failure this catches: a single flatten-everything-then-hash pass
+        over every state's district lines together, which produces a
+        DIFFERENT digest than the dry-run driver's two-stage (per-state,
+        then per-state-hash) algorithm over identical data -- making the
+        compare's universe equality always false against Run A.
+        """
+        matcher = MagicMock()
+        matcher._universe_by_state = {
+            "DE": _State(["DE"], ["House"], ["District 5"]),
+            "CA": _State(["CA"], ["House"], ["District 1"]),
+        }
+
+        key_sha256, per_state = _universe_sha256(matcher)
+
+        assert per_state == {
+            "DE": "4aaefeb68973e4e37ca90eeda21e427789fb06f0b6ac3368985e5cde7fe737ed",
+            "CA": "27c01ed3c7dc881101e9a1da282022d5348855dc5b4c863c8097037cf44c458a",
+        }
+        assert key_sha256 == "7d5849d18de5ddd1256f98796957c7d3b73d2ba237e3beded562d4e2294b646d"
 
 
 def _manifest(pin_version="xact-1", **overrides) -> dict:
@@ -220,10 +227,11 @@ class TestManifestCompare:
     def test_produces_the_delta_report_with_correctly_bucketed_row_deltas(self, tmp_path):
         """Failure this catches: the A-vs-B report miscategorizing a row --
         e.g. calling a genuinely new office an output flip, missing that an
-        office's BR input changed between the two runs, or letting a
-        deliberately excluded office surface as an unexplained missing row
-        instead of its own labeled bucket -- any of which would misdirect
-        the named approver's review effort.
+        office's BR input changed, mislabeling an unexplained prior-only
+        drop as excluded, or (the mirror image) labeling an id absent from
+        BOTH runs as excluded when there was never anything for the
+        exclusion to explain -- any of which would misdirect the named
+        approver's review effort.
         """
         prior_dir = tmp_path
         prior_dir.joinpath("dry-run-manifest.json").write_text(json.dumps(_manifest()))
@@ -234,6 +242,7 @@ class TestManifestCompare:
                     _answer_row(2, name="Old Name"),  # input changes below
                     _answer_row(3, l2_district_name="District 3"),  # output flips below
                     _answer_row(5),  # excluded from B below, not a mystery drop
+                    _answer_row(6),  # prior-only, NOT on the exclusion list: unexplained
                 ]
             )
         )
@@ -245,14 +254,16 @@ class TestManifestCompare:
             _answer_row(3, l2_district_name="District 9"),
             _answer_row(4),  # B-only: absent from A entirely
         ]
-
-        report = compare_runs(this_manifest, this_rows, prior_dir, excluded_ids=frozenset({5}))
+        # 7 is on the exclusion list but never appeared in EITHER run's
+        # answers -- must land in neither bucket.
+        report = compare_runs(this_manifest, this_rows, prior_dir, excluded_ids=frozenset({5, 7}))
 
         assert report["row_deltas"] == {
             "b_only": [4],
             "input_changed": [2],
             "output_flipped": [3],
             "excluded": [5],
+            "a_only": [6],
         }
         assert report["config_equal"] == {"embedding_config": True, "llm_config": True}
         assert report["source_equal"] == {"pending_sha256": True, "prior_answers_sha256": True, "universe_sha256": True}
@@ -277,6 +288,59 @@ class TestManifestCompare:
 
         with pytest.raises(RuntimeError, match="prompt pin mismatch"):
             compare_runs(_manifest(pin_version="xact-NEW"), [_answer_row(1)], prior_dir)
+
+
+class TestOutDirFreshnessGuard:
+    @pytest.mark.parametrize("existing_name", ["manifest.json", "answers.json", "run-record.json"])
+    def test_refuses_when_any_run_artifact_already_exists(self, existing_name, tmp_path):
+        """Failure this catches: a second `run` pointed at an already-used
+        out-dir silently overwriting the first run's manifest, answers, or
+        record -- the evidence a rollback or audit would need to reconcile
+        what actually happened.
+        """
+        (tmp_path / existing_name).write_text("{}")
+
+        with pytest.raises(RuntimeError, match=existing_name):
+            _assert_fresh_out_dir(tmp_path)
+
+    def test_passes_on_a_truly_empty_out_dir(self, tmp_path):
+        _assert_fresh_out_dir(tmp_path)
+
+
+class TestNoLaterRunsGuard:
+    def test_raises_when_later_run_keys_exist(self):
+        """Failure this catches: rolling back only the target run key while
+        a later run's rows still stand, leaving that later run's answers
+        un-rolled-back and the results table's newest-row-wins contract
+        half-undone -- delete_run's own documented repair is the target and
+        every later key together, never the target alone.
+        """
+        databricks = MagicMock()
+        databricks.execute_query.return_value = pd.DataFrame({"n": [3]})
+
+        with pytest.raises(RuntimeError, match="every later key together"):
+            _assert_no_later_runs(databricks, datetime.fromisoformat(ATTEMPTED_AT))
+
+    def test_passes_when_no_later_run_keys_exist(self):
+        databricks = MagicMock()
+        databricks.execute_query.return_value = pd.DataFrame({"n": [0]})
+
+        _assert_no_later_runs(databricks, datetime.fromisoformat(ATTEMPTED_AT))
+
+
+class TestElectionApiSwapVerification:
+    @pytest.mark.parametrize(("task_state", "should_raise"), [("success", False), ("skipped", True)])
+    def test_a_skipped_swap_task_is_not_accepted_as_a_completed_sync(self, task_state, should_raise):
+        """Failure this catches: the election-api sync DAG completing
+        successfully while its swap task was silently skipped --
+        cutover_enabled's short-circuit makes that a normal DAG success, not
+        a failure, so the DAG-level state alone cannot catch it.
+        """
+        if should_raise:
+            with pytest.raises(RuntimeError, match="election_api_swap_enabled"):
+                _assert_swap_succeeded(task_state)
+        else:
+            _assert_swap_succeeded(task_state)
 
 
 @pytest.fixture
@@ -313,37 +377,40 @@ def patched_rollback_deps():
         patch("stitch_golden_data.prod_gold_data.backlog_run._trigger_dbt_rebuild_and_wait") as dbt_trigger,
         patch("stitch_golden_data.prod_gold_data.backlog_run._trigger_election_api_sync_and_wait") as sync_trigger,
     ):
-        yield {"writer_cls": writer_cls, "writer": writer_cls.return_value, "dbt": dbt_trigger, "sync": sync_trigger}
+        writer = writer_cls.return_value
+        # No later run keys by default -- _assert_no_later_runs (F3) reads
+        # this before every delete_run call in these tests.
+        writer.databricks.execute_query.return_value = pd.DataFrame({"n": [0]})
+        yield {"writer_cls": writer_cls, "writer": writer, "dbt": dbt_trigger, "sync": sync_trigger}
 
 
-class TestRollbackCountAssertion:
-    @pytest.mark.parametrize(
-        ("deleted", "expected", "should_raise"),
-        [
-            (7, 7, False),
-            (5, 7, True),  # a short delete: fewer rows went than the record says the run wrote
-            (0, 0, False),  # the zero-row case must NOT be treated as an automatic failure
-            (3, 0, True),  # the mirror image: a nonzero delete when the record says zero
-        ],
-    )
-    def test_rollback_count_assertion(self, deleted, expected, should_raise, rollback_env, patched_rollback_deps):
-        """Failure this catches: `delete_run`'s only signal against a mistyped
-        key or a naive/aware timezone mismatch is a wrong count (this
-        connector hardcodes `rowcount = -1`), and a rollback that does not
-        check it can silently declare success having deleted the wrong run
-        or nothing at all.
+class TestRollbackDelegatesCountCheckToDeleteRun:
+    @pytest.mark.parametrize(("delete_run_effect", "should_raise"), [(7, False), (RuntimeError("mismatch"), True)])
+    def test_expected_count_is_passed_through_and_a_raise_is_propagated(
+        self, delete_run_effect, should_raise, rollback_env, patched_rollback_deps
+    ):
+        """Failure this catches: this module recomputing (or dropping) the
+        count check after it moved into delete_run itself (F1) -- rollback
+        must pass its recorded expected_count through and trust delete_run's
+        own pre-delete verification, never re-deriving or ignoring it, and
+        must not rebuild when that verification rejects the count.
         """
         rollback_env.set_dbt()
-        patched_rollback_deps["writer"].delete_run.return_value = deleted
-        args = _parse_args(["rollback", "--run-key", ATTEMPTED_AT, "--expected-count", str(expected)])
+        if should_raise:
+            patched_rollback_deps["writer"].delete_run.side_effect = delete_run_effect
+        else:
+            patched_rollback_deps["writer"].delete_run.return_value = delete_run_effect
+        args = _parse_args(["rollback", "--run-key", ATTEMPTED_AT, "--expected-count", "7"])
 
         if should_raise:
-            with pytest.raises(RuntimeError, match="disagree"):
+            with pytest.raises(RuntimeError, match="mismatch"):
                 _rollback(args)
             patched_rollback_deps["dbt"].assert_not_called()
         else:
             _rollback(args)
             patched_rollback_deps["dbt"].assert_called_once()
+        call = patched_rollback_deps["writer"].delete_run.call_args
+        assert call.kwargs["expected_count"] == 7
 
 
 class TestRollbackPublishGating:

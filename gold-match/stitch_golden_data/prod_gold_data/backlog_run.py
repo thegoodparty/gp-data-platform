@@ -4,8 +4,10 @@ Before this module, `MatchResultWriter.append_results` had no non-test caller
 and the runbook's write step was a hand-assembled snippet -- so a cohort-scoped
 publication decision had no enforcement (the writer takes whatever it is
 handed) and a rollback had no verification that the delete actually matched
-what the run wrote. This wraps `L2BrMatcher.run()` and the writer; it makes
-ZERO changes to either.
+what the run wrote. This wraps `L2BrMatcher.run()` and the writer, making
+ZERO changes to the matcher. The writer's `delete_run` gained one optional
+parameter (`expected_count`) -- an explicitly ruled exception, so the count
+check runs before the DELETE executes instead of recomputing it after.
 
     python -m stitch_golden_data.prod_gold_data.backlog_run run \\
         --cohort-predicate-file approved.sql --cohort-expected-count 1234 \\
@@ -58,8 +60,11 @@ OUTPUT_FIELDS = ("l2_state", "l2_district_type", "l2_district_name", "confidence
 
 DBT_CLOUD_REBUILD_JOB_ID = 70471823431462  # the scheduled build: universe + every consumer
 ELECTION_API_SYNC_DAG_ID = "sync_election_api"  # swaps the reviewed Databricks tables into PostgreSQL
+ELECTION_API_SWAP_TASK_ID = "swap"  # airflow/astro/dags/sync_election_api.py's own @task function name
+ELECTION_API_SWAP_VARIABLE = "election_api_swap_enabled"  # same DAG's SWAP_GATE_VARIABLE
 _DBT_CLOUD_ENV_VARS = ("DBT_CLOUD_BASE_URL", "DBT_CLOUD_ACCOUNT_ID", "DBT_CLOUD_API_TOKEN")
 _AIRFLOW_ENV_VARS = ("AIRFLOW_API_BASE_URL", "AIRFLOW_API_TOKEN")
+_RUN_ARTIFACT_FILENAMES = ("manifest.json", "answers.json", "run-record.json")
 
 
 # -- git / hash idioms (mirrors the dry-run driver, so A and B are comparable) --
@@ -71,7 +76,7 @@ def _git_state() -> dict:
     def git(*args: str) -> str:
         return subprocess.run(["git", "-C", str(repo_root), *args], capture_output=True, text=True).stdout.strip()
 
-    return {"sha": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain"))}
+    return {"sha": git("rev-parse", "HEAD"), "dirty_worktree": bool(git("status", "--porcelain"))}
 
 
 def _sha(obj: object) -> str:
@@ -83,13 +88,21 @@ def _nn(v: object) -> object:
     return None if v is None or (isinstance(v, float) and v != v) else v
 
 
-def _universe_sha256(matcher: L2BrMatcher) -> str:
-    lines = sorted(
-        f"{u.states[i]}|{u.district_types[i]}|{u.district_names[i]}"
-        for u in matcher._universe_by_state.values()
-        for i in range(len(u.district_names))
-    )
-    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+def _universe_sha256(matcher: L2BrMatcher) -> tuple[str, dict[str, str]]:
+    """Two-stage hash, exactly mirroring the dry-run driver's algorithm: one
+    hash per state over its sorted district lines, then one hash over the
+    sorted state:per-state-hash lines. A single flatten-everything-then-hash
+    pass produces a DIFFERENT value for identical data, which would make the
+    compare's universe equality always false against Run A.
+    """
+    per_state = {}
+    for state, u in matcher._universe_by_state.items():
+        lines = sorted(
+            f"{u.states[i]}|{u.district_types[i]}|{u.district_names[i]}" for i in range(len(u.district_names))
+        )
+        per_state[state] = hashlib.sha256("\n".join(lines).encode()).hexdigest()
+    key_sha256 = hashlib.sha256("\n".join(f"{s}:{h}" for s, h in sorted(per_state.items())).encode()).hexdigest()
+    return key_sha256, per_state
 
 
 def _prior_answers_sha256(databricks: DatabricksClient, before: datetime) -> str:
@@ -136,13 +149,20 @@ def _require_pinned_prompt(matcher: L2BrMatcher) -> None:
         raise RuntimeError("pinned prompt did not load (is BRAINTRUST_API_KEY set?); refusing to run on the fallback")
 
 
-# -- office exclusion (pending-list intercept, same technique as the prompt guard) --
+# -- office exclusion + pending-list capture (one instance-local wrap) --
 #
 # Production run() has no per-office catch -- match_office raises through,
 # and run()'s own except re-raises after logging cost -- so a known
 # deterministic shape-miss office in the batch aborts the WHOLE run
 # pre-write. Excluding it has to happen before the pending list is even
 # read, not inside match_office, which this PR must not touch.
+#
+# This wrap is installed on the MATCHER INSTANCE, never the class, and
+# always -- not only when an exclusion file is given. The entry point no
+# longer reads the pending list itself (that read is now this wrap's
+# capture of run()'s own single call), so there is no second read to fall
+# back to: "no exclusion file" means the filtering half of the wrap is a
+# no-op, not that the wrap is absent.
 
 
 def _parse_exclude_ids(path: Path) -> set[int]:
@@ -154,44 +174,41 @@ def _parse_exclude_ids(path: Path) -> set[int]:
     return ids
 
 
-def _install_pending_offices_exclusion(target: type, exclude_ids: set[int], stats: dict) -> None:
-    """Class-level wrap, the same technique as the prompt guard: every
-    `load_pending_offices` call through `target` (the matcher's own and this
-    entry point's) comes back with `exclude_ids` already dropped, so they
-    never reach `match_office`. Updates `stats["dropped"]` IN PLACE on every
-    call -- the pending list has not been read yet at install time, so
-    there is nothing to count until then.
+def _install_pending_offices_wrap(matcher: L2BrMatcher, exclude_ids: set[int]) -> dict:
+    """Shadow THIS matcher's own `load_pending_offices` (an instance
+    attribute, never touching `L2BrMatcher` itself). `run()`'s one internal
+    call goes through it too, so the captured frame IS what `run()` worked
+    from -- one warehouse read, not two, and nothing for a second read to
+    drift out of sync with.
     """
-    original = target.load_pending_offices
+    original = matcher.load_pending_offices
+    captured = {"pending_df": None, "dropped": 0}
 
-    def wrapped(self, states=None, limit=None):
-        df = original(self, states=states, limit=limit)
-        if df.empty or not exclude_ids:
-            return df
-        mask = df["br_database_id"].isin(exclude_ids)
-        stats["dropped"] = int(mask.sum())
-        return df[~mask].reset_index(drop=True)
+    def wrapped(states=None, limit=None):
+        df = original(states=states, limit=limit)
+        if not df.empty and exclude_ids:
+            mask = df["br_database_id"].isin(exclude_ids)
+            captured["dropped"] = int(mask.sum())
+            df = df[~mask].reset_index(drop=True)
+        captured["pending_df"] = df
+        return df
 
-    target.load_pending_offices = wrapped
+    matcher.load_pending_offices = wrapped
+    return captured
 
 
-def _maybe_install_exclusion(target: type, exclude_file: Path | None) -> tuple[set[int], dict]:
-    """No file = no interception: `target` is left completely untouched,
-    never patched with an empty set -- that would still be a global change
-    to the class nothing asked for. The returned dict's "dropped" is
-    read-after-write: it is 0 until `target.load_pending_offices` actually
-    runs, then reflects that call.
+def _maybe_install_exclusion(matcher: L2BrMatcher, exclude_file: Path | None) -> tuple[set[int], dict]:
+    """No file = no filtering, but the capturing wrap is still installed --
+    it is the only read of the pending list left. Returns the exclude id
+    set (for the compare's own "excluded" bucket) and the captured dict:
+    `pending_df` once `matcher.load_pending_offices` actually runs (None
+    until then), `dropped`, `file_sha256`, `id_count`.
     """
-    if exclude_file is None:
-        return set(), {"file_sha256": None, "id_count": 0, "dropped": 0}
-    exclude_ids = _parse_exclude_ids(exclude_file)
-    info = {
-        "file_sha256": hashlib.sha256(exclude_file.read_bytes()).hexdigest(),
-        "id_count": len(exclude_ids),
-        "dropped": 0,
-    }
-    _install_pending_offices_exclusion(target, exclude_ids, info)
-    return exclude_ids, info
+    exclude_ids = _parse_exclude_ids(exclude_file) if exclude_file is not None else set()
+    captured = _install_pending_offices_wrap(matcher, exclude_ids)
+    captured["file_sha256"] = hashlib.sha256(exclude_file.read_bytes()).hexdigest() if exclude_file else None
+    captured["id_count"] = len(exclude_ids)
+    return exclude_ids, captured
 
 
 # -- cohort pre-write filter --
@@ -217,43 +234,27 @@ def apply_cohort_filter(
     return filtered, counts
 
 
-def _filter_and_write(
-    databricks: DatabricksClient,
-    writer: MatchResultWriter,
-    results: list[MatchResult],
-    predicate_sql: str,
-    expected_count: int,
-    run_key: datetime,
-) -> tuple[dict, int]:
-    filtered, cohort_counts = apply_cohort_filter(databricks, predicate_sql, expected_count, results)
-    written = writer.append_results(filtered, attempted_at=run_key)
-    return cohort_counts, written
-
-
 # -- manifest + A-vs-B compare --
 
 
 def _answer_rows(pending_df: "pd.DataFrame", results: list[MatchResult]) -> list[dict]:
     """One row per pending office: the input the matcher was asked about,
     plus what it answered. `run()` returns outputs only, so the compare
-    needs this echo -- read from `pending_df`, a snapshot taken alongside
-    `run()`'s own (separate) read of the same, currently-frozen, worklist.
+    needs this echo -- read from `pending_df`, the SAME DataFrame `run()`'s
+    one internal read produced (captured by the exclusion wrap, not a
+    second read this module took itself).
 
-    That "same worklist" is asserted here, not assumed: under a held freeze
-    the two reads agree, but this module must not trust its own manifest's
-    integrity on that alone. A silent mismatch is NOT survivable further
-    down -- a pending-only office would raise a bare KeyError below, and a
-    results-only office would drop out of `answers.json` with no trace,
-    which corrupts `answers_sha256` and the offices/matched/abstained counts
-    into misreporting what the run actually did.
+    A length check, not a full identity check: with a single shared read,
+    `run()` produces exactly one result per row of `pending_df` by its own
+    contract (answers every office it was handed, or raises), so the two
+    can only disagree in length if that contract itself broke -- there is
+    no second, independently-drifting read left for a set mismatch to mean
+    anything else.
     """
-    pending_ids = {int(v) for v in pending_df["br_database_id"]}
-    result_ids = {r.br_database_id for r in results}
-    if pending_ids != result_ids:
+    if len(pending_df) != len(results):
         raise RuntimeError(
-            f"pending-list mismatch: this entry point's own read saw {len(pending_ids)} office(s), "
-            f"run()'s read saw {len(result_ids)}; the pending list changed between this entry "
-            "point's read and run()'s read -- is the freeze in place?"
+            f"run() returned {len(results)} result(s) for a pending list of {len(pending_df)} office(s); "
+            "expected exactly one result per office"
         )
 
     by_id = {r.br_database_id: r for r in results}
@@ -281,6 +282,23 @@ def _answer_rows(pending_df: "pd.DataFrame", results: list[MatchResult]) -> list
     return sorted(rows, key=lambda r: r["br_database_id"])
 
 
+def _check_prior_pin(prior_out_dir: Path, this_prompt_provenance: dict | None) -> None:
+    """The ONE hard-fail: a prompt-pin mismatch means A and B are not the
+    same evaluated artifact, and nothing else in the compare can rescue
+    that. Called BEFORE the paid run when `--compare-against` is given
+    (discovering this only after `run()` has spent the embedding/LLM budget
+    would waste the whole run on a comparison that was never valid), and
+    again from `compare_runs` itself as a cheap re-assert.
+    """
+    prior_manifest = json.loads((prior_out_dir / "dry-run-manifest.json").read_text())
+    prior_pin = (prior_manifest.get("prompt_provenance") or {}).get("resolved_version")
+    this_pin = (this_prompt_provenance or {}).get("resolved_version")
+    if prior_pin != this_pin:
+        raise RuntimeError(
+            f"prompt pin mismatch: prior run resolved {prior_pin!r}, this run resolved {this_pin!r}; not comparable"
+        )
+
+
 def compare_runs(
     this_manifest: dict,
     this_answer_rows: list[dict],
@@ -288,27 +306,20 @@ def compare_runs(
     excluded_ids: set[int] | frozenset[int] = frozenset(),  # frozenset default: immutable, safe to share
 ) -> dict:
     """A-vs-B delta report against a prior (Run A) out-dir. Informational
-    except the ONE hard-fail -- a prompt-pin mismatch means A and B are not
-    the same evaluated artifact, and nothing else here can rescue that.
-    Everything else is review input for the named approver: a small delta
-    focuses their review, a large one means it does not transfer.
+    except the ONE hard-fail -- see `_check_prior_pin`. Everything else is
+    review input for the named approver: a small delta focuses their
+    review, a large one means it does not transfer.
 
-    `excluded_ids` are reported as their own bucket rather than left to
-    surface as unexplained missing rows: an office `--exclude-office-ids-file`
-    kept out of the pending list never reaches `this_answer_rows` at all, so
-    without this it would be indistinguishable from an unexplained drop.
+    `excluded_ids` partitions prior-present/B-absent ids into `excluded`
+    (explained: `--exclude-office-ids-file` kept them out of the pending
+    list) vs `a_only` (unexplained) -- an id absent from BOTH runs is
+    neither, since there is nothing here for the exclusion to explain.
     """
+    _check_prior_pin(prior_out_dir, this_manifest.get("prompt_provenance"))
     prior_manifest = json.loads((prior_out_dir / "dry-run-manifest.json").read_text())
     prior_answers = {
         row["br_database_id"]: row for row in json.loads((prior_out_dir / "dry-run-answers.json").read_text())
     }
-
-    prior_pin = (prior_manifest.get("prompt_provenance") or {}).get("resolved_version")
-    this_pin = (this_manifest.get("prompt_provenance") or {}).get("resolved_version")
-    if prior_pin != this_pin:
-        raise RuntimeError(
-            f"prompt pin mismatch: prior run resolved {prior_pin!r}, this run resolved {this_pin!r}; not comparable"
-        )
 
     config_equal = {
         "embedding_config": prior_manifest.get("embedding_config") == this_manifest.get("embedding_config"),
@@ -336,7 +347,14 @@ def compare_runs(
             input_changed.append(row["br_database_id"])
         elif any(row[f] != prior_row.get(f) for f in OUTPUT_FIELDS):
             output_flipped.append(row["br_database_id"])
-    excluded = sorted(bid for bid in excluded_ids if bid not in this_ids)
+
+    # Prior-present, B-absent: split by whether the exclusion list explains
+    # it. Derived from prior_answers, not excluded_ids, so an id neither run
+    # ever attempted (a stale or mistyped exclusion entry) lands in neither
+    # bucket -- there is nothing here for it to explain.
+    prior_only = set(prior_answers) - this_ids
+    excluded = sorted(prior_only & excluded_ids)
+    a_only = sorted(prior_only - excluded_ids)
 
     return {
         "compared_against": str(prior_out_dir),
@@ -347,6 +365,7 @@ def compare_runs(
             "input_changed": input_changed,
             "output_flipped": output_flipped,
             "excluded": excluded,
+            "a_only": a_only,
         },
     }
 
@@ -354,29 +373,43 @@ def compare_runs(
 # -- run --
 
 
+def _assert_fresh_out_dir(out_dir: Path) -> None:
+    """Evidence durability: a second `run` pointed at an out-dir that
+    already has artifacts would silently overwrite the first run's
+    manifest/answers/record, exactly the guard the dry-run driver already
+    has for its own single answers file.
+    """
+    existing = [name for name in _RUN_ARTIFACT_FILENAMES if (out_dir / name).exists()]
+    if existing:
+        raise RuntimeError(f"{out_dir} already has {', '.join(existing)}; refusing to overwrite a completed run")
+
+
 async def _run(args: argparse.Namespace) -> None:
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    _assert_fresh_out_dir(out_dir)
 
     # Installed before anything can call the matcher: a per-office render
     # failure must crash this run, never silently swap in the fallback.
     _matcher_mod.build_cached_prompt = _strict_build_cached_prompt
-    # Installed before the pending list is ever read (both this module's own
-    # read below and run()'s internal one go through it).
-    exclude_ids, exclusion_info = _maybe_install_exclusion(L2BrMatcher, args.exclude_office_ids_file)
 
     run_key = datetime.now(UTC).replace(microsecond=0)  # minted ONCE; nothing else mints one
     embedding_client, llm = _build_clients(args.model_config)
     matcher = L2BrMatcher(embedding_client=embedding_client, llm=llm)
     try:
         _require_pinned_prompt(matcher)
+        if args.compare_against:
+            # Before the paid run: a pin mismatch found only after run() has
+            # spent the embedding/LLM budget would waste it on a comparison
+            # that was never going to be valid.
+            _check_prior_pin(args.compare_against, matcher.prompt_provenance)
 
-        # Read once here for the input echo below; run() does its own
-        # (second) read internally. Both are read-only against a list this
-        # runbook holds frozen, so the redundant read costs a query, not
-        # correctness -- reusing run()'s own worklist as our own would mean
-        # reimplementing its batching outside of it.
-        pending_df = matcher.load_pending_offices(states=args.states, limit=args.limit)
+        # Instance-local wrap, installed on THIS matcher only, after
+        # construction (it shadows an instance attribute, not the class).
+        # run()'s own (only) call to load_pending_offices goes through it,
+        # so the frame it captures IS what run() worked from.
+        exclude_ids, captured = _maybe_install_exclusion(matcher, args.exclude_office_ids_file)
+
         results = await matcher.run(
             states=args.states,
             limit=args.limit,
@@ -384,9 +417,12 @@ async def _run(args: argparse.Namespace) -> None:
             embedding_batch_size=args.embedding_batch_size,
             school_whole_assertion_enabled=args.enable_school_whole_assertion,
         )
+        pending_df = captured["pending_df"]
+        exclusion_info = {k: captured[k] for k in ("file_sha256", "id_count", "dropped")}
         answer_rows = _answer_rows(pending_df, results)
         matched = sum(1 for row in answer_rows if row["l2_district_name"] is not None)
 
+        universe_key_sha256, universe_per_state = _universe_sha256(matcher)
         manifest = {
             "run_key": run_key.isoformat(),
             "model_config": args.model_config,
@@ -402,7 +438,7 @@ async def _run(args: argparse.Namespace) -> None:
                 "pending_sha256": _sha([{k: row[k] for k in INPUT_FIELDS} for row in answer_rows]),
                 "prior_answers_sha256": _prior_answers_sha256(matcher.databricks, run_key),
             },
-            "universe": {"key_sha256": _universe_sha256(matcher)},
+            "universe": {"key_sha256": universe_key_sha256, "per_state_sha256": universe_per_state},
             "embedding_config": matcher.embedding_client.resolved_config(),
             "llm_config": matcher.llm.resolved_config(),
             "prompt_provenance": matcher.prompt_provenance,
@@ -418,9 +454,10 @@ async def _run(args: argparse.Namespace) -> None:
 
         writer = MatchResultWriter(databricks=matcher.databricks)  # shares the matcher's own connection
         predicate_sql = args.cohort_predicate_file.read_text()
-        cohort_counts, written = _filter_and_write(
-            matcher.databricks, writer, results, predicate_sql, args.cohort_expected_count, run_key
+        filtered, cohort_counts = apply_cohort_filter(
+            matcher.databricks, predicate_sql, args.cohort_expected_count, results
         )
+        written = writer.append_results(filtered, attempted_at=run_key)
 
         record = {
             "run_key": run_key.isoformat(),
@@ -491,6 +528,20 @@ def _trigger_dbt_rebuild_and_wait(poll_seconds: float = 30, timeout_seconds: flo
         )
 
 
+def _assert_swap_succeeded(task_state: str) -> None:
+    """A DAG run can succeed while the swap itself was silently skipped:
+    `cutover_enabled` short-circuits every downstream task (including
+    `swap`) whenever the gate variable isn't exactly "true", and Airflow
+    counts a skipped task as a normal outcome, not a DAG failure -- so the
+    DAG-level state alone cannot catch this.
+    """
+    if task_state != "success":
+        raise RuntimeError(
+            f"election-api sync DAG succeeded but its swap task state is {task_state!r}, not 'success' -- "
+            f"the {ELECTION_API_SWAP_VARIABLE!r} Airflow variable is likely not exactly 'true'"
+        )
+
+
 def _trigger_election_api_sync_and_wait(poll_seconds: float = 30, timeout_seconds: float = 1800) -> None:
     base = os.environ["AIRFLOW_API_BASE_URL"]
     headers = {"Authorization": f"Bearer {os.environ['AIRFLOW_API_TOKEN']}"}
@@ -506,6 +557,33 @@ def _trigger_election_api_sync_and_wait(poll_seconds: float = 30, timeout_second
 
         _poll_until_terminal(
             state, {"success": True, "failed": False}, "election-api sync", poll_seconds, timeout_seconds
+        )
+
+        swap = client.get(
+            f"{base}/api/v2/dags/{ELECTION_API_SYNC_DAG_ID}/dagRuns/{run_id}/taskInstances/{ELECTION_API_SWAP_TASK_ID}",
+            headers=headers,
+        )
+        swap.raise_for_status()
+        _assert_swap_succeeded(swap.json()["state"])
+
+
+def _assert_no_later_runs(databricks: DatabricksClient, run_key: datetime) -> None:
+    """The writer's own documented repair for undoing a release is deleting
+    the target run key AND every run after it, together -- rolling back the
+    target alone while a later run's rows still stand would leave that
+    later run's answers un-rolled-back and the table's newest-row-wins
+    contract half-undone. Fail closed rather than doing the partial version.
+    """
+    boundary = run_key.strftime("%Y-%m-%d %H:%M:%S")
+    df = databricks.execute_query(
+        f"select count(*) as n from {RESULTS_TABLE_PATH} where attempted_at > timestamp'{boundary}'"
+    )
+    later = int(df["n"][0])
+    if later > 0:
+        raise RuntimeError(
+            f"{later} row(s) exist under a run key later than {run_key.isoformat()}; rolling back the "
+            "target key alone would leave a later run half-undone -- delete the target and every "
+            "later key together, per delete_run's own documented contract"
         )
 
 
@@ -528,12 +606,8 @@ def _rollback(args: argparse.Namespace) -> None:
 
     writer = MatchResultWriter()
     try:
-        deleted = writer.delete_run(run_key)
-        if deleted != expected_count:
-            raise RuntimeError(
-                f"deleted {deleted} row(s) for run {run_key.isoformat()}, recorded count is "
-                f"{expected_count}; the table and the record disagree, stop and reconcile"
-            )
+        _assert_no_later_runs(writer.databricks, run_key)
+        writer.delete_run(run_key, expected_count=expected_count)
     finally:
         writer.close()
 
