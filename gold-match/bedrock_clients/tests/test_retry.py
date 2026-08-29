@@ -42,3 +42,18 @@ def test_sleep_never_crosses_the_deadline():
     # The 10s jitter would land past the 0.5s deadline: no sleep, no retry.
     assert time.monotonic() - start < 2.0
     assert len(calls) == 1
+
+
+def test_model_error_exception_retried_then_succeeds():
+    calls = []
+
+    def fn():
+        calls.append(1)
+        if len(calls) == 1:
+            raise client_error("ModelErrorException")
+        return "ok"
+
+    with patch("bedrock_clients._retry.random.uniform", return_value=0.0):
+        result = call_with_retries(fn, max_retries=3, max_elapsed_seconds=5.0)
+    assert result == "ok"
+    assert len(calls) == 2
