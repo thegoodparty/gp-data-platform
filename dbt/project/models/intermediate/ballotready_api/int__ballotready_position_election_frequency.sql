@@ -1,0 +1,8 @@
+{{ config(materialized="view") }}
+
+-- A projection over staging, not a copy: staging already did the parsing
+-- and casting. This int__ layer is the stable interface other models are
+-- written against; the contract in int__ballotready_sql.yaml enforces that
+-- its name and schema stay put.
+select database_id, frequency, id, reference_year, seats, valid_from, valid_to
+from {{ ref("stg_airflow_source__ballotready_position_election_frequency_raw") }}

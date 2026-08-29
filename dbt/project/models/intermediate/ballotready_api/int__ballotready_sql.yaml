@@ -131,3 +131,83 @@ models:
           Ingestion timestamp, not a BallotReady source field: the issue payload carries
           no updatedAt, so this is stamped at staging build time.
         data_type: timestamp
+
+  - name: int__ballotready_normalized_position
+    description: >
+      BallotReady normalized positions, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: >
+          The BallotReady integer id for the normalized position, echoed back from the requested
+          id.
+        data_type: int
+      - name: description
+        description: Freeform description of the normalized position; populated for roughly 97% of rows.
+        data_type: string
+      - name: id
+        description: Base64 GraphQL global id for the normalized position.
+        data_type: string
+      - name: issues
+        description: The issues associated with this normalized position, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: mtfcc
+        description: >
+          Census MAF/TIGER Feature Class Code for the normalized position; populated for roughly
+          7% of rows.
+        data_type: string
+      - name: name
+        description: Display name for the normalized position, e.g. "U.S. Senator".
+        data_type: string
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the normalized position payload
+          carries no createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the normalized position payload
+          carries no updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_position_election_frequency
+    description: >
+      BallotReady position election frequencies, transformed from the raw payloads the
+      extract_ballotready DAG lands. See
+      https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency.
+      Replaces the Python model that called the CivicEngine API directly; the output schema is
+      unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: >
+          The BallotReady integer id for the position election frequency, echoed back from the
+          requested id.
+        data_type: int
+      - name: frequency
+        description: Years, relative to reference_year, in which this position is up for election.
+        data_type: array<int>
+      - name: id
+        description: Base64 GraphQL global id for the position election frequency.
+        data_type: string
+      - name: reference_year
+        description: The reference year frequency is expressed relative to.
+        data_type: int
+      - name: seats
+        description: >
+          Number of seats up for election in each cycle; not populated in any row landed so far.
+        data_type: array<int>
+      - name: valid_from
+        description: Start of this row's effective validity window, as reported by BallotReady.
+        data_type: timestamp
+      - name: valid_to
+        description: >
+          End of this row's effective validity window, as reported by BallotReady; populated for
+          roughly 3% of rows.
+        data_type: timestamp
