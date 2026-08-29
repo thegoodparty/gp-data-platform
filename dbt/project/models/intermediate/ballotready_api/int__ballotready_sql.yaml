@@ -50,3 +50,84 @@ models:
           single current version per geofence. Treat the effective-dating semantics as
           unconfirmed rather than assume them.
         data_type: date
+
+  - name: int__ballotready_filing_period
+    description: >
+      BallotReady filing periods, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the
+      output schema is unchanged, and the contract keeps its name and schema stable for
+      consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: created_at
+        description: Timestamp the filing period was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: >
+          The BallotReady integer id for the filing period, echoed back from the
+          requested id.
+        data_type: int
+      - name: end_on
+        description: Last day of the filing window, i.e. the filing deadline.
+        data_type: date
+      - name: id
+        description: Base64 GraphQL global id for the filing period.
+        data_type: string
+      - name: notes
+        description: Freeform notes on the filing period; populated for roughly 2% of rows.
+        data_type: string
+      - name: start_on
+        description: First day of the filing window.
+        data_type: date
+      - name: type
+        description: BallotReady filing period type; not populated in any row landed so far.
+        data_type: string
+      - name: updated_at
+        description: Timestamp the filing period was last updated in BallotReady.
+        data_type: timestamp
+
+  - name: int__ballotready_issue
+    description: >
+      BallotReady issues, transformed from the raw payloads the extract_ballotready DAG
+      lands. Replaces the Python model that called the CivicEngine API directly; the
+      output schema is unchanged, and the contract keeps its name and schema stable for
+      consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: The BallotReady integer id for the issue, echoed back from the requested id.
+        data_type: int
+      - name: id
+        description: Base64 GraphQL global id for the issue.
+        data_type: string
+      - name: key
+        description: Short machine-readable key for the issue, e.g. "arts_culture".
+        data_type: string
+      - name: name
+        description: Display name for the issue, e.g. "Arts / Culture".
+        data_type: string
+      - name: plugin_enabled
+        description: Whether the issue is enabled in the stance-collection plugin.
+        data_type: boolean
+      - name: response_type
+        description: >
+          Response type BallotReady expects for a stance on this issue; not populated in
+          any row landed so far.
+        data_type: string
+      - name: row_order
+        description: Display order for the issue; not populated in any row landed so far.
+        data_type: int
+      - name: created_at
+        description: >
+          Timestamp the issue was created in BallotReady; not populated in any row landed
+          so far.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Timestamp the issue was last updated in BallotReady; not populated in any row
+          landed so far.
+        data_type: timestamp
