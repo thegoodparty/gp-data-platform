@@ -82,7 +82,7 @@ models:
       - name: database_id
         data_tests: [not_null]
       - name: id
-        data_tests: [not_null]
+        data_tests: [not_null, unique]
       - name: endorsements
         data_tests: [not_null]
       - name: parties

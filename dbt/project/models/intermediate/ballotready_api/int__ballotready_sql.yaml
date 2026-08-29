@@ -220,6 +220,8 @@ models:
     config:
       contract:
         enforced: true
+      meta:
+        contains_pii: true
     columns:
       - name: candidate_database_id
         description: The BallotReady integer id of the candidate this candidacy belongs to.
