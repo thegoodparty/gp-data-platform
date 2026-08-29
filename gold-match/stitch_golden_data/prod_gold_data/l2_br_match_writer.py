@@ -281,7 +281,7 @@ class MatchResultWriter:
         self.logger.info(f"Wrote {len(to_write)} result row(s) under run key {attempted_at.isoformat()}")
         return len(to_write)
 
-    def delete_run(self, attempted_at: datetime) -> int:
+    def delete_run(self, attempted_at: datetime, expected_count: int | None = None) -> int:
         """Delete every row stamped with this run key, and return how many
         rows went.
 
@@ -291,11 +291,24 @@ class MatchResultWriter:
         undo a release, delete the target run and every run after it, then
         rebuild. The DELETE itself stays in Delta history, so what happened
         and when is still answerable afterwards.
+
+        `expected_count`, when given, is checked against the pre-delete
+        count BEFORE the DELETE executes -- no extra query, since that count
+        is already read for the before/after comparison below. A caller with
+        a recorded count (the entry point's rollback) gets its verification
+        done here, before anything is destroyed, rather than having to
+        recompute the same count itself afterward. `expected_count=0`
+        matching a genuinely empty run is not an error.
         """
         _require_aware(attempted_at)
         cursor = self._cursor()
         try:
             before = self._row_count(cursor, attempted_at)
+            if expected_count is not None and before != expected_count:
+                raise RuntimeError(
+                    f"run {attempted_at.isoformat()} holds {before} row(s), recorded count is "
+                    f"{expected_count}; refusing to delete until the table and the record agree"
+                )
             cursor.execute(
                 f"delete from {self.results_table} where attempted_at = ?",
                 [attempted_at],
