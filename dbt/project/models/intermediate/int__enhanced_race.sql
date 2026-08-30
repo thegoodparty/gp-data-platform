@@ -11,6 +11,12 @@ with
         left join
             {{ ref("int__ballotready_position_election_frequency") }} as tbl_freq
             on tbl_pos.pe_frequency_database_id = tbl_freq.database_id
+        -- Only rows that actually resolved compete below. A join miss carries a null
+        -- valid_to, which the ordering would otherwise rank alongside a current version
+        -- and let it beat a real superseded one. Unlike the valid_to filter this
+        -- replaced, dropping a miss loses nothing: the sole consumer left-joins this
+        -- CTE, so a position with no resolvable version still lands with a null.
+        where tbl_freq.database_id is not null
         -- Prefer a version BallotReady still marks current, but fall back to the most
         -- recently valid one rather than dropping the position: ~3,500 positions have
         -- only superseded versions, and their last known frequency beats a null.
