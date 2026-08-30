@@ -285,7 +285,7 @@ models:
       contract:
         enforced: true
       meta:
-        contains_pii: false
+        contains_pii: true
     columns:
       - name: bio_text
         description: Freeform biography text for the person, as reported by BallotReady.
@@ -335,8 +335,8 @@ models:
         description: >
           The office-holder records for this person, as id-reference pairs. Arrives
           wrapped in a connection object rather than as a bare array, unlike every
-          other array on this payload. Most people have none; the observed maximum
-          is 19.
+          other array on this payload. 64.2% of people have at least one (90,011 of
+          251,508 have none); the observed maximum is 19.
         data_type: array<struct<databaseId:int,id:string>>
       - name: slug
         description: URL slug for the person's BallotReady profile.

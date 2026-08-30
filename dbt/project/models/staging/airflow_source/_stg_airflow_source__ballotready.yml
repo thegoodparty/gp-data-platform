@@ -123,6 +123,10 @@ models:
         data_tests: [not_null]
       - name: id
         data_tests: [not_null, unique]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
 
   - name: stg_airflow_source__ballotready_normalized_position_raw
     description: One row per BallotReady normalized position id landed by the extraction DAG.
@@ -142,6 +146,10 @@ models:
         data_tests: [not_null, unique]
       - name: issues
         data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
 
   - name: stg_airflow_source__ballotready_position_election_frequency_raw
     description: One row per BallotReady position election frequency id landed by the extraction DAG.
@@ -156,6 +164,8 @@ models:
       - name: requested_id
         data_tests: [not_null, unique]
       - name: database_id
+        data_tests: [not_null]
+      - name: frequency
         data_tests: [not_null]
 
   - name: stg_airflow_source__ballotready_person_raw
@@ -197,19 +207,23 @@ models:
       - dbt_expectations.expect_table_row_count_to_be_between:
           arguments:
             min_value: 300000
-      # the model this replaces asserted no candidacy repeats a stance id; the
-      # array is rebuilt here by a different route, so the check still earns its keep.
-      - dbt_utils.unique_combination_of_columns:
+      # asserts no candidacy repeats a stance id within its own stances array
+      # (requested_id/candidacy_id is already unique per row, so a combination-of-
+      # columns test on candidacy_id + stances.databaseId would be vacuous at this
+      # grain and would never catch a repeated id inside one row's array).
+      - dbt_utils.expression_is_true:
           arguments:
-            combination_of_columns:
-              - candidacy_id
-              - stances.databaseId
+            expression: "size(stances) = size(array_distinct(transform(stances, x -> x.databaseId)))"
     columns:
       - name: requested_id
         data_tests: [not_null, unique]
       - name: candidacy_id
         data_tests: [not_null]
       - name: stances
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
         data_tests: [not_null]
 
   - name: stg_airflow_source__ballotready_endorsement_raw
@@ -218,12 +232,22 @@ models:
       - dbt_expectations.expect_table_row_count_to_be_between:
           arguments:
             min_value: 300000
+      # asserts no candidacy repeats an endorsement id within its own endorsements
+      # array; see stance for why this must check inside the array rather than
+      # across rows.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(endorsements) = size(array_distinct(transform(endorsements, x -> x.databaseId)))"
     columns:
       - name: requested_id
         data_tests: [not_null, unique]
       - name: candidacy_id
         data_tests: [not_null]
       - name: endorsements
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
         data_tests: [not_null]
 
   - name: stg_airflow_source__ballotready_party_raw
@@ -232,10 +256,19 @@ models:
       - dbt_expectations.expect_table_row_count_to_be_between:
           arguments:
             min_value: 300000
+      # asserts no candidacy repeats a party id within its own parties array; see
+      # stance for why this must check inside the array rather than across rows.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(parties) = size(array_distinct(transform(parties, x -> x.databaseId)))"
     columns:
       - name: requested_id
         data_tests: [not_null, unique]
       - name: candidacy_id
         data_tests: [not_null]
       - name: parties
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
         data_tests: [not_null]
