@@ -15,10 +15,27 @@
 -- BallotReady payload. For these, `old_updated_at < new_updated_at` means the old
 -- side was fetched before BallotReady last changed the record -- a stale API
 -- snapshot, not a defect -- and lands in `old_side_stale`. A mismatch with equal
--- timestamps means the transform disagrees with the Python model on the same
--- input, and lands in `transform_bugs`. `unclassified` is the arithmetic residual
--- (not a third predicate), so it stays an exhaustive partition rather than a
--- plausible-looking one; it must be zero.
+-- timestamps lands in `transform_bugs`, but equal top-level timestamps are not
+-- proof of equal input for candidacy and person: their nested arrays
+-- (candidacy's endorsements/parties/stances; person's seven arrays) are sourced
+-- independently of the parent record and can change without moving the parent's
+-- `updated_at`. So a non-zero `transform_bugs` on those two entities is expected,
+-- not a failure; the real check is whether the *new* side agrees with what is
+-- currently landed for it, verified separately against the landing table rather
+-- than by this harness. As measured on this branch: every `transform_bugs` row
+-- (17 candidacy, 112 person) matches its landed payload, and the old side
+-- matches none of them. filing_period carries no arrays, so its
+-- `transform_bugs` has no such excuse and is a true zero-or-bug gate.
+-- `unclassified` is the arithmetic residual off the mismatch set (not a third
+-- predicate); besides a null on one side only, it also covers the old side being
+-- *fresher* than the new -- e.g. mid-backfill, where BallotReady changed the
+-- record, the old Python-built table re-fetched it, and the new side has not
+-- caught up yet. It is not itself required to be zero for candidacy/person; the
+-- actual exhaustiveness gate on this classifier is `residual_unaccounted`
+-- (`shared_ids - matching - old_side_stale - transform_bugs - unclassified`),
+-- which catches a row that fell out of both `all_columns_match` and
+-- `not all_columns_match` -- exactly what a null-unsafe `=` on database_id used
+-- to cause. That one must be zero.
 --
 -- stance, endorsement, party, issue, normalized_position, and
 -- position_election_frequency have no such timestamp. Five of them synthesise
@@ -30,8 +47,9 @@
 -- exclude the timestamps from the comparison entirely and report differences as
 -- findings (scalar_mismatch / array_size_mismatch /
 -- array_content_mismatch_same_size) rather than bucketing them into an excuse.
--- Non-null-ness and type of the synthesised timestamps are asserted separately,
--- outside this harness.
+-- Non-null-ness of the synthesised timestamps is asserted by `not_null` tests on
+-- `created_at`/`updated_at` in `_stg_airflow_source__ballotready.yml`; type is
+-- asserted by the enforced contract.
 --
 -- candidacy and person also carry `feed_extracted_at`, a pipeline landing
 -- timestamp on both sides (old: Airbyte sync time; new: the Airflow landing
@@ -52,7 +70,7 @@ with
             n.id,
             n.updated_at as new_updated_at,
             o.updated_at as old_updated_at,
-            n.database_id = o.database_id
+            n.database_id <=> o.database_id
             and n.end_on <=> o.end_on
             and n.notes <=> o.notes
             and n.start_on <=> o.start_on
@@ -73,7 +91,7 @@ with
             n.id,
             n.updated_at as new_updated_at,
             o.updated_at as old_updated_at,
-            n.database_id = o.database_id
+            n.database_id <=> o.database_id
             and n.candidate_database_id <=> o.candidate_database_id
             and n.election_database_id <=> o.election_database_id
             and n.is_certified <=> o.is_certified
@@ -99,7 +117,7 @@ with
             n.id,
             n.updated_at as new_updated_at,
             o.updated_at as old_updated_at,
-            n.database_id = o.database_id
+            n.database_id <=> o.database_id
             and n.bio_text <=> o.bio_text
             and n.first_name <=> o.first_name
             and n.full_name <=> o.full_name
@@ -232,7 +250,9 @@ with
 -- unclassified is the residual old_updated_at > new_updated_at (old side newer,
 -- e.g. mid-backfill) or a null on one side only: both fail every predicate above
 -- (< is UNKNOWN, <=> is false), so a predicate-based bucket would inherit the
--- same null semantics that created the gap. Must be zero for these three.
+-- same null semantics that created the gap. It is a legitimate finding, not a
+-- zero gate (candidacy carries one such row); residual_unaccounted is the actual
+-- exhaustiveness gate and must be zero for these three.
 select
     'filing_period' as entity,
     (select count(*) from new_filing_period) as new_rows,
@@ -262,8 +282,15 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
-    -- unclassified already plays this role for the three classifier entities.
-    cast(null as bigint) as residual_unaccounted,
+    -- Exhaustiveness check on shared_ids rather than on the mismatch set: unclassified
+    -- is itself computed as a residual off `not all_columns_match`, so it cannot catch
+    -- a row that fell out of both `all_columns_match` and `not all_columns_match` (a
+    -- null in an unguarded `=` comparison, as database_id was). Must be zero.
+    shared_ids
+    - matching
+    - old_side_stale
+    - transform_bugs
+    - unclassified as residual_unaccounted,
     (
         select count(*)
         from new_filing_period
@@ -306,7 +333,13 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
-    cast(null as bigint) as residual_unaccounted,
+    -- Exhaustiveness check on shared_ids; see filing_period for why unclassified
+    -- alone cannot play this role. Must be zero.
+    shared_ids
+    - matching
+    - old_side_stale
+    - transform_bugs
+    - unclassified as residual_unaccounted,
     (
         select count(*)
         from new_candidacy
@@ -349,7 +382,13 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
-    cast(null as bigint) as residual_unaccounted,
+    -- Exhaustiveness check on shared_ids; see filing_period for why unclassified
+    -- alone cannot play this role. Must be zero.
+    shared_ids
+    - matching
+    - old_side_stale
+    - transform_bugs
+    - unclassified as residual_unaccounted,
     (
         select count(*)
         from new_person
