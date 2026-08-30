@@ -571,14 +571,32 @@ select
         from both_normalized_position
         where not arrays_match and new_size <=> old_size
     ) as array_content_mismatch_same_size,
-    -- No arithmetic residual here: scalar_mismatch and the array buckets are
-    -- not mutually exclusive for this entity (a row can fail both at once), so
-    -- shared_ids - matching - scalar_mismatch - array buckets would double-count
-    -- overlap rows rather than reveal an uncaptured one. matching itself is
-    -- `scalars_match and arrays_match`, both already null-safe, so the
-    -- top-line matching/mismatched split is not exposed to the bug this
-    -- column would otherwise guard against.
-    cast(null as bigint) as residual_unaccounted,
+    -- scalar_mismatch and the array buckets are not mutually exclusive for
+    -- this entity (a row can fail both at once), so a naive four-term
+    -- subtraction double-counts every row that fails both checks and comes
+    -- out short by exactly that overlap. Adding the overlap back once turns
+    -- it back into a true exhaustiveness check.
+    (select count(*) from both_normalized_position) - (
+        select count(*)
+        from both_normalized_position
+        where scalars_match and arrays_match
+    )
+    - (select count(*) from both_normalized_position where not scalars_match)
+    - (
+        select count(*)
+        from both_normalized_position
+        where not arrays_match and not (new_size <=> old_size)
+    )
+    - (
+        select count(*)
+        from both_normalized_position
+        where not arrays_match and new_size <=> old_size
+    )
+    + (
+        select count(*)
+        from both_normalized_position
+        where not scalars_match and not arrays_match
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_normalized_position
@@ -626,9 +644,38 @@ select
             and new_frequency_size <=> old_frequency_size
             and new_seats_size <=> old_seats_size
     ) as array_content_mismatch_same_size,
-    -- Same reason as normalized_position: scalar_mismatch and the array
-    -- buckets overlap, so no arithmetic residual is provided.
-    cast(null as bigint) as residual_unaccounted,
+    -- Same overlap as normalized_position: scalar_mismatch and the array
+    -- buckets are not mutually exclusive, so the overlap (rows failing both)
+    -- is added back once to restore a true exhaustiveness check.
+    (select count(*) from both_position_election_frequency) - (
+        select count(*)
+        from both_position_election_frequency
+        where scalars_match and arrays_match
+    )
+    - (select count(*) from both_position_election_frequency where not scalars_match)
+    - (
+        select count(*)
+        from both_position_election_frequency
+        where
+            not arrays_match
+            and (
+                not (new_frequency_size <=> old_frequency_size)
+                or not (new_seats_size <=> old_seats_size)
+            )
+    )
+    - (
+        select count(*)
+        from both_position_election_frequency
+        where
+            not arrays_match
+            and new_frequency_size <=> old_frequency_size
+            and new_seats_size <=> old_seats_size
+    )
+    + (
+        select count(*)
+        from both_position_election_frequency
+        where not scalars_match and not arrays_match
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_position_election_frequency
