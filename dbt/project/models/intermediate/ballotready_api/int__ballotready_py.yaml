@@ -20,12 +20,13 @@ models:
         tests:
           - not_null
           - unique
-          # The point of the fix: every candidacy an upcoming race roster
-          # carries should be ingested into int__ballotready_candidacy. Warn
-          # (not error) because incremental lag between a roster appearing and
-          # the candidacy model's next run, and API-dropped/withdrawn
-          # candidacies, can leave a small transient gap that should surface
-          # for monitoring rather than fail the build.
+          # Every candidacy an upcoming race roster carries should be
+          # ingested into int__ballotready_candidacy. Warn (not error)
+          # because landing lag between a roster appearing here and the
+          # extract_ballotready DAG picking up that candidacy, plus
+          # API-dropped/withdrawn candidacies, can leave a small transient
+          # gap that should surface for monitoring rather than fail the
+          # build.
           - relationships:
               arguments:
                 to: ref('int__ballotready_candidacy')
