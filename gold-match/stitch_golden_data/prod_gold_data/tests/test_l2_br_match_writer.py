@@ -254,6 +254,34 @@ class TestDeleteRun:
 
         assert writer.delete_run(ATTEMPTED_AT) == 0
 
+    @pytest.mark.parametrize(
+        ("before", "expected_count", "should_raise"),
+        [
+            (7, 7, False),
+            (5, 7, True),
+            (0, 0, False),  # zero-row semantics preserved when expected is 0
+        ],
+    )
+    def test_expected_count_is_checked_before_the_delete_executes(
+        self, before, expected_count, should_raise, mock_databricks
+    ):
+        """Failure this catches: a caller's recorded count disagreeing with
+        the table only being discovered AFTER the rows are already gone.
+        The check has to run on the count already read for the
+        before/after comparison, before the DELETE statement, not as a
+        second look at what is left afterward.
+        """
+        mock_databricks["cursor"].fetchone.side_effect = [(before,), (0,)]
+        writer = MatchResultWriter()
+
+        if should_raise:
+            with pytest.raises(RuntimeError, match="refusing to delete"):
+                writer.delete_run(ATTEMPTED_AT, expected_count=expected_count)
+            assert _calls(mock_databricks["cursor"], "delete from") == []
+        else:
+            assert writer.delete_run(ATTEMPTED_AT, expected_count=expected_count) == before
+            assert len(_calls(mock_databricks["cursor"], "delete from")) == 1
+
 
 class TestResourceLifecycle:
     def test_close_does_not_close_an_injected_connection(self):

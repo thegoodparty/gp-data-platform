@@ -222,7 +222,7 @@ only way to know which path an office's match took.
 ### The classification mirror
 
 Mirror of `_classify_office_geography` in
-`omni:packages/gp-ai/stitch_golden_data/prod_gold_data/l2_br_matcher.py`, which
+`gold-match/stitch_golden_data/prod_gold_data/l2_br_matcher.py`, which
 itself enumerates its family vocabulary from `get_l2_district_types(scope="all")`
 in `dbt/project/macros/l2_district_columns.sql`. A type added to that macro
 needs this block and the matcher's own constants re-checked together. Parent
@@ -551,39 +551,25 @@ The suite is known-hard offices scored automatically and reported alongside the
 holdout but OUTSIDE the gate: the serving path bypasses the matcher for every
 one of them, so a disagreement is signal for review, never a stop.
 
-## Step 4 — The holdout gate
+## Step 4 — The holdout gate — PRE-GATE-ONLY, do not run against this run's truth
 
-The holdout is scored from DEDICATED arm artifacts, never from the audited
-run's own rows: a production run reads the pending list, which structurally
-excludes the holdout's served stratum, so exporting its rows would score every
-served office as an abstention and produce a spurious served-gate FAIL. The
-holdout owner's operator-local arms driver calls the matcher's `match_office`
-directly over all 120 frozen offices and writes one COMPLETE answers JSON per
-arm (`{br_database_id, l2_state, l2_district_type, l2_district_name,
-confidence}`, nulls meaning abstain); the scorer refuses an answers file that
-does not cover every scorable office. This step only RECORDS the arms'
-verdicts against the run being audited — it does not produce them. Run once
-per arm:
+The frozen 120-office instrument spent its one adjudication on 2026-08-27;
+truth columns are locked and never read again. For Run B and every run
+audited after it, read the archived verdict instead of re-scoring:
+`research/2026-08-27-gate-run-report.md` (dispositions in
+`research/review-decisions.md`, HOLDOUT GATE section) — PASS, both arms,
+backlog 46 vs January 22, served net regression 1 of a budget of 2.
+
+`score_holdout.py` remains the tool for a FUTURE gate only, if a semantics
+change (matcher, prompt, model, filters, flag) forces a fresh holdout and a
+fresh adjudication — never a re-score of the spent instrument:
 
 ```bash
 python .claude/skills/gold-match-run-audit/score_holdout.py \
-  --truth <adjudicated-holdout-packet.csv> \
-  --answers <this-run's-answers.json> \
+  --truth <a freshly adjudicated holdout packet.csv> \
+  --answers <that gate's arm answers.json> \
   --label "<run key>, <arm>"
 ```
-
-The packet CSV lives in the holdout owner's working directory (it is operator-local, not
-committed); it carries the frozen draw's `stratum`/`cell` columns, the `jan_*` baseline
-columns, and the owner-ruled `truth_*` columns the scorer reads.
-
-Omit `--answers` to print January's own report straight from the packet's
-`jan_*` columns (the baseline).
-
-The ratified rule, quoted verbatim so nobody re-derives it: **strict
-superiority on the backlog 72 and at most 2 net regressions on the served 48, a
-wrong match scoring below an abstain.** `score_holdout.py` encodes that once;
-read its printed verdict rather than re-deriving PASS/FAIL from the table by
-eye.
 
 ## Step 5 — Web spot-check
 
