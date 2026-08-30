@@ -6,7 +6,7 @@
     )
 }}
 
-{{ br_current_rows("ballotready_endorsement_raw") }}
+{{ br_current_rows("ballotready_endorsement_raw", preserve_created_at=true) }}
 
 select
     requested_id,
@@ -43,6 +43,9 @@ select
             get_json_object(payload, '$.id')
         )
     ) as endorsements,
-    current_timestamp() as created_at,
+    -- ingestion timestamps, not source timestamps. updated_at is synthesised fresh on
+    -- every run; created_at is preserved across incremental runs via
+    -- br_preserved_created_at.
+    {{ br_preserved_created_at() }} as created_at,
     current_timestamp() as updated_at
 from current_rows

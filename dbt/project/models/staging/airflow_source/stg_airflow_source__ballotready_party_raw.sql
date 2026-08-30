@@ -6,7 +6,7 @@
     )
 }}
 
-{{ br_current_rows("ballotready_party_raw") }}
+{{ br_current_rows("ballotready_party_raw", preserve_created_at=true) }}
 
 select
     requested_id,
@@ -18,6 +18,9 @@ select
         get_json_object(payload, '$.parties'),
         'array<struct<createdAt:timestamp,databaseId:int,id:string,name:string,shortName:string,updatedAt:timestamp>>'
     ) as parties,
-    current_timestamp() as created_at,
+    -- ingestion timestamps for this row, not the payload's own createdAt/updatedAt
+    -- (those live inside each parties[] element above). updated_at is synthesised
+    -- fresh on every run; created_at is preserved via br_preserved_created_at.
+    {{ br_preserved_created_at() }} as created_at,
     current_timestamp() as updated_at
 from current_rows

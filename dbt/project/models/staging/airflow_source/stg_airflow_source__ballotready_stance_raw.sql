@@ -6,7 +6,7 @@
     )
 }}
 
-{{ br_current_rows("ballotready_stance_raw") }}
+{{ br_current_rows("ballotready_stance_raw", preserve_created_at=true) }}
 
 select
     requested_id,
@@ -38,9 +38,9 @@ select
             get_json_object(payload, '$.id')
         )
     ) as stances,
-    -- ingestion timestamps, not source timestamps: the model this replaces set both to
-    -- the run time and preserved created_at across incremental runs. There is no
-    -- accumulated history to carry over, so both are synthesised fresh.
-    current_timestamp() as created_at,
+    -- ingestion timestamps, not source timestamps. updated_at is synthesised fresh on
+    -- every run; created_at is preserved across incremental runs the same way the
+    -- model this replaces did, via br_preserved_created_at.
+    {{ br_preserved_created_at() }} as created_at,
     current_timestamp() as updated_at
 from current_rows

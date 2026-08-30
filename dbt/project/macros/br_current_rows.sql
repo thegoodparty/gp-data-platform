@@ -1,4 +1,4 @@
-{% macro br_current_rows(raw_table) %}
+{% macro br_current_rows(raw_table, preserve_created_at=false) %}
     -- One row per requested id. The landing table is append-only, so a full_reload or a
     -- genuine BallotReady change lands a second row; the newest load wins. dag_run_id
     -- breaks ties for the case that matters: the same requested_id landing twice
@@ -16,9 +16,21 @@
         {% endif %}
 
         current_rows as (
-            select raw.*
+            select
+                raw.*
+                {% if preserve_created_at and is_incremental() %}
+                    , existing.created_at as existing_created_at
+                {% endif %}
             from {{ source("airflow_source", raw_table) }} as raw
             {% if is_incremental() %} cross join watermark {% endif %}
+            {% if preserve_created_at and is_incremental() %}
+                -- carries the row's existing created_at through the merge so it
+                -- survives
+                -- a later batch touching the same requested_id; see
+                -- br_preserved_created_at.
+                left join
+                    {{ this }} as existing on raw.requested_id = existing.requested_id
+            {% endif %}
             where
                 -- ids BallotReady returned nothing for land here with a null payload on
                 -- purpose, so the landing table (not this transform) can tell "asked,

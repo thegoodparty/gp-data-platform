@@ -6,7 +6,7 @@
     )
 }}
 
-{{ br_current_rows("ballotready_issue_raw") }}
+{{ br_current_rows("ballotready_issue_raw", preserve_created_at=true) }}
 
 select
     requested_id,
@@ -19,7 +19,8 @@ select
     get_json_object(payload, '$.responseType') as response_type,
     cast(get_json_object(payload, '$.rowOrder') as int) as row_order,
     -- ingestion timestamps, not source timestamps: the issue payload carries no
-    -- createdAt/updatedAt, and the model this replaces stamped both at run time.
-    current_timestamp() as created_at,
+    -- createdAt/updatedAt. updated_at is synthesised fresh on every run; created_at
+    -- is preserved across incremental runs via br_preserved_created_at.
+    {{ br_preserved_created_at() }} as created_at,
     current_timestamp() as updated_at
 from current_rows
