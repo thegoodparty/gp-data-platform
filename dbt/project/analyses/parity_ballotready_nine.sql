@@ -262,6 +262,8 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
+    -- unclassified already plays this role for the three classifier entities.
+    cast(null as bigint) as residual_unaccounted,
     (
         select count(*)
         from new_filing_period
@@ -304,6 +306,7 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
+    cast(null as bigint) as residual_unaccounted,
     (
         select count(*)
         from new_candidacy
@@ -346,6 +349,7 @@ select
     cast(null as bigint) as scalar_mismatch,
     cast(null as bigint) as array_size_mismatch,
     cast(null as bigint) as array_content_mismatch_same_size,
+    cast(null as bigint) as residual_unaccounted,
     (
         select count(*)
         from new_person
@@ -373,11 +377,31 @@ select
     cast(null as bigint) as unclassified,
     cast(0 as bigint) as scalar_mismatch,
     (
-        select count(*) from both_stance where not arrays_match and new_size != old_size
+        select count(*)
+        from both_stance
+        where not arrays_match and not (new_size <=> old_size)
     ) as array_size_mismatch,
     (
-        select count(*) from both_stance where not arrays_match and new_size = old_size
+        select count(*)
+        from both_stance
+        where not arrays_match and new_size <=> old_size
     ) as array_content_mismatch_same_size,
+    -- Exhaustiveness check: stance has no scalar column and one array, so
+    -- matching plus the two array buckets above must equal shared_ids exactly.
+    -- A nonzero result here means a bucket predicate stopped being total (the
+    -- defect a null-unsafe `=`/`!=` on an array size caused previously).
+    (select count(*) from both_stance)
+    - (select count(*) from both_stance where arrays_match)
+    - (
+        select count(*)
+        from both_stance
+        where not arrays_match and not (new_size <=> old_size)
+    )
+    - (
+        select count(*)
+        from both_stance
+        where not arrays_match and new_size <=> old_size
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_stance
@@ -408,13 +432,25 @@ select
     (
         select count(*)
         from both_endorsement
-        where not arrays_match and new_size != old_size
+        where not arrays_match and not (new_size <=> old_size)
     ) as array_size_mismatch,
     (
         select count(*)
         from both_endorsement
-        where not arrays_match and new_size = old_size
+        where not arrays_match and new_size <=> old_size
     ) as array_content_mismatch_same_size,
+    (select count(*) from both_endorsement)
+    - (select count(*) from both_endorsement where arrays_match)
+    - (
+        select count(*)
+        from both_endorsement
+        where not arrays_match and not (new_size <=> old_size)
+    )
+    - (
+        select count(*)
+        from both_endorsement
+        where not arrays_match and new_size <=> old_size
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_endorsement
@@ -445,11 +481,23 @@ select
     cast(null as bigint) as unclassified,
     cast(0 as bigint) as scalar_mismatch,
     (
-        select count(*) from both_party where not arrays_match and new_size != old_size
+        select count(*)
+        from both_party
+        where not arrays_match and not (new_size <=> old_size)
     ) as array_size_mismatch,
     (
-        select count(*) from both_party where not arrays_match and new_size = old_size
+        select count(*) from both_party where not arrays_match and new_size <=> old_size
     ) as array_content_mismatch_same_size,
+    (select count(*) from both_party)
+    - (select count(*) from both_party where arrays_match)
+    - (
+        select count(*)
+        from both_party
+        where not arrays_match and not (new_size <=> old_size)
+    )
+    - (
+        select count(*) from both_party where not arrays_match and new_size <=> old_size
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_party
@@ -479,6 +527,11 @@ select
     (select count(*) from both_issue where not all_columns_match) as scalar_mismatch,
     cast(0 as bigint) as array_size_mismatch,
     cast(0 as bigint) as array_content_mismatch_same_size,
+    (select count(*) from both_issue)
+    - (select count(*) from both_issue where all_columns_match)
+    - (
+        select count(*) from both_issue where not all_columns_match
+    ) as residual_unaccounted,
     (
         select count(*)
         from new_issue
@@ -511,13 +564,21 @@ select
     (
         select count(*)
         from both_normalized_position
-        where not arrays_match and new_size != old_size
+        where not arrays_match and not (new_size <=> old_size)
     ) as array_size_mismatch,
     (
         select count(*)
         from both_normalized_position
-        where not arrays_match and new_size = old_size
+        where not arrays_match and new_size <=> old_size
     ) as array_content_mismatch_same_size,
+    -- No arithmetic residual here: scalar_mismatch and the array buckets are
+    -- not mutually exclusive for this entity (a row can fail both at once), so
+    -- shared_ids - matching - scalar_mismatch - array buckets would double-count
+    -- overlap rows rather than reveal an uncaptured one. matching itself is
+    -- `scalars_match and arrays_match`, both already null-safe, so the
+    -- top-line matching/mismatched split is not exposed to the bug this
+    -- column would otherwise guard against.
+    cast(null as bigint) as residual_unaccounted,
     (
         select count(*)
         from new_normalized_position
@@ -553,8 +614,8 @@ select
         where
             not arrays_match
             and (
-                new_frequency_size != old_frequency_size
-                or new_seats_size != old_seats_size
+                not (new_frequency_size <=> old_frequency_size)
+                or not (new_seats_size <=> old_seats_size)
             )
     ) as array_size_mismatch,
     (
@@ -562,9 +623,12 @@ select
         from both_position_election_frequency
         where
             not arrays_match
-            and new_frequency_size = old_frequency_size
-            and new_seats_size = old_seats_size
+            and new_frequency_size <=> old_frequency_size
+            and new_seats_size <=> old_seats_size
     ) as array_content_mismatch_same_size,
+    -- Same reason as normalized_position: scalar_mismatch and the array
+    -- buckets overlap, so no arithmetic residual is provided.
+    cast(null as bigint) as residual_unaccounted,
     (
         select count(*)
         from new_position_election_frequency
