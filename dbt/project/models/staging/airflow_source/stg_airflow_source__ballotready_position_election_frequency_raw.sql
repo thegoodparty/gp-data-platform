@@ -12,7 +12,7 @@ select
     requested_id,
     loaded_at,
     cast(get_json_object(payload, '$.databaseId') as int) as database_id,
-    from_json(get_json_object(payload, '$.frequency'), 'array<int>') as frequency,
+    {{ br_json_array("$.frequency", "int") }} as frequency,
     get_json_object(payload, '$.id') as id,
     cast(get_json_object(payload, '$.referenceYear') as int) as reference_year,
     from_json(get_json_object(payload, '$.seats'), 'array<int>') as seats,

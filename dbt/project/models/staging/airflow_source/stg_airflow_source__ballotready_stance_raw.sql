@@ -15,10 +15,12 @@ select
     -- the payload carries neither candidacy_id nor encoded_candidacy_id per stance
     -- element, so both are injected here; named_struct fixes prod's field order.
     transform(
-        from_json(
-            get_json_object(payload, '$.stances'),
-            'array<struct<databaseId:int,id:string,issue:struct<databaseId:int,id:string>,locale:string,referenceUrl:string,statement:string>>'
-        ),
+        {{
+            br_json_array(
+                "$.stances",
+                "struct<databaseId:int,id:string,issue:struct<databaseId:int,id:string>,locale:string,referenceUrl:string,statement:string>",
+            )
+        }},
         x -> named_struct(
             'databaseId',
             x.databaseid,

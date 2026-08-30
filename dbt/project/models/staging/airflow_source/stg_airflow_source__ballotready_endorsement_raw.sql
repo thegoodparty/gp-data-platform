@@ -16,10 +16,12 @@ select
     -- element, so both are injected here; named_struct fixes prod's field order, which
     -- does not match the JSON's key order.
     transform(
-        from_json(
-            get_json_object(payload, '$.endorsements'),
-            'array<struct<databaseId:int,id:string,createdAt:timestamp,endorser:string,recommendation:string,status:string,updatedAt:timestamp,organization:struct<databaseId:int,id:string>>>'
-        ),
+        {{
+            br_json_array(
+                "$.endorsements",
+                "struct<databaseId:int,id:string,createdAt:timestamp,endorser:string,recommendation:string,status:string,updatedAt:timestamp,organization:struct<databaseId:int,id:string>>",
+            )
+        }},
         x -> named_struct(
             'databaseId',
             x.databaseid,

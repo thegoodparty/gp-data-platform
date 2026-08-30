@@ -14,10 +14,13 @@ select
     cast(requested_id as int) as candidacy_id,
     -- the payload's party elements already carry all six prod fields in prod's
     -- order, so no injection or reordering is needed here.
-    from_json(
-        get_json_object(payload, '$.parties'),
-        'array<struct<createdAt:timestamp,databaseId:int,id:string,name:string,shortName:string,updatedAt:timestamp>>'
-    ) as parties,
+    {{
+        br_json_array(
+            "$.parties",
+            "struct<createdAt:timestamp,databaseId:int,id:string,name:string,shortName:string,updatedAt:timestamp>",
+        )
+    }}
+    as parties,
     -- ingestion timestamps for this row, not the payload's own createdAt/updatedAt
     -- (those live inside each parties[] element above). updated_at is synthesised
     -- fresh on every run; created_at is preserved via br_preserved_created_at.

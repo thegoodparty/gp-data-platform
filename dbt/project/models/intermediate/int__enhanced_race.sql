@@ -21,7 +21,10 @@ with
                 order by
                     case when tbl_freq.valid_to is null then 0 else 1 end asc,
                     tbl_freq.valid_to desc nulls last,
-                    tbl_freq.valid_from desc nulls last
+                    tbl_freq.valid_from desc nulls last,
+                    -- final tiebreak so two versions sharing a validity window
+                    -- cannot pick differently between runs.
+                    tbl_freq.database_id desc
             )
             = 1
     ),
