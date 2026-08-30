@@ -6,9 +6,9 @@ models:
     description: >
       Candidacy ids for still-upcoming BallotReady races, read from the API race
       roster (race.candidacies). The S3 candidacies feed omits many upcoming
-      general-stage rosters the API already carries; int__ballotready_candidacy
-      and int__ballotready_party union this source into their fetch worklist so
-      those candidacies reach election-api instead of being dropped.
+      general-stage rosters the API already carries; that gap is now covered by
+      the extract_ballotready Airflow DAG's own worklist query, not by a dbt
+      model reading this one.
     config:
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
