@@ -6,14 +6,33 @@ with
     ),
     election_frequency as (
         select
-            tbl_pos.database_id as position_database_id,
-            last(tbl_freq.frequency) as frequency
+            tbl_pos.database_id as position_database_id, tbl_freq.frequency as frequency
         from election_frequencies as tbl_pos
         left join
             {{ ref("int__ballotready_position_election_frequency") }} as tbl_freq
             on tbl_pos.pe_frequency_database_id = tbl_freq.database_id
-        where tbl_freq.valid_to is null
-        group by position_database_id
+        -- Only rows that actually resolved compete below. A join miss carries a null
+        -- valid_to, which the ordering would otherwise rank alongside a current version
+        -- and let it beat a real superseded one. Unlike the valid_to filter this
+        -- replaced, dropping a miss loses nothing: the sole consumer left-joins this
+        -- CTE, so a position with no resolvable version still lands with a null.
+        where tbl_freq.database_id is not null
+        -- Prefer a version BallotReady still marks current, but fall back to the most
+        -- recently valid one rather than dropping the position: ~3,500 positions have
+        -- only superseded versions, and their last known frequency beats a null.
+        -- Filtering valid_to in the WHERE clause also silently made this an inner join.
+        qualify
+            row_number() over (
+                partition by tbl_pos.database_id
+                order by
+                    case when tbl_freq.valid_to is null then 0 else 1 end asc,
+                    tbl_freq.valid_to desc nulls last,
+                    tbl_freq.valid_from desc nulls last,
+                    -- final tiebreak so two versions sharing a validity window
+                    -- cannot pick differently between runs.
+                    tbl_freq.database_id desc
+            )
+            = 1
     ),
     filing_period_ids as (
         select

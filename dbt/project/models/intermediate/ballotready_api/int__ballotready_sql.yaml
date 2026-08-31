@@ -50,3 +50,393 @@ models:
           single current version per geofence. Treat the effective-dating semantics as
           unconfirmed rather than assume them.
         data_type: date
+
+  - name: int__ballotready_filing_period
+    description: >
+      BallotReady filing periods, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the
+      output schema is unchanged, and the contract keeps its name and schema stable for
+      consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: created_at
+        description: Timestamp the filing period was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: >
+          The BallotReady integer id for the filing period, echoed back from the
+          requested id.
+        data_type: int
+      - name: end_on
+        description: Last day of the filing window, i.e. the filing deadline.
+        data_type: date
+      - name: id
+        description: Base64 GraphQL global id for the filing period.
+        data_type: string
+      - name: notes
+        description: Freeform notes on the filing period; populated for roughly 2% of rows.
+        data_type: string
+      - name: start_on
+        description: First day of the filing window.
+        data_type: date
+      - name: type
+        description: BallotReady filing period type; not populated in any row landed so far.
+        data_type: string
+      - name: updated_at
+        description: Timestamp the filing period was last updated in BallotReady.
+        data_type: timestamp
+
+  - name: int__ballotready_issue
+    description: >
+      BallotReady issues, transformed from the raw payloads the extract_ballotready DAG
+      lands. Replaces the Python model that called the CivicEngine API directly; the
+      output schema is unchanged, and the contract keeps its name and schema stable for
+      consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: The BallotReady integer id for the issue, echoed back from the requested id.
+        data_type: int
+      - name: id
+        description: Base64 GraphQL global id for the issue.
+        data_type: string
+      - name: key
+        description: Short machine-readable key for the issue, e.g. "arts_culture".
+        data_type: string
+      - name: name
+        description: Display name for the issue, e.g. "Arts / Culture".
+        data_type: string
+      - name: plugin_enabled
+        description: Whether the issue is enabled in the stance-collection plugin.
+        data_type: boolean
+      - name: response_type
+        description: >
+          Response type BallotReady expects for a stance on this issue; not populated in
+          any row landed so far.
+        data_type: string
+      - name: row_order
+        description: Display order for the issue; not populated in any row landed so far.
+        data_type: int
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the issue payload carries
+          no createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the issue payload carries
+          no updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_normalized_position
+    description: >
+      BallotReady normalized positions, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: >
+          The BallotReady integer id for the normalized position, echoed back from the requested
+          id.
+        data_type: int
+      - name: description
+        description: Freeform description of the normalized position; populated for roughly 97% of rows.
+        data_type: string
+      - name: id
+        description: Base64 GraphQL global id for the normalized position.
+        data_type: string
+      - name: issues
+        description: The issues associated with this normalized position, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: mtfcc
+        description: >
+          Census MAF/TIGER Feature Class Code for the normalized position; populated for roughly
+          7% of rows.
+        data_type: string
+      - name: name
+        description: Display name for the normalized position, e.g. "U.S. Senator".
+        data_type: string
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the normalized position payload
+          carries no createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the normalized position payload
+          carries no updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_position_election_frequency
+    description: >
+      BallotReady position election frequencies, transformed from the raw payloads the
+      extract_ballotready DAG lands. See
+      https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency.
+      Replaces the Python model that called the CivicEngine API directly; the output schema is
+      unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: >
+          The BallotReady integer id for the position election frequency, echoed back from the
+          requested id.
+        data_type: int
+      - name: frequency
+        description: Years, relative to reference_year, in which this position is up for election.
+        data_type: array<int>
+      - name: id
+        description: Base64 GraphQL global id for the position election frequency.
+        data_type: string
+      - name: reference_year
+        description: The reference year frequency is expressed relative to.
+        data_type: int
+      - name: seats
+        description: >
+          Number of seats up for election in each cycle; not populated in any row landed so far.
+        data_type: array<int>
+      - name: valid_from
+        description: Start of this row's effective validity window, as reported by BallotReady.
+        data_type: timestamp
+      - name: valid_to
+        description: >
+          End of this row's effective validity window, as reported by BallotReady; populated for
+          roughly 3% of rows.
+        data_type: timestamp
+
+  - name: int__ballotready_candidacy
+    description: >
+      BallotReady candidacies, transformed from the raw payloads the extract_ballotready DAG
+      lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+      meta:
+        contains_pii: true
+    columns:
+      - name: candidate_database_id
+        description: The BallotReady integer id of the candidate this candidacy belongs to.
+        data_type: int
+      - name: created_at
+        description: Timestamp the candidacy was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: The BallotReady integer id for the candidacy, echoed back from the requested id.
+        data_type: int
+      - name: election_database_id
+        description: The BallotReady integer id of the election this candidacy belongs to.
+        data_type: int
+      - name: endorsements
+        description: The endorsements of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: id
+        description: Base64 GraphQL global id for the candidacy.
+        data_type: string
+      - name: is_certified
+        description: Whether the candidacy's result has been certified by BallotReady.
+        data_type: boolean
+      - name: is_hidden
+        description: Whether BallotReady flags this candidacy as hidden.
+        data_type: boolean
+      - name: parties
+        description: The parties of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: position_database_id
+        description: The BallotReady integer id of the position this candidacy is running for.
+        data_type: int
+      - name: race_database_id
+        description: The BallotReady integer id of the race this candidacy belongs to.
+        data_type: int
+      - name: result
+        description: >
+          The candidacy's result as reported by BallotReady (e.g. "WON", "LOST"); populated for
+          roughly 88% of rows.
+        data_type: string
+      - name: stances
+        description: The issue stances of this candidacy, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: updated_at
+        description: Timestamp the candidacy was last updated in BallotReady.
+        data_type: timestamp
+      - name: withdrawn
+        description: Whether the candidate has withdrawn from this candidacy.
+        data_type: boolean
+      - name: feed_extracted_at
+        description: >
+          When our pipeline last obtained this candidacy; loaded_at from the landing table,
+          carried through unchanged.
+        data_type: timestamp
+
+  - name: int__ballotready_person
+    description: >
+      BallotReady persons, transformed from the raw payloads the extract_ballotready DAG lands.
+      Replaces the Python model that called the CivicEngine API directly; the output schema is
+      unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+      meta:
+        contains_pii: true
+    columns:
+      - name: bio_text
+        description: Freeform biography text for the person, as reported by BallotReady.
+        data_type: string
+      - name: candidacies
+        description: The candidacies of this person, as id-reference pairs.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: contacts
+        description: Contact methods for the person, as reported by BallotReady.
+        data_type: array<struct<email:string,fax:string,phone:string,type:string>>
+      - name: created_at
+        description: Timestamp the person was created in BallotReady.
+        data_type: timestamp
+      - name: database_id
+        description: The BallotReady integer id for the person, echoed back from the requested id.
+        data_type: int
+      - name: degrees
+        description: >
+          Educational degrees held by the person; not populated for a person with no degrees on
+          file.
+        data_type: array<struct<databaseId:int,degree:string,gradYear:int,id:string,major:string,school:string>>
+      - name: experiences
+        description: Professional and civic experience entries for the person.
+        data_type: array<struct<databaseId:int,end:string,id:string,organization:string,start:string,title:string,type:string>>
+      - name: first_name
+        description: The person's first name.
+        data_type: string
+      - name: full_name
+        description: The person's full name.
+        data_type: string
+      - name: id
+        description: Base64 GraphQL global id for the person. The unique key this table exposes.
+        data_type: string
+      - name: images
+        description: Images associated with the person, as reported by BallotReady.
+        data_type: array<struct<type:string,url:string>>
+      - name: last_name
+        description: The person's last name.
+        data_type: string
+      - name: middle_name
+        description: The person's middle name; populated for a minority of rows.
+        data_type: string
+      - name: nickname
+        description: The person's nickname; populated for a minority of rows.
+        data_type: string
+      - name: office_holders
+        description: >
+          The office-holder records for this person, as id-reference pairs. Arrives
+          wrapped in a connection object rather than as a bare array, unlike every
+          other array on this payload. 64.2% of people have at least one (90,011 of
+          251,508 have none); the observed maximum is 19.
+        data_type: array<struct<databaseId:int,id:string>>
+      - name: slug
+        description: URL slug for the person's BallotReady profile.
+        data_type: string
+      - name: suffix
+        description: The person's name suffix (e.g. "Jr."); populated for a minority of rows.
+        data_type: string
+      - name: updated_at
+        description: Timestamp the person was last updated in BallotReady.
+        data_type: timestamp
+      - name: urls
+        description: External URLs associated with the person, as reported by BallotReady.
+        data_type: array<struct<databaseId:int,id:string,type:string,url:string>>
+      - name: feed_extracted_at
+        description: >
+          When our pipeline last obtained this person; loaded_at from the landing table, carried
+          through unchanged.
+        data_type: timestamp
+
+  - name: int__ballotready_stance
+    description: >
+      BallotReady candidacy stances, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these stances belong to.
+        data_type: int
+      - name: stances
+        description: >
+          The candidacy's issue stances, as reported by BallotReady, with the candidacy's own id
+          and encoded id injected onto each element (the payload does not carry them).
+        data_type: array<struct<databaseId:int,id:string,issue:struct<databaseId:int,id:string>,locale:string,referenceUrl:string,statement:string,candidacy_id:int,encoded_candidacy_id:string>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the stance payload carries no
+          per-candidacy createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: the stance payload carries no
+          per-candidacy updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_endorsement
+    description: >
+      BallotReady candidacy endorsements, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these endorsements belong to.
+        data_type: int
+      - name: endorsements
+        description: >
+          The candidacy's endorsements, as reported by BallotReady, with the candidacy's own id
+          and encoded id injected onto each element (the payload does not carry them). Each
+          element carries its own createdAt/updatedAt, distinct from this row's created_at/updated_at.
+        data_type: array<struct<databaseId:int,id:string,createdAt:timestamp,endorser:string,recommendation:string,status:string,updatedAt:timestamp,organization:struct<databaseId:int,id:string>,candidacy_id:int,encoded_candidacy_id:string>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          updatedAt, so this is stamped at staging build time.
+        data_type: timestamp
+
+  - name: int__ballotready_party
+    description: >
+      BallotReady candidacy parties, transformed from the raw payloads the extract_ballotready
+      DAG lands. Replaces the Python model that called the CivicEngine API directly; the output
+      schema is unchanged, and the contract keeps its name and schema stable for consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: candidacy_id
+        description: The BallotReady integer id of the candidacy these parties belong to.
+        data_type: int
+      - name: parties
+        description: >
+          The candidacy's parties, as reported by BallotReady. Most candidacies carry exactly
+          one; a minority (fusion candidacies) carry more than one.
+        data_type: array<struct<createdAt:timestamp,databaseId:int,id:string,name:string,shortName:string,updatedAt:timestamp>>
+      - name: created_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          createdAt, so this is stamped at staging build time.
+        data_type: timestamp
+      - name: updated_at
+        description: >
+          Ingestion timestamp, not a BallotReady source field: this row carries no per-candidacy
+          updatedAt, so this is stamped at staging build time.
+        data_type: timestamp

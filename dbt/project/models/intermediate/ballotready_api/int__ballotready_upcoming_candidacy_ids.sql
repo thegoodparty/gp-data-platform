@@ -1,10 +1,11 @@
 -- Candidacy ids for still-upcoming BallotReady races, read from the API race
 -- roster (race.candidacies). The S3 candidacies feed omits many upcoming
--- general-stage rosters that the API race object already carries, so the
--- candidacy and party fetches seed their worklist from this source in addition
--- to S3. Without it, those candidacies are never fetched and never reach
--- election-api, so a candidate's competitive landscape falls back to the
--- primary field. Scoped to upcoming elections to keep the API fetch bounded.
+-- general-stage rosters that the API race object already carries; that gap is
+-- now covered by the extract_ballotready Airflow DAG's own worklist query, not
+-- by a dbt model reading this one. This model has no downstream refs: its job
+-- is the relationships test in int__ballotready_py.yaml, which checks every id
+-- found here against int__ballotready_candidacy. Scoped to upcoming elections
+-- to bound that check.
 with
     api_race as (
         select
