@@ -1,14 +1,15 @@
 -- The candidacy image renders a person's photo onto *other* candidates'
 -- profiles, so suppressing the person mart alone leaves a reported photo public.
--- Resolves the BR candidate via the S3 feed rather than the mart's own join key,
--- so a change to that key cannot silently pass this test.
+-- Resolves the BR candidate through the API intermediate, not the S3 feed: the
+-- feed cannot resolve ~2.4k of the image-carrying candidacies (it omits many
+-- upcoming general-stage rosters), which would let a live photo pass unseen.
 with
     br as (
         select distinct
-            cast(br_candidacy_id as bigint) as br_candidacy_id,
-            cast(br_candidate_id as bigint) as br_candidate_id
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where br_candidacy_id is not null and br_candidate_id is not null
+            cast(database_id as bigint) as br_candidacy_id,
+            cast(candidate_database_id as bigint) as br_candidate_id
+        from {{ ref("int__ballotready_candidacy") }}
+        where database_id is not null and candidate_database_id is not null
     ),
 
     published as (

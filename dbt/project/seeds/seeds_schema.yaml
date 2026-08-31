@@ -340,6 +340,9 @@ seeds:
     config:
       column_types:
         br_person_id: bigint
+        # Declared rather than inferred: the marts coalesce this against a
+        # boolean literal, so the contract should not rest on CSV sniffing.
+        suppress_image: boolean
     columns:
       - name: br_person_id
         description: BallotReady person (database_id) whose image is suppressed
