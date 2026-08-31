@@ -517,7 +517,9 @@ def _poll_until_terminal(
         time.sleep(poll_seconds)
 
 
-def _trigger_dbt_rebuild_and_wait(poll_seconds: float = 30, timeout_seconds: float = 1800) -> None:
+def _trigger_dbt_rebuild_and_wait(poll_seconds: float = 30, timeout_seconds: float = 10800) -> None:
+    # The scheduled build runs ~95-105 minutes (measured 2026-08-31); a 30-minute
+    # budget would make every real rollback falsely report failure mid-rebuild.
     base, account_id = os.environ["DBT_CLOUD_BASE_URL"], os.environ["DBT_CLOUD_ACCOUNT_ID"]
     headers = {"Authorization": f"Token {os.environ['DBT_CLOUD_API_TOKEN']}"}
     with httpx.Client(timeout=30) as client:
