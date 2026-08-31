@@ -55,8 +55,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     schedule a periodic --full-refresh to flush accumulated orphans.
     """
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
         unique_key=[
