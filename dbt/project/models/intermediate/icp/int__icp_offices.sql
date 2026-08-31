@@ -7,16 +7,44 @@ with
         select * from {{ ref("int__ballotready_normalized_position") }}
     ),
 
+    -- Offices the January baseline attempted and abstained on. A later match
+    -- on one of these is the stale re-match mechanism, which publication
+    -- quarantines as mostly wrong; the supervised backlog run leaked a batch
+    -- of them when its approval snapshot drifted from run time.
+    baseline_abstained as (
+        select br_database_id
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        where l2_district_name is null
+    ),
+
     l2_match as (
         -- the allocation normalizes district names (case, whitespace, trailing
         -- "(EST.)"); match labels carry the universe's current spelling, which
         -- can differ from the aggregation's vintage, so carry a normalized copy
         -- for the population join and the voter-count fallback below.
+        --
+        -- ICP consumes matches through this CTE, so the fence lives here:
+        -- serving bars protect office pages but nothing gated this path. The
+        -- fence is scoped to the supervised backlog run's key ONLY -- the
+        -- January base keeps serving untouched (a blanket bar would unflag
+        -- thousands of standing funnel entries nobody measured as wrong), and
+        -- rows from any later, freshly gated run serve normally, so the
+        -- clause dies by supersession. From that run, ICP declines matches
+        -- below confidence 90 and any match on a baseline-abstained office
+        -- (the stale re-match mechanism, quarantined as mostly wrong). A
+        -- fenced office reads as unmatched here, exactly like an office with
+        -- no match row.
         select
-            *,
-            {{ normalize_l2_district_name("l2_district_name") }}
+            stg.*,
+            {{ normalize_l2_district_name("stg.l2_district_name") }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as stg
+        left join
+            baseline_abstained on baseline_abstained.br_database_id = stg.br_database_id
+        where
+            stg.l2_district_name is null
+            or stg.attempted_at <> timestamp '2026-08-31 19:46:39'
+            or (stg.confidence >= 90 and baseline_abstained.br_database_id is null)
     ),
 
     -- aliased on both lookups: a bare voter_count on either would shadow the
