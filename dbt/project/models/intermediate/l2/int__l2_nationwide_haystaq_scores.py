@@ -22,7 +22,7 @@ def _cast_score_columns(df: DataFrame) -> DataFrame:
         if column_name.startswith("hs_"):
             # try_cast, not cast: serverless casts strictly where the retired
             # classic cluster was lenient, so a non-numeric vendor sentinel
-            # would fail the build rather than land as NULL. See DATA-1969.
+            # would fail the build rather than land as NULL.
             df = df.withColumn(column_name, expr(f"try_cast(`{column_name}` as double)"))
     return df
 

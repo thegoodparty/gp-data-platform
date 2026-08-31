@@ -141,7 +141,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # Do NOT use sync_all_columns here as it silently drops columns that
         # downstream models may depend on. See DATA-1528.
         on_schema_change="append_new_columns",
-        auto_liquid_cluster=True,
+        # Explicit, not auto: CLUSTER BY AUTO leaves clustering [] mid-rebuild,
+        # which Delta rejects against the table's hand-set hierarchical
+        # clustering property. That property names the first two, so they have
+        # to stay. LALVOTERID is the merge unique_key, and clustering on it is
+        # what lets the merge prune files against a 219M-row target.
+        liquid_clustered_by=[
+            "state_postal_code",
+            "Residence_Addresses_Zip",
+            "LALVOTERID",
+        ],
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
     )
 
@@ -628,7 +637,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # try_cast, not cast: serverless casts strictly where the retired classic
     # cluster was lenient, and L2 ships non-numeric sentinels here ('Not
     # Eligible' covers 186,957 AL rows). try_cast keeps the existing output --
-    # those land as NULL, as they always have. See DATA-1969.
+    # those land as NULL, as they always have.
     for column in PERFORMANCE_PERCENTAGE_COLUMNS:
         df = df.withColumn(column, regexp_replace(col(column), "%", ""))
         df = df.withColumn(column, expr(f"try_cast(`{column}` as double)"))

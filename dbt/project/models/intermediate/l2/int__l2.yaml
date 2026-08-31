@@ -375,6 +375,11 @@ models:
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
       tags: ["monthly"]
+      # A rebuild drops columns L2 has retired while
+      # delta.dataSkippingStatsColumns still names them, which Delta rejects.
+      # Clearing it first lets the rebuild through.
+      pre_hook:
+        - "{% if should_full_refresh() and load_relation(this) %}alter table {{ this }} unset tblproperties if exists ('delta.dataSkippingStatsColumns'){% endif %}"
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
@@ -390,6 +395,11 @@ models:
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
       tags: ["monthly"]
+      # A rebuild drops columns L2 has retired while
+      # delta.dataSkippingStatsColumns still names them, which Delta rejects.
+      # Clearing it first lets the rebuild through.
+      pre_hook:
+        - "{% if should_full_refresh() and load_relation(this) %}alter table {{ this }} unset tblproperties if exists ('delta.dataSkippingStatsColumns'){% endif %}"
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
