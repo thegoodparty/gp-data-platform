@@ -134,10 +134,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # the version present at load time decides the predictions. The five
         # models split across 1.4.2 (x3) and 1.6.1 (x2); 1.6.1 reproduces the
         # 1.4.2 three bit for bit and corrects the other two. Changing it moves
-        # published ratings. Both keys must stay in `config`, not `config.meta`,
-        # despite the dbt-core deprecation warning. See DATA-1969.
+        # published ratings. numpy is held under 2 to match the sibling model:
+        # verified inert here, but it guards the cloudpickled loads against a
+        # future resolver picking numpy 2.x. Both keys must stay in `config`,
+        # not `config.meta`, despite the dbt-core deprecation warning.
+        # See DATA-1969.
         environment_key="civics_viability",
-        environment_dependencies=["mlflow==3.0.0", "scikit-learn==1.6.1"],
+        environment_dependencies=["mlflow==3.0.0", "scikit-learn==1.6.1", "numpy<2"],
         materialized="table",
         auto_liquid_cluster=True,
         tags=["intermediate", "civics", "viability"],
