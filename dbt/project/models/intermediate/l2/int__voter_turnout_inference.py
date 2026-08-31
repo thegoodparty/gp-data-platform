@@ -782,12 +782,23 @@ def model(dbt, session):
         # promoted against -- _check_lgbm_version below raises on a major
         # mismatch. numpy is held under 2 because lightgbm 4.3.0 predates numpy
         # 2 support.
+        #
+        # mlflow is pinned too, for the load path rather than for accuracy. The
+        # booster is stored in LightGBM's own format, so lightgbm governs the
+        # predictions; mlflow only has to load it. But this model leans on a
+        # wide mlflow surface -- set_registry_uri, MlflowClient,
+        # get_registered_model, get_model_version_by_alias,
+        # artifacts.download_artifacts, lightgbm.load_model -- and an unpinned
+        # resolve to a future major could break any of that at install time with
+        # no build-time error. The boosters themselves were logged under mlflow
+        # 2.11.4; 3.0.0 reads them fine and is the version already proven
+        # against the UC registry by int__civics_viability_scoring.
         # dbt-core flags both keys as CustomKeyInConfigDeprecation and suggests
         # config.meta. Do NOT move them: dbt-databricks reads them off `config`
         # (PythonModelConfig), so meta would silently drop the environment and
         # the imports below would fail again.
         environment_key="voter_turnout",
-        environment_dependencies=["mlflow", "lightgbm==4.3.0", "numpy<2"],
+        environment_dependencies=["mlflow==3.0.0", "lightgbm==4.3.0", "numpy<2"],
         materialized="table",  # full refresh, v1 (locked decision: no incremental)
         tags=["intermediate", "l2", "model_prediction", "voter_turnout"],
     )
