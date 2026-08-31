@@ -625,13 +625,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # clean up columns with percentages
     #
-    # try_cast, not cast: serverless casts strictly (ANSI) where the retired
-    # classic cluster was lenient. L2 ships non-numeric sentinels in these
-    # columns -- 'Not Eligible' alone covers 186,957 AL rows -- which a strict
-    # cast rejects outright, failing the build. The published table has always
-    # carried these as NULL (12.4M nulls in
-    # Voters_VotingPerformanceEvenYearGeneral), so try_cast preserves the
-    # existing output rather than changing it. See DATA-1969.
+    # try_cast, not cast: serverless casts strictly where the retired classic
+    # cluster was lenient, and L2 ships non-numeric sentinels here ('Not
+    # Eligible' covers 186,957 AL rows). try_cast keeps the existing output --
+    # those land as NULL, as they always have. See DATA-1969.
     for column in PERFORMANCE_PERCENTAGE_COLUMNS:
         df = df.withColumn(column, regexp_replace(col(column), "%", ""))
         df = df.withColumn(column, expr(f"try_cast(`{column}` as double)"))

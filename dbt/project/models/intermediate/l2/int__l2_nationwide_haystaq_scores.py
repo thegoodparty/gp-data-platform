@@ -20,11 +20,9 @@ def _cast_score_columns(df: DataFrame) -> DataFrame:
     df = df.withColumn("LALVOTERID", col("LALVOTERID").cast(StringType()))
     for column_name in df.columns:
         if column_name.startswith("hs_"):
-            # try_cast, not cast: serverless casts strictly (ANSI) where the
-            # retired classic cluster was lenient, so a non-numeric vendor
-            # sentinel now fails the whole build instead of landing as NULL.
-            # NULL on unparseable input is the behaviour the published table
-            # has always had. See DATA-1969.
+            # try_cast, not cast: serverless casts strictly where the retired
+            # classic cluster was lenient, so a non-numeric vendor sentinel
+            # would fail the build rather than land as NULL. See DATA-1969.
             df = df.withColumn(column_name, expr(f"try_cast(`{column_name}` as double)"))
     return df
 
