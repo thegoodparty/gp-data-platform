@@ -772,8 +772,22 @@ def model(dbt, session):
     import mlflow.lightgbm
 
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        # Serverless ships neither mlflow (DBR 15.4 bundled it on the retired
+        # classic cluster) nor lightgbm (a classic-cluster library), so both are
+        # declared as serverless environment dependencies. `packages` is NOT
+        # usable here: the adapter maps it to the job task's `libraries` field,
+        # which serverless rejects outright ("Libraries field is not supported
+        # for serverless task, please specify libraries in environment").
+        # lightgbm is pinned to the exact version the registered boosters were
+        # promoted against -- _check_lgbm_version below raises on a major
+        # mismatch. numpy is held under 2 because lightgbm 4.3.0 predates numpy
+        # 2 support.
+        # dbt-core flags both keys as CustomKeyInConfigDeprecation and suggests
+        # config.meta. Do NOT move them: dbt-databricks reads them off `config`
+        # (PythonModelConfig), so meta would silently drop the environment and
+        # the imports below would fail again.
+        environment_key="voter_turnout",
+        environment_dependencies=["mlflow", "lightgbm==4.3.0", "numpy<2"],
         materialized="table",  # full refresh, v1 (locked decision: no incremental)
         tags=["intermediate", "l2", "model_prediction", "voter_turnout"],
     )

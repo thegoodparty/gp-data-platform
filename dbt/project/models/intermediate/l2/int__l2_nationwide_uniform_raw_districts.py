@@ -1,6 +1,6 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit, regexp_replace
-from pyspark.sql.types import BooleanType, DoubleType, StringType
+from pyspark.sql.functions import col, expr, lit, regexp_replace
+from pyspark.sql.types import StringType
 
 ELECTION_COLUMNS = [
     "General_2030",
@@ -132,8 +132,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     """
     # configure the data model
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
@@ -626,13 +624,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
         df = df.unionByName(state_df, allowMissingColumns=True)
 
     # clean up columns with percentages
+    #
+    # try_cast, not cast: serverless casts strictly (ANSI) where the retired
+    # classic cluster was lenient. L2 ships non-numeric sentinels in these
+    # columns -- 'Not Eligible' alone covers 186,957 AL rows -- which a strict
+    # cast rejects outright, failing the build. The published table has always
+    # carried these as NULL (12.4M nulls in
+    # Voters_VotingPerformanceEvenYearGeneral), so try_cast preserves the
+    # existing output rather than changing it. See DATA-1969.
     for column in PERFORMANCE_PERCENTAGE_COLUMNS:
         df = df.withColumn(column, regexp_replace(col(column), "%", ""))
-        df = df.withColumn(column, col(column).cast(DoubleType()))
+        df = df.withColumn(column, expr(f"try_cast(`{column}` as double)"))
 
-    # cast elections as booleans
+    # cast elections as booleans (try_cast for the same reason as above)
     for column in ELECTION_COLUMNS:
-        df = df.withColumn(column, col(column).cast(BooleanType()))
+        df = df.withColumn(column, expr(f"try_cast(`{column}` as boolean)"))
 
     # other casting changes
     df = df.withColumn(

@@ -127,8 +127,42 @@ def model(dbt, session: SparkSession) -> DataFrame:
     spark = session
 
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        # Serverless ships neither mlflow nor scikit-learn; DBR 15.4 bundled both
+        # on the retired classic cluster. mlflow.sklearn.load_model needs sklearn
+        # present to unpickle the registered viability scorers. Declared as
+        # environment dependencies, not `packages`: the adapter maps `packages`
+        # to the job task's `libraries` field, which serverless rejects.
+        #
+        # scikit-learn is PINNED and the pin is load-bearing. These scorers are
+        # cloudpickled estimators, so the sklearn present at load time decides
+        # the predictions, and the five registered models are NOT internally
+        # consistent: three were logged under sklearn 1.4.2 (mlflow 2.15.1, DBR
+        # 16.2) and two under 1.6.1 (mlflow 3.0.0, DBR 17.0). No single pin
+        # matches all five, and the retired classic cluster ran DBR 15.4, which
+        # matched none of them.
+        #
+        # Measured against prod upstreams (DATA-1969), pinning 1.6.1 splits
+        # cleanly by training version: the three 1.4.2-trained models reproduce
+        # the classic-cluster output bit for bit (45,260 / 30,883 / 25,767 rows,
+        # 100% identical), and only the two 1.6.1-trained models move. That is
+        # the correct direction -- DBR 15.4 was scoring those two under a
+        # mismatched sklearn; 1.6.1 scores each of them under the version it was
+        # trained with. The move is real and published: 45,040 candidacies
+        # (13.8%) change score_viability_automated, max rating delta 0.76.
+        #
+        # numpy is deliberately NOT pinned here. It was tested and is immaterial
+        # to these predictions (output byte-identical with and without
+        # `numpy<2`), unlike int__voter_turnout_inference where lightgbm 4.3.0
+        # forces it. Re-logging all five models under one sklearn version is
+        # tracked separately; until then, changing this pin moves published
+        # ratings and must be a deliberate, revalidated decision.
+        #
+        # dbt-core flags both keys as CustomKeyInConfigDeprecation and suggests
+        # config.meta. Do NOT move them: dbt-databricks reads them off `config`
+        # (PythonModelConfig), so meta would silently drop the environment and
+        # the imports below would fail again.
+        environment_key="civics_viability",
+        environment_dependencies=["mlflow==3.0.0", "scikit-learn==1.6.1"],
         materialized="table",
         auto_liquid_cluster=True,
         tags=["intermediate", "civics", "viability"],
