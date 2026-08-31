@@ -19,6 +19,10 @@ RETRYABLE_ERROR_CODES = frozenset(
         "ModelNotReadyException",
         "ModelTimeoutException",
         "InternalServerException",
+        # AWS's own text for this code says to retry ("The system encountered
+        # an unexpected error during processing. Try your request again.");
+        # one such transient killed a 76-minute run on 2026-08-28.
+        "ModelErrorException",
     }
 )
 
