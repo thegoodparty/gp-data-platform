@@ -559,7 +559,11 @@ def _trigger_election_api_sync_and_wait(poll_seconds: float = 30, timeout_second
     base = os.environ["AIRFLOW_API_BASE_URL"]
     headers = {"Authorization": f"Bearer {os.environ['AIRFLOW_API_TOKEN']}"}
     with httpx.Client(timeout=30) as client:
-        started = client.post(f"{base}/api/v2/dags/{ELECTION_API_SYNC_DAG_ID}/dagRuns", headers=headers, json={})
+        # Airflow 3 requires the logical_date KEY (null = server-assigned manual
+        # run); an empty body is a 422, live-confirmed against astro-prod.
+        started = client.post(
+            f"{base}/api/v2/dags/{ELECTION_API_SYNC_DAG_ID}/dagRuns", headers=headers, json={"logical_date": None}
+        )
         started.raise_for_status()
         run_id = started.json()["dag_run_id"]
 
