@@ -81,8 +81,13 @@ with
             tbl_party.party,
             tbl_person.first_name,
             tbl_person.last_name,
+            -- Suppression has to apply here too: this image renders a person's
+            -- photo onto the other candidates' profiles, not just their own.
             case
-                when size(tbl_person.images) > 0 then tbl_person.images[0].url else null
+                when coalesce(image_overrides.suppress_image, false)
+                then null
+                when size(tbl_person.images) > 0
+                then tbl_person.images[0].url
             end as image,
             tbl_person.bio_text as about,
             transform(tbl_person.urls, url -> url.url) as urls,
@@ -110,6 +115,9 @@ with
         left join
             {{ ref("int__ballotready_person") }} as tbl_person
             on tbl_candidacy.candidate_database_id = tbl_person.database_id
+        left join
+            {{ ref("election_api_person_image_overrides") }} as image_overrides
+            on tbl_candidacy.candidate_database_id = image_overrides.br_person_id
         left join
             {{ ref("m_election_api__race") }} as tbl_mart_race
             on tbl_candidacy.race_database_id = tbl_mart_race.br_database_id

@@ -148,7 +148,13 @@ select
         br_person.full_name, trim(concat_ws(' ', people.first_name, people.last_name))
     ) as full_name,
     br_person.bio_text,
-    br_person.headshot_url,
+    -- Reported photos are suppressed here, not upstream: BallotReady keeps
+    -- serving the file either way.
+    case
+        when coalesce(image_overrides.suppress_image, false)
+        then null
+        else br_person.headshot_url
+    end as headshot_url,
     coalesce(br_person.website_url, office_holder.website_url) as website_url,
     coalesce(br_person.linkedin_url, office_holder.linkedin_url) as linkedin_url,
     coalesce(br_person.facebook_url, office_holder.facebook_url) as facebook_url,
@@ -169,3 +175,6 @@ left join
     office_holder_person as office_holder
     on people.br_person_id_int = office_holder.br_candidate_id
 left join pledged on people.gp_person_id = pledged.gp_person_id
+left join
+    {{ ref("election_api_person_image_overrides") }} as image_overrides
+    on people.br_person_id_int = image_overrides.br_person_id

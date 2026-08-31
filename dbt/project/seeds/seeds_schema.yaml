@@ -318,6 +318,47 @@ seeds:
           arguments:
             expression: filing_date_end >= filing_date_start
 
+  - name: election_api_person_image_overrides
+    description: >
+      Suppresses a BallotReady headshot from every public profile surface. We
+      publish these photos by reference to a BallotReady URL and never hold the
+      image itself, so a wrong or harmful photo cannot be corrected here and its
+      content can change under a stable URL without any row of ours changing.
+      When someone reports a photo that is not the person, this is the only
+      control we hold, and BallotReady keeps serving the file regardless.
+
+      Keyed on the BallotReady person id rather than gp_person_id: that is where
+      the bad data lives, it survives entity resolution regrouping a person, and
+      both consuming marts already join on it. Suppression only, no replacement
+      value. Applies to the person mart's headshot_url and the candidacy mart's
+      image, which must move together because the candidacy image renders the
+      same photo onto other candidates' profiles.
+
+      suppress_image is a flag rather than row presence so a photo BallotReady
+      later fixes can be un-suppressed while keeping the reason as a record of
+      why we ever acted.
+    config:
+      column_types:
+        br_person_id: bigint
+    columns:
+      - name: br_person_id
+        description: BallotReady person (database_id) whose image is suppressed
+        data_tests:
+          - not_null
+          - unique
+      - name: suppress_image
+        description: >
+          Whether to null the image today. False keeps the row as history
+          without suppressing.
+        data_tests:
+          - not_null
+      - name: reason
+        description: >
+          What was reported and what was verified upstream. Required so a
+          suppression can never be filed silently.
+        data_tests:
+          - not_null
+
   - name: br_position_place_overrides
     description: >
       Points a BallotReady position geography at the Place it should resolve to,
