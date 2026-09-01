@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from typing import Optional, Dict, Any, List
-from databricks.sql import connect
+from databricks import sql
 from databricks.sql.client import Connection
 from dotenv import load_dotenv
 from shared.logger import get_logger
@@ -31,15 +31,19 @@ class DatabricksClient:
         self.server_hostname = server_hostname or os.getenv('DATABRICKS_SERVER_HOSTNAME')
         self.http_path = http_path or os.getenv('DATABRICKS_HTTP_PATH')
         self.access_token = access_token or os.getenv('DATABRICKS_API_KEY')
-        
-        if not all([self.server_hostname, self.http_path, self.access_token]):
+
+        # M2M (client id + secret) supersedes the PAT, which retires ~2026-11-24;
+        # either credential path is fine, so only their total absence is an error.
+        has_m2m = bool(os.getenv('DATABRICKS_CLIENT_ID') and os.getenv('DATABRICKS_CLIENT_SECRET'))
+
+        if not all([self.server_hostname, self.http_path]) or not (self.access_token or has_m2m):
             missing = []
             if not self.server_hostname:
                 missing.append("DATABRICKS_SERVER_HOSTNAME")
             if not self.http_path:
                 missing.append("DATABRICKS_HTTP_PATH")
-            if not self.access_token:
-                missing.append("DATABRICKS_API_KEY")
+            if not self.access_token and not has_m2m:
+                missing.append("DATABRICKS_API_KEY or DATABRICKS_CLIENT_ID/DATABRICKS_CLIENT_SECRET")
             raise ValueError(f"Missing required Databricks connection parameters: {', '.join(missing)}. Please set these in your .env file.")
         
         self.connection: Optional[Connection] = None
@@ -54,11 +58,25 @@ class DatabricksClient:
         """
         if self.connection is None:
             try:
-                self.connection = connect(
-                    server_hostname=self.server_hostname,
-                    http_path=self.http_path,
-                    access_token=self.access_token
-                )
+                kwargs: Dict[str, Any] = {
+                    "server_hostname": self.server_hostname,
+                    "http_path": self.http_path,
+                }
+                client_id = os.getenv("DATABRICKS_CLIENT_ID")
+                client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
+                if client_id and client_secret:
+                    from databricks.sdk.core import Config, oauth_service_principal
+                    # M2M service principal; preferred over the PAT path, which retires
+                    # with the personal token (~2026-11). Config() itself probes the
+                    # host over the network at construction time, so it is built inside
+                    # the callable -- deferred until the driver actually asks for a
+                    # token, not on every connect().
+                    kwargs["credentials_provider"] = lambda: oauth_service_principal(
+                        Config(host=f"https://{self.server_hostname}", client_id=client_id, client_secret=client_secret)
+                    )
+                else:
+                    kwargs["access_token"] = self.access_token
+                self.connection = sql.connect(**kwargs)
                 self.logger.info("Successfully connected to Databricks")
             except Exception as e:
                 self.logger.error(f"Failed to connect to Databricks: {str(e)}")
