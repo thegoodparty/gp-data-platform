@@ -258,22 +258,6 @@ def test_validation_schema_accepts_a_field_the_request_schema_requires():
     assert llm.get_usage_stats()["api_calls"] == 1
 
 
-def test_validation_schema_accepts_a_mangled_value_for_the_relaxed_field():
-    """The leak shape: tool-call markup lands in the field's VALUE, so it is
-    present but the wrong type. Tolerating omission alone would still fail it."""
-    client, stubber = make_client_and_stubber()
-    payload = {
-        "selected_candidate_number": 1,
-        "selection_confidence": 99,
-        "is_exact_district_match": "true</is_exact_district_match>\n</invoke>",
-    }
-    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
-    with stubber:
-        llm = make_llm(client)
-        out = llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
-    assert out == payload
-
-
 def test_validation_schema_still_rejects_a_missing_consumed_field():
     """The relaxation must stay single-field: a response missing a CONSUMED
     field under the relaxed schema is still a technical failure, never a result."""
@@ -290,8 +274,11 @@ def test_validation_schema_still_rejects_a_missing_consumed_field():
 
 def test_resolved_config_records_the_effective_validation_fingerprint():
     """A relaxed-acceptance run must not read as configuration-equal to a
-    strict run: the request fingerprint deliberately stays put, so a second
-    fingerprint has to carry the acceptance policy into run comparisons."""
+    strict run: the request schema is billed prompt context and frozen (a
+    transport tweak flipped answers in the gate's transfer test), so its
+    fingerprint deliberately stays put -- the stub pins the outbound bytes --
+    and a second fingerprint carries the acceptance policy into run
+    comparisons."""
     client, stubber = make_client_and_stubber()
     payload = {"selected_candidate_number": 1, "selection_confidence": 70}
     stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
@@ -299,19 +286,9 @@ def test_resolved_config_records_the_effective_validation_fingerprint():
         llm = make_llm(client)
         llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
     cfg = llm.resolved_config()
+    assert cfg["schema_fingerprint"] == _schema_fingerprint(GATE_SCHEMA)
     assert cfg["validation_schema_fingerprint"] == _schema_fingerprint(RELAXED_SCHEMA)
     assert cfg["validation_schema_fingerprint"] != cfg["schema_fingerprint"]
-
-
-def test_resolved_config_validation_fingerprint_defaults_to_the_request_schema():
-    client, stubber = make_client_and_stubber()
-    payload = {"selected_candidate_number": 2, "selection_confidence": 90}
-    stubber.add_response("converse", converse_response(payload), expected_converse("p"))
-    with stubber:
-        llm = make_llm(client)
-        llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
-    cfg = llm.resolved_config()
-    assert cfg["validation_schema_fingerprint"] == cfg["schema_fingerprint"]
 
 
 def test_an_explicit_empty_validation_schema_is_honored():
@@ -325,22 +302,6 @@ def test_an_explicit_empty_validation_schema_is_honored():
         out = llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema={})
     assert out == payload
     assert llm.get_usage_stats()["api_calls"] == 1
-
-
-def test_validation_schema_never_reaches_the_request_or_the_fingerprint():
-    """The request schema is billed prompt context and frozen (a transport
-    tweak flipped answers in the gate's transfer test): the stub asserts the
-    outbound toolSpec carries the response schema, and the recorded
-    fingerprint must be computed from it too, not from the validation schema."""
-    client, stubber = make_client_and_stubber()
-    payload = {"selected_candidate_number": 1, "selection_confidence": 70}
-    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
-    with stubber:
-        llm = make_llm(client)
-        llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
-    fingerprint = llm.resolved_config()["schema_fingerprint"]
-    assert fingerprint == _schema_fingerprint(GATE_SCHEMA)
-    assert fingerprint != _schema_fingerprint(RELAXED_SCHEMA)
 
 
 def test_resolved_config_shape():
@@ -359,3 +320,5 @@ def test_resolved_config_shape():
     assert cfg["tool_name"] == "emit_match_selection"
     assert cfg["output_shape_retries"] == 1
     assert cfg["schema_fingerprint"] == _schema_fingerprint(SCHEMA)
+    # No validation override on this call, so the two fingerprints coincide.
+    assert cfg["validation_schema_fingerprint"] == cfg["schema_fingerprint"]

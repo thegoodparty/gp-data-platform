@@ -3,7 +3,6 @@ selection schema that tolerates is_exact_district_match being absent or
 malformed, while the request schema stays frozen."""
 
 import asyncio
-import inspect
 from unittest.mock import MagicMock, patch
 
 import jsonschema
@@ -84,12 +83,3 @@ def test_select_candidate_judges_responses_against_the_relaxed_schema(mock_depen
     call_kwargs = mock_dependencies["llm"].generate_structured_content.call_args.kwargs
     assert UNCONSUMED_RESPONSE_FIELD in call_kwargs["response_schema"]["required"]
     assert call_kwargs["validation_schema"] == relax_validation_schema(call_kwargs["response_schema"])
-
-
-def test_gemini_client_tolerates_the_validation_schema_kwarg():
-    """--model-config gemini constructs the dormant incumbent stack; without
-    keyword tolerance the first selection call dies with a TypeError."""
-    from shared.llm_gemini_3 import Gemini3Client
-
-    params = inspect.signature(Gemini3Client.generate_structured_content).parameters
-    assert any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())

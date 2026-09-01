@@ -19,7 +19,6 @@ l2_br_match_writer.py.
 
 import argparse
 import asyncio
-import copy
 import functools
 import math
 import re
@@ -254,12 +253,14 @@ UNCONSUMED_RESPONSE_FIELD = "is_exact_district_match"
 def relax_validation_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """A copy of `schema` that tolerates the unconsumed field being absent or
     malformed. Everything else is unchanged: a missing CONSUMED field stays a
-    technical failure, never a result. The original is what the request
-    carries (billed prompt context, frozen) and is never mutated."""
-    relaxed = copy.deepcopy(schema)
-    relaxed["required"] = [key for key in relaxed["required"] if key != UNCONSUMED_RESPONSE_FIELD]
-    relaxed["properties"][UNCONSUMED_RESPONSE_FIELD] = {}
-    return relaxed
+    technical failure, never a result. Only the two rebuilt members differ;
+    the original is what the request carries (billed prompt context, frozen)
+    and is never mutated."""
+    return {
+        **schema,
+        "required": [key for key in schema["required"] if key != UNCONSUMED_RESPONSE_FIELD],
+        "properties": {**schema["properties"], UNCONSUMED_RESPONSE_FIELD: {}},
+    }
 
 
 def _selection_from_response(response: dict[str, Any], num_candidates: int) -> tuple[int, int]:
