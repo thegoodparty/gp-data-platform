@@ -568,6 +568,7 @@ fresh adjudication — never a re-score of the spent instrument:
 python .claude/skills/gold-match-run-audit/score_holdout.py \
   --truth <a freshly adjudicated holdout packet.csv> \
   --answers <that gate's arm answers.json> \
+  --meta <that gate's arm meta.json> \
   --label "<run key>, <arm>"
 ```
 

@@ -9,6 +9,7 @@ for the pure functions, subprocess for the load-boundary and gate wiring. Run:
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import subprocess
 import sys
@@ -100,12 +101,28 @@ def full_answers(rows, matched=()):
     return out
 
 
-def run_scorer(truth_path, answers=None, tmp=None):
+def build_meta(truth_path, offices, arm="test-arm"):
+    """A meta doc bound to the truth bytes actually on disk, so --answers
+    callers exercise what they're testing instead of the binding guard
+    itself (that guard has its own tests in test_score_holdout_binding.py)."""
+    return {
+        "arm": arm,
+        "model_config": "bedrock",
+        "school_whole_assertion_enabled": False,
+        "instrument": {"sha256": hashlib.sha256(Path(truth_path).read_bytes()).hexdigest()},
+        "offices": offices,
+    }
+
+
+def run_scorer(truth_path, answers=None, tmp=None, meta=None):
     argv = [sys.executable, str(SKILL_ROOT / "score_holdout.py"), "--truth", str(truth_path), "--label", "t"]
     if answers is not None:
         answers_path = Path(tmp) / "answers.json"
         answers_path.write_text(json.dumps(answers))
         argv += ["--answers", str(answers_path)]
+        meta_path = Path(tmp) / "meta.json"
+        meta_path.write_text(json.dumps(meta))
+        argv += ["--meta", str(meta_path)]
     return subprocess.run(argv, capture_output=True, text=True)
 
 
@@ -240,7 +257,8 @@ class GateWiring(unittest.TestCase):
         rows = full_packet()
         answers = full_answers(rows)[:-1]
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing 1 scorable office", result.stderr)
 
@@ -249,8 +267,10 @@ class GateWiring(unittest.TestCase):
         answers = full_answers(rows)
         conflict = dict(answers[0])
         conflict.update(l2_state="ZZ", l2_district_type="City", l2_district_name="CONFLICT")
+        duplicated = answers + [conflict]
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=answers + [conflict], tmp=tmp)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=duplicated, tmp=tmp, meta=build_meta(path, len(duplicated)))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("duplicate br_database_id entries in the answers", result.stderr)
 
@@ -259,8 +279,10 @@ class GateWiring(unittest.TestCase):
         # served-pool raise in main remains as depth behind it.
         rows = full_packet(n_backlog=121, n_served=0)
         rows = [r for r in rows if r["stratum"] != "served_matched"]
+        answers = full_answers(rows)
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=full_answers(rows), tmp=tmp)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("packet shape", result.stderr)
 
@@ -268,7 +290,8 @@ class GateWiring(unittest.TestCase):
         rows = full_packet()
         answers = full_answers(rows, matched=(1, 3))
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Backlog gate", result.stdout)
         # Deterministic with this fixture: challenger wins row 1, nothing regresses.
@@ -283,8 +306,10 @@ class GateWiring(unittest.TestCase):
             if 500 <= answer["br_database_id"] <= 502:
                 answer.update(l2_state="ZZ", l2_district_type="City", l2_district_name="WRONG")
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
-        self.assertEqual(result.returncode, 0, result.stderr)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
+        # A FAIL verdict must exit nonzero: exit-0-on-FAIL was the exact bug this scorer fix removes.
+        self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("Verdict: FAIL", result.stdout)
 
     def test_padded_stratum_is_normalized_not_crashed(self):
@@ -302,7 +327,8 @@ class GateWiring(unittest.TestCase):
                 row["truth_l2_state"] = row["truth_l2_district_type"] = row["truth_l2_district_name"] = ""
         answers = full_answers(rows)
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_scorer(write_packet(rows, tmp), answers=answers, tmp=tmp)
+            path = write_packet(rows, tmp)
+            result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("vacuous backlog gate", result.stderr)
 
