@@ -9,6 +9,7 @@ import pytest
 
 from scripts.configs.candidacy import CANDIDACY_CONFIG
 from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
+from scripts.configs.person import PERSON_CONFIG
 from scripts.pipeline import (
     build_settings,
     load_and_prepare,
@@ -574,10 +575,11 @@ def test_predict_and_cluster_returns_empty_frames_when_no_predictions():
     linker.inference.predict.return_value.physical_name = "preds"
     linker._db_api._con.execute.return_value.fetchone.return_value = [0]
 
-    pairwise, clustered = predict_and_cluster(linker, CANDIDACY_CONFIG)
+    pairwise, clustered, filtered = predict_and_cluster(linker, CANDIDACY_CONFIG)
 
     assert pairwise.empty
     assert clustered.empty
+    assert filtered.empty
 
 
 # --- save_results: the list-column JSON serializer ----------------------------
@@ -624,7 +626,7 @@ def test_save_results_serializes_list_columns_to_json(tmp_path, cell, expected):
     pairwise, clustered = _saveable_frames([cell, np.array(["x"])])
 
     # linker is only used for the diagnostic charts, which are best-effort
-    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+    save_results(MagicMock(), pairwise, clustered, pd.DataFrame(), tmp_path, CANDIDACY_CONFIG)
 
     written = pd.read_csv(tmp_path / CANDIDACY_CONFIG.clustered_output_name)
     assert written["first_name_aliases"].iloc[0] == expected
@@ -634,7 +636,124 @@ def test_save_results_writes_expected_files(tmp_path):
     pairwise, clustered = _saveable_frames([["bob"], ["amy"]])
 
     # linker is only used for the diagnostic charts, which are best-effort
-    save_results(MagicMock(), pairwise, clustered, tmp_path, CANDIDACY_CONFIG)
+    save_results(MagicMock(), pairwise, clustered, pd.DataFrame(), tmp_path, CANDIDACY_CONFIG)
 
     assert (tmp_path / "pairwise_predictions.csv").exists()
     assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()
+
+
+# ── Deterministic pregroups ──
+
+
+def test_build_settings_leaves_other_entities_link_only():
+    """link_type defaults to the pre-existing behavior. The person side is
+    covered by the within-HubSpot dedupe test, which link_only cannot pass."""
+    for config in (CANDIDACY_CONFIG, ELECTED_OFFICIAL_CONFIG):
+        assert build_settings(config).link_type == "link_only"
+
+
+# ── Person E2E smoke tests ──
+
+
+@pytest.fixture(scope="module")
+def person_results(tmp_path_factory):
+    """One person pipeline run shared by the smoke tests below."""
+    df = pd.read_csv(Path(__file__).parent / "dummy_data_people.csv", dtype=str)
+    out = tmp_path_factory.mktemp("person")
+    pairwise_df, clustered_df = run(input_df=df, output_dir=out, config=PERSON_CONFIG)
+    return pairwise_df, clustered_df, out
+
+
+def _pair_rows(pairwise_df: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
+    return pairwise_df[(pairwise_df["unique_id_l"].isin([a, b])) & (pairwise_df["unique_id_r"].isin([a, b]))]
+
+
+def test_person_pipeline_smoke(person_results):
+    pairwise_df, clustered_df, out = person_results
+
+    assert len(pairwise_df) > 0
+    assert (out / "clustered_people.csv").exists()
+    for col in ("source_name", "pregroup_id", "suffix_token", "br_candidate_id"):
+        assert col in clustered_df.columns, f"Missing retained column: {col}"
+
+
+def test_person_pipeline_dedupes_within_hubspot(person_results):
+    """link_and_dedupe: two HubSpot contacts of one person must cluster."""
+    _, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert cluster_of["hubspot|2"] == cluster_of["hubspot|3"]
+
+
+def test_person_pipeline_rejects_household_pairs(person_results):
+    """Spouses share an email and a phone; only the first name separates them."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert _pair_rows(pairwise_df, "hubspot|10", "hubspot|11").empty
+    assert cluster_of["hubspot|10"] != cluster_of["hubspot|11"]
+
+
+def test_person_pipeline_scores_suffix_conflicts_instead_of_dropping_them(person_results):
+    """A Jr/Sr pair sharing a family phone stays scored, and carries both tokens
+    so the precision audit can size the class. No suffix cannot-link ships: of
+    five hand-verified suffix-conflict pairs, three were the same person."""
+    pairwise_df, _, _ = person_results
+
+    pair = _pair_rows(pairwise_df, "ballotready|20", "techspeed|21")
+    assert len(pair) == 1
+    row = pair.iloc[0]
+    # pd.isna rather than a set containing None: DuckDB's fetchdf may render
+    # SQL NULL as None, nan, or pd.NA depending on versions.
+    assert pd.isna(row["suffix_token_l"]) or pd.isna(row["suffix_token_r"])
+    assert "JR" in {row["suffix_token_l"], row["suffix_token_r"]}
+
+
+def test_person_pipeline_rejects_two_ballotready_people(person_results):
+    """Distinct br_candidate_ids are a cannot-link even on identical contacts."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert _pair_rows(pairwise_df, "ballotready|30", "ballotready|31").empty
+    assert cluster_of["ballotready|30"] != cluster_of["ballotready|31"]
+
+
+def test_person_pipeline_rejects_short_name_collisions(person_results):
+    """samuel and sue share a household phone but no alias or token.
+
+    Short first names sit close under edit distance, so this is the band where
+    a looser first-name level would start merging different people.
+    """
+    pairwise_df, _, _ = person_results
+
+    assert _pair_rows(pairwise_df, "hubspot|70", "techspeed|70").empty
+
+
+def test_person_pipeline_keeps_initial_changing_nicknames(person_results):
+    """margaret/peggy share no prefix, so only the alias rule can block them."""
+    pairwise_df, _, _ = person_results
+
+    assert not _pair_rows(pairwise_df, "hubspot|50", "techspeed|50").empty
+
+
+def test_person_pipeline_name_only_record_stays_a_singleton(person_results):
+    _, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    solo = cluster_of[cluster_of == cluster_of["techspeed|110"]]
+    assert list(solo.index) == ["techspeed|110"]
+
+
+def test_person_pipeline_admits_sibling_nickname_collision(person_results):
+    """Pins an accepted hazard: christopher and christine both alias to "chris",
+    so siblings on one household phone score ~0.998 and merge into one person.
+    A config change that alters this should surface here as a decision, not a
+    surprise."""
+    pairwise_df, clustered_df, _ = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+
+    assert not _pair_rows(pairwise_df, "hubspot|60", "hubspot|61").empty
+    assert cluster_of["hubspot|60"] == cluster_of["hubspot|61"], (
+        "the accepted christopher/christine merge stopped happening; if that is "
+        "the intent, update this test and the hazard note rather than deleting them"
+    )
