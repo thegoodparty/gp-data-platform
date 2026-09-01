@@ -193,9 +193,11 @@ class _FakeConnection:
 class _FakeDatabricksClient:
     def __init__(self, query_result: pd.DataFrame | None = None):
         self.executed: list[tuple[str, list | None]] = []
+        self.queries: list[str] = []
         self._query_result = pd.DataFrame() if query_result is None else query_result
 
     def execute_query(self, sql: str) -> pd.DataFrame:
+        self.queries.append(sql)
         return self._query_result
 
     def connect(self):
@@ -204,6 +206,36 @@ class _FakeDatabricksClient:
 
 def _calls(client: _FakeDatabricksClient, fragment: str) -> list:
     return [c for c in client.executed if fragment in c[0].lower()]
+
+
+class TestPriorAnswersRead:
+    def test_maps_null_district_to_none_and_pins_query_shape(self):
+        """Failure this catches: pandas surfacing a SQL NULL district as NaN
+        (which would make every prior abstain look like a match to the write
+        policy, silencing the withdrawal hold), the query losing its pending
+        semi-join (the read would scan unbounded history again), or the
+        tie-break drifting from the staging model's abstain-wins ordering,
+        which must stay character-identical or "latest answer" silently
+        changes meaning.
+        """
+        ts_old = datetime(2026, 8, 31, 20, 0, 0, tzinfo=UTC)
+        ts_new = datetime(2026, 9, 1, 20, 0, 0, tzinfo=UTC)
+        rows = pd.DataFrame(
+            {
+                "br_database_id": [1, 2],
+                "l2_district_name": [float("nan"), "District 3"],
+                "attempted_at": [ts_old, ts_new],
+            }
+        )
+        client = _FakeDatabricksClient(query_result=rows)
+
+        out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), "cat.dbt.pending")
+
+        assert out[1] == (None, ts_old)
+        assert out[2] == ("District 3", ts_new)
+        (sql,) = client.queries
+        assert "in (select br_database_id from cat.dbt.pending)" in sql
+        assert "order by attempted_at desc, l2_district_name nulls first" in sql
 
 
 class TestQuarantineEligibility:
