@@ -77,6 +77,16 @@ def test_pat_fallback_without_m2m(monkeypatch):
     assert "credentials_provider" not in recorded
 
 
+def test_full_url_hostname_is_normalized(monkeypatch):
+    """Failure this catches: a full-URL DATABRICKS_SERVER_HOSTNAME (a natural
+    copy-paste from the workspace address bar) becoming https://https://...
+    inside the M2M Config and failing OAuth discovery."""
+    monkeypatch.delenv("DATABRICKS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("DATABRICKS_CLIENT_SECRET", raising=False)
+    client = DatabricksClient(server_hostname="https://xyz.cloud.databricks.com/", http_path="p", access_token="tok")
+    assert client.server_hostname == "xyz.cloud.databricks.com"
+
+
 def test_no_credentials_at_all_raises(monkeypatch):
     """Failure this catches: an error that names only one of the two auth
     paths, leaving an operator to guess which env vars to set."""

@@ -29,6 +29,11 @@ class DatabricksClient:
         self.logger = get_logger(__name__)
         
         self.server_hostname = server_hostname or os.getenv('DATABRICKS_SERVER_HOSTNAME')
+        # Bare hostname everywhere downstream: sql.connect wants no scheme, and the
+        # M2M Config prepends https:// itself -- a full-URL env value would
+        # otherwise become https://https://... and fail the OAuth discovery.
+        if self.server_hostname:
+            self.server_hostname = self.server_hostname.removeprefix('https://').removeprefix('http://').rstrip('/')
         self.http_path = http_path or os.getenv('DATABRICKS_HTTP_PATH')
         self.access_token = access_token or os.getenv('DATABRICKS_API_KEY')
 
