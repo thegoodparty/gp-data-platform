@@ -474,12 +474,15 @@ models:
                 to: ref("stg_airbyte_source__ballotready_api_race")
                 field: database_id
     tests:
+      # One row per (zip, office), full stop: m_election_api__zip_to_position
+      # sums voters_in_zip_district per pair, so a second row -- e.g. one
+      # office joining two spellings of one district -- silently double-counts
+      # that district's voters in pct_districtzip_to_zip. Strictly tighter
+      # than the previous (zip, type, name, office) key.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
               - zip_code
-              - district_type
-              - district_name
               - br_database_id
       - dbt_utils.expression_is_true:
           arguments:
