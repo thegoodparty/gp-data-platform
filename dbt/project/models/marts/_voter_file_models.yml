@@ -10,7 +10,12 @@ models:
   - name: int__l2_nationwide_uniform_w_haystaq
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
-      tags: ["monthly"]
+      # Deliberately untagged so this advances with int__l2_nationwide_uniform,
+      # which carries no tag and so rebuilds on every recurring build. Tagging
+      # this monthly held it to the 15th while the district aggregations moved
+      # every 12 hours, so an L2 load landing mid-month reached District but not
+      # the Voter mart, and every district it newly named served a voter count
+      # with no linked voters until the next monthly run.
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like "AK,AL" for iterative runs
