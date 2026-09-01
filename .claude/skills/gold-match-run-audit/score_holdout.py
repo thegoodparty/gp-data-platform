@@ -8,9 +8,12 @@ against a run's answers JSON and the adjudicated holdout packet CSV. See
 
 import argparse
 import csv
+import hashlib
 import json
 import statistics
+import sys
 from collections import defaultdict
+from pathlib import Path
 
 # The one number this script owns: the ratified served-gate ceiling. The backlog
 # gate is strict superiority, so it carries no threshold of its own.
@@ -199,27 +202,63 @@ def served_gate(challenger_scores, jan_scores, served_bids):
     return net <= SERVED_NET_REGRESSION_MAX, net, regressions, improvements
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--truth", required=True, help="adjudicated holdout packet CSV")
     parser.add_argument("--answers", help="challenger answers JSON; omit to score January itself")
+    parser.add_argument("--meta", help="the answers file's own run meta JSON; required with --answers")
     parser.add_argument("--label", required=True, help="printed in the report header")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.answers and not args.meta:
+        parser.error("--meta is required when --answers is given")
 
     rows = load_truth(args.truth)
     answers = load_answers(args.answers)
     if answers is not None:
-        # Arm artifacts cover all 120 frozen offices by construction; a gap means
-        # the wrong file (e.g. a production run's rows, which structurally lack
-        # the served stratum) and would otherwise score as mass abstention.
-        missing = [
-            r["br_database_id"]
-            for r in rows
-            if r["truth_verdict"] != "UNDETERMINABLE" and int(r["br_database_id"]) not in answers
-        ]
-        if missing:
+        # Bind this pairing to the run that produced it before trusting it: a bare
+        # answers path plus a label carries no evidence it was scored against THIS
+        # truth file, or that its office count matches the run it claims to be.
+        meta = json.load(open(args.meta))
+        truth_sha256 = hashlib.sha256(Path(args.truth).read_bytes()).hexdigest()
+        if truth_sha256 != meta["instrument"]["sha256"]:
             raise ValueError(
-                f"answers file missing {len(missing)} scorable office(s), e.g. {missing[:5]}; "
+                f"instrument sha256 mismatch: {args.truth} does not match the sha256 "
+                f"recorded in {args.meta}; refusing an unbound truth/answers pairing"
+            )
+        if len(answers) != meta["offices"]:
+            raise ValueError(
+                f"answers count {len(answers)} != meta offices {meta['offices']} in {args.meta}; "
+                "refusing an unbound truth/answers pairing"
+            )
+        recorded_answers_sha = meta.get("answers_sha256")
+        if recorded_answers_sha is not None:
+            answers_sha256 = hashlib.sha256(Path(args.answers).read_bytes()).hexdigest()
+            if answers_sha256 != recorded_answers_sha:
+                raise ValueError(
+                    f"answers sha256 mismatch: {args.answers} does not match the sha256 recorded "
+                    f"in {args.meta}; refusing an unbound truth/answers pairing"
+                )
+        else:
+            # Metas written before answers_sha256 existed (the archived gate arms)
+            # bind only by instrument hash and office count; same-size arms are
+            # indistinguishable that way, so say so out loud.
+            print("Meta binding: WEAK (legacy meta carries no answers_sha256)")
+        print(
+            f"Meta binding: arm={meta['arm']}, config={meta['model_config']}, school_gate="
+            f"{'on' if meta['school_whole_assertion_enabled'] else 'off'}"
+        )
+
+        # Arm artifacts cover EVERY packet office by construction (UNDETERMINABLE
+        # included); exact set equality also catches a surplus id that a
+        # missing-only check would let through.
+        packet_ids = {int(r["br_database_id"]) for r in rows}
+        missing = sorted(packet_ids - set(answers))
+        surplus = sorted(set(answers) - packet_ids)
+        if missing or surplus:
+            raise ValueError(
+                f"answers file missing {len(missing)} office(s), e.g. {missing[:5]}, "
+                f"surplus {len(surplus)}, e.g. {surplus[:5]}; "
                 "score complete holdout-arm artifacts, never a run's own rows"
             )
 
@@ -258,7 +297,9 @@ def main():
         f"{regressions} regressions, {improvements} improvements, net {net} -> "
         f"{'PASS' if served_pass else 'FAIL'}"
     )
-    print(f"Verdict: {'PASS' if backlog_pass and served_pass else 'FAIL'}")
+    verdict_pass = backlog_pass and served_pass
+    print(f"Verdict: {'PASS' if verdict_pass else 'FAIL'}")
+    sys.exit(0 if verdict_pass else 1)
 
 
 if __name__ == "__main__":
