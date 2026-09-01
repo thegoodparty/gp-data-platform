@@ -9,7 +9,7 @@ prompt wrap are inherited unchanged, by import, from `backlog_run`.
 
     python -m stitch_golden_data.prod_gold_data.daily_run \\
         --run-key 2026-09-02T14:30:00+00:00 [--batch-size N] \\
-        [--embedding-batch-size N] [--out-dir P]
+        [--embedding-batch-size N]
 """
 
 import argparse
@@ -249,11 +249,13 @@ async def _match_cohort(
         batch = offices[batch_start : batch_start + batch_size]
         batch_results = await asyncio.gather(*(_one(office) for office in batch))
         results.extend(r for r in batch_results if r is not None)
+        # Strictly greater, per the spec's "more than 10 quarantines aborts":
+        # exactly QUARANTINE_CIRCUIT_BREAKER is the maximum tolerated count.
         if len(quarantined) > QUARANTINE_CIRCUIT_BREAKER:
             raise RuntimeError(
                 f"{len(quarantined)} office(s) quarantined for a response-shape failure in one run, "
-                f"over the circuit breaker of {QUARANTINE_CIRCUIT_BREAKER}; a systemic failure must fail "
-                "loud, not silently suppress a wave (write-at-end: nothing has landed yet)"
+                f"more than the {QUARANTINE_CIRCUIT_BREAKER} the circuit breaker tolerates; a systemic "
+                "failure must fail loud, not silently suppress a wave (write-at-end: nothing has landed yet)"
             )
 
     return results, quarantined

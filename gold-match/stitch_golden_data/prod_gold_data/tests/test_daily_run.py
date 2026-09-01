@@ -165,6 +165,20 @@ class TestMatchLoopQuarantine:
         with pytest.raises(RuntimeError, match="circuit breaker"):
             asyncio.run(daily_run._match_cohort(matcher, offices, batch_size=n))
 
+    def test_exactly_breaker_count_is_tolerated(self):
+        """Pins the boundary's other side: exactly QUARANTINE_CIRCUIT_BREAKER
+        quarantines is the maximum TOLERATED count per the spec's "more than
+        10 aborts" -- the run finishes and records them, it does not abort.
+        """
+        n = daily_run.QUARANTINE_CIRCUIT_BREAKER
+        offices = [_FakeOffice(i) for i in range(1, n + 1)]
+        matcher = _FakeMatcher({i: StructuredOutputError("bad shape") for i in range(1, n + 1)})
+
+        results, quarantined = asyncio.run(daily_run._match_cohort(matcher, offices, batch_size=n))
+
+        assert results == []
+        assert len(quarantined) == n
+
 
 # -- Quarantine-table fakes: a fake DatabricksClient recording the literal
 # SQL and bound params, the same contract the writer's own tests hold it
@@ -206,6 +220,40 @@ class _FakeDatabricksClient:
 
 def _calls(client: _FakeDatabricksClient, fragment: str) -> list:
     return [c for c in client.executed if fragment in c[0].lower()]
+
+
+class TestPendingWrap:
+    def test_wrap_filters_and_captures_both_counts(self):
+        """Failure this catches: the wrap's filter sequencing or its captured
+        counts drifting from what actually got dropped -- those two numbers
+        are written verbatim to the run log, so a miscount is a false audit
+        record, and a mis-sequenced filter double-drops or misses offices.
+        """
+        boundary = daily_run.CUTOVER_BOUNDARY
+
+        class _PendingOnlyMatcher:
+            def load_pending_offices(self, states=None, limit=None):
+                return pd.DataFrame(
+                    {
+                        "br_database_id": [1, 2, 3, 4],
+                        "state": ["CA", "CA", "TX", "TX"],
+                    }
+                )
+
+        matcher = _PendingOnlyMatcher()
+        prior_attempted_at = {
+            2: boundary - timedelta(seconds=1),  # pre-cutover: boundary-dropped
+            3: boundary,  # exactly at the key: Run B's own, stays
+        }
+        captured = daily_run._install_daily_pending_wrap(
+            matcher, suppressed_ids={1}, prior_attempted_at=prior_attempted_at
+        )
+
+        df = matcher.load_pending_offices()
+
+        assert list(df["br_database_id"]) == [3, 4]  # 4 never attempted, stays
+        assert captured["quarantine_dropped"] == 1
+        assert captured["boundary_dropped"] == 1
 
 
 class TestPriorAnswersRead:
