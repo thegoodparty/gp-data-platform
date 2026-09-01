@@ -54,6 +54,10 @@ with
             {{ normalize_l2_district_name("district_name") }}
             as normalized_district_name
         from {{ ref("int__l2_district_universe") }}
+        -- A name that is only an (EST.) marker or zero padding normalizes to '';
+        -- one lone such row must not mark every blank-normalizing label alive.
+        -- Same blank class int__l2_block_district_map guards against.
+        where {{ normalize_l2_district_name("district_name") }} != ''
         group by
             state_postal_code,
             district_type,
