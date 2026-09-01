@@ -206,7 +206,11 @@ models:
     description: >
       One row per BallotReady office needing an L2 district match attempt:
       never attempted, last attempt found nothing more than 30 days ago, or
-      matched to a district int__l2_district_universe no longer carries.
+      matched to a district int__l2_district_universe no longer carries. A
+      label whose normalized spelling still resolves to exactly one universe
+      row is NOT dead -- L2 respells districts routinely, serving resolves
+      those spellings, and re-matching such an office risks erasing a working
+      link; an ambiguous respelling stays dead so a re-match decides.
       Computed from llm_l2_br_match_results, a dbt source written only by the
       matcher. The matcher reads this list to build its next batch. Reads
       stg_airbyte_source__ballotready_api_position directly, not

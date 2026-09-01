@@ -26,7 +26,13 @@ with
     -- same rule.
     latest_attempt as (
         select
-            br_database_id, l2_state, l2_district_type, l2_district_name, attempted_at
+            br_database_id,
+            l2_state,
+            l2_district_type,
+            l2_district_name,
+            attempted_at,
+            {{ normalize_l2_district_name("l2_district_name") }}
+            as normalized_district_name
         from {{ source("model_predictions", "llm_l2_br_match_results") }}
         qualify
             row_number() over (
@@ -34,6 +40,25 @@ with
                 order by attempted_at desc, l2_district_name nulls first
             )
             = 1
+    ),
+
+    -- A label L2 merely respelled is not dead: serving already resolves those
+    -- spellings, so re-matching the office can only lose information (an abstain
+    -- erases a link that works). Only normalized keys carried by exactly one
+    -- current universe row count; an ambiguous respelling (same-name twins) stays
+    -- dead so a re-match decides which district the office means.
+    universe_normalized as (
+        select
+            state_postal_code,
+            district_type,
+            {{ normalize_l2_district_name("district_name") }}
+            as normalized_district_name
+        from {{ ref("int__l2_district_universe") }}
+        group by
+            state_postal_code,
+            district_type,
+            {{ normalize_l2_district_name("district_name") }}
+        having count(*) = 1
     ),
 
     -- Real districts only: the synthetic State row is emitted per state
@@ -64,6 +89,13 @@ left join
     and latest_attempt.l2_state = br_offices.state
     and latest_attempt.l2_district_type = universe.district_type
     and latest_attempt.l2_district_name = universe.district_name
+left join
+    universe_normalized
+    on latest_attempt.l2_state = universe_normalized.state_postal_code
+    and latest_attempt.l2_state = br_offices.state
+    and latest_attempt.l2_district_type = universe_normalized.district_type
+    and latest_attempt.normalized_district_name
+    = universe_normalized.normalized_district_name
 where
     (
         -- A null attempted_at (never attempted) must reopen immediately, so the
@@ -75,6 +107,7 @@ where
     or (
         latest_attempt.l2_district_name is not null
         and universe.district_name is null
+        and universe_normalized.normalized_district_name is null
         -- Without this, a stalled L2 load for one state would flood every
         -- matched office there back onto the list.
         and br_offices.state in (select state_postal_code from states_in_universe)
