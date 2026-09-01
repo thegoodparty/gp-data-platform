@@ -60,7 +60,7 @@ with
             br_database_id,
             lower(l2_district_type) as l2_district_type,
             lower(l2_district_name) as l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from llm_attempts
         where is_matched
     ),
     -- Override rows the LLM did not already place at the same district: the
