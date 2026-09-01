@@ -1,14 +1,17 @@
--- Viability 2.0 -> HubSpot Company import file (DATA-1976). A dbt *analysis*:
--- compiled and schema-validated, never materialized. Export the result as CSV and
--- import into HubSpot Companies matching on Record ID.
+{{ config(materialized="view", tblproperties={}) }}
+
+-- Viability 2.0 -> HubSpot Company import feed (DATA-1976). Companion to
+-- `candidacy_hubspot`: that feed CREATES contacts already carrying a score, this
+-- one backfills the score onto companies that exist. Match on Record ID.
 --
--- Score only, Company only. The five model inputs are deliberately not written:
--- gp-api reads incumbent and number_of_opponents back OUT of HubSpot via webhook
--- (omni `crm.types.ts`), so writing them here would overwrite the product-owned
--- inputs that feed the model.
+-- Score only. The five model inputs are deliberately not written: gp-api reads
+-- incumbent and number_of_opponents back OUT of HubSpot via webhook (omni
+-- `crm.types.ts`), so writing them would overwrite the inputs feeding the model.
 --
--- Compile against prod. The refs follow your target, so a dev compile builds the
--- file from your personal schema.
+-- A view, against the schema's table default: ops reads it immediately before an
+-- import and wants current scores. Runs in under a second, so the sibling feeds'
+-- reason for materializing (heavy anti-joins re-run by every test) does not apply.
+-- Empty tblproperties: the schema's Delta column mapping is meaningless on a view.
 with
     exploded as (
         select
@@ -67,8 +70,11 @@ with
 
 -- INNER join: a Record ID missing from the ingest no longer exists in HubSpot and
 -- would only error on import. round() so float noise is not read as a change.
-select o.record_id as `Record ID`, o.viability_score as `Viability 2.0`
+select
+    o.record_id as `Record ID`,
+    o.viability_score as viability_2_0,
+    t.hs_score as hubspot_current_value,
+    current_timestamp() as added_to_mart_at
 from ours as o
 join theirs as t on o.record_id = t.record_id
 where t.hs_score is null or round(t.hs_score, 2) <> round(o.viability_score, 2)
-order by o.record_id

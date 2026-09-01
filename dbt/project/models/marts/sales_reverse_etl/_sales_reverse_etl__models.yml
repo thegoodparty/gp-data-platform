@@ -138,3 +138,40 @@ models:
           so those rows land at midnight and sorting on this column ties within a day.
         data_tests:
           - not_null
+
+  - name: company_viability_hubspot
+    description: >
+      Viability 2.0 backfill onto EXISTING HubSpot companies (reverse-ETL sendable
+      mart). One row per HubSpot company Record ID whose stored value is blank or
+      differs. Companion to candidacy_hubspot, which creates net-new contacts already
+      carrying a score; this feed updates records that exist. Score only: the five
+      model inputs are deliberately not written, because gp-api reads incumbent and
+      number_of_opponents back out of HubSpot via webhook.
+    columns:
+      - name: Record ID
+        # Space in the name: dbt emits the identifier unquoted in generic tests
+        # without this, which is a syntax error.
+        quote: true
+        description: HubSpot company id, the import match key and the model grain.
+        data_tests:
+          - unique
+          - not_null
+      - name: viability_2_0
+        description: >
+          Viability 2.0 score from candidacy_scored. Where one company id is carried by
+          several candidacies (2025-archive id reuse), the nearest-upcoming election wins.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: hubspot_current_value
+        description: >
+          Value stored in HubSpot when the feed was built; null where the property is
+          unset. Kept so the diff is auditable after the import. Never equals
+          viability_2_0 by construction.
+      - name: added_to_mart_at
+        description: Build timestamp of this row.
+        data_tests:
+          - not_null
