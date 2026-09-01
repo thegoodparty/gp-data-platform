@@ -71,6 +71,14 @@ _RUN_ARTIFACT_FILENAMES = ("manifest.json", "answers.json", "run-record.json")
 
 
 def _git_state() -> dict:
+    # The daily container image carries no .git and no git binary; GIT_SHA
+    # (baked in at build) is preferred whenever set, so this probe is never
+    # reached there. The git probe below stays for local/dev use of this
+    # (supervised) entry point, run from a real checkout.
+    git_sha = os.environ.get("GIT_SHA")
+    if git_sha:
+        return {"sha": git_sha, "dirty_worktree": False}
+
     repo_root = Path(__file__).resolve().parents[3]
 
     def git(*args: str) -> str:
