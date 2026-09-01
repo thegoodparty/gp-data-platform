@@ -34,7 +34,12 @@ class DatabricksClient:
 
         # M2M (client id + secret) supersedes the PAT, which retires ~2026-11-24;
         # either credential path is fine, so only their total absence is an error.
-        has_m2m = bool(os.getenv('DATABRICKS_CLIENT_ID') and os.getenv('DATABRICKS_CLIENT_SECRET'))
+        # Captured here, like the PAT, so a reconnect after close() uses the
+        # credentials this instance was constructed with, never a drifted env.
+        self._client_id = os.getenv('DATABRICKS_CLIENT_ID')
+        self._client_secret = os.getenv('DATABRICKS_CLIENT_SECRET')
+        self._m2m_provider = None
+        has_m2m = bool(self._client_id and self._client_secret)
 
         if not all([self.server_hostname, self.http_path]) or not (self.access_token or has_m2m):
             missing = []
@@ -49,6 +54,27 @@ class DatabricksClient:
         self.connection: Optional[Connection] = None
         self.logger.info("DatabricksClient initialized")
     
+    def _m2m_credentials_provider(self):
+        """M2M service principal; preferred over the PAT path, which retires with
+        the personal token (~2026-11). Config() probes the network at construction,
+        so it is built here, inside the callable the driver invokes during a real
+        connect -- mocked connects never pay it -- and cached, so a reconnect
+        after close() does not repeat the SDK's discovery round trip. auth_type
+        pins the SDK's auth resolution: without it, an ambient DATABRICKS_TOKEN
+        alongside the M2M pair is a hard "more than one authorization method"
+        error instead of the credentials we chose."""
+        if self._m2m_provider is None:
+            from databricks.sdk.core import Config, oauth_service_principal
+            self._m2m_provider = oauth_service_principal(
+                Config(
+                    host=f"https://{self.server_hostname}",
+                    client_id=self._client_id,
+                    client_secret=self._client_secret,
+                    auth_type="oauth-m2m",
+                )
+            )
+        return self._m2m_provider
+
     def connect(self) -> Connection:
         """
         Establish connection to Databricks.
@@ -62,25 +88,8 @@ class DatabricksClient:
                     "server_hostname": self.server_hostname,
                     "http_path": self.http_path,
                 }
-                client_id = os.getenv("DATABRICKS_CLIENT_ID")
-                client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
-                if client_id and client_secret:
-                    from databricks.sdk.core import Config, oauth_service_principal
-                    # M2M service principal; preferred over the PAT path, which retires
-                    # with the personal token (~2026-11). Config() probes the network at
-                    # construction, so it is built inside the callable the driver invokes
-                    # during a real connect -- mocked connects never pay it. auth_type
-                    # pins the SDK's auth resolution: without it, an ambient
-                    # DATABRICKS_TOKEN alongside the M2M pair is a hard "more than one
-                    # authorization method" error instead of the credentials we chose.
-                    kwargs["credentials_provider"] = lambda: oauth_service_principal(
-                        Config(
-                            host=f"https://{self.server_hostname}",
-                            client_id=client_id,
-                            client_secret=client_secret,
-                            auth_type="oauth-m2m",
-                        )
-                    )
+                if self._client_id and self._client_secret:
+                    kwargs["credentials_provider"] = self._m2m_credentials_provider
                 else:
                     kwargs["access_token"] = self.access_token
                 self.connection = sql.connect(**kwargs)
