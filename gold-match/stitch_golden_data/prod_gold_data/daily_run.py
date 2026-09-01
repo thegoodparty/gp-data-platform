@@ -18,7 +18,6 @@ import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pandas as pd
 
@@ -125,20 +124,26 @@ def boundary_filter(office_ids: list[int], prior_attempted_at: dict[int, datetim
 # -- Warehouse reads: one query feeds both filters above ---------------------
 
 
-def _read_prior_answers(databricks: DatabricksClient, before: datetime) -> dict[int, tuple[str | None, datetime]]:
-    """Newest row per office as of just before this run -- the same
+def _read_prior_answers(
+    databricks: DatabricksClient, before: datetime, pending_table: str
+) -> dict[int, tuple[str | None, datetime]]:
+    """Newest row per pending office as of just before this run -- the same
     qualify-newest-row shape as backlog_run's `_prior_answers_sha256`, but
     returning the district name and timestamp directly rather than a hash:
     `split_by_write_policy` and `boundary_filter` both derive from this one
     read, so there is only one place the "latest answer" definition can
-    drift.
+    drift. Semi-joined to the pending table because both consumers only ever
+    look up pending offices, and the results history grows without bound
+    while the daily cohort stays small.
     """
     boundary = before.isoformat(sep=" ", timespec="seconds")
     df = databricks.execute_query(
         f"""
         select br_database_id, l2_district_name, attempted_at
         from {RESULTS_TABLE_PATH}
-        where attempted_at < timestamp'{boundary}'
+        where
+            attempted_at < timestamp'{boundary}'
+            and br_database_id in (select br_database_id from {pending_table})
         qualify row_number() over (
             partition by br_database_id order by attempted_at desc, l2_district_name nulls first
         ) = 1
@@ -165,6 +170,13 @@ def _read_quarantine_eligibility(databricks: DatabricksClient, now: datetime) ->
     due: set[int] = set()
     for row in df.itertuples(index=False):
         bid = int(row.br_database_id)
+        # Fail closed: the DDL does not enforce the enum, and a misspelled
+        # manually seeded class must never default into the auto-retry path.
+        if row.retry_class not in ("auto", "held"):
+            raise RuntimeError(
+                f"quarantine row for office {bid} carries unknown retry_class "
+                f"{row.retry_class!r}; fix the row before running"
+            )
         if row.retry_class == "held" or row.last_failed_at > retry_cutoff:
             suppressed.add(bid)
         else:
@@ -180,7 +192,7 @@ def _install_daily_pending_wrap(
     needs anyway, and their counts are exactly what the run log persists.
     """
     original = matcher.load_pending_offices
-    captured = {"pending_df": None, "quarantine_dropped": 0, "boundary_dropped": 0}
+    captured = {"quarantine_dropped": 0, "boundary_dropped": 0}
 
     def wrapped(states=None, limit=None):
         df = original(states=states, limit=limit)
@@ -193,9 +205,7 @@ def _install_daily_pending_wrap(
             captured["boundary_dropped"] = len(dropped)
             if dropped:
                 df = df[~df["br_database_id"].isin(dropped)]
-        df = df.reset_index(drop=True)
-        captured["pending_df"] = df
-        return df
+        return df.reset_index(drop=True)
 
     matcher.load_pending_offices = wrapped
     return captured
@@ -273,8 +283,12 @@ def _write_quarantine_upserts(
     try:
         for bid, reason_code in quarantined_this_run:
             if bid in due_ids:
+                # released_at is null scopes the UPDATE to the ACTIVE episode:
+                # a released historical row for the same office must keep its
+                # own timestamps and release note.
                 cursor.execute(
-                    f"update {QUARANTINE_TABLE_PATH} set last_failed_at = ? where br_database_id = ?",
+                    f"update {QUARANTINE_TABLE_PATH} set last_failed_at = ? "
+                    "where br_database_id = ? and released_at is null",
                     [run_key, bid],
                 )
             else:
@@ -288,7 +302,8 @@ def _write_quarantine_upserts(
                 )
         for bid in sorted((due_ids & attempted_bids) - quarantined_bids):
             cursor.execute(
-                f"update {QUARANTINE_TABLE_PATH} set released_at = ?, release_note = ? where br_database_id = ?",
+                f"update {QUARANTINE_TABLE_PATH} set released_at = ?, release_note = ? "
+                "where br_database_id = ? and released_at is null",
                 [run_key, "auto: succeeded on retry", bid],
             )
     finally:
@@ -343,7 +358,7 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         _require_pinned_prompt(matcher)
 
-        prior_answers = _read_prior_answers(matcher.databricks, args.run_key)
+        prior_answers = _read_prior_answers(matcher.databricks, args.run_key, matcher.pending_offices_path)
         prior_district_by_bid = {bid: district for bid, (district, _at) in prior_answers.items()}
         prior_attempted_at = {bid: at for bid, (_district, at) in prior_answers.items()}
 
@@ -404,10 +419,9 @@ async def _run(args: argparse.Namespace) -> None:
             "withdrawals_held": len(held),
             "quarantined_this_run": len(quarantined),
         }
+        # stdout plus the warehouse run log are the durable records; a local
+        # file would die with the pod and could fail after the writes landed.
         print(f"daily run summary: {summary}", flush=True)
-        if args.out_dir is not None:
-            args.out_dir.mkdir(parents=True, exist_ok=True)
-            (args.out_dir / "daily-run-record.json").write_text(json.dumps(summary, indent=1))
     finally:
         flush_logs()
         try:
@@ -438,7 +452,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=100,
         help="District texts embedded per call (default: 100)",
     )
-    parser.add_argument("--out-dir", type=Path, default=None, help="Optional: write a debug summary JSON here")
     return parser.parse_args(argv)
 
 

@@ -228,6 +228,24 @@ class TestQuarantineEligibility:
         assert due == {101}
         assert suppressed == {202}
 
+    def test_unknown_retry_class_fails_closed(self):
+        """Failure this catches: a misspelled manually seeded class (the DDL
+        does not enforce the enum) silently defaulting into the auto-retry
+        path -- a 'held' office typo'd as 'hold' would get retried monthly.
+        """
+        now = datetime(2026, 9, 5, tzinfo=UTC)
+        rows = pd.DataFrame(
+            {
+                "br_database_id": [303],
+                "retry_class": ["hold"],
+                "last_failed_at": [now - timedelta(days=31)],
+            }
+        )
+        client = _FakeDatabricksClient(query_result=rows)
+
+        with pytest.raises(RuntimeError, match="unknown retry_class"):
+            daily_run._read_quarantine_eligibility(client, now)
+
 
 class TestQuarantineRelease:
     def test_successful_retry_releases_quarantine_row(self):
@@ -249,7 +267,30 @@ class TestQuarantineRelease:
         assert _calls(client, "released_at") == [
             (
                 f"update {daily_run.QUARANTINE_TABLE_PATH} "
-                "set released_at = ?, release_note = ? where br_database_id = ?",
+                "set released_at = ?, release_note = ? "
+                "where br_database_id = ? and released_at is null",
                 [run_key, "auto: succeeded on retry", 555],
             )
         ]
+
+    def test_updates_scope_to_active_episode_only(self):
+        """Failure this catches: a re-quarantined office's UPDATE touching its
+        RELEASED historical rows too, clobbering their timestamps and manual
+        release notes -- both quarantine UPDATEs must carry the active-episode
+        scope (released_at is null).
+        """
+        client = _FakeDatabricksClient()
+        run_key = datetime(2026, 9, 5, tzinfo=UTC)
+
+        daily_run._write_quarantine_upserts(
+            client,
+            quarantined_this_run=[(777, "structured_output_shape")],
+            due_ids={777},
+            attempted_bids={777},
+            run_key=run_key,
+        )
+
+        updates = _calls(client, "update ")
+        assert updates, "expected the due re-fail to re-stamp last_failed_at"
+        for sql, _params in updates:
+            assert "released_at is null" in sql
