@@ -13,7 +13,9 @@ def test_m2m_env_selects_credentials_provider(monkeypatch):
     M2M -- the path the unattended daily loop ships with."""
     monkeypatch.setenv("DATABRICKS_CLIENT_ID", "cid")
     monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "csec")
-    monkeypatch.delenv("DATABRICKS_API_KEY", raising=False)
+    # A PAT is PRESENT: precedence means M2M wins over it, not merely
+    # functions in its absence.
+    monkeypatch.setenv("DATABRICKS_API_KEY", "tok")
     recorded = {}
     monkeypatch.setattr(
         "shared.databricks_client.sql.connect",
@@ -25,6 +27,36 @@ def test_m2m_env_selects_credentials_provider(monkeypatch):
 
     assert "credentials_provider" in recorded
     assert "access_token" not in recorded
+
+
+def test_m2m_config_pins_oauth_auth_type(monkeypatch):
+    """Failure this catches: an ambient DATABRICKS_TOKEN (a real laptop state)
+    making the SDK raise 'more than one authorization method configured'
+    instead of using the credentials this client explicitly chose."""
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "cid")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "csec")
+    monkeypatch.setenv("DATABRICKS_TOKEN", "ambient")
+    recorded = {}
+    monkeypatch.setattr(
+        "shared.databricks_client.sql.connect",
+        lambda **kw: recorded.update(kw) or object(),
+    )
+
+    # Stub the SDK BEFORE connect(): its in-function import binds these names
+    # into the provider's closure, so the Config kwargs (auth_type included)
+    # become observable without any network.
+    import databricks.sdk.core as sdk_core
+
+    config_kwargs = {}
+    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
+
+    client = DatabricksClient(server_hostname="h", http_path="p")
+    client.connect()
+    recorded["credentials_provider"]()
+
+    assert config_kwargs["auth_type"] == "oauth-m2m"
+    assert config_kwargs["client_id"] == "cid"
 
 
 def test_pat_fallback_without_m2m(monkeypatch):

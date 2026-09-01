@@ -67,12 +67,19 @@ class DatabricksClient:
                 if client_id and client_secret:
                     from databricks.sdk.core import Config, oauth_service_principal
                     # M2M service principal; preferred over the PAT path, which retires
-                    # with the personal token (~2026-11). Config() itself probes the
-                    # host over the network at construction time, so it is built inside
-                    # the callable -- deferred until the driver actually asks for a
-                    # token, not on every connect().
+                    # with the personal token (~2026-11). Config() probes the network at
+                    # construction, so it is built inside the callable the driver invokes
+                    # during a real connect -- mocked connects never pay it. auth_type
+                    # pins the SDK's auth resolution: without it, an ambient
+                    # DATABRICKS_TOKEN alongside the M2M pair is a hard "more than one
+                    # authorization method" error instead of the credentials we chose.
                     kwargs["credentials_provider"] = lambda: oauth_service_principal(
-                        Config(host=f"https://{self.server_hostname}", client_id=client_id, client_secret=client_secret)
+                        Config(
+                            host=f"https://{self.server_hostname}",
+                            client_id=client_id,
+                            client_secret=client_secret,
+                            auth_type="oauth-m2m",
+                        )
                     )
                 else:
                     kwargs["access_token"] = self.access_token

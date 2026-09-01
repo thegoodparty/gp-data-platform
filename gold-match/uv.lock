@@ -436,7 +436,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.40.55,<2.0.0" },
     { name = "botocore", specifier = ">=1.40.55,<2.0.0" },
     { name = "braintrust", specifier = ">=0.17.0,<0.18.0" },
-    { name = "databricks-sdk", specifier = ">=0.133.0" },
+    { name = "databricks-sdk", specifier = ">=0.133.0,<1.0.0" },
     { name = "databricks-sql-connector", specifier = ">=4.4.0,<5.0.0" },
     { name = "google-genai", specifier = ">=1.56.0,<1.57.0" },
     { name = "httpx", specifier = ">=0.28.1" },
