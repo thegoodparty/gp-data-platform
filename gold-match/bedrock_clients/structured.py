@@ -127,7 +127,7 @@ class BedrockStructuredContentClient:
                 prompt_tokens * _PRICE_PER_MTOK["input"] + completion_tokens * _PRICE_PER_MTOK["output"]
             ) / 1_000_000
 
-    def _extract_and_validate(self, response: dict, response_schema: dict) -> dict:
+    def _extract_and_validate(self, response: dict, schema: dict) -> dict:
         stop_reason = response.get("stopReason")
         if stop_reason != "tool_use":
             raise StructuredOutputError(
@@ -139,7 +139,7 @@ class BedrockStructuredContentClient:
             raise StructuredOutputError("stopReason was tool_use but no toolUse block was returned")
         result = tool_use.get("input")
         try:
-            jsonschema.validate(instance=result, schema=response_schema)
+            jsonschema.validate(instance=result, schema=schema)
         except jsonschema.ValidationError as e:
             raise StructuredOutputError(f"tool input failed schema validation: {e.message}") from e
         return result
@@ -149,12 +149,19 @@ class BedrockStructuredContentClient:
         prompt: str,
         response_schema: dict,
         trace_name: str | None = None,
+        validation_schema: dict | None = None,
         **kwargs,
     ) -> dict:
         """Extra kwargs from the incumbent client's signature (model,
         temperature overrides, thinking levels) are accepted and ignored --
         this client is single-model, single-config by design; the resolved
-        config records what ran."""
+        config records what ran.
+
+        `validation_schema`, when given, is what the RESPONSE is judged
+        against; the request and the recorded fingerprint always carry
+        `response_schema`, which is billed prompt context and must not move
+        with an acceptance-policy change. Callers use this to accept more
+        than they ask for (e.g. tolerating a field nothing consumes)."""
         fingerprint = _schema_fingerprint(response_schema)
         with self._usage_lock:
             self._last_schema_fingerprint = fingerprint
@@ -198,7 +205,7 @@ class BedrockStructuredContentClient:
                 )
                 self._record_usage(response)
                 try:
-                    return self._extract_and_validate(response, response_schema)
+                    return self._extract_and_validate(response, validation_schema or response_schema)
                 except StructuredOutputError as e:
                     last_error = e
             raise last_error
