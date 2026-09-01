@@ -231,22 +231,34 @@ def main(argv=None):
                 f"answers count {len(answers)} != meta offices {meta['offices']} in {args.meta}; "
                 "refusing an unbound truth/answers pairing"
             )
+        recorded_answers_sha = meta.get("answers_sha256")
+        if recorded_answers_sha is not None:
+            answers_sha256 = hashlib.sha256(Path(args.answers).read_bytes()).hexdigest()
+            if answers_sha256 != recorded_answers_sha:
+                raise ValueError(
+                    f"answers sha256 mismatch: {args.answers} does not match the sha256 recorded "
+                    f"in {args.meta}; refusing an unbound truth/answers pairing"
+                )
+        else:
+            # Metas written before answers_sha256 existed (the archived gate arms)
+            # bind only by instrument hash and office count; same-size arms are
+            # indistinguishable that way, so say so out loud.
+            print("Meta binding: WEAK (legacy meta carries no answers_sha256)")
         print(
             f"Meta binding: arm={meta['arm']}, config={meta['model_config']}, school_gate="
             f"{'on' if meta['school_whole_assertion_enabled'] else 'off'}"
         )
 
-        # Arm artifacts cover all 120 frozen offices by construction; a gap means
-        # the wrong file (e.g. a production run's rows, which structurally lack
-        # the served stratum) and would otherwise score as mass abstention.
-        missing = [
-            r["br_database_id"]
-            for r in rows
-            if r["truth_verdict"] != "UNDETERMINABLE" and int(r["br_database_id"]) not in answers
-        ]
-        if missing:
+        # Arm artifacts cover EVERY packet office by construction (UNDETERMINABLE
+        # included); exact set equality also catches a surplus id that a
+        # missing-only check would let through.
+        packet_ids = {int(r["br_database_id"]) for r in rows}
+        missing = sorted(packet_ids - set(answers))
+        surplus = sorted(set(answers) - packet_ids)
+        if missing or surplus:
             raise ValueError(
-                f"answers file missing {len(missing)} scorable office(s), e.g. {missing[:5]}; "
+                f"answers file missing {len(missing)} office(s), e.g. {missing[:5]}, "
+                f"surplus {len(surplus)}, e.g. {surplus[:5]}; "
                 "score complete holdout-arm artifacts, never a run's own rows"
             )
 

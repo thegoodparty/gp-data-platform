@@ -1,9 +1,11 @@
 """Standing tests for the holdout gate's sole pass/fail authority.
 
 Shape mirrors l2-uniform-drift-remediator/tests: stdlib unittest, direct import
-for the pure functions, subprocess for the load-boundary and gate wiring. Run:
+for the pure functions, subprocess for the load-boundary and gate wiring. The
+sibling test_score_holdout_binding.py is pytest-style, so run the directory via
+pytest (which collects both styles), from the gold-match env:
 
-    python3 -m unittest discover .claude/skills/gold-match-run-audit/tests
+    cd gold-match && uv run pytest ../.claude/skills/gold-match-run-audit/tests
 """
 
 from __future__ import annotations
@@ -260,7 +262,9 @@ class GateWiring(unittest.TestCase):
             path = write_packet(rows, tmp)
             result = run_scorer(path, answers=answers, tmp=tmp, meta=build_meta(path, len(answers)))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("missing 1 scorable office", result.stderr)
+        # Exact set equality replaced the scorable-only check, so the message
+        # counts plain missing offices now.
+        self.assertIn("missing 1 office", result.stderr)
 
     def test_duplicate_answer_ids_refused_not_last_write_wins(self):
         rows = full_packet()
