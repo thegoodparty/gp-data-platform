@@ -98,6 +98,7 @@ class BedrockStructuredContentClient:
         self.total_completion_tokens = 0
         self.total_cost = 0.0
         self._last_schema_fingerprint: str | None = None
+        self._last_validation_fingerprint: str | None = None
         if bedrock_runtime is not None:
             self._client = bedrock_runtime
         else:
@@ -162,9 +163,15 @@ class BedrockStructuredContentClient:
         `response_schema`, which is billed prompt context and must not move
         with an acceptance-policy change. Callers use this to accept more
         than they ask for (e.g. tolerating a field nothing consumes)."""
+        # `is None`, not falsiness: {} is a valid accept-anything schema.
+        effective_validation_schema = response_schema if validation_schema is None else validation_schema
         fingerprint = _schema_fingerprint(response_schema)
         with self._usage_lock:
             self._last_schema_fingerprint = fingerprint
+            # Acceptance policy is part of a run's configuration: without this
+            # a relaxed run reads as configuration-equal to a strict one in
+            # run comparisons, though they accept different response shapes.
+            self._last_validation_fingerprint = _schema_fingerprint(effective_validation_schema)
         estimated_tokens = max(1, len(prompt) // 4) + self.max_tokens
 
         def attempt() -> dict:
@@ -205,7 +212,7 @@ class BedrockStructuredContentClient:
                 )
                 self._record_usage(response)
                 try:
-                    return self._extract_and_validate(response, validation_schema or response_schema)
+                    return self._extract_and_validate(response, effective_validation_schema)
                 except StructuredOutputError as e:
                     last_error = e
             raise last_error
@@ -236,6 +243,7 @@ class BedrockStructuredContentClient:
     def resolved_config(self) -> dict:
         with self._usage_lock:
             fingerprint = self._last_schema_fingerprint
+            validation_fingerprint = self._last_validation_fingerprint
         return {
             "provider": "bedrock",
             "region": self.region,
@@ -247,6 +255,7 @@ class BedrockStructuredContentClient:
             "tool_name": _TOOL_NAME,
             "output_shape_retries": _OUTPUT_SHAPE_RETRIES,
             "schema_fingerprint": fingerprint,
+            "validation_schema_fingerprint": validation_fingerprint,
             "max_concurrency": self.max_concurrency,
             "requests_per_minute": self.requests_per_minute,
             "tokens_per_minute": self.tokens_per_minute,

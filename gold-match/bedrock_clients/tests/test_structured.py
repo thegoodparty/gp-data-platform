@@ -274,7 +274,7 @@ def test_validation_schema_accepts_a_mangled_value_for_the_relaxed_field():
     assert out == payload
 
 
-def test_validation_schema_still_rejects_every_other_violation():
+def test_validation_schema_still_rejects_a_missing_consumed_field():
     """The relaxation must stay single-field: a response missing a CONSUMED
     field under the relaxed schema is still a technical failure, never a result."""
     client, stubber = make_client_and_stubber()
@@ -286,6 +286,45 @@ def test_validation_schema_still_rejects_every_other_violation():
         with pytest.raises(StructuredOutputError, match="schema"):
             llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
     stubber.assert_no_pending_responses()
+
+
+def test_resolved_config_records_the_effective_validation_fingerprint():
+    """A relaxed-acceptance run must not read as configuration-equal to a
+    strict run: the request fingerprint deliberately stays put, so a second
+    fingerprint has to carry the acceptance policy into run comparisons."""
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 1, "selection_confidence": 70}
+    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
+    cfg = llm.resolved_config()
+    assert cfg["validation_schema_fingerprint"] == _schema_fingerprint(RELAXED_SCHEMA)
+    assert cfg["validation_schema_fingerprint"] != cfg["schema_fingerprint"]
+
+
+def test_resolved_config_validation_fingerprint_defaults_to_the_request_schema():
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 2, "selection_confidence": 90}
+    stubber.add_response("converse", converse_response(payload), expected_converse("p"))
+    with stubber:
+        llm = make_llm(client)
+        llm.generate_structured_content(prompt="p", response_schema=SCHEMA)
+    cfg = llm.resolved_config()
+    assert cfg["validation_schema_fingerprint"] == cfg["schema_fingerprint"]
+
+
+def test_an_explicit_empty_validation_schema_is_honored():
+    """`{}` is a valid accept-anything JSON Schema; a falsy-coalescing `or`
+    would silently fall back to strict validation and spend a re-ask."""
+    client, stubber = make_client_and_stubber()
+    payload = {"unrelated": "shape"}
+    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        out = llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema={})
+    assert out == payload
+    assert llm.get_usage_stats()["api_calls"] == 1
 
 
 def test_validation_schema_never_reaches_the_request_or_the_fingerprint():
