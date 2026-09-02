@@ -841,13 +841,18 @@ models:
           Best-known personal email, carried from people.email, which picks one
           address per person by source precedence: gp_api > HubSpot > BR > BR
           officeholder > TechSpeed > TS officeholder (DDHQ carries none).
-          Populated for about half the feed, and for every person with a gp-api
-          user. Consumers resolve a HubSpot Contact with it, where email is the
-          unique key; the gp_api-first order disagrees with the address on the
-          Contact for about 1% of the people who have one, and those do not
-          resolve. PII: the API omits this column from every response and
-          rejects it in ?columns=, so reading it needs an explicit server-side
-          path.
+          Consumers resolve a HubSpot Contact with it, where email is the unique
+          key, and coverage splits sharply by cohort. Every person with a gp-api
+          user has an address and 96% of those match an existing Contact. Only
+          47% of people without a gp-api user have one at all, and only 32% of
+          those match, so about one in six of that cohort resolves; the rest
+          either cannot be reached or carry an address that mints a new Contact
+          instead of resolving an existing one. 14.1k addresses are also shared
+          by two or more people (up to 52 on one campaign inbox), which
+          collapses those people onto a single Contact. PII: the API omits this
+          column from every response and rejects it in ?columns=, so reading it
+          needs a purpose-built path, as campaign-strategy-context does for the
+          candidacy email.
       - name: is_pledged
         description: >
           Whether the person took the GoodParty pledge on any of their product
@@ -867,16 +872,25 @@ models:
           when the person's cluster maps to more than one gp-api user (people
           only makes the id scalar when it is unambiguous).
     tests:
-      # A person with a gp-api user must carry an email: signup collects one,
-      # and product emails triggered off person events resolve the HubSpot
-      # Contact by that address. coalesce(rate, 0) keeps this failing rather
-      # than passing on 0/0 if the gp-api linkage ever disappears.
+      # A person with a gp-api user must carry an email: signup collects one.
+      # coalesce(rate, 0) keeps this failing rather than passing on 0/0 if the
+      # gp-api linkage ever disappears.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is not null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
           name: person_gp_api_user_email_coverage
           config:
             severity: error
+      # The cohort with no gp-api user is the one an outbound nudge has no
+      # other address for, and its fill comes entirely from the vendor feeds.
+      # Warn rather than error: the rate drifts with those feeds, but a
+      # collapse means the coalesce broke. Currently 47%.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is null), 0), 0) >= 0.40"
+          name: person_no_gp_api_user_email_coverage
+          config:
+            severity: warn
 
   - name: m_election_api__office_holder
     description: >
