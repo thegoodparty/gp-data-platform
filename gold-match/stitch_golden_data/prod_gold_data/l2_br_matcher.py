@@ -379,6 +379,23 @@ _FAMILY_SUB_TYPES: dict[str, frozenset[str]] = {
     ),
     "county_subdivision": frozenset({"Township_Ward", "Town_Ward"}),
 }
+# Presence, not denial: the flagged-school fail-closed test asks "could a
+# school office match ANY school row in this state", which includes
+# office-bearing school types the denial sets deliberately omit (vocational
+# JVSD boards, elected superintendent districts).
+# School_Facilities_Improvement_District stays out: a facilities/bond area,
+# not a school-office electorate. Same macro coupling as the sets above.
+_SCHOOL_FAMILY_PRESENCE_TYPES: frozenset[str] = (
+    _FAMILY_PARENT_TYPES["school"]
+    | _FAMILY_SUB_TYPES["school"]
+    | frozenset(
+        {
+            "School_District_Vocational",
+            "County_Superintendent_of_Schools_District",
+            "Superintendent_of_Schools_District",
+        }
+    )
+)
 # Census geo_id length of the family's PARENT (whole-jurisdiction) id; a
 # genuine sub-unit id is strictly longer. Measured:
 # county 5 (G4020/X0005), place 7 (G4110/G4210/X0001), school 7
@@ -551,7 +568,7 @@ def _classify_office_geography(
         # the parent type (the pre-2026-09 rule) removed the correct
         # answer at population scale. Abstain only where the state
         # carries no school-family row at all.
-        school_rows = (_FAMILY_PARENT_TYPES["school"] | _FAMILY_SUB_TYPES["school"]) & set(state_district_types)
+        school_rows = _SCHOOL_FAMILY_PRESENCE_TYPES & set(state_district_types)
         if not school_rows:
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         return _GeographyVerdict(abstain=False, eligible_indices=None, verdict_sentence=None)

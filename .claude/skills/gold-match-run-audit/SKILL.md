@@ -333,7 +333,10 @@ with
     -- Per-state vocabulary the classifier reads. SUB types answer the slice
     -- zero-subtype abstain check for every family. PARENT types shape menu
     -- denial only, per the note above -- except school, where the flagged-
-    -- school arm also needs parent presence for its any-school-row test.
+    -- school arm's any-school-row test reads a PRESENCE list: the parent
+    -- types plus office-bearing school types the denial sets omit
+    -- (mirrors _SCHOOL_FAMILY_PRESENCE_TYPES; subs are counted separately
+    -- via has_school_subtype).
     state_vocab as (
         select
             upper(trim(state_postal_code)) as state_postal_code,
@@ -383,13 +386,16 @@ with
                             'Middle_School_District',
                             'Exempted_Village_School_District',
                             'Board_of_Education_District',
-                            'County_Board_of_Education_District'
+                            'County_Board_of_Education_District',
+                            'School_District_Vocational',
+                            'County_Superintendent_of_Schools_District',
+                            'Superintendent_of_Schools_District'
                         )
                         then 1
                     else 0
                 end
             )
-            = 1 as has_school_parenttype,
+            = 1 as has_school_presence_type,
             max(
                 case
                     when
@@ -438,7 +444,7 @@ with
                 when
                     geo_level.family = 'school'
                     and geo_level.has_unknown_boundaries
-                    and not (coalesce(sv.has_school_parenttype, false) or coalesce(sv.has_school_subtype, false))
+                    and not (coalesce(sv.has_school_presence_type, false) or coalesce(sv.has_school_subtype, false))
                     then 'school_flag_no_school_rows'
                 when
                     geo_level.family = 'school'
@@ -518,8 +524,9 @@ Read the printed rows, then interpret against these lines:
   the run had `--enable-school-whole-assertion` OFF (allowed only if that is
   what the operator intended; the flag is run config, not persisted, so this is
   how the audit infers the arm).
-- Withdrawals concentrated in `R1_judicial_abstain` and
-  `R2_slice_zero_subtype_abstain` are the filter design working as intended.
+- Withdrawals concentrated in `R1_judicial_abstain`,
+  `R2_slice_zero_subtype_abstain`, and `school_flag_no_school_rows` are the
+  filter design working as intended.
   Withdrawals in `pass_through` or a matched `R2_*` class are the ones to read
   row-by-row with the drill-down query above. The supervised cutover's review
   step counts served matches flipping to abstain — this is that count.
