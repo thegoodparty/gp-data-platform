@@ -292,7 +292,10 @@ def _write_quarantine_upserts(
             cursor.execute(
                 f"update {QUARANTINE_TABLE_PATH} set released_at = ?, release_note = ? "
                 "where br_database_id = ? and released_at is null",
-                [run_key, "auto: succeeded on retry", bid],
+                # "well-formed response", not "published": release records
+                # technical recovery only -- the write policy (a separate
+                # layer) may still hold the answer, e.g. a withdrawal.
+                [run_key, "auto: well-formed response on retry", bid],
             )
     finally:
         cursor.close()

@@ -446,7 +446,7 @@ class TestQuarantineRelease:
                 f"update {daily_run.QUARANTINE_TABLE_PATH} "
                 "set released_at = ?, release_note = ? "
                 "where br_database_id = ? and released_at is null",
-                [run_key, "auto: succeeded on retry", 555],
+                [run_key, "auto: well-formed response on retry", 555],
             )
         ]
 
