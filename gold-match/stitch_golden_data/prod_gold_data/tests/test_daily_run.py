@@ -450,6 +450,25 @@ class TestQuarantineRelease:
             )
         ]
 
+    def test_first_time_quarantine_inserts_a_new_row(self):
+        """Failure this catches: drift in the INSERT branch (column list,
+        param order, or the due-ids branch condition) for an office entering
+        quarantine for the first time -- the release tests only exercise the
+        UPDATE arms.
+        """
+        client = _FakeDatabricksClient()
+        run_key = datetime(2026, 9, 5, tzinfo=UTC)
+
+        daily_run._write_quarantine_upserts(
+            client, quarantined_this_run=[888], due_ids=set(), result_bids=set(), run_key=run_key
+        )
+
+        ((sql, params),) = client.executed
+        assert "insert into" in sql.lower()
+        assert "(br_database_id, reason_code, retry_class, first_failed_at, last_failed_at)" in sql
+        assert "'auto'" in sql
+        assert params == [888, daily_run.REASON_STRUCTURED_OUTPUT, run_key, run_key]
+
     def test_updates_scope_to_active_episode_only(self):
         """Failure this catches: a re-quarantined office's UPDATE touching its
         RELEASED historical rows too, clobbering their timestamps and manual
