@@ -836,6 +836,18 @@ models:
           - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
+      - name: email
+        description: >
+          Best-known personal email, carried from people.email, which picks one
+          address per person by source precedence: gp_api > HubSpot > BR > BR
+          officeholder > TechSpeed > TS officeholder (DDHQ carries none).
+          Populated for about half the feed, and for every person with a gp-api
+          user. Consumers resolve a HubSpot Contact with it, where email is the
+          unique key; the gp_api-first order disagrees with the address on the
+          Contact for about 1% of the people who have one, and those do not
+          resolve. PII: the API omits this column from every response and
+          rejects it in ?columns=, so reading it needs an explicit server-side
+          path.
       - name: is_pledged
         description: >
           Whether the person took the GoodParty pledge on any of their product
@@ -854,6 +866,17 @@ models:
           the public profile editor. Null when the person has no gp-api user, or
           when the person's cluster maps to more than one gp-api user (people
           only makes the id scalar when it is unambiguous).
+    tests:
+      # A person with a gp-api user must carry an email: signup collects one,
+      # and product emails triggered off person events resolve the HubSpot
+      # Contact by that address. coalesce(rate, 0) keeps this failing rather
+      # than passing on 0/0 if the gp-api linkage ever disappears.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is not null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
+          name: person_gp_api_user_email_coverage
+          config:
+            severity: error
 
   - name: m_election_api__office_holder
     description: >
