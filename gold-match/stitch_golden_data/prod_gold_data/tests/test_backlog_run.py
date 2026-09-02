@@ -19,6 +19,7 @@ from stitch_golden_data.prod_gold_data.backlog_run import (
     _assert_fresh_out_dir,
     _assert_no_later_runs,
     _assert_swap_succeeded,
+    _git_state,
     _maybe_install_exclusion,
     _parse_args,
     _prior_answers_sha256,
@@ -41,6 +42,20 @@ _REQUIRED_RUN_ARGS = ["--cohort-predicate-file", "x.sql", "--cohort-expected-cou
 
 def _match(br_database_id: int) -> MatchResult:
     return MatchResult(br_database_id, "DE", "House", f"District {br_database_id}", 90)
+
+
+class TestGitStateEnvPreference:
+    def test_git_sha_env_wins_over_the_git_probe(self, monkeypatch):
+        """Failure this catches: the container entry point (no .git, no git
+        binary in the image) shelling out to a nonexistent git anyway
+        instead of trusting GIT_SHA baked in at build.
+        """
+        monkeypatch.setenv("GIT_SHA", "deadbeef")
+        with patch("stitch_golden_data.prod_gold_data.backlog_run.subprocess.run") as mock_run:
+            state = _git_state()
+
+        mock_run.assert_not_called()
+        assert state == {"sha": "deadbeef", "dirty_worktree": False}
 
 
 class TestCohortFilter:
