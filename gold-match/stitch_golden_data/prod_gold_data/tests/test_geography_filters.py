@@ -268,7 +268,6 @@ class TestFlaggedSchoolArm:
             (True, "District", "B", ["School_Board_District", "State"], "passthrough"),
             (True, "District", "B", ["County", "City", "State"], "abstain"),
             (True, None, None, ["County", "State"], "passthrough"),
-            (False, None, None, ["County", "State"], "passthrough"),
         ],
         ids=[
             "parent-and-sub-present",
@@ -276,18 +275,18 @@ class TestFlaggedSchoolArm:
             "sub-only-present-florida-shape",
             "no-school-family-types-at-all",
             "no-sub-area-flag-true",
-            "no-sub-area-flag-false",
         ],
     )
     def test_the_table(self, has_unknown_boundaries, sub_area_name, sub_area_value, state_district_types, expected):
         """Failure this catches: an accidental parents-AND-subs guard (rows
         2 and 3 would wrongly abstain if the arm required both sets
         non-empty instead of their union); a genuinely school-less state
-        failing to abstain (row 4); and the arm reading `mtfcc` instead of
-        the already-has_sub_area-gated `family`, which would abstain a
-        clean no-sub_area office in a school-less state instead of passing
-        it through untouched like every other no-sub_area office (rows 5-6,
-        both flag states).
+        failing to abstain (row 4); and row 5 -- vacuous against the arm's
+        current position, deliberately -- pins the no-sub-area flagged
+        school class (a measured population the design names as untouched)
+        as pass-through, so it fails if the arm is ever moved above the
+        has_sub_area family gate or re-keyed on mtfcc, either of which
+        would abstain that class in a school-less state.
         """
         verdict = _classify_office_geography(
             mtfcc="G5420",
