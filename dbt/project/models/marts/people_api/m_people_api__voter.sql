@@ -146,6 +146,54 @@ with
             `Voters_StateVoterID` as `StateVoterID`,
             `ConsumerDataLL_Veteran` as `Veteran_Status`,
             `VoterParties_Change_Changed_Party` as `VoterParties_Change_Changed_Party`,
+            -- Union of five independent-leaning signals: any one flags the voter.
+            -- Computed inline rather than as a joined CTE like voter_propensity below,
+            -- because every input is already in this scan; a separate 219M-row
+            -- relation would buy a second full scan and a join for nothing.
+            --
+            -- coalesce on each predicate so a voter with no data on a signal is not
+            -- flagged, which is the right default for a union and also keeps the column
+            -- non-null. The party-change values are listed explicitly rather than
+            -- tested with `is not null`: the two are equivalent on today's domain, but
+            -- if L2 adds a longer lookback bucket `is not null` would silently widen
+            -- the definition while this list holds it at ~4 years.
+            coalesce(
+                `VoterParties_Change_Changed_Party` in (
+                    'Within Last 1 Year',
+                    'Between 1 and 2 Years Ago',
+                    'Between 2 and 4 Years Ago'
+                ),
+                false
+            )
+            or coalesce(`hf_ticket_splitter` = 'Ticket Splitter Often', false)
+            or coalesce(
+                `PRI_BLT_2020` = 'O'
+                or `PRI_BLT_2022` = 'O'
+                or `PRI_BLT_2024` = 'O'
+                or (
+                    (
+                        `PRI_BLT_2020` = 'D'
+                        or `PRI_BLT_2022` = 'D'
+                        or `PRI_BLT_2024` = 'D'
+                    )
+                    and (
+                        `PRI_BLT_2020` = 'R'
+                        or `PRI_BLT_2022` = 'R'
+                        or `PRI_BLT_2024` = 'R'
+                    )
+                ),
+                false
+            )
+            or coalesce(
+                `hs_trump_vs_harris_double_dislike`
+                >= {{ var("affinity_dislike_cut") }},
+                false
+            )
+            or coalesce(
+                `hs_partisanship_moderate_third_party_support`
+                >= {{ var("affinity_third_cut") }},
+                false
+            ) as `Voter_Independent_Affinity`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -260,6 +308,7 @@ with
             `Republican_Area`,
             `Republican_Convention_Member`,
             `Vote_By_Mail_Area`,
+            `hf_ideology_general`,
             `hf_most_important_policy_item`,
             loaded_at
         from source_nulled
@@ -353,6 +402,7 @@ with
             tbl_updated.`StateVoterID`,
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
+            tbl_updated.`Voter_Independent_Affinity`,
             case
                 when tbl_propensity.`prob_vote` is null
                 then 'Unknown'
@@ -428,6 +478,7 @@ with
             tbl_updated.`Republican_Area`,
             tbl_updated.`Republican_Convention_Member`,
             tbl_updated.`Vote_By_Mail_Area`,
+            tbl_updated.`hf_ideology_general`,
             tbl_updated.`hf_most_important_policy_item`,
             -- No first-seen history without the snapshot: both timestamps are the L2
             -- load time.

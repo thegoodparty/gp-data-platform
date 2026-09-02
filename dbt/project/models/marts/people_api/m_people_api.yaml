@@ -1,10 +1,13 @@
 version: 2
 
 # Pre-unload gate: run `dbt test --select m_people_api__voter m_people_api__district`
-# (all severity=error) before the loader `unload` step. Covers the column tests below plus the
+# before the loader `unload` step. Covers the column tests below plus the
 # singular row-count/state-coverage test in
 # tests/assert_people_api_voter_rowcount_and_state_coverage.sql. The Airflow DAG and
-# runbook sequence this selection ahead of unload.
+# runbook sequence this selection ahead of unload. Everything in the gate is
+# severity=error except assert_people_api_voter_affinity_and_ideology_rates,
+# which warns: it tracks a modelled distribution that may legitimately move with
+# a new Haystaq vintage, and should not hold up the loader when it does.
 models:
   - name: m_people_api__district
     description: >
@@ -140,6 +143,34 @@ models:
                 max_value: 1
               config:
                 where: "Voter_Turnout_Probability is not null"
+      - name: Voter_Independent_Affinity
+        description: >
+          True when the voter shows any signal of independent-leaning behaviour:
+          a registration party change within ~4 years, frequent ticket
+          splitting, a third-party or crossover primary ballot in 2020/2022/2024,
+          or a Haystaq score at or above the double-dislike or
+          moderate-third-party cut (both cuts are project vars). A union of
+          signals, so a voter with no data on a given signal is simply not
+          flagged on it and the column is never null. Set membership, not a
+          ranking: it carries ~66% of the file, so it filters but cannot order.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: hf_ideology_general
+        description: >
+          Haystaq general-ideology label, passed through from the L2/Haystaq
+          source under its source name and with its source values: Conservative,
+          Liberal, or Moderate, and null (~40% of voters) where the model is
+          undecided. These are the source's own labels and are kept as they
+          are, here and downstream; nothing relabels them.
+        data_type: string
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Conservative
+                  - Liberal
+                  - Moderate
 
   - name: m_people_api__districtstats
     config:
