@@ -3,22 +3,12 @@
 {{ config(materialized="table") }}
 
 with
-    -- Spellings per normalized key, statewide per type. 1 = unambiguous: the
-    -- LLM join below lets a respelled label match only these keys, so a key
-    -- shared by two real districts (same-name twins) never donates one
-    -- district's zips to an office matched to the other.
+    -- Spellings per normalized key, statewide per type (shared macro). 1 =
+    -- unambiguous: the LLM join below lets a respelled label match only these
+    -- keys, so a key shared by two real districts (same-name twins) never
+    -- donates one district's zips to an office matched to the other.
     map_key_spellings as (
-        select
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
-            as normalized_district_name,
-            count(distinct district_name) as spellings_sharing_normalized_key
-        from {{ ref("int__zip_code_to_l2_district") }}
-        group by
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
+        {{ l2_normalized_district_keys(ref("int__zip_code_to_l2_district")) }}
     ),
     -- Some L2 voters have an out-of-state zip in the L2 file; filter those.
     zip_code_within_state_range as (
@@ -30,14 +20,16 @@ with
             tbl_zip.voters_in_zip_district,
             tbl_zip.voters_in_zip,
             map_key_spellings.normalized_district_name,
-            map_key_spellings.spellings_sharing_normalized_key
+            map_key_spellings.spellings
         from {{ ref("int__zip_code_to_l2_district") }} as tbl_zip
         inner join
             {{ ref("int__general_states_zip_code_range") }} as zip_range
             on tbl_zip.state_postal_code = zip_range.state_postal_code
             and tbl_zip.zip_code >= zip_range.zip_code_range[0]
             and tbl_zip.zip_code <= zip_range.zip_code_range[1]
-        inner join
+        -- Left, not inner: the macro excludes blank-normalizing keys, and a row
+        -- without a key must still flow to the override path unchanged.
+        left join
             map_key_spellings
             on tbl_zip.state_postal_code = map_key_spellings.state_postal_code
             and tbl_zip.district_type = map_key_spellings.district_type
@@ -103,7 +95,7 @@ with
             -- unambiguous key.
             and (
                 lower(tbl_zip.district_name) = lower(tbl_match.l2_district_name)
-                or tbl_zip.spellings_sharing_normalized_key = 1
+                or tbl_zip.spellings = 1
             )
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_br_position

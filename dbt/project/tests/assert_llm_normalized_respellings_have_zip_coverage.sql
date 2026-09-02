@@ -43,19 +43,10 @@ with
             and tbl_zip.zip_code >= zip_range.zip_code_range[0]
             and tbl_zip.zip_code <= zip_range.zip_code_range[1]
     ),
-    -- Mirrors the model's map_key_spellings grain: the whole map, not just in-range.
+    -- The same shared macro as the model's map_key_spellings, so the two
+    -- cannot drift: the whole map, not just in-range.
     map_keys as (
-        select
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
-            as normalized_district_name,
-            count(distinct district_name) as spellings
-        from {{ ref("int__zip_code_to_l2_district") }}
-        group by
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
+        {{ l2_normalized_district_keys(ref("int__zip_code_to_l2_district")) }}
     ),
     respelled_with_expected_coverage as (
         select llm_matches.br_database_id
