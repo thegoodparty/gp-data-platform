@@ -267,6 +267,8 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
         # unpivots by intersecting voter columns with district types.
         "Congressional_District_2026",
         "State_Senate_District_2026",
+        "Voter_Independent_Affinity",
+        "hf_ideology_general",
     }
 }
 

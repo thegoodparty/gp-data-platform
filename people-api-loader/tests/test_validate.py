@@ -498,6 +498,20 @@ def test_check_schema_diff_hf_policy_column_allowed(monkeypatch: pytest.MonkeyPa
     assert "hf_most_important_policy_item" in check.details["allowed_extra"]
 
 
+def test_check_schema_diff_independent_targeting_columns_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same case as hf_most_important_policy_item above: mart columns the prod baseline predates.
+    prod = [("col_a",), ("col_b",)]
+    new = [*prod, ("Voter_Independent_Affinity",), ("hf_ideology_general",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "Voter")
+    assert check.passed is True
+    assert "Voter_Independent_Affinity" in check.details["allowed_extra"]
+    assert "hf_ideology_general" in check.details["allowed_extra"]
+
+
 def test_check_schema_diff_non_partition_extra_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only the partition column is a free pass; any other extra column still fails.
     prod = [("district_id",), ("voter_id",), ("created_at",), ("updated_at",)]
