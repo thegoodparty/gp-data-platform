@@ -104,6 +104,16 @@ def test_render_voter_forces_contract_types_to_text() -> None:
     assert "TIMESTAMPTZ" not in ddl
 
 
+def test_render_voter_keeps_independent_affinity_boolean() -> None:
+    # Genuinely binary, so unlike the election flags it has no string contract to match.
+    from loader.people_api.schema.schema_spec import TABLE_SPECS
+
+    cols = [MartColumn(name="Voter_Independent_Affinity", spark_type="boolean", nullable=True)]
+    ddl = render_create_table(TABLE_SPECS["Voter"], cols)
+    assert '"Voter_Independent_Affinity" BOOLEAN' in ddl
+    assert '"Voter_Independent_Affinity" TEXT' not in ddl
+
+
 def test_render_district_family_matches_contract_types() -> None:
     # District: mart timestamptz -> contract timestamp WITHOUT time zone; state -> the USState enum
     # (matching prod, with "US" added to the enum for the country-scope row). DistrictStats: mart
