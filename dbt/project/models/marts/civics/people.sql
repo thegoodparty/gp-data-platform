@@ -3,10 +3,9 @@
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
 -- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder > DDHQ for
 -- contact fields,
--- BR > others for civic fields. email has one further tier below all of those,
--- since each source's rep reads a single member record: see group_emails.
--- Role flags derive from the member records, not from a stored status, so they
--- stay re-derivable on every run.
+-- BR > others for civic fields (email adds a group-wide fallback). Role flags
+-- derive from the member records, not from a stored status, so they stay
+-- re-derivable on every run.
 with
     records as (
         select
@@ -248,12 +247,8 @@ with
             = 1
     ),
 
-    -- Last-resort email. The per-source reps above each read one member
-    -- record, so an address sitting on a sibling record of the same source is
-    -- dropped: an officeholder whose earliest BR record is a race rather than
-    -- a term is the common case, and accounts for ~8.5k people on its own.
-    -- This tier sweeps every member record and keeps the best by the same
-    -- source precedence, so it can only fill a null, never override a rep.
+    -- The per-source reps each read one member record, so an address on a
+    -- sibling record is dropped (~8.9k people). Last in the coalesce.
     group_email_candidates as (
         select
             r.gp_person_id,

@@ -2971,10 +2971,8 @@ models:
           DDHQ (gp_api carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at), so a source's fields stay internally consistent.
-      email alone carries a final tier below every source: when no rep has one,
-      a sweep of every member record supplies the best address by the same
-      precedence. Without it an officeholder whose earliest BR record is a race
-      rather than a term reads as having no email at all, which is ~8.9k people.
+      email adds a final tier: when no rep has one, a sweep of every member
+      record supplies the best address (~8.9k people, mostly officeholders).
       BR contact/state/party come from int__ballotready_candidate_identity
       across all election years; a BR person whose only BR presence is a term
       rather than a race falls to the officeholder feed tier. HubSpot and TS
@@ -3019,9 +3017,7 @@ models:
       - name: email
         description: >
           Email, precedence gp_api > HubSpot > BR > BR officeholder > TS > TS
-          officeholder, then a sweep of every member record when no source's
-          representative has one. The sweep is last, so it only ever fills a
-          null.
+          officeholder, then a group-wide sweep that only fills nulls.
       - name: phone
         description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: state
