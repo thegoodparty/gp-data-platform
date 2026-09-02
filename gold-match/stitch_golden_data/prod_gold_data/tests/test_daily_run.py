@@ -15,9 +15,6 @@ from bedrock_clients.structured import StructuredOutputError
 from stitch_golden_data.prod_gold_data import daily_run
 from stitch_golden_data.prod_gold_data.l2_br_matcher import MatchResult
 
-PRE_BOUNDARY_TS = daily_run.CUTOVER_BOUNDARY - timedelta(days=1)
-POST_BOUNDARY_TS = daily_run.CUTOVER_BOUNDARY + timedelta(days=1)
-
 
 def _match(bid: int, district: str = "District 5") -> MatchResult:
     return MatchResult(bid, "DE", "House", district, 90)
@@ -41,9 +38,9 @@ class TestWithdrawalHoldPolicy:
         results = [_abstain(1)]
         prior = {1: "District 3"}  # office 1's latest serving answer is a match
 
-        write, held = daily_run.split_by_write_policy(results, prior)
+        write = daily_run.split_by_write_policy(results, prior)
 
-        assert write == [] and held == [1]
+        assert write == []  # the one abstain is the held withdrawal
 
     def test_abstain_written_when_prior_was_abstain_or_absent(self):
         """Failure this catches: a first abstain or a re-abstain being held
@@ -53,9 +50,9 @@ class TestWithdrawalHoldPolicy:
         results = [_abstain(1), _abstain(2)]
         prior = {1: None}  # office 2 has no prior row at all
 
-        write, held = daily_run.split_by_write_policy(results, prior)
+        write = daily_run.split_by_write_policy(results, prior)
 
-        assert [r.br_database_id for r in write] == [1, 2] and held == []
+        assert [r.br_database_id for r in write] == [1, 2]
 
     def test_matches_always_written(self):
         """Failure this catches: a real match being held because the prior
@@ -65,23 +62,9 @@ class TestWithdrawalHoldPolicy:
         results = [_match(1)]
         prior = {1: "Old District"}
 
-        write, held = daily_run.split_by_write_policy(results, prior)
+        write = daily_run.split_by_write_policy(results, prior)
 
-        assert len(write) == 1 and held == []
-
-
-class TestPreCutoverBoundaryFilter:
-    def test_boundary_drops_precutover_attempts_keeps_never_attempted(self):
-        """Failure this catches: the daily loop re-touching the backlog
-        cohorts the owner deliberately withheld from Run B (their eraser is
-        the supervised tuning-era rerun), or the mirror mistake of dropping
-        a genuinely new arrival that has no prior attempt at all.
-        """
-        prior_attempted_at = {1: PRE_BOUNDARY_TS, 2: POST_BOUNDARY_TS}
-
-        kept, dropped = daily_run.boundary_filter([1, 2, 3], prior_attempted_at)
-
-        assert kept == [2, 3] and dropped == [1]
+        assert len(write) == 1
 
 
 class TestCliGuards:
@@ -150,7 +133,7 @@ class TestMatchLoopQuarantine:
         results, quarantined = asyncio.run(daily_run._match_cohort(matcher, offices, batch_size=3))
 
         assert [r.br_database_id for r in results] == [1, 3]
-        assert quarantined == [(2, daily_run.REASON_STRUCTURED_OUTPUT)]
+        assert quarantined == [2]
 
     def test_circuit_breaker_aborts_before_write(self):
         """Failure this catches: the circuit breaker threshold not enforced
@@ -341,7 +324,7 @@ class TestQuarantineRelease:
         run_key = datetime(2026, 9, 5, tzinfo=UTC)
 
         daily_run._write_quarantine_upserts(
-            client, quarantined_this_run=[], due_ids={555, 556}, attempted_bids={555}, run_key=run_key
+            client, quarantined_this_run=[], due_ids={555, 556}, result_bids={555}, run_key=run_key
         )
 
         assert _calls(client, "released_at") == [
@@ -364,9 +347,9 @@ class TestQuarantineRelease:
 
         daily_run._write_quarantine_upserts(
             client,
-            quarantined_this_run=[(777, "structured_output_shape")],
+            quarantined_this_run=[777],
             due_ids={777},
-            attempted_bids={777},
+            result_bids=set(),
             run_key=run_key,
         )
 

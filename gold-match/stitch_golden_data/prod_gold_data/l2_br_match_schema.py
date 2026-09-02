@@ -37,8 +37,7 @@ def ensure_results_table(databricks: DatabricksClient | None = None) -> None:
     (databricks or DatabricksClient()).execute_query(RESULTS_DDL)
 
 
-RUN_LOG_TABLE = "llm_l2_br_match_run_log"
-RUN_LOG_TABLE_PATH = f"{CATALOG}.{SCHEMA}.{RUN_LOG_TABLE}"
+RUN_LOG_TABLE_PATH = f"{CATALOG}.{SCHEMA}.llm_l2_br_match_run_log"
 
 RUN_LOG_DDL = f"""
 create table if not exists {RUN_LOG_TABLE_PATH} (
@@ -47,7 +46,6 @@ create table if not exists {RUN_LOG_TABLE_PATH} (
     cohort_size int not null comment 'Pending offices after the quarantine-suppression and pre-cutover-boundary filters, before the ceiling check.',
     backlog_boundary_dropped int not null comment 'Offices dropped because the latest attempt predates the pre-cutover boundary; disposition belongs to the supervised tuning-era rerun, not this loop.',
     quarantine_dropped int not null comment 'Offices dropped because an active quarantine row currently suppresses them.',
-    attempted int not null comment 'Offices actually sent to match_office this run: matched, abstained, and quarantined.',
     matched_written int not null comment 'Rows written this run carrying a district: a new match or a healed dead label.',
     abstains_written int not null comment 'Abstains written this run: a first abstain or a re-abstain, never a withdrawal.',
     withdrawals_held int not null comment 'Abstains NOT written because the prior serving answer was a match, held per the v1-hold-withdrawals policy until the rename-normalization lever lands.',
@@ -67,8 +65,7 @@ def ensure_run_log_table(databricks: DatabricksClient | None = None) -> None:
     (databricks or DatabricksClient()).execute_query(RUN_LOG_DDL)
 
 
-QUARANTINE_TABLE = "llm_l2_br_match_quarantine"
-QUARANTINE_TABLE_PATH = f"{CATALOG}.{SCHEMA}.{QUARANTINE_TABLE}"
+QUARANTINE_TABLE_PATH = f"{CATALOG}.{SCHEMA}.llm_l2_br_match_quarantine"
 
 QUARANTINE_DDL = f"""
 create table if not exists {QUARANTINE_TABLE_PATH} (

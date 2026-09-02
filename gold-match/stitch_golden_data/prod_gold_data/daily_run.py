@@ -84,41 +84,23 @@ def require_git_sha() -> str:
 
 def split_by_write_policy(
     results: list[MatchResult], prior_district_by_bid: dict[int, str | None]
-) -> tuple[list[MatchResult], list[int]]:
-    """Every match writes. An abstain writes only when the prior serving
-    answer was NOT itself a match (a first abstain or a re-abstain, which
-    resets the 30-day clock); an abstain whose prior answer WAS a match is a
-    withdrawal, held until the rename-normalization lever lands. `prior`
-    absent or `None` both mean "not a prior match", so a never-attempted
-    office and a previously-abstained one land the same way.
+) -> list[MatchResult]:
+    """The rows that write. Every match writes; an abstain writes only when
+    the prior serving answer was NOT itself a match (a first abstain or a
+    re-abstain, which resets the 30-day clock). What is left out is exactly
+    the withdrawals, held until the rename-normalization lever lands, so the
+    caller derives that count as len(results) - len(write). `prior` absent
+    and `None` both mean "not a prior match".
     """
-    write: list[MatchResult] = []
-    held: list[int] = []
-    for r in results:
-        if r.l2_district_name is not None:
-            write.append(r)
-            continue
-        if prior_district_by_bid.get(r.br_database_id) is not None:
-            held.append(r.br_database_id)
-        else:
-            write.append(r)
-    return write, held
+    return [r for r in results if r.l2_district_name is not None or prior_district_by_bid.get(r.br_database_id) is None]
 
 
-def boundary_filter(office_ids: list[int], prior_attempted_at: dict[int, datetime]) -> tuple[list[int], list[int]]:
-    """Drop ids whose latest attempt predates CUTOVER_BOUNDARY (the
-    pre-cutover backlog the owner withheld from Run B); keep everything
-    else, including ids with no prior attempt at all.
+def boundary_filter(office_ids: list[int], prior_attempted_at: dict[int, datetime]) -> list[int]:
+    """Ids whose latest attempt predates CUTOVER_BOUNDARY: the pre-cutover
+    backlog the owner withheld from Run B. Ids with no prior attempt at all
+    are never dropped.
     """
-    kept: list[int] = []
-    dropped: list[int] = []
-    for bid in office_ids:
-        at = prior_attempted_at.get(bid)
-        if at is not None and at < CUTOVER_BOUNDARY:
-            dropped.append(bid)
-        else:
-            kept.append(bid)
-    return kept, dropped
+    return [bid for bid in office_ids if (at := prior_attempted_at.get(bid)) is not None and at < CUTOVER_BOUNDARY]
 
 
 # -- Warehouse reads: one query feeds both filters above ---------------------
@@ -194,17 +176,16 @@ def _install_daily_pending_wrap(
     original = matcher.load_pending_offices
     captured = {"quarantine_dropped": 0, "boundary_dropped": 0}
 
-    def wrapped(states=None, limit=None):
-        df = original(states=states, limit=limit)
-        if not df.empty and suppressed_ids:
-            mask = df["br_database_id"].isin(suppressed_ids)
-            captured["quarantine_dropped"] = int(mask.sum())
-            df = df[~mask]
-        if not df.empty:
-            _, dropped = boundary_filter(list(df["br_database_id"]), prior_attempted_at)
-            captured["boundary_dropped"] = len(dropped)
-            if dropped:
-                df = df[~df["br_database_id"].isin(dropped)]
+    def wrapped():
+        # The real loader returns its declared columns even when empty, so
+        # every step below is safe unguarded on an empty frame.
+        df = original()
+        mask = df["br_database_id"].isin(suppressed_ids)
+        captured["quarantine_dropped"] = int(mask.sum())
+        df = df[~mask]
+        dropped = boundary_filter(list(df["br_database_id"]), prior_attempted_at)
+        captured["boundary_dropped"] = len(dropped)
+        df = df[~df["br_database_id"].isin(dropped)]
         return df.reset_index(drop=True)
 
     matcher.load_pending_offices = wrapped
@@ -214,9 +195,7 @@ def _install_daily_pending_wrap(
 # -- The match loop: run()'s own logic, plus a per-office quarantine catch --
 
 
-async def _match_cohort(
-    matcher: L2BrMatcher, offices: list, batch_size: int
-) -> tuple[list[MatchResult], list[tuple[int, str]]]:
+async def _match_cohort(matcher: L2BrMatcher, offices: list, batch_size: int) -> tuple[list[MatchResult], list[int]]:
     """Mirrors `L2BrMatcher.run()`'s own batch loop, with the one addition
     `run()` deliberately does not have: a per-office catch for the client's
     typed response-shape failure, so one bad office quarantines instead of
@@ -226,7 +205,7 @@ async def _match_cohort(
     long cohort's remaining (paid) batches.
     """
     results: list[MatchResult] = []
-    quarantined: list[tuple[int, str]] = []
+    quarantined: list[int] = []
 
     async def _one(office) -> MatchResult | None:
         try:
@@ -242,7 +221,7 @@ async def _match_cohort(
                 sub_area_value=office.sub_area_value,
             )
         except StructuredOutputError:
-            quarantined.append((office.br_database_id, REASON_STRUCTURED_OUTPUT))
+            quarantined.append(office.br_database_id)
             return None
 
     for batch_start in range(0, len(offices), batch_size):
@@ -266,24 +245,22 @@ async def _match_cohort(
 
 def _write_quarantine_upserts(
     databricks: DatabricksClient,
-    quarantined_this_run: list[tuple[int, str]],
+    quarantined_this_run: list[int],
     due_ids: set[int],
-    attempted_bids: set[int],
+    result_bids: set[int],
     run_key: datetime,
 ) -> None:
     """Three cases, in order: a due office that failed again re-stamps
     `last_failed_at` (it is already a row); an office quarantined for the
-    first time gets a new row; a due office that was actually attempted
-    this run and returned a result (not quarantined) is released.
-    `attempted_bids` matters: a due id can sit in the quarantine table while
-    no longer being on this run's pending list at all (its universe tuple
-    healed on its own, say), and that id must not be stamped released just
-    because it never showed up in `quarantined_this_run` either.
+    first time gets a new row; a due office that RETURNED A RESULT this run
+    is released. Release keys on results, deliberately: a due id can sit in
+    the quarantine table while no longer being on the pending list at all
+    (its universe tuple healed on its own, say), and that office was neither
+    re-attempted nor re-failed, so it must not be stamped released.
     """
-    quarantined_bids = {bid for bid, _ in quarantined_this_run}
     cursor = databricks.connect().cursor()
     try:
-        for bid, reason_code in quarantined_this_run:
+        for bid in quarantined_this_run:
             if bid in due_ids:
                 # released_at is null scopes the UPDATE to the ACTIVE episode:
                 # a released historical row for the same office must keep its
@@ -300,9 +277,9 @@ def _write_quarantine_upserts(
                         (br_database_id, reason_code, retry_class, first_failed_at, last_failed_at)
                     values (?, ?, 'auto', ?, ?)
                     """,
-                    [bid, reason_code, run_key, run_key],
+                    [bid, REASON_STRUCTURED_OUTPUT, run_key, run_key],
                 )
-        for bid in sorted((due_ids & attempted_bids) - quarantined_bids):
+        for bid in sorted(due_ids & result_bids):
             cursor.execute(
                 f"update {QUARANTINE_TABLE_PATH} set released_at = ?, release_note = ? "
                 "where br_database_id = ? and released_at is null",
@@ -319,9 +296,9 @@ def _write_run_log(databricks: DatabricksClient, **counts) -> None:
             f"""
             insert into {RUN_LOG_TABLE_PATH}
                 (run_key, policy_version, cohort_size, backlog_boundary_dropped, quarantine_dropped,
-                 attempted, matched_written, abstains_written, withdrawals_held, quarantined_this_run,
+                 matched_written, abstains_written, withdrawals_held, quarantined_this_run,
                  embedding_config, llm_config, prompt_provenance, git_sha, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 counts["run_key"],
@@ -329,7 +306,6 @@ def _write_run_log(databricks: DatabricksClient, **counts) -> None:
                 counts["cohort_size"],
                 counts["backlog_boundary_dropped"],
                 counts["quarantine_dropped"],
-                counts["attempted"],
                 counts["matched_written"],
                 counts["abstains_written"],
                 counts["withdrawals_held"],
@@ -375,21 +351,22 @@ async def _run(args: argparse.Namespace) -> None:
                 "this size is a de facto full re-match, an owner-decided run, never this loop's"
             )
 
-        worklist_states = sorted(pending_df["state"].unique()) if not pending_df.empty else []
+        worklist_states = sorted(pending_df["state"].unique())
         await matcher.build_universe(worklist_states, args.embedding_batch_size)
 
         offices = list(pending_df.itertuples(index=False))
-        attempted_bids = {int(office.br_database_id) for office in offices}
         results, quarantined = await _match_cohort(matcher, offices, args.batch_size)
 
-        write, held = split_by_write_policy(results, prior_district_by_bid)
+        write = split_by_write_policy(results, prior_district_by_bid)
+        withdrawals_held = len(results) - len(write)
         matched_written = sum(1 for r in write if r.l2_district_name is not None)
         abstains_written = len(write) - matched_written
 
         writer = MatchResultWriter(databricks=matcher.databricks)  # shares the matcher's own connection
         written = writer.append_results(write, attempted_at=args.run_key)
 
-        _write_quarantine_upserts(matcher.databricks, quarantined, due_ids, attempted_bids, args.run_key)
+        result_bids = {r.br_database_id for r in results}
+        _write_quarantine_upserts(matcher.databricks, quarantined, due_ids, result_bids, args.run_key)
 
         _write_run_log(
             matcher.databricks,
@@ -397,10 +374,9 @@ async def _run(args: argparse.Namespace) -> None:
             cohort_size=cohort_size,
             backlog_boundary_dropped=captured["boundary_dropped"],
             quarantine_dropped=captured["quarantine_dropped"],
-            attempted=len(results) + len(quarantined),
             matched_written=matched_written,
             abstains_written=abstains_written,
-            withdrawals_held=len(held),
+            withdrawals_held=withdrawals_held,
             quarantined_this_run=len(quarantined),
             embedding_config=matcher.embedding_client.resolved_config(),
             llm_config=matcher.llm.resolved_config(),
@@ -414,11 +390,10 @@ async def _run(args: argparse.Namespace) -> None:
             "cohort_size": cohort_size,
             "backlog_boundary_dropped": captured["boundary_dropped"],
             "quarantine_dropped": captured["quarantine_dropped"],
-            "attempted": len(results) + len(quarantined),
             "written": written,
             "matched_written": matched_written,
             "abstains_written": abstains_written,
-            "withdrawals_held": len(held),
+            "withdrawals_held": withdrawals_held,
             "quarantined_this_run": len(quarantined),
         }
         # stdout plus the warehouse run log are the durable records; a local
