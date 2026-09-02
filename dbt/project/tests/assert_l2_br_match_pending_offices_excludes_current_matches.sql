@@ -24,21 +24,10 @@ with
             )
             = 1
     ),
-    -- Spelling count per normalized key; = 1 is the model's unambiguous-respelling
-    -- arm, > 1 its ambiguous complement. Blank keys excluded as in the model.
+    -- The same shared macro as the model, so the two cannot drift: spellings = 1
+    -- is the unambiguous-respelling arm, > 1 its ambiguous complement.
     universe_keys as (
-        select
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
-            as normalized_district_name,
-            count(*) as spellings
-        from {{ ref("int__l2_district_universe") }}
-        where {{ normalize_l2_district_name("district_name") }} != ''
-        group by
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
+        {{ l2_normalized_district_keys(ref("int__l2_district_universe")) }}
     ),
     states_with_real_districts as (
         select distinct state_postal_code

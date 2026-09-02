@@ -44,25 +44,10 @@ with
 
     -- A label L2 merely respelled is not dead: serving already resolves those
     -- spellings, so re-matching the office can only lose information (an abstain
-    -- erases a link that works). Only normalized keys carried by exactly one
-    -- current universe row count; an ambiguous respelling (same-name twins) stays
-    -- dead so a re-match decides which district the office means.
+    -- erases a link that works). The spellings = 1 join predicate keeps ambiguous
+    -- respellings (same-name twins) dead so a re-match decides.
     universe_normalized as (
-        select
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
-            as normalized_district_name
-        from {{ ref("int__l2_district_universe") }}
-        -- A name that is only an (EST.) marker or zero padding normalizes to '';
-        -- one lone such row must not mark every blank-normalizing label alive.
-        -- Same blank class int__l2_block_district_map guards against.
-        where {{ normalize_l2_district_name("district_name") }} != ''
-        group by
-            state_postal_code,
-            district_type,
-            {{ normalize_l2_district_name("district_name") }}
-        having count(*) = 1
+        {{ l2_normalized_district_keys(ref("int__l2_district_universe")) }}
     ),
 
     -- Real districts only: the synthetic State row is emitted per state
@@ -100,6 +85,7 @@ left join
     and latest_attempt.l2_district_type = universe_normalized.district_type
     and latest_attempt.normalized_district_name
     = universe_normalized.normalized_district_name
+    and universe_normalized.spellings = 1
 where
     (
         -- A null attempted_at (never attempted) must reopen immediately, so the
