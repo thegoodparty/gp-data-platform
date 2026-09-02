@@ -6,6 +6,7 @@ fake, never a real warehouse or a real matcher.
 """
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
@@ -203,6 +204,94 @@ class _FakeDatabricksClient:
 
 def _calls(client: _FakeDatabricksClient, fragment: str) -> list:
     return [c for c in client.executed if fragment in c[0].lower()]
+
+
+class TestRunLogInsert:
+    def test_columns_pair_with_their_params(self):
+        """Failure this catches: a swapped or shifted value in the run log's
+        positional INSERT writing silently wrong provenance (say
+        quarantine_dropped landing in cohort_size) -- pinned by zipping the
+        statement's own column list against the bound params.
+        """
+        client = _FakeDatabricksClient()
+        run_key = datetime(2026, 9, 5, tzinfo=UTC)
+
+        daily_run._write_run_log(
+            client,
+            run_key=run_key,
+            cohort_size=11,
+            backlog_boundary_dropped=22,
+            quarantine_dropped=33,
+            matched_written=44,
+            abstains_written=55,
+            withdrawals_held=66,
+            quarantined_this_run=77,
+            embedding_config={"e": 1},
+            llm_config={"l": 2},
+            prompt_provenance={"p": 3},
+            git_sha="sha-x",
+        )
+
+        ((sql, params),) = client.executed
+        columns = [c.strip() for c in re.search(r"\((.*?)\)\s*values", sql, re.S).group(1).split(",")]
+        assert len(columns) == len(params)
+        by_column = dict(zip(columns, params, strict=False))
+        assert by_column["run_key"] == run_key
+        assert by_column["policy_version"] == daily_run.POLICY_VERSION
+        assert by_column["cohort_size"] == 11
+        assert by_column["backlog_boundary_dropped"] == 22
+        assert by_column["quarantine_dropped"] == 33
+        assert by_column["matched_written"] == 44
+        assert by_column["abstains_written"] == 55
+        assert by_column["withdrawals_held"] == 66
+        assert by_column["quarantined_this_run"] == 77
+        assert by_column["git_sha"] == "sha-x"
+
+
+class _CeilingStubMatcher:
+    """Just enough of L2BrMatcher for _run to reach the ceiling check: the
+    two warehouse reads see an empty fake, the pending list is one row over
+    the ceiling, and build_universe records whether the paid path was hit.
+    """
+
+    def __init__(self):
+        self.databricks = _FakeDatabricksClient()
+        self.pending_offices_path = "cat.dbt.pending"
+        self.build_universe_called = False
+        n = daily_run.COHORT_CEILING + 1
+        self._pending = pd.DataFrame({"br_database_id": list(range(1, n + 1)), "state": ["DE"] * n})
+
+    def load_pending_offices(self):
+        return self._pending
+
+    async def build_universe(self, states, embedding_batch_size):
+        self.build_universe_called = True
+
+    def close(self):
+        pass
+
+
+class TestCohortCeiling:
+    def test_ceiling_aborts_before_the_paid_universe_build(self, monkeypatch):
+        """Failure this catches: the ceiling guard drifting to AFTER
+        build_universe (a paid embedding call), which would let a runaway
+        pending list -- a de facto full re-match, an owner decision by
+        locked rule -- spend real money before aborting.
+        """
+        monkeypatch.setenv("GIT_SHA", "test-sha")
+        stub = _CeilingStubMatcher()
+        # Restore the module-global prompt hook _run installs.
+        monkeypatch.setattr(daily_run._matcher_mod, "build_cached_prompt", daily_run._matcher_mod.build_cached_prompt)
+        monkeypatch.setattr(daily_run, "_build_clients", lambda config: (None, None))
+        monkeypatch.setattr(daily_run, "L2BrMatcher", lambda embedding_client, llm: stub)
+        monkeypatch.setattr(daily_run, "_require_pinned_prompt", lambda matcher: None)
+        monkeypatch.setattr(daily_run, "flush_logs", lambda: None)
+        args = daily_run.parse_args(["--run-key", "2026-09-02T14:30:00+00:00"])
+
+        with pytest.raises(RuntimeError, match="ceiling"):
+            asyncio.run(daily_run._run(args))
+
+        assert stub.build_universe_called is False
 
 
 class TestPendingWrap:
