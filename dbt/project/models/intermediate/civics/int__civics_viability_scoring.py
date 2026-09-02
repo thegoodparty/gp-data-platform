@@ -138,7 +138,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # verified inert here, but it guards the cloudpickled loads against a
         # future resolver picking numpy 2.x. Both keys must stay in `config`,
         # not `config.meta`, despite the dbt-core deprecation warning.
-        # See DATA-1969.
         environment_key="civics_viability",
         environment_dependencies=["mlflow==3.0.0", "scikit-learn==1.6.1", "numpy<2"],
         materialized="table",

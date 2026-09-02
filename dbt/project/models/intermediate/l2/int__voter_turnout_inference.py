@@ -780,7 +780,7 @@ def model(dbt, session):
         # major mismatch -- and numpy to <2 because 4.3.0 predates numpy 2.
         # mlflow is pinned for the load path, not accuracy. Both keys must stay
         # in `config`, not `config.meta`, despite the dbt-core deprecation
-        # warning. See DATA-1969.
+        # warning.
         environment_key="voter_turnout",
         environment_dependencies=["mlflow==3.0.0", "lightgbm==4.3.0", "numpy<2"],
         materialized="table",  # full refresh, v1 (locked decision: no incremental)
