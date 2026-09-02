@@ -131,6 +131,12 @@ def _read_prior_answers(
         ) = 1
         """
     )
+    if not df.empty:
+        # The connector's timestamp dtype varies by result path; an object-dtype
+        # column of naive datetimes would skip execute_query's normalization and
+        # blow up the aware comparison against CUTOVER_BOUNDARY. Same utc=True
+        # convention as the client's own datetime64 branch.
+        df["attempted_at"] = pd.to_datetime(df["attempted_at"], utc=True)
     return {
         int(row.br_database_id): (None if pd.isna(row.l2_district_name) else row.l2_district_name, row.attempted_at)
         for row in df.itertuples(index=False)
@@ -147,6 +153,9 @@ def _read_quarantine_eligibility(databricks: DatabricksClient, now: datetime) ->
     df = databricks.execute_query(
         f"select br_database_id, retry_class, last_failed_at from {QUARANTINE_TABLE_PATH} where released_at is null"
     )
+    if not df.empty:
+        # Same aware-UTC pin as _read_prior_answers, for the retry_cutoff comparison.
+        df["last_failed_at"] = pd.to_datetime(df["last_failed_at"], utc=True)
     retry_cutoff = now - timedelta(days=QUARANTINE_RETRY_DAYS)
     suppressed: set[int] = set()
     due: set[int] = set()

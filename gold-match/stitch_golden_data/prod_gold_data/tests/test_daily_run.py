@@ -380,6 +380,31 @@ class TestQuarantineEligibility:
         assert due == {101}
         assert suppressed == {202}
 
+    def test_naive_timestamps_from_the_connector_are_normalized(self):
+        """Failure this catches: the connector handing back NAIVE datetimes
+        in an object-dtype column (a real result-path variation the client's
+        datetime64 normalization does not cover), which would raise
+        TypeError against the aware retry cutoff on the first comparison.
+        """
+        now = datetime(2026, 9, 5, tzinfo=UTC)
+        rows = pd.DataFrame(
+            {
+                "br_database_id": [101, 202],
+                "retry_class": ["auto", "auto"],
+                # Deliberately naive: the reader must pin these to UTC itself.
+                "last_failed_at": [
+                    (now - timedelta(days=31)).replace(tzinfo=None),
+                    (now - timedelta(days=5)).replace(tzinfo=None),
+                ],
+            }
+        )
+        client = _FakeDatabricksClient(query_result=rows)
+
+        suppressed, due = daily_run._read_quarantine_eligibility(client, now)
+
+        assert due == {101}
+        assert suppressed == {202}
+
     def test_unknown_retry_class_fails_closed(self):
         """Failure this catches: a misspelled manually seeded class (the DDL
         does not enforce the enum) silently defaulting into the auto-retry
