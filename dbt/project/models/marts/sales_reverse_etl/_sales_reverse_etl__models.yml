@@ -138,3 +138,62 @@ models:
           so those rows land at midnight and sorting on this column ties within a day.
         data_tests:
           - not_null
+
+  - name: company_viability_hubspot
+    description: >
+      Viability 2.0 and race attributes synced onto EXISTING HubSpot companies
+      (reverse-ETL sendable mart). One row per HubSpot company Record ID where any
+      published value is blank or differs. Companion to candidacy_hubspot, which
+      creates net-new contacts already carrying a score; this feed updates records
+      that exist. Publishes viability_2_0, open_seat_, partisan_np and
+      seats_available. is_incumbent and number_of_opponents are deliberately
+      excluded: gp-api FETCHES both from HubSpot via its IncomingProperty enum, so
+      writing them would make Databricks the source of values product reads.
+    columns:
+      - name: Record ID
+        # Space in the name: dbt emits the identifier unquoted in generic tests
+        # without this, which is a syntax error.
+        quote: true
+        description: HubSpot company id, the import match key and the model grain.
+        data_tests:
+          - unique
+          - not_null
+      - name: viability_2_0
+        description: >
+          Viability 2.0 score from candidacy_scored. Where one company id is carried by
+          several candidacies (2025-archive id reuse), the nearest-upcoming election wins.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: open_seat_
+        description: >
+          HubSpot's open_seat_ enumeration. Null where unknown, which emits a blank cell
+          the import skips -- never a negative, since 'No' would assert a closed seat for
+          races we have no data on.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Yes", "No"]
+      - name: partisan_np
+        description: HubSpot's partisan_np enumeration. Null where unknown; see open_seat_.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Partisan", "Nonpartisan"]
+      - name: seats_available
+        description: >
+          Seats in the race, from the election mart. Null where unknown, and also where
+          the mart says 0 -- 11 such rows exist and a zero-seat race is a defect, not a
+          fact worth syncing. HubSpot holds 9.4k stored zeros this feed corrects.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: hubspot_current_viability
+        description: >
+          Viability stored in HubSpot when the feed was built; null where unset. Kept so
+          the diff is auditable after the import. Deliberately excluded from the import
+          file: mapped by mistake it would write the stale score back.
