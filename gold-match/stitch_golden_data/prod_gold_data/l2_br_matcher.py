@@ -242,6 +242,27 @@ def _require_integral(value: Any, field_name: str) -> int:
     return int(value)
 
 
+# Required in the REQUEST schema, but never consumed or persisted: selection
+# uses candidate number and confidence only, and the results table has no such
+# column. The model intermittently omits it or leaks tool markup into its
+# value -- deterministically per office, with membership drifting between
+# feeds -- and each flub aborted a run after a wasted re-ask.
+UNCONSUMED_RESPONSE_FIELD = "is_exact_district_match"
+
+
+def relax_validation_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """A copy of `schema` that tolerates the unconsumed field being absent or
+    malformed. Everything else is unchanged: a missing CONSUMED field stays a
+    technical failure, never a result. Only the two rebuilt members differ;
+    the original is what the request carries (billed prompt context, frozen)
+    and is never mutated."""
+    return {
+        **schema,
+        "required": [key for key in schema["required"] if key != UNCONSUMED_RESPONSE_FIELD],
+        "properties": {**schema["properties"], UNCONSUMED_RESPONSE_FIELD: {}},
+    }
+
+
 def _selection_from_response(response: dict[str, Any], num_candidates: int) -> tuple[int, int]:
     """Extract (selected index, confidence) from a raw LLM response.
 
@@ -1064,6 +1085,7 @@ Base decisions on semantic meaning, geography, and functional appropriateness.
             self.llm.generate_structured_content,
             prompt=prompt,
             response_schema=response_schema,
+            validation_schema=relax_validation_schema(response_schema),
             trace_name="stitch-match-selection",
         )
 

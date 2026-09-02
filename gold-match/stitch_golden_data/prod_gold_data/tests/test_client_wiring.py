@@ -92,3 +92,14 @@ def test_build_clients_configs():
         llm_cls.assert_called_once_with()
 
     assert _build_clients("gemini") == (None, None)
+
+    # The gemini config constructs the dormant incumbent, and the matcher now
+    # passes bedrock-only keywords (validation_schema); without keyword
+    # tolerance the first selection under --model-config gemini dies with a
+    # TypeError.
+    import inspect
+
+    from shared.llm_gemini_3 import Gemini3Client
+
+    params = inspect.signature(Gemini3Client.generate_structured_content).parameters
+    assert any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())

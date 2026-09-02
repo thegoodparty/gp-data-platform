@@ -216,6 +216,94 @@ def test_fingerprint_normalizes_only_the_candidate_bound():
     assert _schema_fingerprint(SCHEMA) != _schema_fingerprint(drifted_confidence)
 
 
+GATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected_candidate_number": {"type": "number", "minimum": 0, "maximum": 3},
+        "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "is_exact_district_match": {"type": "boolean"},
+    },
+    "required": ["selected_candidate_number", "selection_confidence", "is_exact_district_match"],
+}
+
+RELAXED_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected_candidate_number": {"type": "number", "minimum": 0, "maximum": 3},
+        "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "is_exact_district_match": {},
+    },
+    "required": ["selected_candidate_number", "selection_confidence"],
+}
+
+
+def expected_converse_for(prompt: str, schema: dict) -> dict:
+    request = expected_converse(prompt)
+    request["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"] = {"json": schema}
+    return request
+
+
+def test_validation_schema_accepts_a_field_the_request_schema_requires():
+    """The omission shape: the model intermittently leaves out a field nothing
+    consumes, and without a separate validation schema that judgment is
+    discarded and the office fails its run."""
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 2, "selection_confidence": 75}
+    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        out = llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
+    assert out == payload
+    # Accepted first try: no re-ask was spent on the unconsumed field.
+    assert llm.get_usage_stats()["api_calls"] == 1
+
+
+def test_validation_schema_still_rejects_a_missing_consumed_field():
+    """The relaxation must stay single-field: a response missing a CONSUMED
+    field under the relaxed schema is still a technical failure, never a result."""
+    client, stubber = make_client_and_stubber()
+    bad = {"selected_candidate_number": 2, "is_exact_district_match": True}
+    for _ in range(2):
+        stubber.add_response("converse", converse_response(bad), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        with pytest.raises(StructuredOutputError, match="schema"):
+            llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
+    stubber.assert_no_pending_responses()
+
+
+def test_resolved_config_records_the_effective_validation_fingerprint():
+    """A relaxed-acceptance run must not read as configuration-equal to a
+    strict run: the request schema is billed prompt context and frozen (a
+    transport tweak flipped answers in the gate's transfer test), so its
+    fingerprint deliberately stays put -- the stub pins the outbound bytes --
+    and a second fingerprint carries the acceptance policy into run
+    comparisons."""
+    client, stubber = make_client_and_stubber()
+    payload = {"selected_candidate_number": 1, "selection_confidence": 70}
+    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema=RELAXED_SCHEMA)
+    cfg = llm.resolved_config()
+    assert cfg["schema_fingerprint"] == _schema_fingerprint(GATE_SCHEMA)
+    assert cfg["validation_schema_fingerprint"] == _schema_fingerprint(RELAXED_SCHEMA)
+    assert cfg["validation_schema_fingerprint"] != cfg["schema_fingerprint"]
+
+
+def test_an_explicit_empty_validation_schema_is_honored():
+    """`{}` is a valid accept-anything JSON Schema; a falsy-coalescing `or`
+    would silently fall back to strict validation and spend a re-ask."""
+    client, stubber = make_client_and_stubber()
+    payload = {"unrelated": "shape"}
+    stubber.add_response("converse", converse_response(payload), expected_converse_for("p", GATE_SCHEMA))
+    with stubber:
+        llm = make_llm(client)
+        out = llm.generate_structured_content(prompt="p", response_schema=GATE_SCHEMA, validation_schema={})
+    assert out == payload
+    assert llm.get_usage_stats()["api_calls"] == 1
+
+
 def test_resolved_config_shape():
     client, stubber = make_client_and_stubber()
     payload = {"selected_candidate_number": 1, "selection_confidence": 70}
@@ -232,3 +320,5 @@ def test_resolved_config_shape():
     assert cfg["tool_name"] == "emit_match_selection"
     assert cfg["output_shape_retries"] == 1
     assert cfg["schema_fingerprint"] == _schema_fingerprint(SCHEMA)
+    # No validation override on this call, so the two fingerprints coincide.
+    assert cfg["validation_schema_fingerprint"] == cfg["schema_fingerprint"]
