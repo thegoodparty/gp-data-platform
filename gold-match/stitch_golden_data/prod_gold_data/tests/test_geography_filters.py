@@ -251,6 +251,103 @@ class TestR2DecisionTable:
         assert verdict.abstain is True
 
 
+class TestFlaggedSchoolArm:
+    """The new school arm (DATA-2399 slice 2): a flagged school office
+    never denies its parent type -- it passes through unrestricted
+    whenever the state carries any school-family row, and abstains only
+    when it carries none. Kept apart from TestR2DecisionTable so a
+    school fixture can never contaminate the generic place-family
+    assertions there.
+    """
+
+    @pytest.mark.parametrize(
+        ("has_unknown_boundaries", "sub_area_name", "sub_area_value", "state_district_types", "expected"),
+        [
+            (True, "District", "B", ["School_District", "School_Board_District", "State"], "passthrough"),
+            (True, "District", "B", ["School_District", "State"], "passthrough"),
+            (True, "District", "B", ["School_Board_District", "State"], "passthrough"),
+            (True, "District", "B", ["County", "City", "State"], "abstain"),
+            (True, None, None, ["County", "State"], "passthrough"),
+            (False, None, None, ["County", "State"], "passthrough"),
+        ],
+        ids=[
+            "parent-and-sub-present",
+            "parent-only-present",
+            "sub-only-present-florida-shape",
+            "no-school-family-types-at-all",
+            "no-sub-area-flag-true",
+            "no-sub-area-flag-false",
+        ],
+    )
+    def test_the_table(self, has_unknown_boundaries, sub_area_name, sub_area_value, state_district_types, expected):
+        """Failure this catches: an accidental parents-AND-subs guard (rows
+        2 and 3 would wrongly abstain if the arm required both sets
+        non-empty instead of their union); a genuinely school-less state
+        failing to abstain (row 4); and the arm reading `mtfcc` instead of
+        the already-has_sub_area-gated `family`, which would abstain a
+        clean no-sub_area office in a school-less state instead of passing
+        it through untouched like every other no-sub_area office (rows 5-6,
+        both flag states).
+        """
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=has_unknown_boundaries,
+            geo_id="0804920",
+            sub_area_name=sub_area_name,
+            sub_area_value=sub_area_value,
+            state_district_types=state_district_types,
+        )
+        if expected == "passthrough":
+            assert verdict.abstain is False
+            assert verdict.eligible_indices is None
+        else:
+            assert verdict.abstain is True
+            assert verdict.eligible_indices == frozenset()
+        assert verdict.verdict_sentence is None
+
+    def test_weld_county_re_3j_school_board_district_b(self):
+        """Failure this catches: the documented regression itself -- Weld
+        RE-3J's correct answer, the parent School_District, being denied
+        (the pre-2026-09 rule) because the office is flagged and its
+        sub_area (District/B) looks like a real slice. City and county
+        rows, out of family, stay eligible either way.
+        """
+        types = ["School_District", "City", "County", "State"]
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=True,
+            geo_id="0804920",
+            sub_area_name="District",
+            sub_area_value="B",
+            state_district_types=types,
+        )
+        assert verdict.abstain is False
+        assert verdict.eligible_indices is None  # School_District is not denied
+        assert verdict.verdict_sentence is None
+
+    def test_a_maine_flagged_school_office_abstains_with_no_in_family_row(self):
+        """Failure this catches: a flagged school office in a state whose
+        L2 universe carries no school-family row at all reaching a menu
+        (and paying for an LLM call) instead of abstaining before it --
+        Maine is one of six states with zero in-family rows to offer.
+        """
+        types = ["Town_District", "County", "State"]
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=True,
+            geo_id="2311700",
+            sub_area_name="District",
+            sub_area_value="45",
+            state_district_types=types,
+        )
+        assert verdict.abstain is True
+        assert verdict.eligible_indices == frozenset()
+        assert verdict.verdict_sentence is None
+
+
 class TestNamedRegressions:
     """The three named regressions, walked through with their
     real BR field values against a small hand-seeded universe. Asserts

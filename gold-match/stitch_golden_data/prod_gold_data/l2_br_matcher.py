@@ -118,11 +118,13 @@ class _GeographyVerdict:
     and the sentence `districts_text` carries for it.
 
     `eligible_indices=None` means no restriction (pass-through, judicial
-    with no vocabulary in the state -- handled by `abstain` instead --
-    or a gated-off school whole-assertion): callers must check for `None`
-    rather than compare against a full index range, so a state whose
-    universe shrinks between runs is never mistaken for "nothing
-    eligible". `verdict_sentence` is `None` unless R2 actually fired.
+    with no vocabulary in the state (handled by `abstain` instead), a
+    gated-off school whole-assertion, or a flagged school office whose
+    state carries at least one school-family row): callers must check
+    for `None` rather than compare against a full index range, so a
+    state whose universe shrinks between runs is never mistaken for
+    "nothing eligible". `verdict_sentence` is `None` unless R2 actually
+    fired.
     """
 
     abstain: bool
@@ -519,6 +521,10 @@ def _classify_office_geography(
         sub-level types abstains rather than falling back to an
         out-of-family or statewide answer (the v1 critical fix: within-
         family denial alone can never empty the pool on its own).
+        EXCEPTION: a flagged school office (family == "school" and
+        has_unknown_boundaries) never falls into that slice logic --
+        it passes through unrestricted whenever its state carries any
+        school-family row, and abstains only when it carries none.
 
     `state_district_types` is positional against the caller's own
     embedded universe lists (`_StateUniverse.district_types`), so the
@@ -538,6 +544,16 @@ def _classify_office_geography(
     has_sub_area = bool(sub_area_name) or bool(sub_area_value)
     family = _FAMILY_BY_MTFCC.get(mtfcc) if has_sub_area else None
     if family is None:
+        return _GeographyVerdict(abstain=False, eligible_indices=None, verdict_sentence=None)
+
+    if family == "school" and has_unknown_boundaries:
+        # BR's flag means unknown geometry, not real sub-zoning: denying
+        # the parent type (the pre-2026-09 rule) removed the correct
+        # answer at population scale. Abstain only where the state
+        # carries no school-family row at all.
+        school_rows = (_FAMILY_PARENT_TYPES["school"] | _FAMILY_SUB_TYPES["school"]) & set(state_district_types)
+        if not school_rows:
+            return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         return _GeographyVerdict(abstain=False, eligible_indices=None, verdict_sentence=None)
 
     if has_unknown_boundaries:
