@@ -844,7 +844,7 @@ models:
           Consumers resolve a HubSpot Contact with it, where email is the unique
           key, and coverage splits sharply by cohort. Every person with a gp-api
           user has an address and 96% of those match an existing Contact. Only
-          47% of people without a gp-api user have one at all, and only 32% of
+          49% of people without a gp-api user have one at all, and only 31% of
           those match, so about one in six of that cohort resolves; the rest
           either cannot be reached or carry an address that mints a new Contact
           instead of resolving an existing one. 14.1k addresses are also shared

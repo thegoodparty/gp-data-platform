@@ -3,8 +3,10 @@
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
 -- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder > DDHQ for
 -- contact fields,
--- BR > others for civic fields. Role flags derive from the member records,
--- not from a stored status, so they stay re-derivable on every run.
+-- BR > others for civic fields. email has one further tier below all of those,
+-- since each source's rep reads a single member record: see group_emails.
+-- Role flags derive from the member records, not from a stored status, so they
+-- stay re-derivable on every run.
 with
     records as (
         select
@@ -246,6 +248,80 @@ with
             = 1
     ),
 
+    -- Last-resort email. The per-source reps above each read one member
+    -- record, so an address sitting on a sibling record of the same source is
+    -- dropped: an officeholder whose earliest BR record is a race rather than
+    -- a term is the common case, and accounts for ~8.5k people on its own.
+    -- This tier sweeps every member record and keeps the best by the same
+    -- source precedence, so it can only fill a null, never override a rep.
+    group_email_candidates as (
+        select
+            r.gp_person_id,
+            1 as source_rank,
+            r.first_seen_at,
+            r.source_id,
+            nullif(trim(u.email), '') as email
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__gp_api_db_user") }} as u
+            on cast(u.id as string) = r.source_id
+        where r.source_name = 'gp_api'
+        union all
+        select
+            r.gp_person_id, 2, r.first_seen_at, r.source_id, nullif(trim(c.email), '')
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as c
+            on cast(c.id as string) = r.source_id
+        where r.source_name = 'hubspot'
+        union all
+        select
+            r.gp_person_id,
+            3,
+            r.first_seen_at,
+            r.source_id,
+            nullif(trim(bi.id_email), '')
+        from records as r
+        inner join
+            {{ ref("int__ballotready_candidate_identity") }} as bi
+            on cast(bi.br_candidate_id as string) = r.source_id
+        where r.source_name = 'ballotready'
+        union all
+        select
+            r.gp_person_id, 4, r.first_seen_at, r.source_id, nullif(trim(o.email), '')
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }} as o
+            on cast(o.br_candidate_id as string) = r.source_id
+        where r.source_name = 'ballotready'
+        union all
+        select
+            r.gp_person_id, 5, r.first_seen_at, r.source_id, nullif(trim(cl.email), '')
+        from records as r
+        inner join clustered as cl on cl.unique_id = r.record_key
+        where r.source_name = 'techspeed'
+        union all
+        select
+            r.gp_person_id, 6, r.first_seen_at, r.source_id, nullif(trim(t.email), '')
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }} as t
+            on cast(t.ts_officeholder_id as string) = r.source_id
+        where r.source_name = 'techspeed_officeholder'
+    ),
+
+    group_emails as (
+        select gp_person_id, email
+        from group_email_candidates
+        where email is not null
+        qualify
+            row_number() over (
+                partition by gp_person_id
+                order by source_rank, first_seen_at asc nulls last, source_id, email
+            )
+            = 1
+    ),
+
     -- Role signals. is_candidate: any candidacy-context member (TS/DDHQ record,
     -- a BR person with a candidacy row, or a gp_api user with a campaign).
     -- is_elected_official: a techspeed_officeholder record, a BR person with an
@@ -339,7 +415,9 @@ select
         toa.last_name,
         da.last_name
     ) as last_name,
-    coalesce(ga.email, ha.email, ba.email, boa.email, ta.email, toa.email) as email,
+    coalesce(
+        ga.email, ha.email, ba.email, boa.email, ta.email, toa.email, ge.email
+    ) as email,
     coalesce(ga.phone, ha.phone, ba.phone, boa.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
@@ -362,3 +440,4 @@ left join br_officeholder_attrs as boa using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
 left join ts_officeholder_attrs as toa using (gp_person_id)
 left join ddhq_attrs as da using (gp_person_id)
+left join group_emails as ge using (gp_person_id)
