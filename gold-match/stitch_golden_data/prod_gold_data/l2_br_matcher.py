@@ -244,24 +244,24 @@ def _require_integral(value: Any, field_name: str) -> int:
     return int(value)
 
 
-# Required in the REQUEST schema, but never consumed or persisted: selection
-# uses candidate number and confidence only, and the results table has no such
-# column. The model intermittently omits it or leaks tool markup into its
-# value -- deterministically per office, with membership drifting between
-# feeds -- and each flub aborted a run after a wasted re-ask.
-UNCONSUMED_RESPONSE_FIELD = "is_exact_district_match"
+# In the REQUEST schema, but never consumed or persisted: selection uses
+# candidate number and confidence only, and the results table has no such
+# columns. The model intermittently flubs each of them -- omitting the flag or
+# leaking tool markup into its value, or listing an out-of-menu index among
+# the close alternatives -- and each flub aborted a run after a wasted re-ask.
+UNCONSUMED_RESPONSE_FIELDS = ("is_exact_district_match", "close_alternatives")
 
 
 def relax_validation_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """A copy of `schema` that tolerates the unconsumed field being absent or
+    """A copy of `schema` that tolerates the unconsumed fields being absent or
     malformed. Everything else is unchanged: a missing CONSUMED field stays a
     technical failure, never a result. Only the two rebuilt members differ;
     the original is what the request carries (billed prompt context, frozen)
     and is never mutated."""
     return {
         **schema,
-        "required": [key for key in schema["required"] if key != UNCONSUMED_RESPONSE_FIELD],
-        "properties": {**schema["properties"], UNCONSUMED_RESPONSE_FIELD: {}},
+        "required": [key for key in schema["required"] if key not in UNCONSUMED_RESPONSE_FIELDS],
+        "properties": {**schema["properties"], **{field: {} for field in UNCONSUMED_RESPONSE_FIELDS}},
     }
 
 
