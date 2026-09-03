@@ -134,10 +134,8 @@ select
     people.br_person_id_int as br_person_id,
     -- Globally unique: the /people/<slug> URL resolves on slug alone (no
     -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
-    -- Names are romanized rather than stripped, so 'josé' keeps its 'e' and a
-    -- non-Latin name keeps a readable stem instead of vanishing. Safe to turn on
-    -- here because the id suffix makes an old slug still resolve, and the
-    -- profile redirects it to the current one.
+    -- Romanizing is safe to enable here because that suffix keeps an old slug
+    -- resolving, and the profile then redirects it to the current one.
     {{
         slugify(
             "people.first_name",

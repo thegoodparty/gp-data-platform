@@ -7,18 +7,15 @@
         with lower=true, replacement='-', strict=false, trim=true.
 
         Pass transliterate=true to romanize non-ASCII text before the strip, so
-        'josé' slugs to 'jose' rather than 'jos' and a name in a non-Latin
-        script keeps a readable stem instead of vanishing. It is opt-in because
-        turning it on rewrites existing slugs: a person slug carries an id
-        suffix and so survives the change (the old URL still resolves and
-        redirects to the new one), but a place or race slug is itself the
-        routing key, so transliterating those needs a redirect plan first.
-        It is read from kwargs rather than declared, because a declared
-        parameter would swallow the second positional column instead.
+        'josé' slugs to 'jose' and a non-Latin name keeps a readable stem.
+        Opt-in because it rewrites existing slugs: a person slug carries an id
+        suffix so the old URL still resolves and redirects, but a place or race
+        slug is itself the routing key and needs a redirect plan first.
 
-        Transliteration runs before lower(), not after: unidecode marks some
-        letters by case (H for ح against h for ه), and lowercasing last keeps
-        those from being dropped by the a-z strip.
+        Read from kwargs, not declared: a declared parameter would swallow the
+        second positional column. Runs before lower() because unidecode marks
+        some letters by case (H for ح against h for ه), which the a-z strip
+        would otherwise drop.
 
         Example:
             {{ slugify('title') }}
