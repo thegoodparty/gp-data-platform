@@ -831,6 +831,9 @@ models:
           slugify(first_name-last_name) with an 8-hex suffix from the person id.
           The /people/<slug> URL resolves on slug alone, so it is globally
           unique. If uniqueness ever fails, widen the suffix beyond 8 hex.
+          Names are romanized before the strip, so 'josé' keeps its 'e' and a
+          non-Latin name keeps a readable stem instead of being deleted. A name
+          with no letters at all still leaves the id suffix as the whole slug.
         tests:
           - not_null
           - unique
