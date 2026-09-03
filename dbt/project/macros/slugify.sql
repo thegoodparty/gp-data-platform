@@ -6,25 +6,19 @@
         hyphens. Matches npm (slugify)[https://www.npmjs.com/package/slugify]
         with lower=true, replacement='-', strict=false, trim=true.
 
-        Pass transliterate=true to romanize non-ASCII text before the strip, so
-        'josé' slugs to 'jose' and a non-Latin name keeps a readable stem.
-        Opt-in because it rewrites existing slugs: a person slug carries an id
-        suffix so the old URL still resolves and redirects, but a place or race
-        slug is itself the routing key and needs a redirect plan first.
+        transliterate=true romanizes non-ASCII before the strip ('josé' ->
+        'jose', 'محمد' -> 'mhmd'). single_segment=true turns '/' into '-' for a
+        one-segment slug ('n/a' -> 'n-a'). Both opt-in: they rewrite existing
+        slugs, and place/race slugs are path-shaped routing keys
+        ('ca/los-angeles/mayor') that int__geo_id_attributes re-slugifies.
 
-        Pass single_segment=true when the slug occupies one URL path segment,
-        which turns '/' into '-' instead of keeping it. Slugs are path-shaped by
-        default because place and race slugs nest ('ca/los-angeles/mayor'), and
-        int__geo_id_attributes re-slugifies an already-joined parent path.
-
-        Both flags are read from kwargs, not declared: a declared parameter
-        would swallow the second positional column. Transliteration runs before
-        lower() because unidecode marks some letters by case (H for ح against h
-        for ه), which the a-z strip would otherwise drop.
+        Flags come from kwargs, not declared params, which would swallow the
+        second positional column. Transliteration precedes lower(): unidecode
+        marks some letters by case (H for ح against h for ه).
 
         Example:
             {{ slugify('title') }}
-            {{ slugify('first_name', 'last_name', "left(id, 8)", transliterate=true) }}
+            {{ slugify('first', 'last', "left(id, 8)", transliterate=true, single_segment=true) }}
     -#}
     {%- set transliterate = kwargs.get("transliterate", false) -%}
     {%- set single_segment = kwargs.get("single_segment", false) -%}
@@ -33,7 +27,7 @@
     {%- if transliterate -%}
         {%- set joined = ref("transliterate_to_ascii") ~ "(" ~ joined ~ ")" -%}
     {%- endif -%}
-    {#- After transliteration, which turns fractions like ½ into '1/2'. -#}
+    {#- After transliteration, which turns ½ into '1/2'. -#}
     {%- if single_segment -%}
         {%- set joined = "replace(" ~ joined ~ ", '/', '-')" -%}
     {%- endif -%}
