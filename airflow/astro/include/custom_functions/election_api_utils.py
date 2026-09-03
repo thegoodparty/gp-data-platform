@@ -51,9 +51,19 @@ class TableSyncSpec:
     target_table: str
     target_schema: str = "public"
     staging_schema: str = "staging"
-    pk_column: str = "id"
+    # A tuple declares a composite key, as the density tables need; the FK
+    # builder still targets the referenced table's `id`, so a composite-key
+    # table cannot be an FK parent.
+    pk_column: str | tuple[str, ...] = "id"
     indexes: tuple[Index, ...] = field(default_factory=tuple)
     fkeys: tuple[ForeignKey, ...] = field(default_factory=tuple)
+
+    @property
+    def pk_columns(self) -> tuple[str, ...]:
+        """PK columns in key order, however `pk_column` was spelled."""
+        if isinstance(self.pk_column, str):
+            return (self.pk_column,)
+        return self.pk_column
 
     @property
     def new_table(self) -> str:
@@ -97,7 +107,7 @@ class TableSyncSpec:
         statements = [
             f'ALTER TABLE "{sn}"."{nt}" '
             f'ADD CONSTRAINT "{self.stage_name(self.pk_name)}" '
-            f'PRIMARY KEY ("{self.pk_column}")'
+            f"PRIMARY KEY ({', '.join(f'\"{c}\"' for c in self.pk_columns)})"
         ]
         for idx in self.indexes:
             unique = "UNIQUE " if idx.unique else ""
@@ -206,11 +216,12 @@ def run_quality_checks(
         # Guard the query, not just the check: the join is expensive on the
         # large tables and pointless without a declared floor.
         if gate.min_id_overlap is not None and prior_count > 0:
+            join_predicate = " AND ".join(f'live."{c}" = stg."{c}"' for c in spec.pk_columns)
             cur.execute(
-                f'SELECT count(stg."{spec.pk_column}") '
+                f"SELECT count(*) "
                 f'FROM "{spec.target_schema}"."{spec.target_table}" live '
                 f'JOIN "{spec.staging_schema}"."{spec.new_table}" stg '
-                f'ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
+                f"ON {join_predicate}"
             )
             check_id_overlap(cur.fetchone()[0], prior_count, gate, spec.target_table)
 

@@ -32,9 +32,10 @@ vintage. **drop_old** then drops the renamed-aside set. Leftover `_old`
 tables from a crashed run are pre-dropped inside the swap transaction, so a
 crashed run never wedges subsequent ones.
 
-The shared lifecycle lives in
-`include/custom_functions/election_api_utils.py`; each table below is a
-declarative `MartSync` entry (spec, mart, gate, FK parents) consumed by a
+The SQL lives in `include/custom_functions/election_api_utils.py` and the task
+wiring in `include/custom_functions/election_api_sync.py`, shared with
+`sync_election_api_density`; each table below is a declarative `MartSync` entry
+(spec, mart, gate, FK parents) consumed by a
 single task-group factory. The only cross-group ordering is
 `parent.build_indexes_and_fk >> child.build_indexes_and_fk`: a staging FK
 needs the referenced staging table loaded with its PK in place. Loads run in
@@ -85,64 +86,18 @@ on PR merge alone. Check `_prisma_migrations` on the target Postgres before
 kicking a sync that depends on new columns.
 """
 
-import logging
-from collections.abc import Callable
-from dataclasses import dataclass
-
-from airflow.sdk import Variable, dag, task, task_group
+from airflow.sdk import dag
+from include.custom_functions.election_api_sync import MartSync, wire_sync_dag
 from include.custom_functions.election_api_utils import (
     ForeignKey,
     Index,
     QualityGate,
     TableSyncSpec,
-    apply_ddl,
-    bulk_insert_from_databricks,
-    create_staging_table,
-    drop_old_tables,
-    run_quality_checks,
-    staging_columns,
-    swap_staging_into_target,
 )
-from include.custom_functions.postgres_utils import get_postgres_via_ssh
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
-t_log = logging.getLogger("airflow.task")
-
-PG_CONN_ID = "election_api_db"
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
-# Loads run on their own worker queue at low concurrency; see the docstring.
-LOAD_QUEUE = "election-api-sync"
-
-
-def _open_pg():
-    """Open a Postgres connection — tunneled in cloud, direct on VPN locally.
-
-    The bastion connection id comes from the `election_api_bastion_conn_id`
-    Airflow Variable; an empty value (or unset) bypasses the tunnel.
-    """
-    bastion = Variable.get("election_api_bastion_conn_id", default="gp_bastion_host")
-    return get_postgres_via_ssh(
-        bastion_conn_id=bastion or None,
-        pg_conn_id=PG_CONN_ID,
-    )
-
-
-@dataclass(frozen=True)
-class MartSync:
-    """One mart-to-table sync: everything the task-group factory needs."""
-
-    group_id: str
-    spec: TableSyncSpec
-    source_model: str
-    gate: QualityGate
-    partition_column: str | None = None
-    # Extra per-table checks run after the generic gate: (conn, spec, loaded).
-    extra_checks: Callable[..., None] | None = None
-    # group_ids of the tables this table's staging FKs reference; wired as
-    # parent.build_indexes_and_fk >> this.build_indexes_and_fk (the FK add
-    # needs the referenced staging table loaded with its PK in place).
-    parents: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -450,68 +405,6 @@ TABLES: tuple[MartSync, ...] = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Task-group factory
-# ---------------------------------------------------------------------------
-
-
-def _build_group(table: MartSync) -> dict:
-    """One build->load->index->gate task group for a table's staging copy.
-
-    Returns handles to the tasks that participate in cross-group wiring.
-    """
-    spec = table.spec
-    handles: dict = {}
-
-    @task_group(group_id=table.group_id)
-    def group():
-        @task
-        def build_staging() -> None:
-            with _open_pg() as conn:
-                create_staging_table(conn, spec)
-
-        @task(queue=LOAD_QUEUE)
-        def load_staging() -> int:
-            catalog = Variable.get("databricks_catalog")
-            schema = Variable.get("election_api_source_schema", default="dbt")
-            with _open_pg() as conn:
-                # The live table's own columns drive the load: dbt must publish
-                # every one of them, with matching names and types.
-                columns = staging_columns(conn, spec)
-                col_list = ", ".join(f"`{c}`" for c in columns)
-                query = f"SELECT {col_list} " f"FROM `{catalog}`.`{schema}`.`{table.source_model}`"
-                return bulk_insert_from_databricks(
-                    conn,
-                    spec,
-                    source_query=query,
-                    target_columns=columns,
-                    partition_column=table.partition_column,
-                )
-
-        @task
-        def build_indexes_and_fk() -> None:
-            with _open_pg() as conn:
-                apply_ddl(conn, spec.constraint_ddl())
-
-        @task
-        def quality_checks(loaded_count: int) -> None:
-            with _open_pg() as conn:
-                run_quality_checks(conn, spec, table.gate, loaded_count)
-                if table.extra_checks:
-                    table.extra_checks(conn, spec, loaded_count)
-
-        s = build_staging()
-        loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
-        s >> loaded >> idx >> qc
-        handles["build_indexes_and_fk"] = idx
-        handles["quality_checks"] = qc
-
-    group()
-    return handles
-
-
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -529,34 +422,7 @@ def _build_group(table: MartSync) -> dict:
     is_paused_upon_creation=True,
 )
 def sync_election_api():
-    handles = {table.group_id: _build_group(table) for table in TABLES}
-    # Self-references need no edge: the PK lands in the same transaction,
-    # before the FK.
-    for table in TABLES:
-        for parent in table.parents:
-            handles[parent]["build_indexes_and_fk"] >> handles[table.group_id]["build_indexes_and_fk"]
-
-    @task.short_circuit
-    def cutover_enabled() -> bool:
-        enabled = Variable.get(SWAP_GATE_VARIABLE, default="false").strip().lower() == "true"
-        if not enabled:
-            t_log.info("Swap disabled (rehearsal mode); staging left for parity checks")
-        return enabled
-
-    @task
-    def swap() -> None:
-        with _open_pg() as conn:
-            swap_staging_into_target(conn, [table.spec for table in TABLES])
-
-    @task
-    def drop_old() -> None:
-        with _open_pg() as conn:
-            drop_old_tables(conn, [table.spec for table in TABLES])
-
-    gate = cutover_enabled()
-    for table in TABLES:
-        handles[table.group_id]["quality_checks"] >> gate
-    gate >> swap() >> drop_old()
+    wire_sync_dag(TABLES, SWAP_GATE_VARIABLE)
 
 
 sync_election_api()

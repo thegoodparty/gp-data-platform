@@ -8,10 +8,12 @@ import pytest
 from include.custom_functions import election_api_utils
 from include.custom_functions.election_api_utils import (
     QualityGate,
+    TableSyncSpec,
     bulk_insert_from_databricks,
     check_counts,
     check_id_overlap,
     check_nulls,
+    run_quality_checks,
 )
 
 
@@ -56,6 +58,51 @@ class TestQualityGates:
         check_nulls(0, gate, "DistrictTopIssue")
         with pytest.raises(ValueError, match="is_local"):
             check_nulls(1, gate, "DistrictTopIssue")
+
+
+class TestCompositePrimaryKey:
+    """The density tables key on (district_id, resolution, h3_index) and
+    (district_id, resolution); every other synced table keys on a single `id`.
+    Both spellings have to work off the same spec field."""
+
+    def test_single_column_pk_ddl_unchanged(self):
+        spec = TableSyncSpec(target_table="Race")
+        (pk_ddl,) = spec.constraint_ddl()
+        assert 'PRIMARY KEY ("id")' in pk_ddl
+
+    def test_tuple_pk_emits_composite_ddl(self):
+        spec = TableSyncSpec(
+            target_table="DistrictVoterDensity",
+            pk_column=("district_id", "resolution", "h3_index"),
+        )
+        (pk_ddl,) = spec.constraint_ddl()
+        assert 'PRIMARY KEY ("district_id", "resolution", "h3_index")' in pk_ddl
+
+    def test_id_overlap_join_uses_every_pk_column(self):
+        """The overlap probe joins live to staging on the PK. With a composite
+        key it must join on all of it: interpolating the tuple would emit a
+        single garbage identifier, and joining on only the first column would
+        overcount overlap on a key whose first column repeats."""
+        spec = TableSyncSpec(
+            target_table="DistrictVoterDensity",
+            pk_column=("district_id", "resolution", "h3_index"),
+        )
+        cur = MagicMock()
+        # to_regclass -> exists, COUNT(*) -> prior rows, then the overlap count.
+        cur.fetchone.side_effect = [("live",), (1_000,), (1_000,)]
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+
+        run_quality_checks(
+            conn,
+            spec,
+            QualityGate(cold_start_floor=10, min_id_overlap=0.90),
+            1_000,
+        )
+
+        overlap_sql = cur.execute.call_args.args[0]
+        for column in ("district_id", "resolution", "h3_index"):
+            assert f'live."{column}" = stg."{column}"' in overlap_sql
 
 
 def _gen(batches):
