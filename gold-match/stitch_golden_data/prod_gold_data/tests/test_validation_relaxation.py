@@ -1,6 +1,6 @@
 """The unconsumed-field relaxation: responses are judged against a copy of the
-selection schema that tolerates is_exact_district_match being absent or
-malformed, while the request schema stays frozen."""
+selection schema that tolerates is_exact_district_match and close_alternatives
+being absent or malformed, while the request schema stays frozen."""
 
 import asyncio
 from unittest.mock import MagicMock, patch
@@ -9,7 +9,7 @@ import jsonschema
 import pytest
 
 from stitch_golden_data.prod_gold_data.l2_br_matcher import (
-    UNCONSUMED_RESPONSE_FIELD,
+    UNCONSUMED_RESPONSE_FIELDS,
     DistrictCandidate,
     L2BrMatcher,
     relax_validation_schema,
@@ -21,6 +21,7 @@ SAMPLE_SCHEMA = {
         "selected_candidate_number": {"type": "number", "minimum": 0, "maximum": 2},
         "selection_confidence": {"type": "number", "minimum": 0, "maximum": 100},
         "reasoning": {"type": "string"},
+        "close_alternatives": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 2}},
         "is_exact_district_match": {"type": "boolean"},
     },
     "required": [
@@ -46,24 +47,35 @@ def mock_dependencies():
         yield {"llm": mock_llm}
 
 
-def test_relaxation_tolerates_only_the_unconsumed_field():
-    """An omitted or markup-mangled is_exact_district_match aborted whole runs
-    (the model flubs exactly this field, deterministically per office, and the
-    field feeds nothing); a missing CONSUMED field must still fail."""
+def test_relaxation_tolerates_only_the_unconsumed_fields():
+    """Each unconsumed field has aborted a whole run when the model flubbed it
+    (is_exact_district_match omitted or markup-mangled; a close_alternatives
+    entry pointing past the menu); a missing or corrupt CONSUMED field must
+    still fail."""
     relaxed = relax_validation_schema(SAMPLE_SCHEMA)
 
     omission = {"selected_candidate_number": 1, "selection_confidence": 75, "reasoning": "r"}
     mangled = omission | {"is_exact_district_match": "true</is_exact_district_match>\n</invoke>"}
+    overflow = omission | {"is_exact_district_match": True, "close_alternatives": [1, 16]}
     jsonschema.validate(omission, relaxed)
     jsonschema.validate(mangled, relaxed)
+    jsonschema.validate(overflow, relaxed)
 
     missing_consumed_field = {"selected_candidate_number": 1, "reasoning": "r"}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(missing_consumed_field, relaxed)
 
+    # A flubbed unconsumed field must never launder a corrupt PICK through:
+    # the selection's own bounds are not relaxed.
+    corrupt_pick_and_overflow = overflow | {"selected_candidate_number": 99}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(corrupt_pick_and_overflow, relaxed)
+
     # The input schema is untouched: the request is built from it.
-    assert UNCONSUMED_RESPONSE_FIELD in SAMPLE_SCHEMA["required"]
-    assert SAMPLE_SCHEMA["properties"][UNCONSUMED_RESPONSE_FIELD] == {"type": "boolean"}
+    for field in UNCONSUMED_RESPONSE_FIELDS:
+        assert field in SAMPLE_SCHEMA["properties"]
+    assert SAMPLE_SCHEMA["properties"]["is_exact_district_match"] == {"type": "boolean"}
+    assert SAMPLE_SCHEMA["properties"]["close_alternatives"]["items"]["maximum"] == 2
 
 
 def test_select_candidate_judges_responses_against_the_relaxed_schema(mock_dependencies):
@@ -81,5 +93,8 @@ def test_select_candidate_judges_responses_against_the_relaxed_schema(mock_depen
         asyncio.run(matcher._select_candidate("Wauwatosa City Council - District 4", candidates, ""))
 
     call_kwargs = mock_dependencies["llm"].generate_structured_content.call_args.kwargs
-    assert UNCONSUMED_RESPONSE_FIELD in call_kwargs["response_schema"]["required"]
+    # The outbound request schema keeps both fields fully specified...
+    assert "is_exact_district_match" in call_kwargs["response_schema"]["required"]
+    assert call_kwargs["response_schema"]["properties"]["close_alternatives"]["items"]["maximum"] == 2
+    # ...while the response is judged against the relaxed copy.
     assert call_kwargs["validation_schema"] == relax_validation_schema(call_kwargs["response_schema"])
