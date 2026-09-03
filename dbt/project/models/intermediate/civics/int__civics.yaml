@@ -3564,6 +3564,18 @@ models:
       plus-addressing is stripped, phones must be 10 digits (or 11 with a
       leading country code), and any contact key on more than 25 records
       (institutional inboxes, switchboards) is nulled.
+    data_tests:
+      # Model level so the expression can name the column without the
+      # column-test macro prepending it. Guards the tokenizer silently
+      # emptying every array, which would cost blocking coverage with no
+      # other symptom. The ASCII class keeps the predicate free of regex
+      # escapes, which do not survive the yaml-to-Jinja-to-SQL round trip.
+      - dbt_utils.expression_is_true:
+          name: prematch_people_last_name_tokens_cover_the_surname
+          arguments:
+            expression: "size(last_name_tokens) > 0"
+            config:
+              where: "last_name rlike '[a-z][a-z]'"
     columns:
       - name: unique_id
         description: >
@@ -3593,6 +3605,13 @@ models:
         description: Lowercased surname with generational suffixes stripped.
         data_tests:
           - not_null
+      - name: last_name_tokens
+        description: >
+          Surname split on non-letter characters, single-character tokens
+          dropped. Splink blocks on an overlap in this array so a hyphenated
+          surname written as one part, or a middle name packed into the surname
+          field, still reaches the pair: blocking on the whole surname reaches
+          neither.
       - name: suffix_token
         description: >
           Generational suffix ('' when none) from explicit source columns
