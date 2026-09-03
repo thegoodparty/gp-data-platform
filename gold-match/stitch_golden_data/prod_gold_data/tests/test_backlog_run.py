@@ -356,6 +356,19 @@ class TestModelConfigRestriction:
                 _parse_args(["run", "--model-config", rejected, *_REQUIRED_RUN_ARGS])
 
 
+class TestInputTableValidation:
+    @pytest.mark.parametrize("bad_value", ["schema.table", "cat..table", "cat.schema.", "justoneword"])
+    def test_malformed_value_is_rejected_at_parse_time(self, bad_value):
+        """Failure this catches: a mistyped --input-table (missing or
+        blank a catalog/schema/table segment) reaching the matcher and
+        failing deep inside a warehouse query after paid matching had
+        already started, instead of failing at argparse parse time before
+        any spend.
+        """
+        with pytest.raises(SystemExit):
+            _parse_args(["run", "--input-table", bad_value, *_REQUIRED_RUN_ARGS])
+
+
 class TestOutDirFreshnessGuard:
     @pytest.mark.parametrize("existing_name", ["manifest.json", "answers.json", "run-record.json"])
     def test_refuses_when_any_run_artifact_already_exists(self, existing_name, tmp_path):
@@ -727,3 +740,126 @@ class TestRunComposition:
         assert record["results_count"] == 3
         assert record["cohort"] == {"approved_count": 2, "results_count": 3, "intersection_count": 2}
         assert record["written"] == 2 == record["cohort"]["intersection_count"]
+
+
+def _run_composition(tmp_path, extra_run_args=()):
+    """The same doubled `_run()` pipeline as
+    TestRunComposition.test_writes_only_the_cohort_filtered_subset_with_reconciled_counts
+    (real L2BrMatcher; Databricks/Braintrust/model clients doubled), trimmed
+    to one office and reused by the input-table override tests below so
+    each states only what --input-table changes. Returns the queries the
+    matcher issued (in call order) and the written manifest.
+    """
+    pending_df = pd.DataFrame(
+        {
+            "br_database_id": [1],
+            "name": ["Office 1"],
+            "state": ["DE"],
+            "mtfcc": ["Z9999"],
+            "geo_id": [None],
+            "sub_area_name": [None],
+            "sub_area_value": [None],
+            "is_judicial": [False],
+            "has_unknown_boundaries": [False],
+        }
+    )
+    universe_df = pd.DataFrame(
+        {
+            "state_postal_code": ["DE", "DE"],
+            "district_type": ["House", "State"],
+            "district_name": ["District 5", "Delaware"],
+        }
+    )
+    prior_answers_df = pd.DataFrame(
+        columns=["br_database_id", "l2_state", "l2_district_type", "l2_district_name", "confidence"]
+    )
+    approved_df = pd.DataFrame({"br_database_id": [1]})
+
+    predicate_file = tmp_path / "approved.sql"
+    predicate_file.write_text("select br_database_id from dry_run_table")
+
+    def create_embeddings_side_effect(texts, **kwargs):
+        # Mirrors TestRunComposition's own double: the real client's
+        # multi-text path calls asyncio.run(...) internally.
+        if len(texts) != 1:
+            asyncio.run(asyncio.sleep(0))
+        return np.array([[1.0, 0.0]] * len(texts))
+
+    with (
+        patch("stitch_golden_data.prod_gold_data.l2_br_matcher.DatabricksClient") as mock_db_cls,
+        patch("stitch_golden_data.prod_gold_data.l2_br_matcher.init_braintrust"),
+        patch("stitch_golden_data.prod_gold_data.l2_br_matcher.cache_prompt", return_value=MagicMock()),
+        patch(
+            "stitch_golden_data.prod_gold_data.l2_br_matcher.get_prompt_provenance",
+            return_value={"slug": "p", "resolved_version": "xact-1", "loaded": True},
+        ),
+        patch("stitch_golden_data.prod_gold_data.backlog_run._orig_build_cached_prompt", return_value="prompt"),
+        # _run() permanently reassigns l2_br_matcher.build_cached_prompt (its
+        # own fail-loud install, not a mock) -- bracket it so this patch's
+        # exit restores the ORIGINAL for whatever test runs next.
+        patch("stitch_golden_data.prod_gold_data.l2_br_matcher.build_cached_prompt"),
+        patch("stitch_golden_data.prod_gold_data.backlog_run._build_clients") as mock_build_clients,
+        patch("stitch_golden_data.prod_gold_data.backlog_run.MatchResultWriter") as mock_writer_cls,
+    ):
+        mock_db_cls.return_value.execute_query.side_effect = [pending_df, universe_df, prior_answers_df, approved_df]
+
+        mock_embedding, mock_llm = MagicMock(), MagicMock()
+        mock_embedding.create_embeddings.side_effect = create_embeddings_side_effect
+        mock_embedding.get_cost_stats.return_value = {"total_cost": 0.0}
+        mock_embedding.resolved_config.return_value = {"model": "test-embedding"}
+        mock_llm.get_usage_stats.return_value = {"total_cost": 0.0}
+        mock_llm.resolved_config.return_value = {"model": "test-llm"}
+        mock_llm.generate_structured_content.return_value = {
+            "selected_candidate_number": 1,
+            "selection_confidence": 90,
+            "reasoning": "Clean match",
+            "is_exact_district_match": True,
+        }
+        mock_build_clients.return_value = (mock_embedding, mock_llm)
+        mock_writer_cls.return_value.append_results.return_value = 1
+
+        args = _parse_args(
+            [
+                "run",
+                "--cohort-predicate-file",
+                str(predicate_file),
+                "--cohort-expected-count",
+                "1",
+                "--out-dir",
+                str(tmp_path),
+                *extra_run_args,
+            ]
+        )
+        asyncio.run(_run(args))
+
+        queries = [call.args[0] for call in mock_db_cls.return_value.execute_query.call_args_list]
+
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    return queries, manifest
+
+
+class TestInputTableOverride:
+    OVERRIDE_TABLE = "goodparty_data_catalog.dbt.scratch_cohort_offices"
+
+    def test_absent_flag_reads_the_constructor_built_pending_path(self, tmp_path):
+        """Failure this catches: the default run drifting off the
+        matcher's own constructor-built pending path, or the manifest
+        recording a phantom override when none was given -- either would
+        break the byte-identical-when-absent contract.
+        """
+        queries, manifest = _run_composition(tmp_path)
+
+        assert "int__l2_br_match_pending_offices" in queries[0]
+        assert manifest["input_table_override"] is None
+
+    def test_flag_redirects_the_matcher_and_the_manifest_records_it(self, tmp_path):
+        """Failure this catches: --input-table parsing successfully but
+        never reaching the matcher instance, silently leaving a cohort
+        re-run reading the pending model instead of the pinned scratch
+        table it was told to use.
+        """
+        queries, manifest = _run_composition(tmp_path, extra_run_args=["--input-table", self.OVERRIDE_TABLE])
+
+        assert self.OVERRIDE_TABLE in queries[0]
+        assert "int__l2_br_match_pending_offices" not in queries[0]
+        assert manifest["input_table_override"] == self.OVERRIDE_TABLE
