@@ -16,8 +16,8 @@
 -- the loader.
 --
 -- Single scan; both checks derive from the same one-row aggregate.
-{% set affinity_rate_min = 0.655 %}
-{% set affinity_rate_max = 0.675 %}
+{% set affinity_rate_min = 0.690 %}
+{% set affinity_rate_max = 0.710 %}
 {% set ideology_coverage_min = 0.589 %}
 {% set ideology_coverage_max = 0.609 %}
 
