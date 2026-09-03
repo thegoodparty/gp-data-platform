@@ -12,20 +12,30 @@
         suffix so the old URL still resolves and redirects, but a place or race
         slug is itself the routing key and needs a redirect plan first.
 
-        Read from kwargs, not declared: a declared parameter would swallow the
-        second positional column. Runs before lower() because unidecode marks
-        some letters by case (H for ح against h for ه), which the a-z strip
-        would otherwise drop.
+        Pass single_segment=true when the slug occupies one URL path segment,
+        which turns '/' into '-' instead of keeping it. Slugs are path-shaped by
+        default because place and race slugs nest ('ca/los-angeles/mayor'), and
+        int__geo_id_attributes re-slugifies an already-joined parent path.
+
+        Both flags are read from kwargs, not declared: a declared parameter
+        would swallow the second positional column. Transliteration runs before
+        lower() because unidecode marks some letters by case (H for ح against h
+        for ه), which the a-z strip would otherwise drop.
 
         Example:
             {{ slugify('title') }}
             {{ slugify('first_name', 'last_name', "left(id, 8)", transliterate=true) }}
     -#}
     {%- set transliterate = kwargs.get("transliterate", false) -%}
+    {%- set single_segment = kwargs.get("single_segment", false) -%}
     {%- set cols = [column_name] + (varargs | list) -%}
     {%- set joined = "trim(concat_ws('-', " ~ (cols | join(", ")) ~ "))" -%}
     {%- if transliterate -%}
         {%- set joined = ref("transliterate_to_ascii") ~ "(" ~ joined ~ ")" -%}
+    {%- endif -%}
+    {#- After transliteration, which turns fractions like ½ into '1/2'. -#}
+    {%- if single_segment -%}
+        {%- set joined = "replace(" ~ joined ~ ", '/', '-')" -%}
     {%- endif -%}
     trim(
         both '-/'

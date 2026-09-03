@@ -142,6 +142,7 @@ select
             "people.last_name",
             "left(people.gp_person_id, 8)",
             transliterate=true,
+            single_segment=true,
         )
     }} as slug,
     people.first_name,
