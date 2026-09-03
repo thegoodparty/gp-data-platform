@@ -134,9 +134,15 @@ select
     people.br_person_id_int as br_person_id,
     -- Globally unique: the /people/<slug> URL resolves on slug alone (no
     -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
+    -- Accents are folded rather than stripped, so 'josé' keeps its 'e'. Safe to
+    -- turn on here because the id suffix makes an old slug still resolve, and
+    -- the profile redirects it to the current one.
     {{
         slugify(
-            "people.first_name", "people.last_name", "left(people.gp_person_id, 8)"
+            "people.first_name",
+            "people.last_name",
+            "left(people.gp_person_id, 8)",
+            fold_accents=true,
         )
     }} as slug,
     people.first_name,
