@@ -194,13 +194,8 @@ with
                 >= {{ var("affinity_third_cut") }},
                 false
             )
-            -- Registered independent, held to the single 'Non-Partisan' value. The
-            -- domain has several other unaffiliated-sounding registrations
-            -- ('Registered Independent', 'Declined to State', 'American Independent'),
-            -- but those are named parties or state-specific ballot lines, so widening
-            -- to them is a separate call. Unlike the opponent-relative registration
-            -- targeting in the per-campaign list query, this is race-independent and
-            -- so belongs on the voter row.
+            -- Only 'Non-Partisan': the other unaffiliated-sounding registrations are
+            -- named parties or state ballot lines.
             or coalesce(
                 `Parties_Description` = 'Non-Partisan', false
             ) as `Voter_Independent_Affinity`,
