@@ -415,6 +415,10 @@ async def _run(args: argparse.Namespace) -> None:
     run_key = datetime.now(UTC).replace(microsecond=0)  # minted ONCE; nothing else mints one
     embedding_client, llm = _build_clients(args.model_config)
     matcher = L2BrMatcher(embedding_client=embedding_client, llm=llm)
+    # Absent, this must stay byte-identical to today: the matcher keeps its
+    # own constructor-built pending path untouched.
+    if args.input_table:
+        matcher.pending_offices_path = args.input_table
     try:
         _require_pinned_prompt(matcher)
         if args.compare_against:
@@ -448,6 +452,7 @@ async def _run(args: argparse.Namespace) -> None:
             "school_whole_assertion_enabled": args.enable_school_whole_assertion,
             "states_filter": args.states,
             "limit": args.limit,
+            "input_table_override": args.input_table,
             "git": _git_state(),
             "exclusions": exclusion_info,
             "offices": len(answer_rows),
@@ -685,6 +690,17 @@ def _iso_timestamp(value: str) -> datetime:
     return parsed
 
 
+def _qualified_table_arg(value: str) -> str:
+    """argparse `type=` for --input-table: reject a malformed path at parse
+    time, before any embedding/LLM spend -- not after load_pending_offices'
+    own query fails deep inside a paid run.
+    """
+    parts = value.split(".")
+    if len(parts) != 3 or not all(parts):
+        raise argparse.ArgumentTypeError(f"--input-table must be a fully qualified catalog.schema.table, got {value!r}")
+    return value
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -694,6 +710,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--states", nargs="+", type=_canonical_state_arg, help="Limit to these state codes (e.g. --states DE CA)"
     )
     run_p.add_argument("--limit", type=_positive_int, help="Limit the number of pending offices read (positive)")
+    run_p.add_argument(
+        "--input-table",
+        type=_qualified_table_arg,
+        default=None,
+        help="catalog.schema.table read in place of the matcher's constructor-built pending path "
+        "(e.g. a cohort scratch table); absent, behavior is unchanged",
+    )
     run_p.add_argument(
         "--batch-size", type=_positive_int, default=100, help="Offices matched concurrently per group (default: 100)"
     )
