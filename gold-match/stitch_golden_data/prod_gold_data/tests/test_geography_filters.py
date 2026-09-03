@@ -251,6 +251,86 @@ class TestR2DecisionTable:
         assert verdict.abstain is True
 
 
+class TestFlaggedSchoolArm:
+    """The new school arm (DATA-2399 slice 2): a flagged school office
+    never denies its parent type -- it passes through unrestricted
+    whenever the state carries any school-family row, and abstains only
+    when it carries none. Kept apart from TestR2DecisionTable so a
+    school fixture can never contaminate the generic place-family
+    assertions there.
+    """
+
+    @pytest.mark.parametrize(
+        ("has_unknown_boundaries", "sub_area_name", "sub_area_value", "state_district_types", "expected"),
+        [
+            (True, "District", "B", ["School_District", "School_Board_District", "State"], "passthrough"),
+            (True, "District", "B", ["School_District", "State"], "passthrough"),
+            (True, "District", "B", ["School_Board_District", "State"], "passthrough"),
+            (True, "District", "B", ["School_District_Vocational", "State"], "passthrough"),
+            (True, "District", "B", ["County", "City", "State"], "abstain"),
+            (True, None, None, ["County", "State"], "passthrough"),
+        ],
+        ids=[
+            "parent-and-sub-present",
+            "parent-only-present",
+            "sub-only-present-florida-shape",
+            "vocational-only-presence",
+            "no-school-family-types-at-all",
+            "no-sub-area-flag-true",
+        ],
+    )
+    def test_the_table(self, has_unknown_boundaries, sub_area_name, sub_area_value, state_district_types, expected):
+        """Failure this catches: an accidental parents-AND-subs guard (rows
+        2 and 3 would wrongly abstain if the arm required both sets
+        non-empty instead of their union); the presence test narrowed back
+        to the DENIAL sets, which omit office-bearing types like vocational
+        JVSD boards (row 4); a genuinely school-less state failing to
+        abstain (row 5); and row 6 -- vacuous against the arm's current
+        position, deliberately -- pins the no-sub-area flagged school class
+        (a measured population the design names as untouched) as
+        pass-through, so it fails if the arm is ever moved above the
+        has_sub_area family gate or re-keyed on mtfcc, either of which
+        would abstain that class in a school-less state.
+        """
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=has_unknown_boundaries,
+            geo_id="0804920",
+            sub_area_name=sub_area_name,
+            sub_area_value=sub_area_value,
+            state_district_types=state_district_types,
+        )
+        if expected == "passthrough":
+            assert verdict.abstain is False
+            assert verdict.eligible_indices is None
+        else:
+            assert verdict.abstain is True
+            assert verdict.eligible_indices == frozenset()
+        assert verdict.verdict_sentence is None
+
+    def test_weld_county_re_3j_school_board_district_b(self):
+        """Failure this catches: the documented regression itself -- Weld
+        RE-3J's correct answer, the parent School_District, being denied
+        (the pre-2026-09 rule) because the office is flagged and its
+        sub_area (District/B) looks like a real slice. City and county
+        rows, out of family, stay eligible either way.
+        """
+        types = ["School_District", "City", "County", "State"]
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=True,
+            geo_id="0804920",
+            sub_area_name="District",
+            sub_area_value="B",
+            state_district_types=types,
+        )
+        assert verdict.abstain is False
+        assert verdict.eligible_indices is None  # School_District is not denied
+        assert verdict.verdict_sentence is None
+
+
 class TestNamedRegressions:
     """The three named regressions, walked through with their
     real BR field values against a small hand-seeded universe. Asserts
@@ -538,8 +618,11 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
             ("X0024", False, None, ["County", "State"]),
             ("X0014", True, None, ["County", "State"]),
             ("G4110", False, "3", ["City", "State"]),
+            # The Maine shape: a flagged school office in a state whose
+            # universe carries no school-family row at all.
+            ("G5420", False, "45", ["Town_District", "County", "State"]),
         ],
-        ids=["party-committee", "judicial-no-vocabulary", "zero-subtype-slice"],
+        ids=["party-committee", "judicial-no-vocabulary", "zero-subtype-slice", "school-flag-no-school-rows"],
     )
     def test_an_abstaining_verdict_never_reaches_embeddings_or_the_llm(
         self, mock_dependencies, mtfcc, is_judicial, sub_area_value, types
@@ -547,7 +630,7 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
         """Failure this catches: `match_office`'s early return moved or
         deleted, so an abstaining office still pays for query embeddings
         and an LLM call -- every classifier-level test stays green because
-        none of them goes through the caller. Covers all three abstain
+        none of them goes through the caller. Covers all four abstain
         families and pins confidence=None (no model judgment happened).
         """
         matcher = L2BrMatcher()

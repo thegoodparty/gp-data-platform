@@ -227,8 +227,10 @@ itself enumerates its family vocabulary from `get_l2_district_types(scope="all")
 in `dbt/project/macros/l2_district_columns.sql`. A type added to that macro
 needs this block and the matcher's own constants re-checked together. Parent
 (whole-jurisdiction) type sets are the matcher's menu-DENIAL concern (which
-candidates it hides), never the classification label itself, so they are
-intentionally absent from this classification-only mirror.
+candidates it hides), never the classification label itself, for county,
+place, and county subdivision. School is the one exception: the flagged-
+school arm reads parent presence too, as part of its any-school-row test, so
+`state_vocab` below carries a parent-type check for school alone.
 
 ```sql
 with
@@ -328,9 +330,13 @@ with
         from leveled
     ),
 
-    -- Per-state vocabulary the classifier reads. Only SUB types are needed
-    -- (the slice zero-subtype abstain check) -- PARENT types shape menu denial
-    -- only, per the note above.
+    -- Per-state vocabulary the classifier reads. SUB types answer the slice
+    -- zero-subtype abstain check for every family. PARENT types shape menu
+    -- denial only, per the note above -- except school, where the flagged-
+    -- school arm's any-school-row test reads a PRESENCE list: the parent
+    -- types plus office-bearing school types the denial sets omit
+    -- (mirrors _SCHOOL_FAMILY_PRESENCE_TYPES; subs are counted separately
+    -- via has_school_subtype).
     state_vocab as (
         select
             upper(trim(state_postal_code)) as state_postal_code,
@@ -367,6 +373,29 @@ with
                 end
             )
             = 1 as has_place_subtype,
+            max(
+                case
+                    when
+                        district_type in (
+                            'School_District',
+                            'Unified_School_District',
+                            'City_School_District',
+                            'County_Unified_School_District',
+                            'Elementary_School_District',
+                            'High_School_District',
+                            'Middle_School_District',
+                            'Exempted_Village_School_District',
+                            'Board_of_Education_District',
+                            'County_Board_of_Education_District',
+                            'School_District_Vocational',
+                            'County_Superintendent_of_Schools_District',
+                            'Superintendent_of_Schools_District'
+                        )
+                        then 1
+                    else 0
+                end
+            )
+            = 1 as has_school_presence_type,
             max(
                 case
                     when
@@ -412,6 +441,15 @@ with
                 when geo_level.is_judicial then 'R1_judicial_menu'
                 when not geo_level.has_sub_area or geo_level.family is null then 'pass_through'
                 when geo_level.level = 'malformed' then 'pass_through'
+                when
+                    geo_level.family = 'school'
+                    and geo_level.has_unknown_boundaries
+                    and not (coalesce(sv.has_school_presence_type, false) or coalesce(sv.has_school_subtype, false))
+                    then 'school_flag_no_school_rows'
+                when
+                    geo_level.family = 'school'
+                    and geo_level.has_unknown_boundaries
+                    then 'R2_school_flagged_passthrough'
                 when
                     geo_level.level = 'slice'
                     and not (
@@ -472,21 +510,23 @@ where rule_class = '__RULE_CLASS__' and transition = '__TRANSITION__'
 
 Read the printed rows, then interpret against these lines:
 
-- The three abstain classes (`R0_party_committee`, `R1_judicial_abstain`,
-  `R2_slice_zero_subtype_abstain`) must show ZERO matched rows: the code
-  abstains before the LLM on those paths, so a match there means the run was
-  made with different code than reviewed. Hard stop — but rule out input drift
-  first: the classes are recomputed from TODAY's BR fields and universe, and a
-  rebuild between the run and the audit (the cutover's own rebuild step) can
-  legitimately reclassify an office. Check the drill-down rows' fields and
-  their state's vocabulary against the run window before deleting anything; a
-  post-hoc rule class is evidence of which branch ran, never a replay of it.
+- The four abstain classes (`R0_party_committee`, `R1_judicial_abstain`,
+  `R2_slice_zero_subtype_abstain`, `school_flag_no_school_rows`) must show
+  ZERO matched rows: the code abstains before the LLM on those paths, so a
+  match there means the run was made with different code than reviewed. Hard
+  stop — but rule out input drift first: the classes are recomputed from
+  TODAY's BR fields and universe, and a rebuild between the run and the audit
+  (the cutover's own rebuild step) can legitimately reclassify an office.
+  Check the drill-down rows' fields and their state's vocabulary against the
+  run window before deleting anything; a post-hoc rule class is evidence of
+  which branch ran, never a replay of it.
 - `R2_whole_school_gated` offices matched to a school SUB-level type indicate
   the run had `--enable-school-whole-assertion` OFF (allowed only if that is
   what the operator intended; the flag is run config, not persisted, so this is
   how the audit infers the arm).
-- Withdrawals concentrated in `R1_judicial_abstain` and
-  `R2_slice_zero_subtype_abstain` are the filter design working as intended.
+- Withdrawals concentrated in `R1_judicial_abstain`,
+  `R2_slice_zero_subtype_abstain`, and `school_flag_no_school_rows` are the
+  filter design working as intended.
   Withdrawals in `pass_through` or a matched `R2_*` class are the ones to read
   row-by-row with the drill-down query above. The supervised cutover's review
   step counts served matches flipping to abstain — this is that count.
@@ -599,9 +639,10 @@ Restate only the hard conditions, each naming where it was measured:
   A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
   by deleting this one.
 - [ ] Zero CONFIRMED matched-row violations in `R0_party_committee`,
-  `R1_judicial_abstain`, and `R2_slice_zero_subtype_abstain` after Step 2's
-  input-drift review (a reclassification caused by BR/universe drift between
-  run and audit is not a violation).
+  `R1_judicial_abstain`, `R2_slice_zero_subtype_abstain`, and
+  `school_flag_no_school_rows` after Step 2's input-drift review (a
+  reclassification caused by BR/universe drift between run and audit is not a
+  violation).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
   floor (Step 1).
 - [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
