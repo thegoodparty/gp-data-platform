@@ -146,7 +146,7 @@ with
             `Voters_StateVoterID` as `StateVoterID`,
             `ConsumerDataLL_Veteran` as `Veteran_Status`,
             `VoterParties_Change_Changed_Party` as `VoterParties_Change_Changed_Party`,
-            -- Union of five independent-leaning signals: any one flags the voter.
+            -- Union of six independent-leaning signals: any one flags the voter.
             -- Computed inline rather than as a joined CTE like voter_propensity below,
             -- because every input is already in this scan; a separate 219M-row
             -- relation would buy a second full scan and a join for nothing.
@@ -193,6 +193,11 @@ with
                 `hs_partisanship_moderate_third_party_support`
                 >= {{ var("affinity_third_cut") }},
                 false
+            )
+            -- Only 'Non-Partisan': the other unaffiliated-sounding registrations are
+            -- named parties or state ballot lines.
+            or coalesce(
+                `Parties_Description` = 'Non-Partisan', false
             ) as `Voter_Independent_Affinity`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(

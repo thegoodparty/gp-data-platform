@@ -41,8 +41,9 @@ vars:
   # Cuts on the two Haystaq percentile scores that feed
   # Voter_Independent_Affinity. Both are experiment tuneables and are mirrored
   # in omni as DISLIKE_CUT and THIRD_CUT in recommendedListsRules.util.ts, which
-  # applies the same predicates per-campaign; move them together or the mart
-  # column and the list query disagree on who is an independent.
+  # applies the same score predicates per-campaign; move them together or the
+  # mart column and the list query disagree on who is an independent. Not a full
+  # mirror: the mart also counts a 'Non-Partisan' registration, omni does not.
   affinity_dislike_cut: 70
   affinity_third_cut: 50
 
