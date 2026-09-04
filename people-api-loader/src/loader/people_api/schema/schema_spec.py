@@ -177,6 +177,71 @@ TABLE_SPECS: dict[str, TableSpec] = {
             "state": "State",
         },
     ),
+    # Voter-density heat map serving tables (voter-density-heatmap-handoff.md §7). Both are flat
+    # (the app queries by district_id + resolution, never by state, so no LIST partitioning) and, like
+    # DistrictStats, are NOT in the `public` serving replica the seed is extracted from — they live in
+    # the Prisma `green` schema — so each carries its PK here on the spec (the seed has no entry) and
+    # its non-PK index in _serving_seed_extra. The marts emit a lowercase `state`, so mart_column_map
+    # renames it to the serving "State" (the green."USState" enum) exactly like DistrictVoter; the
+    # count/sum aggregates are bigint in the mart but the Prisma contract is Int, so they are overridden
+    # to INTEGER (as DistrictStats does for total_constituents). district_id is the mart's salted-uuid
+    # string stored as UUID; updated_at is mart timestamptz -> contract timestamp WITHOUT time zone.
+    "DistrictVoterDensity": TableSpec(
+        pg_table="DistrictVoterDensity",
+        partition_by=None,
+        type_overrides={
+            "district_id": "UUID",
+            "voter_count": "INTEGER",
+            "state": '"USState"',
+            "updated_at": "TIMESTAMP",
+        },
+        mart_column_map={
+            "district_id": "district_id",
+            "resolution": "resolution",
+            "h3_index": "h3_index",
+            "lat": "lat",
+            "lng": "lng",
+            "voter_count": "voter_count",
+            "state": "State",
+            "updated_at": "updated_at",
+        },
+        primary_key=PrimaryKey(
+            table="DistrictVoterDensity",
+            constraint="DistrictVoterDensity_pkey",
+            columns=["district_id", "resolution", "h3_index"],
+        ),
+    ),
+    "DistrictVoterDensityMeta": TableSpec(
+        pg_table="DistrictVoterDensityMeta",
+        partition_by=None,
+        type_overrides={
+            "district_id": "UUID",
+            "total_voters": "INTEGER",
+            "geocoded_voters": "INTEGER",
+            "rendered_voters": "INTEGER",
+            "suppressed_cells": "INTEGER",
+            "min_cell_count": "INTEGER",
+            "state": '"USState"',
+            "updated_at": "TIMESTAMP",
+        },
+        mart_column_map={
+            "district_id": "district_id",
+            "resolution": "resolution",
+            "coverage": "coverage",
+            "min_cell_count": "min_cell_count",
+            "total_voters": "total_voters",
+            "geocoded_voters": "geocoded_voters",
+            "rendered_voters": "rendered_voters",
+            "suppressed_cells": "suppressed_cells",
+            "state": "State",
+            "updated_at": "updated_at",
+        },
+        primary_key=PrimaryKey(
+            table="DistrictVoterDensityMeta",
+            constraint="DistrictVoterDensityMeta_pkey",
+            columns=["district_id", "resolution"],
+        ),
+    ),
 }
 
 
@@ -202,6 +267,8 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
         # unpivots by intersecting voter columns with district types.
         "Congressional_District_2026",
         "State_Senate_District_2026",
+        "Voter_Independent_Affinity",
+        "hf_ideology_general",
     }
 }
 
@@ -212,7 +279,19 @@ LOADER_ADDED_COLUMNS: dict[str, set[str]] = {
 # Voter.State: served as the public."USState" enum (matching District/DistrictVoter and swain-db, so
 # the app needs no code change — the 2026-07-21 decision), while the current prod baseline still
 # stores Voter."State" as text. This is an intended forward migration, not drift.
-ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {"Voter": {"State"}}
+# The four *_Addresses_*Direction columns: prod stores them INTEGER, which is why they are empty
+# there. The values are N/S/E/W and no integer column can hold one. The mart now emits them as
+# strings and this cluster serves them TEXT. Also a forward migration; drop these once a prod
+# baseline built from this loader replaces the INTEGER one.
+ACCEPTED_TYPE_DIVERGENCES: dict[str, set[str]] = {
+    "Voter": {
+        "State",
+        "Mailing_Addresses_PrefixDirection",
+        "Mailing_Addresses_SuffixDirection",
+        "Residence_Addresses_PrefixDirection",
+        "Residence_Addresses_SuffixDirection",
+    }
+}
 
 
 def is_partitioned(table: str) -> bool:

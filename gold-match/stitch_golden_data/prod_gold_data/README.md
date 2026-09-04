@@ -29,8 +29,12 @@ present in the pending worklist. `--limit` caps how many pending offices are
 read (must be positive). `--batch-size` controls how many offices are matched
 concurrently per group (default 100); `--embedding-batch-size` controls how
 many district texts go into one `create_embeddings` call when building the
-universe (default 100) -- the two are unrelated knobs for unrelated
-workloads, not one shared setting.
+universe (default 100; shapes the gemini config's client only -- the Bedrock
+client is one text per call) -- the two are unrelated knobs for unrelated
+workloads, not one shared setting. `--model-config` picks the model stack:
+`bedrock` (Titan Text Embeddings V2 + Claude Haiku 4.5 via Bedrock, the
+default), `bedrock-nova` (Nova embeddings + Haiku), or `gemini` (the dormant
+incumbent, explicit selection only).
 
 Before either query embedding or the LLM runs, each office is classified on
 its BallotReady geography fields (`mtfcc`, `geo_id`, the `sub_area` pair,
@@ -92,6 +96,13 @@ model, pointed at `int__l2_district_universe`.
 
 ## Operations
 
+The Bedrock clients (the default `--model-config`) retry only throttling and
+transient transport errors, with full jitter and a wall-clock ceiling, meter
+themselves against the models' request- and token-per-minute quotas, and give
+an output-shape miss exactly one re-ask before raising -- a stuck run
+surfaces its error instead of hiding in backoff.
+
+The paragraph below applies only to `--model-config gemini`.
 Both Gemini clients retry every exception blindly (`max_retries=11`,
 `base_delay=1.0`), so a run that hits a 429 wall stalls in backoff for up to
 roughly 1,023s per call before surfacing anything. At `--batch-size 100`

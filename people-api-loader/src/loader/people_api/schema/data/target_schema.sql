@@ -32,10 +32,10 @@ CREATE TABLE public."Voter" (
     "Mailing_Addresses_DPBC" TEXT,
     "Mailing_Addresses_ExtraAddressLine" TEXT,
     "Mailing_Addresses_HouseNumber" TEXT,
-    "Mailing_Addresses_PrefixDirection" INTEGER,
+    "Mailing_Addresses_PrefixDirection" TEXT,
     "Mailing_Addresses_State" TEXT,
     "Mailing_Addresses_StreetName" TEXT,
-    "Mailing_Addresses_SuffixDirection" INTEGER,
+    "Mailing_Addresses_SuffixDirection" TEXT,
     "Mailing_Addresses_Zip" TEXT,
     "Mailing_Addresses_ZipPlus4" TEXT,
     "Mailing_Families_FamilyID" TEXT,
@@ -61,10 +61,10 @@ CREATE TABLE public."Voter" (
     "Residence_Addresses_LatLongAccuracy" TEXT,
     "Residence_Addresses_Latitude" TEXT,
     "Residence_Addresses_Longitude" TEXT,
-    "Residence_Addresses_PrefixDirection" INTEGER,
+    "Residence_Addresses_PrefixDirection" TEXT,
     "Residence_Addresses_State" TEXT,
     "Residence_Addresses_StreetName" TEXT,
-    "Residence_Addresses_SuffixDirection" INTEGER,
+    "Residence_Addresses_SuffixDirection" TEXT,
     "Residence_Addresses_Zip" TEXT,
     "Residence_Addresses_ZipPlus4" TEXT,
     "Residence_HHParties_Description" TEXT,
@@ -73,6 +73,7 @@ CREATE TABLE public."Voter" (
     "StateVoterID" TEXT,
     "Veteran_Status" TEXT,
     "VoterParties_Change_Changed_Party" TEXT,
+    "Voter_Independent_Affinity" BOOLEAN,
     "Voter_Status" TEXT,
     "Voter_Turnout_Probability" DOUBLE PRECISION,
     "Voter_Status_UpdatedAt" TIMESTAMP,
@@ -358,6 +359,7 @@ CREATE TABLE public."Voter" (
     "Water_Replacement_SubDistrict" TEXT,
     "Water_SubDistrict" TEXT,
     "Weed_District" TEXT,
+    "hf_ideology_general" TEXT,
     "hf_most_important_policy_item" TEXT,
     "created_at" TIMESTAMP,
     "updated_at" TIMESTAMP,
@@ -386,5 +388,29 @@ CREATE TABLE public."DistrictVoter" (
     "district_id" UUID,
     "State" "USState",
     "created_at" TIMESTAMP,
+    "updated_at" TIMESTAMP
+);
+
+CREATE TABLE public."DistrictVoterDensity" (
+    "district_id" UUID,
+    "resolution" INTEGER,
+    "h3_index" TEXT,
+    "lat" DOUBLE PRECISION,
+    "lng" DOUBLE PRECISION,
+    "voter_count" INTEGER,
+    "State" "USState",
+    "updated_at" TIMESTAMP
+);
+
+CREATE TABLE public."DistrictVoterDensityMeta" (
+    "district_id" UUID,
+    "resolution" INTEGER,
+    "coverage" DOUBLE PRECISION,
+    "min_cell_count" INTEGER,
+    "total_voters" INTEGER,
+    "geocoded_voters" INTEGER,
+    "rendered_voters" INTEGER,
+    "suppressed_cells" INTEGER,
+    "State" "USState",
     "updated_at" TIMESTAMP
 );

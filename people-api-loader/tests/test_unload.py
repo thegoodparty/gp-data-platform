@@ -31,6 +31,29 @@ _DDL = (
     '    "created_at" TIMESTAMPTZ NOT NULL,\n'
     '    "updated_at" TIMESTAMPTZ NOT NULL,\n'
     '    "State" TEXT NOT NULL\n'
+    ");\n"
+    # Voter-density serving tables: flat, mart `state` projected AS serving "State".
+    'CREATE TABLE public."DistrictVoterDensity" (\n'
+    '    "district_id" UUID,\n'
+    '    "resolution" INTEGER,\n'
+    '    "h3_index" TEXT,\n'
+    '    "lat" DOUBLE PRECISION,\n'
+    '    "lng" DOUBLE PRECISION,\n'
+    '    "voter_count" INTEGER,\n'
+    '    "State" "USState",\n'
+    '    "updated_at" TIMESTAMP\n'
+    ");\n"
+    'CREATE TABLE public."DistrictVoterDensityMeta" (\n'
+    '    "district_id" UUID,\n'
+    '    "resolution" INTEGER,\n'
+    '    "coverage" DOUBLE PRECISION,\n'
+    '    "min_cell_count" INTEGER,\n'
+    '    "total_voters" INTEGER,\n'
+    '    "geocoded_voters" INTEGER,\n'
+    '    "rendered_voters" INTEGER,\n'
+    '    "suppressed_cells" INTEGER,\n'
+    '    "State" "USState",\n'
+    '    "updated_at" TIMESTAMP\n'
     ");"
 )
 
@@ -39,6 +62,8 @@ _MART_FQNS = {
     "District": "cat.dbt.m_people_api__district",
     "DistrictStats": "cat.dbt.m_people_api__districtstats",
     "DistrictVoter": "cat.dbt.m_people_api__districtvoter",
+    "DistrictVoterDensity": "cat.dbt.m_people_api__district_voter_density",
+    "DistrictVoterDensityMeta": "cat.dbt.m_people_api__district_voter_density_meta",
 }
 
 _CFG = cast(
@@ -96,11 +121,18 @@ def test_unload_builds_all_tables_partitioned_and_flat(monkeypatch: pytest.Monke
     manifest = step.run(_CFG, "20260622")
     assert manifest.status == "complete"
     # one UnloadTable per TABLE_SPECS entry, in that order (Voter first).
-    assert [t.table for t in manifest.tables] == ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    assert [t.table for t in manifest.tables] == [
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    ]
 
     inserts = [s for s in submitted if "INSERT OVERWRITE DIRECTORY" in s]
-    # 2 partitioned tables x 2 states + 2 flat tables = 6 unload statements.
-    assert len(inserts) == 6
+    # 2 partitioned tables x 2 states + 4 flat tables = 8 unload statements.
+    assert len(inserts) == 8
 
     # Partitioned Voter: per-state under {prefix}/Voter/state={s}/, WHERE State, extras NULLed.
     voter = _table(manifest, "Voter")

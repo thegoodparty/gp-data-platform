@@ -831,11 +831,24 @@ models:
           slugify(first_name-last_name) with an 8-hex suffix from the person id.
           The /people/<slug> URL resolves on slug alone, so it is globally
           unique. If uniqueness ever fails, widen the suffix beyond 8 hex.
+          Names are romanized before the strip, so 'josé' keeps its 'e' and a
+          non-Latin name keeps a readable stem instead of being deleted. A name
+          with no letters at all still leaves the id suffix as the whole slug.
         tests:
           - not_null
           - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
+      - name: email
+        description: >
+          Best-known personal email, carried from people.email. Consumers
+          resolve a HubSpot Contact by it, where email is the unique key.
+          Coverage splits by cohort: everyone with a gp-api user has an address
+          and 96% match an existing Contact, against 49% and 31% for those
+          without. A non-matching address mints a Contact rather than resolving
+          one, and 14.1k addresses are shared by two or more people. PII: the
+          API omits it from every response and rejects it in ?columns=, so
+          reading it needs a purpose-built path like campaign-strategy-context.
       - name: is_pledged
         description: >
           Whether the person took the GoodParty pledge on any of their product
@@ -854,6 +867,23 @@ models:
           the public profile editor. Null when the person has no gp-api user, or
           when the person's cluster maps to more than one gp-api user (people
           only makes the id scalar when it is unambiguous).
+    tests:
+      # Signup collects an email, so a gp-api user must have one. The coalesce
+      # keeps a vanished linkage failing rather than passing on 0/0.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is not null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
+          name: person_gp_api_user_email_coverage
+          config:
+            severity: error
+      # Vendor-fed, so the rate drifts (49% now). Warn on drift; a collapse
+      # means the coalesce broke.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is null), 0), 0) >= 0.40"
+          name: person_no_gp_api_user_email_coverage
+          config:
+            severity: warn
 
   - name: m_election_api__office_holder
     description: >

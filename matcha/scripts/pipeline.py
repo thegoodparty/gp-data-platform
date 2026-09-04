@@ -14,8 +14,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from splink import Linker, SettingsCreator, block_on
-from splink.internals.duckdb.database_api import DuckDBAPI
+from splink import DuckDBAPI, Linker, SettingsCreator, block_on
 
 from scripts.entity_config import EntityConfig
 
@@ -76,7 +75,7 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
 def build_settings(config: EntityConfig) -> SettingsCreator:
     """Build Splink SettingsCreator from entity config."""
     return SettingsCreator(
-        link_type="link_only",
+        link_type=config.link_type,
         unique_id_column_name="unique_id",
         comparisons=config.comparisons,
         blocking_rules_to_generate_predictions=config.blocking_rules_for_prediction,
@@ -87,7 +86,10 @@ def build_settings(config: EntityConfig) -> SettingsCreator:
 
 def train_model(linker: Linker, config: EntityConfig) -> int:
     """Estimate u via random sampling, then m via EM. Returns count of successful blocks."""
-    linker.training.estimate_u_using_random_sampling(max_pairs=5_000_000)
+    # Seeded so a rerun on unchanged input reproduces the same clusters.
+    # Unseeded, u sampling moved 451 of 986,360 person records between clusters
+    # across two runs, and published ids are minted from cluster membership.
+    linker.training.estimate_u_using_random_sampling(max_pairs=5_000_000, seed=20260827)
 
     successful_blocks = 0
     last_error = None
@@ -140,9 +142,13 @@ def train_model(linker: Linker, config: EntityConfig) -> int:
 
 
 def predict_and_cluster(
-    linker: Linker, config: EntityConfig, output_dir: Path | None = None
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Predict matches, apply post-prediction filters, cluster."""
+    linker: Linker, config: EntityConfig
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Predict matches, apply post-prediction filters, cluster.
+
+    Returns the pairwise, clustered, and filtered-out frames. The caller writes
+    them; nothing here touches the filesystem.
+    """
     predictions = linker.inference.predict(threshold_match_probability=config.predict_threshold)
 
     pred_table = predictions.physical_name
@@ -151,18 +157,10 @@ def predict_and_cluster(
 
     if pre_count == 0:
         print("WARNING: No predictions found.")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    # Apply post-prediction filters from config
+    filtered_df = pd.DataFrame()
     if config.post_prediction_filters:
-        # Capture pre-filter pair IDs + scores for the filtered-pairs sidecar
-        pre_filter_pairs = None
-        if output_dir is not None:
-            pre_filter_pairs = linker._db_api._con.execute(f"""
-                SELECT unique_id_l, unique_id_r, match_probability, match_weight
-                FROM {pred_table}
-            """).fetchdf()
-
         # Splink drops gamma_<col> from the prediction frame when a comparison
         # is never trained — e.g. a column used only as an exact-equality
         # blocking key (m never estimated) or one that is NULL across the whole
@@ -183,49 +181,29 @@ def predict_and_cluster(
                     "all-NULL columns); reference the raw _l/_r columns instead."
                 )
 
-        combined_filter = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
+        # coalesce so a NULL predicate lands in exactly one of the two sets
+        # rather than being dropped from both.
+        inner = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
+        keep = f"coalesce({inner}, false)"
+
+        filtered_df = linker._db_api._con.execute(f"""
+            SELECT
+                least(unique_id_l, unique_id_r) AS unique_id_l,
+                greatest(unique_id_l, unique_id_r) AS unique_id_r,
+                match_probability AS match_probability_pre_filter,
+                match_weight AS match_weight_pre_filter
+            FROM {pred_table} WHERE NOT {keep}
+        """).fetchdf()
+
         linker._db_api._con.execute(f"""
             CREATE OR REPLACE TABLE {pred_table} AS
-            SELECT * FROM {pred_table}
-            WHERE {combined_filter}
+            SELECT * FROM {pred_table} WHERE {keep}
         """)
 
-        # Write filtered-out pairs sidecar
-        if output_dir is not None and pre_filter_pairs is not None:
-            post_filter_pairs = linker._db_api._con.execute(f"""
-                SELECT unique_id_l, unique_id_r
-                FROM {pred_table}
-            """).fetchdf()
-            post_keys = set(zip(post_filter_pairs["unique_id_l"], post_filter_pairs["unique_id_r"]))
-            filtered_mask = ~pre_filter_pairs.apply(
-                lambda r: (r["unique_id_l"], r["unique_id_r"]) in post_keys, axis=1
-            )
-            filtered_out = pre_filter_pairs[filtered_mask].copy()
-
-            # Canonicalize pair keys: ensure unique_id_l < unique_id_r
-            swap = filtered_out["unique_id_l"] > filtered_out["unique_id_r"]
-            filtered_out.loc[swap, ["unique_id_l", "unique_id_r"]] = filtered_out.loc[
-                swap, ["unique_id_r", "unique_id_l"]
-            ].values
-            filtered_out = filtered_out.rename(
-                columns={
-                    "match_probability": "match_probability_pre_filter",
-                    "match_weight": "match_weight_pre_filter",
-                }
-            )
-            filtered_out[
-                [
-                    "unique_id_l",
-                    "unique_id_r",
-                    "match_probability_pre_filter",
-                    "match_weight_pre_filter",
-                ]
-            ].to_csv(output_dir / "filtered_pairs.csv", index=False)
+        if len(filtered_df):
+            print(f"Post-prediction filters: removed {len(filtered_df):,} pairs")
 
     pairwise_df = predictions.as_pandas_dataframe()
-    dropped = pre_count - len(pairwise_df)
-    if dropped > 0:
-        print(f"Post-prediction filters: removed {dropped:,} pairs")
 
     clusters = linker.clustering.cluster_pairwise_predictions_at_threshold(
         predictions, threshold_match_probability=config.cluster_threshold
@@ -236,15 +214,17 @@ def predict_and_cluster(
     n_cross = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
     print(f"Matched clusters: {n_matched:,}  |  Cross-source: {n_cross:,}")
     if (within := n_matched - n_cross) > 0:
-        print(f"WARNING: {within} within-source duplicate clusters found")
+        prefix = "" if config.expects_within_source_duplicates else "WARNING: "
+        print(f"{prefix}{within} within-source duplicate clusters found")
 
-    return pairwise_df, clustered_df
+    return pairwise_df, clustered_df, filtered_df
 
 
 def save_results(
     linker: Linker,
     pairwise_df: pd.DataFrame,
     clustered_df: pd.DataFrame,
+    filtered_df: pd.DataFrame,
     output_dir: Path,
     config: EntityConfig,
 ) -> None:
@@ -288,6 +268,12 @@ def save_results(
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
         clustered_df.to_csv(output_dir / config.clustered_output_name, index=False)
+    # Columns, not rows: filters that ran and removed nothing still write a
+    # header, which the audit reads as "nothing was filtered". The no-column
+    # frame from the zero-prediction path would write a headerless file that
+    # read_csv rejects, so skip it and let the audit see no file at all.
+    if len(filtered_df.columns) > 0:
+        filtered_df.to_csv(output_dir / "filtered_pairs.csv", index=False)
 
     for name, method in [
         ("match_weights", "match_weights_chart"),
@@ -310,6 +296,6 @@ def run(input_df: pd.DataFrame, output_dir: Path, config: EntityConfig) -> tuple
     settings = build_settings(config)
     linker = Linker(source_dfs, settings, _duckdb_api())
     train_model(linker, config)
-    pairwise_df, clustered_df = predict_and_cluster(linker, config, output_dir)
-    save_results(linker, pairwise_df, clustered_df, output_dir, config)
+    pairwise_df, clustered_df, filtered_df = predict_and_cluster(linker, config)
+    save_results(linker, pairwise_df, clustered_df, filtered_df, output_dir, config)
     return pairwise_df, clustered_df

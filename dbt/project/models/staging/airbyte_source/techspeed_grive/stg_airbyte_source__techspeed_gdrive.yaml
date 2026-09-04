@@ -16,6 +16,15 @@ models:
       - name: last_name
         data_tests:
           - not_null
+      - name: name_suffix
+        description: >
+          Generational suffix (JR, SR, II...) captured from the raw surname
+          before suffix stripping; identity gates treat a mismatch as two
+          people.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [JR, SR, II, III, IV, V]
       - name: state
         data_tests:
           - not_null

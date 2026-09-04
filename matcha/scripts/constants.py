@@ -99,6 +99,28 @@ EO_POST_PREDICTION_FILTER = f"""
       )
 """
 
+# Person-level post-prediction filter.
+#
+# First-name agreement gates contact evidence. Households share an email and a
+# phone: the 2026-08 study found 1,239 email-sharing and 4,053 phone-sharing
+# pairs with the same last name and a different first name, and the audited
+# sample was dominated by genuine two-person households.
+#
+# Two distinct BallotReady people are never linked directly, BR being the one
+# source with a clean person id. This is a precision heuristic on direct pairs,
+# not an invariant: a pair filter cannot stop BR1-X-BR2 chaining transitively,
+# and downstream the deterministic graph can still put two BR ids in one person
+# where it has the evidence. The dbt test on the resulting groups warns rather
+# than fails for that reason.
+PERSON_POST_PREDICTION_FILTER = """
+    gamma_first_name > 0
+      AND NOT (
+        br_candidate_id_l IS NOT NULL
+        AND br_candidate_id_r IS NOT NULL
+        AND br_candidate_id_l <> br_candidate_id_r
+      )
+"""
+
 # Race-level post-prediction filter for election_stage ER. No person fields
 # (no first_name/last_name/email/phone), so race identity must be carried
 # entirely by geography + office + election cycle. A pair is kept only when it

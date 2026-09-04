@@ -1,0 +1,274 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__ballotready_geofence_raw
+    description: >
+      Current BallotReady geofence per requested id, parsed from the raw GraphQL payloads
+      landed by the extract_ballotready DAG. All renaming and casting for geofence happens
+      here.
+    # The floor below is entity-specific: geofence's worklist has already swept its full
+    # universe, so 56,792 landed rows leaves real headroom under a 50,000 minimum while
+    # still catching an empty or drastically partial build, which not_null/unique tests
+    # pass vacuously on. The other nine entity conversions this one templates are each
+    # mid-backfill; each will need its own floor sized to its own coverage, or none at all
+    # until that coverage is complete.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 50000
+    columns:
+      - name: requested_id
+        description: The BallotReady integer id this row was fetched for.
+        data_tests: [not_null, unique]
+      - name: loaded_at
+        description: >
+          When this row was inserted into the landing table by the extract_ballotready
+          DAG; used to pick the newest load per requested id and as the incremental
+          watermark for this model.
+      - name: database_id
+        description: >
+          The id BallotReady echoed back inside the payload. Equal to requested_id for
+          every row landed so far; the extraction client raises if a response comes back
+          out of request order, and this is the same invariant checked from the data side.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "= requested_id"
+      - name: id
+        description: Base64 GraphQL global id. The unique key the int__ model exposes.
+        data_tests: [not_null, unique]
+      - name: created_at
+        data_tests: [not_null]
+      - name: geo_id
+        description: >
+          Geographic identifier for the geofence boundary. Shaped like a Census GEOID
+          (short, numeric) for the ~70% of rows carrying a Census mtfcc code; for the
+          remaining rows, which carry a BallotReady-specific mtfcc, it runs longer and
+          less uniform (observed up to 29 characters, some non-numeric).
+      - name: mtfcc
+        description: >
+          Mostly a Census MAF/TIGER Feature Class Code identifying the type of geographic
+          entity the geofence represents (roughly 70% of rows, 11 distinct `G`-prefixed
+          codes as of this writing). The remaining rows carry a BallotReady-specific
+          `X`-prefixed code outside the Census set (roughly 30%, 72 distinct codes), whose
+          meaning is not documented by BallotReady.
+      - name: updated_at
+        description: Timestamp the geofence was last updated in BallotReady.
+        data_tests: [not_null]
+      - name: valid_from
+        description: Start date of this row's effective boundary version, as reported by BallotReady.
+      - name: valid_to
+        description: >
+          End date of this row's effective boundary version, as reported by BallotReady;
+          null for roughly 80% of rows. Whether null means "still current" is not
+          confirmed: many geo_ids carry more than one landed row, and a large share of
+          those have more than one row with a null valid_to, which is inconsistent with a
+          single current version per geofence. Treat the effective-dating semantics as
+          unconfirmed rather than assume them.
+
+  - name: stg_airflow_source__ballotready_candidacy_raw
+    description: One row per BallotReady candidacy id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 300000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
+      - name: endorsements
+        data_tests: [not_null]
+      - name: parties
+        data_tests: [not_null]
+      - name: stances
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_filing_period_raw
+    description: One row per BallotReady filing period id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 1000000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
+
+  - name: stg_airflow_source__ballotready_issue_raw
+    description: One row per BallotReady issue id referenced by a landed stance payload.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 15
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_normalized_position_raw
+    description: One row per BallotReady normalized position id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 400
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
+      - name: issues
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_position_election_frequency_raw
+    description: One row per BallotReady position election frequency id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 250000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: frequency
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_person_raw
+    description: One row per BallotReady person id landed by the extraction DAG.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 220000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        # the model this replaces tested unique on id as well as database_id;
+        # requested_id's unique test does not cover it.
+        data_tests: [not_null, unique]
+      - name: candidacies
+        data_tests: [not_null]
+      - name: contacts
+        data_tests: [not_null]
+      - name: degrees
+        data_tests: [not_null]
+      - name: experiences
+        data_tests: [not_null]
+      - name: images
+        data_tests: [not_null]
+      - name: office_holders
+        data_tests: [not_null]
+      - name: urls
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_stance_raw
+    description: One row per candidacy, carrying that candidacy's stances as a nested array.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 300000
+      # asserts no candidacy repeats a stance id within its own stances array
+      # (requested_id/candidacy_id is already unique per row, so a combination-of-
+      # columns test on candidacy_id + stances.databaseId would be vacuous at this
+      # grain and would never catch a repeated id inside one row's array).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(stances) = size(array_distinct(transform(stances, x -> x.databaseId)))"
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: candidacy_id
+        data_tests: [not_null]
+      - name: stances
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_endorsement_raw
+    description: One row per candidacy, carrying that candidacy's endorsements as a nested array.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 300000
+      # asserts no candidacy repeats an endorsement id within its own endorsements
+      # array; see stance for why this must check inside the array rather than
+      # across rows.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(endorsements) = size(array_distinct(transform(endorsements, x -> x.databaseId)))"
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: candidacy_id
+        data_tests: [not_null]
+      - name: endorsements
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: stg_airflow_source__ballotready_party_raw
+    description: One row per candidacy, carrying that candidacy's parties as a nested array.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 300000
+      # asserts no candidacy repeats a party id within its own parties array; see
+      # stance for why this must check inside the array rather than across rows.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(parties) = size(array_distinct(transform(parties, x -> x.databaseId)))"
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: candidacy_id
+        data_tests: [not_null]
+      - name: parties
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]

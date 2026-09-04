@@ -82,7 +82,7 @@ def test_run_summary_writes_per_provider_match_rates(tmp_path):
     """One cross-source cluster of two gives each provider a 1/2 match rate."""
     input_df, pairwise_df, clustered_df = _summary_frames()
 
-    run_summary(input_df, pairwise_df, clustered_df, tmp_path)
+    run_summary(input_df, pairwise_df, clustered_df, tmp_path, CANDIDACY_CONFIG)
 
     out = pd.read_csv(tmp_path / "audit_summary.csv")
     assert sorted(out["provider"]) == ["ballotready", "techspeed"]
@@ -96,7 +96,7 @@ def test_run_summary_handles_no_matches(tmp_path):
     input_df, pairwise_df, clustered_df = _summary_frames()
     clustered_df["cluster_id"] = [1, 2, 3, 4]
 
-    run_summary(input_df, pairwise_df.iloc[0:0], clustered_df, tmp_path)
+    run_summary(input_df, pairwise_df.iloc[0:0], clustered_df, tmp_path, CANDIDACY_CONFIG)
 
     out = pd.read_csv(tmp_path / "audit_summary.csv")
     assert out["matched_records"].tolist() == [0, 0]

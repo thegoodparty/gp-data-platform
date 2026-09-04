@@ -1,10 +1,10 @@
 name: airflow
 on:
   pull_request:
-    paths: ['airflow/**', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
+    paths: ['airflow/**', 'dbt/project/models/staging/__sources.yaml', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['airflow/**', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
+    paths: ['airflow/**', 'dbt/project/models/staging/__sources.yaml', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
     uses: ./.github/workflows/uv-subproject.yml

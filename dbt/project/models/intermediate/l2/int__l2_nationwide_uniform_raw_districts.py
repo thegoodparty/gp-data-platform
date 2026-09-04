@@ -1,6 +1,6 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit, regexp_replace
-from pyspark.sql.types import BooleanType, DoubleType, StringType
+from pyspark.sql.functions import col, expr, lit, regexp_replace
+from pyspark.sql.types import StringType
 
 ELECTION_COLUMNS = [
     "General_2030",
@@ -132,8 +132,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     """
     # configure the data model
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
@@ -143,7 +141,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # Do NOT use sync_all_columns here as it silently drops columns that
         # downstream models may depend on. See DATA-1528.
         on_schema_change="append_new_columns",
-        auto_liquid_cluster=True,
+        # Explicit, not auto: CLUSTER BY AUTO leaves clustering [] mid-rebuild,
+        # which Delta rejects against the table's hand-set hierarchical
+        # clustering property. That property names the first two, so they have
+        # to stay. LALVOTERID is the merge unique_key, and clustering on it is
+        # what lets the merge prune files against a 219M-row target.
+        liquid_clustered_by=[
+            "state_postal_code",
+            "Residence_Addresses_Zip",
+            "LALVOTERID",
+        ],
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
     )
 
@@ -626,13 +633,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
         df = df.unionByName(state_df, allowMissingColumns=True)
 
     # clean up columns with percentages
+    #
+    # try_cast, not cast: serverless casts strictly where the retired classic
+    # cluster was lenient, and L2 ships non-numeric sentinels here ('Not
+    # Eligible' covers 186,957 AL rows). try_cast keeps the existing output --
+    # those land as NULL, as they always have.
     for column in PERFORMANCE_PERCENTAGE_COLUMNS:
         df = df.withColumn(column, regexp_replace(col(column), "%", ""))
-        df = df.withColumn(column, col(column).cast(DoubleType()))
+        df = df.withColumn(column, expr(f"try_cast(`{column}` as double)"))
 
-    # cast elections as booleans
+    # cast elections as booleans (try_cast for the same reason as above)
     for column in ELECTION_COLUMNS:
-        df = df.withColumn(column, col(column).cast(BooleanType()))
+        df = df.withColumn(column, expr(f"try_cast(`{column}` as boolean)"))
 
     # other casting changes
     df = df.withColumn(

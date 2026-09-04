@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from stitch_golden_data.prod_gold_data.l2_br_matcher import (
+    PINNED_PROMPT_VERSION,
     DistrictCandidate,
     L2BrMatcher,
     _district_embedding_text,
@@ -54,6 +55,7 @@ class TestBraintrustInit:
 
         mock_dependencies["cache_prompt"].assert_called_once_with(
             "stitch-golden-data-matcher",
+            version=PINNED_PROMPT_VERSION,
         )
 
 
@@ -316,9 +318,9 @@ class TestTaskTypeInvariant:
         assert len(calls) == 2, f"expected one create_embeddings call per query, got {len(calls)}"
         for call in calls:
             texts = call.args[0]
-            assert len(texts) == 1, (
-                "a query embedding call must carry exactly one text or it moves into RETRIEVAL_DOCUMENT space"
-            )
+            assert (
+                len(texts) == 1
+            ), "a query embedding call must carry exactly one text or it moves into RETRIEVAL_DOCUMENT space"
 
 
 class TestTerminalOutcomeContract:
@@ -603,6 +605,7 @@ class TestMainTeardown:
                 batch_size=100,
                 embedding_batch_size=100,
                 enable_school_whole_assertion=False,
+                model_config="gemini",
             )
             with pytest.raises(RuntimeError, match="session died"):
                 asyncio.run(main())

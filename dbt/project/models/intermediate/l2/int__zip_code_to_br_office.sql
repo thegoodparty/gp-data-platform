@@ -3,6 +3,13 @@
 {{ config(materialized="table") }}
 
 with
+    -- Spellings per normalized key, statewide per type (shared macro). 1 =
+    -- unambiguous: the LLM join below lets a respelled label match only these
+    -- keys, so a key shared by two real districts (same-name twins) never
+    -- donates one district's zips to an office matched to the other.
+    map_key_spellings as (
+        {{ l2_normalized_district_keys(ref("int__zip_code_to_l2_district")) }}
+    ),
     -- Some L2 voters have an out-of-state zip in the L2 file; filter those.
     zip_code_within_state_range as (
         select
@@ -11,13 +18,33 @@ with
             tbl_zip.district_type,
             tbl_zip.district_name,
             tbl_zip.voters_in_zip_district,
-            tbl_zip.voters_in_zip
+            tbl_zip.voters_in_zip,
+            map_key_spellings.normalized_district_name,
+            map_key_spellings.spellings
         from {{ ref("int__zip_code_to_l2_district") }} as tbl_zip
         inner join
             {{ ref("int__general_states_zip_code_range") }} as zip_range
             on tbl_zip.state_postal_code = zip_range.state_postal_code
             and tbl_zip.zip_code >= zip_range.zip_code_range[0]
             and tbl_zip.zip_code <= zip_range.zip_code_range[1]
+        -- Left, not inner: the macro excludes blank-normalizing keys, and a row
+        -- without a key must still flow to the override path unchanged.
+        left join
+            map_key_spellings
+            on tbl_zip.state_postal_code = map_key_spellings.state_postal_code
+            and tbl_zip.district_type = map_key_spellings.district_type
+            and {{ normalize_l2_district_name("tbl_zip.district_name") }}
+            = map_key_spellings.normalized_district_name
+    ),
+    -- Match labels with the same normalized key, so a district L2 respelled
+    -- still finds its zips: the zip map carries only the current spelling while
+    -- the stored label keeps the one current at match time.
+    llm_attempts as (
+        select
+            *,
+            {{ normalize_l2_district_name("l2_district_name") }}
+            as normalized_district_name
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
     ),
     -- (br_database_id, district) pairs the LLM confidently placed.
     llm_matched_districts as (
@@ -25,7 +52,7 @@ with
             br_database_id,
             lower(l2_district_type) as l2_district_type,
             lower(l2_district_name) as l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from llm_attempts
         where is_matched
     ),
     -- Override rows the LLM did not already place at the same district: the
@@ -60,10 +87,16 @@ with
             tbl_match.l2_district_type
         from zip_code_within_state_range as tbl_zip
         left join
-            {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
-            on lower(tbl_zip.district_name) = lower(tbl_match.l2_district_name)
+            llm_attempts as tbl_match
+            on tbl_zip.normalized_district_name = tbl_match.normalized_district_name
             and lower(tbl_zip.district_type) = lower(tbl_match.l2_district_type)
             and lower(tbl_zip.state_postal_code) = lower(tbl_match.l2_state)
+            -- An exact spelling always joins; a respelled label joins only an
+            -- unambiguous key.
+            and (
+                lower(tbl_zip.district_name) = lower(tbl_match.l2_district_name)
+                or tbl_zip.spellings = 1
+            )
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_br_position
             on tbl_match.br_database_id = tbl_br_position.database_id

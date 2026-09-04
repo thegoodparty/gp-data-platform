@@ -5,11 +5,47 @@ from __future__ import annotations
 from loader.people_api.schema import _serving_seed as seed
 from loader.people_api.schema import _serving_seed_extra as seed_extra
 from loader.people_api.schema import schema_spec as ss
+from loader.people_api.schema import snapshot
 from loader.people_api.schema.index_specs import IndexDef
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 
-def test_all_four_tables_specced() -> None:
-    assert set(ss.TABLE_SPECS) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+def test_all_tables_specced() -> None:
+    assert set(ss.TABLE_SPECS) == {
+        "Voter",
+        "District",
+        "DistrictStats",
+        "DistrictVoter",
+        "DistrictVoterDensity",
+        "DistrictVoterDensityMeta",
+    }
+
+
+def test_density_specs() -> None:
+    # The voter-density serving tables are flat (queried by district_id + resolution, never by state),
+    # carry their PK on the spec (not in the extracted `public` seed — they live in Prisma `green`,
+    # like DistrictStats), and rename the mart's lowercase `state` -> serving "State" via
+    # mart_column_map (like DistrictVoter).
+    density = ss.TABLE_SPECS["DistrictVoterDensity"]
+    assert density.partition_by is None
+    assert density.mart_column_map["state"] == "State"
+    assert density.type_overrides["voter_count"] == "INTEGER"
+    assert density.type_overrides["state"] == '"USState"'
+    assert density.primary_key is not None
+    assert density.primary_key.columns == ["district_id", "resolution", "h3_index"]
+
+    meta = ss.TABLE_SPECS["DistrictVoterDensityMeta"]
+    assert meta.partition_by is None
+    assert meta.mart_column_map["state"] == "State"
+    # count/sum aggregates are bigint in the mart but the Prisma contract is Int.
+    for col in ("total_voters", "geocoded_voters", "rendered_voters", "suppressed_cells"):
+        assert meta.type_overrides[col] == "INTEGER"
+    assert meta.primary_key is not None
+    assert meta.primary_key.columns == ["district_id", "resolution"]
 
 
 def test_lookup_helpers_filter_by_table() -> None:
@@ -134,3 +170,23 @@ def test_primary_key_for_seed_wins_when_present() -> None:
     # District IS in the seed; spec carries no PK, seed value is used.
     pk = ss.primary_key_for("District")
     assert pk is not None and pk.columns == ["id"]
+
+
+def test_accepted_type_divergences_name_real_columns() -> None:
+    # A typo here is silent: the guardrail skips a column that does not exist, so the real
+    # column stays unguarded and the mismatch only surfaces when validate fails on a live run.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    creates = extract_create_tables(text)
+    for table, columns in ss.ACCEPTED_TYPE_DIVERGENCES.items():
+        served = set(extract_column_names(creates[table]))
+        assert columns <= served, f"{table}: {sorted(columns - served)} not in target_schema.sql"
+
+
+def test_address_directions_serve_as_text() -> None:
+    # L2 spells these N/S/E/W. Serving them INTEGER (as prod does) empties them for every voter
+    # in the country, which is what dropped cardinal directions from door-knocking addresses.
+    text = (snapshot.DATA_DIR / "target_schema.sql").read_text(encoding="utf-8")
+    types = extract_column_types(extract_create_tables(text)["Voter"])
+    for side in ("Mailing", "Residence"):
+        for position in ("Prefix", "Suffix"):
+            assert types[f"{side}_Addresses_{position}Direction"] == "TEXT"

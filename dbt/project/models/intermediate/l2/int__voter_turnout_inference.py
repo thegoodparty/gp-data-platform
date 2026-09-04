@@ -772,8 +772,17 @@ def model(dbt, session):
     import mlflow.lightgbm
 
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        # Serverless ships neither mlflow (DBR 15.4 bundled it) nor lightgbm (a
+        # classic-cluster library). Declared as environment deps, not
+        # `packages`: the adapter maps `packages` to the task's `libraries`
+        # field, which serverless rejects. lightgbm is pinned to the version the
+        # boosters were promoted against -- _check_lgbm_version raises on a
+        # major mismatch -- and numpy to <2 because 4.3.0 predates numpy 2.
+        # mlflow is pinned for the load path, not accuracy. Both keys must stay
+        # in `config`, not `config.meta`, despite the dbt-core deprecation
+        # warning.
+        environment_key="voter_turnout",
+        environment_dependencies=["mlflow==3.0.0", "lightgbm==4.3.0", "numpy<2"],
         materialized="table",  # full refresh, v1 (locked decision: no incremental)
         tags=["intermediate", "l2", "model_prediction", "voter_turnout"],
     )

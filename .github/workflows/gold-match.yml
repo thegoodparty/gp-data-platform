@@ -2,8 +2,8 @@ name: gold-match
 
 # Lint/format for gold-match/ is handled repo-wide by pre-commit.yml (ruff).
 # This workflow only runs the gold-match unit tests, scoped so it fires solely
-# on changes under gold-match/. No mypy step (matcha precedent): the matcher
-# and shared/ modules are byte-frozen copies from omni.
+# on changes under gold-match/. No mypy step (matcha precedent); shared/ is
+# omni's client copies carrying upstream's untyped debt.
 on:
   pull_request:
     paths: ['gold-match/**', '.github/workflows/gold-match.yml', '.github/workflows/uv-subproject.yml']

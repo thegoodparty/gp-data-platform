@@ -206,7 +206,11 @@ models:
     description: >
       One row per BallotReady office needing an L2 district match attempt:
       never attempted, last attempt found nothing more than 30 days ago, or
-      matched to a district int__l2_district_universe no longer carries.
+      matched to a district int__l2_district_universe no longer carries. A
+      label whose normalized spelling still resolves to exactly one universe
+      row is NOT dead -- L2 respells districts routinely, serving resolves
+      those spellings, and re-matching such an office risks erasing a working
+      link; an ambiguous respelling stays dead so a re-match decides.
       Computed from llm_l2_br_match_results, a dbt source written only by the
       matcher. The matcher reads this list to build its next batch. Reads
       stg_airbyte_source__ballotready_api_position directly, not
@@ -375,6 +379,11 @@ models:
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
       tags: ["monthly"]
+      # A rebuild drops columns L2 has retired while
+      # delta.dataSkippingStatsColumns still names them, which Delta rejects.
+      # Clearing it first lets the rebuild through.
+      pre_hook:
+        - "{% if should_full_refresh() and load_relation(this) %}alter table {{ this }} unset tblproperties if exists ('delta.dataSkippingStatsColumns'){% endif %}"
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
@@ -390,6 +399,11 @@ models:
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
       tags: ["monthly"]
+      # A rebuild drops columns L2 has retired while
+      # delta.dataSkippingStatsColumns still names them, which Delta rejects.
+      # Clearing it first lets the rebuild through.
+      pre_hook:
+        - "{% if should_full_refresh() and load_relation(this) %}alter table {{ this }} unset tblproperties if exists ('delta.dataSkippingStatsColumns'){% endif %}"
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
@@ -474,12 +488,15 @@ models:
                 to: ref("stg_airbyte_source__ballotready_api_race")
                 field: database_id
     tests:
+      # One row per (zip, office), full stop: m_election_api__zip_to_position
+      # sums voters_in_zip_district per pair, so a second row -- e.g. one
+      # office joining two spellings of one district -- silently double-counts
+      # that district's voters in pct_districtzip_to_zip. Strictly tighter
+      # than the previous (zip, type, name, office) key.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
               - zip_code
-              - district_type
-              - district_name
               - br_database_id
       - dbt_utils.expression_is_true:
           arguments:

@@ -91,14 +91,11 @@ with
             `Mailing_Addresses_DPBC`,
             `Mailing_Addresses_ExtraAddressLine`,
             `Mailing_Addresses_HouseNumber`,
-            try_cast(
-                `Mailing_Addresses_PrefixDirection` as int
-            ) as `Mailing_Addresses_PrefixDirection`,
+            -- Directions are N/S/E/W, not digits: casting them to int nulls the column.
+            `Mailing_Addresses_PrefixDirection`,
             `Mailing_Addresses_State`,
             `Mailing_Addresses_StreetName`,
-            try_cast(
-                `Mailing_Addresses_SuffixDirection` as int
-            ) as `Mailing_Addresses_SuffixDirection`,
+            `Mailing_Addresses_SuffixDirection`,
             `Mailing_Addresses_Zip`,
             `Mailing_Addresses_ZipPlus4`,
             `Mailing_Families_FamilyID`,
@@ -136,14 +133,11 @@ with
             `Residence_Addresses_LatLongAccuracy`,
             `Residence_Addresses_Latitude`,
             `Residence_Addresses_Longitude`,
-            try_cast(
-                `Residence_Addresses_PrefixDirection` as int
-            ) as `Residence_Addresses_PrefixDirection`,
+            -- Directions are N/S/E/W, not digits: casting them to int nulls the column.
+            `Residence_Addresses_PrefixDirection`,
             `Residence_Addresses_State`,
             `Residence_Addresses_StreetName`,
-            try_cast(
-                `Residence_Addresses_SuffixDirection` as int
-            ) as `Residence_Addresses_SuffixDirection`,
+            `Residence_Addresses_SuffixDirection`,
             `Residence_Addresses_Zip`,
             `Residence_Addresses_ZipPlus4`,
             `Residence_HHParties_Description`,
@@ -152,6 +146,59 @@ with
             `Voters_StateVoterID` as `StateVoterID`,
             `ConsumerDataLL_Veteran` as `Veteran_Status`,
             `VoterParties_Change_Changed_Party` as `VoterParties_Change_Changed_Party`,
+            -- Union of six independent-leaning signals: any one flags the voter.
+            -- Computed inline rather than as a joined CTE like voter_propensity below,
+            -- because every input is already in this scan; a separate 219M-row
+            -- relation would buy a second full scan and a join for nothing.
+            --
+            -- coalesce on each predicate so a voter with no data on a signal is not
+            -- flagged, which is the right default for a union and also keeps the column
+            -- non-null. The party-change values are listed explicitly rather than
+            -- tested with `is not null`: the two are equivalent on today's domain, but
+            -- if L2 adds a longer lookback bucket `is not null` would silently widen
+            -- the definition while this list holds it at ~4 years.
+            coalesce(
+                `VoterParties_Change_Changed_Party` in (
+                    'Within Last 1 Year',
+                    'Between 1 and 2 Years Ago',
+                    'Between 2 and 4 Years Ago'
+                ),
+                false
+            )
+            or coalesce(`hf_ticket_splitter` = 'Ticket Splitter Often', false)
+            or coalesce(
+                `PRI_BLT_2020` = 'O'
+                or `PRI_BLT_2022` = 'O'
+                or `PRI_BLT_2024` = 'O'
+                or (
+                    (
+                        `PRI_BLT_2020` = 'D'
+                        or `PRI_BLT_2022` = 'D'
+                        or `PRI_BLT_2024` = 'D'
+                    )
+                    and (
+                        `PRI_BLT_2020` = 'R'
+                        or `PRI_BLT_2022` = 'R'
+                        or `PRI_BLT_2024` = 'R'
+                    )
+                ),
+                false
+            )
+            or coalesce(
+                `hs_trump_vs_harris_double_dislike`
+                >= {{ var("affinity_dislike_cut") }},
+                false
+            )
+            or coalesce(
+                `hs_partisanship_moderate_third_party_support`
+                >= {{ var("affinity_third_cut") }},
+                false
+            )
+            -- Only 'Non-Partisan': the other unaffiliated-sounding registrations are
+            -- named parties or state ballot lines.
+            or coalesce(
+                `Parties_Description` = 'Non-Partisan', false
+            ) as `Voter_Independent_Affinity`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -266,6 +313,7 @@ with
             `Republican_Area`,
             `Republican_Convention_Member`,
             `Vote_By_Mail_Area`,
+            `hf_ideology_general`,
             `hf_most_important_policy_item`,
             loaded_at
         from source_nulled
@@ -359,6 +407,7 @@ with
             tbl_updated.`StateVoterID`,
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
+            tbl_updated.`Voter_Independent_Affinity`,
             case
                 when tbl_propensity.`prob_vote` is null
                 then 'Unknown'
@@ -434,6 +483,7 @@ with
             tbl_updated.`Republican_Area`,
             tbl_updated.`Republican_Convention_Member`,
             tbl_updated.`Vote_By_Mail_Area`,
+            tbl_updated.`hf_ideology_general`,
             tbl_updated.`hf_most_important_policy_item`,
             -- No first-seen history without the snapshot: both timestamps are the L2
             -- load time.

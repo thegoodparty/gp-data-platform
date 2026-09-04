@@ -188,7 +188,11 @@ class Gemini3Client:
         temperature: Optional[float] = None,
         thinking_level: Optional[ThinkingLevel] = None,
         system_instruction: Optional[str] = None,
-        trace_name: Optional[str] = None
+        trace_name: Optional[str] = None,
+        # Accepted and ignored, mirroring the bedrock client's convention, so a
+        # caller passing bedrock-only options (validation_schema) does not
+        # TypeError this dormant path out of --model-config gemini.
+        **kwargs
     ) -> Union[BaseModel, List[BaseModel], Dict[str, Any]]:
         effective_model = model or self.default_model
         model_name = effective_model.value

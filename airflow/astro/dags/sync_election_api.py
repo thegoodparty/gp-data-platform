@@ -67,8 +67,9 @@ rehearsal freezes ALL of them: keep the rehearsal window short.
   test unmerged mart changes end to end from a development schema.
 
 ### Worker queue:
-`load_staging` runs on the `election-api-sync` queue, which must exist on the
-deployment or those tasks never get picked up. A load task peaks around 400 MB
+`load_staging` runs on the `election-api-sync` queue, declared per environment
+in gp-terraform-dataplatform's `locals.tf`. Without it those tasks are never
+picked up and fail with no logs. A load task peaks around 400 MB
 (~250 MB of imports plus one `batch_size` fetch), so the queue is A5 at
 concurrency 2 — five on one 2 GiB A5 is what OOM-killed these tasks. Keep the
 concurrency low rather than widening it; Astro scales workers out from the

@@ -9,3 +9,9 @@ models:
 
   - name: gp_api_district_stats
     description: Pass-through of m_people_api__districtstats
+
+  - name: gp_api_district_voter_density
+    description: Pass-through of m_people_api__district_voter_density
+
+  - name: gp_api_district_voter_density_meta
+    description: Pass-through of m_people_api__district_voter_density_meta

@@ -127,8 +127,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
     spark = session
 
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        # Serverless ships neither mlflow nor scikit-learn (DBR 15.4 bundled
+        # both). Declared as environment deps, not `packages`: the adapter maps
+        # `packages` to the task's `libraries` field, which serverless rejects.
+        # The sklearn pin is load-bearing -- these scorers are cloudpickled, so
+        # the version present at load time decides the predictions. The five
+        # models split across 1.4.2 (x3) and 1.6.1 (x2); 1.6.1 reproduces the
+        # 1.4.2 three bit for bit and corrects the other two. Changing it moves
+        # published ratings. numpy is held under 2 to match the sibling model:
+        # verified inert here, but it guards the cloudpickled loads against a
+        # future resolver picking numpy 2.x. Both keys must stay in `config`,
+        # not `config.meta`, despite the dbt-core deprecation warning.
+        environment_key="civics_viability",
+        environment_dependencies=["mlflow==3.0.0", "scikit-learn==1.6.1", "numpy<2"],
         materialized="table",
         auto_liquid_cluster=True,
         tags=["intermediate", "civics", "viability"],

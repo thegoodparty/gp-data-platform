@@ -60,8 +60,10 @@ def validate_results(results: list[MatchResult]) -> None:
     Raises ValueError naming every failing row and why, without writing
     anything.
 
-    Two rules, and only two, because only two are both unenforced elsewhere
-    and reachable from a batch this module can be handed:
+    Three rules, and only three, because only these are both unenforced
+    elsewhere and reachable from a batch this module can be handed (the
+    third: a set district field must be a real label, not a blank string --
+    see the inline comment at the check):
 
     - **The district key is all set or all null.** A partial key is a writer
       bug. It is deliberately not a dbt test or a Delta CHECK (that decision
@@ -103,6 +105,11 @@ def validate_results(results: list[MatchResult]) -> None:
                 "l2_state, l2_district_type and l2_district_name must be all set (a match) "
                 f"or all null (an attempt that found nothing), got {district_fields!r}"
             )
+        elif any(isinstance(f, str) and not f.strip() for f in district_fields):
+            # A blank label passes an is-None check but persists as a "match"
+            # that can never join the universe, reopening the office on every
+            # build; legit output is universe-verbatim and never blank.
+            row_errors.append(f"district fields must carry real labels, not blank strings, got {district_fields!r}")
 
         if row_errors:
             errors.append(f"row {i} (br_database_id={row.br_database_id!r}): " + "; ".join(row_errors))
@@ -274,7 +281,7 @@ class MatchResultWriter:
         self.logger.info(f"Wrote {len(to_write)} result row(s) under run key {attempted_at.isoformat()}")
         return len(to_write)
 
-    def delete_run(self, attempted_at: datetime) -> int:
+    def delete_run(self, attempted_at: datetime, expected_count: int | None = None) -> int:
         """Delete every row stamped with this run key, and return how many
         rows went.
 
@@ -284,11 +291,24 @@ class MatchResultWriter:
         undo a release, delete the target run and every run after it, then
         rebuild. The DELETE itself stays in Delta history, so what happened
         and when is still answerable afterwards.
+
+        `expected_count`, when given, is checked against the pre-delete
+        count BEFORE the DELETE executes -- no extra query, since that count
+        is already read for the before/after comparison below. A caller with
+        a recorded count (the entry point's rollback) gets its verification
+        done here, before anything is destroyed, rather than having to
+        recompute the same count itself afterward. `expected_count=0`
+        matching a genuinely empty run is not an error.
         """
         _require_aware(attempted_at)
         cursor = self._cursor()
         try:
             before = self._row_count(cursor, attempted_at)
+            if expected_count is not None and before != expected_count:
+                raise RuntimeError(
+                    f"run {attempted_at.isoformat()} holds {before} row(s), recorded count is "
+                    f"{expected_count}; refusing to delete until the table and the record agree"
+                )
             cursor.execute(
                 f"delete from {self.results_table} where attempted_at = ?",
                 [attempted_at],
