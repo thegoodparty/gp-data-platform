@@ -453,6 +453,7 @@ async def _run(args: argparse.Namespace) -> None:
             "states_filter": args.states,
             "limit": args.limit,
             "input_table_override": args.input_table,
+            "matches_only": args.matches_only,
             "git": _git_state(),
             "exclusions": exclusion_info,
             "offices": len(answer_rows),
@@ -481,6 +482,9 @@ async def _run(args: argparse.Namespace) -> None:
         filtered, cohort_counts = apply_cohort_filter(
             matcher.databricks, predicate_sql, args.cohort_expected_count, results
         )
+        # After the cohort boundary, not before -- filtering earlier would skew cohort_counts.
+        if args.matches_only:
+            filtered = [r for r in filtered if r.l2_district_name is not None]
         written = writer.append_results(filtered, attempted_at=run_key)
 
         record = {
@@ -748,6 +752,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     run_p.add_argument(
         "--cohort-expected-count", required=True, type=int, help="recorded row count the predicate must return"
+    )
+    run_p.add_argument(
+        "--matches-only",
+        action="store_true",
+        help="After the cohort filter, drop abstains from the write; the office's standing row keeps "
+        "serving because nothing newer lands over it. Off by default: absent, behavior is unchanged.",
     )
     run_p.add_argument(
         "--compare-against", type=Path, default=None, help="a prior (Run A) out-dir; produces the A-vs-B delta report"
