@@ -27,3 +27,9 @@ apache-airflow-providers-dbt-cloud>=4.9.2,<5.0.0
 # S3Hook for the l2_voter_files DAG. Astro Runtime pre-installs it; pinned so a runtime image
 # that drops it fails the build rather than the DAG.
 apache-airflow-providers-amazon>=9.16.0,<10.0.0
+
+# KubernetesPodOperator for the matcha ER container. Astro Runtime 3.x images are
+# slim and pre-install only Celery, Common Compat/IO/SQL, Elasticsearch, MySQL,
+# OpenLineage, Postgres, SMTP, and Standard — the Kubernetes provider is not among
+# them. Adding it here makes the next deploy a full image deploy, not a DAG-only sync.
+apache-airflow-providers-cncf-kubernetes>=10.21.1,<11.0.0

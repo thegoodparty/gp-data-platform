@@ -92,8 +92,13 @@ class _ConnKwargs(TypedDict):
     client_secret: str
 
 
-def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
-    """The host and OAuth credentials of the Databricks connection an Airflow Variable names."""
+def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
+    """The host and OAuth credentials of the Databricks connection an Airflow Variable names.
+
+    No default on the Variable read: an unset `databricks_conn_id` raises here
+    rather than resolving to some assumed connection, since the wrong guess is
+    a task that quietly reads or writes the wrong environment.
+    """
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
 
@@ -117,7 +122,7 @@ def connect_from_conn_id(
     use_cloud_fetch: bool = False,
 ) -> Connection:
     """Connect to the Databricks warehouse an Airflow Variable names."""
-    return get_databricks_connection(**_conn_kwargs(databricks_conn_id_var), use_cloud_fetch=use_cloud_fetch)
+    return get_databricks_connection(**conn_kwargs(databricks_conn_id_var), use_cloud_fetch=use_cloud_fetch)
 
 
 def read_databricks_table(
@@ -214,10 +219,10 @@ def read_databricks_partitioned(
     """
     # Read here so a bad connection fails at call time, but connected inside the generator so a
     # caller that never iterates opens nothing.
-    conn_kwargs = _conn_kwargs(databricks_conn_id_var)
+    kwargs = conn_kwargs(databricks_conn_id_var)
 
     def _iter():
-        connection = get_databricks_connection(**conn_kwargs, use_cloud_fetch=use_cloud_fetch)
+        connection = get_databricks_connection(**kwargs, use_cloud_fetch=use_cloud_fetch)
         cursor = connection.cursor(arraysize=batch_size)
         try:
             execute_with_retry(
