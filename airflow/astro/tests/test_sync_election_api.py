@@ -37,11 +37,12 @@ for _mod in _STUBS:
 
 from dags.sync_election_api import (  # noqa: E402
     TABLES,
-    _district_extra_checks,
+    VOTER_DENSITY_K,
+    _dvd_extra_checks,
+    _prune_unlanded_districts,
     _pt_extra_checks,
     _ztp_extra_checks,
 )
-from include.custom_functions.election_api_utils import TableSyncSpec  # noqa: E402
 
 
 def test_parents_match_fkey_references():
@@ -88,46 +89,60 @@ def test_ztp_extra_checks_refuse_partial_state_coverage():
         _ztp_extra_checks(_conn_returning(29), _spec("ZipToPosition"), 1_300_000)
 
 
-def _conn_returning_sequence(values):
-    """A conn whose successive queries yield `values`, one scalar each."""
-    cur = MagicMock()
-    cur.fetchone.side_effect = [(v,) for v in values]
-    conn = MagicMock()
-    conn.cursor.return_value = cur
-    return conn
+class TestVoterDensity:
+    """The density tables live in this DAG specifically so their FK to District
+    can survive. An FK from outside the set points at District_old after the
+    rename and is dropped by drop_old's CASCADE with only a NOTICE."""
 
+    def _density(self):
+        return [t for t in TABLES if t.spec.target_table.startswith("District_Voter_Density")]
 
-class TestDistrictDensityReferences:
-    """The density tables key on District.id but hold no FK — an FK here cannot
-    survive this DAG's own swap. This is the other half of that replacement:
-    the density DAG checks the relationship when it loads, monthly, and this
-    checks it on the ~30 nightly District swaps in between, which is the only
-    other thing that can break it."""
+    def test_both_density_tables_are_in_this_swap_set(self):
+        """Moving either one out silently un-enforces its FK rather than
+        failing, which is the whole reason they are here."""
+        assert {t.spec.target_table for t in self._density()} == {
+            "District_Voter_Density",
+            "District_Voter_Density_Meta",
+        }
 
-    def test_skipped_before_the_density_tables_are_deployed(self):
-        """election-api owns that DDL and deploys on its own schedule, so this
-        must be a no-op until the tables exist rather than failing every
-        nightly run until then."""
-        # Neither table exists.
-        conn = _conn_returning_sequence([None, None])
-        _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
+    def test_each_holds_an_fk_to_district(self):
+        for t in self._density():
+            assert [fk.ref_table for fk in t.spec.fkeys] == ["District"], t.group_id
 
-    def test_pre_existing_orphans_do_not_block_the_swap(self):
-        """Density is a monthly vintage against a nightly District, so rows
-        already orphaned are expected staleness, not damage this swap is doing.
-        Blocking on them would wedge the nightly sync until the next monthly
-        density load, inverting which of the two is authoritative."""
-        # Per table: regclass, density districts, newly orphaned by THIS swap.
-        conn = _conn_returning_sequence(["t", 500_000, 0, "t", 500_000, 0])
-        _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
+    def test_target_tables_match_the_prisma_table_names(self):
+        """election-api @@maps these models to underscore-separated tables, and
+        build_staging clones LIKE the live table — the model names would fail
+        the first task of every run on a missing relation."""
+        assert all("_Voter_Density" in t.spec.target_table for t in self._density())
 
-    def test_refuses_a_swap_that_newly_orphans_much_of_the_map(self):
-        """A District vintage that drops districts the live map depends on
-        passes the 0.90 id-overlap gate — that gate compares District to
-        District and cannot see the density tables at all."""
-        conn = _conn_returning_sequence(["t", 500_000, 25_000])
-        with pytest.raises(ValueError, match="newly orphan"):
-            _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
+    def test_declared_indexes_match_the_prisma_migration(self):
+        """The staging clone copies no indexes, so this is the complete set the
+        live table has after a swap. One Prisma declares and this omits is
+        dropped by the first sync and then reads as drift."""
+        indexes = {t.spec.target_table: t.spec.index_names for t in self._density()}
+        assert indexes == {
+            "District_Voter_Density": ("District_Voter_Density_district_id_resolution_idx",),
+            "District_Voter_Density_Meta": (),
+        }
+
+    def test_both_prune_before_their_fk_is_added(self):
+        """The FK add is the point of no return: a stale reference there fails
+        the whole 15-table swap, not just density."""
+        for t in self._density():
+            assert t.pre_index is _prune_unlanded_districts, t.group_id
+
+    def test_k_anonymity_floor_matches_the_dbt_var(self):
+        """`voter_density_k` in dbt_project.yml is what the marts suppress at.
+        Raised there and not here, this check stops biting; lowered there, it
+        fails the swap closed, which is the right way to find out."""
+        assert VOTER_DENSITY_K == 10
+
+    def test_cells_below_k_refuse_the_swap(self):
+        """No generic gate can see this: dropping the suppression filter
+        upstream loads MORE rows and sails through the count ratio."""
+        _dvd_extra_checks(_conn_returning(0), _spec("District_Voter_Density"), 59_000_000)
+        with pytest.raises(ValueError, match="below K"):
+            _dvd_extra_checks(_conn_returning(1), _spec("District_Voter_Density"), 59_000_000)
 
 
 def test_psycopg2_adapts_python_lists_to_postgres_arrays():

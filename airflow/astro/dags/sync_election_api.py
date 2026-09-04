@@ -32,10 +32,9 @@ vintage. **drop_old** then drops the renamed-aside set. Leftover `_old`
 tables from a crashed run are pre-dropped inside the swap transaction, so a
 crashed run never wedges subsequent ones.
 
-The SQL lives in `include/custom_functions/election_api_utils.py` and the task
-wiring in `include/custom_functions/election_api_sync.py`, shared with
-`sync_election_api_density`; each table below is a declarative `MartSync` entry
-(spec, mart, gate, FK parents) consumed by a
+The shared lifecycle lives in
+`include/custom_functions/election_api_utils.py`; each table below is a
+declarative `MartSync` entry (spec, mart, gate, FK parents) consumed by a
 single task-group factory. The only cross-group ordering is
 `parent.build_indexes_and_fk >> child.build_indexes_and_fk`: a staging FK
 needs the referenced staging table loaded with its PK in place. Loads run in
@@ -43,9 +42,28 @@ parallel.
 
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
-dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
+dress rehearsal — all 15 staging tables built, loaded, indexed, and gated;
 only the swap is withheld. This DAG is the only writer to these tables, so
 rehearsal freezes ALL of them: keep the rehearsal window short.
+
+### The voter-density tables are here, not in a DAG of their own
+
+`District_Voter_Density` (~59.3M rows) and its `_Meta` sibling are the two
+largest tables in the set, and their marts rebuild `monthly` in dbt while this
+DAG runs nightly — so most nights re-copy identical rows. They are still here
+rather than on their own monthly schedule because that is the only way their
+foreign key to `District` can exist at all: an FK from outside this set does
+not survive the swap. `District` is renamed to `District_old`, which leaves any
+outside FK pointing at the stale vintage, and `drop_old` then removes the
+constraint with only a NOTICE — rows intact, constraint gone, orphans
+insertable. Inside the set the FK references the staging sibling and rides the
+renames with it, so it is enforced continuously.
+
+The cost of that choice is real and worth knowing before moving them: this DAG
+reads ~1.8 GB from Databricks and writes ~10 GB of WAL every night for data
+that changes monthly, and the two loads add roughly 20-45 minutes to the run.
+`_prune_unlanded_districts` is what keeps the arrangement safe — see its
+docstring.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -87,21 +105,66 @@ kicking a sync that depends on new columns.
 """
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from airflow.sdk import dag
-from include.custom_functions.election_api_sync import MartSync, wire_sync_dag
+from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
     ForeignKey,
     Index,
     QualityGate,
     TableSyncSpec,
+    apply_ddl,
+    bulk_insert_from_databricks,
+    create_staging_table,
+    drop_old_tables,
+    run_quality_checks,
+    staging_columns,
+    swap_staging_into_target,
 )
+from include.custom_functions.postgres_utils import get_postgres_via_ssh
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
 t_log = logging.getLogger("airflow.task")
 
+PG_CONN_ID = "election_api_db"
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
+# Loads run on their own worker queue at low concurrency; see the docstring.
+LOAD_QUEUE = "election-api-sync"
+
+
+def _open_pg():
+    """Open a Postgres connection — tunneled in cloud, direct on VPN locally.
+
+    The bastion connection id comes from the `election_api_bastion_conn_id`
+    Airflow Variable; an empty value (or unset) bypasses the tunnel.
+    """
+    bastion = Variable.get("election_api_bastion_conn_id", default="gp_bastion_host")
+    return get_postgres_via_ssh(
+        bastion_conn_id=bastion or None,
+        pg_conn_id=PG_CONN_ID,
+    )
+
+
+@dataclass(frozen=True)
+class MartSync:
+    """One mart-to-table sync: everything the task-group factory needs."""
+
+    group_id: str
+    spec: TableSyncSpec
+    source_model: str
+    gate: QualityGate
+    partition_column: str | None = None
+    # Extra per-table checks run after the generic gate: (conn, spec, loaded).
+    extra_checks: Callable[..., None] | None = None
+    # Runs after the load, before the PK/index/FK DDL: the only point where a
+    # staged row can still be removed, since the FK add would reject it.
+    pre_index: Callable[..., None] | None = None
+    # group_ids of the tables this table's staging FKs reference; wired as
+    # parent.build_indexes_and_fk >> this.build_indexes_and_fk (the FK add
+    # needs the referenced staging table loaded with its PK in place).
+    parents: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -109,69 +172,63 @@ SWAP_GATE_VARIABLE = "election_api_swap_enabled"
 # ---------------------------------------------------------------------------
 
 
-# Share of the density tables' districts this swap may newly orphan before it is
-# treated as damage rather than churn. Deliberately tighter than District's own
-# 0.90 id-overlap gate, which compares District to District and so cannot see
-# the map breaking behind it.
-MAX_NEWLY_ORPHANED_DENSITY_SHARE = 0.01
-
-# Loaded by sync_election_api_density, which holds no FK to District because one
-# cannot survive the swap below. Keyed on District.id all the same.
-_DENSITY_TABLES = ("District_Voter_Density", "District_Voter_Density_Meta")
+# Mirrors `voter_density_k` in dbt/project/dbt_project.yml, the value the marts
+# suppress at. Duplicated because the DAG has no dbt context; a change there
+# without a change here fails the swap closed, the right direction for a
+# privacy floor.
+VOTER_DENSITY_K = 10
 
 
-def _district_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
-    """Refuse a District vintage that would orphan much of the voter-density map.
+def _dvd_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """Refuse to publish a cell holding fewer than K voters.
 
-    The other half of the FK replacement in `sync_election_api_density`: that
-    DAG checks the relationship when it loads, monthly, and this checks the
-    nightly District swaps in between. Only districts this swap *newly* orphans
-    count — density is a monthly vintage, so rows already orphaned are expected
-    staleness and blocking on them would wedge the nightly sync until the next
-    density load, inverting which of the two is authoritative.
+    The generic gate cannot see this: dropping the suppression filter upstream
+    raises the row count, so the ratio check reads it as a healthy load.
     """
     cur = conn.cursor()
     try:
-        for density_table in _DENSITY_TABLES:
-            cur.execute("SELECT to_regclass(%s)", (f'"{spec.target_schema}"."{density_table}"',))
-            if cur.fetchone()[0] is None:
-                # election-api owns this DDL and deploys on its own schedule.
-                t_log.info("%s not deployed yet; skipping density reference check", density_table)
-                continue
+        cur.execute(
+            f'SELECT COUNT(*) FROM "{spec.staging_schema}"."{spec.new_table}" '
+            f"WHERE voter_count < {VOTER_DENSITY_K}"
+        )
+        under_k = cur.fetchone()[0]
+    finally:
+        cur.close()
+    if under_k > 0:
+        raise ValueError(f"{under_k} cells below K={VOTER_DENSITY_K} in staging — refusing to swap")
 
-            cur.execute(f'SELECT COUNT(DISTINCT district_id) FROM "{spec.target_schema}"."{density_table}"')
-            density_districts = cur.fetchone()[0]
-            if not density_districts:
-                continue
 
-            cur.execute(
-                f"SELECT COUNT(*) FROM ("
-                f"SELECT DISTINCT dens.district_id "
-                f'FROM "{spec.target_schema}"."{density_table}" dens '
-                f"WHERE NOT EXISTS ("
-                f'SELECT 1 FROM "{spec.staging_schema}"."{spec.new_table}" stg '
-                f"WHERE stg.id = dens.district_id) "
-                f"AND EXISTS ("
-                f'SELECT 1 FROM "{spec.target_schema}"."{spec.target_table}" live '
-                f"WHERE live.id = dens.district_id)"
-                f") AS newly_orphaned"
+def _prune_unlanded_districts(conn, spec: TableSyncSpec) -> None:
+    """Drop staged density rows for districts tonight's District vintage lacks.
+
+    The density marts are tagged `monthly` in dbt while District rebuilds every
+    night, so a month-old density vintage can reference a district an L2 rename
+    has since dropped. Without this the FK add below rejects those rows, and
+    because every group feeds one swap gate that failure takes the whole
+    15-table sync down, not just density.
+
+    Skipping them is what the election-api handoff doc asks for (§3): the row
+    comes back on the next density build once the district exists again. The
+    reference itself is still enforced — by the FK, against tonight's staging
+    District, on everything that remains.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f'DELETE FROM "{spec.staging_schema}"."{spec.new_table}" stg '
+            f'WHERE NOT EXISTS (SELECT 1 FROM "{spec.staging_schema}"."District_new" d '
+            f"WHERE d.id = stg.district_id)"
+        )
+        if cur.rowcount:
+            t_log.info(
+                "Pruned %d %s rows for districts absent from tonight's District",
+                cur.rowcount,
+                spec.target_table,
             )
-            newly_orphaned = cur.fetchone()[0]
-
-            share = newly_orphaned / density_districts
-            if share > MAX_NEWLY_ORPHANED_DENSITY_SHARE:
-                raise ValueError(
-                    f"this District vintage would newly orphan {newly_orphaned} of "
-                    f"{density_districts} districts in {density_table} ({share:.1%}) "
-                    f"— refusing to swap"
-                )
-            if newly_orphaned:
-                t_log.info(
-                    "%d of %d %s districts newly orphaned by this District vintage",
-                    newly_orphaned,
-                    density_districts,
-                    density_table,
-                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.close()
 
@@ -253,7 +310,6 @@ TABLES: tuple[MartSync, ...] = (
         source_model="m_election_api__district",
         gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         partition_column="state",
-        extra_checks=_district_extra_checks,
     ),
     MartSync(
         group_id="issue",
@@ -474,7 +530,135 @@ TABLES: tuple[MartSync, ...] = (
         extra_checks=_pt_extra_checks,
         parents=("district",),
     ),
+    MartSync(
+        group_id="district_voter_density",
+        spec=TableSyncSpec(
+            # Prisma model DistrictVoterDensity, @@map'd to this table name.
+            target_table="District_Voter_Density",
+            # The mart grain.
+            pk_column=("district_id", "resolution", "h3_index"),
+            indexes=(
+                Index(
+                    "District_Voter_Density_district_id_resolution_idx",
+                    "(district_id, resolution)",
+                ),
+            ),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                ),
+            ),
+        ),
+        source_model="m_people_api__district_voter_density",
+        # ~59.3M rows, the largest table in the set by an order of magnitude;
+        # read one state at a time so no single server-side result set holds
+        # the whole mart. Unpartitioned is what OOM-kills these tasks.
+        partition_column="state",
+        # No id-overlap floor: the key is composite and natural, with no minted
+        # id an external consumer could hold.
+        gate=QualityGate(
+            cold_start_floor=40_000_000,
+            not_null_columns=("lat", "lng", "voter_count"),
+        ),
+        pre_index=_prune_unlanded_districts,
+        extra_checks=_dvd_extra_checks,
+        parents=("district",),
+    ),
+    MartSync(
+        group_id="district_voter_density_meta",
+        spec=TableSyncSpec(
+            # Prisma model DistrictVoterDensityMeta, @@map'd to this table name.
+            target_table="District_Voter_Density_Meta",
+            # One row per district per published resolution.
+            pk_column=("district_id", "resolution"),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_Meta_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                ),
+            ),
+        ),
+        source_model="m_people_api__district_voter_density_meta",
+        # ~512k rows across four resolutions; small enough to read in one pass.
+        gate=QualityGate(
+            cold_start_floor=400_000,
+            # coverage drives the app's resolution choice; a NULL there hides
+            # the map for that district.
+            not_null_columns=("coverage", "total_voters"),
+        ),
+        pre_index=_prune_unlanded_districts,
+        parents=("district",),
+    ),
 )
+
+
+# ---------------------------------------------------------------------------
+# Task-group factory
+# ---------------------------------------------------------------------------
+
+
+def _build_group(table: MartSync) -> dict:
+    """One build->load->index->gate task group for a table's staging copy.
+
+    Returns handles to the tasks that participate in cross-group wiring.
+    """
+    spec = table.spec
+    handles: dict = {}
+
+    @task_group(group_id=table.group_id)
+    def group():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, spec)
+
+        @task(queue=LOAD_QUEUE)
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            schema = Variable.get("election_api_source_schema", default="dbt")
+            with _open_pg() as conn:
+                # The live table's own columns drive the load: dbt must publish
+                # every one of them, with matching names and types.
+                columns = staging_columns(conn, spec)
+                col_list = ", ".join(f"`{c}`" for c in columns)
+                query = f"SELECT {col_list} " f"FROM `{catalog}`.`{schema}`.`{table.source_model}`"
+                return bulk_insert_from_databricks(
+                    conn,
+                    spec,
+                    source_query=query,
+                    target_columns=columns,
+                    partition_column=table.partition_column,
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                if table.pre_index:
+                    table.pre_index(conn, spec)
+                apply_ddl(conn, spec.constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            with _open_pg() as conn:
+                run_quality_checks(conn, spec, table.gate, loaded_count)
+                if table.extra_checks:
+                    table.extra_checks(conn, spec, loaded_count)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        s >> loaded >> idx >> qc
+        handles["build_indexes_and_fk"] = idx
+        handles["quality_checks"] = qc
+
+    group()
+    return handles
 
 
 @dag(
@@ -494,7 +678,34 @@ TABLES: tuple[MartSync, ...] = (
     is_paused_upon_creation=True,
 )
 def sync_election_api():
-    wire_sync_dag(TABLES, SWAP_GATE_VARIABLE)
+    handles = {table.group_id: _build_group(table) for table in TABLES}
+    # Self-references need no edge: the PK lands in the same transaction,
+    # before the FK.
+    for table in TABLES:
+        for parent in table.parents:
+            handles[parent]["build_indexes_and_fk"] >> handles[table.group_id]["build_indexes_and_fk"]
+
+    @task.short_circuit
+    def cutover_enabled() -> bool:
+        enabled = Variable.get(SWAP_GATE_VARIABLE, default="false").strip().lower() == "true"
+        if not enabled:
+            t_log.info("Swap disabled (rehearsal mode); staging left for parity checks")
+        return enabled
+
+    @task
+    def swap() -> None:
+        with _open_pg() as conn:
+            swap_staging_into_target(conn, [table.spec for table in TABLES])
+
+    @task
+    def drop_old() -> None:
+        with _open_pg() as conn:
+            drop_old_tables(conn, [table.spec for table in TABLES])
+
+    gate = cutover_enabled()
+    for table in TABLES:
+        handles[table.group_id]["quality_checks"] >> gate
+    gate >> swap() >> drop_old()
 
 
 sync_election_api()
