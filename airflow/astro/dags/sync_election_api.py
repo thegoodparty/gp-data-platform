@@ -59,12 +59,21 @@ constraint with only a NOTICE — rows intact, constraint gone, orphans
 insertable. Inside the set the FK references the staging sibling and rides the
 renames with it, so it is enforced continuously.
 
-The cost is a nightly full re-copy of data that only changes monthly: tens of
-minutes, and ~20 GB transient once the `_old` vintage is counted alongside the
-live and staging ones, with comparable WAL. The load commits once at the end,
-so that is also a single long transaction holding back autovacuum
-database-wide for its duration. Check disk and WAL headroom before enabling
-the swap. `ForeignKey(on_missing_parent="skip")` on both
+The cost is a nightly full re-copy of data that only changes monthly. Measured
+on dev 2026-09-04, first green run: the two tables add **59 minutes**, of which
+`District_Voter_Density`'s load is 53 (59.3M rows at ~18.5k rows/s) and its
+index and FK build is 3.5. For scale, the next-largest table in the set,
+`DistrictTopIssue`, loads in under 8. The whole run went 19:56 to 20:57.
+
+That rate is roughly a sixth of what the same insert does against a local
+Postgres, so the ceiling here is the bastion tunnel and the worker, not
+Databricks — the read side is fast as long as `pyarrow` is installed
+(`requirements.txt`), without which the connector drops to ~15k rows/s and the
+read alone would take an hour.
+
+Also ~20 GB transient once the `_old` vintage is counted alongside the live and
+staging ones, with comparable WAL. The load commits once at the end, so that is
+a single ~53-minute transaction holding back autovacuum database-wide. `ForeignKey(on_missing_parent="skip")` on both
 is what keeps that safe: their marts lag District's, so a district an L2 rename
 dropped is a stale row and is pruned, not a failure that would take the whole
 set down.
