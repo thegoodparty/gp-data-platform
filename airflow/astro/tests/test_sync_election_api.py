@@ -7,10 +7,12 @@ the Astro runtime installed.
 """
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 # Captured before the stubbing below poisons sys.modules, so the array
 # adaptation test exercises the real adapter regardless of collection order.
@@ -39,10 +41,11 @@ from dags.sync_election_api import (  # noqa: E402
     TABLES,
     VOTER_DENSITY_K,
     _dvd_extra_checks,
-    _prune_unlanded_districts,
     _pt_extra_checks,
     _ztp_extra_checks,
 )
+
+TABLES_BY_GROUP = {t.group_id: t for t in TABLES}
 
 
 def test_parents_match_fkey_references():
@@ -109,12 +112,6 @@ class TestVoterDensity:
         for t in self._density():
             assert [fk.ref_table for fk in t.spec.fkeys] == ["District"], t.group_id
 
-    def test_target_tables_match_the_prisma_table_names(self):
-        """election-api @@maps these models to underscore-separated tables, and
-        build_staging clones LIKE the live table — the model names would fail
-        the first task of every run on a missing relation."""
-        assert all("_Voter_Density" in t.spec.target_table for t in self._density())
-
     def test_declared_indexes_match_the_prisma_migration(self):
         """The staging clone copies no indexes, so this is the complete set the
         live table has after a swap. One Prisma declares and this omits is
@@ -125,17 +122,30 @@ class TestVoterDensity:
             "District_Voter_Density_Meta": (),
         }
 
-    def test_both_prune_before_their_fk_is_added(self):
-        """The FK add is the point of no return: a stale reference there fails
-        the whole 15-table swap, not just density."""
+    def test_both_skip_districts_their_parent_vintage_lacks(self):
+        """Their marts rebuild monthly against a nightly District, so a stale
+        reference is expected. Left to fail, the FK add takes the whole swap
+        set down rather than just density."""
         for t in self._density():
-            assert t.pre_index is _prune_unlanded_districts, t.group_id
+            assert [fk.on_missing_parent for fk in t.spec.fkeys] == ["skip"], t.group_id
+
+    def test_the_prune_runs_before_anything_is_built_on_those_rows(self):
+        """Emitted from constraint_ddl, so it shares the DDL transaction — and
+        it has to come first, or the PK and indexes are built over rows that
+        are about to be deleted."""
+        ddl = TABLES_BY_GROUP["district_voter_density"].spec.constraint_ddl()
+        assert ddl[0].startswith("DELETE FROM")
+        assert "District_new" in ddl[0]
+        assert not any(s.startswith("DELETE") for s in ddl[1:])
 
     def test_k_anonymity_floor_matches_the_dbt_var(self):
-        """`voter_density_k` in dbt_project.yml is what the marts suppress at.
-        Raised there and not here, this check stops biting; lowered there, it
-        fails the swap closed, which is the right way to find out."""
-        assert VOTER_DENSITY_K == 10
+        """The DAG constant mirrors what the marts actually suppress at. Raised
+        in dbt and not here, this check quietly stops biting, so assert across
+        the subproject boundary rather than trusting the two to agree."""
+        project = yaml.safe_load(
+            (Path(__file__).resolve().parents[3] / "dbt/project/dbt_project.yml").read_text()
+        )
+        assert project["vars"]["voter_density_k"] == VOTER_DENSITY_K
 
     def test_cells_below_k_refuse_the_swap(self):
         """No generic gate can see this: dropping the suppression filter

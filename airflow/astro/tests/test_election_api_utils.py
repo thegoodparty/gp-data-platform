@@ -62,30 +62,26 @@ class TestQualityGates:
 
 class TestCompositePrimaryKey:
     """The density tables key on (district_id, resolution, h3_index) and
-    (district_id, resolution); every other synced table keys on a single `id`.
-    Both spellings have to work off the same spec field."""
+    (district_id, resolution); every other synced table keys on a single id."""
 
     def test_single_column_pk_ddl_unchanged(self):
-        spec = TableSyncSpec(target_table="Race")
-        (pk_ddl,) = spec.constraint_ddl()
+        (pk_ddl,) = TableSyncSpec(target_table="Race").constraint_ddl()
         assert 'PRIMARY KEY ("id")' in pk_ddl
 
-    def test_tuple_pk_emits_composite_ddl(self):
+    def test_composite_pk_emits_every_column_in_key_order(self):
         spec = TableSyncSpec(
-            target_table="DistrictVoterDensity",
-            pk_column=("district_id", "resolution", "h3_index"),
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
         )
         (pk_ddl,) = spec.constraint_ddl()
         assert 'PRIMARY KEY ("district_id", "resolution", "h3_index")' in pk_ddl
 
     def test_id_overlap_join_uses_every_pk_column(self):
-        """The overlap probe joins live to staging on the PK. With a composite
-        key it must join on all of it: interpolating the tuple would emit a
-        single garbage identifier, and joining on only the first column would
-        overcount overlap on a key whose first column repeats."""
+        """Joining on only the first column would overcount overlap on a key
+        whose first column repeats."""
         spec = TableSyncSpec(
-            target_table="DistrictVoterDensity",
-            pk_column=("district_id", "resolution", "h3_index"),
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
         )
         cur = MagicMock()
         # to_regclass -> exists, COUNT(*) -> prior rows, then the overlap count.

@@ -42,7 +42,7 @@ parallel.
 
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
-dress rehearsal — all 15 staging tables built, loaded, indexed, and gated;
+dress rehearsal — every staging table built, loaded, indexed, and gated;
 only the swap is withheld. This DAG is the only writer to these tables, so
 rehearsal freezes ALL of them: keep the rehearsal window short.
 
@@ -59,11 +59,15 @@ constraint with only a NOTICE — rows intact, constraint gone, orphans
 insertable. Inside the set the FK references the staging sibling and rides the
 renames with it, so it is enforced continuously.
 
-The cost of that choice is real and worth knowing before moving them: this DAG
-reads ~1.8 GB from Databricks and writes ~10 GB of WAL every night for data
-that changes monthly, and the two loads add roughly 20-45 minutes to the run.
-`_prune_unlanded_districts` is what keeps the arrangement safe — see its
-docstring.
+The cost is a nightly full re-copy of data that only changes monthly, which
+adds tens of minutes to the run. `ForeignKey(on_missing_parent="skip")` on both
+is what keeps that safe: their marts lag District's, so a district an L2 rename
+dropped is a stale row and is pruned, not a failure that would take the whole
+set down.
+
+`people-api-loader` also loads these two marts, into the people-api cluster.
+That copy is what the app reads today and goes away with people-api itself;
+this one is its replacement, not a second live source.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -158,9 +162,6 @@ class MartSync:
     partition_column: str | None = None
     # Extra per-table checks run after the generic gate: (conn, spec, loaded).
     extra_checks: Callable[..., None] | None = None
-    # Runs after the load, before the PK/index/FK DDL: the only point where a
-    # staged row can still be removed, since the FK add would reject it.
-    pre_index: Callable[..., None] | None = None
     # group_ids of the tables this table's staging FKs reference; wired as
     # parent.build_indexes_and_fk >> this.build_indexes_and_fk (the FK add
     # needs the referenced staging table loaded with its PK in place).
@@ -196,41 +197,6 @@ def _dvd_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
         cur.close()
     if under_k > 0:
         raise ValueError(f"{under_k} cells below K={VOTER_DENSITY_K} in staging — refusing to swap")
-
-
-def _prune_unlanded_districts(conn, spec: TableSyncSpec) -> None:
-    """Drop staged density rows for districts tonight's District vintage lacks.
-
-    The density marts are tagged `monthly` in dbt while District rebuilds every
-    night, so a month-old density vintage can reference a district an L2 rename
-    has since dropped. Without this the FK add below rejects those rows, and
-    because every group feeds one swap gate that failure takes the whole
-    15-table sync down, not just density.
-
-    Skipping them is what the election-api handoff doc asks for (§3): the row
-    comes back on the next density build once the district exists again. The
-    reference itself is still enforced — by the FK, against tonight's staging
-    District, on everything that remains.
-    """
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            f'DELETE FROM "{spec.staging_schema}"."{spec.new_table}" stg '
-            f'WHERE NOT EXISTS (SELECT 1 FROM "{spec.staging_schema}"."District_new" d '
-            f"WHERE d.id = stg.district_id)"
-        )
-        if cur.rowcount:
-            t_log.info(
-                "Pruned %d %s rows for districts absent from tonight's District",
-                cur.rowcount,
-                spec.target_table,
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
 
 
 def _ztp_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
@@ -492,7 +458,7 @@ TABLES: tuple[MartSync, ...] = (
             # elected_office_id is the gp-api elected_office instance; it is
             # not an enforced FK (elected_office lives in gp-api, not the
             # Election API), so the table has only a primary key.
-            pk_column="elected_office_id",
+            pk_columns=("elected_office_id",),
         ),
         source_model="m_election_api__elected_official_support",
         # ~1.1k rows; coverage is intentionally low (the support score needs
@@ -536,7 +502,7 @@ TABLES: tuple[MartSync, ...] = (
             # Prisma model DistrictVoterDensity, @@map'd to this table name.
             target_table="District_Voter_Density",
             # The mart grain.
-            pk_column=("district_id", "resolution", "h3_index"),
+            pk_columns=("district_id", "resolution", "h3_index"),
             indexes=(
                 Index(
                     "District_Voter_Density_district_id_resolution_idx",
@@ -549,6 +515,11 @@ TABLES: tuple[MartSync, ...] = (
                     "district_id",
                     "District",
                     on_delete="RESTRICT",
+                    # These marts rebuild monthly while District rebuilds
+                    # nightly, so a district an L2 rename dropped is a stale
+                    # row, not a bad one. Failing here would take the whole
+                    # swap set down, not just density.
+                    on_missing_parent="skip",
                 ),
             ),
         ),
@@ -563,7 +534,6 @@ TABLES: tuple[MartSync, ...] = (
             cold_start_floor=40_000_000,
             not_null_columns=("lat", "lng", "voter_count"),
         ),
-        pre_index=_prune_unlanded_districts,
         extra_checks=_dvd_extra_checks,
         parents=("district",),
     ),
@@ -573,13 +543,14 @@ TABLES: tuple[MartSync, ...] = (
             # Prisma model DistrictVoterDensityMeta, @@map'd to this table name.
             target_table="District_Voter_Density_Meta",
             # One row per district per published resolution.
-            pk_column=("district_id", "resolution"),
+            pk_columns=("district_id", "resolution"),
             fkeys=(
                 ForeignKey(
                     "District_Voter_Density_Meta_district_id_fkey",
                     "district_id",
                     "District",
                     on_delete="RESTRICT",
+                    on_missing_parent="skip",
                 ),
             ),
         ),
@@ -591,7 +562,6 @@ TABLES: tuple[MartSync, ...] = (
             # the map for that district.
             not_null_columns=("coverage", "total_voters"),
         ),
-        pre_index=_prune_unlanded_districts,
         parents=("district",),
     ),
 )
@@ -638,8 +608,6 @@ def _build_group(table: MartSync) -> dict:
         @task
         def build_indexes_and_fk() -> None:
             with _open_pg() as conn:
-                if table.pre_index:
-                    table.pre_index(conn, spec)
                 apply_ddl(conn, spec.constraint_ddl())
 
         @task

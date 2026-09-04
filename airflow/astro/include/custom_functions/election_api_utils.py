@@ -42,6 +42,10 @@ class ForeignKey:
     column: str
     ref_table: str
     on_delete: str = "SET NULL"
+    # "skip" deletes staged rows whose parent is missing instead of letting the
+    # constraint add fail. For a table whose mart refreshes on a slower cadence
+    # than its parent's, where an absent parent means a stale row, not a bad one.
+    on_missing_parent: str = "fail"
 
 
 @dataclass(frozen=True)
@@ -51,19 +55,11 @@ class TableSyncSpec:
     target_table: str
     target_schema: str = "public"
     staging_schema: str = "staging"
-    # A tuple declares a composite key, as the density tables need; the FK
-    # builder still targets the referenced table's `id`, so a composite-key
+    # The FK builder targets the referenced table's `id`, so a composite-key
     # table cannot be an FK parent.
-    pk_column: str | tuple[str, ...] = "id"
+    pk_columns: tuple[str, ...] = ("id",)
     indexes: tuple[Index, ...] = field(default_factory=tuple)
     fkeys: tuple[ForeignKey, ...] = field(default_factory=tuple)
-
-    @property
-    def pk_columns(self) -> tuple[str, ...]:
-        """PK columns in key order, however `pk_column` was spelled."""
-        if isinstance(self.pk_column, str):
-            return (self.pk_column,)
-        return self.pk_column
 
     @property
     def new_table(self) -> str:
@@ -104,11 +100,23 @@ class TableSyncSpec:
         enforces with a parent.build_indexes >> child.build_indexes edge.
         """
         sn, nt = self.staging_schema, self.new_table
-        statements = [
+        statements = []
+        # Prune first: deleting once the PK exists would also have to remove
+        # index entries, and leaves dead ones behind for the indexes still
+        # to be built.
+        for fk in self.fkeys:
+            if fk.on_missing_parent == "skip":
+                statements.append(
+                    f'DELETE FROM "{sn}"."{nt}" stg WHERE NOT EXISTS ('
+                    f'SELECT 1 FROM "{sn}"."{fk.ref_table}_new" parent '
+                    f'WHERE parent.id = stg."{fk.column}")'
+                )
+        pk_cols = ", ".join(f'"{c}"' for c in self.pk_columns)
+        statements.append(
             f'ALTER TABLE "{sn}"."{nt}" '
             f'ADD CONSTRAINT "{self.stage_name(self.pk_name)}" '
-            f"PRIMARY KEY ({', '.join(f'\"{c}\"' for c in self.pk_columns)})"
-        ]
+            f"PRIMARY KEY ({pk_cols})"
+        )
         for idx in self.indexes:
             unique = "UNIQUE " if idx.unique else ""
             statements.append(
@@ -218,7 +226,7 @@ def run_quality_checks(
         if gate.min_id_overlap is not None and prior_count > 0:
             join_predicate = " AND ".join(f'live."{c}" = stg."{c}"' for c in spec.pk_columns)
             cur.execute(
-                f"SELECT count(*) "
+                "SELECT count(*) "
                 f'FROM "{spec.target_schema}"."{spec.target_table}" live '
                 f'JOIN "{spec.staging_schema}"."{spec.new_table}" stg '
                 f"ON {join_predicate}"
