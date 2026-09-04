@@ -470,6 +470,22 @@ class TestRunGate:
         cursor.fetchall.return_value = [("ballotready",)]
         run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
 
+    def test_raises_on_low_id_overlap(self, mock_connection):
+        """The one gate failure that only shows up through the full wrapper:
+        every other check raises before the overlap query is even reached, and
+        the healthy and cold-start cases both leave the overlap wiring
+        unexercised. So a wrong table into `overlap_sql`, a wrong denominator
+        into `check_id_overlap`, or a broken `live_present`/`min_id_overlap`
+        guard would let a wholesale re-key through the gate with every other
+        test still green.
+        """
+        conn, cursor = mock_connection
+        # 100 of the prior 1000 ids shared — ratio 0.1, floor 0.8.
+        cursor.fetchone.side_effect = [(1,), (1000,), (1000,), (0,), (1000,), (100,)]
+        cursor.fetchall.return_value = [("ballotready",)]
+        with pytest.raises(ValueError, match="re-key"):
+            run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
+
     def test_raises_on_a_shrunken_table(self, mock_connection):
         conn, cursor = mock_connection
         cursor.fetchone.side_effect = [(1,), (100,), (100,), (0,), (1000,), (100,)]
