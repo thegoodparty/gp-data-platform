@@ -225,6 +225,12 @@ def _run_cleanup(module, *, swap_on: bool):
 
 _ALL_LIVE_TABLES = {t for e in _ENTITY_SPECS for t in (e.cluster_table, e.pairwise_table)}
 
+# Retention cutoff every _run_cleanup("20260825") must reach: 28 days back, stated
+# independently rather than recomputed from VINTAGE_RETENTION_DAYS. A wrong `days=` or an
+# off-by-one in the run_date slicing would otherwise pass every table-name assertion while
+# over- or under-deleting vintages in Databricks.
+_CUTOFF = "20260728"
+
 
 def test_live_cleanup_drops_the_backups_it_replaced():
     """After a real swap, `_old` is this run's own backup and dbt has already
@@ -232,6 +238,7 @@ def test_live_cleanup_drops_the_backups_it_replaced():
     mock_drop_old, mock_stale = _run_cleanup(_dag_module(), swap_on=True)
     assert {call.args[3] for call in mock_drop_old.call_args_list} == _ALL_LIVE_TABLES
     assert {call.args[3] for call in mock_stale.call_args_list} == _ALL_LIVE_TABLES
+    assert {call.args[4] for call in mock_stale.call_args_list} == {_CUTOFF}
 
 
 def test_rehearsal_cleanup_keeps_the_last_live_swaps_rollback_position():
@@ -245,6 +252,7 @@ def test_rehearsal_cleanup_keeps_the_last_live_swaps_rollback_position():
     mock_drop_old, mock_stale = _run_cleanup(_dag_module(), swap_on=False)
     assert mock_drop_old.call_args_list == []
     assert {call.args[3] for call in mock_stale.call_args_list} == _ALL_LIVE_TABLES
+    assert {call.args[4] for call in mock_stale.call_args_list} == {_CUTOFF}
 
 
 def test_the_pod_declares_no_credentials_before_it_runs():
