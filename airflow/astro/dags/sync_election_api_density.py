@@ -20,17 +20,22 @@ Separate from `sync_election_api` for two reasons:
 
 ### These tables carry no foreign key, deliberately
 
-`DistrictVoterDensity.district_id` references `District.id` in spirit, and the
-ids do match (`m_people_api__district` is a view over
-`m_election_api__district`, so the salted uuids are the same). But an actual FK
-would not survive: `sync_election_api` renames `District` aside every night and
-`drop_old` drops it `CASCADE`, which takes any FK pointing at it with no error
-raised on either side. A PK-only table is the only safe shape for a table the
-nightly set does not swap alongside District.
+`district_id` references `District.id`, and the ids do match: the density
+marts are keyed off `m_people_api__district`, which is a plain view over
+`m_election_api__district`, so the salted uuids are the same.
 
-The cost is that a monthly density vintage can hold district_ids the nightly
-District vintage has since dropped. That surfaces as a lookup returning
-nothing, which the app already handles as an unavailable map.
+An actual FK constraint does not survive here, which was verified against real
+Postgres rather than reasoned about. `sync_election_api` renames `District`
+aside every night; that leaves a density FK pointing at the stale
+`District_old`, and `drop_old` then drops it `CASCADE`, emitting a NOTICE and
+no error on either DAG. Rows survive, the constraint does not, and orphans
+become insertable from then on. Re-adding it each run would only paper over
+the gap between runs, and would leave permanent Prisma drift.
+
+`_district_reference_checks` delivers the same guarantee at the moment the FK
+was actually doing work: every staged district_id is matched against live
+District before the swap, and a miss fails closed. Between runs nothing writes
+these tables (the API reads them), so ongoing enforcement protects nothing.
 
 ### Privacy
 
@@ -47,18 +52,27 @@ As `sync_election_api`, with one addition:
   over independently. Anything but "true" is rehearsal mode.
 
 ### Prerequisite:
-`DistrictVoterDensity` and `DistrictVoterDensityMeta` must exist in the target
-Postgres before the first run — `build_staging` clones the live table's shape.
-They are owned by the election-api repo's Prisma schema and land when
-election-api is deployed, not on PR merge. The column contract they must match
-is the one in `people-api-loader/src/loader/people_api/schema/schema_spec.py`.
+`District_Voter_Density` and `District_Voter_Density_Meta` must exist in the
+target Postgres before the first run — `build_staging` clones the live table's
+shape. They are owned by the election-api repo's Prisma schema (omni #1581,
+migration `20260831000000_add_district_voter_density`) and land when
+election-api is deployed, not on PR merge. Note the Postgres names are
+underscore-separated via `@@map`; the Prisma model names are not.
+
+The PK and index declared below are the complete set the live table has after
+a swap, because the staging clone copies none. They must stay in step with the
+Prisma migration or the first sync silently drops what it does not declare.
 """
+
+import logging
 
 from airflow.sdk import dag
 from include.custom_functions.election_api_sync import MartSync, wire_sync_dag
-from include.custom_functions.election_api_utils import QualityGate, TableSyncSpec
+from include.custom_functions.election_api_utils import Index, QualityGate, TableSyncSpec
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
+
+t_log = logging.getLogger("airflow.task")
 
 SWAP_GATE_VARIABLE = "election_api_density_swap_enabled"
 
@@ -88,14 +102,84 @@ def _k_anonymity_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
         raise ValueError(f"{under_k} cells below K={VOTER_DENSITY_K} in staging — refusing to swap")
 
 
+# Share of staged districts that may be missing a live District before the load
+# is treated as a broken key rather than a timing gap. A handful of districts
+# can reach the density mart before the nightly sync lands their District row;
+# a fifth of them cannot.
+MAX_ORPHAN_DISTRICT_SHARE = 0.01
+
+
+def _district_reference_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """Drop staged rows whose district_id has no live District, or fail if there
+    are too many of them.
+
+    This is what the absent FK bought, with the rule the election-api handoff
+    doc asks for: skip a district the nightly sync has not landed yet, because
+    the next run re-offers it, and do not fail a monthly load over it. Past
+    MAX_ORPHAN_DISTRICT_SHARE the rows are not late — the mart has started
+    minting its own ids — and pruning would hide that.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(f'SELECT COUNT(DISTINCT district_id) FROM "{spec.staging_schema}"."{spec.new_table}"')
+        staged_districts = cur.fetchone()[0]
+        cur.execute(
+            f"SELECT COUNT(*) FROM ("
+            f"SELECT DISTINCT stg.district_id "
+            f'FROM "{spec.staging_schema}"."{spec.new_table}" stg '
+            f'LEFT JOIN "{spec.target_schema}"."District" d ON stg.district_id = d.id '
+            f"WHERE d.id IS NULL"
+            f") AS orphans"
+        )
+        orphan_districts = cur.fetchone()[0]
+
+        share = orphan_districts / staged_districts if staged_districts else 0
+        if share > MAX_ORPHAN_DISTRICT_SHARE:
+            raise ValueError(
+                f"{orphan_districts} of {staged_districts} staged districts have "
+                f"no matching District ({share:.1%}) — refusing to swap"
+            )
+        if orphan_districts:
+            cur.execute(
+                f'DELETE FROM "{spec.staging_schema}"."{spec.new_table}" stg '
+                f'WHERE NOT EXISTS (SELECT 1 FROM "{spec.target_schema}"."District" d '
+                f"WHERE d.id = stg.district_id)"
+            )
+            conn.commit()
+            t_log.info(
+                "Pruned %d rows across %d districts not yet landed by sync_election_api",
+                cur.rowcount,
+                orphan_districts,
+            )
+    finally:
+        cur.close()
+
+
+def _cell_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """The cells table carries both guards; neither displaces the other."""
+    _k_anonymity_checks(conn, spec, loaded_count)
+    _district_reference_checks(conn, spec, loaded_count)
+
+
 TABLES: tuple[MartSync, ...] = (
     MartSync(
         group_id="district_voter_density",
         spec=TableSyncSpec(
-            target_table="DistrictVoterDensity",
-            # The mart grain. The app reads by (district_id, resolution), which
-            # the PK's leading columns cover, so no separate index is needed.
+            # Prisma model DistrictVoterDensity, @@map'd to this table name.
+            target_table="District_Voter_Density",
+            # The mart grain.
             pk_column=("district_id", "resolution", "h3_index"),
+            # The serving lookup. The PK's leading columns would satisfy it,
+            # but this index is narrower by the h3_index string, so the same
+            # lookup touches fewer pages and holds its place in cache on RDS.
+            # Declared by the Prisma migration; the staging clone copies no
+            # indexes, so the sync has to rebuild it or the first swap drops it.
+            indexes=(
+                Index(
+                    "District_Voter_Density_district_id_resolution_idx",
+                    "(district_id, resolution)",
+                ),
+            ),
         ),
         source_model="m_people_api__district_voter_density",
         # ~55M rows; read one state at a time so no single server-side result
@@ -107,12 +191,13 @@ TABLES: tuple[MartSync, ...] = (
             cold_start_floor=40_000_000,
             not_null_columns=("lat", "lng", "voter_count"),
         ),
-        extra_checks=_k_anonymity_checks,
+        extra_checks=_cell_extra_checks,
     ),
     MartSync(
         group_id="district_voter_density_meta",
         spec=TableSyncSpec(
-            target_table="DistrictVoterDensityMeta",
+            # Prisma model DistrictVoterDensityMeta, @@map'd to this table name.
+            target_table="District_Voter_Density_Meta",
             # One row per district per published resolution.
             pk_column=("district_id", "resolution"),
         ),
@@ -124,6 +209,7 @@ TABLES: tuple[MartSync, ...] = (
             # the map for that district.
             not_null_columns=("coverage", "total_voters"),
         ),
+        extra_checks=_district_reference_checks,
     ),
 )
 
