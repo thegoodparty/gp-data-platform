@@ -86,6 +86,8 @@ on PR merge alone. Check `_prisma_migrations` on the target Postgres before
 kicking a sync that depends on new columns.
 """
 
+import logging
+
 from airflow.sdk import dag
 from include.custom_functions.election_api_sync import MartSync, wire_sync_dag
 from include.custom_functions.election_api_utils import (
@@ -97,12 +99,81 @@ from include.custom_functions.election_api_utils import (
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
+t_log = logging.getLogger("airflow.task")
+
 SWAP_GATE_VARIABLE = "election_api_swap_enabled"
 
 
 # ---------------------------------------------------------------------------
 # Per-table extra quality checks (beyond the generic gate)
 # ---------------------------------------------------------------------------
+
+
+# Share of the density tables' districts this swap may newly orphan before it is
+# treated as damage rather than churn. Deliberately tighter than District's own
+# 0.90 id-overlap gate, which compares District to District and so cannot see
+# the map breaking behind it.
+MAX_NEWLY_ORPHANED_DENSITY_SHARE = 0.01
+
+# Loaded by sync_election_api_density, which holds no FK to District because one
+# cannot survive the swap below. Keyed on District.id all the same.
+_DENSITY_TABLES = ("District_Voter_Density", "District_Voter_Density_Meta")
+
+
+def _district_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """Refuse a District vintage that would orphan much of the voter-density map.
+
+    The other half of the FK replacement in `sync_election_api_density`: that
+    DAG checks the relationship when it loads, monthly, and this checks the
+    nightly District swaps in between. Only districts this swap *newly* orphans
+    count — density is a monthly vintage, so rows already orphaned are expected
+    staleness and blocking on them would wedge the nightly sync until the next
+    density load, inverting which of the two is authoritative.
+    """
+    cur = conn.cursor()
+    try:
+        for density_table in _DENSITY_TABLES:
+            cur.execute("SELECT to_regclass(%s)", (f'"{spec.target_schema}"."{density_table}"',))
+            if cur.fetchone()[0] is None:
+                # election-api owns this DDL and deploys on its own schedule.
+                t_log.info("%s not deployed yet; skipping density reference check", density_table)
+                continue
+
+            cur.execute(f'SELECT COUNT(DISTINCT district_id) FROM "{spec.target_schema}"."{density_table}"')
+            density_districts = cur.fetchone()[0]
+            if not density_districts:
+                continue
+
+            cur.execute(
+                f"SELECT COUNT(*) FROM ("
+                f"SELECT DISTINCT dens.district_id "
+                f'FROM "{spec.target_schema}"."{density_table}" dens '
+                f"WHERE NOT EXISTS ("
+                f'SELECT 1 FROM "{spec.staging_schema}"."{spec.new_table}" stg '
+                f"WHERE stg.id = dens.district_id) "
+                f"AND EXISTS ("
+                f'SELECT 1 FROM "{spec.target_schema}"."{spec.target_table}" live '
+                f"WHERE live.id = dens.district_id)"
+                f") AS newly_orphaned"
+            )
+            newly_orphaned = cur.fetchone()[0]
+
+            share = newly_orphaned / density_districts
+            if share > MAX_NEWLY_ORPHANED_DENSITY_SHARE:
+                raise ValueError(
+                    f"this District vintage would newly orphan {newly_orphaned} of "
+                    f"{density_districts} districts in {density_table} ({share:.1%}) "
+                    f"— refusing to swap"
+                )
+            if newly_orphaned:
+                t_log.info(
+                    "%d of %d %s districts newly orphaned by this District vintage",
+                    newly_orphaned,
+                    density_districts,
+                    density_table,
+                )
+    finally:
+        cur.close()
 
 
 def _ztp_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
@@ -182,6 +253,7 @@ TABLES: tuple[MartSync, ...] = (
         source_model="m_election_api__district",
         gate=QualityGate(cold_start_floor=100_000, min_id_overlap=_GRAPH_ID_OVERLAP),
         partition_column="state",
+        extra_checks=_district_extra_checks,
     ),
     MartSync(
         group_id="issue",

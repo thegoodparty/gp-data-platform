@@ -37,9 +37,11 @@ for _mod in _STUBS:
 
 from dags.sync_election_api import (  # noqa: E402
     TABLES,
+    _district_extra_checks,
     _pt_extra_checks,
     _ztp_extra_checks,
 )
+from include.custom_functions.election_api_utils import TableSyncSpec  # noqa: E402
 
 
 def test_parents_match_fkey_references():
@@ -84,6 +86,48 @@ def test_ztp_extra_checks_refuse_partial_state_coverage():
     _ztp_extra_checks(_conn_returning(51), _spec("ZipToPosition"), 1_300_000)
     with pytest.raises(ValueError, match="distinct states"):
         _ztp_extra_checks(_conn_returning(29), _spec("ZipToPosition"), 1_300_000)
+
+
+def _conn_returning_sequence(values):
+    """A conn whose successive queries yield `values`, one scalar each."""
+    cur = MagicMock()
+    cur.fetchone.side_effect = [(v,) for v in values]
+    conn = MagicMock()
+    conn.cursor.return_value = cur
+    return conn
+
+
+class TestDistrictDensityReferences:
+    """The density tables key on District.id but hold no FK — an FK here cannot
+    survive this DAG's own swap. This is the other half of that replacement:
+    the density DAG checks the relationship when it loads, monthly, and this
+    checks it on the ~30 nightly District swaps in between, which is the only
+    other thing that can break it."""
+
+    def test_skipped_before_the_density_tables_are_deployed(self):
+        """election-api owns that DDL and deploys on its own schedule, so this
+        must be a no-op until the tables exist rather than failing every
+        nightly run until then."""
+        # Neither table exists.
+        conn = _conn_returning_sequence([None, None])
+        _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
+
+    def test_pre_existing_orphans_do_not_block_the_swap(self):
+        """Density is a monthly vintage against a nightly District, so rows
+        already orphaned are expected staleness, not damage this swap is doing.
+        Blocking on them would wedge the nightly sync until the next monthly
+        density load, inverting which of the two is authoritative."""
+        # Per table: regclass, density districts, newly orphaned by THIS swap.
+        conn = _conn_returning_sequence(["t", 500_000, 0, "t", 500_000, 0])
+        _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
+
+    def test_refuses_a_swap_that_newly_orphans_much_of_the_map(self):
+        """A District vintage that drops districts the live map depends on
+        passes the 0.90 id-overlap gate — that gate compares District to
+        District and cannot see the density tables at all."""
+        conn = _conn_returning_sequence(["t", 500_000, 25_000])
+        with pytest.raises(ValueError, match="newly orphan"):
+            _district_extra_checks(conn, TableSyncSpec(target_table="District"), 500_000)
 
 
 def test_psycopg2_adapts_python_lists_to_postgres_arrays():
