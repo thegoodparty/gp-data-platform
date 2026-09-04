@@ -114,11 +114,11 @@ def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwa
             "host, login, password, or http_path (extra) field"
         )
 
-    # Optional; a list or a comma/space-separated string, matching the scopes
-    # the service principal's OAuth secret carries. Absent means all-apis.
-    scopes = db_conn.extra_dejson.get("scopes")
-    if isinstance(scopes, str):
-        scopes = [s for s in re.split(r"[,\s]+", scopes) if s]
+    # A Variable, not a connection extra: Astro's Databricks connection form has
+    # fixed fields and no free-form extra, so the extra cannot be set from the
+    # UI. Comma- or space-separated, matching the scopes the service
+    # principal's OAuth secret carries. Unset means all-apis.
+    scopes = [s for s in re.split(r"[,\s]+", Variable.get("databricks_scopes", default="")) if s]
 
     return {
         "host": db_conn.host,

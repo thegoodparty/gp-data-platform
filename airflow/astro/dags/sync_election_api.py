@@ -87,6 +87,10 @@ this one is its replacement, not a second live source.
   where the Postgres host is reachable directly.
 - `election_api_swap_enabled` — cutover switch for the set-wise swap.
   Anything but "true" is rehearsal mode (no table is swapped).
+- `databricks_scopes` (optional) — OAuth scopes to request, comma-separated,
+  matching those the service principal's secret was minted with (e.g.
+  `sql, unity-catalog`). Unset requests `all-apis`, the SDK default. A secret
+  minted without the scopes requested here is refused at the token endpoint.
 - `election_api_source_schema` (optional) — Databricks schema holding the
   marts. Defaults to `dbt`, the canonical production-quality build, in both
   dev and prod (deliberately not `databricks_dbt_schema`, which points at

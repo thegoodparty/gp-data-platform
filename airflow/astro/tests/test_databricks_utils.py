@@ -316,33 +316,37 @@ class TestReadDatabricksPartitioned:
 
 class TestConnectionScopes:
     """The SDK asks for `all-apis` unless told otherwise, so a secret minted
-    with narrower scopes is refused at the token endpoint. The connection is
-    where that choice belongs: it already holds http_path, and it lets dev
-    narrow without moving prod."""
+    with narrower scopes is refused at the token endpoint. This lives in a
+    Variable, not the connection: Astro's Databricks connection form has fixed
+    fields and no free-form extra, so the extra is not settable in the UI."""
 
-    def _conn(self, **kw):
-        return TestReadDatabricksTable()._db_conn(**kw)
+    def _patched(self, scopes_value):
+        conn = TestReadDatabricksTable()._db_conn()
+
+        def variable_get(key, default=None):
+            return {"databricks_conn_id": "conn-id", "databricks_scopes": scopes_value}.get(key, default)
+
+        return (
+            patch.object(databricks_utils.Variable, "get", side_effect=variable_get),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=conn),
+        )
 
     def test_scopes_default_to_unset_so_the_sdk_asks_for_all_apis(self):
-        with (
-            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
-            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._conn()),
-        ):
+        """Prod must not move because dev narrowed."""
+        a, b = self._patched("")
+        with a, b:
             assert databricks_utils._conn_kwargs()["scopes"] is None
 
     @pytest.mark.parametrize(
         "declared,expected",
         [
-            (["sql"], ["sql"]),
-            (["sql", "unity-catalog"], ["sql", "unity-catalog"]),
-            ("sql, unity-catalog", ["sql", "unity-catalog"]),  # a string in the extra
+            ("sql", ["sql"]),
+            ("sql,unity-catalog", ["sql", "unity-catalog"]),
+            ("sql, unity-catalog", ["sql", "unity-catalog"]),
+            (" sql , unity-catalog ", ["sql", "unity-catalog"]),
         ],
     )
-    def test_declared_scopes_are_passed_through(self, declared, expected):
-        with (
-            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
-            patch.object(
-                databricks_utils.BaseHook, "get_connection", return_value=self._conn(scopes=declared)
-            ),
-        ):
+    def test_declared_scopes_are_parsed(self, declared, expected):
+        a, b = self._patched(declared)
+        with a, b:
             assert databricks_utils._conn_kwargs()["scopes"] == expected
