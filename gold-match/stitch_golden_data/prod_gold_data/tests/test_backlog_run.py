@@ -638,19 +638,34 @@ class TestRunComposition:
             asyncio.run(asyncio.sleep(0))
         return np.array([[1.0, 0.0]] * len(texts))
 
-    def test_writes_only_the_cohort_filtered_subset_with_reconciled_counts(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("matches_only", "expected_written_ids"),
+        [(False, {1, 2}), (True, {1})],
+    )
+    def test_writes_only_the_cohort_filtered_subset_with_reconciled_counts(
+        self, tmp_path, matches_only, expected_written_ids
+    ):
         """Failure this catches: _run handing the writer the matcher's raw
         results instead of the cohort-filtered subset, or the recorded
         counts (results_count / intersection_count / written) silently
         drifting apart -- either would ship an unreviewed office or make
-        the run-record lie about what was actually published.
+        the run-record lie about what was actually published. Office 2 is a
+        cohort ABSTAIN (office 1 a cohort match, office 3 an out-of-cohort
+        match): --matches-only must drop it from the write while leaving
+        cohort_counts (computed before the matches-only trim) unchanged --
+        this also catches the flag never filtering, filtering before the
+        cohort boundary, or filtering when off.
         """
         pending_df = pd.DataFrame(
             {
                 "br_database_id": [1, 2, 3],
                 "name": ["Office 1", "Office 2", "Office 3"],
                 "state": ["DE", "DE", "DE"],
-                "mtfcc": ["Z9999", "Z9999", "Z9999"],
+                # office 2: the party-committee mtfcc abstains in the geography
+                # classifier, before any embedding/LLM call -- deterministic,
+                # unlike differentiating per-office LLM mock responses across
+                # match_office's own thread-pool dispatch.
+                "mtfcc": ["Z9999", "X0024", "Z9999"],
                 "geo_id": [None, None, None],
                 "sub_area_name": [None, None, None],
                 "sub_area_value": [None, None, None],
@@ -703,6 +718,8 @@ class TestRunComposition:
             mock_embedding.resolved_config.return_value = {"model": "test-embedding"}
             mock_llm.get_usage_stats.return_value = {"total_cost": 0.0}
             mock_llm.resolved_config.return_value = {"model": "test-llm"}
+            # Offices 1 and 3 are the only ones that reach the LLM (office 2
+            # abstains via geography); both get the same match response.
             mock_llm.generate_structured_content.return_value = {
                 "selected_candidate_number": 1,
                 "selection_confidence": 90,
@@ -710,7 +727,9 @@ class TestRunComposition:
                 "is_exact_district_match": True,
             }
             mock_build_clients.return_value = (mock_embedding, mock_llm)
-            mock_writer_cls.return_value.append_results.return_value = 2
+            # Mirrors the real writer's contract (returns the count actually
+            # appended) instead of a literal picked per parametrize case.
+            mock_writer_cls.return_value.append_results.side_effect = lambda results, **kwargs: len(results)
 
             args = _parse_args(
                 [
@@ -721,6 +740,7 @@ class TestRunComposition:
                     "2",
                     "--out-dir",
                     str(tmp_path),
+                    *(["--matches-only"] if matches_only else []),
                 ]
             )
             asyncio.run(_run(args))
@@ -728,18 +748,22 @@ class TestRunComposition:
             written_results = mock_writer_cls.return_value.append_results.call_args.args[0]
 
         # (a) the writer received exactly the filtered subset.
-        assert {r.br_database_id for r in written_results} == {1, 2}
+        assert {r.br_database_id for r in written_results} == expected_written_ids
 
         # (b) the artifacts were written.
         assert (tmp_path / "manifest.json").exists()
         assert (tmp_path / "answers.json").exists()
         assert (tmp_path / "run-record.json").exists()
 
-        # (c) the recorded counts reconcile.
+        # (c) the flag is recorded, and the cohort boundary's own counts
+        # (computed before the matches-only trim) don't move with it.
+        manifest = json.loads((tmp_path / "manifest.json").read_text())
+        assert manifest["matches_only"] is matches_only
+
         record = json.loads((tmp_path / "run-record.json").read_text())
         assert record["results_count"] == 3
         assert record["cohort"] == {"approved_count": 2, "results_count": 3, "intersection_count": 2}
-        assert record["written"] == 2 == record["cohort"]["intersection_count"]
+        assert record["written"] == len(expected_written_ids)
 
 
 def _run_composition(tmp_path, extra_run_args=()):
