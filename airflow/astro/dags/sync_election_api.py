@@ -42,9 +42,45 @@ parallel.
 
 The swap is gated behind the `election_api_swap_enabled` Variable (rehearsal
 mode unless it is exactly "true"): every night while disabled is a full
-dress rehearsal — all 13 staging tables built, loaded, indexed, and gated;
+dress rehearsal — every staging table built, loaded, indexed, and gated;
 only the swap is withheld. This DAG is the only writer to these tables, so
 rehearsal freezes ALL of them: keep the rehearsal window short.
+
+### The voter-density tables are here, not in a DAG of their own
+
+`District_Voter_Density` (~59.3M rows) and its `_Meta` sibling are the two
+largest tables in the set, and their marts rebuild `monthly` in dbt while this
+DAG runs nightly — so most nights re-copy identical rows. They are still here
+rather than on their own monthly schedule because that is the only way their
+foreign key to `District` can exist at all: an FK from outside this set does
+not survive the swap. `District` is renamed to `District_old`, which leaves any
+outside FK pointing at the stale vintage, and `drop_old` then removes the
+constraint with only a NOTICE — rows intact, constraint gone, orphans
+insertable. Inside the set the FK references the staging sibling and rides the
+renames with it, so it is enforced continuously.
+
+The cost is a nightly full re-copy of data that only changes monthly. Measured
+on dev 2026-09-04, first green run: the two tables add **59 minutes**, of which
+`District_Voter_Density`'s load is 53 (59.3M rows at ~18.5k rows/s) and its
+index and FK build is 3.5. For scale, the next-largest table in the set,
+`DistrictTopIssue`, loads in under 8. The whole run went 19:56 to 20:57.
+
+That rate is roughly a sixth of what the same insert does against a local
+Postgres, so the ceiling here is the bastion tunnel and the worker, not
+Databricks — the read side is fast as long as `pyarrow` is installed
+(`requirements.txt`), without which the connector drops to ~15k rows/s and the
+read alone would take an hour.
+
+Also ~20 GB transient once the `_old` vintage is counted alongside the live and
+staging ones, with comparable WAL. The load commits once at the end, so that is
+a single ~53-minute transaction holding back autovacuum database-wide. `ForeignKey(on_missing_parent="skip")` on both
+is what keeps that safe: their marts lag District's, so a district an L2 rename
+dropped is a stale row and is pruned, not a failure that would take the whole
+set down.
+
+`people-api-loader` also loads these two marts, into the people-api cluster.
+That copy is what the app reads today and goes away with people-api itself;
+this one is its replacement, not a second live source.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -60,6 +96,10 @@ rehearsal freezes ALL of them: keep the rehearsal window short.
   where the Postgres host is reachable directly.
 - `election_api_swap_enabled` — cutover switch for the set-wise swap.
   Anything but "true" is rehearsal mode (no table is swapped).
+- `databricks_scopes` (optional) — OAuth scopes to request, comma-separated,
+  matching those the service principal's secret was minted with (e.g.
+  `sql, unity-catalog`). Unset requests `all-apis`, the SDK default. A secret
+  minted without the scopes requested here is refused at the token endpoint.
 - `election_api_source_schema` (optional) — Databricks schema holding the
   marts. Defaults to `dbt`, the canonical production-quality build, in both
   dev and prod (deliberately not `databricks_dbt_schema`, which points at
@@ -95,7 +135,7 @@ from include.custom_functions.election_api_utils import (
     Index,
     QualityGate,
     TableSyncSpec,
-    apply_ddl,
+    apply_constraints,
     bulk_insert_from_databricks,
     create_staging_table,
     drop_old_tables,
@@ -148,6 +188,32 @@ class MartSync:
 # ---------------------------------------------------------------------------
 # Per-table extra quality checks (beyond the generic gate)
 # ---------------------------------------------------------------------------
+
+
+# Mirrors `voter_density_k` in dbt/project/dbt_project.yml, the value the marts
+# suppress at. Duplicated because the DAG has no dbt context. Lowered in dbt and
+# not here, this fails the swap closed; raised in dbt and not here it quietly
+# stops enforcing at the intended floor, which is what the test guards.
+VOTER_DENSITY_K = 10
+
+
+def _dvd_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
+    """Refuse to publish a cell holding fewer than K voters.
+
+    The generic gate cannot see this: dropping the suppression filter upstream
+    raises the row count, so the ratio check reads it as a healthy load.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f'SELECT COUNT(*) FROM "{spec.staging_schema}"."{spec.new_table}" '
+            f"WHERE voter_count < {VOTER_DENSITY_K}"
+        )
+        under_k = cur.fetchone()[0]
+    finally:
+        cur.close()
+    if under_k > 0:
+        raise ValueError(f"{under_k} cells below K={VOTER_DENSITY_K} in staging — refusing to swap")
 
 
 def _ztp_extra_checks(conn, spec: TableSyncSpec, loaded_count: int) -> None:
@@ -409,7 +475,7 @@ TABLES: tuple[MartSync, ...] = (
             # elected_office_id is the gp-api elected_office instance; it is
             # not an enforced FK (elected_office lives in gp-api, not the
             # Election API), so the table has only a primary key.
-            pk_column="elected_office_id",
+            pk_columns=("elected_office_id",),
         ),
         source_model="m_election_api__elected_official_support",
         # ~1.1k rows; coverage is intentionally low (the support score needs
@@ -445,6 +511,74 @@ TABLES: tuple[MartSync, ...] = (
             not_null_columns=("district_id", "election_year", "election_code"),
         ),
         extra_checks=_pt_extra_checks,
+        parents=("district",),
+    ),
+    MartSync(
+        group_id="district_voter_density",
+        spec=TableSyncSpec(
+            # Prisma model DistrictVoterDensity, @@map'd to this table name.
+            target_table="District_Voter_Density",
+            # The mart grain.
+            pk_columns=("district_id", "resolution", "h3_index"),
+            indexes=(
+                Index(
+                    "District_Voter_Density_district_id_resolution_idx",
+                    "(district_id, resolution)",
+                ),
+            ),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                    # These marts rebuild monthly while District rebuilds
+                    # nightly, so a district an L2 rename dropped is a stale
+                    # row, not a bad one. Failing here would take the whole
+                    # swap set down, not just density.
+                    on_missing_parent="skip",
+                ),
+            ),
+        ),
+        source_model="m_people_api__district_voter_density",
+        # ~59.3M rows, the largest table in the set by an order of magnitude;
+        # read one state at a time so no single server-side result set holds
+        # the whole mart. Unpartitioned is what OOM-kills these tasks.
+        partition_column="state",
+        # No id-overlap floor: the key is composite and natural, with no minted
+        # id an external consumer could hold.
+        gate=QualityGate(
+            cold_start_floor=40_000_000,
+            not_null_columns=("lat", "lng", "voter_count"),
+        ),
+        extra_checks=_dvd_extra_checks,
+        parents=("district",),
+    ),
+    MartSync(
+        group_id="district_voter_density_meta",
+        spec=TableSyncSpec(
+            # Prisma model DistrictVoterDensityMeta, @@map'd to this table name.
+            target_table="District_Voter_Density_Meta",
+            # One row per district per published resolution.
+            pk_columns=("district_id", "resolution"),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_Meta_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_delete="RESTRICT",
+                    on_missing_parent="skip",
+                ),
+            ),
+        ),
+        source_model="m_people_api__district_voter_density_meta",
+        # ~512k rows across four resolutions; small enough to read in one pass.
+        gate=QualityGate(
+            cold_start_floor=400_000,
+            # coverage drives the app's resolution choice; a NULL there hides
+            # the map for that district.
+            not_null_columns=("coverage", "total_voters"),
+        ),
         parents=("district",),
     ),
 )
@@ -489,21 +623,23 @@ def _build_group(table: MartSync) -> dict:
                 )
 
         @task
-        def build_indexes_and_fk() -> None:
+        def build_indexes_and_fk(loaded_count: int) -> int:
+            """Returns the rows left after any pruning FK, which is what the
+            gate must weigh — not the load's own count, taken before it."""
             with _open_pg() as conn:
-                apply_ddl(conn, spec.constraint_ddl())
+                return apply_constraints(conn, spec, loaded_count)
 
         @task
-        def quality_checks(loaded_count: int) -> None:
+        def quality_checks(staged_count: int) -> None:
             with _open_pg() as conn:
-                run_quality_checks(conn, spec, table.gate, loaded_count)
+                run_quality_checks(conn, spec, table.gate, staged_count)
                 if table.extra_checks:
-                    table.extra_checks(conn, spec, loaded_count)
+                    table.extra_checks(conn, spec, staged_count)
 
         s = build_staging()
         loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
+        idx = build_indexes_and_fk(loaded)
+        qc = quality_checks(idx)
         s >> loaded >> idx >> qc
         handles["build_indexes_and_fk"] = idx
         handles["quality_checks"] = qc
