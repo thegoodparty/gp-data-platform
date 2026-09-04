@@ -59,8 +59,12 @@ constraint with only a NOTICE — rows intact, constraint gone, orphans
 insertable. Inside the set the FK references the staging sibling and rides the
 renames with it, so it is enforced continuously.
 
-The cost is a nightly full re-copy of data that only changes monthly, which
-adds tens of minutes to the run. `ForeignKey(on_missing_parent="skip")` on both
+The cost is a nightly full re-copy of data that only changes monthly: tens of
+minutes, and ~20 GB transient once the `_old` vintage is counted alongside the
+live and staging ones, with comparable WAL. The load commits once at the end,
+so that is also a single long transaction holding back autovacuum
+database-wide for its duration. Check disk and WAL headroom before enabling
+the swap. `ForeignKey(on_missing_parent="skip")` on both
 is what keeps that safe: their marts lag District's, so a district an L2 rename
 dropped is a stale row and is pruned, not a failure that would take the whole
 set down.
@@ -118,7 +122,7 @@ from include.custom_functions.election_api_utils import (
     Index,
     QualityGate,
     TableSyncSpec,
-    apply_ddl,
+    apply_constraints,
     bulk_insert_from_databricks,
     create_staging_table,
     drop_old_tables,
@@ -174,9 +178,9 @@ class MartSync:
 
 
 # Mirrors `voter_density_k` in dbt/project/dbt_project.yml, the value the marts
-# suppress at. Duplicated because the DAG has no dbt context; a change there
-# without a change here fails the swap closed, the right direction for a
-# privacy floor.
+# suppress at. Duplicated because the DAG has no dbt context. Lowered in dbt and
+# not here, this fails the swap closed; raised in dbt and not here it quietly
+# stops enforcing at the intended floor, which is what the test guards.
 VOTER_DENSITY_K = 10
 
 
@@ -606,21 +610,23 @@ def _build_group(table: MartSync) -> dict:
                 )
 
         @task
-        def build_indexes_and_fk() -> None:
+        def build_indexes_and_fk(loaded_count: int) -> int:
+            """Returns the rows left after any pruning FK, which is what the
+            gate must weigh — not the load's own count, taken before it."""
             with _open_pg() as conn:
-                apply_ddl(conn, spec.constraint_ddl())
+                return apply_constraints(conn, spec, loaded_count)
 
         @task
-        def quality_checks(loaded_count: int) -> None:
+        def quality_checks(staged_count: int) -> None:
             with _open_pg() as conn:
-                run_quality_checks(conn, spec, table.gate, loaded_count)
+                run_quality_checks(conn, spec, table.gate, staged_count)
                 if table.extra_checks:
-                    table.extra_checks(conn, spec, loaded_count)
+                    table.extra_checks(conn, spec, staged_count)
 
         s = build_staging()
         loaded = load_staging()
-        idx = build_indexes_and_fk()
-        qc = quality_checks(loaded)
+        idx = build_indexes_and_fk(loaded)
+        qc = quality_checks(idx)
         s >> loaded >> idx >> qc
         handles["build_indexes_and_fk"] = idx
         handles["quality_checks"] = qc

@@ -7,8 +7,10 @@ import numpy as np
 import pytest
 from include.custom_functions import election_api_utils
 from include.custom_functions.election_api_utils import (
+    ForeignKey,
     QualityGate,
     TableSyncSpec,
+    apply_constraints,
     bulk_insert_from_databricks,
     check_counts,
     check_id_overlap,
@@ -99,6 +101,74 @@ class TestCompositePrimaryKey:
         overlap_sql = cur.execute.call_args.args[0]
         for column in ("district_id", "resolution", "h3_index"):
             assert f'live."{column}" = stg."{column}"' in overlap_sql
+
+
+class TestPruneMissingParents:
+    """`on_missing_parent="skip"` exists so a stale child vintage cannot fail
+    the FK add and take the whole swap set down. What it must not do is hide
+    how much it removed."""
+
+    def _spec(self, share=0.01):
+        return TableSyncSpec(
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_missing_parent="skip",
+                    max_missing_share=share,
+                ),
+            ),
+        )
+
+    def _conn(self, rowcounts):
+        cur = MagicMock()
+        cur.rowcount = 0
+        counts = iter(rowcounts)
+
+        def execute(_stmt):
+            cur.rowcount = next(counts, 0)
+
+        cur.execute.side_effect = execute
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+        return conn
+
+    def test_the_gate_is_given_the_count_that_survived_the_prune(self):
+        """quality_checks reads this, not the load's XCom. Handed the pre-prune
+        count it compares 59.3M against a prior 59.3M and passes while the
+        table it is about to publish holds far fewer rows."""
+        # prune deletes 300k, then the PK and FK statements report 0.
+        staged = apply_constraints(self._conn([300_000, 0, 0]), self._spec(), 59_300_000)
+        assert staged == 59_000_000
+
+    def test_a_wholesale_prune_refuses_the_swap(self):
+        """The degenerate case is a re-keyed mart: every parent lookup misses,
+        the prune empties the table, and every other gate reads zero rows as
+        zero problems."""
+        with pytest.raises(ValueError, match="have no District"):
+            apply_constraints(self._conn([59_300_000, 0, 0]), self._spec(), 59_300_000)
+
+    def test_a_handful_of_late_districts_pass(self):
+        with pytest.raises(ValueError):
+            apply_constraints(self._conn([600_000, 0, 0]), self._spec(), 59_300_000)
+        assert apply_constraints(self._conn([500_000, 0, 0]), self._spec(), 59_300_000)
+
+    def test_the_prune_leaves_rows_whose_fk_column_is_null(self):
+        """NOT EXISTS is true for a NULL column, so an unguarded predicate
+        deletes every unparented row. Harmless where the FK column is in the
+        PK, but `skip` on a nullable FK would delete every root row."""
+        (delete_sql, *_) = self._spec().constraint_ddl()
+        assert delete_sql.startswith("DELETE FROM")
+        assert 'stg."district_id" IS NOT NULL' in delete_sql
+
+    def test_an_unrecognised_policy_is_rejected_at_declaration(self):
+        """Silently degrading to "fail" produces exactly the swap-wide outage
+        the flag exists to prevent."""
+        with pytest.raises(ValueError, match="on_missing_parent"):
+            ForeignKey("x_fkey", "x_id", "X", on_missing_parent="SKIP")
 
 
 def _gen(batches):
