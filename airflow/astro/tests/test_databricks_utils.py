@@ -46,6 +46,10 @@ class TestIsNonRetryableAuthError:
             "invalid_client: Client authentication failed",
             "Error during request to server. invalid_client: ...",
             "CLIENT AUTHENTICATION FAILED",  # case-insensitive
+            # A secret minted without the scope the SDK asks for. Permanent
+            # until the secret or the requested scopes change, but it used to
+            # read as retryable and burn the full ~10 min loop on every task.
+            "access_denied: Scopes 'all-apis' are not assigned to the client a2538681",
         ],
     )
     def test_auth_errors_are_non_retryable(self, message):
@@ -145,13 +149,17 @@ class TestReadDatabricksTable:
         login="cid",
         password="secret",
         http_path="/sql/1.0/warehouses/abc",
+        scopes=None,
     ):
         """A mock Airflow Connection with Databricks fields."""
         db_conn = MagicMock()
         db_conn.host = host
         db_conn.login = login
         db_conn.password = password
-        db_conn.extra_dejson = {"http_path": http_path} if http_path else {}
+        extra = {"http_path": http_path} if http_path else {}
+        if scopes is not None:
+            extra["scopes"] = scopes
+        db_conn.extra_dejson = extra
         return db_conn
 
     @pytest.mark.parametrize("missing", ["host", "login", "password", "http_path"])
@@ -304,3 +312,37 @@ class TestReadDatabricksPartitioned:
             pytest.raises(ValueError, match="missing a required"),
         ):
             read_databricks_partitioned("SELECT a, state FROM t", "state")
+
+
+class TestConnectionScopes:
+    """The SDK asks for `all-apis` unless told otherwise, so a secret minted
+    with narrower scopes is refused at the token endpoint. The connection is
+    where that choice belongs: it already holds http_path, and it lets dev
+    narrow without moving prod."""
+
+    def _conn(self, **kw):
+        return TestReadDatabricksTable()._db_conn(**kw)
+
+    def test_scopes_default_to_unset_so_the_sdk_asks_for_all_apis(self):
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._conn()),
+        ):
+            assert databricks_utils._conn_kwargs()["scopes"] is None
+
+    @pytest.mark.parametrize(
+        "declared,expected",
+        [
+            (["sql"], ["sql"]),
+            (["sql", "unity-catalog"], ["sql", "unity-catalog"]),
+            ("sql, unity-catalog", ["sql", "unity-catalog"]),  # a string in the extra
+        ],
+    )
+    def test_declared_scopes_are_passed_through(self, declared, expected):
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(
+                databricks_utils.BaseHook, "get_connection", return_value=self._conn(scopes=declared)
+            ),
+        ):
+            assert databricks_utils._conn_kwargs()["scopes"] == expected
