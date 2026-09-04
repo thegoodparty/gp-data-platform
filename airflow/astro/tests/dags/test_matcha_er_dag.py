@@ -130,53 +130,34 @@ def _dag_module():
 
 
 @contextmanager
-def _pod_runtime(module, *, pull_secret="", env=None):
+def _pod_runtime(module, *, env=None):
     """Patch what `_MatchaPodOperator.pre_execute` reaches for at task runtime.
 
-    It resolves two things from outside the operator — the image pull secret
-    Variable and the pod's Databricks environment — so every pre_execute test
-    has to stand both up or it reaches a real metastore.
+    Only the pod's Databricks environment now — without it, pre_execute reads
+    a real connection out of a metastore that is not there.
     """
-    with (
-        patch.object(module, "Variable", autospec=True) as mock_variable,
-        patch.object(
-            module,
-            "pod_databricks_env",
-            autospec=True,
-            return_value=env if env is not None else {"DATABRICKS_HOST": "https://dbc.example"},
-        ),
+    with patch.object(
+        module,
+        "pod_databricks_env",
+        autospec=True,
+        return_value=env if env is not None else {"DATABRICKS_HOST": "https://dbc.example"},
     ):
-        mock_variable.get.return_value = pull_secret
         yield
 
 
-def test_pull_secret_unset_leaves_the_pod_pulling_anonymously():
-    """image_pull_secrets holds Kubernetes client objects, not strings, so
-    Jinja cannot template it — _MatchaPodOperator.pre_execute resolves it at
-    task runtime instead. Confirmed (not assumed) that a freshly-built
-    KubernetesPodOperator's own default is `[]`, not `None`, before asserting
-    an unset/empty Variable leaves it there: the matcha image is still public
-    today, so the pod must carry no imagePullSecrets at all.
-
-    Uses a fresh operator from _match_pod rather than a task pulled off the
-    shared _DAG (whose task objects are the same instance across every test
-    in this module, so mutating one's image_pull_secrets would leak state).
+def test_the_pod_carries_no_image_pull_secrets():
+    """The matcha GHCR package is public and stays public, so the kubelet
+    pulls anonymously. Asserts against `[]` rather than None because that is
+    KubernetesPodOperator's own instantiated default, checked rather than
+    assumed. A pod that grew an imagePullSecret would mean the registry
+    decision changed without this file changing with it.
     """
     module = _dag_module()
     op = module._match_pod(_ENTITY_SPECS[0])
-    assert op.image_pull_secrets == []  # KubernetesPodOperator's real instantiated default
+    assert op.image_pull_secrets == []
     with _pod_runtime(module):
         op.pre_execute({})
     assert op.image_pull_secrets == []
-
-
-def test_pull_secret_set_attaches_exactly_one_reference():
-    module = _dag_module()
-    op = module._match_pod(_ENTITY_SPECS[0])
-    with _pod_runtime(module, pull_secret="matcha-ghcr-pull"):
-        op.pre_execute({})
-    assert len(op.image_pull_secrets) == 1
-    assert op.image_pull_secrets[0].name == "matcha-ghcr-pull"
 
 
 def test_match_pods_set_the_pull_policy_explicitly():

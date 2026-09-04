@@ -34,7 +34,6 @@ Set on the Astro deployment as **Airflow Variables**:
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
-| `matcha_image_pull_secret` | Kubernetes image pull secret name from Astronomer support. Unset means the GHCR package is public and the kubelet pulls it anonymously. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
@@ -75,22 +74,19 @@ routes back.
 
 ## Image pull
 
-The matcha GHCR package is public today, so the pod carries no `image_pull_secrets` and the kubelet
-pulls it anonymously; `matcha_image_pull_secret` is unset. This is a transitional state, not the final
-one — the plan is to flip the package private once both deployments can pull it with a secret.
+The matcha GHCR package is **public**, deliberately and permanently. The pod carries no
+`image_pull_secrets` and the kubelet pulls anonymously, so there is nothing to provision, rotate, or
+expire.
 
-**Provisioning the secret.** Astronomer support creates a namespace-scoped Kubernetes secret of type
-`kubernetes.io/dockerconfigjson` per deployment. This is a support request, not something a user can do
-from the Astro UI or CLI on Astro Hosted — there is no self-serve path to create or attach an
-image-pull secret to a deployment's namespace.
+Making it private was considered and dropped. Astro Hosted has no self-serve way to create a
+namespace-scoped image-pull secret — each one is an Astronomer support ticket, as is every rotation of
+the `read:packages` PAT behind it, and that PAT expiring takes every entity's pod to `ImagePullBackOff`
+at once with no warning. The image is worth nothing to an attacker either: it carries only `scripts/*.py`
+and the installed venv from a repo that is already public, `.dockerignore` keeps `results/`, `*.csv` and
+`tests/` out, and no credential has ever been committed under `matcha/`.
 
-**Cutover, per deployment:** once Astronomer confirms the secret exists, set `matcha_image_pull_secret`
-to its name on that deployment and trigger a run. `_MatchaPodOperator.pre_execute` picks it up at task
-runtime with no redeploy needed — confirm the pod actually pulls (no `ImagePullBackOff`) before
-considering that deployment done.
-
-**Flip the GHCR package to private only once BOTH deployments are pulling successfully with their own
-secret.** Flipping it earlier breaks whichever deployment doesn't have a working secret yet.
+If that ever changes, going private means adding a pull-secret path back to `_MatchaPodOperator`, one
+support ticket per deployment, and flipping the package only after both deployments pull successfully.
 
 ## How the pod gets its Databricks credentials
 
@@ -107,7 +103,8 @@ nothing in it to redact.
 What remains is the pod spec itself: the client secret reaches the Kubernetes API as a plain `value:` on
 an env var, so it sits in etcd and shows up in `kubectl describe pod`. Closing that would mean putting
 the credentials in a Kubernetes Secret and referencing them with `secretKeyRef` — which on Astro Hosted
-is not self-serve (Astronomer support creates namespace secrets, the same as the image pull secret) and
+is not self-serve (every namespace secret is an Astronomer support ticket, which is also why the image
+stays on a public registry) and
 would make a second source of truth for a credential that already lives in the Airflow Connection, with
 its own support-ticket rotation path and a silent-drift failure when the two disagree. Not worth it while
 the only access that can read the pod spec is the same platform-level access that can already read the
@@ -134,13 +131,6 @@ it again afterwards to go back to tracking main.
 Either way the run's logs say which it was: the `match` task logs the resolved image before the pod
 starts, as `matcha image pinned for this run: ...` or as a warning that the tag is mutable. Read that
 line first when a gate fails — it is the fastest way to rule a matcher change in or out.
-
-**Rotation hazard.** The credential behind the secret is a GitHub classic PAT scoped to `read:packages`,
-which **expires**. When it does, every pod pull fails with `ImagePullBackOff` and `matcha_er` fails at
-pod start on every entity, with no advance warning — nothing degrades gracefully first. The secret
-cannot be edited from the Astro UI, so rotating it needs another Astronomer support ticket, the same as
-provisioning it the first time. Record the PAT's expiry date somewhere it will actually be checked
-before it lapses.
 
 ## When a gate fails
 

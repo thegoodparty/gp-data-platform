@@ -46,8 +46,6 @@ still builds and gates the dated tables.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
 - `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
   a sha to pin a deployment without a code change.
-- `matcha_image_pull_secret` — image pull secret name from Astronomer support.
-  Unset means the GHCR package is public and pulls anonymously.
 
 ### Pools:
 - `matcha_er` — one slot, so only one pod runs at a time.
@@ -103,7 +101,6 @@ MATCHA_IMAGE_PULL_POLICY = "Always"
 # A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
 # two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
-IMAGE_PULL_SECRET_VARIABLE = "matcha_image_pull_secret"
 ER_SCHEMA = "er_source"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
@@ -112,18 +109,13 @@ VINTAGE_RETENTION_DAYS = 28
 
 
 class _MatchaPodOperator(KubernetesPodOperator):
-    """KPO that resolves its pull secret and Databricks env at task runtime.
+    """KPO that resolves its Databricks env at task runtime.
 
-    Astro exposes neither Variables nor deployment env vars to the DAG
-    processor at parse, and `image_pull_secrets` holds Kubernetes client
-    objects rather than strings, so Jinja cannot reach it. Resolving in
-    pre_execute keeps parse metastore-free while letting each deployment carry
-    its own secret: astro-dev receives one from Astronomer support before
-    astro-prod does, and until a deployment has one the matcha GHCR package is
-    public and the kubelet pulls it anonymously.
+    The matcha GHCR package is public and stays that way, so the pod pulls
+    anonymously and carries no `image_pull_secrets` at all.
 
-    The Databricks credentials resolve here for a second reason. Airflow
-    snapshots an operator's rendered template fields — `env_vars` among them,
+    The credentials resolve at runtime rather than as templates because
+    Airflow snapshots an operator's rendered template fields — `env_vars`,
     plus the whole KPO pod YAML — into the metadata DB before `pre_execute`
     runs, and serves them in the UI. It redacts values the secrets masker
     knows, and a connection password is registered with the masker the moment
@@ -133,9 +125,6 @@ class _MatchaPodOperator(KubernetesPodOperator):
     """
 
     def pre_execute(self, context) -> None:
-        secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default="")
-        if secret_name:
-            self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
         # Replaces rather than extends: these four values are the pod's whole environment,
         # and pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
