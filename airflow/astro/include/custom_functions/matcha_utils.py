@@ -24,8 +24,12 @@ import logging
 import re
 from dataclasses import dataclass
 
-from airflow.sdk import BaseHook, Variable
-from include.custom_functions.databricks_utils import execute_with_retry, get_databricks_connection
+from airflow.sdk import Variable
+from include.custom_functions.databricks_utils import (
+    conn_kwargs,
+    connect_from_conn_id,
+    execute_with_retry,
+)
 
 logger = logging.getLogger("airflow.task")
 
@@ -338,33 +342,6 @@ def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[
 # with the builders above, run, then hand the numbers to the pure checks.
 
 
-def databricks_conn_fields(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
-    """The host and OAuth credentials of the deployment's Databricks connection.
-
-    WHICH connection is chosen at task runtime from the shared
-    `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
-    prod), matching the other DAGs. Must not be called at DAG parse.
-
-    One accessor for both consumers — the gate/swap tasks' own warehouse
-    connection and the match pod's environment — so the two cannot drift on
-    which fields they require or how they read them.
-    """
-    conn_id = Variable.get(databricks_conn_id_var, default="databricks")
-    db_conn = BaseHook.get_connection(conn_id)
-    http_path = db_conn.extra_dejson.get("http_path", "")
-    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
-        raise ValueError(
-            f"Databricks connection '{conn_id}' is missing a required "
-            "host, login, password, or http_path (extra) field"
-        )
-    return {
-        "host": db_conn.host,
-        "http_path": http_path,
-        "client_id": db_conn.login,
-        "client_secret": db_conn.password,
-    }
-
-
 def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
     """The DATABRICKS_* variables the matcha container authenticates with.
 
@@ -374,7 +351,7 @@ def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> di
     `pre_execute` runs, and while it redacts known secrets on the way in,
     values that never reach the snapshot need no redaction to be safe.
     """
-    fields = databricks_conn_fields(databricks_conn_id_var)
+    fields = conn_kwargs(databricks_conn_id_var)
     return {
         "DATABRICKS_HOST": fields["host"],
         "DATABRICKS_HTTP_PATH": fields["http_path"],
@@ -386,16 +363,16 @@ def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> di
 def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
     """Open a warehouse connection from the deployment's Databricks connection.
 
-    `use_cloud_fetch=False` to match every other caller in the repo: this
-    connection only ever runs scalar COUNT/EXISTS and small DISTINCT queries,
-    and CloudFetch would route those through pre-signed S3 URLs — a pointless
-    round-trip at best, and a failure where the warehouse or VPC does not
-    allow it.
+    WHICH connection is chosen at task runtime from the shared
+    `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
+    prod), matching the other DAGs. Must not be called at DAG parse.
+
+    `use_cloud_fetch=False` is stated rather than inherited: this connection
+    only runs scalar COUNT/EXISTS and small DISTINCT queries, and CloudFetch
+    would route those through pre-signed S3 URLs — a pointless round-trip at
+    best, and a failure where the warehouse or VPC does not allow it.
     """
-    return get_databricks_connection(
-        **databricks_conn_fields(databricks_conn_id_var),
-        use_cloud_fetch=False,
-    )
+    return connect_from_conn_id(databricks_conn_id_var, use_cloud_fetch=False)
 
 
 def _scalar(cursor, sql: str) -> int:
