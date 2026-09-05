@@ -5,6 +5,55 @@ with
 
     clean_states as (select * from {{ ref("clean_states") }}),
 
+    -- Delivery files disagree on date component order. Most write month-first
+    -- (11-3-2026), but some write day-first (25-08-2026), and a day-first value
+    -- whose day is <= 12 parses month-first without error, landing silently on
+    -- the wrong month. The order therefore has to be decided per file, reading
+    -- all three date columns, since a file holds to one convention throughout
+    -- and several tip their hand only on the filing deadline.
+    file_dates as (
+        select _ab_source_file_url, replace(primary_election_date, '/', '-') as d
+        from source
+        union all
+        select _ab_source_file_url, replace(general_election_date, '/', '-')
+        from source
+        union all
+        select _ab_source_file_url, replace(filing_deadline, '/', '-')
+        from source
+    ),
+
+    file_date_parts as (
+        select
+            _ab_source_file_url,
+            try_cast(
+                regexp_extract(d, '^([0-9]{1,2})-([0-9]{1,2})-[0-9]{2,4}$', 1) as int
+            ) as first_part,
+            try_cast(
+                regexp_extract(d, '^([0-9]{1,2})-([0-9]{1,2})-[0-9]{2,4}$', 2) as int
+            ) as second_part
+        from file_dates
+    ),
+
+    -- A file reads as day-first only on uncontradicted evidence: some date has a
+    -- first component above 12 (impossible as a month) and none has a second
+    -- component above 12 (which would prove month-first). Files with neither
+    -- signal keep the month-first default.
+    file_date_order as (
+        select
+            _ab_source_file_url,
+            coalesce(max(first_part) > 12, false)
+            and not coalesce(max(second_part) > 12, false) as is_day_first
+        from file_date_parts
+        group by _ab_source_file_url
+    ),
+
+    source_with_date_order as (
+        select src.*, coalesce(fdo.is_day_first, false) as is_day_first_file
+        from source as src
+        left join
+            file_date_order as fdo on fdo._ab_source_file_url = src._ab_source_file_url
+    ),
+
     renamed as (
         select
             -- Airbyte metadata
@@ -82,47 +131,43 @@ with
             replace(primary_election_date, '/', '-') as primary_election_date,
             replace(general_election_date, '/', '-') as general_election_date,
             replace(filing_deadline, '/', '-') as filing_deadline,
-            -- Parsed DATE columns. TechSpeed delivers some dates without
-            -- zero-padding (for example 6-2-2026), so the patterns use the
-            -- single-letter tokens M and d, which accept one or two digits and
-            -- therefore parse both padded (06-02-2026) and non-padded values.
-            -- The earlier MM-dd patterns required two digits and silently
-            -- dropped the non-padded dates to NULL.
-            coalesce(
-                try_cast(replace(primary_election_date, '/', '-') as date),
-                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yyyy'),
-                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yy')
-            ) as primary_election_date_parsed,
-            coalesce(
-                try_cast(replace(general_election_date, '/', '-') as date),
-                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yyyy'),
-                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yy')
-            ) as general_election_date_parsed,
+            -- Which component order this delivery file uses, exposed so a
+            -- surprising parse can be traced back to the file-level decision.
+            src.is_day_first_file,
+            -- Parsed DATE columns.
+            {{ parse_techspeed_date("primary_election_date", "src.is_day_first_file") }}
+            as primary_election_date_parsed,
+            {{ parse_techspeed_date("general_election_date", "src.is_day_first_file") }}
+            as general_election_date_parsed,
             case
                 when
                     year(
-                        coalesce(
-                            try_cast(replace(filing_deadline, '/', '-') as date),
-                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
-                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
-                        )
+                        {{
+                            parse_techspeed_date(
+                                "filing_deadline", "src.is_day_first_file"
+                            )
+                        }}
                     )
                     between 1900 and 2050
                 then
-                    coalesce(
-                        try_cast(replace(filing_deadline, '/', '-') as date),
-                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
-                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
-                    )
+                    {{
+                        parse_techspeed_date(
+                            "filing_deadline", "src.is_day_first_file"
+                        )
+                    }}
             end as filing_deadline_parsed,
             -- Coalesced election date (general preferred, fallback to primary)
             coalesce(
-                try_cast(replace(general_election_date, '/', '-') as date),
-                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yyyy'),
-                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yy'),
-                try_cast(replace(primary_election_date, '/', '-') as date),
-                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yyyy'),
-                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yy')
+                {{
+                    parse_techspeed_date(
+                        "general_election_date", "src.is_day_first_file"
+                    )
+                }},
+                {{
+                    parse_techspeed_date(
+                        "primary_election_date", "src.is_day_first_file"
+                    )
+                }}
             ) as election_date,
             election_result,
 
@@ -176,7 +221,7 @@ with
             _ab_source_file_url,
             _ab_source_file_last_modified
 
-        from source as src
+        from source_with_date_order as src
         left join
             clean_states as cs
             on upper(trim(regexp_replace(src.state, '[^A-Za-z ]', '')))
