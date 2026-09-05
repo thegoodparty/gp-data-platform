@@ -1,4 +1,6 @@
 import re
+from functools import reduce
+from operator import or_
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
@@ -21,6 +23,56 @@ def _apply_state_allowlist(df: DataFrame, allowlist: set[str] | None) -> DataFra
     if allowlist is None:
         return df
     return df.filter(col("state_postal_code").isin(sorted(allowlist)))
+
+
+def _seed_assignment_updates(
+    uniform_df: DataFrame, this_df: DataFrame, assignments_df: DataFrame
+) -> DataFrame:
+    """LALVOTERIDs carrying a seeded district value this table has not caught up to.
+
+    l2_manual_district_assignments reaches voters through a coalesce in
+    int__l2_nationwide_uniform, a view, so editing the seed moves no voter's
+    loaded_at and the loaded_at thresholds never revisit those rows. Without this
+    leg an assignment is stranded until the state's next L2 delivery, and this
+    table cannot be full refreshed to recover. int__l2_district_aggregations
+    unions the seed into its candidate set for the same reason.
+
+    Matching on the district value rather than the seed's sparse
+    county/city/precinct tuple keeps that match in one place; re-emitting a voter
+    L2 already agreed with is a no-op.
+    """
+    assignments = assignments_df.select("state", "l2_district_type", "l2_district_name").distinct().collect()
+    if not assignments:
+        return uniform_df.select("LALVOTERID").limit(0)
+
+    assigned = uniform_df.filter(
+        reduce(
+            or_,
+            [
+                (col("state_postal_code") == row["state"])
+                & (col(row["l2_district_type"]) == row["l2_district_name"])
+                for row in assignments
+            ],
+        )
+    )
+
+    district_columns = sorted({row["l2_district_type"] for row in assignments})
+    stored_columns = {c.lower() for c in this_df.columns}
+    if not {c.lower() for c in district_columns}.issubset(stored_columns):
+        # A district type this table has never carried, so every match is behind.
+        return assigned.select("LALVOTERID")
+
+    # Both sides are already confined to the seeded states, and the table clusters
+    # on state_postal_code, so the comparison prunes to those files.
+    stored = this_df.filter(col("state_postal_code").isin(sorted({row["state"] for row in assignments})))
+
+    # subtract compares the whole tuple null-safely, so a run where the seed has
+    # already landed everywhere emits nothing and the merge stays a no-op.
+    return (
+        assigned.select("LALVOTERID", *district_columns)
+        .subtract(stored.select("LALVOTERID", *district_columns))
+        .select("LALVOTERID")
+    )
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -66,6 +118,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     scores_df: DataFrame = dbt.ref("int__l2_nationwide_haystaq_scores").withColumn(
         "LALVOTERID", col("LALVOTERID").cast(StringType())
     )
+    assignments_df: DataFrame = dbt.ref("l2_manual_district_assignments")
 
     uniform_df = _apply_state_allowlist(uniform_df, state_allowlist)
     flags_df = _apply_state_allowlist(flags_df, state_allowlist)
@@ -111,7 +164,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .select("LALVOTERID")
         )
 
-        changed_ids = uniform_updates.union(flags_updates).union(scores_updates).distinct()
+        seed_updates = _seed_assignment_updates(uniform_df, this_df, assignments_df)
+
+        changed_ids = (
+            uniform_updates.union(flags_updates).union(scores_updates).union(seed_updates).distinct()
+        )
 
         if not changed_ids.take(1):
             return (

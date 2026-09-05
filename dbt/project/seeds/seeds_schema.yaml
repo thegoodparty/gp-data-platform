@@ -106,10 +106,13 @@ seeds:
       int__zip_code_to_l2_district is still keyed on voter loaded_at and needs
       a --full-refresh, or the seats stay invisible in the office picker until
       the state's next L2 load.
-      The people chain is gated the same way: rebuild m_people_api__voter (a
-      full-rebuild table) and --full-refresh m_people_api__districtvoter, or
-      the assignment reaches the people DB only when the state's next L2 load
-      bumps loaded_at.
+      int__l2_nationwide_uniform_w_haystaq unions this seed into its candidate
+      set too, so the voter spine and m_people_api__voter (a full-rebuild table
+      reading it) pick a new assignment up on the next ordinary run. That leg is
+      the only way in: the table pins full_refresh off.
+      m_people_api__districtvoter is still keyed on voter updated_at and needs a
+      --full-refresh once the spine has caught up, or the assignment reaches the
+      people DB only when the state's next L2 load bumps loaded_at.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.
     config:
