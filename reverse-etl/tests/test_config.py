@@ -42,6 +42,15 @@ def test_load_flow_config_raises_on_a_missing_required_variable(missing_key: str
         load_flow_config("hubspot_leads", env)
 
 
+@pytest.mark.parametrize("bad_cap", ["0", "-3", "not_a_number"])
+def test_load_flow_config_rejects_a_nonpositive_or_unparseable_cap(bad_cap: str) -> None:
+    """Catches: cap=0 (or negative/garbage) passing validation, which would make the
+    overflow guard fire on every non-empty diff and permanently block the flow."""
+    env = {**FULL_ENV, "RETL_FLOW_HUBSPOT_LEADS_CAP": bad_cap}
+    with pytest.raises(MissingFlowConfigError):
+        load_flow_config("hubspot_leads", env)
+
+
 def test_load_flow_config_is_independent_per_flow_name() -> None:
     """Catches: two flows accidentally sharing one config namespace instead of being isolated."""
     env = {

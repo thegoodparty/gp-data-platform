@@ -48,6 +48,10 @@ def load_flow_config(flow_id: str, env: Mapping[str, str]) -> FlowConfig:
         cap = int(cap_raw)
     except ValueError as exc:
         raise MissingFlowConfigError(flow_id, prefix + "CAP") from exc
+    if cap <= 0:
+        # cap=0 would make the overflow guard fire on every non-empty diff,
+        # permanently blocking the flow; reject it at load time instead.
+        raise MissingFlowConfigError(flow_id, prefix + "CAP")
 
     return FlowConfig(
         flow_id=flow_id,
