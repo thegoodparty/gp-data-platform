@@ -23,7 +23,7 @@ the run's `ds_nodash` (e.g. `clustered_candidacy_stages_20260825`), and the DAG 
 table into the live name after it passes its gate — a crash during the container run leaves the live
 table exactly as it was.
 
-## Variables and pool
+## Variables and concurrency
 
 Set on the Astro deployment as **Airflow Variables**:
 
@@ -38,16 +38,22 @@ Set on the Astro deployment as **Airflow Variables**:
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
 
-**Pool:** create `matcha_er` with **1 slot** on each deployment (Admin -> Pools) before unpausing the
-DAG — a task assigned to a pool that doesn't exist fails at scheduling, not gracefully. Each pod requests
-8Gi memory / 4 CPU, and three running in parallel would ask for 24Gi against a 20Gi deployment quota, so
-the pool holds them to one at a time. This is a quota accommodation, not a modeling decision — within
-this DAG the three entities have no dependency on each other and would otherwise run concurrently.
-Raising the quota and widening the pool needs no DAG change.
+**Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
+requests 8Gi memory / 4 CPU and three in parallel would ask for 24Gi against a 20Gi deployment quota. This
+is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
+on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
+quota bump.
 
-**Concurrency:** the DAG also sets `max_active_runs=1`. `gate`/`swap`/`cleanup` are not pooled — only the
-match pods are — so without this, an overlapping manual trigger would give two runs with different
-`ds_nodash` whose swaps could interleave DROP/RENAME statements against the same live table.
+An Airflow pool would do the same job and was used at first, but it has to be created on each deployment
+before the DAG runs, and Airflow answers a missing pool by leaving those tasks in `scheduled` forever —
+no failed task, no UI signal, just `Tasks using non-existent pool 'matcha_er' will not be scheduled`
+repeating in the scheduler log. `max_active_tasks` deploys with the DAG and cannot go missing. The cost is
+that a finished entity's `gate`/`swap` waits behind the next entity's `match`: seconds of SQL against hours
+of Splink.
+
+`max_active_runs=1` is separate and still needed. Without it an overlapping manual trigger would give two
+runs with different `ds_nodash` whose swaps could interleave DROP/RENAME statements against the same live
+table.
 
 ## Rehearsal vs. live
 
@@ -116,7 +122,7 @@ The pod sets `image_pull_policy: Always`, so every pod pulls its tag fresh inste
 whatever a node already has cached. A cache hit would otherwise let a pod run a matcher build older
 than the tag now points at, silently and with nothing in the logs to say so.
 
-What `Always` does not fix is that `latest` is mutable. The pool runs the three entity pods one after
+What `Always` does not fix is that `latest` is mutable. The DAG runs the three entity pods one after
 another, so a merge touching `matcha/**` landing mid-run republishes `latest` and the later pods
 execute different matcher code than the earlier ones. No output is corrupted by that — each entity's
 tables come from a single pod, and each gate compares that entity's own vintage against its own live

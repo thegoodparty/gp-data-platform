@@ -18,9 +18,10 @@ candidacy_stage.sql` joins the candidacy clustered table with
 `ref("election_stage")`, which derives from `clustered_election_stages`, so a
 civics mart can read a mix of one entity's fresh vintage and another's stale
 one regardless of what this DAG does. What serialises the pods today is the
-one-slot `matcha_er` pool, a quota accommodation rather than a modelling
+DAG's own `max_active_tasks=1`, a quota accommodation rather than a modelling
 decision — three 8Gi pods in parallel is 24Gi against a 20Gi deployment
-quota. Raising the quota and widening the pool needs no change here.
+quota. Raising the quota means raising that number here, in the same change
+as the terraform quota bump.
 
 `dbt_build_er_source` waits on all three swaps, so THIS DAG's own staging
 rebuild never runs against a partially-swapped set. That is not the same as
@@ -47,8 +48,6 @@ still builds and gates the dated tables.
 - `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
   a sha to pin a deployment without a code change.
 
-### Pools:
-- `matcha_er` — one slot, so only one pod runs at a time.
 """
 
 from __future__ import annotations
@@ -91,14 +90,13 @@ MATCHA_IMAGE = (
     "ghcr.io/thegoodparty/gp-data-platform/matcha:"
     f"{{{{ var.value.get('{MATCHA_IMAGE_TAG_VARIABLE}', 'latest') }}}}"
 )
-MATCHA_POOL = "matcha_er"
 # Explicit because Kubernetes otherwise infers it from the tag (Always for `:latest`,
 # IfNotPresent for anything else), so pinning the tag Variable would flip pull behavior as a
 # side effect. Always over IfNotPresent: a node-local cache can hold a matcher build older
 # than the tag now points at and would run it silently, and it buys little coherence between
-# this run's pods, which the pool serializes onto generally separate nodes.
+# this run's pods, which max_active_tasks serializes onto generally separate nodes.
 MATCHA_IMAGE_PULL_POLICY = "Always"
-# A hung Splink pod would otherwise hold the single pool slot indefinitely, blocking the other
+# A hung Splink pod would otherwise hold the single task slot indefinitely, blocking the other
 # two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
 ER_SCHEMA = "er_source"
@@ -137,7 +135,7 @@ class _MatchaPodOperator(KubernetesPodOperator):
         `image` is a template field, so what a run actually executed is only
         knowable from the run's own logs. A mutable tag additionally means the
         three entity pods of one run are not guaranteed to be the same build:
-        the pool serializes them, so a merge touching `matcha/**` landing
+        max_active_tasks serializes them, so a merge touching `matcha/**` landing
         between two pods republishes `latest` and the later pod runs different
         matcher code. Nothing is corrupted by that — each entity's tables come
         from a single pod — but a gate failure stops being attributable to the
@@ -171,7 +169,6 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
         name=f"matcha-{entity.entity_type.replace('_', '-')}",
         image=MATCHA_IMAGE,
         image_pull_policy=MATCHA_IMAGE_PULL_POLICY,
-        pool=MATCHA_POOL,
         arguments=[
             "match",
             "--entity-type",
@@ -208,9 +205,15 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
-    # gate/swap/cleanup are unpooled (only the pods are), so an overlapping manual trigger
-    # would give two runs with different ds_nodash whose swaps can interleave DROP/RENAME on
-    # the same live table.
+    # Three 8Gi/4CPU pods at once is 24Gi against a 20Gi deployment quota, so only one task
+    # in the DAG runs at a time. Deliberately not an Airflow pool: a pool has to be created on
+    # each deployment out of band, and a missing one parks the pooled tasks in `scheduled`
+    # forever with nothing but a scheduler-log warning to say why. This deploys with the DAG.
+    # The cost is that a finished entity's gate/swap waits behind the next entity's match —
+    # seconds of SQL against hours of Splink. Raising it belongs with a terraform quota bump.
+    max_active_tasks=1,
+    # An overlapping manual trigger would otherwise give two runs with different ds_nodash
+    # whose swaps can interleave DROP/RENAME on the same live table.
     max_active_runs=1,
 )
 def matcha_er():

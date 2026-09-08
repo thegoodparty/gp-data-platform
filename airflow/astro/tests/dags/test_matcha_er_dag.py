@@ -64,11 +64,19 @@ def test_every_entity_has_the_three_step_chain():
         assert match is not None
 
 
-def test_match_tasks_share_the_serialising_pool():
-    """Three 8Gi pods in parallel exceed the 20Gi deployment quota, so the pool
-    holds them to one at a time until the quota is raised."""
+def test_one_task_at_a_time_without_an_airflow_pool():
+    """Three 8Gi/4CPU pods at once is 24Gi against a 20Gi deployment quota, so
+    the DAG caps itself at one running task.
+
+    Asserts the absence of a custom pool as well as the cap. A pool would do
+    the same job, but has to exist on every deployment before the DAG runs,
+    and Airflow answers a missing one by parking those tasks in `scheduled`
+    indefinitely — visible only as a scheduler-log warning. max_active_tasks
+    ships with the DAG and cannot go missing.
+    """
+    assert _DAG.max_active_tasks == 1
     for entity in _ENTITIES:
-        assert _DAG.get_task(f"{entity}.match").pool == "matcha_er"
+        assert _DAG.get_task(f"{entity}.match").pool == "default_pool"
 
 
 def test_entities_are_independent_of_each_other():
@@ -166,7 +174,7 @@ def test_match_pods_set_the_pull_policy_explicitly():
     flip the pull behavior as a side effect. Always is the deliberate choice
     over IfNotPresent: a node-local cache can hold a matcher build older than
     the tag now points at and would run it silently, and it buys next to no
-    coherence between this run's pods, which the pool serializes onto
+    coherence between this run's pods, which max_active_tasks serializes onto
     generally separate nodes. Coherence comes from pinning the tag instead.
     """
     for entity in _ENTITIES:
@@ -174,7 +182,7 @@ def test_match_pods_set_the_pull_policy_explicitly():
 
 
 def test_a_mutable_tag_warns_that_the_run_is_not_reproducible():
-    """A merge touching matcha/** republishes `latest`, and the pool runs the
+    """A merge touching matcha/** republishes `latest`, and the DAG runs the
     three pods one after another, so a run on a mutable tag can execute two
     different matcher builds. The run's own logs have to say so — otherwise a
     gate failure looks like a data problem.
