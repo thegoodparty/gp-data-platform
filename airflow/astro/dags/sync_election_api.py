@@ -650,7 +650,10 @@ def _build_group(table: MartSync) -> dict:
 
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
-    schedule="@daily",
+    # 22:00 UTC, not midnight: the dev deployment hibernates at 01:00 and a
+    # run that is still going gets its worker cordoned and its task killed.
+    # The run needs about an hour, so this leaves three.
+    schedule="0 22 * * *",
     max_consecutive_failed_dag_runs=5,
     max_active_runs=1,
     doc_md=__doc__,
