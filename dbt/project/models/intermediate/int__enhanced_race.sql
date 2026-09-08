@@ -55,7 +55,15 @@ with
             tbl_race.is_runoff,
             tbl_race.created_at,
             tbl_race.updated_at,
-            to_timestamp(tbl_election.election_day) as election_date,
+            -- A jurisdiction that moves its offices to a different uniform
+            -- election date keeps getting BallotReady races projected forward
+            -- on the old one, filing window included. The seed corrects both
+            -- together: an election day without its window is a filing
+            -- deadline that falls after the election.
+            coalesce(
+                cast(tbl_date_override.election_date as timestamp),
+                to_timestamp(tbl_election.election_day)
+            ) as election_date,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
@@ -72,8 +80,12 @@ with
             tbl_position.sub_area_name,
             tbl_position.sub_area_value,
             tbl_election_frequency.frequency,
-            tbl_filing_period.start_on as filing_date_start,
-            tbl_filing_period.end_on as filing_date_end,
+            coalesce(
+                tbl_date_override.filing_date_start, tbl_filing_period.start_on
+            ) as filing_date_start,
+            coalesce(
+                tbl_date_override.filing_date_end, tbl_filing_period.end_on
+            ) as filing_date_end,
             tbl_position.database_id as br_position_database_id,
             tbl_position.geo_id as position_geo_id,
             -- The seeded override wins, for geographies BallotReady puts on a
@@ -139,6 +151,9 @@ with
             {{ ref("br_position_place_overrides") }} as tbl_place_override
             on tbl_position.geo_id = tbl_place_override.position_geo_id
             and tbl_position.mtfcc = tbl_place_override.position_mtfcc
+        left join
+            {{ ref("br_race_date_overrides") }} as tbl_date_override
+            on tbl_race.database_id = tbl_date_override.br_race_database_id
     ),
     race_w_place as (
         select

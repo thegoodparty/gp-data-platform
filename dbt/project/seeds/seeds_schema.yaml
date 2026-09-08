@@ -318,6 +318,59 @@ seeds:
           arguments:
             expression: filing_date_end >= filing_date_start
 
+  - name: br_race_date_overrides
+    description: >
+      Corrects the election day and candidate filing window BallotReady carries
+      for a specific race. BallotReady projects a position's future races
+      forward on the date family it last saw, so a jurisdiction that moves its
+      offices to a different uniform election date keeps getting races on the
+      old one, with the filing window that belongs to it. Keyed per race
+      because the move applies to particular seats on particular cycles, not to
+      a whole class of offices in the state. Applied in int__enhanced_race, so
+      every downstream consumer of the race sees the corrected dates.
+    config:
+      column_types:
+        election_date: date
+        filing_date_start: date
+        filing_date_end: date
+    columns:
+      - name: br_race_database_id
+        description: BallotReady race database_id to correct
+        data_tests:
+          - not_null
+          - unique
+      - name: position_name
+        description: >
+          BallotReady's name for the position (for documentation only, not used
+          in joins)
+        data_tests:
+          - not_null
+      - name: election_date
+        description: Corrected election day
+        data_tests:
+          - not_null
+      - name: filing_date_start
+        description: Corrected first day of the filing window
+        data_tests:
+          - not_null
+      - name: filing_date_end
+        description: Corrected last day of the filing window
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with a citation
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: filing_date_start <= filing_date_end
+      # A filing window that has not closed by election day is never real, and
+      # is the exact shape of the bug this seed corrects.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: filing_date_end < election_date
+
   - name: br_position_place_overrides
     description: >
       Points a BallotReady position geography at the Place it should resolve to,
