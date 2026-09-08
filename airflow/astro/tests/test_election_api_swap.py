@@ -204,6 +204,14 @@ class FakePostgres:
                 owner_cons.add(new_idx)
             return []
 
+        if stmt == "SELECT conname FROM pg_constraint WHERE conrelid = to_regclass(%s)":
+            schema, table = re.fullmatch(r'"([^"]+)"\."([^"]+)"', params[0]).groups()
+            return [(c,) for c in sorted(self.tables.get((schema, table), set()))]
+
+        if stmt == "SELECT indexname FROM pg_indexes WHERE schemaname = %s AND tablename = %s":
+            schema, table = params
+            return [(i,) for (s_, i), owner in sorted(self.indexes.items()) if owner == (schema, table)]
+
         m = re.fullmatch(
             r'ALTER TABLE "([^"]+)"\."([^"]+)" RENAME CONSTRAINT "([^"]+)" TO "([^"]+)"',
             stmt,
@@ -343,6 +351,9 @@ class _FakeCursor:
 
     def fetchone(self):
         return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
 
     def close(self):
         pass
@@ -631,5 +642,52 @@ def test_drop_old_is_idempotent():
     _run_cycle(pg)
 
     drop_old_tables(pg.connect(), SET_SPECS)  # second drop: IF EXISTS no-op
+
+    _assert_canonical_shape(pg)
+
+
+def test_swap_survives_a_live_table_missing_a_declared_fk():
+    """Prod, 2026-09-08. A table joining the set brings a live vintage whose FK
+    an earlier District swap already cascaded away: District is renamed aside,
+    the outside FK follows it, and drop_old removes it. The archive renames
+    were generated from the spec rather than from what the table actually has,
+    so the swap died on
+
+        constraint "..._district_id_fkey" for table "..._old" does not exist
+
+    and every nightly run after it. Nothing needs that rename — it exists only
+    to free the canonical name, and a name that is not taken is already free.
+    """
+    pg = FakePostgres()
+    _seed_live_set(pg)
+    # Same live table, minus the FK a previous cascade took.
+    pg.seed_table(
+        "public",
+        "Projected_Turnout",
+        constraints={PT_SPEC.pk_name},
+        indexes={PT_SPEC.pk_name, *PT_SPEC.index_names},
+    )
+
+    _run_cycle(pg)
+
+    _assert_canonical_shape(pg)
+
+
+def test_swap_survives_a_live_table_missing_a_declared_index():
+    """Same shape, for an index Prisma declares that the live vintage lacks —
+    a table added to the set before its migration reached that environment."""
+    pg = FakePostgres()
+    _seed_live_set(pg)
+    pg.seed_table(
+        "public",
+        "Projected_Turnout",
+        constraints={PT_SPEC.pk_name, *PT_SPEC.fkey_names},
+        indexes={PT_SPEC.pk_name},
+        fk_refs={
+            ("public", "Projected_Turnout", "Projected_Turnout_district_id_fkey"): ("public", "District")
+        },
+    )
+
+    _run_cycle(pg)
 
     _assert_canonical_shape(pg)
