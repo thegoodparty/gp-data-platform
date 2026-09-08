@@ -12,7 +12,7 @@ models:
       alone is documented on the ticket rather than stored here.
     columns:
       - name: request_id
-        description: Tracking ticket for the request, e.g. DATA-2283
+        description: Tracking ticket for the request
         data_tests:
           - not_null
       - name: identifier_type

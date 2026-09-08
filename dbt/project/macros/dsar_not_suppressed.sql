@@ -43,6 +43,6 @@
     coalesce({{ normalized }}, '') not in (
         select identifier_value
         from {{ ref("stg_source_dsar__suppressed_identifiers") }}
-        where identifier_type = '{{ identifier_type }}'
+        where identifier_type = '{{ identifier_type }}' and identifier_value is not null
     )
 {% endmacro %}
