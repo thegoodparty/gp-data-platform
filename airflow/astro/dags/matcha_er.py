@@ -88,17 +88,10 @@ _PINNED_TAG = re.compile(r"[0-9a-f]{40}")
 # no code change to show for it. A deployment can pin a sha via the Variable with no redeploy;
 # the default keeps today's behavior.
 MATCHA_IMAGE_TAG_VARIABLE = "matcha_image_tag"
-_MATCHA_IMAGE_FROM_VARIABLE = (
+MATCHA_IMAGE = (
     "ghcr.io/thegoodparty/gp-data-platform/matcha:"
     f"{{{{ var.value.get('{MATCHA_IMAGE_TAG_VARIABLE}', 'latest') }}}}"
 )
-# TEMPORARY — hardcoded to this PR's image while the Databricks OAuth scopes are being
-# narrowed by trial and error, so which build the pod ran is knowable from this file alone
-# rather than from a Variable set somewhere else. `latest` is built from main and predates
-# the scope handling entirely, which is why it kept asking for all-apis.
-# RESTORE `_MATCHA_IMAGE_FROM_VARIABLE` BEFORE MERGE: the pr-900 tag is deleted when the PR
-# closes, so a merge that keeps this pin takes every run to ImagePullBackOff.
-MATCHA_IMAGE = "ghcr.io/thegoodparty/gp-data-platform/matcha:pr-900"
 # Explicit because Kubernetes otherwise infers it from the tag (Always for `:latest`,
 # IfNotPresent for anything else), so pinning the tag Variable would flip pull behavior as a
 # side effect. Always over IfNotPresent: a node-local cache can hold a matcher build older
