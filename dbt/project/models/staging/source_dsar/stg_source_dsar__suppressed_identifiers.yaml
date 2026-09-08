@@ -1,0 +1,50 @@
+models:
+  - name: stg_source_dsar__suppressed_identifiers
+    description: >
+      Identifiers belonging to people who have made a data subject deletion request.
+      Presence means suppress: staging models filter every row here, unconditionally,
+      via the `dsar_not_suppressed` macro. There is no flag column, because a flag
+      meaning "ignore this row" is one a caller eventually forgets, and the silent
+      failure is a person who asked to be forgotten not getting suppressed.
+
+      The source table is curated by hand in Databricks and never written by dbt, so
+      identifiers never enter this repository. A record we find but deliberately leave
+      alone is documented on the ticket rather than stored here.
+    columns:
+      - name: request_id
+        description: Tracking ticket for the request, e.g. DATA-2283
+        data_tests:
+          - not_null
+      - name: identifier_type
+        description: Which key this identifier is. The L2 voter file is out of scope, so lalvoterid is absent by design.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - email
+                  - phone
+                  - gp_api_user_id
+                  - gp_person_id
+                  - clerk_id
+                  - stripe_customer_id
+                  - hs_contact_id
+                  - br_person_id
+                  - br_candidacy_id
+                  - ddhq_candidate_id
+                  - ts_candidate_code
+      - name: identifier_value
+        description: Normalized identifier. Emails lowercased and trimmed, phones digits only, everything else trimmed.
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Date the request was received, which starts the 45-day response clock
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - request_id
+              - identifier_type
+              - identifier_value

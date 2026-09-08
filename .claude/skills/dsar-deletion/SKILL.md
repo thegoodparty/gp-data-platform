@@ -41,7 +41,14 @@ notes, created_at, created_by`.
 unconditionally. If a record is found but deliberately left alone, document that on the
 ticket and leave it out of the table.
 
-Three check constraints reject bad inserts: `identifier_type_known` (12 allowed types),
+dbt reads the table through the `source_dsar` source and the
+`stg_source_dsar__suppressed_identifiers` staging model, which exposes only the
+identifier columns so the requester's name is not copied into a wider schema. Staging
+models apply it with the `dsar_not_suppressed(column, identifier_type)` macro, which
+owns the normalization so no caller can match the register a different way.
+
+Three check constraints reject bad inserts: `identifier_type_known` (11 allowed types,
+with `lalvoterid` deliberately excluded because L2 is out of scope),
 `email_normalized` (lowercased and trimmed), `phone_digits_only` (10 to 15 digits, no
 punctuation). Unity Catalog does not enforce uniqueness, so duplicates are caught by a dbt
 test rather than the table.
