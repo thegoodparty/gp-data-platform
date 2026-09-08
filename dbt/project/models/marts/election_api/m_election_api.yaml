@@ -375,8 +375,7 @@ models:
       - name: number_of_seats
         description: >
           Number of seats this election fills, from mart_civics.election_stage
-          (br_race_id match). BallotReady's stage row wins where one exists;
-          only a race BR does not carry falls back to a vendor row. Null when
+          (br_race_id match), preferring the BallotReady stage row. Null when
           civics has no matching stage row.
         tests:
           - dbt_utils.accepted_range:
