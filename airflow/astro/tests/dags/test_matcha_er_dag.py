@@ -168,6 +168,18 @@ def test_the_pod_carries_no_image_pull_secrets():
     assert op.image_pull_secrets == []
 
 
+def test_match_pods_declare_ephemeral_storage():
+    """Astro injects a 256Mi ephemeral-storage default into the namespace, and
+    matcha writes its CSVs and charts to the pod filesystem before uploading,
+    so the default gets the pod killed part-way through a real run. Declared
+    on both requests and limits, since the kubelet evicts on the limit.
+    """
+    for entity in _ENTITIES:
+        resources = _DAG.get_task(f"{entity}.match").container_resources
+        assert resources.requests["ephemeral-storage"] == "10Gi"
+        assert resources.limits["ephemeral-storage"] == "10Gi"
+
+
 def test_match_pods_set_the_pull_policy_explicitly():
     """Kubernetes derives an unset policy FROM THE TAG — Always for `:latest`,
     IfNotPresent otherwise — so pinning `matcha_image_tag` to a sha would also

@@ -186,9 +186,16 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
+        # ephemeral-storage is declared, not inherited: Astro's namespace default is 256Mi,
+        # and matcha writes the clustered and pairwise CSVs plus two diagnostic charts to the
+        # pod filesystem before uploading to Databricks — `--no-audit` skips the audit reports,
+        # not those writes. Exceeding the limit has the kubelet kill the pod (exit 137, "Pod
+        # ephemeral local storage usage exceeds the total limit of containers"), which reads
+        # like a crash: minutes of successful Splink work, then the container simply vanishes
+        # mid-log with no traceback.
         container_resources=k8s.V1ResourceRequirements(
-            requests={"memory": "8Gi", "cpu": "4"},
-            limits={"memory": "8Gi", "cpu": "4"},
+            requests={"memory": "8Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
+            limits={"memory": "8Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
         ),
         in_cluster=True,
         get_logs=True,
