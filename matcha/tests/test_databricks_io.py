@@ -357,6 +357,41 @@ def test_build_connect_kwargs_strips_scheme_from_host(mock_config):
     assert callable(kwargs["credentials_provider"])
 
 
+@patch("scripts.databricks_io.Config")
+@patch.dict(
+    "os.environ",
+    {"DATABRICKS_HTTP_PATH": "sql/1.0/warehouses/abc", "DATABRICKS_SCOPES": "sql, offline_access"},
+    clear=False,
+)
+def test_build_connect_kwargs_passes_scopes_into_config(mock_config):
+    """The SDK gives its `scopes` attribute no env binding, so DATABRICKS_SCOPES
+    only reaches the token request if it is passed to Config explicitly. Without
+    this the request silently asks for all-apis, which is what the service
+    principal was refused."""
+    mock_config.return_value = MagicMock(host="https://h", client_id=None, client_secret=None)
+
+    _build_connect_kwargs()
+
+    assert mock_config.call_args.kwargs == {"scopes": "sql, offline_access"}
+
+
+@patch("scripts.databricks_io.Config")
+@patch.dict(
+    "os.environ",
+    {"DATABRICKS_HTTP_PATH": "sql/1.0/warehouses/abc", "DATABRICKS_SCOPES": ""},
+    clear=False,
+)
+def test_build_connect_kwargs_omits_scopes_when_unset(mock_config):
+    """Unset (or blank) must construct Config with no scopes at all rather than
+    an empty string, so the SDK falls back to its own default. Blank is set
+    explicitly here so the test holds on a machine that exports the var."""
+    mock_config.return_value = MagicMock(host="https://h", client_id=None, client_secret=None)
+
+    _build_connect_kwargs()
+
+    assert mock_config.call_args.kwargs == {}
+
+
 @patch("scripts.databricks_io.oauth_service_principal")
 @patch("scripts.databricks_io.Config")
 @patch.dict("os.environ", {"DATABRICKS_HTTP_PATH": "sql/1.0/warehouses/abc"}, clear=False)
