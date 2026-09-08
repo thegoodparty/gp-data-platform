@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from collections.abc import Generator
 from typing import TypedDict
@@ -19,6 +20,9 @@ logger = logging.getLogger("airflow.task")
 _NON_RETRYABLE_AUTH_MARKERS = (
     "invalid_client",
     "client authentication failed",
+    # A secret minted without the scopes we ask for. Permanent until either the
+    # secret or the connection's `scopes` extra changes.
+    "are not assigned to the client",
 )
 
 
@@ -36,6 +40,7 @@ def get_databricks_connection(
     max_retries: int = 20,
     retry_delay: int = 30,
     use_cloud_fetch: bool = True,
+    scopes: list[str] | None = None,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
@@ -50,6 +55,10 @@ def get_databricks_connection(
             host=f"https://{hostname}",
             client_id=client_id,
             client_secret=client_secret,
+            # None leaves the SDK's default of ["all-apis"]. Narrower scopes
+            # must match what the service principal's secret was minted with,
+            # or the token endpoint refuses with "are not assigned".
+            scopes=scopes,
         )
         return oauth_service_principal(config)
 
@@ -90,6 +99,7 @@ class _ConnKwargs(TypedDict):
     http_path: str
     client_id: str
     client_secret: str
+    scopes: list[str] | None
 
 
 def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
@@ -104,11 +114,18 @@ def _conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwa
             "host, login, password, or http_path (extra) field"
         )
 
+    # A Variable, not a connection extra: Astro's Databricks connection form has
+    # fixed fields and no free-form extra, so the extra cannot be set from the
+    # UI. Comma- or space-separated, matching the scopes the service
+    # principal's OAuth secret carries. Unset means all-apis.
+    scopes = [s for s in re.split(r"[,\s]+", Variable.get("databricks_scopes", default="")) if s]
+
     return {
         "host": db_conn.host,
         "http_path": http_path,
         "client_id": db_conn.login,
         "client_secret": db_conn.password,
+        "scopes": scopes or None,
     }
 
 
