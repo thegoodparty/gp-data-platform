@@ -136,6 +136,40 @@ class TestGetDatabricksConnection:
 # ---------------------------------------------------------------------------
 
 
+class TestOAuthScopes:
+    """What the token request asks for. The SDK defaults to all-apis, which a
+    service principal has to be granted; where it is not, every request fails
+    with "Scopes 'all-apis' are not assigned to the client"."""
+
+    @staticmethod
+    def _config_from_connect(scopes):
+        """Build a connection, then invoke the credentials provider the
+        connector was handed and report how Config was constructed."""
+        with (
+            patch.object(databricks_utils.databricks_sql, "connect", autospec=True) as connect,
+            patch.object(databricks_utils, "Config", autospec=True) as config,
+            patch.object(databricks_utils, "oauth_service_principal", autospec=True),
+        ):
+            get_databricks_connection(
+                host="https://dbc.example",
+                http_path="/sql/1.0/warehouses/abc",
+                client_id="cid",
+                client_secret="secret",
+                scopes=scopes,
+            )
+            connect.call_args.kwargs["credentials_provider"]()
+        return config.call_args.kwargs
+
+    def test_scopes_reach_the_token_request(self):
+        assert self._config_from_connect("sql")["scopes"] == "sql"
+
+    def test_none_leaves_the_sdk_default_untouched(self):
+        """Every other caller in the repo passes nothing, so `scopes` must be
+        absent from the Config call rather than present-and-empty — the SDK
+        only falls back to all-apis when the attribute is unconfigured."""
+        assert "scopes" not in self._config_from_connect(None)
+
+
 class TestReadDatabricksTable:
     """Validation, error handling, and happy path of read_databricks_table."""
 

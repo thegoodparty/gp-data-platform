@@ -36,11 +36,17 @@ def get_databricks_connection(
     max_retries: int = 20,
     retry_delay: int = 30,
     use_cloud_fetch: bool = True,
+    scopes: str | None = None,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
 
     Retries on failure to allow for SQL warehouse cold-start (~10 min).
+
+    `scopes` (comma or space separated) is what the token request asks for.
+    None leaves the SDK's default of `all-apis`, which is what every caller
+    here has always sent — narrow it per caller, not globally, since a scope
+    the service principal lacks fails the request outright.
     """
     # Normalize — server_hostname needs bare host, Config needs https://
     hostname = host.removeprefix("https://").removeprefix("http://")
@@ -50,6 +56,9 @@ def get_databricks_connection(
             host=f"https://{hostname}",
             client_id=client_id,
             client_secret=client_secret,
+            # Only when set: the SDK treats an empty scopes list as "unconfigured"
+            # and falls back to all-apis, so passing None keeps that path exact.
+            **({"scopes": scopes} if scopes else {}),
         )
         return oauth_service_principal(config)
 
@@ -120,9 +129,14 @@ def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwar
 def connect_from_conn_id(
     databricks_conn_id_var: str = "databricks_conn_id",
     use_cloud_fetch: bool = False,
+    scopes: str | None = None,
 ) -> Connection:
     """Connect to the Databricks warehouse an Airflow Variable names."""
-    return get_databricks_connection(**conn_kwargs(databricks_conn_id_var), use_cloud_fetch=use_cloud_fetch)
+    return get_databricks_connection(
+        **conn_kwargs(databricks_conn_id_var),
+        use_cloud_fetch=use_cloud_fetch,
+        scopes=scopes,
+    )
 
 
 def read_databricks_table(

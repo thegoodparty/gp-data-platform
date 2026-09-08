@@ -177,6 +177,15 @@ def old_name(table: str) -> str:
 
 SWAP_GATE_VARIABLE = "matcha_swap_enabled"
 
+# OAuth scopes the Databricks token request asks for, as a Variable so the set can be
+# narrowed or widened without a deploy or an image rebuild. The SDK's default is
+# `all-apis`, which the service principal must be granted; where it is not, every token
+# request fails with "Scopes 'all-apis' are not assigned to the client" and nothing
+# reaches the warehouse. `sql` is the starting guess for warehouse access — it has not
+# been verified against this workspace. An empty value restores the SDK default.
+DATABRICKS_SCOPES_VARIABLE = "matcha_databricks_scopes"
+DEFAULT_DATABRICKS_SCOPES = "sql"
+
 
 def swap_enabled() -> bool:
     """Whether the swap step may rename a dated vintage into the live name.
@@ -342,6 +351,15 @@ def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[
 # with the builders above, run, then hand the numbers to the pure checks.
 
 
+def oauth_scopes() -> str:
+    """Scopes for this deployment's Databricks token requests.
+
+    Read at task runtime so the pod and the gate/swap tasks always agree, and
+    so narrowing the set is a Variable edit rather than a redeploy.
+    """
+    return Variable.get(DATABRICKS_SCOPES_VARIABLE, default=DEFAULT_DATABRICKS_SCOPES).strip()
+
+
 def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
     """The DATABRICKS_* variables the matcha container authenticates with.
 
@@ -357,6 +375,9 @@ def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> di
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
         "DATABRICKS_CLIENT_SECRET": fields["client_secret"],
+        # The SDK reads every other DATABRICKS_* var itself but not this one, so the
+        # container passes it into Config explicitly. Empty means the SDK default.
+        "DATABRICKS_SCOPES": oauth_scopes(),
     }
 
 
@@ -372,7 +393,11 @@ def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
     would route those through pre-signed S3 URLs — a pointless round-trip at
     best, and a failure where the warehouse or VPC does not allow it.
     """
-    return connect_from_conn_id(databricks_conn_id_var, use_cloud_fetch=False)
+    return connect_from_conn_id(
+        databricks_conn_id_var,
+        use_cloud_fetch=False,
+        scopes=oauth_scopes() or None,
+    )
 
 
 def _scalar(cursor, sql: str) -> int:

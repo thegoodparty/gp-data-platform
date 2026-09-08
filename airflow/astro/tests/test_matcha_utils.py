@@ -23,6 +23,7 @@ from include.custom_functions.matcha_utils import (
     drop_stale_vintages,
     fqn,
     null_probe_sql,
+    oauth_scopes,
     old_name,
     overlap_sql,
     pod_databricks_env,
@@ -579,25 +580,75 @@ class TestDatabricksConnection:
     }
 
     def test_pod_env_names_match_what_the_container_reads(self):
-        with patch.object(matcha_utils, "conn_kwargs", autospec=True, return_value=self._FIELDS):
+        with (
+            patch.object(matcha_utils, "conn_kwargs", autospec=True, return_value=self._FIELDS),
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value="sql"),
+        ):
             env = pod_databricks_env()
         assert env == {
             "DATABRICKS_HOST": "https://dbc.example",
             "DATABRICKS_HTTP_PATH": "/sql/1.0/warehouses/abc",
             "DATABRICKS_CLIENT_ID": "client-id",
             "DATABRICKS_CLIENT_SECRET": "client-secret",
+            "DATABRICKS_SCOPES": "sql",
         }
 
     def test_pod_env_reads_the_variable_named_connection(self):
-        with patch.object(matcha_utils, "conn_kwargs", autospec=True, return_value=self._FIELDS) as kwargs:
+        with (
+            patch.object(matcha_utils, "conn_kwargs", autospec=True, return_value=self._FIELDS) as kwargs,
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value="sql"),
+        ):
             pod_databricks_env("some_other_variable")
         assert kwargs.call_args.args[0] == "some_other_variable"
+
+    def test_pod_env_carries_the_scopes_the_sdk_will_not_read(self):
+        """`Config.scopes` has no env binding in the SDK, so the container has
+        to be handed the value and pass it in explicitly. If this stopped being
+        exported, the pod would silently fall back to all-apis."""
+        with (
+            patch.object(matcha_utils, "conn_kwargs", autospec=True, return_value=self._FIELDS),
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value="sql"),
+        ):
+            env = pod_databricks_env()
+        assert env["DATABRICKS_SCOPES"] == "sql"
+
+    def test_scopes_come_from_a_variable_so_trial_and_error_needs_no_deploy(self):
+        with patch.object(matcha_utils.Variable, "get", autospec=True, return_value=" sql offline_access "):
+            assert oauth_scopes() == "sql offline_access"
+
+    def test_scopes_default_when_the_variable_is_unset(self):
+        """Variable.get resolves the default, so assert on the default the call
+        actually passes rather than on Variable.get's return."""
+        with patch.object(matcha_utils.Variable, "get", autospec=True) as get:
+            get.side_effect = lambda key, default=None: default
+            assert oauth_scopes() == "sql"
+
+    def test_the_warehouse_connection_requests_those_scopes(self):
+        with (
+            patch.object(matcha_utils, "connect_from_conn_id", autospec=True) as connect,
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value="sql"),
+        ):
+            matcha_utils.open_connection()
+        assert connect.call_args.kwargs["scopes"] == "sql"
+
+    def test_an_empty_scopes_variable_restores_the_sdk_default(self):
+        """Empty has to reach the SDK as None, not as an empty string — the
+        operator's way back to all-apis without a code change."""
+        with (
+            patch.object(matcha_utils, "connect_from_conn_id", autospec=True) as connect,
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value=""),
+        ):
+            matcha_utils.open_connection()
+        assert connect.call_args.kwargs["scopes"] is None
 
     def test_the_warehouse_connection_disables_cloud_fetch(self):
         """get_databricks_connection defaults CloudFetch ON, so `False` is
         stated at the call rather than left to connect_from_conn_id's default:
         these queries are scalar COUNT/EXISTS and small DISTINCTs."""
-        with patch.object(matcha_utils, "connect_from_conn_id", autospec=True) as connect:
+        with (
+            patch.object(matcha_utils, "connect_from_conn_id", autospec=True) as connect,
+            patch.object(matcha_utils.Variable, "get", autospec=True, return_value="sql"),
+        ):
             matcha_utils.open_connection()
         assert connect.call_args.kwargs["use_cloud_fetch"] is False
 
