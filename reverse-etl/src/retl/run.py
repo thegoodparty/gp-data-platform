@@ -31,6 +31,20 @@ class EmptySourceError(RuntimeError):
         super().__init__(f"flow {flow_id!r}: source model returned zero rows")
 
 
+class InvalidTrackingKeyError(RuntimeError):
+    """A corrupt key must never be silently sent or logged: `str(None)` == 'None' would
+    otherwise become a real HubSpot idProperty value, sent and logged so the row never
+    retries, and a duplicate key would silently last-write-wins instead of failing loud.
+    Raised while building payloads, before any guard or POST -- zero sends either way.
+    """
+
+    def __init__(self, flow_id: str, key_column: str, violation: str):
+        self.flow_id = flow_id
+        self.key_column = key_column
+        self.violation = violation
+        super().__init__(f"flow {flow_id!r}: key column {key_column!r} {violation}")
+
+
 class SendCapExceededError(RuntimeError):
     """Zero rows are sent when the diff exceeds the flow's cap."""
 
@@ -100,7 +114,16 @@ def read_source_payloads(connection: Any, flow: FlowConfig) -> dict[str, str]:
 
     payloads: dict[str, str] = {}
     for row in rows:
-        tracking_key = str(row[flow.key_column])
+        raw_key = row[flow.key_column]
+        if raw_key is None:
+            raise InvalidTrackingKeyError(flow.flow_id, flow.key_column, "is null")
+        tracking_key = str(raw_key)
+        if not tracking_key.strip():
+            raise InvalidTrackingKeyError(flow.flow_id, flow.key_column, f"is blank ({raw_key!r})")
+        if tracking_key in payloads:
+            raise InvalidTrackingKeyError(
+                flow.flow_id, flow.key_column, f"has a duplicate value {tracking_key!r}"
+            )
         payload = build_payload(row, excluded_columns=flow.excluded_columns)
         payloads[tracking_key] = serialize_payload(payload)
     return payloads

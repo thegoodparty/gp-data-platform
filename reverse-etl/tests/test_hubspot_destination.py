@@ -56,16 +56,19 @@ def test_parse_batch_response_confirms_using_the_original_sent_payload() -> None
 
 
 def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
-    """Catches: a partial failure's rejected rows being silently dropped instead of surfaced."""
+    """Catches: a partial failure's rejected rows being silently dropped instead of surfaced.
+
+    Uses HubSpot's documented error shape: a singular `objectWriteTraceId` context key
+    whose value is a list.
+    """
     response = HttpResponse(
         status_code=207,
         body={
             "results": [{"objectWriteTraceId": "p1"}],
             "errors": [
                 {
-                    "objectWriteTraceId": "p2",
                     "category": "VALIDATION_ERROR",
-                    "context": {"properties": ["phone"]},
+                    "context": {"objectWriteTraceId": ["p2"], "properties": ["phone"]},
                 }
             ],
         },
@@ -85,11 +88,51 @@ def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
     ]
 
 
+def test_parse_batch_response_reads_a_top_level_trace_id_on_an_error() -> None:
+    """Catches: dropping the top-level objectWriteTraceId fallback, in case the real sandbox
+    shape puts it there instead of under context (the documented shape is unverified)."""
+    response = HttpResponse(
+        status_code=207,
+        body={"results": [], "errors": [{"objectWriteTraceId": "p1", "category": "VALIDATION_ERROR"}]},
+    )
+    result = parse_batch_response(response, flow_id="hubspot_leads", sent_rows={"p1": '{"a":1}'})
+    assert [error.tracking_key for error in result.errors] == ["p1"]
+
+
 def test_parse_batch_response_never_confirms_a_row_hubspot_did_not_echo_back() -> None:
     """Catches: a row being marked sent when HubSpot's response never actually confirmed it."""
     response = HttpResponse(status_code=200, body={"results": []})
     result = parse_batch_response(response, flow_id="hubspot_leads", sent_rows={"p1": '{"a":1}'})
     assert result.confirmed == {}
+
+
+def test_parse_batch_response_sweeps_a_canceled_body_into_unknown_delivery() -> None:
+    """Catches: a whole-batch failure shaped like {"status":"CANCELED","results":[]} on HTTP
+    200 producing sent=0 errors=0 -- a failed delivery day indistinguishable from a quiet one."""
+    response = HttpResponse(status_code=200, body={"status": "CANCELED", "results": []})
+    result = parse_batch_response(
+        response, flow_id="hubspot_leads", sent_rows={"p1": '{"a":1}', "p2": '{"a":2}'}
+    )
+    assert result.confirmed == {}
+    assert {error.tracking_key for error in result.errors} == {"p1", "p2"}
+    assert {error.error_code for error in result.errors} == {"UNKNOWN_DELIVERY"}
+
+
+def test_parse_batch_response_sweeps_a_result_missing_its_own_trace_id() -> None:
+    """Catches: a results entry that omits objectWriteTraceId leaving its input neither
+    confirmed nor surfaced as an error."""
+    response = HttpResponse(status_code=200, body={"results": [{"id": "999"}]})
+    result = parse_batch_response(response, flow_id="hubspot_leads", sent_rows={"p1": '{"a":1}'})
+    assert result.confirmed == {}
+    assert result.errors == [
+        RowError(
+            flow_id="hubspot_leads",
+            tracking_key="p1",
+            error_code="UNKNOWN_DELIVERY",
+            property=None,
+            retryable=False,
+        )
+    ]
 
 
 def test_send_batch_with_retry_retries_a_retryable_status_then_succeeds() -> None:
@@ -186,6 +229,29 @@ def test_hubspot_destination_confirms_each_batch_before_the_next_batch_posts() -
     assert posts_seen_at_confirm == [1, 2]  # first confirm saw exactly 1 POST made, not 2
     assert isinstance(delivery, DeliveryResult)
     assert len(delivery.confirmed) == 150
+
+
+def test_hubspot_destination_confirms_the_first_batch_before_a_later_batch_raises() -> None:
+    """Catches: a refactor moving on_batch_confirmed after the loop, which would strand the
+    first batch's confirmations unlogged when a later batch fails -- the whole reason
+    per-batch appends exist."""
+    rows = [(f"p{i}", f'{{"n":{i}}}') for i in range(150)]  # 2 batches: 100 + 50
+    transport = FakeHttpTransport(
+        responses=[
+            HttpResponse(200, {"results": [{"objectWriteTraceId": f"p{i}"} for i in range(100)]}),
+            HttpResponse(401, {}),
+        ]
+    )
+    destination = HubSpotDestination(
+        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="secret"), transport=transport
+    )
+    confirmed_calls: list[dict[str, str]] = []
+
+    with pytest.raises(NonRetryableHubSpotError):
+        destination.deliver("hubspot_leads", rows, on_batch_confirmed=confirmed_calls.append)
+
+    assert len(confirmed_calls) == 1
+    assert len(confirmed_calls[0]) == 100
 
 
 def test_hubspot_destination_never_puts_the_token_in_the_request_body() -> None:

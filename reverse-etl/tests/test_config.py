@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from retl.config import MissingFlowConfigError, load_flow_config, load_run_env_config
+from retl.config import MissingFlowConfigError, load_flow_config, load_log_table
 
 FULL_ENV = {
     "RETL_FLOW_HUBSPOT_LEADS_SOURCE_RELATION": "goodparty_data_catalog.mart_sales_reverse_etl.contact_desired_state",
@@ -55,7 +55,7 @@ def test_load_flow_config_is_independent_per_flow_name() -> None:
     assert other.cap == 10
 
 
-def test_load_run_env_config_requires_log_table() -> None:
+def test_load_log_table_requires_it_to_be_set() -> None:
     """Catches: a run silently reading/writing an unset (empty-string) log table."""
     with pytest.raises(ValueError, match="RETL_LOG_TABLE"):
-        load_run_env_config({})
+        load_log_table({})

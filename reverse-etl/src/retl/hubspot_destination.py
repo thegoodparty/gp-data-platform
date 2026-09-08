@@ -157,7 +157,10 @@ def _error_tracking_key(error: Mapping[str, Any]) -> str | None:
     if trace_id:
         return str(trace_id)
     context = error.get("context") or {}
-    trace_ids = context.get("objectWriteTraceIds") or []
+    # HubSpot's documented error envelope carries the singular key with a list value;
+    # the plural spelling is an unverified fallback until the sandbox settles the real
+    # shape -- read both rather than betting on one.
+    trace_ids = context.get("objectWriteTraceId") or context.get("objectWriteTraceIds") or []
     return str(trace_ids[0]) if trace_ids else None
 
 
@@ -171,6 +174,9 @@ def _error_property(error: Mapping[str, Any]) -> str | None:
     return None
 
 
+UNKNOWN_DELIVERY_CODE = "UNKNOWN_DELIVERY"
+
+
 def parse_batch_response(
     response: HttpResponse, *, flow_id: str, sent_rows: Mapping[str, str]
 ) -> DeliveryResult:
@@ -179,6 +185,17 @@ def parse_batch_response(
     Confirmed payloads are always the ORIGINAL serialized payloads from `sent_rows`
     (looked up by objectWriteTraceId), never anything reconstructed from HubSpot's
     response body, so sent_log always holds exactly what our own diff produced.
+
+    Every input in `sent_rows` must come out of this function either confirmed or
+    named by an error. Without that sweep, a body shaped like
+    `{"status": "CANCELED", "results": []}` on HTTP 200 -- or a results entry that
+    omits its own objectWriteTraceId -- would leave those inputs both unconfirmed
+    and unreported: a failed delivery day indistinguishable from a quiet one. An
+    input left over after confirmed rows and attributable errors are removed gets a
+    manufactured UNKNOWN_DELIVERY error instead. This can double-count a row that
+    already has an unattributable error (tracking_key None) of its own; that is
+    accepted, since over-signal beats silence and an unlogged row still retries in
+    tomorrow's diff either way.
     """
     confirmed: dict[str, str] = {}
     for result in response.body.get("results", []):
@@ -196,6 +213,20 @@ def parse_batch_response(
         )
         for error in response.body.get("errors", [])
     ]
+
+    accounted_for = set(confirmed) | {e.tracking_key for e in errors if e.tracking_key is not None}
+    errors.extend(
+        RowError(
+            flow_id=flow_id,
+            tracking_key=tracking_key,
+            error_code=UNKNOWN_DELIVERY_CODE,
+            property=None,
+            retryable=False,
+        )
+        for tracking_key in sent_rows
+        if tracking_key not in accounted_for
+    )
+
     return DeliveryResult(confirmed=confirmed, errors=errors)
 
 

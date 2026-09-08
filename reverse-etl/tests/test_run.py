@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
 from retl.config import FlowConfig
 from retl.destinations import DeliveryResult, RowError
-from retl.run import EmptySourceError, SendCapExceededError, error_report_lines, execute_run
+from retl.run import (
+    EmptySourceError,
+    InvalidTrackingKeyError,
+    SendCapExceededError,
+    error_report_lines,
+    execute_run,
+)
 from tests._fakes import FakeConnection
 
 FLOW = FlowConfig(
@@ -130,6 +137,31 @@ def test_execute_run_reports_rejected_rows_in_the_summary_without_logging_them()
         connection=connection, flow=FLOW, log_table=LOG_TABLE, destination=_RejectingDestination()
     )
     assert summary.error_count == 1
+    assert connection.log_table == []
+
+
+@pytest.mark.parametrize(
+    "source_rows",
+    [
+        [{"gp_person_id": None, "firstname": "Jane"}],
+        [{"gp_person_id": "   ", "firstname": "Jane"}],
+        [{"gp_person_id": "p1", "firstname": "Jane"}, {"gp_person_id": "p1", "firstname": "Bob"}],
+    ],
+    ids=["null_key", "blank_key", "duplicate_key"],
+)
+def test_execute_run_raises_on_an_invalid_tracking_key_and_sends_nothing(
+    source_rows: list[dict[str, Any]],
+) -> None:
+    """Catches: a null key silently becoming the string 'None' and being sent/logged (so the
+    corrupt row never retries), a blank key doing the same, or a duplicate key silently
+    last-write-winning instead of failing the run loud before any guard or POST."""
+    connection = FakeConnection(source_rows=source_rows)
+    destination = _RejectingDestination()
+
+    with pytest.raises(InvalidTrackingKeyError):
+        execute_run(connection=connection, flow=FLOW, log_table=LOG_TABLE, destination=destination)
+
+    assert destination.called is False
     assert connection.log_table == []
 
 

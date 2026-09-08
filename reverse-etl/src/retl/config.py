@@ -58,20 +58,14 @@ def load_flow_config(flow_id: str, env: Mapping[str, str]) -> FlowConfig:
     )
 
 
-@dataclass(frozen=True)
-class RunEnvConfig:
-    """Facts shared by every flow in one run: which sent_log-shaped table this run uses.
+def load_log_table(env: Mapping[str, str]) -> str:
+    """Which sent_log-shaped table this run uses, shared by every flow in one run.
 
     One value, read once, regardless of destination: a CSV preview reads the same
     table (to diff against what is really logged) but never writes to it; a sandbox
     run points this at a scratch-schema table instead of the production one.
     """
-
-    log_table: str
-
-
-def load_run_env_config(env: Mapping[str, str]) -> RunEnvConfig:
     log_table = env.get("RETL_LOG_TABLE", "")
     if not log_table:
         raise ValueError("RETL_LOG_TABLE is not set")
-    return RunEnvConfig(log_table=log_table)
+    return log_table

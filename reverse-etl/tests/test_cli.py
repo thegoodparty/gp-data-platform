@@ -37,8 +37,11 @@ def test_build_parser_requires_source_and_destination() -> None:
 def test_main_runs_a_csv_preview_end_to_end(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Catches: a break anywhere in the source-to-destination wiring for the simplest real path."""
-    env = {**CSV_ENV, "RETL_CSV_OUTPUT_PATH": str(tmp_path / "preview.csv")}
+    """Catches: a break anywhere in the source-to-destination wiring for the simplest real
+    path -- a destination that returned without writing anything would still pass a
+    stdout-only assertion, so this checks the file the run was actually supposed to produce."""
+    csv_path = tmp_path / "preview.csv"
+    env = {**CSV_ENV, "RETL_CSV_OUTPUT_PATH": str(csv_path)}
     monkeypatch.setattr(os, "environ", env)
     fake_connection = FakeConnection(source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}])
     monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
@@ -50,6 +53,10 @@ def test_main_runs_a_csv_preview_end_to_end(
     captured = capsys.readouterr()
     assert "retl flow=hubspot_leads" in captured.out
     assert captured.err == ""  # a clean run has no error detail to print
+    assert csv_path.read_text().splitlines() == [
+        "tracking_key,payload",
+        'p1,"{""firstname"":""Jane"",""gp_person_id"":""p1""}"',
+    ]
 
 
 def test_main_prints_error_codes_to_stderr_when_rows_are_rejected(

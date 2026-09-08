@@ -8,25 +8,17 @@ from retl.databricks_io import DatabricksConnConfig, config_from_env, fetch_all_
 
 
 class _FakeCursorForFetch:
-    """A minimal cursor: proves fetch_all_rows sets arraysize and drains in batches."""
+    """A minimal cursor: proves fetch_all_rows drains in explicit-size batches."""
 
     def __init__(self, rows: Sequence[tuple[object, ...]], columns: list[str]):
         self._rows = rows
         self.description = [(name,) for name in columns]
-        self.arraysize = -1  # deliberately wrong, so the test fails if fetch_all_rows never sets it
         self._position = 0
 
     def fetchmany(self, size: int) -> list[tuple[object, ...]]:
         batch = list(self._rows[self._position : self._position + size])
         self._position += len(batch)
         return batch
-
-
-def test_fetch_all_rows_sets_arraysize_explicitly() -> None:
-    """Catches: relying on the connector's default arraysize (100k) instead of setting it."""
-    cursor = _FakeCursorForFetch([("p1",)], ["tracking_key"])
-    fetch_all_rows(cursor, batch_size=7)
-    assert cursor.arraysize == 7
 
 
 def test_fetch_all_rows_drains_multiple_batches() -> None:

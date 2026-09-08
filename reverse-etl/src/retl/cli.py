@@ -15,7 +15,7 @@ import sys
 from collections.abc import Sequence
 
 from . import csv_destination, databricks_io, hubspot_destination
-from .config import load_flow_config, load_run_env_config
+from .config import load_flow_config, load_log_table
 from .destinations import Destination
 from .run import error_report_lines, execute_run
 
@@ -46,12 +46,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         flow = load_flow_config(args.source, env)
-        run_env = load_run_env_config(env)
+        log_table = load_log_table(env)
         destination = _build_destination(args.destination, env)
         connection = databricks_io.connect(databricks_io.config_from_env(env))
         try:
             summary = execute_run(
-                connection=connection, flow=flow, log_table=run_env.log_table, destination=destination
+                connection=connection, flow=flow, log_table=log_table, destination=destination
             )
         finally:
             connection.close()

@@ -7,9 +7,9 @@ because the installed console script runs as a bare subprocess with no
 task-runner context for those lookups.
 
 Cursors default to `arraysize=100000`, so an unsized `fetchmany()` returns up to
-100k rows in one call and bounds nothing by itself. `fetch_all_rows` sets
-`.arraysize` explicitly and drains `fetchmany()` in a loop, so the batch size is a
-deliberate choice, not the connector's default.
+100k rows in one call and bounds nothing by itself. `fetch_all_rows` passes an
+explicit size to every `fetchmany()` call instead, and drains it in a loop, so the
+batch size is a deliberate choice, not the connector's default.
 """
 
 from __future__ import annotations
@@ -85,14 +85,12 @@ def connect(config: DatabricksConnConfig) -> Any:
 
 class _Cursor(Protocol):
     description: Any
-    arraysize: int
 
     def fetchmany(self, size: int) -> Any: ...
 
 
 def fetch_all_rows(cursor: _Cursor, *, batch_size: int = DEFAULT_FETCH_BATCH_SIZE) -> list[dict[str, Any]]:
     """Drain a cursor's result set in explicit-size batches, as a list of dict rows."""
-    cursor.arraysize = batch_size
     columns = [col[0] for col in cursor.description]
     rows: list[dict[str, Any]] = []
     while True:
