@@ -168,6 +168,21 @@ def test_the_pod_carries_no_image_pull_secrets():
     assert op.image_pull_secrets == []
 
 
+def test_the_image_is_pinned_to_the_pr_build():
+    """TEMPORARY, and deliberately loud: the image is hardcoded to this PR's
+    tag while the OAuth scopes are narrowed, so a run's build is knowable from
+    the DAG file rather than from a Variable set elsewhere.
+
+    This test exists to fail when the pin is reverted, which is the reminder
+    to delete it — the pr-900 tag is deleted when the PR closes, so merging
+    the pin would take every run to ImagePullBackOff.
+    """
+    module = _dag_module()
+    assert module.MATCHA_IMAGE.endswith(":pr-900")
+    for entity in _ENTITIES:
+        assert _DAG.get_task(f"{entity}.match").image.endswith(":pr-900")
+
+
 def test_match_pods_set_the_pull_policy_explicitly():
     """Kubernetes derives an unset policy FROM THE TAG — Always for `:latest`,
     IfNotPresent otherwise — so pinning `matcha_image_tag` to a sha would also
