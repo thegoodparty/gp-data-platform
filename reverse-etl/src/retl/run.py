@@ -114,7 +114,13 @@ def read_source_payloads(connection: Any, flow: FlowConfig) -> dict[str, str]:
 
     payloads: dict[str, str] = {}
     for row in rows:
-        raw_key = row[flow.key_column]
+        try:
+            raw_key = row[flow.key_column]
+        except KeyError as exc:
+            # A bare KeyError names only the column; the operator needs the flow too.
+            raise InvalidTrackingKeyError(
+                flow.flow_id, flow.key_column, "is not a column in the source model"
+            ) from exc
         if raw_key is None:
             raise InvalidTrackingKeyError(flow.flow_id, flow.key_column, "is null")
         tracking_key = str(raw_key)

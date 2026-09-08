@@ -146,8 +146,9 @@ def test_execute_run_reports_rejected_rows_in_the_summary_without_logging_them()
         [{"gp_person_id": None, "firstname": "Jane"}],
         [{"gp_person_id": "   ", "firstname": "Jane"}],
         [{"gp_person_id": "p1", "firstname": "Jane"}, {"gp_person_id": "p1", "firstname": "Bob"}],
+        [{"person_id": "p1", "firstname": "Jane"}],
     ],
-    ids=["null_key", "blank_key", "duplicate_key"],
+    ids=["null_key", "blank_key", "duplicate_key", "missing_key_column"],
 )
 def test_execute_run_raises_on_an_invalid_tracking_key_and_sends_nothing(
     source_rows: list[dict[str, Any]],
