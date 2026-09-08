@@ -9,11 +9,10 @@ with
     -- 'ts_found_race_net...' plus a handful of numeric collisions); without
     -- this dedup the left join fans out the race grain.
     --
-    -- For gp_election_id, prefer the BallotReady-sourced row when present:
-    -- BR is the authoritative carrier of a numeric br_race_id (1 BR race ->
-    -- 1 gp_election_id), so any_value across BR + TS collisions could
-    -- attach a numeric race to the wrong election cycle. Fall back to any
-    -- non-BR row only when no BR row exists for this br_race_id.
+    -- gp_election_id and number_of_seats prefer the BallotReady-sourced row:
+    -- BR is the authoritative carrier of a numeric br_race_id, so a vendor row
+    -- collided onto that id can describe another election cycle or seat. Fall
+    -- back to a non-BR row only where BR carries none.
     stage_per_br_race as (
         select
             br_race_id,
@@ -26,7 +25,15 @@ with
                 ),
                 max(gp_election_id)
             ) as gp_election_id,
-            max(number_of_seats) as number_of_seats
+            coalesce(
+                max(
+                    case
+                        when array_contains(source_systems, 'ballotready')
+                        then number_of_seats
+                    end
+                ),
+                max(number_of_seats)
+            ) as number_of_seats
         from {{ ref("election_stage") }}
         where br_race_id is not null
         group by br_race_id

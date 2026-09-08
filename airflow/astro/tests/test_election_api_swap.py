@@ -334,9 +334,12 @@ class _FakeCursor:
     def __init__(self, pg):
         self._pg = pg
         self._rows = []
+        # psycopg2 sets this on every statement; -1 is its "not applicable".
+        self.rowcount = -1
 
     def execute(self, sql, params=None):
         self._rows = self._pg._execute(sql, params)
+        self.rowcount = len(self._rows) if self._rows else 0
 
     def fetchone(self):
         return self._rows[0] if self._rows else None

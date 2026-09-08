@@ -11,6 +11,7 @@ predictably across all three schemas.
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 import psycopg2.extras
@@ -42,6 +43,22 @@ class ForeignKey:
     column: str
     ref_table: str
     on_delete: str = "SET NULL"
+    # "skip" deletes staged rows whose parent is missing instead of letting the
+    # constraint add fail. For a table whose mart refreshes on a slower cadence
+    # than its parent's, where an absent parent means a stale row, not a bad one.
+    on_missing_parent: Literal["fail", "skip"] = "fail"
+    # Ceiling on what "skip" may quietly remove, as a share of the rows loaded.
+    # Past it the parents are not late, the child's key has changed, and
+    # pruning would publish a hollowed-out table with every gate green.
+    max_missing_share: float = 0.01
+
+    def __post_init__(self) -> None:
+        # A typo here degrades to "fail" and delivers the swap-wide outage the
+        # policy exists to prevent, so reject it at declaration.
+        if self.on_missing_parent not in ("fail", "skip"):
+            raise ValueError(
+                f"{self.name}: on_missing_parent must be 'fail' or 'skip', got {self.on_missing_parent!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -51,7 +68,9 @@ class TableSyncSpec:
     target_table: str
     target_schema: str = "public"
     staging_schema: str = "staging"
-    pk_column: str = "id"
+    # The FK builder targets the referenced table's `id`, so a composite-key
+    # table cannot be an FK parent.
+    pk_columns: tuple[str, ...] = ("id",)
     indexes: tuple[Index, ...] = field(default_factory=tuple)
     fkeys: tuple[ForeignKey, ...] = field(default_factory=tuple)
 
@@ -78,6 +97,11 @@ class TableSyncSpec:
     def fkey_names(self) -> tuple[str, ...]:
         return tuple(fk.name for fk in self.fkeys)
 
+    @property
+    def pruning_fkeys(self) -> tuple[ForeignKey, ...]:
+        """FKs that prune, in the order `constraint_ddl` emits their DELETEs."""
+        return tuple(fk for fk in self.fkeys if fk.on_missing_parent == "skip")
+
     def stage_name(self, canonical: str) -> str:
         """`ZipToPosition_zip_code_idx` -> `ZipToPosition_new_zip_code_idx`."""
         return canonical.replace(self.target_table, self.new_table, 1)
@@ -94,11 +118,26 @@ class TableSyncSpec:
         enforces with a parent.build_indexes >> child.build_indexes edge.
         """
         sn, nt = self.staging_schema, self.new_table
-        statements = [
+        statements = []
+        # Prune first: deleting once the PK exists would also have to remove
+        # index entries, and leaves dead ones behind for the indexes still
+        # to be built.
+        for fk in self.pruning_fkeys:
+            # The IS NOT NULL matters: NOT EXISTS is true for a NULL column, so
+            # without it this deletes every unparented row rather than every
+            # orphaned one — on a nullable FK, every root row.
+            statements.append(
+                f'DELETE FROM "{sn}"."{nt}" stg '
+                f'WHERE stg."{fk.column}" IS NOT NULL AND NOT EXISTS ('
+                f'SELECT 1 FROM "{sn}"."{fk.ref_table}_new" parent '
+                f'WHERE parent.id = stg."{fk.column}")'
+            )
+        pk_cols = ", ".join(f'"{c}"' for c in self.pk_columns)
+        statements.append(
             f'ALTER TABLE "{sn}"."{nt}" '
             f'ADD CONSTRAINT "{self.stage_name(self.pk_name)}" '
-            f'PRIMARY KEY ("{self.pk_column}")'
-        ]
+            f"PRIMARY KEY ({pk_cols})"
+        )
         for idx in self.indexes:
             unique = "UNIQUE " if idx.unique else ""
             statements.append(
@@ -206,11 +245,12 @@ def run_quality_checks(
         # Guard the query, not just the check: the join is expensive on the
         # large tables and pointless without a declared floor.
         if gate.min_id_overlap is not None and prior_count > 0:
+            join_predicate = " AND ".join(f'live."{c}" = stg."{c}"' for c in spec.pk_columns)
             cur.execute(
-                f'SELECT count(stg."{spec.pk_column}") '
+                "SELECT count(*) "
                 f'FROM "{spec.target_schema}"."{spec.target_table}" live '
                 f'JOIN "{spec.staging_schema}"."{spec.new_table}" stg '
-                f'ON live."{spec.pk_column}" = stg."{spec.pk_column}"'
+                f"ON {join_predicate}"
             )
             check_id_overlap(cur.fetchone()[0], prior_count, gate, spec.target_table)
 
@@ -319,18 +359,52 @@ def bulk_insert_from_databricks(
     return total
 
 
-def apply_ddl(conn, statements: Sequence[str]) -> None:
-    """Run a list of DDL statements in a single transaction."""
+def apply_ddl(conn, statements: Sequence[str]) -> list[int]:
+    """Run `statements` in one transaction, returning each one's rowcount."""
     cur = conn.cursor()
+    rowcounts: list[int] = []
     try:
         for stmt in statements:
             cur.execute(stmt)
+            rowcounts.append(cur.rowcount)
         conn.commit()
     except Exception:
         conn.rollback()
         raise
     finally:
         cur.close()
+    return rowcounts
+
+
+def apply_constraints(conn, spec: TableSyncSpec, loaded_count: int) -> int:
+    """Build the staging table's constraints and return the rows that survived.
+
+    `constraint_ddl` emits each pruning FK's DELETE ahead of everything else,
+    so the leading rowcounts are what those prunes removed. The count returned
+    here is what the quality gate must be given: the load's own count is taken
+    before the prune runs, and comparing that against prior live would pass a
+    table the prune has since hollowed out.
+    """
+    rowcounts = apply_ddl(conn, spec.constraint_ddl())
+    pruned = 0
+    for fk, deleted in zip(spec.pruning_fkeys, rowcounts, strict=False):
+        if not deleted:
+            continue
+        share = deleted / loaded_count if loaded_count else 1.0
+        if share > fk.max_missing_share:
+            raise ValueError(
+                f"{spec.target_table}: {deleted} of {loaded_count} staged rows have no "
+                f"{fk.ref_table} ({share:.1%}, over {fk.max_missing_share:.0%}) — the key "
+                f"has changed rather than lagged, refusing to swap"
+            )
+        logger.info(
+            "Pruned %d %s rows with no %s in this vintage",
+            deleted,
+            spec.target_table,
+            fk.ref_table,
+        )
+        pruned += deleted
+    return loaded_count - pruned
 
 
 def prior_live_state(cur, spec: TableSyncSpec) -> tuple[bool, int]:

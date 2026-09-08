@@ -45,7 +45,7 @@ DISTRICT_UNIVERSE_TABLE = "int__l2_district_universe"
 # the Braintrust API's transaction id -- the UI displays this same version as
 # hash 3a27a867 -- because load_prompt pins by transaction id and 500s on the
 # UI hash (verified live 2026-08-27).
-PINNED_PROMPT_VERSION = "1000197803142350171"
+PINNED_PROMPT_VERSION = "1000196719110653589"
 
 MENU_SIZE = 13
 STATE_QUERY_INSERT_INDEX = 10  # 11th slot

@@ -38,13 +38,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # auto_liquid_cluster would issue ALTER TABLE CLUSTER BY AUTO, which
         # Delta rejects against that property and fails the whole merge.
         auto_liquid_cluster=False,
-        # A full refresh would rebuild without the retired vendor columns this
-        # table has accumulated (append_new_columns never drops), which the
-        # agent voter views still project by name, and would also wipe the
-        # clustering property above. Pin it off until the retired-column
-        # cleanup retargets the views first; that cleanup flips this
-        # deliberately.
-        full_refresh=False,
+        # Delta requires the hierarchical columns to be a subset of the
+        # clustering columns, so a rebuild with none set is rejected. Naming them
+        # first matches int__l2_nationwide_uniform_raw_districts; LALVOTERID is
+        # the merge unique_key.
+        liquid_clustered_by=["Voters_Active", "state_postal_code", "LALVOTERID"],
         tags=[
             "intermediate",
             "l2",

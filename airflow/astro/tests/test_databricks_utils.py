@@ -46,6 +46,10 @@ class TestIsNonRetryableAuthError:
             "invalid_client: Client authentication failed",
             "Error during request to server. invalid_client: ...",
             "CLIENT AUTHENTICATION FAILED",  # case-insensitive
+            # A secret minted without the scope the SDK asks for. Permanent
+            # until the secret or the requested scopes change, but it used to
+            # read as retryable and burn the full ~10 min loop on every task.
+            "access_denied: Scopes 'all-apis' are not assigned to the client a2538681",
         ],
     )
     def test_auth_errors_are_non_retryable(self, message):
@@ -136,40 +140,6 @@ class TestGetDatabricksConnection:
 # ---------------------------------------------------------------------------
 
 
-class TestOAuthScopes:
-    """What the token request asks for. The SDK defaults to all-apis, which a
-    service principal has to be granted; where it is not, every request fails
-    with "Scopes 'all-apis' are not assigned to the client"."""
-
-    @staticmethod
-    def _config_from_connect(scopes):
-        """Build a connection, then invoke the credentials provider the
-        connector was handed and report how Config was constructed."""
-        with (
-            patch.object(databricks_utils.databricks_sql, "connect", autospec=True) as connect,
-            patch.object(databricks_utils, "Config", autospec=True) as config,
-            patch.object(databricks_utils, "oauth_service_principal", autospec=True),
-        ):
-            get_databricks_connection(
-                host="https://dbc.example",
-                http_path="/sql/1.0/warehouses/abc",
-                client_id="cid",
-                client_secret="secret",
-                scopes=scopes,
-            )
-            connect.call_args.kwargs["credentials_provider"]()
-        return config.call_args.kwargs
-
-    def test_scopes_reach_the_token_request(self):
-        assert self._config_from_connect("sql")["scopes"] == "sql"
-
-    def test_none_leaves_the_sdk_default_untouched(self):
-        """Every other caller in the repo passes nothing, so `scopes` must be
-        absent from the Config call rather than present-and-empty — the SDK
-        only falls back to all-apis when the attribute is unconfigured."""
-        assert "scopes" not in self._config_from_connect(None)
-
-
 class TestReadDatabricksTable:
     """Validation, error handling, and happy path of read_databricks_table."""
 
@@ -179,13 +149,17 @@ class TestReadDatabricksTable:
         login="cid",
         password="secret",
         http_path="/sql/1.0/warehouses/abc",
+        scopes=None,
     ):
         """A mock Airflow Connection with Databricks fields."""
         db_conn = MagicMock()
         db_conn.host = host
         db_conn.login = login
         db_conn.password = password
-        db_conn.extra_dejson = {"http_path": http_path} if http_path else {}
+        extra = {"http_path": http_path} if http_path else {}
+        if scopes is not None:
+            extra["scopes"] = scopes
+        db_conn.extra_dejson = extra
         return db_conn
 
     @pytest.mark.parametrize("missing", ["host", "login", "password", "http_path"])
@@ -338,3 +312,41 @@ class TestReadDatabricksPartitioned:
             pytest.raises(ValueError, match="missing a required"),
         ):
             read_databricks_partitioned("SELECT a, state FROM t", "state")
+
+
+class TestConnectionScopes:
+    """The SDK asks for `all-apis` unless told otherwise, so a secret minted
+    with narrower scopes is refused at the token endpoint. This lives in a
+    Variable, not the connection: Astro's Databricks connection form has fixed
+    fields and no free-form extra, so the extra is not settable in the UI."""
+
+    def _patched(self, scopes_value):
+        conn = TestReadDatabricksTable()._db_conn()
+
+        def variable_get(key, default=None):
+            return {"databricks_conn_id": "conn-id", "databricks_scopes": scopes_value}.get(key, default)
+
+        return (
+            patch.object(databricks_utils.Variable, "get", side_effect=variable_get),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=conn),
+        )
+
+    def test_scopes_default_to_unset_so_the_sdk_asks_for_all_apis(self):
+        """Prod must not move because dev narrowed."""
+        a, b = self._patched("")
+        with a, b:
+            assert databricks_utils.conn_kwargs()["scopes"] is None
+
+    @pytest.mark.parametrize(
+        "declared,expected",
+        [
+            ("sql", ["sql"]),
+            ("sql,unity-catalog", ["sql", "unity-catalog"]),
+            ("sql, unity-catalog", ["sql", "unity-catalog"]),
+            (" sql , unity-catalog ", ["sql", "unity-catalog"]),
+        ],
+    )
+    def test_declared_scopes_are_parsed(self, declared, expected):
+        a, b = self._patched(declared)
+        with a, b:
+            assert databricks_utils.conn_kwargs()["scopes"] == expected

@@ -47,8 +47,8 @@ still builds and gates the dated tables.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
 - `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
   a sha to pin a deployment without a code change.
-- `matcha_databricks_scopes` — OAuth scopes the Databricks token request asks
-  for. Defaults to `sql`; empty restores the SDK default of `all-apis`.
+- `databricks_scopes` — OAuth scopes the Databricks token requests ask for,
+  shared with the other DAGs. Unset means the SDK default of `all-apis`.
 
 """
 

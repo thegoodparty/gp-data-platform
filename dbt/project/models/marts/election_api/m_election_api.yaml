@@ -375,7 +375,8 @@ models:
       - name: number_of_seats
         description: >
           Number of seats this election fills, from mart_civics.election_stage
-          (br_race_id match). Null when civics has no matching stage row.
+          (br_race_id match), preferring the BallotReady stage row. Null when
+          civics has no matching stage row.
         tests:
           - dbt_utils.accepted_range:
               arguments:

@@ -34,7 +34,7 @@ Set on the Astro deployment as **Airflow Variables**:
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
-| `matcha_databricks_scopes` | OAuth scopes the Databricks token request asks for, comma or space separated. Defaults to `sql`. Empty restores the SDK default of `all-apis`. See "OAuth scopes". |
+| `databricks_scopes` | OAuth scopes the Databricks token requests ask for, comma or space separated. Shared with the other DAGs. Unset means the SDK default of `all-apis`. See "OAuth scopes". |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
@@ -97,36 +97,35 @@ support ticket per deployment, and flipping the package only after both deployme
 
 ## OAuth scopes
 
-The token request asks for what `matcha_databricks_scopes` names, defaulting to `sql`. The Databricks
-SDK's own default is `all-apis`, and a service principal has to be **granted** that scope: where it is
-not, every token request fails before anything reaches the warehouse, with
+Token requests ask for whatever the **`databricks_scopes`** Variable names — shared with the other DAGs,
+read inside `conn_kwargs`, comma or space separated. Unset means the Databricks SDK's default of
+`all-apis`, and a service principal has to be **granted** that scope. Where it is not, every request
+fails before anything reaches the warehouse, with
 
 ```
 access_denied: Scopes 'all-apis' are not assigned to the client <client_id>
 ```
 
-which names the client but never the scope it refused. That is what stopped the first dev run: the pod
+which names the client but never the scope it refused. That is what stopped the first dev runs: the pod
 pulled and started, then failed reading its input table.
 
-`sql` is a starting guess for warehouse access, not a verified value. Narrowing it is deliberately a
-runtime knob so finding the right set costs a Variable edit rather than a deploy:
+Finding the right set is deliberately a Variable edit rather than a deploy:
 
-1. Set `matcha_databricks_scopes` on the deployment and clear the failed `match` task.
-2. Read the first lines of the pod log — it prints `OAuth scopes requested: ...` before connecting, so
-   the log always says what was actually asked for.
-3. If the request is refused, try the next candidate. Worth trying in order: `sql`,
-   `sql offline_access`, then empty (which restores `all-apis` and confirms whether the grant is the
-   problem rather than the scope).
+1. Set `databricks_scopes` on the deployment and re-run.
+2. Read the pod log's first lines — the container prints `OAuth scopes requested: ...` before
+   connecting, so the log always says what was actually asked for.
+3. If refused, try the next candidate, and remember the value has to match what the service
+   principal's OAuth secret actually carries.
 
-Both halves read the same Variable, so the pod and the `gate`/`swap` tasks can never disagree about
-which scopes they asked for. The SDK reads every other `DATABRICKS_*` variable from the environment by
-itself but **not** this one — its `scopes` config attribute has no env binding — so the DAG passes
-`DATABRICKS_SCOPES` to the container and the container hands it to `Config` explicitly.
+The pod and the `gate`/`swap` tasks read the same Variable through the same accessor, so they can never
+disagree about which scopes they asked for. The SDK reads every other `DATABRICKS_*` variable from the
+environment by itself but **not** this one — its `scopes` config attribute has no env binding — so the
+DAG exports `DATABRICKS_SCOPES` and the container hands it to `Config` explicitly.
 
-**Iterating on the container's half needs an image, not a deploy.** The matcha container workflow
-publishes `matcha:pr-<number>` on every push to a PR that touches `matcha/**`, so point
-`matcha_image_tag` at that tag to test a change to the scope handling before it merges, then back to
-`latest` afterwards.
+**The container's half needs an image, not a deploy.** The matcha container workflow publishes
+`matcha:pr-<number>` on every PR push touching `matcha/**`, so point `matcha_image_tag` at that tag to
+test scope handling before it merges, then back to `latest` afterwards. A run whose log has no
+`OAuth scopes requested:` line is running an image that predates this.
 
 ## How the pod gets its Databricks credentials
 

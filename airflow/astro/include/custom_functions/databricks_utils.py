@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from collections.abc import Generator
 from typing import TypedDict
@@ -19,6 +20,9 @@ logger = logging.getLogger("airflow.task")
 _NON_RETRYABLE_AUTH_MARKERS = (
     "invalid_client",
     "client authentication failed",
+    # A secret minted without the scopes we ask for. Permanent until either the
+    # secret or the connection's `scopes` extra changes.
+    "are not assigned to the client",
 )
 
 
@@ -36,17 +40,12 @@ def get_databricks_connection(
     max_retries: int = 20,
     retry_delay: int = 30,
     use_cloud_fetch: bool = True,
-    scopes: str | None = None,
+    scopes: list[str] | None = None,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
 
     Retries on failure to allow for SQL warehouse cold-start (~10 min).
-
-    `scopes` (comma or space separated) is what the token request asks for.
-    None leaves the SDK's default of `all-apis`, which is what every caller
-    here has always sent — narrow it per caller, not globally, since a scope
-    the service principal lacks fails the request outright.
     """
     # Normalize — server_hostname needs bare host, Config needs https://
     hostname = host.removeprefix("https://").removeprefix("http://")
@@ -56,9 +55,10 @@ def get_databricks_connection(
             host=f"https://{hostname}",
             client_id=client_id,
             client_secret=client_secret,
-            # Only when set: the SDK treats an empty scopes list as "unconfigured"
-            # and falls back to all-apis, so passing None keeps that path exact.
-            **({"scopes": scopes} if scopes else {}),
+            # None leaves the SDK's default of ["all-apis"]. Narrower scopes
+            # must match what the service principal's secret was minted with,
+            # or the token endpoint refuses with "are not assigned".
+            scopes=scopes,
         )
         return oauth_service_principal(config)
 
@@ -99,14 +99,19 @@ class _ConnKwargs(TypedDict):
     http_path: str
     client_id: str
     client_secret: str
+    scopes: list[str] | None
 
 
 def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
     """The host and OAuth credentials of the Databricks connection an Airflow Variable names.
 
-    No default on the Variable read: an unset `databricks_conn_id` raises here
-    rather than resolving to some assumed connection, since the wrong guess is
-    a task that quietly reads or writes the wrong environment.
+    No default on the connection-id read: an unset `databricks_conn_id` raises
+    here rather than resolving to some assumed connection, since the wrong
+    guess is a task that quietly reads or writes the wrong environment.
+
+    Public because the matcha pod needs the same four values, plus the same
+    scopes, as its own env vars — one accessor so the pod and the tasks around
+    it cannot drift.
     """
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
@@ -118,25 +123,27 @@ def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwar
             "host, login, password, or http_path (extra) field"
         )
 
+    # A Variable, not a connection extra: Astro's Databricks connection form has
+    # fixed fields and no free-form extra, so the extra cannot be set from the
+    # UI. Comma- or space-separated, matching the scopes the service
+    # principal's OAuth secret carries. Unset means all-apis.
+    scopes = [s for s in re.split(r"[,\s]+", Variable.get("databricks_scopes", default="")) if s]
+
     return {
         "host": db_conn.host,
         "http_path": http_path,
         "client_id": db_conn.login,
         "client_secret": db_conn.password,
+        "scopes": scopes or None,
     }
 
 
 def connect_from_conn_id(
     databricks_conn_id_var: str = "databricks_conn_id",
     use_cloud_fetch: bool = False,
-    scopes: str | None = None,
 ) -> Connection:
     """Connect to the Databricks warehouse an Airflow Variable names."""
-    return get_databricks_connection(
-        **conn_kwargs(databricks_conn_id_var),
-        use_cloud_fetch=use_cloud_fetch,
-        scopes=scopes,
-    )
+    return get_databricks_connection(**conn_kwargs(databricks_conn_id_var), use_cloud_fetch=use_cloud_fetch)
 
 
 def read_databricks_table(

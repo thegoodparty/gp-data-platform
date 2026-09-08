@@ -5,11 +5,20 @@ models:
       cleans phone numbers, normalizes date separators (slash to dash), trims
       text fields, and casts boolean columns via cast_to_boolean. Invalid rows
       (null name/state) are filtered via anti-join to the _invalid model.
+      Election dates and filing deadlines are parsed with the component order
+      detected per delivery file, since some files write day-first.
     columns:
       - name: _airbyte_raw_id
         data_tests:
           - not_null
           - unique
+      - name: is_day_first_file
+        description: >
+          Whether this delivery file writes two-component dates day-first
+          (25-08-2026) rather than month-first (11-3-2026). Detected per file
+          from dates whose first component exceeds 12.
+        data_tests:
+          - not_null
       - name: first_name
         data_tests:
           - not_null
