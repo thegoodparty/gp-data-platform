@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from typing import cast
 
@@ -88,3 +89,51 @@ def test_run_statement_surfaces_databricks_error(monkeypatch: pytest.MonkeyPatch
 def test_run_statement_raises_without_warehouse() -> None:
     with pytest.raises(RuntimeError, match="warehouse"):
         databricks.run_statement(_CFG, "SELECT 1", warehouse_id="")
+
+
+class TestDatabricksScopes:
+    """The SDK requests all-apis unless told otherwise, so a service principal
+    whose secret was minted with narrower scopes is refused at the token
+    endpoint. WorkspaceClient reads auth from the environment, and `scopes` has
+    no env binding of its own, so the loader has to pass it explicitly."""
+
+    def test_unset_means_the_sdk_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Prod must not move until its secret and this are changed together."""
+        monkeypatch.delenv("DATABRICKS_SCOPES", raising=False)
+        assert databricks.databricks_scopes() is None
+
+    def test_blank_means_the_sdk_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Astro renders an unset Variable as an empty string, not an absent var."""
+        monkeypatch.setenv("DATABRICKS_SCOPES", "  ")
+        assert databricks.databricks_scopes() is None
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("sql", ["sql"]),
+            ("sql,unity-catalog", ["sql", "unity-catalog"]),
+            ("sql, unity-catalog", ["sql", "unity-catalog"]),
+            (" sql  unity-catalog\n", ["sql", "unity-catalog"]),
+        ],
+    )
+    def test_declared_scopes_are_parsed(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str, expected: list[str]
+    ) -> None:
+        monkeypatch.setenv("DATABRICKS_SCOPES", raw)
+        assert databricks.databricks_scopes() == expected
+
+    def test_workspace_client_requests_the_declared_scopes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DATABRICKS_SCOPES", "sql, unity-catalog")
+        seen: dict[str, object] = {}
+
+        class _FakeSdk:
+            def WorkspaceClient(self, **kw):
+                seen.update(kw)
+                return object()
+
+        monkeypatch.setitem(sys.modules, "databricks.sdk", _FakeSdk())
+        databricks.workspace_client(
+            BaseLoaderConfig(aws_region="us-west-2", aws_profile=None, account_id="1", s3_bucket="b")
+        )
+
+        assert seen == {"scopes": ["sql", "unity-catalog"]}
