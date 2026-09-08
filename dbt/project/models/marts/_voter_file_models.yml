@@ -11,6 +11,8 @@ models:
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
       tags: ["monthly"]
+      # Set allow_l2_refresh: true to rebuild this 219M-row table.
+      full_refresh: "{{ var('allow_l2_refresh', false) | as_bool }}"
       meta:
         dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
         # optional: comma/space-separated list like "AK,AL" for iterative runs
