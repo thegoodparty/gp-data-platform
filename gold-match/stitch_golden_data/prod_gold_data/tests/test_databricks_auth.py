@@ -2,6 +2,8 @@
 credentials take priority over the PAT when both are configured, the PAT
 still works alone, and construction refuses only when neither is present."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from shared.databricks_client import DatabricksClient
@@ -48,7 +50,12 @@ def test_m2m_config_pins_oauth_auth_type(monkeypatch):
     import databricks.sdk.core as sdk_core
 
     config_kwargs = {}
-    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    # A real (non-Mock) stub, so it must carry the method the client logs from.
+    monkeypatch.setattr(
+        sdk_core,
+        "Config",
+        lambda **kw: config_kwargs.update(kw) or SimpleNamespace(get_scopes_as_string=lambda: "stub"),
+    )
     monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
 
     client = DatabricksClient(server_hostname="h", http_path="p")
@@ -113,7 +120,12 @@ def test_m2m_scopes_env_reaches_the_config(monkeypatch):
     import databricks.sdk.core as sdk_core
 
     config_kwargs = {}
-    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    # A real (non-Mock) stub, so it must carry the method the client logs from.
+    monkeypatch.setattr(
+        sdk_core,
+        "Config",
+        lambda **kw: config_kwargs.update(kw) or SimpleNamespace(get_scopes_as_string=lambda: "stub"),
+    )
     monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
 
     client = DatabricksClient(server_hostname="h", http_path="p")
@@ -137,7 +149,12 @@ def test_m2m_scopes_absent_keeps_the_sdk_default(monkeypatch):
     import databricks.sdk.core as sdk_core
 
     config_kwargs = {}
-    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    # A real (non-Mock) stub, so it must carry the method the client logs from.
+    monkeypatch.setattr(
+        sdk_core,
+        "Config",
+        lambda **kw: config_kwargs.update(kw) or SimpleNamespace(get_scopes_as_string=lambda: "stub"),
+    )
     monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
 
     client = DatabricksClient(server_hostname="h", http_path="p")

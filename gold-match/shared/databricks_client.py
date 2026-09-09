@@ -74,21 +74,20 @@ class DatabricksClient:
         error instead of the credentials we chose."""
         if self._m2m_provider is None:
             from databricks.sdk.core import Config, oauth_service_principal
-            if self._scopes:
-                # The token endpoint's refusal names the client but never the
-                # scopes it refused, so record what was requested while it is
-                # still knowable.
-                self.logger.info(f"Requesting OAuth scopes: {self._scopes}")
-            self._m2m_provider = oauth_service_principal(
-                Config(
-                    host=f"https://{self.server_hostname}",
-                    client_id=self._client_id,
-                    client_secret=self._client_secret,
-                    auth_type="oauth-m2m",
-                    # None keeps the SDK default (all-apis).
-                    scopes=self._scopes or None,
-                )
+            config = Config(
+                host=f"https://{self.server_hostname}",
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                auth_type="oauth-m2m",
+                # None keeps the SDK default (all-apis). The SDK reads no env
+                # var for this field, so forwarding must be explicit.
+                scopes=self._scopes or None,
             )
+            # Log the SDK's RESOLVED value, not the configured one: an unset
+            # variable silently becomes `all-apis`, and that is exactly the
+            # request a narrowed principal refuses.
+            self.logger.info(f"Requesting OAuth scopes: {config.get_scopes_as_string()}")
+            self._m2m_provider = oauth_service_principal(config)
         return self._m2m_provider
 
     def connect(self) -> Connection:
