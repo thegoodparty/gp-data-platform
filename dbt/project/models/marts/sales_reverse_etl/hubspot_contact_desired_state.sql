@@ -186,7 +186,7 @@ with
     -- until tomorrow; this flow's own log closes that window.
     already_sent as (
         select distinct tracking_key as gp_person_id
-        from {{ source("reverse_etl", "sent_log_hubspot_leads") }}
+        from {{ source("reverse_etl", "sent_log_hubspot") }}
     ),
 
     -- Our id disagrees with the id already stamped on a contact this person is

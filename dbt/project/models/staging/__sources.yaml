@@ -1749,7 +1749,7 @@ sources:
       Per-flow reverse-ETL send logs. Each table is created and owned by the job that
       writes it; dbt only reads them. One row per delivery the destination confirmed.
     tables:
-      - name: sent_log_hubspot_leads
+      - name: sent_log_hubspot
         description: >
           Confirmed sends for the HubSpot contact flow. Read here only to tell a contact
           we have already created from one we have not, in the window before the daily
