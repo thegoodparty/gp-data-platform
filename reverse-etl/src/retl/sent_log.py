@@ -94,35 +94,16 @@ def verify_log_table_identity(connection: _Connection, log_table: str, flow_id: 
         raise WrongLogTableError(flow_id, log_table, found=found)
 
 
-def _table_exists(connection: _Connection, log_table: str) -> bool:
-    """A lightweight existence probe, for init's "created vs already present" report only.
-
-    Broad on purpose: any failure to read from the table -- not only a documented
-    "table not found" error -- counts as "did not exist yet". Safe to be this loose
-    because it only shapes a cosmetic report line; the DDL that follows is
-    unconditionally idempotent regardless of what this probe concluded.
-    """
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(f"select 1 from {log_table} limit 0")
-    except Exception:
-        return False
-    return True
-
-
-def init_log_table(connection: _Connection, log_table: str, flow_id: str) -> bool:
+def init_log_table(connection: _Connection, log_table: str, flow_id: str) -> None:
     """Create `log_table`, stamped for `flow_id`, if it does not exist yet.
 
     Verifies the stamp either way: IF NOT EXISTS makes re-running init against an
     EXISTING table a true no-op, so without this check, pointing init at another
     flow's already-stamped table would silently succeed instead of failing.
-    Returns True if this call created the table, False if it already existed.
     """
-    already_existed = _table_exists(connection, log_table)
     with connection.cursor() as cursor:
         cursor.execute(create_log_table_sql(log_table, flow_id))
     verify_log_table_identity(connection, log_table, flow_id)
-    return not already_existed
 
 
 def latest_sent_sql(log_table: str) -> str:

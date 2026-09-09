@@ -77,9 +77,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         connection = databricks_io.connect(databricks_io.config_from_env(env))
         try:
             if args.init_log:
-                created = sent_log.init_log_table(connection, flow.log_table, flow.flow_id)
-                state = "created" if created else "already present"
-                print(f"retl init-log flow={flow.flow_id} table={flow.log_table} {state}")
+                sent_log.init_log_table(connection, flow.log_table, flow.flow_id)
+                print(f"retl init-log flow={flow.flow_id} table={flow.log_table} initialized")
                 return 0
 
             destination = _build_destination(args.destination, env)

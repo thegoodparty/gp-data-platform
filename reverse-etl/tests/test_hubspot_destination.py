@@ -55,6 +55,31 @@ def test_parse_batch_response_confirms_using_the_original_sent_payload() -> None
     assert result.errors == []
 
 
+def test_parse_batch_response_attributes_a_grouped_error_to_every_key_it_names() -> None:
+    """Catches: an error naming several trace ids being attributed only to the first,
+    which would report the real category for one row and dump the rest into
+    UNKNOWN_DELIVERY, corrupting the diagnostic histogram."""
+    response = HttpResponse(
+        status_code=207,
+        body={
+            "results": [],
+            "errors": [
+                {
+                    "category": "VALIDATION_ERROR",
+                    "context": {"objectWriteTraceId": ["p1", "p2"], "properties": ["phone"]},
+                }
+            ],
+        },
+    )
+    result = parse_batch_response(
+        response, flow_id="hubspot_leads", sent_rows={"p1": '{"phone":"x"}', "p2": '{"phone":"y"}'}
+    )
+    assert [(e.tracking_key, e.error_code) for e in result.errors] == [
+        ("p1", "VALIDATION_ERROR"),
+        ("p2", "VALIDATION_ERROR"),
+    ]
+
+
 def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
     """Catches: a partial failure's rejected rows being silently dropped instead of surfaced.
 

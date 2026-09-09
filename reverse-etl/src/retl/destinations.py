@@ -1,13 +1,9 @@
 """The shared destination contract.
 
-Two destinations ship in v1 (hubspot_contacts, csv) as a plain if/else in `cli.py`,
-not a registry: two destinations are not architecture, and there is no third one
-yet to generalize for. Both implement `deliver`, which never appends to `sent_log`
-itself: the caller (run.py)
-owns the log and hands each destination an `on_batch_confirmed` callback so an append
-happens exactly where a batch is confirmed. csv_destination never calls it, which is
-what makes "the CSV destination never writes any log" true by construction rather
-than by a config flag someone could get wrong.
+The caller (run.py) owns the log: each destination gets an `on_batch_confirmed`
+callback so an append happens exactly where a batch is confirmed, and the CSV
+destination never calls it -- "a preview never writes any log" holds by
+construction rather than by a config flag someone could get wrong.
 """
 
 from __future__ import annotations

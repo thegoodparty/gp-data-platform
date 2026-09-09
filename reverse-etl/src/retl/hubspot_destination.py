@@ -152,16 +152,20 @@ def send_batch_with_retry(
     raise AssertionError("unreachable: Retrying always returns or raises")
 
 
-def _error_tracking_key(error: Mapping[str, Any]) -> str | None:
+def _error_tracking_keys(error: Mapping[str, Any]) -> list[str]:
+    """Every tracking key one error entry names -- an error can cover a GROUP of inputs.
+
+    Attributing only the first would report the real category for one row and dump the
+    rest into UNKNOWN_DELIVERY, corrupting the diagnostic histogram. HubSpot's documented
+    error envelope carries the singular context key with a list value; the plural spelling
+    is an unverified fallback until the sandbox settles the real shape -- read both.
+    """
     trace_id = error.get("objectWriteTraceId")
     if trace_id:
-        return str(trace_id)
+        return [str(trace_id)]
     context = error.get("context") or {}
-    # HubSpot's documented error envelope carries the singular key with a list value;
-    # the plural spelling is an unverified fallback until the sandbox settles the real
-    # shape -- read both rather than betting on one.
     trace_ids = context.get("objectWriteTraceId") or context.get("objectWriteTraceIds") or []
-    return str(trace_ids[0]) if trace_ids else None
+    return [str(t) for t in trace_ids]
 
 
 def _error_property(error: Mapping[str, Any]) -> str | None:
@@ -203,16 +207,22 @@ def parse_batch_response(
         if trace_id in sent_rows:
             confirmed[trace_id] = sent_rows[trace_id]
 
-    errors = [
-        RowError(
-            flow_id=flow_id,
-            tracking_key=_error_tracking_key(error),
-            error_code=str(error.get("category") or error.get("status") or "UNKNOWN"),
-            property=_error_property(error),
-            retryable=False,  # a row rejected inside a 200/207 needs a data fix, not a resend
-        )
-        for error in response.body.get("errors", [])
-    ]
+    errors: list[RowError] = []
+    for error in response.body.get("errors", []):
+        error_code = str(error.get("category") or error.get("status") or "UNKNOWN")
+        error_property = _error_property(error)
+        # One RowError per named key; a keyless error still surfaces once, unattributed.
+        tracking_keys: list[str | None] = list(_error_tracking_keys(error)) or [None]
+        for tracking_key in tracking_keys:
+            errors.append(
+                RowError(
+                    flow_id=flow_id,
+                    tracking_key=tracking_key,
+                    error_code=error_code,
+                    property=error_property,
+                    retryable=False,  # a row rejected inside a 200/207 needs a data fix, not a resend
+                )
+            )
 
     accounted_for = set(confirmed) | {e.tracking_key for e in errors if e.tracking_key is not None}
     errors.extend(

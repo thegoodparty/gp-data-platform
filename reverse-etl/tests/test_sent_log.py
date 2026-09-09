@@ -43,9 +43,8 @@ def test_init_log_table_creates_an_empty_stamped_table() -> None:
     """Catches: init failing to create the table, or creating it without the identity stamp."""
     connection = FakeConnection()
 
-    created = init_log_table(connection, LOG_TABLE, "hubspot_leads")
+    init_log_table(connection, LOG_TABLE, "hubspot_leads")
 
-    assert created is True
     assert connection.tables[LOG_TABLE].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
     assert read_latest_sent(connection, log_table=LOG_TABLE) == {}
 
@@ -61,9 +60,8 @@ def test_init_log_table_is_idempotent_and_keeps_existing_rows() -> None:
         }
     )
 
-    created = init_log_table(connection, LOG_TABLE, "hubspot_leads")
+    init_log_table(connection, LOG_TABLE, "hubspot_leads")
 
-    assert created is False
     assert read_latest_sent(connection, log_table=LOG_TABLE) == {"p1": "{}"}
 
 

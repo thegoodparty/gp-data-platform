@@ -58,6 +58,10 @@ def test_serialize_payload_sorts_keys() -> None:
 
 def test_serialize_payload_is_byte_identical_on_unchanged_input() -> None:
     """Catches: any nondeterminism in serialization, which would look like a changed payload
-    (and cause a mass resend) even though nothing about the source data changed."""
-    payload: dict[str, str | int] = {"gp_person_id": "p1", "firstname": "Jane", "viability_score": 42}
-    assert serialize_payload(payload) == serialize_payload(dict(payload))
+    (and cause a mass resend) even though nothing about the source data changed. Pinned to
+    the exact expected bytes: a repeated-call equality check alone would also pass for a
+    serializer that returned any constant."""
+    payload: dict[str, str | int] = {"viability_score": 42, "gp_person_id": "p1", "firstname": "Jane"}
+    expected = '{"firstname":"Jane","gp_person_id":"p1","viability_score":42}'
+    assert serialize_payload(payload) == expected
+    assert serialize_payload(dict(payload)) == expected

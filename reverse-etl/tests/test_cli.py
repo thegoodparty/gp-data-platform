@@ -143,15 +143,15 @@ def test_main_init_log_creates_the_table_and_exits_zero(
     assert fake_connection.closed is True
     assert fake_connection.tables[LOG_TABLE].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
     captured = capsys.readouterr()
-    assert "created" in captured.out
+    assert "initialized" in captured.out
     assert captured.err == ""
 
 
-def test_main_init_log_reports_already_present_on_a_second_call(
+def test_main_init_log_is_idempotent_on_an_existing_table(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Catches: init losing its idempotent "already present" report, which is the only
-    signal an operator gets that re-running init was a no-op rather than a fresh create."""
+    """Catches: a repeat init against an already-initialized table failing or re-stamping
+    it, instead of no-opping and exiting clean."""
     monkeypatch.setattr(os, "environ", CSV_ENV)
     fake_connection = FakeConnection(tables={LOG_TABLE: stamped_table("hubspot_leads")})
     monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
@@ -159,4 +159,5 @@ def test_main_init_log_reports_already_present_on_a_second_call(
     exit_code = main(["--source", "hubspot_leads", "--init-log"])
 
     assert exit_code == 0
-    assert "already present" in capsys.readouterr().out
+    assert fake_connection.tables[LOG_TABLE].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
+    assert "initialized" in capsys.readouterr().out
