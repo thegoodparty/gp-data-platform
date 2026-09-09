@@ -92,6 +92,10 @@ with
     -- Person groups that already hold a HubSpot contact. Entity resolution catches
     -- the contacts the three key legs miss: the same person reaching us from a
     -- vendor under a different email, a different phone, and no BallotReady id.
+    --
+    -- Suppression keys on membership in the canonical id table and nothing else.
+    -- Whether a group is a sound merge is a separate concern, gated upstream in
+    -- the person graph; this feed does not second-guess it.
     hs_person_ids as (
         select distinct gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
