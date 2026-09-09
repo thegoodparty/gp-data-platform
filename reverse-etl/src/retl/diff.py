@@ -3,9 +3,9 @@
 The design's kernel is a single SQL anti-join over a relation that already carries
 a `payload` column. This package builds that column with its own serializer
 (payload.py) so a payload stays byte-identical across runs, then compares it here
-against `latest_sent` (itself read via the same flow-scoped SQL in sent_log.py).
+against `latest_sent` (read from the flow's own log table in sent_log.py).
 Only the comparison step moves from SQL to Python; the semantics -
-latest-per-(flow_id, tracking_key), never all history - are the same.
+latest-per-tracking_key within the flow's table, never all history - are the same.
 """
 
 from __future__ import annotations
