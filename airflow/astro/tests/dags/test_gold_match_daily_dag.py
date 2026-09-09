@@ -251,7 +251,7 @@ def test_cleanup_cancels_deletes_always_rebuilds_and_reraises():
             "cancel_dbt_run_and_confirm",
             autospec=True,
             side_effect=lambda *a, **k: order.append("cancel"),
-        ),
+        ) as mock_cancel,
         patch.object(
             module,
             "delete_run_rows",
@@ -268,6 +268,10 @@ def test_cleanup_cancels_deletes_always_rebuilds_and_reraises():
     ):
         cleanup_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
     assert order == ["cancel", "delete", "rebuild"]
+    # The resolved run id must reach the cancel call: pulling the XCom
+    # correctly but cancelling a different id would leave a live rebuild
+    # running while cleanup deletes and rebuilds against it.
+    assert mock_cancel.call_args.args[1] == 555
     assert mock_trigger.call_args.kwargs["cause"].startswith(module.CLEANUP_CAUSE_PREFIX)
     ti.xcom_pull.assert_called_once_with(task_ids="rebuild", key="job_run_id")
 

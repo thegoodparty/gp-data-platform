@@ -49,14 +49,18 @@ def gold_match_pod_env() -> dict[str, str]:
     """
     fields = conn_kwargs()
     # The gold-match client always authenticates with the SDK's default OAuth
-    # scopes; a connection carrying a narrower `scopes` extra would work for
-    # the gate tasks and then fail inside every (paid) pod. Refuse loudly here
-    # until the client learns to honor scopes (gold-match follow-up).
+    # scopes. The deployment-wide `databricks_scopes` Variable exists to match
+    # a service-principal secret minted with NARROWER scopes (see conn_kwargs),
+    # so when it is set, the pod's default-scopes token request will be
+    # refused. Refusing here, before a pod is paid for, beats a generic auth
+    # failure inside it; lift this once the client honors scopes
+    # (gold-match follow-up).
     if fields.get("scopes"):
         raise ValueError(
-            "the Databricks connection configures OAuth scopes, which the gold-match client "
-            "does not honor; unset the connection's scopes for this pipeline or add scopes "
-            "support to the client first"
+            "the databricks_scopes Variable is set, meaning the service principal's secret "
+            "carries narrowed scopes, but the gold-match client always requests the SDK "
+            "default and would fail to authenticate inside the pod; add scopes support to "
+            "the client, or run this pipeline against a secret allowing the default scopes"
         )
     host = fields["host"].removeprefix("https://").removeprefix("http://").rstrip("/")
     return {
@@ -74,12 +78,14 @@ def gold_match_pod_env() -> dict[str, str]:
 # Mirrors the gold-match run-audit's Step 1 label checks: matched tuples
 # against the current district universe. The 2026-01-26 baseline run predates
 # the universe contract and is excluded for the same reason the staging label
-# test excludes it.
+# test excludes it. The literal pins its UTC offset because a bare timestamp
+# reads in the warehouse SESSION timezone, which nothing here pins (the
+# TestTimestampLiteralsPreserveOffset precedent in gold-match).
 _GLOBAL_DEAD_SQL = """
     with label_check_tuples as (
         select distinct l2_state, l2_district_type, l2_district_name
         from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match
-        where l2_district_name is not null and attempted_at <> timestamp'2026-01-26'
+        where l2_district_name is not null and attempted_at <> timestamp'2026-01-26 00:00:00+00:00'
     )
     select count(*)
     from label_check_tuples

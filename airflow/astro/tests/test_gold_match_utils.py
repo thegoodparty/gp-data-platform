@@ -106,8 +106,9 @@ def test_gate_queries_bind_the_run_key_and_map_both_metrics():
     assert run_params == {"run_key": _RUN_KEY}
     global_sql, _ = cursor.calls[1]
     assert "stg_model_predictions__llm_l2_br_match" in global_sql
-    # The 2026-01-26 baseline exclusion mirrors the staging label test.
-    assert "2026-01-26" in global_sql
+    # The baseline exclusion mirrors the staging label test, with the UTC
+    # offset pinned (a bare literal reads in the session timezone).
+    assert "timestamp'2026-01-26 00:00:00+00:00'" in global_sql
 
 
 def test_delete_targets_only_the_runs_rows_and_reports_the_count():
