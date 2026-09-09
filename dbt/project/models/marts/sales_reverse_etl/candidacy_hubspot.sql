@@ -1,7 +1,12 @@
 -- Civics -> HubSpot lead feed (reverse-ETL mart `candidacy_hubspot`). One row per
--- gp_candidacy_id regardless of whether BallotReady, TechSpeed, DDHQ, or gp_api
--- identified the candidacy, replacing the per-provider legacy feeds. Output is the
--- Title-Case HubSpot import contract with owner/Type set for all rows.
+-- gp_candidate_id (and so also per gp_candidacy_id) regardless of whether
+-- BallotReady, TechSpeed, DDHQ, or gp_api identified the candidacy, replacing the
+-- per-provider legacy feeds. Output is the Title-Case HubSpot import contract with
+-- owner/Type set for all rows.
+--
+-- Each uploaded row mints a HubSpot contact, so the grain is the person, not the
+-- candidacy: a person running for two offices in one window would otherwise arrive
+-- as two contacts.
 --
 -- WINDOW: 30-day rolling on feed_activity_at -- the latest real provider EVENT time.
 -- For vendor-sourced rows created_at/updated_at are pipeline extract stamps, so a
@@ -82,6 +87,19 @@ with
         select distinct br_candidacy_id
         from {{ ref("int__hubspot_contacts") }}
         where br_candidacy_id is not null
+    ),
+
+    -- Person groups that already hold a HubSpot contact. Entity resolution catches
+    -- the contacts the three key legs miss: the same person reaching us from a
+    -- vendor under a different email, a different phone, and no BallotReady id.
+    --
+    -- Suppression keys on membership in the canonical id table and nothing else.
+    -- Whether a group is a sound merge is a separate concern, gated upstream in
+    -- the person graph; this feed does not second-guess it.
+    hs_person_ids as (
+        select distinct gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+        where source_name = 'hubspot'
     ),
 
     civics_base as (
@@ -226,8 +244,8 @@ with
             and feed_activity_at <= current_date() + interval 1 day
     ),
 
-    -- Not-already-in-HubSpot, as three hash anti-joins instead of one correlated
-    -- `not exists` that ORs the three keys together. Spark cannot hash-join an OR
+    -- Not-already-in-HubSpot, as four hash anti-joins instead of one correlated
+    -- `not exists` that ORs the keys together. Spark cannot hash-join an OR
     -- across disjoint keys, so the OR form planned as a
     -- BroadcastNestedLoopJoin LeftAnti -- every candidacy in the window compared
     -- against every HubSpot contact, with the phone regexp re-evaluated per pair.
@@ -237,8 +255,12 @@ with
         left join hs_email_keys as he on b.hs_email_key = he.email_key
         left join hs_phone_keys as hp on b.hs_phone_key = hp.phone_key
         left join hs_br_candidacy_ids as hb on b.hs_br_candidacy_id = hb.br_candidacy_id
+        left join hs_person_ids as hpe on b.gp_candidate_id = hpe.gp_person_id
         where
-            he.email_key is null and hp.phone_key is null and hb.br_candidacy_id is null
+            he.email_key is null
+            and hp.phone_key is null
+            and hb.br_candidacy_id is null
+            and hpe.gp_person_id is null
     )
 
 select
@@ -374,3 +396,11 @@ select
     -- the provider event time rather than the pipeline extract stamp.
     b.feed_activity_at as last_activity_at
 from not_in_hubspot as b
+-- Most recent candidacy represents the person. gp_candidacy_id breaks ties so a
+-- rebuild keeps picking the same row rather than churning the reverse-ETL diff.
+qualify
+    row_number() over (
+        partition by b.gp_candidate_id
+        order by b.feed_activity_at desc, b.gp_candidacy_id asc
+    )
+    = 1
