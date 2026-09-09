@@ -736,6 +736,18 @@ def test_person_pipeline_keeps_initial_changing_nicknames(person_results):
     assert not _pair_rows(pairwise_df, "hubspot|50", "techspeed|50").empty
 
 
+def test_person_pipeline_blocks_partial_surname_overlap(person_results):
+    """A surname written in full against one part of it, with no contact key.
+
+    "nguyen" and "quoc thai nguyen" agree on no whole surname, and every other
+    name rule keys on one. Asserts the pair is scored, not that it merges:
+    reaching the comparison at all is what the surname-token rule buys.
+    """
+    pairwise_df, _, _ = person_results
+
+    assert not _pair_rows(pairwise_df, "ballotready|130", "techspeed|130").empty
+
+
 def test_person_pipeline_name_only_record_stays_a_singleton(person_results):
     _, clustered_df, _ = person_results
     cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
