@@ -68,7 +68,7 @@ Set on the Astro deployment:
 |---|---|
 | `databricks_conn_id` | Selects the Databricks connection (`databricks_dev` / `databricks`). |
 | `gold_match_image_tag` | REQUIRED (no default, on both deployments): the sha of the gate-passed build. An unattended loop on `latest` would silently run whatever main last published after every merge, so the evaluated artifact IS the production artifact here: a matcher merge changes nothing until this Variable is deliberately updated to the new build's sha post-gate. Unset fails the run loudly at render; `latest` works only as an explicit override for supervised debugging. |
-| `gold_match_image_pull_secret` | Kubernetes image pull secret name from Astronomer support. The GHCR package is private (plan of record for both container pipelines), so this is required, not optional. Provisioning mechanics: see "Image pull" in `matcha_er.md` — same pattern, same rotation hazard. |
+| `gold_match_image_pull_secret` | Kubernetes image pull secret name from Astronomer support (`ghcr-pull`). The GHCR package is private, so this is required, not optional. Provisioning and ROTATION: see `ghcr_pull_credential.md` in this directory — the backing token expires yearly and every private pull breaks at once when it does. |
 | `BRAINTRUST_API_KEY` | Injected into the pod. The pinned prompt fails closed without it, so leaving it unset fails the run at pre_execute rather than mid-cohort. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, shared with

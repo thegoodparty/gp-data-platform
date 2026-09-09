@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, call, patch
 
 import include.custom_functions.gold_match_utils as gm
-import pytest
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudJobRunStatus
 
 _RUN_KEY = datetime(2026, 9, 2, 14, 30, 3, tzinfo=UTC)
@@ -50,6 +49,7 @@ def test_pod_env_speaks_the_clients_names():
         "http_path": "/sql/1.0/warehouses/x",
         "client_id": "cid",
         "client_secret": "sec",
+        "scopes": None,
     }
     with (
         patch.object(gm, "conn_kwargs", autospec=True, return_value=fields),
@@ -68,23 +68,24 @@ def test_pod_env_speaks_the_clients_names():
     mock_variable.get.assert_called_once_with("BRAINTRUST_API_KEY")
 
 
-def test_pod_env_refuses_a_scoped_connection():
-    """A connection with a narrower OAuth `scopes` extra authenticates the
-    gate tasks but fails inside every paid pod (the client requests the SDK
-    default); failing at pre_execute names the mismatch before a pod starts."""
+def test_pod_env_forwards_narrowed_scopes():
+    """When the deployment's databricks_scopes Variable is set (the SP secret
+    was minted narrow), the pod must request the same scopes or its token
+    exchange is refused; the env forwards them as DATABRICKS_SCOPES."""
     fields = {
         "host": "dbc.example",
         "http_path": "p",
         "client_id": "cid",
         "client_secret": "sec",
-        "scopes": ["sql"],
+        "scopes": ["sql", "unity-catalog"],
     }
     with (
         patch.object(gm, "conn_kwargs", autospec=True, return_value=fields),
-        patch.object(gm, "Variable", autospec=True),
-        pytest.raises(ValueError, match="scopes"),
+        patch.object(gm, "Variable", autospec=True) as mock_variable,
     ):
-        gm.gold_match_pod_env()
+        mock_variable.get.return_value = "bt"
+        env = gm.gold_match_pod_env()
+    assert env["DATABRICKS_SCOPES"] == "sql,unity-catalog"
 
 
 def test_run_key_truncates_to_the_writers_precision():

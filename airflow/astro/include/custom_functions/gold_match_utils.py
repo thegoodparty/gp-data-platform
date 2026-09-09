@@ -48,22 +48,8 @@ def gold_match_pod_env() -> dict[str, str]:
     point's tables are production-only by construction, so it is a literal.
     """
     fields = conn_kwargs()
-    # The gold-match client always authenticates with the SDK's default OAuth
-    # scopes. The deployment-wide `databricks_scopes` Variable exists to match
-    # a service-principal secret minted with NARROWER scopes (see conn_kwargs),
-    # so when it is set, the pod's default-scopes token request will be
-    # refused. Refusing here, before a pod is paid for, beats a generic auth
-    # failure inside it; lift this once the client honors scopes
-    # (gold-match follow-up).
-    if fields.get("scopes"):
-        raise ValueError(
-            "the databricks_scopes Variable is set, meaning the service principal's secret "
-            "carries narrowed scopes, but the gold-match client always requests the SDK "
-            "default and would fail to authenticate inside the pod; add scopes support to "
-            "the client, or run this pipeline against a secret allowing the default scopes"
-        )
     host = fields["host"].removeprefix("https://").removeprefix("http://").rstrip("/")
-    return {
+    env = {
         "DATABRICKS_SERVER_HOSTNAME": host,
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
@@ -73,6 +59,14 @@ def gold_match_pod_env() -> dict[str, str]:
         "BRAINTRUST_API_KEY": Variable.get(BRAINTRUST_VARIABLE),
         "ENVIRONMENT": "production",
     }
+    # The deployment-wide `databricks_scopes` Variable mirrors the scopes the
+    # service principal's secret was minted with (see conn_kwargs); the client
+    # requests the SDK default unless told otherwise, so the pod's token
+    # exchange is refused without this forward. Absent when unset: empty means
+    # the default on both sides.
+    if fields.get("scopes"):
+        env["DATABRICKS_SCOPES"] = ",".join(fields["scopes"])
+    return env
 
 
 # Mirrors the gold-match run-audit's Step 1 label checks: matched tuples

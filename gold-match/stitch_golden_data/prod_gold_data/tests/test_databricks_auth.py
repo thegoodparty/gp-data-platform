@@ -96,3 +96,52 @@ def test_no_credentials_at_all_raises(monkeypatch):
 
     with pytest.raises(ValueError, match="DATABRICKS_API_KEY.*DATABRICKS_CLIENT_ID"):
         DatabricksClient(server_hostname="h", http_path="p")
+
+
+def test_m2m_scopes_env_reaches_the_config(monkeypatch):
+    """Failure this catches: a deployment whose service-principal secret was
+    minted with narrowed scopes (DATABRICKS_SCOPES set) silently requesting
+    the SDK default all-apis and being refused at the token endpoint."""
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "cid")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "csec")
+    monkeypatch.setenv("DATABRICKS_SCOPES", "sql, unity-catalog")
+    recorded = {}
+    monkeypatch.setattr(
+        "shared.databricks_client.sql.connect",
+        lambda **kw: recorded.update(kw) or object(),
+    )
+    import databricks.sdk.core as sdk_core
+
+    config_kwargs = {}
+    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
+
+    client = DatabricksClient(server_hostname="h", http_path="p")
+    client.connect()
+    recorded["credentials_provider"]()
+
+    assert config_kwargs["scopes"] == "sql, unity-catalog"
+
+
+def test_m2m_scopes_absent_keeps_the_sdk_default(monkeypatch):
+    """Failure this catches: an unset/empty DATABRICKS_SCOPES turning into
+    scopes='' and clobbering the SDK's all-apis default."""
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "cid")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "csec")
+    monkeypatch.delenv("DATABRICKS_SCOPES", raising=False)
+    recorded = {}
+    monkeypatch.setattr(
+        "shared.databricks_client.sql.connect",
+        lambda **kw: recorded.update(kw) or object(),
+    )
+    import databricks.sdk.core as sdk_core
+
+    config_kwargs = {}
+    monkeypatch.setattr(sdk_core, "Config", lambda **kw: config_kwargs.update(kw) or object())
+    monkeypatch.setattr(sdk_core, "oauth_service_principal", lambda cfg: object())
+
+    client = DatabricksClient(server_hostname="h", http_path="p")
+    client.connect()
+    recorded["credentials_provider"]()
+
+    assert config_kwargs["scopes"] is None

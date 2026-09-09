@@ -43,6 +43,10 @@ class DatabricksClient:
         # credentials this instance was constructed with, never a drifted env.
         self._client_id = os.getenv('DATABRICKS_CLIENT_ID')
         self._client_secret = os.getenv('DATABRICKS_CLIENT_SECRET')
+        # Narrowed OAuth scopes, for deployments whose service-principal secret
+        # was minted with less than all-apis; empty means the SDK default.
+        # Comma- or space-separated -- the SDK parses either.
+        self._scopes = os.getenv('DATABRICKS_SCOPES', '').strip()
         self._m2m_provider = None
         has_m2m = bool(self._client_id and self._client_secret)
 
@@ -70,12 +74,19 @@ class DatabricksClient:
         error instead of the credentials we chose."""
         if self._m2m_provider is None:
             from databricks.sdk.core import Config, oauth_service_principal
+            if self._scopes:
+                # The token endpoint's refusal names the client but never the
+                # scopes it refused, so record what was requested while it is
+                # still knowable.
+                self.logger.info(f"Requesting OAuth scopes: {self._scopes}")
             self._m2m_provider = oauth_service_principal(
                 Config(
                     host=f"https://{self.server_hostname}",
                     client_id=self._client_id,
                     client_secret=self._client_secret,
                     auth_type="oauth-m2m",
+                    # None keeps the SDK default (all-apis).
+                    scopes=self._scopes or None,
                 )
             )
         return self._m2m_provider
