@@ -67,6 +67,7 @@ from include.custom_functions.matcha_utils import (
     ENTITIES,
     SWAP_GATE_VARIABLE,
     EntitySpec,
+    create_schema_if_missing,
     dated_name,
     drop_old_table,
     drop_stale_vintages,
@@ -263,6 +264,24 @@ def matcha_er():
         timeout=3600,
     )
 
+    @task(task_id="ensure_er_schema")
+    def ensure_er_schema() -> str:
+        """Make sure this deployment's ER schema exists before any pod writes.
+
+        Whoever creates it owns it, so a deployment pointed at its own schema
+        (dev) needs no grant beyond the catalog-level CREATE_SCHEMA the airflow
+        SPs already hold. Pointed at a schema someone else owns, this is a
+        no-op and the grants have to come from elsewhere.
+        """
+        catalog = Variable.get(CATALOG_VARIABLE)
+        schema = er_schema()
+        conn = open_connection()
+        try:
+            create_schema_if_missing(conn, catalog, schema)
+        finally:
+            conn.close()
+        return f"{catalog}.{schema}"
+
     @task(task_id="cleanup")
     def cleanup(run_date: str) -> dict[str, list[str]]:
         """Drop the renamed-aside tables and vintages past the retention window.
@@ -361,7 +380,7 @@ def matcha_er():
         return group()
 
     groups = [entity_group(entity) for entity in ENTITIES]
-    refresh_prematch >> groups >> build_downstream >> cleanup("{{ ds_nodash }}")
+    refresh_prematch >> ensure_er_schema() >> groups >> build_downstream >> cleanup("{{ ds_nodash }}")
 
 
 matcha_er()

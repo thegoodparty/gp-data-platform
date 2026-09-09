@@ -462,6 +462,26 @@ def run_gate(
         cursor.close()
 
 
+def create_schema_if_missing(conn, catalog: str, schema: str) -> None:
+    """Create the ER schema when it does not exist yet.
+
+    The creating principal becomes the owner in Unity Catalog, and an owner can
+    create, rename and drop everything inside — which is what the swap needs
+    and what a plain CREATE_TABLE grant never covers. So a deployment writing
+    its own schema (dev) needs no grant at all: the airflow SPs already hold
+    CREATE_SCHEMA on the catalog. A deployment writing a schema someone else
+    owns (prod's er_source, which the civics marts read) is a no-op here and
+    does need granting.
+    """
+    cursor = conn.cursor()
+    try:
+        statement = f"CREATE SCHEMA IF NOT EXISTS {_ident(catalog)}.{_ident(schema)}"
+        logger.info("Ensuring schema: %s", statement)
+        execute_with_retry(cursor, statement)
+    finally:
+        cursor.close()
+
+
 def swap_table(conn, catalog: str, schema: str, live_table: str, dated_table: str) -> None:
     """Promote the dated vintage into the live name.
 

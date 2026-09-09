@@ -16,6 +16,7 @@ from include.custom_functions.matcha_utils import (
     check_nulls,
     check_sources,
     count_sql,
+    create_schema_if_missing,
     dated_name,
     distinct_count_sql,
     distinct_sources_sql,
@@ -508,6 +509,24 @@ class TestRunGate:
         cursor.fetchall.return_value = [("ballotready",)]
         run_gate(conn, "cat", "er_source", "clustered_x", "clustered_x_20260825", self._gate())
         # Overlap is never queried, so a fifth fetchone would raise StopIteration.
+
+
+class TestCreateSchemaIfMissing:
+    def test_idempotent_and_quoted(self, mock_connection):
+        """IF NOT EXISTS because prod points at a schema that already exists
+        and is owned elsewhere, where this must be a no-op rather than an
+        error. Identifiers are quoted: catalog and schema are Variables, so
+        they are operator input reaching SQL by interpolation."""
+        conn, cursor = mock_connection
+        create_schema_if_missing(conn, "cat", "er_source_dev")
+        statement = cursor.execute.call_args[0][0]
+        assert statement.startswith("CREATE SCHEMA IF NOT EXISTS")
+        assert "`cat`.`er_source_dev`" in statement
+
+    def test_rejects_an_unsafe_schema_name(self, mock_connection):
+        conn, _cursor = mock_connection
+        with pytest.raises(ValueError, match="Unsafe Databricks identifier"):
+            create_schema_if_missing(conn, "cat", "er_source`; drop schema x; --")
 
 
 class TestSwapTable:

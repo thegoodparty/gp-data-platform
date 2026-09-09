@@ -80,15 +80,37 @@ def test_one_task_at_a_time_without_an_airflow_pool():
 
 
 def test_entities_are_independent_of_each_other():
-    """Within this DAG, each entity's match depends only on
-    dbt_refresh_prematch — one entity failing must not block another from
-    matching, gating, or swapping. This independence is scheduling-only: a
-    civics mart reading er_source downstream can still see one entity's
-    fresh vintage next to another's stale one, since nothing here gates a
-    mart on all three swaps."""
+    """Within this DAG, each entity's match depends only on the shared
+    prologue — one entity failing must not block another from matching,
+    gating, or swapping. This independence is scheduling-only: a civics mart
+    reading the ER schema downstream can still see one entity's fresh vintage
+    next to another's stale one, since nothing here gates a mart on all three
+    swaps."""
     for entity in _ENTITIES:
         upstream = {t.task_id for t in _DAG.get_task(f"{entity}.match").upstream_list}
-        assert upstream == {"dbt_refresh_prematch"}
+        assert upstream == {"ensure_er_schema"}
+
+
+def test_the_schema_is_ensured_before_any_pod_writes():
+    """Whoever creates the schema owns it, and an owner can rename and drop
+    inside it — so a deployment pointed at its own schema needs no grant at
+    all. This has to run ahead of the pods, since matcha's CREATE OR REPLACE
+    fails outright on a missing schema.
+    """
+    module = _dag_module()
+    ensure = _DAG.get_task("ensure_er_schema")
+    assert {t.task_id for t in ensure.upstream_list} == {"dbt_refresh_prematch"}
+    assert {t.task_id for t in ensure.downstream_list} == {f"{e}.match" for e in _ENTITIES}
+
+    with (
+        patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
+        patch.object(module, "er_schema", autospec=True, return_value="er_source_dev"),
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+        patch.object(module, "create_schema_if_missing", autospec=True) as create,
+    ):
+        mock_variable.get.return_value = "cat"
+        cast(Any, ensure).python_callable()
+    assert create.call_args.args[1:] == ("cat", "er_source_dev")
 
 
 def test_downstream_dbt_waits_for_every_swap():

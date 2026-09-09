@@ -69,6 +69,16 @@ would rename the live tables the civics marts read.
 Set `databricks_er_schema` to a dev-only schema (`er_source_dev`) on astro-dev, and leave it unset on
 astro-prod. This matches how `extract_ballotready` scopes its writes with `databricks_source_schema`.
 
+**A dev schema needs no Databricks grant.** `ensure_er_schema` creates the schema when it is missing, and
+in Unity Catalog the creating principal becomes the owner — an owner can create, rename and drop
+everything inside, which is what `swap` needs and what a bare `CREATE_TABLE` grant does not cover. The
+airflow SPs already hold `CREATE_SCHEMA` on the catalog, so pointing a deployment at a schema of its own
+is self-sufficient.
+
+Prod is the exception: `er_source` already exists and the civics marts read it, so prod writes a schema
+it does not own. `ensure_er_schema` is a no-op there, and prod's rights have to be granted — `CREATE_TABLE`
+for the match step, and ownership or `MANAGE` (which inherits to child tables) before the swap is armed.
+
 One consequence to know when reading a dev run: `dbt_build_er_source` builds the dbt staging models
 from whatever schema the dbt sources name, which is the shared `er_source`. A dev run's own vintages
 therefore do not feed that step — it is exercising the dbt job, not dev's output.
