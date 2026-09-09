@@ -426,6 +426,22 @@ def prior_live_state(cur, spec: TableSyncSpec) -> tuple[bool, int]:
     return exists, count
 
 
+def _live_constraint_names(cur, spec: TableSyncSpec) -> set[str]:
+    cur.execute(
+        "SELECT conname FROM pg_constraint WHERE conrelid = to_regclass(%s)",
+        (f'"{spec.target_schema}"."{spec.target_table}"',),
+    )
+    return {r[0] for r in cur.fetchall()}
+
+
+def _live_index_names(cur, spec: TableSyncSpec) -> set[str]:
+    cur.execute(
+        "SELECT indexname FROM pg_indexes WHERE schemaname = %s AND tablename = %s",
+        (spec.target_schema, spec.target_table),
+    )
+    return {r[0] for r in cur.fetchall()}
+
+
 def swap_staging_into_target(
     conn,
     specs: Sequence[TableSyncSpec],
@@ -464,26 +480,27 @@ def swap_staging_into_target(
                 )
 
         for spec in specs:
+            live_constraints = _live_constraint_names(cur, spec) if exists[spec.target_table] else set()
+            live_indexes = _live_index_names(cur, spec) if exists[spec.target_table] else set()
             statements = [f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}" CASCADE']
             if exists[spec.target_table]:
                 statements.append(
                     f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" '
                     f'RENAME TO "{spec.old_table}"'
                 )
-                statements.append(
-                    f'ALTER INDEX "{spec.target_schema}"."{spec.pk_name}" '
-                    f'RENAME TO "{spec.archive_name(spec.pk_name)}"'
-                )
-                for idx in spec.index_names:
-                    statements.append(
-                        f'ALTER INDEX "{spec.target_schema}"."{idx}" ' f'RENAME TO "{spec.archive_name(idx)}"'
-                    )
+                for idx in (spec.pk_name, *spec.index_names):
+                    if idx in live_indexes:
+                        statements.append(
+                            f'ALTER INDEX "{spec.target_schema}"."{idx}" '
+                            f'RENAME TO "{spec.archive_name(idx)}"'
+                        )
                 for fk in spec.fkey_names:
-                    statements.append(
-                        f'ALTER TABLE "{spec.target_schema}"."{spec.old_table}" '
-                        f'RENAME CONSTRAINT "{fk}" '
-                        f'TO "{spec.archive_name(fk)}"'
-                    )
+                    if fk in live_constraints:
+                        statements.append(
+                            f'ALTER TABLE "{spec.target_schema}"."{spec.old_table}" '
+                            f'RENAME CONSTRAINT "{fk}" '
+                            f'TO "{spec.archive_name(fk)}"'
+                        )
 
             statements.append(
                 f'ALTER TABLE "{spec.staging_schema}"."{spec.new_table}" '
