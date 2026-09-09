@@ -273,7 +273,6 @@ with
                     lower({{ remove_name_suffixes("trim(u.last_name)") }}), ',$', ''
                 )
             ) as last_name,
-            {{ last_name_tokens("last_name") }} as last_name_tokens,
             -- '' means no suffix. Retained for audit: father/son pairs share a
             -- family phone and differ only by Jr/Sr.
             coalesce(
@@ -385,7 +384,10 @@ select
     coalesce(a.aliases, array(n.first_name)) as first_name_aliases,
     n.first_name_tokens,
     n.last_name,
-    n.last_name_tokens,
+    -- Tokenized here rather than in `normalized`: a select-list alias loses to
+    -- a same-named column from the FROM clause, so tokenizing there would read
+    -- the raw surname and keep the suffixes `last_name` just stripped.
+    {{ last_name_tokens("n.last_name") }} as last_name_tokens,
     n.suffix_token,
     case when ec.n_records <= {{ contact_key_max_records }} then n.email end as email,
     case when pc.n_records <= {{ contact_key_max_records }} then n.phone end as phone,

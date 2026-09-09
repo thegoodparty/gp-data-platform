@@ -3574,8 +3574,8 @@ models:
           name: prematch_people_last_name_tokens_cover_the_surname
           arguments:
             expression: "size(last_name_tokens) > 0"
-            config:
-              where: "last_name rlike '[a-z][a-z]'"
+          config:
+            where: "last_name rlike '[a-z][a-z]'"
     columns:
       - name: unique_id
         description: >
