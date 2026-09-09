@@ -6,6 +6,9 @@ imports `airflow` and never reads an Airflow Variable or Connection directly,
 because the installed console script runs as a bare subprocess with no
 task-runner context for those lookups.
 
+`DATABRICKS_SCOPES` narrows the OAuth scopes the M2M path requests; unset keeps the
+SDK default of `all-apis`. It is not read by the SDK itself.
+
 Cursors default to `arraysize=100000`, so an unsized `fetchmany()` returns up to
 100k rows in one call and bounds nothing by itself. `fetch_all_rows` passes an
 explicit size to every `fetchmany()` call instead, and drains it in a loop, so the
@@ -28,6 +31,9 @@ class DatabricksConnConfig:
     access_token: str | None = None
     client_id: str | None = None
     client_secret: str | None = None
+    # Requested OAuth scopes, comma or space separated. Only the M2M path uses them:
+    # a personal access token is not a token exchange, so there is nothing to scope.
+    scopes: str = ""
 
 
 def _strip_scheme(host: str) -> str:
@@ -46,6 +52,7 @@ def config_from_env(env: Mapping[str, str]) -> DatabricksConnConfig:
         access_token=env.get("DATABRICKS_TOKEN") or None,
         client_id=env.get("DATABRICKS_CLIENT_ID") or None,
         client_secret=env.get("DATABRICKS_CLIENT_SECRET") or None,
+        scopes=env.get("DATABRICKS_SCOPES", "").strip(),
     )
 
 
@@ -70,11 +77,21 @@ def connect(config: DatabricksConnConfig) -> Any:
         from databricks.sdk.core import Config as SdkConfig
         from databricks.sdk.core import oauth_service_principal
 
+        # `scopes` is the one Config field the SDK gives no env binding, so setting
+        # DATABRICKS_SCOPES alone does nothing and it has to be passed here. A service
+        # principal is refused outright when it asks for a scope its secret was not
+        # minted with, and the refusal names the client rather than the scope, so the
+        # resolved value is printed before the exchange rather than guessed at after.
         sdk_config = SdkConfig(
             host=config.server_hostname,
             client_id=config.client_id,
             client_secret=config.client_secret,
+            # `or None` rather than a conditional kwarg: the SDK parses an empty value
+            # to None and then defaults to `all-apis`, so this says "narrow nothing"
+            # in the one form that also type-checks.
+            scopes=config.scopes or None,
         )
+        print(f"retl OAuth scopes requested: {sdk_config.get_scopes_as_string()}")
         return databricks_sql.connect(
             server_hostname=config.server_hostname,
             http_path=config.http_path,

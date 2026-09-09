@@ -160,6 +160,23 @@ def test_dag_omits_exactly_the_three_vars_this_deployment_does_not_need():
     }
 
 
+def test_the_pod_requests_the_same_oauth_scopes_as_the_tasks_beside_it():
+    """The pod does its own token exchange, so a deployment that narrowed its service
+    principal refuses the pod while the task's own warehouse queries still succeed.
+    Sourced from the connection rather than read separately, so the two cannot drift;
+    always present, so the pod's env surface does not change shape with a Variable."""
+    module = _dag_module()
+    narrowed = {**_FAKE_CONN_FIELDS, "scopes": ["sql", "unity-catalog"]}
+    with (
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+        patch.object(module, "conn_kwargs", autospec=True, return_value=narrowed),
+    ):
+        mock_variable.get.side_effect = lambda name, default=_NO_DEFAULT: _FAKE_VARIABLES.get(name, "")
+        assert module._reverse_etl_pod_env()["DATABRICKS_SCOPES"] == "sql, unity-catalog"
+    with _pod_runtime(module):  # the fixture leaves scopes None, i.e. nothing narrowed
+        assert module._reverse_etl_pod_env()["DATABRICKS_SCOPES"] == ""
+
+
 def test_pull_secret_set_attaches_exactly_one_reference():
     """The package is private, so a real deployment pulls with the Astro-provisioned
     secret named by the Variable."""
