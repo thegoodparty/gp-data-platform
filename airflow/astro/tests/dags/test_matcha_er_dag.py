@@ -65,7 +65,7 @@ def test_every_entity_has_the_three_step_chain():
 
 
 def test_one_task_at_a_time_without_an_airflow_pool():
-    """Three 8Gi/4CPU pods at once is 24Gi against a 20Gi deployment quota, so
+    """One 16Gi/4CPU pod is most of the 20Gi deployment quota, so
     the DAG caps itself at one running task.
 
     Asserts the absence of a custom pool as well as the cap. A pool would do
@@ -231,6 +231,8 @@ def test_match_pods_declare_ephemeral_storage():
         resources = _DAG.get_task(f"{entity}.match").container_resources
         assert resources.requests["ephemeral-storage"] == "10Gi"
         assert resources.limits["ephemeral-storage"] == "10Gi"
+        # Requests == limits keeps the pod Guaranteed; a burstable pod is evicted first.
+        assert resources.requests["memory"] == resources.limits["memory"] == "16Gi"
 
 
 def test_match_pods_set_the_pull_policy_explicitly():

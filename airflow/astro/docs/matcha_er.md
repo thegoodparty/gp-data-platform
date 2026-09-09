@@ -41,7 +41,7 @@ Set on the Astro deployment as **Airflow Variables**:
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 8Gi memory / 4 CPU and three in parallel would ask for 24Gi against a 20Gi deployment quota. This
+requests 16Gi memory / 4 CPU, which is most of the 20Gi deployment quota on its own. 16Gi rather than 8Gi because election_stage blocks on three low-cardinality keys and the comparison set for its first EM session was killing the pod at 8Gi. This
 is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
 on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
 quota bump.

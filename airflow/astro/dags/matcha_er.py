@@ -19,7 +19,7 @@ candidacy_stage.sql` joins the candidacy clustered table with
 civics mart can read a mix of one entity's fresh vintage and another's stale
 one regardless of what this DAG does. What serialises the pods today is the
 DAG's own `max_active_tasks=1`, a quota accommodation rather than a modelling
-decision — three 8Gi pods in parallel is 24Gi against a 20Gi deployment
+decision — one 16Gi pod already takes most of the 20Gi deployment
 quota. Raising the quota means raising that number here, in the same change
 as the terraform quota bump.
 
@@ -204,6 +204,11 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
+        # 16Gi because election_stage blocks on state + election_date + office_level, three
+        # low-cardinality keys, so the comparison set Splink materialises for its first EM
+        # session is enormous. At 8Gi the pod was killed in that step, before iteration 1,
+        # while candidacy — whose first block includes last_name — ran fine.
+        #
         # ephemeral-storage is declared, not inherited: Astro's namespace default is 256Mi,
         # and matcha writes the clustered and pairwise CSVs plus two diagnostic charts to the
         # pod filesystem before uploading to Databricks — `--no-audit` skips the audit reports,
@@ -212,8 +217,8 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
         # like a crash: minutes of successful Splink work, then the container simply vanishes
         # mid-log with no traceback.
         container_resources=k8s.V1ResourceRequirements(
-            requests={"memory": "8Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
-            limits={"memory": "8Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
+            requests={"memory": "16Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
+            limits={"memory": "16Gi", "cpu": "4", "ephemeral-storage": "10Gi"},
         ),
         in_cluster=True,
         get_logs=True,
@@ -232,7 +237,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
-    # Three 8Gi/4CPU pods at once is 24Gi against a 20Gi deployment quota, so only one task
+    # One 16Gi/4CPU pod is most of the 20Gi deployment quota, so only one task
     # in the DAG runs at a time. Deliberately not an Airflow pool: a pool has to be created on
     # each deployment out of band, and a missing one parks the pooled tasks in `scheduled`
     # forever with nothing but a scheduler-log warning to say why. This deploys with the DAG.
