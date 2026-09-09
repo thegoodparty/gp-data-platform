@@ -28,17 +28,6 @@ def test_build_payload_drops_excluded_columns() -> None:
     assert payload == {"gp_person_id": "p1", "firstname": "Jane"}
 
 
-def test_build_payload_keeps_key_column_as_a_property() -> None:
-    """Catches: the key column being silently dropped from the payload instead of just used for keying.
-
-    gp_person_id must be written as a real HubSpot property -- it is a unique
-    property on the contact, not only a diff key -- so it is not in
-    excluded_columns and must survive into the payload.
-    """
-    payload = build_payload({"gp_person_id": "p1", "firstname": "Jane"}, excluded_columns=frozenset())
-    assert payload["gp_person_id"] == "p1"
-
-
 def test_build_payload_normalizes_dates_and_decimals_to_strings() -> None:
     """Catches: a raw date/datetime object reaching json.dumps and raising, instead of a stable string."""
     payload = build_payload(

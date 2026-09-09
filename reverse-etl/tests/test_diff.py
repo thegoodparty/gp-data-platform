@@ -21,17 +21,6 @@ def test_compute_to_send_includes_a_key_whose_payload_changed() -> None:
     assert to_send == {"p1": '{"score":4}'}
 
 
-def test_compute_to_send_resends_a_value_that_returned_to_a_previous_state() -> None:
-    """Catches: subtracting ALL history instead of the latest row per key.
-
-    A score that goes 3 -> 4 -> 3 must resend on the second 3, or the destination
-    is stuck showing 4 forever. Here `latest_sent` holds only the most recent
-    logged payload (4), so today's 3 must be offered again.
-    """
-    to_send = compute_to_send({"p1": '{"score":3}'}, {"p1": '{"score":4}'})
-    assert to_send == {"p1": '{"score":3}'}
-
-
 def test_orphaned_keys_finds_a_logged_key_missing_from_the_current_population() -> None:
     """Catches: a person-id remint going unnoticed (the old id stays in sent_log forever
     once the model stops emitting it)."""

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from retl.config import MissingFlowConfigError, load_flow_config, load_log_table
+from retl.config import MissingFlowConfigError, load_flow_config
 
 FULL_ENV = {
     "RETL_FLOW_HUBSPOT_LEADS_SOURCE_RELATION": "goodparty_data_catalog.mart_sales_reverse_etl.contact_desired_state",
     "RETL_FLOW_HUBSPOT_LEADS_KEY_COLUMN": "gp_person_id",
     "RETL_FLOW_HUBSPOT_LEADS_EXCLUDED_COLUMNS": "added_to_mart_at, candidate_id_source",
     "RETL_FLOW_HUBSPOT_LEADS_CAP": "80000",
+    "RETL_FLOW_HUBSPOT_LEADS_LOG_TABLE": "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads",
 }
 
 
@@ -33,7 +34,7 @@ def test_load_flow_config_defaults_excluded_columns_to_empty() -> None:
     assert flow.excluded_columns == frozenset()
 
 
-@pytest.mark.parametrize("missing_key", ["SOURCE_RELATION", "KEY_COLUMN", "CAP"])
+@pytest.mark.parametrize("missing_key", ["SOURCE_RELATION", "KEY_COLUMN", "CAP", "LOG_TABLE"])
 def test_load_flow_config_raises_on_a_missing_required_variable(missing_key: str) -> None:
     """Catches: a silently-empty relation/key/cap being treated as valid config instead of failing fast."""
     env_var = f"RETL_FLOW_HUBSPOT_LEADS_{missing_key}"
@@ -52,19 +53,16 @@ def test_load_flow_config_rejects_a_nonpositive_or_unparseable_cap(bad_cap: str)
 
 
 def test_load_flow_config_is_independent_per_flow_name() -> None:
-    """Catches: two flows accidentally sharing one config namespace instead of being isolated."""
+    """Catches: two flows accidentally sharing one config namespace (including their log
+    tables) instead of being isolated."""
     env = {
         **FULL_ENV,
         "RETL_FLOW_OTHER_FLOW_SOURCE_RELATION": "goodparty_data_catalog.other.model",
         "RETL_FLOW_OTHER_FLOW_KEY_COLUMN": "some_key",
         "RETL_FLOW_OTHER_FLOW_CAP": "10",
+        "RETL_FLOW_OTHER_FLOW_LOG_TABLE": "goodparty_data_catalog.reverse_etl.sent_log_other_flow",
     }
     other = load_flow_config("other_flow", env)
     assert other.source_relation == "goodparty_data_catalog.other.model"
     assert other.cap == 10
-
-
-def test_load_log_table_requires_it_to_be_set() -> None:
-    """Catches: a run silently reading/writing an unset (empty-string) log table."""
-    with pytest.raises(ValueError, match="RETL_LOG_TABLE"):
-        load_log_table({})
+    assert other.log_table == "goodparty_data_catalog.reverse_etl.sent_log_other_flow"

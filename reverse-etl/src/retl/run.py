@@ -54,6 +54,26 @@ class SendCapExceededError(RuntimeError):
         super().__init__(f"flow {flow_id!r}: {actual} rows to send exceeds cap {cap}; zero rows sent")
 
 
+class EmptyLogError(RuntimeError):
+    """An amnesia day -- a lost/recreated/truncated table, or a mis-pointed
+    log_table config reading zero rows for this flow -- would otherwise look
+    exactly like day one and silently re-send the full population. The volume cap
+    cannot catch it: a legitimate recompute day also rewrites ~70% of rows, so
+    "most of the population moved" is not itself a signal of a problem. This guard
+    covers all three amnesia shapes with zero false alarms on any day the log
+    genuinely has rows for this flow. Zero sends on failure, as with the other
+    guards; applies to every destination, including a CSV preview.
+    """
+
+    def __init__(self, flow_id: str, log_table: str):
+        self.flow_id = flow_id
+        self.log_table = log_table
+        super().__init__(
+            f"flow {flow_id!r}: {log_table} has no logged rows for this flow; "
+            "pass --accept-empty-log only for a deliberate first run or post-reset run"
+        )
+
+
 @dataclass(frozen=True)
 class RunSummary:
     flow_id: str
@@ -139,14 +159,22 @@ def execute_run(
     *,
     connection: Any,
     flow: FlowConfig,
-    log_table: str,
     destination: Destination,
+    accept_empty_log: bool = False,
 ) -> RunSummary:
     desired = read_source_payloads(connection, flow)
     if not desired:
         raise EmptySourceError(flow.flow_id)
 
-    latest_sent = sent_log.read_latest_sent(connection, log_table=log_table, flow_id=flow.flow_id)
+    # Verified before a single row of the log is trusted: a table stamped for a
+    # different flow would otherwise read as this flow's (non-empty) latest_sent,
+    # which is exactly the shape the empty-log guard below cannot see through.
+    sent_log.verify_log_table_identity(connection, flow.log_table, flow.flow_id)
+
+    latest_sent = sent_log.read_latest_sent(connection, log_table=flow.log_table)
+    if not latest_sent and not accept_empty_log:
+        raise EmptyLogError(flow.flow_id, flow.log_table)
+
     to_send = compute_to_send(desired, latest_sent)
 
     # Buffered before any POST: a guard failure here must mean zero sends, not a
@@ -158,7 +186,7 @@ def execute_run(
     orphaned = orphaned_keys(latest_sent, desired)
 
     def _on_batch_confirmed(confirmed: dict[str, str]) -> None:
-        sent_log.append_sent_log(connection, log_table=log_table, flow_id=flow.flow_id, confirmed=confirmed)
+        sent_log.append_sent_log(connection, log_table=flow.log_table, confirmed=confirmed)
 
     delivery = destination.deliver(flow.flow_id, buffered, on_batch_confirmed=_on_batch_confirmed)
 

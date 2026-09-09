@@ -28,6 +28,7 @@ class FlowConfig:
     key_column: str
     excluded_columns: frozenset[str]
     cap: int  # no code default: sizing this is an enable-time, per-flow call
+    log_table: str  # this flow's OWN log table; dev/sandbox isolation is a different value here
 
 
 def load_flow_config(flow_id: str, env: Mapping[str, str]) -> FlowConfig:
@@ -59,17 +60,5 @@ def load_flow_config(flow_id: str, env: Mapping[str, str]) -> FlowConfig:
         key_column=require("KEY_COLUMN"),
         excluded_columns=excluded_columns,
         cap=cap,
+        log_table=require("LOG_TABLE"),
     )
-
-
-def load_log_table(env: Mapping[str, str]) -> str:
-    """Which sent_log-shaped table this run uses, shared by every flow in one run.
-
-    One value, read once, regardless of destination: a CSV preview reads the same
-    table (to diff against what is really logged) but never writes to it; a sandbox
-    run points this at a scratch-schema table instead of the production one.
-    """
-    log_table = env.get("RETL_LOG_TABLE", "")
-    if not log_table:
-        raise ValueError("RETL_LOG_TABLE is not set")
-    return log_table
