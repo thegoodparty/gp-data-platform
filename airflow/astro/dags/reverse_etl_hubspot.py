@@ -130,6 +130,9 @@ def _reverse_etl_pod_env() -> dict[str, str]:
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
         "DATABRICKS_CLIENT_SECRET": fields["client_secret"],
+        # From the connection, so the pod cannot drift from the tasks beside it, and
+        # always sent so the pod's env surface does not vary with a Variable's state.
+        "DATABRICKS_SCOPES": ", ".join(fields["scopes"] or []),
         _FLOW_ENV_PREFIX + "SOURCE_RELATION": Variable.get(SOURCE_RELATION_VARIABLE),
         _FLOW_ENV_PREFIX + "KEY_COLUMN": KEY_COLUMN,
         _FLOW_ENV_PREFIX + "EXCLUDED_COLUMNS": Variable.get(EXCLUDED_COLUMNS_VARIABLE),

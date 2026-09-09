@@ -6,6 +6,9 @@ imports `airflow` and never reads an Airflow Variable or Connection directly,
 because the installed console script runs as a bare subprocess with no
 task-runner context for those lookups.
 
+`DATABRICKS_SCOPES` narrows the OAuth scopes the M2M path requests; unset keeps the
+SDK default of `all-apis`.
+
 Cursors default to `arraysize=100000`, so an unsized `fetchmany()` returns up to
 100k rows in one call and bounds nothing by itself. `fetch_all_rows` passes an
 explicit size to every `fetchmany()` call instead, and drains it in a loop, so the
@@ -28,6 +31,8 @@ class DatabricksConnConfig:
     access_token: str | None = None
     client_id: str | None = None
     client_secret: str | None = None
+    # Only the M2M path uses these: a token is not an exchange, so nothing to scope.
+    scopes: str = ""
 
 
 def _strip_scheme(host: str) -> str:
@@ -46,11 +51,13 @@ def config_from_env(env: Mapping[str, str]) -> DatabricksConnConfig:
         access_token=env.get("DATABRICKS_TOKEN") or None,
         client_id=env.get("DATABRICKS_CLIENT_ID") or None,
         client_secret=env.get("DATABRICKS_CLIENT_SECRET") or None,
+        scopes=env.get("DATABRICKS_SCOPES", "").strip(),
     )
 
 
 def connect(config: DatabricksConnConfig) -> Any:
-    """Open a connection. Not unit tested: it is the one call that must reach a real warehouse.
+    """Open a connection. Only its config assembly is unit tested; the connection
+    itself is the one call that must reach a real warehouse.
 
     Two auth shapes, matching the two forms this repo already passes through env
     (people-api-loader's `load_people_api.py` DAG): a token, used directly by the
@@ -70,11 +77,17 @@ def connect(config: DatabricksConnConfig) -> Any:
         from databricks.sdk.core import Config as SdkConfig
         from databricks.sdk.core import oauth_service_principal
 
+        # Passed explicitly because `scopes` has no env binding, so setting
+        # DATABRICKS_SCOPES alone would do nothing.
         sdk_config = SdkConfig(
             host=config.server_hostname,
             client_id=config.client_id,
             client_secret=config.client_secret,
+            scopes=config.scopes or None,
         )
+        # The SDK's resolved value, not the configured one: an unset variable becomes
+        # `all-apis` silently, and that is the request a narrowed principal refuses.
+        print(f"retl OAuth scopes requested: {sdk_config.get_scopes_as_string()}")
         return databricks_sql.connect(
             server_hostname=config.server_hostname,
             http_path=config.http_path,
