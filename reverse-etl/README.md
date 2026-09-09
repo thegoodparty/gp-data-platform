@@ -10,7 +10,7 @@ file is the run and deploy story.
 ```bash
 uv sync
 cp .env.example .env  # fill in the Databricks + flow values, then export them
-uv run retl --source=hubspot_leads --destination=csv
+uv run retl --source=hubspot --destination=csv
 ```
 
 `--destination=csv` never writes to the send log, so it is safe to run repeatedly while iterating.
@@ -20,7 +20,7 @@ uv run retl --source=hubspot_leads --destination=csv
 A flow's log table must exist before its first non-init run:
 
 ```bash
-uv run retl --source=hubspot_leads --init-log
+uv run retl --source=hubspot --init-log
 ```
 
 This is a one-time (or post-reset) setup ceremony, run by a human. It is never part of a scheduled
@@ -34,7 +34,7 @@ The entrypoint is the `retl` console script; the default `CMD` is `--help`.
 
 ```bash
 docker build -t retl-local .
-docker run --rm --env-file .env retl-local --source=hubspot_leads --destination=csv
+docker run --rm --env-file .env retl-local --source=hubspot --destination=csv
 ```
 
 ## CI and deploy
@@ -44,7 +44,7 @@ docker run --rm --env-file .env retl-local --source=hubspot_leads --destination=
 tagged with the commit sha alongside `latest`. The package is **private** — that is a package
 setting, not something the workflow can set, so a deployment needs an image pull secret.
 
-The daily Airflow DAG (`reverse_etl_hubspot_leads`) pins its pod to a specific sha via the
+The daily Airflow DAG (`reverse_etl_hubspot`) pins its pod to a specific sha via the
 `reverse_etl_image_tag` Variable, with no mutable-tag default — deploying a merged change is an explicit bump of that
 Variable to the new build's sha, which is the provenance gate: the DAG always runs exactly the build
 that was evaluated, never whatever `latest` happens to point at.
