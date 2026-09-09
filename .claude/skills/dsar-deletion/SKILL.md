@@ -72,20 +72,52 @@ it, and correct the field if it disagrees.
 
 ```bash
 cd analytics && uv run python ../.claude/skills/dsar-deletion/scope_subject.py \
-    --name "First Last" --email someone@example.com --phone 555-555-5555
+    --name "First Last" --email someone@example.com --phone 555-555-5555 \
+    --address "123 Example St"
 ```
 
-Twenty-two probes across product data, HubSpot including its archive, snapshot and raw
-JSON copies, Segment, Amplitude, Stripe, ClickUp, and the vendor civic sources. Each hit
-prints the identifying columns, so you can act without a second query.
+Pass `--address` whenever the request includes one. A vendor or lead record often carries
+the street address when it carries nothing else you can match on.
 
-Probes that error are not clear. Check them by hand before concluding anything.
+The output has two parts, and they answer different questions.
 
-If the subject appears in `mart_civics.people`, read `mart_civics.person_identifiers` for
-their `gp_person_id`. It returns one row per contributing source record and tells you
-which vendors hold them without searching each one. It only reflects what entity
-resolution clustered, so a record the matcher missed will not appear. The sweep covers
-that gap; trust the sweep over the view for negatives.
+**Read the ANCHOR block first.** It reports exact-surname counts across the eleven
+person-bearing sources. Zero everywhere is a clean negative. Any non-zero is a record to
+act on.
+
+**Then read the fuzzy hits.** Surnames are matched by substring, so "First M Last", a
+hyphenated surname, and a middle name sitting in the first-name field all still land.
+The cost is false positives: searching for "Mboh" also returns "Schlumbohm" and
+"Bohnenkamp", because the substring appears inside those names. Eyeball them; do not
+treat a fuzzy hit as a match without reading the row.
+
+Both matter. The anchor alone would miss a misspelling or a name split across the wrong
+fields. The fuzzy pass alone buries a real answer in noise.
+
+Coverage is roughly 25 probes: product data, HubSpot contacts and companies including
+the archive and snapshot copies, Segment, Amplitude, Stripe, ClickUp, the vendor civic
+sources, the BallotReady GraphQL person payloads, the entity-resolution cluster tables,
+and the two `historical.ballotready_records_sent_to_*` disclosure logs. Those last two
+are worth reading even on a clean sweep: they record what we sent onward to HubSpot and
+TechSpeed, which is what tells you whether anyone else received the person's data.
+
+`--deep` adds the `airbyte_internal` raw JSON, which holds every version ever extracted.
+It is slow enough to exhaust the connector's retry budget on the X-Small warehouse, so it
+is off by default. Use it when you expect a hit and the normal sweep does not find one.
+
+Probes that error are not clear. Check them by hand before concluding anything. Probes
+taking over 60 seconds are listed separately so a slow source is visible rather than
+silently near timeout.
+
+Three source families are listed as not probed because they have no person-level columns
+at all: `ballotready_s3_recruitment_v1` is race and position level, the DDHQ gsheet
+tables are keyed on `race_id`, and the CivicEngine GraphQL tables carry no person names.
+They are reported so a reader can see they were considered rather than forgotten.
+
+If the subject appears in `mart_civics.people`, the sweep also returns their
+`mart_civics.person_identifiers` rows, one per contributing source record, which tells
+you which vendors hold them. That view only reflects what entity resolution clustered, so
+a record the matcher missed will not appear. Trust the sweep over the view for negatives.
 
 ## Step 2: record the identifiers
 
