@@ -139,6 +139,87 @@ models:
         data_tests:
           - not_null
 
+  - name: hubspot_contact_desired_state
+    description: >
+      What every HubSpot contact this reverse-ETL flow owns should look like. One row
+      per eligible PERSON (survivor candidacy = latest feed_activity_at, gp_candidacy_id
+      ascending as the tie-break), plus one row per eligible candidacy that has no
+      gp_person_id and therefore cannot collapse to a person. Eligible means still in the
+      race or won ('Won'/'Runoff', or an undetermined outcome with a stage still ahead),
+      contactable, and non-major-party; there is no activity window and no
+      not-already-in-HubSpot filter, because the flow is a full sync rather than a
+      net-new lead list.
+
+      Every payload column is named for the HubSpot INTERNAL property it writes
+      (firstname, twitterhandle, zip), because the sending app maps column names onto
+      properties with no rename layer. Values are NULL, never '', wherever unknown --
+      HubSpot reads '' as "clear this property". Sales-owned fields (firstname, lastname,
+      phone, hubspot_owner_id, type) carry a value only on create-shaped rows and are
+      NULL once the contact exists, which is how an update omits them.
+
+      The non-payload columns (contact_exists, is_sendable, hold_reason, the forensic
+      ids, feed_activity_at, built_at) are diagnostics; the app reads
+      hubspot_contact_desired_state_sendable, which drops them.
+    data_tests:
+      # The sendable view filters on is_sendable alone, so a NULL there would drop a
+      # person from the sync silently, and a hold with no reason would leave the run
+      # summary's counts uninterpretable. One invariant covers both directions.
+      - dbt_utils.expression_is_true:
+          name: hubspot_contact_desired_state_hold_reason_matches_sendable
+          arguments:
+            expression: "is_sendable = (hold_reason is null)"
+    columns:
+      - name: gp_person_id
+        description: >
+          Canonical person id and the flow's tracking key / HubSpot upsert idProperty.
+          NULL only on held rows that could not resolve to a person.
+        data_tests:
+          # Sendable rows go to a batch upsert that rejects a duplicate idProperty and
+          # to an app that raises on a null or duplicate key: both would fail the whole
+          # run, so they are caught here instead.
+          - unique:
+              config:
+                where: "is_sendable"
+          - not_null:
+              config:
+                where: "is_sendable"
+      - name: contact_exists
+        description: >
+          Evidence sufficient to omit sales-owned fields, not proof the contact exists
+          right now: true when a contact carries this gp_person_id property OR this
+          flow's log holds a confirmed send. Reads false for every row until the HubSpot
+          property is created and backfilled.
+      - name: is_sendable
+        description: >
+          False for rows held back from the sync: no person key, or our key disagrees
+          with the one stamped on a linked contact. Held rows stay in the table so they
+          stay countable, and the sendable view filters them out.
+      - name: hold_reason
+        description: >
+          Why a row is not sendable ('no_person_key' or 'person_id_mismatch'); NULL when
+          it is sendable.
+      - name: built_at
+        description: >
+          Build clock. Deliberately excluded from the sendable view: it changes on every
+          rebuild, so in a payload it would make the diff resend every row every day.
+
+  - name: hubspot_contact_desired_state_sendable
+    description: >
+      The relation the reverse-ETL app reads: the desired state's sendable rows, key and
+      HubSpot payload properties only. The app applies no row filter and raises on a
+      null, blank, or duplicate key, and it maps every column name it sees onto a HubSpot
+      property, so the held rows and the diagnostic columns are both removed here rather
+      than in the app.
+    data_tests:
+      # A blank value is not a no-op: HubSpot reads '' as "clear this property", and a
+      # large share of the cells that are blank on our side are populated on theirs.
+      # Column-agnostic on purpose -- to_json drops nulls and renders a blank as
+      # "col":"", so the assertion cannot drift as the payload's columns change.
+      - dbt_utils.expression_is_true:
+          name: hubspot_contact_desired_state_sendable_no_blank_payload_values
+          arguments:
+            expression: "to_json(struct(*)) not like '%:\"\"%'"
+
   - name: company_viability_hubspot
     description: >
       Viability 2.0 and race attributes synced onto EXISTING HubSpot companies
