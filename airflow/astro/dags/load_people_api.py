@@ -37,6 +37,10 @@ _DBX_ENV: dict[str, str] = {
     "DATABRICKS_CLIENT_SECRET": "{% set c = "
     + _DBX_CONN_EXPR
     + " %}{{ c.password or c.extra_dejson.get('client_secret', '') }}",
+    # The one Config field the SDK does not read from the environment, so the
+    # loader passes it explicitly. Same Variable the SQL-connector DAGs use;
+    # empty means the SDK default of all-apis.
+    "DATABRICKS_SCOPES": "{{ var.value.get('databricks_scopes', '') }}",
     # unload's Statement Execution API is warehouse-only; take the warehouse id from the same
     # connection's http_path (`/sql/1.0/warehouses/<id>` -> last segment). The connection points at
     # a SQL warehouse (same one the L2 SQL jobs use), so creds AND warehouse come from one source —
