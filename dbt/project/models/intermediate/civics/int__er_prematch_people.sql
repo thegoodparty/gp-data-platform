@@ -384,9 +384,8 @@ select
     coalesce(a.aliases, array(n.first_name)) as first_name_aliases,
     n.first_name_tokens,
     n.last_name,
-    -- Tokenized here rather than in `normalized`: a select-list alias loses to
-    -- a same-named column from the FROM clause, so tokenizing there would read
-    -- the raw surname and keep the suffixes `last_name` just stripped.
+    -- Not in `normalized`: a select-list alias loses to a same-named FROM
+    -- column, so tokenizing there would read the raw, still-suffixed surname.
     {{ last_name_tokens("n.last_name") }} as last_name_tokens,
     n.suffix_token,
     case when ec.n_records <= {{ contact_key_max_records }} then n.email end as email,

@@ -13,9 +13,8 @@
 
         Single-character tokens are dropped, so "o'hearn" yields ['hearn'].
 
-        Splitting happens only here. matcha blocks on an overlap in the
-        array this emits, the same way it does for first_name_aliases, so
-        it has no surname-splitting logic of its own to keep in step.
+        Splitting happens only here: matcha blocks on an overlap in the array
+        this emits, so it has no surname logic of its own to keep in step.
     */
     filter(
         split(regexp_replace(lower({{ col }}), '[^\\p{L}]+', ' '), ' '),
