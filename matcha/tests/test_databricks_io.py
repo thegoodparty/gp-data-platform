@@ -15,6 +15,7 @@ from scripts.databricks_io import (
     _build_connect_kwargs,
     _coerce_to_string_df,
     _df_to_databricks_schema,
+    _scoped_config,
     get_connection,
     is_databricks_fqn,
     read_table,
@@ -355,6 +356,32 @@ def test_build_connect_kwargs_strips_scheme_from_host(mock_config):
     assert kwargs["server_hostname"] == "dbc-123.cloud.databricks.com"
     assert kwargs["http_path"] == "sql/1.0/warehouses/abc"
     assert callable(kwargs["credentials_provider"])
+
+
+@patch("scripts.databricks_io.WorkspaceClient")
+@patch("scripts.databricks_io.get_connection")
+@patch("scripts.databricks_io.Config")
+@patch.dict("os.environ", {"DATABRICKS_SCOPES": "sql"}, clear=False)
+def test_write_table_gives_the_workspace_client_the_same_scopes(mock_config, mock_conn, mock_ws):
+    """The parquet upload to the staging volume goes through a WorkspaceClient,
+    which builds its own Config. Left bare it asks for all-apis and fails where
+    the service principal was not granted it — after the table was already
+    created, so the failure lands mid-write."""
+    mock_config.return_value = MagicMock(host="https://h", client_id="cid", client_secret="s")
+    mock_conn.return_value.cursor.side_effect = RuntimeError("stop after the client is built")
+
+    with pytest.raises(RuntimeError, match="stop after"):
+        write_table(pd.DataFrame({"a": ["1"]}), "cat.sch.tbl", overwrite=True)
+
+    assert mock_ws.call_args.kwargs["config"] is mock_config.return_value
+    assert mock_config.call_args.kwargs == {"scopes": "sql"}
+
+
+@patch.dict("os.environ", {"DATABRICKS_SCOPES": ""}, clear=False)
+def test_scoped_config_is_none_when_blank():
+    """None rather than a bare Config, so each caller keeps its own default
+    construction and the tests around them need no Databricks credentials."""
+    assert _scoped_config() is None
 
 
 @patch("scripts.databricks_io.Config")

@@ -81,6 +81,20 @@ def is_databricks_fqn(value: str) -> bool:
         return False
 
 
+def _scoped_config() -> Config | None:
+    """A Config carrying DATABRICKS_SCOPES, or None when none are configured.
+
+    Two auth paths need it: the SQL connector for queries, and a
+    WorkspaceClient for the parquet upload to the staging volume. The SDK gives
+    its `scopes` attribute no env binding, so the value has to be passed in —
+    and a path that does not still asks for `all-apis`, which fails where the
+    service principal was never granted it. None means "say nothing", leaving
+    each caller's own default construction alone.
+    """
+    scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
+    return Config(scopes=scopes) if scopes else None
+
+
 def _build_connect_kwargs() -> dict:
     """Return kwargs for databricks_sql.connect().
 
@@ -93,8 +107,7 @@ def _build_connect_kwargs() -> dict:
     if not http_path:
         raise ValueError("DATABRICKS_HTTP_PATH env var is required")
 
-    scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
-    config = Config(scopes=scopes) if scopes else Config()
+    config = _scoped_config() or Config()
     # Printed because the token request either succeeds or fails on exactly this
     # value, and the failure names the client rather than the scope it refused.
     print(f"OAuth scopes requested: {config.get_scopes_as_string()}")
@@ -220,7 +233,8 @@ def write_table(
     t = TableFQN.parse(fqn)
     df = _coerce_to_string_df(df)
     schema_spec = _df_to_databricks_schema(df)
-    w = WorkspaceClient()
+    scoped = _scoped_config()
+    w = WorkspaceClient(config=scoped) if scoped else WorkspaceClient()
 
     conn = get_connection()
     try:
