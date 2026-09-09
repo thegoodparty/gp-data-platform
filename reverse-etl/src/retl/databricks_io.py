@@ -7,7 +7,7 @@ because the installed console script runs as a bare subprocess with no
 task-runner context for those lookups.
 
 `DATABRICKS_SCOPES` narrows the OAuth scopes the M2M path requests; unset keeps the
-SDK default of `all-apis`. It is not read by the SDK itself.
+SDK default of `all-apis`.
 
 Cursors default to `arraysize=100000`, so an unsized `fetchmany()` returns up to
 100k rows in one call and bounds nothing by itself. `fetch_all_rows` passes an
@@ -31,8 +31,7 @@ class DatabricksConnConfig:
     access_token: str | None = None
     client_id: str | None = None
     client_secret: str | None = None
-    # Requested OAuth scopes, comma or space separated. Only the M2M path uses them:
-    # a personal access token is not a token exchange, so there is nothing to scope.
+    # Only the M2M path uses these: a token is not an exchange, so nothing to scope.
     scopes: str = ""
 
 
@@ -57,7 +56,8 @@ def config_from_env(env: Mapping[str, str]) -> DatabricksConnConfig:
 
 
 def connect(config: DatabricksConnConfig) -> Any:
-    """Open a connection. Not unit tested: it is the one call that must reach a real warehouse.
+    """Open a connection. Only its config assembly is unit tested; the connection
+    itself is the one call that must reach a real warehouse.
 
     Two auth shapes, matching the two forms this repo already passes through env
     (people-api-loader's `load_people_api.py` DAG): a token, used directly by the
@@ -77,20 +77,16 @@ def connect(config: DatabricksConnConfig) -> Any:
         from databricks.sdk.core import Config as SdkConfig
         from databricks.sdk.core import oauth_service_principal
 
-        # `scopes` is the one Config field the SDK gives no env binding, so setting
-        # DATABRICKS_SCOPES alone does nothing and it has to be passed here. A service
-        # principal is refused outright when it asks for a scope its secret was not
-        # minted with, and the refusal names the client rather than the scope, so the
-        # resolved value is printed before the exchange rather than guessed at after.
+        # Passed explicitly because `scopes` has no env binding, so setting
+        # DATABRICKS_SCOPES alone would do nothing.
         sdk_config = SdkConfig(
             host=config.server_hostname,
             client_id=config.client_id,
             client_secret=config.client_secret,
-            # `or None` rather than a conditional kwarg: the SDK parses an empty value
-            # to None and then defaults to `all-apis`, so this says "narrow nothing"
-            # in the one form that also type-checks.
             scopes=config.scopes or None,
         )
+        # The SDK's resolved value, not the configured one: an unset variable becomes
+        # `all-apis` silently, and that is the request a narrowed principal refuses.
         print(f"retl OAuth scopes requested: {sdk_config.get_scopes_as_string()}")
         return databricks_sql.connect(
             server_hostname=config.server_hostname,

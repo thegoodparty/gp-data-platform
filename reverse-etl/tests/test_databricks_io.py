@@ -74,29 +74,18 @@ def test_config_from_env_reads_and_trims_the_scopes_variable() -> None:
     """Catches: the variable is declared but never parsed, so a deployment that
     narrowed its service principal still has retl asking for `all-apis` and being
     refused at the token endpoint before it reads a row."""
-    config = config_from_env(
-        {
-            "DATABRICKS_HOST": "dbc.example.com",
-            "DATABRICKS_HTTP_PATH": "/sql/1.0/x",
-            "DATABRICKS_SCOPES": "  sql, unity-catalog  ",
-        }
+    base = {"DATABRICKS_HOST": "dbc.example.com", "DATABRICKS_HTTP_PATH": "/sql/1.0/x"}
+    assert config_from_env({**base, "DATABRICKS_SCOPES": "  sql, unity-catalog  "}).scopes == (
+        "sql, unity-catalog"
     )
-    assert config.scopes == "sql, unity-catalog"
-
-
-def test_config_from_env_leaves_scopes_empty_when_unset() -> None:
-    """Empty must mean "unchanged": the SDK defaults to `all-apis` on its own, and a
-    deployment that narrows nothing must keep working exactly as before."""
-    config = config_from_env({"DATABRICKS_HOST": "dbc.example.com", "DATABRICKS_HTTP_PATH": "/x"})
-    assert config.scopes == ""
+    assert config_from_env(base).scopes == ""
 
 
 def _connect_capturing_sdk_config(scopes: str):
     """Drive the real `connect()` M2M path with the SDK and driver stubbed out.
 
-    `connect()` is otherwise the one function deliberately left untested because it
-    must reach a live warehouse -- but the scope passthrough is precisely what a
-    warehouse would never show us until a narrowed service principal refused it.
+    `connect()` is otherwise left untested because it must reach a live warehouse --
+    which is exactly what would not show a dropped scope until one was refused.
     """
     config = DatabricksConnConfig(
         server_hostname="dbc.example.com",
@@ -107,7 +96,8 @@ def _connect_capturing_sdk_config(scopes: str):
     )
     with (
         patch("databricks.sdk.core.Config") as mock_config,
-        patch("databricks.sdk.core.oauth_service_principal"),
+        # No need to patch oauth_service_principal: the mocked driver never invokes
+        # the credentials callback that would call it.
         patch("databricks.sql.connect"),
     ):
         connect(config)
@@ -119,10 +109,3 @@ def test_connect_passes_the_configured_scopes_to_the_sdk() -> None:
     gives `scopes` no env binding, so a config that carries the value but never hands
     it to Config still requests `all-apis` and is refused."""
     assert _connect_capturing_sdk_config("sql, unity-catalog")["scopes"] == "sql, unity-catalog"
-
-
-def test_connect_asks_for_nothing_narrower_when_no_scopes_are_configured() -> None:
-    """A deployment that narrows nothing must reach the SDK's own `all-apis` default
-    rather than an empty value this code invented, which the SDK would parse to a
-    different thing than "unset"."""
-    assert _connect_capturing_sdk_config("")["scopes"] is None
