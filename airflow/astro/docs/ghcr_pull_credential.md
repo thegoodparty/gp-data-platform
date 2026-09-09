@@ -65,9 +65,12 @@ access; verified 2026-09-09 by pulling a package created after the token was min
 7. Open an Astronomer support ticket asking them to UPDATE the existing `ghcr-pull` secret
    in both deployment namespaces from the one-time-secret link (precedent: ticket #98163;
    secrets are namespace and deployment scoped; typical turnaround is same-day).
-8. Verify a pod-level pull in each deployment (trigger any container DAG's pod on dev, or
-   ask support to test-pull an image). Only then revoke the OLD token on the account, and
-   note the rotation date in the 1Password item.
+8. Verify the pull WITHOUT running any application: ask Astronomer support to test-pull an
+   image in each namespace, or launch a pod from the image with a no-op command override
+   (for example `python -c "print('pull ok')"`). Do NOT trigger a real container DAG for
+   this — the matchers write production tables regardless of which deployment launched
+   them. Only after a verified pull, revoke the OLD token on the account and note the
+   rotation date in the 1Password item.
 
 ## Constraints (do not "improve" these away)
 
