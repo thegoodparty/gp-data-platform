@@ -109,10 +109,13 @@ with
             {{ ref("int__civics_candidacy_techspeed") }} as ts_int
             on cy.gp_candidacy_id = ts_int.gp_candidacy_id
         where
-            -- contactable
+            -- Contactable, measured on the same normalized values the payload
+            -- emits rather than the raw ones. Tested against the raw columns
+            -- instead, a whitespace-only or malformed-only contact string admits a
+            -- row whose payload then carries neither an email nor a phone.
             (
-                (c.email is not null and c.email != '')
-                or (c.phone_number is not null and c.phone_number != '')
+                c.email rlike '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
+                or nullif(trim(c.phone_number), '') is not null
             )
             -- non-major-party (inherited verbatim from the legacy feed)
             and (
@@ -271,6 +274,10 @@ select
     state,
     case when length(postal_digits) >= 5 then left(postal_digits, 5) end as zip,
     city,
+    -- district, not candidate_district: both properties exist, and this is the one
+    -- the feed's value already lives in on contacts. The ingest registry surfaces
+    -- only the other one, which is a gap in what we read back, not a sign that we
+    -- have been writing the wrong property.
     district,
     population,
     official_office_name,
