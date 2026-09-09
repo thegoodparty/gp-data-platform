@@ -1,4 +1,4 @@
-"""Structure assertions for the reverse-ETL HubSpot-leads daily DAG.
+"""Structure assertions for the reverse-ETL HubSpot contact-sync daily DAG.
 
 Loaded from the file path directly rather than the configured dags_folder, matching
 test_gold_match_daily_dag.py: CI does not point dags_folder at astro/dags, and building
@@ -32,9 +32,9 @@ def suppress_logging(namespace):
         logger.disabled = old_value
 
 
-_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "reverse_etl_hubspot_leads.py")
+_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "reverse_etl_hubspot.py")
 with suppress_logging("airflow"):
-    _DAG = DagBag(dag_folder=_DAG_FILE).dags.get("reverse_etl_hubspot_leads")
+    _DAG = DagBag(dag_folder=_DAG_FILE).dags.get("reverse_etl_hubspot")
 
 # reverse-etl/.env.example, reached from this file's path (worktree root is four levels
 # up: dags -> tests -> astro -> airflow -> root).
@@ -51,7 +51,7 @@ def _declared_env_vars() -> set[str]:
 
 
 def test_dag_loads():
-    assert _DAG is not None, f"reverse_etl_hubspot_leads failed to load from {_DAG_FILE}"
+    assert _DAG is not None, f"reverse_etl_hubspot failed to load from {_DAG_FILE}"
 
 
 def test_schedule_contract_and_paused_on_creation():
@@ -89,7 +89,7 @@ def test_daily_invocation_carries_no_ceremony_flags():
 
 def test_arguments_are_exactly_the_flow_and_destination_the_spec_names():
     assert _DAG.get_task("send_pod").arguments == [
-        "--source=hubspot_leads",
+        "--source=hubspot",
         "--destination=hubspot_contacts",
     ]
 
@@ -141,7 +141,7 @@ def test_dag_supplies_nothing_retl_will_not_read():
     with _pod_runtime(module):
         env = module._reverse_etl_pod_env()
     assert set(env) - _declared_env_vars() == set()
-    assert env["RETL_FLOW_HUBSPOT_LEADS_KEY_COLUMN"] == "gp_person_id"
+    assert env["RETL_FLOW_HUBSPOT_KEY_COLUMN"] == "gp_person_id"
 
 
 def test_dag_omits_exactly_the_three_vars_this_deployment_does_not_need():
@@ -324,7 +324,7 @@ def test_rows_logged_since_binds_the_since_parameter_by_name():
         patch.object(module, "get_databricks_connection", return_value=connection) as mock_connect,
         patch.object(module, "conn_kwargs", return_value=_FAKE_CONN_FIELDS),
     ):
-        result = module._rows_logged_since("goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads", since)
+        result = module._rows_logged_since("goodparty_data_catalog.reverse_etl.sent_log_hubspot", since)
     assert result == 7
     sql, params = cursor.execute.call_args.args
     assert ":since" in sql
@@ -341,10 +341,10 @@ def _dag_module():
 
 _FAKE_VARIABLES = {
     "reverse_etl_hubspot_token": "tok-123",
-    "reverse_etl_hubspot_leads_source_relation": "goodparty_data_catalog.mart_sales_reverse_etl.hubspot_leads",
-    "reverse_etl_hubspot_leads_excluded_columns": "added_to_mart_at",
-    "reverse_etl_hubspot_leads_cap": "80000",
-    "reverse_etl_hubspot_leads_log_table": "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads",
+    "reverse_etl_hubspot_source_relation": "goodparty_data_catalog.mart_sales_reverse_etl.hubspot",
+    "reverse_etl_hubspot_excluded_columns": "added_to_mart_at",
+    "reverse_etl_hubspot_cap": "80000",
+    "reverse_etl_hubspot_log_table": "goodparty_data_catalog.reverse_etl.sent_log_hubspot",
 }
 _FAKE_CONN_FIELDS = {
     "host": "https://dbc-fake.cloud.databricks.com",
