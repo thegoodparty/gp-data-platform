@@ -33,6 +33,10 @@ class FlowConfig:
 
 def load_flow_config(flow_id: str, env: Mapping[str, str]) -> FlowConfig:
     """Build `flow_id`'s config from its `RETL_FLOW_<FLOW_ID>_*` environment variables."""
+    # Canonicalize: the env lookup is case-insensitive (uppercased), but flow_id also
+    # becomes the table's identity stamp -- a case-variant --source would otherwise
+    # stamp one casing and compare another, failing every later run.
+    flow_id = flow_id.lower()
     prefix = f"RETL_FLOW_{flow_id.upper()}_"
 
     def require(name: str) -> str:

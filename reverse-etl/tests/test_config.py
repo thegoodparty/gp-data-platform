@@ -52,6 +52,15 @@ def test_load_flow_config_rejects_a_nonpositive_or_unparseable_cap(bad_cap: str)
         load_flow_config("hubspot_leads", env)
 
 
+def test_load_flow_config_canonicalizes_the_flow_name_to_lowercase() -> None:
+    """Catches: a case-variant --source (Hubspot_Leads) finding the same env config but
+    carrying its raw casing into the table's identity stamp, so init under one casing and
+    a run under another would fail every run with WrongLogTableError."""
+    flow = load_flow_config("Hubspot_Leads", FULL_ENV)
+    assert flow.flow_id == "hubspot_leads"
+    assert flow.cap == 80000
+
+
 def test_load_flow_config_is_independent_per_flow_name() -> None:
     """Catches: two flows accidentally sharing one config namespace (including their log
     tables) instead of being isolated."""
