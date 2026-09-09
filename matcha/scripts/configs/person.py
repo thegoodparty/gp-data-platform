@@ -66,6 +66,13 @@ PERSON_CONFIG = EntityConfig(
         # Nicknames that change the first initial ("bob"/"robert" agree, but
         # "peggy"/"margaret" do not), which rule 3 cannot reach.
         block_on("state", "last_name", "first_name_aliases", arrays_to_explode=["first_name_aliases"]),
+        # Surnames that agree on a part but not in full: "garcia" against
+        # "garcia-santos", and TechSpeed packing a middle name into the surname
+        # field ("nguyen" against "quoc thai nguyen"). Rules 3-5 all key on the
+        # whole surname, so without this the pair is never scored at all.
+        block_on(
+            "state", "last_name_tokens", "substr(first_name, 1, 1)", arrays_to_explode=["last_name_tokens"]
+        ),
         # The dbt graph already resolved these pairs. Scoring them anyway is the
         # calibration signal: a BallotReady and a TechSpeed record for one
         # person, agreeing on nothing but the name, lands around 0.45.
@@ -76,6 +83,7 @@ PERSON_CONFIG = EntityConfig(
         "source_id",
         # Splink retains comparison columns itself; listing one here duplicates it.
         "pregroup_id",
+        "last_name_tokens",
         "suffix_token",
         "br_candidate_id",
         "first_seen_at",

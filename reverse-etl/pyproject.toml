@@ -1,0 +1,46 @@
+[project]
+name = "retl"
+version = "0.1.0"
+description = "Reverse-ETL: daily diff of a Databricks desired-state model against a destination, keyed on a stable person id."
+requires-python = ">=3.14"
+dependencies = [
+    "databricks-sdk>=0.136.0",
+    "databricks-sql-connector>=4.5.0",
+    "requests>=2.32.0",
+    "tenacity>=9.0",
+]
+
+[project.scripts]
+retl = "retl.cli:main"
+
+[build-system]
+requires = ["setuptools>=84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "mypy>=2.3.0",
+    "types-requests",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

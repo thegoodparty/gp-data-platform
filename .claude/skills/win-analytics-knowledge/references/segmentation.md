@@ -36,6 +36,27 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 - `is_open_seat` (BR > TS > DDHQ; NULL on BR-only)
 - `is_partisan` (boolean)
 
+## Account provenance (join to `dbt.stg_airbyte_source__gp_api_db_user`)
+
+`has_password` is the **signup-channel** dimension and the strongest Win engagement predictor
+measured (CV AUC 0.70 power, 0.79 touch; ranked first in every subset where it varies). It is not
+on `users_win_candidacy` - join from the gp-api user staging table on `user_id`:
+
+```sql
+left join goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user us
+  on cast(us.id as string) = cast(u.user_id as string)
+```
+
+- `false` = sales-created off a roster, `true` = self-signup. Roll to candidacy grain with
+  `MAX(...)`, which is where the working set's `usr_has_password` comes from.
+- Clean as a stratifier: it was deliberately excluded from the corroboration model, so cutting by
+  it is not restating a model input.
+- Corroborated rows are 69.9% roster against the frame's 57.7%, so **any** corroboration-filtered
+  read shifts channel mix and is partly a statement about acquisition rather than about candidates.
+- Missingness on race-context fields tracks this dimension - see [gotchas.md](gotchas.md).
+- Reference: `audit_haspw_provenance.py` (DATA-2239 provenance audit), `predictor_ranking.py`
+  (DATA-2247 CV ranking).
+
 ## Upcoming / live election base
 
 The standard "Win users with an election on or after date D" population. Resolve it one way:

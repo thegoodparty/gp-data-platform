@@ -105,13 +105,8 @@ class _ConnKwargs(TypedDict):
 def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
     """The host and OAuth credentials of the Databricks connection an Airflow Variable names.
 
-    No default on the connection-id read: an unset `databricks_conn_id` raises
-    here rather than resolving to some assumed connection, since the wrong
-    guess is a task that quietly reads or writes the wrong environment.
-
-    Public because the matcha pod needs the same four values, plus the same
-    scopes, as its own env vars — one accessor so the pod and the tasks around
-    it cannot drift.
+    Public because the matcha pod needs the same values as its own env vars, so
+    the pod and the tasks around it read one accessor and cannot drift.
     """
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)

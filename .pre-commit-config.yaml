@@ -29,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
+        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot|reverse-etl)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -108,6 +108,13 @@ repos:
         entry: bash -c 'cd apps/genie-slack-bot && uv run pytest'
         language: system
         files: ^apps/genie-slack-bot/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-reverse-etl
+        name: reverse-etl tests (pre-push)
+        entry: bash -c 'cd reverse-etl && uv run pytest'
+        language: system
+        files: ^reverse-etl/
         pass_filenames: false
         stages: [pre-push]
     # Governance guard: semantic_models:/metrics: content must live in a
