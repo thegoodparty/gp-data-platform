@@ -52,8 +52,10 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from collections import deque
 from datetime import datetime
+from typing import Any
 
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.sdk import Variable, dag
@@ -104,10 +106,12 @@ SEND_EXECUTION_TIMEOUT = duration(hours=2)
 POD_LOG_TAIL_LINES = 40
 POD_LOG_TAIL_CHARS = 4000
 
-# A diagnostic probe must never spend the default ~10 minutes finding a cold warehouse;
-# it is annotating a failure that has already happened, not causing work to succeed.
-PROBE_MAX_RETRIES = 2
-PROBE_RETRY_DELAY_SECONDS = 5
+# A diagnostic annotating an already-failed run must never delay it. Retry count alone
+# does not bound that: the connector's own socket timeout and internal retry budget are
+# both 900s, so even one connect attempt can hang for 15 minutes. One attempt, and a
+# hard wall-clock bound on the whole probe.
+PROBE_MAX_RETRIES = 1
+PROBE_TIMEOUT_SECONDS = 30
 
 
 def _reverse_etl_pod_env() -> dict[str, str]:
@@ -147,7 +151,6 @@ def _rows_logged_since(log_table: str, since: datetime) -> int:
     connection = get_databricks_connection(
         **conn_kwargs(),
         max_retries=PROBE_MAX_RETRIES,
-        retry_delay=PROBE_RETRY_DELAY_SECONDS,
         use_cloud_fetch=False,
     )
     try:
@@ -157,6 +160,31 @@ def _rows_logged_since(log_table: str, since: datetime) -> int:
             return int(row[0]) if row else 0
     finally:
         connection.close()
+
+
+def _call_with_timeout(func, *args, timeout: float):
+    """Run `func` on a daemon thread and give up on it after `timeout` seconds.
+
+    A daemon thread, not a pool: a worker blocked on a socket must not hold the task
+    process open at exit, and a future that is already running cannot be cancelled.
+    Abandoning the thread is the point -- the caller has a failure to report now.
+    """
+    outcome: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            outcome["value"] = func(*args)
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise TimeoutError(f"gave up after {timeout}s")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
 
 
 class _ReverseEtlPodOperator(KubernetesPodOperator):
@@ -221,7 +249,7 @@ class _ReverseEtlPodOperator(KubernetesPodOperator):
         try:
             since = context["dag_run"].start_date
             log_table = Variable.get(LOG_TABLE_VARIABLE)
-            count = _rows_logged_since(log_table, since)
+            count = _call_with_timeout(_rows_logged_since, log_table, since, timeout=PROBE_TIMEOUT_SECONDS)
             return f"partial progress: {count} row(s) logged to {log_table} since this run started ({since})"
         except Exception as exc:
             return f"partial progress probe failed: {type(exc).__name__}: {exc}"
@@ -259,7 +287,17 @@ def _send_pod() -> _ReverseEtlPodOperator:
         ),
         startup_timeout_seconds=STARTUP_TIMEOUT_SECONDS,
         in_cluster=True,
+        # The three settings the failure alert depends on, all stated rather than
+        # inherited. get_logs streams the container log, which is the only thing that
+        # calls log_formatter. deferrable defaults to a DEPLOYMENT config lookup, and
+        # the deferred path writes logs without the formatter, so a deployment-level
+        # default would silently empty every alert. log_pod_spec_on_failure prepends
+        # the whole pod object to the exception, burying the tail; the pod's events
+        # carry the same diagnosis (OOMKilled, evictions) into the task log instead.
         get_logs=True,
+        deferrable=False,
+        log_pod_spec_on_failure=False,
+        log_events_on_failure=True,
         on_finish_action="delete_pod",
         execution_timeout=SEND_EXECUTION_TIMEOUT,
     )

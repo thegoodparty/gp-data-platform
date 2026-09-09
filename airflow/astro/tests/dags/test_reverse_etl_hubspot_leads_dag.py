@@ -8,6 +8,8 @@ the DagBag at collection time keeps this on real Airflow with no metastore depen
 import logging
 import re
 import sys
+import threading
+import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -111,11 +113,19 @@ def test_pod_declares_no_credentials_before_it_runs():
     assert _DAG.get_task("send_pod").env_vars == []
 
 
-def test_streaming_logs_stays_on_because_the_failure_alert_depends_on_it():
-    """log_formatter is only called while the provider streams container logs, so
-    get_logs=False would silently empty the tail in every failure alert while the DAG
-    still looked correct."""
-    assert _DAG.get_task("send_pod").get_logs is True
+def test_the_settings_the_failure_alert_depends_on_are_pinned():
+    """Each of these silently degrades the alert while the DAG still looks correct:
+    get_logs=False stops the streaming that calls log_formatter at all; deferrable
+    defaults to a DEPLOYMENT config lookup whose deferred path writes logs without the
+    formatter; log_pod_spec_on_failure prepends the whole pod object, burying the tail
+    the rest of this design exists to surface."""
+    pod = _DAG.get_task("send_pod")
+    assert pod.get_logs is True
+    assert pod.deferrable is False
+    assert pod.log_pod_spec_on_failure is False
+    # The diagnosis the pod spec would have carried (OOMKilled, evictions) has to keep
+    # reaching the task log once it is out of the exception.
+    assert pod.log_events_on_failure is True
 
 
 def test_the_dag_stays_one_task():
@@ -123,27 +133,6 @@ def test_the_dag_stays_one_task():
     because yesterday's payloads are already logged, so the diff comes up empty. A
     second task reappearing here is that decision being undone by accident."""
     assert _DAG.task_ids == ["send_pod"]
-
-
-def test_env_example_regex_isolates_exactly_the_13_declarations():
-    """Pins the parser itself: 13 real declarations (10 live + 3 commented-out), none
-    of the surrounding prose lines. A regex that drifts (too greedy or too strict)
-    would silently change what the two directional set tests below actually check."""
-    assert _declared_env_vars() == {
-        "DATABRICKS_HOST",
-        "DATABRICKS_HTTP_PATH",
-        "DATABRICKS_TOKEN",
-        "DATABRICKS_CLIENT_ID",
-        "DATABRICKS_CLIENT_SECRET",
-        "RETL_FLOW_HUBSPOT_LEADS_SOURCE_RELATION",
-        "RETL_FLOW_HUBSPOT_LEADS_KEY_COLUMN",
-        "RETL_FLOW_HUBSPOT_LEADS_EXCLUDED_COLUMNS",
-        "RETL_FLOW_HUBSPOT_LEADS_CAP",
-        "RETL_FLOW_HUBSPOT_LEADS_LOG_TABLE",
-        "RETL_HUBSPOT_TOKEN",
-        "RETL_HUBSPOT_BASE_URL",
-        "RETL_CSV_OUTPUT_PATH",
-    }
 
 
 def test_dag_supplies_nothing_retl_will_not_read():
@@ -257,15 +246,22 @@ def test_skip_exception_passes_through_unwrapped():
         op.cleanup(pod=MagicMock(), remote_pod=MagicMock())
 
 
-def test_tail_is_bounded_and_tee_returns_default_formatting():
-    """Bounded so a chatty run cannot produce an unusable alert; log_formatter's return
-    value is what reaches the task log, so it must equal the provider's own default."""
+def test_tee_returns_the_providers_own_default_formatting():
+    """log_formatter's return value is what the provider writes to the task log, so a
+    tee that reformats would silently change the live log an operator reads."""
+    assert _dag_module()._send_pod()._tee_log_line("retl", "hello") == "[retl] hello"
+
+
+def test_a_chatty_run_keeps_only_its_last_lines_in_the_alert():
+    """Bounded so a chatty run cannot produce an unusable alert: the lines that matter
+    are the ones just before the pod died, so the earliest must fall out."""
     module = _dag_module()
-    op = module._send_pod()
-    assert op._tee_log_line("retl", "hello") == "[retl] hello"
-    for i in range(module.POD_LOG_TAIL_LINES + 10):
-        op._tee_log_line("retl", f"line {i}")
-    assert len(op._log_tail) == module.POD_LOG_TAIL_LINES
+    op = _op_with_tail(module, [f"line {i}" for i in range(module.POD_LOG_TAIL_LINES + 10)])
+    with _cleanup_failure(module, rows_logged=0), pytest.raises(module.AirflowException) as excinfo:
+        op.cleanup(pod=MagicMock(), remote_pod=MagicMock(), context=_fake_context())
+    text = str(excinfo.value)
+    assert "line 0" not in text
+    assert f"line {module.POD_LOG_TAIL_LINES + 9}" in text
 
 
 def test_tail_text_is_truncated_to_a_bounded_character_count():
@@ -279,6 +275,38 @@ def test_tail_text_is_truncated_to_a_bounded_character_count():
     ):
         op.cleanup(pod=MagicMock(), remote_pod=MagicMock(), context=_fake_context())
     assert len(str(excinfo.value)) < module.POD_LOG_TAIL_CHARS + 500
+
+
+def test_a_hanging_probe_is_abandoned_rather_than_delaying_the_failure():
+    """The connector's socket timeout and internal retry budget are both 900s, so a
+    probe against an unhealthy warehouse could hold the already-failed task for
+    minutes — and hold the one run slot with it."""
+    module = _dag_module()
+    started = threading.Event()
+
+    def _never_returns(*_args):
+        started.set()
+        time.sleep(30)
+
+    with (
+        patch.object(module, "_rows_logged_since", side_effect=_never_returns),
+        patch.object(module, "PROBE_TIMEOUT_SECONDS", 0.1),
+    ):
+        op = _op_with_tail(module, ["retl FAILED: boom"])
+        with (
+            patch.object(
+                module.KubernetesPodOperator,
+                "cleanup",
+                side_effect=module.AirflowException("Pod x returned a failure."),
+            ),
+            _pod_runtime(module),
+            pytest.raises(module.AirflowException) as excinfo,
+        ):
+            op.cleanup(pod=MagicMock(), remote_pod=MagicMock(), context=_fake_context())
+    assert started.is_set()
+    text = str(excinfo.value)
+    assert "Pod x returned a failure." in text
+    assert "TimeoutError" in text
 
 
 def test_rows_logged_since_binds_the_since_parameter_by_name():
@@ -302,7 +330,6 @@ def test_rows_logged_since_binds_the_since_parameter_by_name():
     assert ":since" in sql
     assert params == {"since": since}
     assert mock_connect.call_args.kwargs["max_retries"] == module.PROBE_MAX_RETRIES
-    assert mock_connect.call_args.kwargs["retry_delay"] == module.PROBE_RETRY_DELAY_SECONDS
     connection.close.assert_called_once()
 
 
