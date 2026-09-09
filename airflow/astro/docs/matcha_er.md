@@ -76,8 +76,10 @@ airflow SPs already hold `CREATE_SCHEMA` on the catalog, so pointing a deploymen
 is self-sufficient.
 
 Prod is the exception: `er_source` already exists and the civics marts read it, so prod writes a schema
-it does not own. `ensure_er_schema` is a no-op there, and prod's rights have to be granted — `CREATE_TABLE`
-for the match step, and ownership or `MANAGE` (which inherits to child tables) before the swap is armed.
+it does not own. `ensure_er_schema` is a no-op there, and prod's rights are granted in terraform instead —
+`CREATE_TABLE` to write each dated vintage, and `MANAGE` for the swap and cleanup, which rename and drop
+tables the SP did not create. `MANAGE` inherits to the schema's children and does not imply
+`CREATE_TABLE`, so both are needed.
 
 One consequence to know when reading a dev run: `dbt_build_er_source` builds the dbt staging models
 from whatever schema the dbt sources name, which is the shared `er_source`. A dev run's own vintages
