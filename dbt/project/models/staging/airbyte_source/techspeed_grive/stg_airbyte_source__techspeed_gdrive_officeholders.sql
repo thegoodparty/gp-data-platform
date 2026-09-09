@@ -95,3 +95,4 @@ from renamed
 where
     {{ dsar_not_suppressed("email", "email") }}
     and {{ dsar_not_suppressed("phone_clean", "phone") }}
+    and {{ dsar_not_suppressed("phone", "phone") }}

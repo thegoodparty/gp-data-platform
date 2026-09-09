@@ -70,9 +70,28 @@ def digits(value: str) -> str:
     return re.sub(r"[^0-9]", "", value or "")
 
 
+NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "md", "phd", "esq"}
+
+
+def split_name(name: str) -> tuple[str, str]:
+    """Return (first, last). The surname is the last token after dropping suffixes.
+
+    Everything-after-the-first-space is wrong: "First Middle Last" yields the key
+    "middle last", which matches no last_name column and reports a false clear.
+    """
+    tokens = [t for t in (name or "").split() if t]
+    while len(tokens) > 1 and tokens[-1].lower().strip(",") in NAME_SUFFIXES:
+        tokens.pop()
+    if not tokens:
+        return "", ""
+    if len(tokens) == 1:
+        return tokens[0], tokens[0]
+    return tokens[0], tokens[-1]
+
+
 def build_anchors(name: str) -> list[tuple[str, str, str]]:
     """Exact-surname counts per source. The clean signal, free of substring noise."""
-    last = ((name or "").partition(" ")[2] or name or "").strip().lower()
+    last = split_name(name)[1].lower()
     parts = [
         f"select {lit(label)} as source, count(*) as n from {table} where lower(trim({column})) = {lit(last)}"
         for label, table, column in ANCHOR_TABLES
@@ -88,8 +107,7 @@ def build_probes(
     Each probe selects identifying columns rather than a bare count, so a hit tells the
     operator which record to act on without a second query.
     """
-    first, _, last = (name or "").partition(" ")
-    last = (last or first).strip()
+    first, last = split_name(name)
     e = lit(email.lower())
     ph = digits(phone)
 
@@ -239,12 +257,14 @@ def build_probes(
         ),
         (
             "B vendor civic",
-            "airbyte_source.ballotready_s3_office_holders_v3",
-            f"""select id, first_name, middle_name, last_name, nickname,
+            "dbt.stg_airbyte_source__ballotready_s3_office_holders_v3",
+            f"""select id, first_name, middle_name, last_name, nickname, email, phone,
                        office_holder_mailing_address_line_1
-                from {CATALOG}.airbyte_source.ballotready_s3_office_holders_v3
+                from {CATALOG}.dbt.stg_airbyte_source__ballotready_s3_office_holders_v3
                 where lower(coalesce(last_name,'')) like {last_like}
                    or lower(coalesce(nickname,'')) like {last_like}
+                   or lower(coalesce(email,'')) = {e}
+                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
                    or lower(coalesce(office_holder_mailing_address_line_1,'')) like {addr_like}""",
         ),
         (

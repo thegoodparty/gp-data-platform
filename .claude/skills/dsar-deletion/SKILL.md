@@ -152,7 +152,8 @@ Order matters. Clearing a warehouse copy before its source means the next sync r
 6. **Amplitude.** User privacy deletion API. This does not touch our copy.
 7. **Files we own.** Redact their rows from the DDHQ `goodparty_ddhq_master.csv` in Drive,
    the TechSpeed Drive CSVs, and `s3://goodparty-external-data-share/incoming/techspeed/`.
-   Leave the BallotReady S3 drops alone; the staging filter covers those.
+   Leave the BallotReady S3 drops alone; the staging filter covers both
+   `candidacies_v3` and `office_holders_v3`.
 
 ## Step 4: clear the warehouse copies
 
