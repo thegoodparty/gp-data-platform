@@ -43,6 +43,9 @@ still builds and gates the dated tables.
 ### Variables (set in Astro Environment Manager):
 - `databricks_conn_id` — selects the Databricks connection.
 - `databricks_catalog` — Databricks catalog name.
+- `databricks_er_schema` — schema the dated vintages and live tables live in.
+  Defaults to `er_source`; dev points at its own so a dev run cannot collide
+  with, or rename, what prod serves.
 - `dbt_cloud_job_id` — dbt Cloud job the bookends run steps against.
 - `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
 - `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
@@ -101,11 +104,25 @@ MATCHA_IMAGE_PULL_POLICY = "Always"
 # A hung Splink pod would otherwise hold the single task slot indefinitely, blocking the other
 # two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
-ER_SCHEMA = "er_source"
+# There is one catalog for both environments, so the schema is what separates them. Left
+# hardcoded, a dev run writes the SAME dated table names into the SAME schema as prod:
+# whichever runs first owns that day's vintage and the other's CREATE OR REPLACE is refused,
+# and a dev swap would rename the live tables the civics marts read. Matches how
+# extract_ballotready scopes its writes with `databricks_source_schema`.
+ER_SCHEMA_VARIABLE = "databricks_er_schema"
+DEFAULT_ER_SCHEMA = "er_source"
+# Resolved at task runtime for the Python tasks; the pod gets the same value templated into
+# its arguments, since Astro does not expose Variables to the DAG processor at parse.
+ER_SCHEMA_TEMPLATE = f"{{{{ var.value.get('{ER_SCHEMA_VARIABLE}', '{DEFAULT_ER_SCHEMA}') }}}}"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
 # Weekly schedule, so this keeps roughly a month of vintages to audit against.
 VINTAGE_RETENTION_DAYS = 28
+
+
+def er_schema() -> str:
+    """Schema the dated vintages and live tables live in, at task runtime."""
+    return Variable.get(ER_SCHEMA_VARIABLE, default=DEFAULT_ER_SCHEMA)
 
 
 class _MatchaPodOperator(KubernetesPodOperator):
@@ -178,9 +195,9 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             "--input",
             f"{catalog}.{DBT_SCHEMA}.{entity.prematch_model}",
             "--output-cluster-table",
-            f"{catalog}.{ER_SCHEMA}.{dated_cluster}",
+            f"{catalog}.{ER_SCHEMA_TEMPLATE}.{dated_cluster}",
             "--output-pairwise-table",
-            f"{catalog}.{ER_SCHEMA}.{dated_pairwise}",
+            f"{catalog}.{ER_SCHEMA_TEMPLATE}.{dated_pairwise}",
             "--overwrite",
             # The gate checks the real tables, and matcha's audit CSVs are written
             # into the pod filesystem and die with it.
@@ -262,6 +279,7 @@ def matcha_er():
         never a rollback position once a swap has consumed them.
         """
         catalog = Variable.get(CATALOG_VARIABLE)
+        schema = er_schema()
         # One read for the whole task: a mid-task flip would otherwise drop some entities'
         # backups and keep others'.
         drop_backups = swap_enabled()
@@ -282,8 +300,8 @@ def matcha_er():
             for entity in ENTITIES:
                 for table in (entity.cluster_table, entity.pairwise_table):
                     if drop_backups:
-                        drop_old_table(conn, catalog, ER_SCHEMA, table)
-                    dropped[table] = drop_stale_vintages(conn, catalog, ER_SCHEMA, table, cutoff)
+                        drop_old_table(conn, catalog, schema, table)
+                    dropped[table] = drop_stale_vintages(conn, catalog, schema, table, cutoff)
         finally:
             conn.close()
         return dropped
@@ -302,6 +320,7 @@ def matcha_er():
             @task(task_id="gate")
             def gate(run_date: str) -> None:
                 catalog = Variable.get(CATALOG_VARIABLE)
+                schema = er_schema()
                 conn = open_connection()
                 try:
                     for table, table_gate in (
@@ -311,7 +330,7 @@ def matcha_er():
                         run_gate(
                             conn,
                             catalog,
-                            ER_SCHEMA,
+                            schema,
                             table,
                             dated_name(table, run_date),
                             table_gate,
@@ -329,10 +348,11 @@ def matcha_er():
                     )
                     return
                 catalog = Variable.get(CATALOG_VARIABLE)
+                schema = er_schema()
                 conn = open_connection()
                 try:
                     for table in (entity.cluster_table, entity.pairwise_table):
-                        swap_table(conn, catalog, ER_SCHEMA, table, dated_name(table, run_date))
+                        swap_table(conn, catalog, schema, table, dated_name(table, run_date))
                 finally:
                     conn.close()
 

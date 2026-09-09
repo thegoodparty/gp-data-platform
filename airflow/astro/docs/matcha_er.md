@@ -31,6 +31,7 @@ Set on the Astro deployment as **Airflow Variables**:
 |---|---|
 | `databricks_conn_id` | Selects the Databricks connection (`databricks_dev` / `databricks`). |
 | `databricks_catalog` | Databricks catalog name the ER tables live in. |
+| `databricks_er_schema` | Schema holding the dated vintages and live tables. Defaults to `er_source`. **Dev must point at its own** — see "Why dev needs its own schema". |
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
@@ -55,6 +56,22 @@ of Splink.
 `max_active_runs=1` is separate and still needed. Without it an overlapping manual trigger would give two
 runs with different `ds_nodash` whose swaps could interleave DROP/RENAME statements against the same live
 table.
+
+## Why dev needs its own schema
+
+There is one Databricks catalog for both environments, so the schema is the only thing keeping a dev
+run away from what prod serves. The dated table names carry the run date and nothing else, so with both
+deployments pointed at `er_source` a dev run and a prod run produce *the same* table name. Whichever
+runs first owns that vintage, and the other's `CREATE OR REPLACE` is refused for lack of ownership —
+so a dev run can block the weekly prod run. Worse, a dev deployment with `matcha_swap_enabled` set
+would rename the live tables the civics marts read.
+
+Set `databricks_er_schema` to a dev-only schema (`er_source_dev`) on astro-dev, and leave it unset on
+astro-prod. This matches how `extract_ballotready` scopes its writes with `databricks_source_schema`.
+
+One consequence to know when reading a dev run: `dbt_build_er_source` builds the dbt staging models
+from whatever schema the dbt sources name, which is the shared `er_source`. A dev run's own vintages
+therefore do not feed that step — it is exercising the dbt job, not dev's output.
 
 ## Rehearsal vs. live
 

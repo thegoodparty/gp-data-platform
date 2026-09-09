@@ -168,6 +168,37 @@ def test_the_pod_carries_no_image_pull_secrets():
     assert op.image_pull_secrets == []
 
 
+def test_the_er_schema_is_environment_scoped_everywhere():
+    """One catalog serves both environments, so the schema is the only thing
+    separating them. Hardcoded, a dev run writes the same dated table names
+    into the same schema as prod — first writer owns the vintage, the other's
+    CREATE OR REPLACE is refused — and a dev swap renames the live tables the
+    civics marts read.
+
+    Checks the pod arguments (templated, since Astro exposes no Variables at
+    parse) and the gate/swap/cleanup callables, which read it at runtime. All
+    four have to agree or a run gates one schema and swaps another.
+    """
+    module = _dag_module()
+    for entity in _ENTITIES:
+        joined = " ".join(_DAG.get_task(f"{entity}.match").arguments)
+        assert module.ER_SCHEMA_VARIABLE in joined
+    assert not hasattr(module, "ER_SCHEMA"), "the hardcoded schema constant is back"
+
+    for task_id, fn_args in (("cleanup", ("20260825",)), ("candidacy_stage.gate", ("20260825",))):
+        with (
+            patch.object(module, "er_schema", autospec=True, return_value="er_source_dev") as schema,
+            patch.object(module, "open_connection", autospec=True, return_value=MagicMock()),
+            patch.object(module, "swap_enabled", autospec=True, return_value=False),
+            patch.object(module, "Variable", autospec=True) as mock_variable,
+            patch.object(module, "run_gate", autospec=True),
+            patch.object(module, "drop_stale_vintages", autospec=True, return_value=[]),
+        ):
+            mock_variable.get.return_value = "cat"
+            cast(Any, _DAG.get_task(task_id)).python_callable(*fn_args)
+        assert schema.called, task_id
+
+
 def test_match_pods_declare_ephemeral_storage():
     """Astro injects a 256Mi ephemeral-storage default into the namespace, and
     matcha writes its CSVs and charts to the pod filesystem before uploading,
