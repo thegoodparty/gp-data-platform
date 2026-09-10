@@ -396,6 +396,23 @@ def test_duckdb_api_default_when_env_unset(monkeypatch):
     ), f"_duckdb_api() changed the default memory limit: got {limit!r}, expected {baseline_limit!r}"
 
 
+def test_duckdb_budget_is_reported(monkeypatch, capsys):
+    """The resolved memory and thread budget must be printed on every run.
+
+    Inside a container DuckDB derives both itself, so the pod's configured size
+    is not evidence of either, and without this line a slow run gives no way to
+    tell an under-budgeted DuckDB from a genuinely expensive query.
+    """
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.delenv("MATCHA_DUCKDB_MEMORY_LIMIT", raising=False)
+    _duckdb_api()
+    out = capsys.readouterr().out
+    assert "DuckDB budget:" in out
+    assert "memory_limit=" in out
+    assert "threads=" in out
+
+
 def test_duckdb_api_memory_limit_applied(monkeypatch):
     """MATCHA_DUCKDB_MEMORY_LIMIT is applied to the DuckDB connection."""
     import re
