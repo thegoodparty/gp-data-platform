@@ -34,7 +34,13 @@ models:
                   - ddhq_candidate_id
                   - ts_candidate_code
       - name: identifier_value
-        description: Normalized identifier. Emails lowercased and trimmed, phones digits only, everything else trimmed.
+        description: >
+          Normalized identifier. Emails lowercased and trimmed, phones digits only,
+          everything else trimmed. Never blank: a blank entry matches every source row
+          whose identifier normalizes to an empty string, which would suppress most of
+          the warehouse from one mistyped insert. The source table enforces this with a
+          CHECK constraint, and this test repeats it because that constraint lives
+          outside the repo and a build cannot see whether it is still there.
         data_tests:
           - not_null
       - name: received_at
@@ -42,6 +48,9 @@ models:
         data_tests:
           - not_null
     data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "length(trim(identifier_value)) > 0"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
