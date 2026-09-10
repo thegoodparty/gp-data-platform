@@ -40,9 +40,19 @@
     {%- else -%} {%- set normalized = "trim(cast(" ~ column_name ~ " as string))" -%}
     {%- endif -%}
 
-    coalesce({{ normalized }}, '') not in (
-        select identifier_value
-        from {{ ref("stg_source_dsar__suppressed_identifiers") }}
-        where identifier_type = '{{ identifier_type }}' and identifier_value is not null
+    {#-
+        Parenthesized as a whole: callers chain these with `and`, and a bare `or`
+        would rebind across the adjacent predicate. A null identifier is nothing to
+        match on, so it always passes rather than colliding with a blank register entry.
+    -#}
+    (
+        {{ normalized }} is null
+        or {{ normalized }} not in (
+            select identifier_value
+            from {{ ref("stg_source_dsar__suppressed_identifiers") }}
+            where
+                identifier_type = '{{ identifier_type }}'
+                and identifier_value is not null
+        )
     )
 {% endmacro %}
