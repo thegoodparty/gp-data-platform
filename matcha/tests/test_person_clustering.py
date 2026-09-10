@@ -117,6 +117,16 @@ def test_threshold_and_string_typed_inputs():
     )
 
 
+def test_scored_key_missing_from_nodes_drops_its_pairs_and_is_reported(capsys):
+    """A pairwise vintage is older than the nodes it is re-clustered against, so
+    a record deleted since scoring must not merge anything, and must be counted."""
+    nodes = _nodes("hubspot|1", "hubspot|2")
+    pairs = _pairs(("hubspot|1", "hubspot|2", 0.99), ("hubspot|2", "hubspot|gone", 0.99))
+    out = cluster_people(pairs, _links(), nodes, threshold=0.95)
+    assert out.person_group_key.nunique() == 1
+    assert "drift): 1" in capsys.readouterr().out
+
+
 def test_name_gate_drops_alias_only_pairs_without_a_contact_key():
     base = {
         "gamma_first_name": 3,

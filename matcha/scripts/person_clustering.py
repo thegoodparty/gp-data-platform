@@ -94,23 +94,38 @@ def lift_similarities(
     identity: dict[str, str],
     *,
     threshold: float,
-) -> set[tuple[str, str]]:
+) -> tuple[set[tuple[str, str]], set[str]]:
     """Splink pairs at or above the threshold, expanded from prematch keys to
     record keys and lifted to distinct identity pairs. Sameness inside an
-    identity is already asserted, so one member vouching for it is enough."""
+    identity is already asserted, so one member vouching for it is enough.
+
+    Also returns the scored keys absent from the record universe. A pairwise
+    vintage is usually older than the nodes it is re-clustered against, so a
+    record deleted since scoring drops its pairs here; the caller reports the
+    count so drift is visible rather than silent.
+    """
     records_for_key: dict[str, list[str]] = defaultdict(list)
     for key, source in zip(nodes["record_key"], nodes["source_name"], strict=True):
         records_for_key[prematch_key(key, source)].append(key)
 
     scored = pairwise[pd.to_numeric(pairwise["match_probability"]) >= threshold]
     lifted: set[tuple[str, str]] = set()
+    unknown_keys: set[str] = set()
     for left, right in zip(scored["unique_id_l"], scored["unique_id_r"], strict=True):
-        for ka in records_for_key.get(left, ()):
-            for kb in records_for_key.get(right, ()):
+        left_records = records_for_key.get(left)
+        right_records = records_for_key.get(right)
+        if left_records is None:
+            unknown_keys.add(left)
+        if right_records is None:
+            unknown_keys.add(right)
+        if left_records is None or right_records is None:
+            continue
+        for ka in left_records:
+            for kb in right_records:
                 ia, ib = identity[ka], identity[kb]
                 if ia != ib:
                     lifted.add((min(ia, ib), max(ia, ib)))
-    return lifted
+    return lifted, unknown_keys
 
 
 def admit_groups(
@@ -169,7 +184,12 @@ def cluster_people(
     merge was refused, if one was. Labels are min record keys, so a group that
     only gains members keeps its label."""
     identity = build_identities(links, nodes)
-    similarities = lift_similarities(pairwise, nodes, identity, threshold=threshold)
+    similarities, unknown_keys = lift_similarities(pairwise, nodes, identity, threshold=threshold)
+    if unknown_keys:
+        print(
+            f"Scored keys outside the record universe (pairwise/nodes drift): {len(unknown_keys):,}, "
+            f"their pairs dropped. First few: {sorted(unknown_keys)[:5]}"
+        )
     group, rejected = admit_groups(similarities, identity)
 
     out = pd.DataFrame(
