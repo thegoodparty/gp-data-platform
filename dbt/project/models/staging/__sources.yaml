@@ -1728,20 +1728,6 @@ sources:
           match weights, match probabilities, and per-comparison gamma levels. For auditing
           election-stage match quality.
 
-  - name: source_dsar
-    schema: source_dsar
-    description: >
-      Data subject deletion requests (CCPA, GDPR). Curated by hand in Databricks with
-      insert and delete; dbt reads it and never writes it, so identifiers belonging to
-      people who asked to be forgotten never enter this repository. Presence in the
-      table means suppress. Three CHECK constraints on the table enforce the allowed
-      identifier types and the normalization that the `dsar_not_suppressed` macro
-      relies on. Use only to honor deletion requests, never to enrich or flag records.
-
-    tables:
-      - name: suppressed_identifiers
-        description: One row per identifier per request. See the dsar-deletion skill for the intake process.
-
   - name: nhgis
     schema: sandbox
     description: >

@@ -47,8 +47,10 @@ identifier columns so the requester's name is not copied into a wider schema. St
 models apply it with the `dsar_not_suppressed(column, identifier_type)` macro, which
 owns the normalization so no caller can match the register a different way.
 
-Three check constraints reject bad inserts: `identifier_type_known` (11 allowed types,
-with `lalvoterid` deliberately excluded because L2 is out of scope),
+Five check constraints reject bad inserts: `identifier_value_not_blank` (a blank matches
+every source row whose identifier normalizes to an empty string, so one would suppress
+most of the warehouse), `identifier_type_known` (11 allowed types, with `lalvoterid`
+deliberately excluded because L2 is out of scope), `ddhq_candidate_id_digits`,
 `email_normalized` (lowercased and trimmed), `phone_digits_only` (10 to 15 digits, no
 punctuation). Unity Catalog does not enforce uniqueness, so duplicates are caught by a dbt
 test rather than the table.
