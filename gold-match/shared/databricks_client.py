@@ -43,6 +43,10 @@ class DatabricksClient:
         # credentials this instance was constructed with, never a drifted env.
         self._client_id = os.getenv('DATABRICKS_CLIENT_ID')
         self._client_secret = os.getenv('DATABRICKS_CLIENT_SECRET')
+        # Narrowed OAuth scopes, for deployments whose service-principal secret
+        # was minted with less than all-apis; empty means the SDK default.
+        # Comma- or space-separated -- the SDK parses either.
+        self._scopes = os.getenv('DATABRICKS_SCOPES', '').strip()
         self._m2m_provider = None
         has_m2m = bool(self._client_id and self._client_secret)
 
@@ -70,14 +74,20 @@ class DatabricksClient:
         error instead of the credentials we chose."""
         if self._m2m_provider is None:
             from databricks.sdk.core import Config, oauth_service_principal
-            self._m2m_provider = oauth_service_principal(
-                Config(
-                    host=f"https://{self.server_hostname}",
-                    client_id=self._client_id,
-                    client_secret=self._client_secret,
-                    auth_type="oauth-m2m",
-                )
+            config = Config(
+                host=f"https://{self.server_hostname}",
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                auth_type="oauth-m2m",
+                # None keeps the SDK default (all-apis). The SDK reads no env
+                # var for this field, so forwarding must be explicit.
+                scopes=self._scopes or None,
             )
+            # Log the SDK's RESOLVED value, not the configured one: an unset
+            # variable silently becomes `all-apis`, and that is exactly the
+            # request a narrowed principal refuses.
+            self.logger.info(f"Requesting OAuth scopes: {config.get_scopes_as_string()}")
+            self._m2m_provider = oauth_service_principal(config)
         return self._m2m_provider
 
     def connect(self) -> Connection:
