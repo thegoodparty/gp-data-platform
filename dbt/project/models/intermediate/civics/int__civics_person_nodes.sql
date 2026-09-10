@@ -1,17 +1,17 @@
 -- Person record universe: one row per record_key participating in person
--- identity. Must contain every key the edge model can emit — an edge endpoint
--- missing from labels_0 silently drops its neighbors during propagation — so
--- the cluster- and bridge-derived gp_api user ids are unioned in alongside
--- the staging user table. See canonical-person-plan.md decision 1.
+-- identity. Two things go in: every record the sources hold, so a person with
+-- no link is still a node, and every endpoint int__civics_person_links emits.
+--
+-- The second half used to be hand-maintained -- the cluster- and bridge-derived
+-- gp_api user ids were re-derived here with the same joins the link model
+-- already does. Reading the endpoints directly makes the invariant structural
+-- instead: an endpoint missing from labels_0 silently drops its neighbours
+-- during propagation, and re-deriving the joins also meant CI comparing a
+-- freshly built link model against a deferred node table, which fails on any
+-- record a source gained since the last production run.
 with
-    campaigns as (
-        select cast(campaign_id as string) as campaign_id, user_id
-        from {{ ref("campaigns") }}
-        where is_latest_version and user_id is not null
-    ),
-
     clustered as (
-        select source_id, source_name, split(source_id, '__')[0] as gp_api_campaign_id
+        select source_id, source_name
         from {{ ref("stg_er_source__clustered_candidacy_stages") }}
     ),
 
@@ -27,18 +27,6 @@ with
         select 'gp_api|' || cast(id as string)
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
         union
-        -- E5 endpoint mirror: gp_api cluster members resolve to user ids via
-        -- campaigns; a user missing from staging must still seed a label.
-        select 'gp_api|' || cast(camp.user_id as string)
-        from clustered as cc
-        inner join campaigns as camp on camp.campaign_id = cc.gp_api_campaign_id
-        where cc.source_name = 'gp_api'
-        union
-        -- E6 endpoint mirror, same rationale.
-        select 'gp_api|' || cast(gp_api_user_id as string)
-        from {{ ref("int__civics_elected_official_gp_api_bridge") }}
-        where gp_api_user_id is not null
-        union
         select 'hubspot|' || cast(id as string)
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
         union
@@ -49,6 +37,12 @@ with
         select source_name || '|' || source_id
         from clustered
         where source_name in ('techspeed', 'ddhq')
+        union
+        select record_key_1
+        from {{ ref("int__civics_person_links") }}
+        union
+        select record_key_2
+        from {{ ref("int__civics_person_links") }}
     )
 
 select record_key, substring_index(record_key, '|', 1) as source_name
