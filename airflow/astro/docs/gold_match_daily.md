@@ -75,8 +75,12 @@ Set on the Astro deployment:
 the other DAGs. The pod's credentials resolve in `pre_execute` (never in the rendered-template
 snapshot), mapped to the gold-match client's env names (`DATABRICKS_SERVER_HOSTNAME`, bare host).
 
-**Resources:** one 8Gi / 4 CPU pod per run, at most one run at a time — no pool needed. Worst-case
-coexistence with matcha's serialized weekly 8Gi pods is 16Gi against the 20GiB deployment quota.
+**Resources:** one 8Gi / 4 CPU pod per run (requests = limits, declared in the DAG code, never by a
+shared Variable), at most one run at a time, so no pool is needed. The deployment KPO quota is a
+ceiling across all running pods and lives in gp-terraform-dataplatform (`resource_quota_cpu` /
+`resource_quota_memory`); matcha's pod size lives in `matcha_er.py`. Both moved in September 2026, so
+read them at source rather than trusting a number here. Pods are billed on their configured limits, so
+8Gi / 4 CPU is a placeholder until the first production runs show peak usage.
 
 ## Which build a run used
 
