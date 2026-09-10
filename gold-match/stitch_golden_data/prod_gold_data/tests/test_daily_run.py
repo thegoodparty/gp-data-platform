@@ -1,6 +1,6 @@
 """The daily entry point's policy core (the outcome-conditional write
-policy, the pre-cutover boundary filter) and its match loop (per-office
-quarantine, the circuit breaker, quarantine-table eligibility and release).
+policy) and its match loop (per-office quarantine, the circuit breaker,
+quarantine-table eligibility and release).
 No live AWS/Databricks calls -- every collaborator here is a self-contained
 fake, never a real warehouse or a real matcher.
 """
@@ -220,7 +220,6 @@ class TestRunLogInsert:
             client,
             run_key=run_key,
             cohort_size=11,
-            backlog_boundary_dropped=22,
             quarantine_dropped=33,
             matched_written=44,
             abstains_written=55,
@@ -239,7 +238,6 @@ class TestRunLogInsert:
         assert by_column["run_key"] == run_key
         assert by_column["policy_version"] == daily_run.POLICY_VERSION
         assert by_column["cohort_size"] == 11
-        assert by_column["backlog_boundary_dropped"] == 22
         assert by_column["quarantine_dropped"] == 33
         assert by_column["matched_written"] == 44
         assert by_column["abstains_written"] == 55
@@ -295,37 +293,24 @@ class TestCohortCeiling:
 
 
 class TestPendingWrap:
-    def test_wrap_filters_and_captures_both_counts(self):
-        """Failure this catches: the wrap's filter sequencing or its captured
-        counts drifting from what actually got dropped -- those two numbers
-        are written verbatim to the run log, so a miscount is a false audit
-        record, and a mis-sequenced filter double-drops or misses offices.
+    def test_wrap_filters_and_captures_the_count(self):
+        """Failure this catches: the wrap's captured count drifting from what
+        actually got dropped -- that number is written verbatim to the run
+        log, so a miscount is a false audit record -- or the filter touching
+        an office no quarantine row suppresses.
         """
-        boundary = daily_run.CUTOVER_BOUNDARY
 
         class _PendingOnlyMatcher:
             def load_pending_offices(self, states=None, limit=None):
-                return pd.DataFrame(
-                    {
-                        "br_database_id": [1, 2, 3, 4],
-                        "state": ["CA", "CA", "TX", "TX"],
-                    }
-                )
+                return pd.DataFrame({"br_database_id": [1, 2, 3], "state": ["CA", "CA", "TX"]})
 
         matcher = _PendingOnlyMatcher()
-        prior_attempted_at = {
-            2: boundary - timedelta(seconds=1),  # pre-cutover: boundary-dropped
-            3: boundary,  # exactly at the key: Run B's own, stays
-        }
-        captured = daily_run._install_daily_pending_wrap(
-            matcher, suppressed_ids={1}, prior_attempted_at=prior_attempted_at
-        )
+        captured = daily_run._install_daily_pending_wrap(matcher, suppressed_ids={1})
 
         df = matcher.load_pending_offices()
 
-        assert list(df["br_database_id"]) == [3, 4]  # 4 never attempted, stays
-        assert captured["quarantine_dropped"] == 1
-        assert captured["boundary_dropped"] == 1
+        assert list(df["br_database_id"]) == [2, 3]
+        assert captured == {"quarantine_dropped": 1}
 
 
 class TestPriorAnswersRead:
@@ -338,21 +323,12 @@ class TestPriorAnswersRead:
         which must stay character-identical or "latest answer" silently
         changes meaning.
         """
-        ts_old = datetime(2026, 8, 31, 20, 0, 0, tzinfo=UTC)
-        ts_new = datetime(2026, 9, 1, 20, 0, 0, tzinfo=UTC)
-        rows = pd.DataFrame(
-            {
-                "br_database_id": [1, 2],
-                "l2_district_name": [float("nan"), "District 3"],
-                "attempted_at": [ts_old, ts_new],
-            }
-        )
+        rows = pd.DataFrame({"br_database_id": [1, 2], "l2_district_name": [float("nan"), "District 3"]})
         client = _FakeDatabricksClient(query_result=rows)
 
         out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), "cat.dbt.pending")
 
-        assert out[1] == (None, ts_old)
-        assert out[2] == ("District 3", ts_new)
+        assert out == {1: None, 2: "District 3"}
         (sql,) = client.queries
         assert "in (select br_database_id from cat.dbt.pending)" in sql
         assert "order by attempted_at desc, l2_district_name nulls first" in sql
