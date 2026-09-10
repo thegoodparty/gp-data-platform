@@ -1,14 +1,12 @@
 -- Person record universe: one row per record_key participating in person
 -- identity. Two things go in: every record the sources hold, so a person with
 -- no link is still a node, and every endpoint int__civics_person_links emits.
+-- matcha closes over the links across exactly this set and the mint falls
+-- back to it for any record a published vintage has not seen yet.
 --
--- The second half used to be hand-maintained -- the cluster- and bridge-derived
--- gp_api user ids were re-derived here with the same joins the link model
--- already does. Reading the endpoints directly makes the invariant structural
--- instead: an endpoint missing from labels_0 silently drops its neighbours
--- during propagation, and re-deriving the joins also meant CI comparing a
--- freshly built link model against a deferred node table, which fails on any
--- record a source gained since the last production run.
+-- Reading the link endpoints directly, rather than re-deriving the same joins,
+-- keeps the invariant structural: an endpoint missing here would be a record
+-- matcha links but the mint never sees.
 with
     clustered as (
         select source_id, source_name

@@ -10,6 +10,5 @@ select
     -- Which identity this record belonged to before any similarity merge.
     -- Two distinct values under one gp_person_id is exactly what a merge looks
     -- like from here, which makes one traceable back to what it fused.
-    pg.identity_key
+    ci.identity_key
 from {{ ref("int__civics_person_canonical_ids") }} as ci
-left join {{ ref("int__civics_person_groups") }} as pg using (record_key)

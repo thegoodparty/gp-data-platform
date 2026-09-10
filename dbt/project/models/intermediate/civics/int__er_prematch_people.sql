@@ -6,9 +6,9 @@
 -- Matching happens in Splink. This model normalizes fields and applies hygiene:
 -- it drops records that are not people, and nulls contact keys that many people
 -- share, so neither chains unrelated people together through blocking.
--- pregroup_id carries the deterministic person group. Splink blocks on it to
--- score those pairs but does not assert them: canonical identity is settled
--- downstream in int__civics_person_groups, not here.
+-- This model depends on no graph model. Canonical identity is settled in
+-- matcha (scripts/person_clustering.py) over these records, the deterministic
+-- links, and the record universe, and published as er_source.person_groups.
 {% set contact_key_max_records = 25 %}
 with
     -- Nickname aliases per canonical name (same construction as the candidacy
@@ -27,15 +27,6 @@ with
     ),
 
     clean_states as (select * from {{ ref("clean_states") }}),
-
-    -- Pregroups are a blocking hint, not an identity claim: they put pairs
-    -- dbt already resolved in front of the matcher. Reading the identity model
-    -- keeps every similarity edge out of them, so a published match cannot
-    -- feed the next run's blocking.
-    identities as (
-        select record_key, source_name, identity_key
-        from {{ ref("int__civics_person_identities") }}
-    ),
 
     hubspot_raw as (
         select
@@ -363,21 +354,6 @@ with
         from normalized
         where phone is not null
         group by phone
-    ),
-
-    -- TechSpeed person pregroup: min deterministic group across the code's
-    -- candidacy-stage record keys. A code whose stage keys span >1 group is
-    -- already conflict-implicated (its E7 edges resolve to >1 BR person) and
-    -- is excluded; its records still attach to people via candidacy clusters.
-    ts_pregroups as (
-        select
-            {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
-            as candidate_code,
-            min(identity_key) as identity_key,
-            count(distinct identity_key) as n_groups
-        from identities
-        where source_name = 'techspeed'
-        group by 1
     )
 
 select
@@ -400,18 +376,11 @@ select
     n.birth_date,
     n.party,
     n.br_candidate_id,
-    n.first_seen_at,
-    coalesce(tsg.identity_key, dg.identity_key, n.unique_id) as pregroup_id
+    n.first_seen_at
 from normalized as n
 left join nickname_aliases as a on a.name = n.first_name
 left join email_counts as ec on ec.email = n.email
 left join phone_counts as pc on pc.phone = n.phone
-left join
-    identities as dg on dg.record_key = n.unique_id and n.source_name <> 'techspeed'
-left join
-    ts_pregroups as tsg
-    on tsg.candidate_code = n.source_id
-    and n.source_name = 'techspeed'
 where
     -- Names that normalize to empty (punctuation-only) cannot be matched.
     n.first_name <> ''
@@ -422,4 +391,3 @@ where
     -- their shared names merged unrelated HubSpot contacts.
     and n.last_name not like '%party registrar%'
     and n.last_name <> 'user'
-    and (n.source_name <> 'techspeed' or coalesce(tsg.n_groups, 1) = 1)

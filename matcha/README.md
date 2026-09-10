@@ -119,13 +119,21 @@ uv run python -m scripts.cli match \
   --output-pairwise-table goodparty_data_catalog.er_source.pairwise_election_stages_YYYYMMDD \
   --overwrite
 
-# People
+# People. --links/--nodes default to the dbt link and node tables.
 uv run python -m scripts.cli match \
   --entity-type person \
   --input goodparty_data_catalog.dbt.int__er_prematch_people \
   --output-cluster-table goodparty_data_catalog.er_source.clustered_people_YYYYMMDD \
   --output-pairwise-table goodparty_data_catalog.er_source.pairwise_people_YYYYMMDD \
+  --output-groups-table goodparty_data_catalog.er_source.person_groups_YYYYMMDD \
   --overwrite
+
+# People, re-clustered from an existing pairwise vintage (no Splink scoring):
+# fresh dbt links, or a rule change in person_clustering.py / the post filter.
+uv run python -m scripts.cli recluster \
+  --entity-type person \
+  --pairwise goodparty_data_catalog.er_source.pairwise_people \
+  --output-groups-table goodparty_data_catalog.er_source.person_groups_YYYYMMDD
 ```
 
 dbt reads the live tables `er_source.clustered_<entity>` / `er_source.pairwise_<entity>`
@@ -193,20 +201,28 @@ routinely holds several HubSpot contacts, so collapsing those is the point of
 the run, not an anomaly. The config sets `link_type="link_and_dedupe"`, and the
 within-source cluster count is reported as a statistic rather than a warning.
 
-**These clusters are suggestions, not canonical identity.** Deterministic
-identity stays in dbt: `int__civics_person_groups` builds canonical clusters from
-direct native ids first, then candidacy and officeholder traversal, then appends
-these clusters as one more edge set. So the person output here is what Splink
-alone concludes, and its match rates and within-source counts are a diagnostic of
-the model rather than the final answer. Nothing should consume the person tables
-without going through that model.
+**Splink's clusters are audit output; the canonical groups come from
+`scripts/person_clustering.py`.** Splink's clusterer is plain connected
+components, and closure over similarity evidence chains: it fused two
+BallotReady people 6,219 times from an edge set holding no BR-to-BR pair. So
+the person lane takes two more inputs from dbt, the deterministic link pairs
+(`int__civics_person_links`: native identifiers and candidacy-cluster
+co-membership) and the record universe (`int__civics_person_nodes`), and:
 
-The prematch still carries a `pregroup_id`, and the config blocks on it. That is
-deliberately for scoring, not for asserting: pairs the dbt graph already resolved
-get scored anyway, which is the calibration signal. A BallotReady and a TechSpeed
-record for one person, agreeing on nothing but the name, lands around 0.45. The
-column rides through to the output so the groups model can union the two edge
-sets itself.
+1. closes over the non-conflicting links (union-find); a component reaching
+   two BallotReady people dissolves into singletons;
+2. lifts the scored pairs to those components (TechSpeed's prematch key fans
+   out to its stage record keys);
+3. admits a set of components only when it is a clique in the similarity graph
+   and holds at most one BallotReady person.
+
+The result is `person_groups` (one row per record key: `identity_key`,
+`person_group_key`, `rejected_reason`), which dbt's
+`int__civics_person_canonical_ids` reads directly. dbt does no closure. A
+record the vintage has not seen stands alone until the next run, so
+deterministic merges refresh at this lane's cadence. `recluster` rebuilds the
+groups from a published pairwise table without re-scoring, which is the path
+for fresh links or a rule change.
 
 Post-prediction filters here are deliberately sparse. A clause ships only once
 it has been measured to drop more false positives than true matches; until then

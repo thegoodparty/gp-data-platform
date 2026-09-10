@@ -3342,9 +3342,9 @@ models:
       source_id) participating in person identity: BR persons (all-time
       candidacies + officeholder terms), gp_api users, HubSpot contacts,
       non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
-      Also unions in the cluster- and bridge-derived gp_api user ids so every
-      edge endpoint is guaranteed a label seed in the propagation.
-      Deterministically derived, no probabilistic matching.
+      Also unions in every link endpoint, so the set matcha closes over and
+      the set the mint falls back to are the same set. Deterministically
+      derived, no probabilistic matching.
     columns:
       - name: record_key
         description: Primary key.
@@ -3368,26 +3368,20 @@ models:
   - name: int__civics_person_links
     description: >
       Person links. One row per undirected pair of record keys
-      (record_key = source_name || '|' || source_id) whose sameness
-      int__civics_person_identities closes over: native identifiers (E1
-      HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4 ts_officeholder->BR, E6
-      the gp_api->BR elected-official bridge, E7 within-source vendor keys) and
-      candidacy-stage cluster co-membership (E5, hub to the cluster's min
-      record key).
+      (record_key = source_name || '|' || source_id) asserting sameness:
+      native identifiers (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
+      ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E7
+      within-source vendor keys) and candidacy-stage cluster co-membership (E5,
+      hub to the cluster's min record key). Input to matcha's person lane,
+      which closes over the non-conflicting pairs and publishes
+      er_source.person_groups. No closure happens in dbt.
 
       Closure is only sound for transitive evidence. Native identifiers are
       transitive by definition. E5 is a Splink clustering, so it is transitive
       only in practice, and where it is not, it is detectable: a cluster
       spanning two BallotReady people cannot say which one it means. Those
       pairs, and reused vendor keys in the same position, are flagged
-      is_conflict and left out of the closure.
-
-      Splink person edges are deliberately not here. They carry no detectable
-      exception class, so int__civics_person_groups requires complete support
-      for them rather than closing over them. Holding E5 to that rule too was
-      measured and rejected: it costs 37% of the HubSpot merge queue, because a
-      candidacy pair then needs a Splink score on every cross pair the matcher
-      was never asked to compare.
+      is_conflict and matcha leaves them out of the closure.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -3410,7 +3404,7 @@ models:
         data_tests:
           - not_null
           # Every endpoint must exist in the node universe; a missing endpoint
-          # silently drops a closure neighbour in one direction.
+          # would be a record matcha links but the mint never sees.
           - relationships:
               arguments:
                 to: ref('int__civics_person_nodes')
@@ -3441,7 +3435,7 @@ models:
           true when the key or cluster the pair derives from resolves to more
           than one distinct br_candidate_id. Two BallotReady people are a
           cannot-link, and evidence that cannot say which one it means is left
-          out of the closure.
+          out of the closure by matcha.
         data_tests:
           - not_null
 
@@ -3486,192 +3480,6 @@ models:
         data_tests:
           - not_null
           - unique
-
-  - name: int__civics_person_identities
-    description: >
-      Person identities. One row per int__civics_person_nodes record_key with
-      the identity it belongs to: the connected component over the
-      non-conflicting links, via min-label propagation across 15 unrolled
-      passes (Spark SQL, no recursion). Closing over equalities is correct
-      because a native identifier asserts sameness rather than resembling it.
-
-      Also the pregroup source for the Splink person entity. It reads no
-      similarity edges at all, so by DAG topology a published match can never
-      feed the next run's blocking.
-
-      An identity holds at most one BallotReady person. A component that
-      reaches two along a path of individually sound equalities dissolves:
-      every member becomes its own identity. One of the source records is
-      simply wrong in that case, and keeping the lexically smaller BR id would
-      assert one of two contradictory identities at even odds.
-    tests:
-      # Propagation converged: the last two passes agree for every record.
-      - dbt_utils.expression_is_true:
-          name: person_identities_converged
-          arguments:
-            expression: "pass_final_key = pass_penultimate_key"
-      # Dissolving is meant to be rare. Warn on any, error on a jump that would
-      # mean the links started contradicting each other in bulk.
-      - dbt_utils.expression_is_true:
-          name: person_identities_contested_rare
-          arguments:
-            expression: "not br_contested"
-          config:
-            warn_if: ">0"
-            error_if: ">500"
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: identity_key
-        description: >
-          Min record_key reachable over non-conflicting links, or the record's
-          own key when its component dissolved.
-        data_tests:
-          - not_null
-      - name: br_contested
-        description: >
-          true when the closure reached two distinct BallotReady people from
-          this record, so the component dissolved.
-        data_tests:
-          - not_null
-      - name: pass_final_key
-        description: >
-          Raw label from the final propagation pass, before dissolving.
-          Compared against pass_penultimate_key to prove convergence.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_similarities
-    description: >
-      Person similarities. One row per undirected pair of distinct identities
-      that a Splink person edge at or above a 0.95 match probability says are
-      the same person.
-
-      Not closed over. int__civics_person_groups admits a set of identities
-      only when every pair inside it appears here, which is what keeps a
-      pairwise judgement meaningful: under transitive closure, chaining routes
-      around any gate you build, which is how 6,219 groups came to fuse two
-      BallotReady people from an edge set holding no BR-to-BR pair.
-
-      Pairs whose first names agree only through the nickname alias arrays,
-      with no shared email or phone, are dropped: six false positives in fifty
-      sampled pairs against none elsewhere.
-    tests:
-      - dbt_utils.expression_is_true:
-          name: person_similarities_are_ordered
-          arguments:
-            expression: "identity_key_1 < identity_key_2"
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [identity_key_1, identity_key_2]
-    columns:
-      - name: identity_key_1
-        description: Lexically smaller identity of the pair.
-        data_tests:
-          - not_null
-      - name: identity_key_2
-        description: Lexically larger identity of the pair.
-        data_tests:
-          - not_null
-      - name: match_probability
-        description: >
-          Highest Splink posterior behind the pair. Audit only; admission
-          treats every similarity alike.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_groups
-    description: >
-      Person groups. One row per record_key with its person_group_key: the
-      record's identity, coarsened by the similarity merges admitted here.
-
-      A set of identities merges only when every pair inside it appears in
-      int__civics_person_similarities and the result holds at most one
-      BallotReady person. No propagation: a completely supported group is
-      exactly a set of identities sharing one closed neighbourhood whose size
-      equals the set's own, so one aggregation finds them all.
-
-      rejected_reason keeps the refused population reviewable rather than
-      invisible. See assert_person_group_single_br_candidate for the guarantee
-      this exists to make.
-    tests:
-      # An admitted merge must satisfy both admission tests. Guards a rewrite
-      # of the case expression that decides person_group_key.
-      - dbt_utils.expression_is_true:
-          name: person_groups_admitted_only_when_supported
-          arguments:
-            expression: >
-              person_group_key = identity_key or rejected_reason is null
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: person_group_key
-        description: >
-          Min record_key in the person group. Stable person label, and the
-          grain the gp_person_id mint runs over.
-        data_tests:
-          - not_null
-      - name: identity_key
-        description: >
-          The record's identity before any similarity merge. Equal to
-          person_group_key whenever no merge was admitted.
-        data_tests:
-          - not_null
-      - name: identity_count
-        description: >
-          How many identities the admitted merge fused. 1 means nothing merged.
-        data_tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-      - name: rejected_reason
-        description: >
-          Why a proposed merge was refused, null when there was nothing to
-          refuse or it was admitted. `br_cannot_link` is the hard constraint;
-          `incomplete_support` is a proposal held together by chaining rather
-          than by direct evidence on every pair.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: ["br_cannot_link", "incomplete_support"]
-      - name: had_conflict
-        description: >
-          true when the group's evidence included a contradiction suppressed
-          upstream: a reused vendor key, or an identity that dissolved.
-          Advisory.
-        data_tests:
-          - not_null
 
   - name: int__er_prematch_people
     description: >
@@ -3761,23 +3569,17 @@ models:
           mint. Feeds earliest-member id minting.
         data_tests:
           - not_null
-      - name: pregroup_id
-        description: >
-          Deterministic person group of the record (falls back to unique_id
-          for records not yet in the graph). Splink blocks on it to score those
-          pairs, but does not assert them. Canonical identity is settled
-          downstream in int__civics_person_groups, which unions these groups
-          with the Splink clusters.
-        data_tests:
-          - not_null
 
   - name: int__civics_person_canonical_ids
     description: >
-      Canonical gp_person_id per record. One row per record_key. The id is minted
-      from the group member earliest by first_seen_at (ties: source_name,
-      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
-      so first-in wins uniformly and the id survives a later record joining the
-      group. first_seen_at is computed inline where each record's native id and
+      Canonical gp_person_id per record. One row per int__civics_person_nodes
+      record_key. The person group is the one matcha published in
+      er_source.person_groups; a record the vintage has not seen stands alone
+      under its own key. The id is minted from the group member earliest by
+      first_seen_at (ties: source_name, source_id) via
+      generate_salted_uuid([source_name, source_id], salt=person), so first-in
+      wins uniformly and the id survives a later record joining the group.
+      first_seen_at is computed inline where each record's native id and
       source timestamp share a row.
     columns:
       - name: record_key
@@ -3790,9 +3592,35 @@ models:
         data_tests:
           - not_null
       - name: person_group_key
-        description: The record's person group (from int__civics_person_groups).
+        description: >
+          The record's person group: the published matcha group, else the
+          record's own key. Min record_key of the group.
         data_tests:
           - not_null
+      - name: identity_key
+        description: >
+          The record's identity before any similarity merge: the published
+          deterministic component, else the record's own key. Two distinct
+          values under one gp_person_id is what a merge looks like.
+        data_tests:
+          - not_null
+      - name: rejected_reason
+        description: >
+          Why matcha refused a merge this record's identity was proposed for,
+          null when nothing was proposed or it was admitted. br_cannot_link is
+          the hard constraint; incomplete_support is a proposal held together
+          by chaining rather than by direct evidence on every pair.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_cannot_link", "incomplete_support"]
+      - name: identity_count
+        description: How many identities the published merge fused into this group. 1 means nothing merged.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
       - name: first_seen_at
         description: >
           Earliest source-native timestamp for the record. Drives the mint.

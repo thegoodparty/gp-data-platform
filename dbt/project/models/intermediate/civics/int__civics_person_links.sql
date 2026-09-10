@@ -1,23 +1,18 @@
 -- Person links. One row per undirected pair of record keys
--- (record_key = source_name || '|' || source_id) whose sameness the identity
--- model closes over: native identifiers (E1 HubSpot<->gp_api, E3
--- HubSpot->BR candidacy, E4 ts_officeholder->BR, E6 the gp_api->BR bridge, E7
--- within-source vendor keys) and candidacy-stage cluster co-membership (E5).
+-- (record_key = source_name || '|' || source_id) asserting sameness: native
+-- identifiers (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
+-- ts_officeholder->BR, E6 the gp_api->BR bridge, E7 within-source vendor keys)
+-- and candidacy-stage cluster co-membership (E5). No closure happens here or
+-- anywhere in dbt: matcha (scripts/person_clustering.py) closes over these
+-- pairs, admits Splink pairs between the resulting components, and publishes
+-- er_source.person_groups.
 --
 -- Closure is only sound for evidence that is transitive. Native identifiers
 -- are transitive by definition. E5 is a Splink clustering, so it is transitive
 -- only in practice, and where it is not, it is detectable: a cluster spanning
 -- two BallotReady people cannot say which one it means. Those pairs, and the
--- reused vendor keys in the same position, are flagged is_conflict and left
--- out of the closure. Suppressing the detectable exceptions is what makes
--- closing over E5 defensible.
---
--- Splink person edges are NOT here. They are similarities with no detectable
--- exception class, so int__civics_person_groups requires complete support for
--- them instead of closing over them. Moving E5 to that rule as well was
--- measured and rejected: it costs 37% of the HubSpot merge queue, because a
--- candidacy pair then needs a Splink score on every cross pair the matcher was
--- never asked to compare.
+-- reused vendor keys in the same position, are flagged is_conflict and matcha
+-- leaves them out of the closure.
 with
     -- br_candidacy_id -> br_candidate_id (person grain).
     candidacies as (
@@ -141,8 +136,7 @@ with
     ),
 
     -- E5: hub every member to the cluster's min record key. Hub-and-spoke is
-    -- enough because the closure reaches the rest; only the completeness test
-    -- downstream would need the full graph.
+    -- enough because the closure reaches the rest.
     e5 as (
         select
             cm.record_key as rk_a,
@@ -164,7 +158,7 @@ with
     -- person's primary/general split. DDHQ candidate_id is reused across
     -- people ~1.5% of the time, so pre-filter: if a key's records already
     -- resolve (via clusters) to >1 distinct br_candidate_id, its E7 pairs are
-    -- flagged is_conflict and excluded from the closure downstream.
+    -- flagged is_conflict and matcha excludes them from the closure.
     e7_members as (
         select
             'techspeed' as source_name,

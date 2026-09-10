@@ -8,6 +8,16 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class GraphInputs:
+    """Deterministic graph an entity clusters over instead of Splink's connected
+    components: dbt's link pairs (native identifiers and candidacy clusters) and
+    the record universe they run over."""
+
+    links_table: str
+    nodes_table: str
+
+
+@dataclass(frozen=True)
 class EntityConfig:
     """Complete Splink configuration for one entity type."""
 
@@ -41,6 +51,12 @@ class EntityConfig:
 
     # Output
     clustered_output_name: str = "clustered_records.csv"
+    groups_output_name: str = "groups.csv"
+
+    # When set, the entity's canonical groups come from
+    # person_clustering.cluster_people over these inputs. Splink's own clusters
+    # are still written, for audit.
+    graph_inputs: GraphInputs | None = None
 
     # Audit
     audit_display_columns: list[str] = field(default_factory=list)
