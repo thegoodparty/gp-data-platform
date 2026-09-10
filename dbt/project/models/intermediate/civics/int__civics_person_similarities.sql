@@ -1,11 +1,18 @@
--- Probabilistic person edges from the Splink person matcher, kept in their own
--- model so the deterministic pregroups can never read them. The pregroup source
--- (int__civics_person_groups_deterministic) sits upstream of the matcher, so by
--- DAG topology a published probabilistic merge cannot feed the next run's
--- pregroups. That separation is the whole reason this is not folded into
--- int__civics_person_edges.
+-- Person similarities. One row per undirected pair of distinct identities that
+-- a Splink person edge at or above the merge threshold says are the same
+-- person.
+--
+-- Not closed over. int__civics_person_groups admits a set of identities only
+-- when every pair inside it appears here, which is what keeps a pairwise
+-- judgement meaningful: under transitive closure, chaining routes around any
+-- gate you build, which is how 6,219 groups came to fuse two BallotReady
+-- people from an edge set containing no BR-to-BR pair.
 {% set merge_threshold = 0.95 %}
 with
+    identities as (
+        select record_key, identity_key from {{ ref("int__civics_person_identities") }}
+    ),
+
     scored as (
         select
             unique_id_l,
@@ -24,10 +31,10 @@ with
     -- Precision gate. A pair carrying no shared contact key, whose first names
     -- agree only because the nickname alias arrays intersect, is the measured
     -- false-positive class: antonio/antoinette, dennis/denise, nancy/hannah.
-    -- Six of fifty sampled were wrong there against none elsewhere, and a
-    -- wrong person merge is destructive downstream, so the class is dropped
-    -- rather than scored. Abbreviations are kept, since one name containing
-    -- the other (ben/benjamin) was correct in every pair read.
+    -- Six of fifty sampled were wrong there against none elsewhere. Belongs in
+    -- the matcher's own post-prediction filter, but the published vintage does
+    -- not carry it, so removing it here would regress precision until a new
+    -- run is published.
     kept as (
         select unique_id_l, unique_id_r, match_probability
         from scored
@@ -53,18 +60,27 @@ with
         from {{ ref("int__civics_person_nodes") }}
     ),
 
-    expanded as (
+    splink_pairs as (
         select ka.record_key as rk_a, kb.record_key as rk_b, k.match_probability
         from kept as k
         inner join key_map as ka on ka.prematch_key = k.unique_id_l
         inner join key_map as kb on kb.prematch_key = k.unique_id_r
+    ),
+
+    -- Lifted to the identity grain: two identities are similar when any record
+    -- in one carries evidence against any record in the other. Sameness inside
+    -- an identity is already asserted, so one member vouching for it is enough.
+    lifted as (
+        select
+            least(ia.identity_key, ib.identity_key) as identity_key_1,
+            greatest(ia.identity_key, ib.identity_key) as identity_key_2,
+            p.match_probability
+        from splink_pairs as p
+        inner join identities as ia on ia.record_key = p.rk_a
+        inner join identities as ib on ib.record_key = p.rk_b
+        where ia.identity_key <> ib.identity_key
     )
 
-select
-    least(rk_a, rk_b) as record_key_1,
-    greatest(rk_a, rk_b) as record_key_2,
-    'e10_splink_person' as edge_type,
-    max(match_probability) as match_probability
-from expanded
-where rk_a <> rk_b
-group by 1, 2, 3
+select identity_key_1, identity_key_2, max(match_probability) as match_probability
+from lifted
+group by 1, 2

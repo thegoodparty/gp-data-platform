@@ -28,9 +28,13 @@ with
 
     clean_states as (select * from {{ ref("clean_states") }}),
 
-    det_groups as (
-        select record_key, source_name, deterministic_group_key
-        from {{ ref("int__civics_person_groups_deterministic") }}
+    -- Pregroups are a blocking hint, not an identity claim: they put pairs
+    -- dbt already resolved in front of the matcher. Reading the identity model
+    -- keeps every similarity edge out of them, so a published match cannot
+    -- feed the next run's blocking.
+    identities as (
+        select record_key, source_name, identity_key
+        from {{ ref("int__civics_person_identities") }}
     ),
 
     hubspot_raw as (
@@ -369,9 +373,9 @@ with
         select
             {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
             as candidate_code,
-            min(deterministic_group_key) as deterministic_group_key,
-            count(distinct deterministic_group_key) as n_groups
-        from det_groups
+            min(identity_key) as identity_key,
+            count(distinct identity_key) as n_groups
+        from identities
         where source_name = 'techspeed'
         group by 1
     )
@@ -397,15 +401,13 @@ select
     n.party,
     n.br_candidate_id,
     n.first_seen_at,
-    coalesce(
-        tsg.deterministic_group_key, dg.deterministic_group_key, n.unique_id
-    ) as pregroup_id
+    coalesce(tsg.identity_key, dg.identity_key, n.unique_id) as pregroup_id
 from normalized as n
 left join nickname_aliases as a on a.name = n.first_name
 left join email_counts as ec on ec.email = n.email
 left join phone_counts as pc on pc.phone = n.phone
 left join
-    det_groups as dg on dg.record_key = n.unique_id and n.source_name <> 'techspeed'
+    identities as dg on dg.record_key = n.unique_id and n.source_name <> 'techspeed'
 left join
     ts_pregroups as tsg
     on tsg.candidate_code = n.source_id

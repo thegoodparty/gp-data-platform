@@ -1,8 +1,23 @@
--- Deterministic person edges. One row per typed edge between two record keys
--- (record_key = source_name || '|' || source_id). Edges are direction-agnostic
--- (record_key_1 <= record_key_2). No new matching: every edge derives from
--- native ids, candidacy-stage Splink cluster co-membership, or the
--- elected-official bridge. See canonical-person-plan.md decision 1.
+-- Person links. One row per undirected pair of record keys
+-- (record_key = source_name || '|' || source_id) whose sameness the identity
+-- model closes over: native identifiers (E1 HubSpot<->gp_api, E3
+-- HubSpot->BR candidacy, E4 ts_officeholder->BR, E6 the gp_api->BR bridge, E7
+-- within-source vendor keys) and candidacy-stage cluster co-membership (E5).
+--
+-- Closure is only sound for evidence that is transitive. Native identifiers
+-- are transitive by definition. E5 is a Splink clustering, so it is transitive
+-- only in practice, and where it is not, it is detectable: a cluster spanning
+-- two BallotReady people cannot say which one it means. Those pairs, and the
+-- reused vendor keys in the same position, are flagged is_conflict and left
+-- out of the closure. Suppressing the detectable exceptions is what makes
+-- closing over E5 defensible.
+--
+-- Splink person edges are NOT here. They are similarities with no detectable
+-- exception class, so int__civics_person_groups requires complete support for
+-- them instead of closing over them. Moving E5 to that rule as well was
+-- measured and rejected: it costs 37% of the HubSpot merge queue, because a
+-- candidacy pair then needs a Splink score on every cross pair the matcher was
+-- never asked to compare.
 with
     -- br_candidacy_id -> br_candidate_id (person grain).
     candidacies as (
@@ -87,10 +102,17 @@ with
         where not ts_officeholder_id_is_reused and br_candidate_id is not null
     ),
 
-    -- E5: candidacy-stage cluster co-membership. Map each member to its record
-    -- key, then hub every member to the cluster's min record key (avoids a
-    -- pairwise cross join). BR members map via candidacy; gp_api members map
-    -- campaign -> user; TS/DDHQ members are their own keys.
+    -- E6: elected-official bridge. gp_api user <-> BR person.
+    e6 as (
+        select
+            'gp_api|' || cast(gp_api_user_id as string) as rk_a,
+            'ballotready|' || br_candidate_id as rk_b
+        from bridge
+    ),
+
+    -- Cluster members mapped to person record keys. BR members map via
+    -- candidacy; gp_api members map campaign -> user; TS and DDHQ members are
+    -- their own keys.
     cluster_members as (
         select cc.cluster_id, 'ballotready|' || cand.br_candidate_id as record_key
         from clustered as cc
@@ -111,33 +133,38 @@ with
         where source_name = 'ddhq'
     ),
 
-    cluster_hub as (
-        select cluster_id, min(record_key) as hub_key
+    cluster_br_stats as (
+        select cluster_id, count(*) as distinct_br
         from cluster_members
+        where record_key like 'ballotready|%'
         group by cluster_id
     ),
 
+    -- E5: hub every member to the cluster's min record key. Hub-and-spoke is
+    -- enough because the closure reaches the rest; only the completeness test
+    -- downstream would need the full graph.
     e5 as (
-        select cm.record_key as rk_a, h.hub_key as rk_b
-        from cluster_members as cm
-        inner join cluster_hub as h using (cluster_id)
-        where cm.record_key <> h.hub_key
-    ),
-
-    -- E6: elected-official bridge. gp_api user <-> BR person.
-    e6 as (
         select
-            'gp_api|' || cast(gp_api_user_id as string) as rk_a,
-            'ballotready|' || br_candidate_id as rk_b
-        from bridge
+            cm.record_key as rk_a,
+            h.hub_key as rk_b,
+            coalesce(s.distinct_br, 0) > 1 as is_conflict
+        from cluster_members as cm
+        inner join
+            (
+                select cluster_id, min(record_key) as hub_key
+                from cluster_members
+                group by cluster_id
+            ) as h using (cluster_id)
+        left join cluster_br_stats as s using (cluster_id)
+        where cm.record_key <> h.hub_key
     ),
 
     -- E7: within-source vendor keys. TS records sharing a stage-stripped
     -- candidate_code; DDHQ records sharing candidate_id. Guards a vendor-only
     -- person's primary/general split. DDHQ candidate_id is reused across
     -- people ~1.5% of the time, so pre-filter: if a key's records already
-    -- resolve (via clusters) to >1 distinct br_candidate_id, its E7 edges are
-    -- flagged is_conflict and excluded from propagation downstream.
+    -- resolve (via clusters) to >1 distinct br_candidate_id, its E7 pairs are
+    -- flagged is_conflict and excluded from the closure downstream.
     e7_members as (
         select
             'techspeed' as source_name,
@@ -153,7 +180,9 @@ with
 
     -- Distinct br_candidate_ids each vendor record reaches through its
     -- cluster: directly via a BR co-member, or via a gp_api co-member that
-    -- resolves to a BR person through the elected-official bridge.
+    -- resolves to a BR person through the elected-official bridge. Cluster
+    -- membership is a similarity, used here only to suppress an equality,
+    -- never to assert one.
     vendor_cluster_br as (
         select cc.source_name, cc.source_id, cand.br_candidate_id
         from clustered as cc
@@ -207,8 +236,8 @@ with
             s.distinct_records > 1 and m.source_name || '|' || m.source_id <> h.hub_key
     ),
 
-    all_edges as (
-        select rk_a, rk_b, 'e1_hubspot_user' as edge_type, false as is_conflict
+    all_pairs as (
+        select rk_a, rk_b, 'e1_hubspot_user' as link_type, false as is_conflict
         from e1
         union all
         select rk_a, rk_b, 'e3_hubspot_br_candidacy', false
@@ -217,7 +246,7 @@ with
         select rk_a, rk_b, 'e4_ts_officeholder', false
         from e4
         union all
-        select rk_a, rk_b, 'e5_cluster', false
+        select rk_a, rk_b, 'e5_candidacy_cluster', is_conflict
         from e5
         union all
         select rk_a, rk_b, 'e6_eo_bridge', false
@@ -230,8 +259,8 @@ with
 select
     least(rk_a, rk_b) as record_key_1,
     greatest(rk_a, rk_b) as record_key_2,
-    edge_type,
+    link_type,
     bool_or(is_conflict) as is_conflict
-from all_edges
+from all_pairs
 where rk_a is not null and rk_b is not null and rk_a <> rk_b
 group by 1, 2, 3
