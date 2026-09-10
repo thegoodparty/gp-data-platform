@@ -235,9 +235,15 @@ def build_probes(
         (
             "A product",
             "airbyte_source.amplitude_api_events",
+            # user_id is the gp-api user id, never an email, so match it through the
+            # user table rather than comparing it to the address directly.
             f"""select count(*) as n
                 from {CATALOG}.airbyte_source.amplitude_api_events
-                where lower(coalesce(user_id,'')) = {e}
+                where user_id in (
+                        select cast(id as string)
+                        from {CATALOG}.airbyte_source.gp_api_db_user
+                        where lower(coalesce(email,'')) = {e}
+                    )
                    or lower(cast(user_properties as string)) like {email_like}
                 having count(*) > 0""",
         ),
