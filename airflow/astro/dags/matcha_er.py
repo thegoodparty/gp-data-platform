@@ -146,6 +146,10 @@ class _MatchaPodOperator(KubernetesPodOperator):
         # Replaces rather than extends: these four values are the pod's whole environment,
         # and pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
+        # KPO only prints the pod spec when a pod fails, so a successful run otherwise
+        # leaves no record of what it was sized at.
+        resources = self.container_resources
+        self.log.info("match pod resources: %s", resources.limits if resources else None)
         self._log_image_provenance()
         super().pre_execute(context)
 

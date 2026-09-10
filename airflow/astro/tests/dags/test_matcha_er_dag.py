@@ -242,6 +242,24 @@ def test_pod_sizing_survives_pre_execute():
     assert op.container_resources.requests == op.container_resources.limits
 
 
+def test_pod_resources_are_logged(capsys):
+    """A successful KPO run prints no pod spec, so without this line there is no
+    record of what a run was sized at. Verified against real dev logs: a passing
+    match task mentioned its resources nowhere.
+
+    Asserted on captured output rather than with caplog, because Airflow 3 logs
+    through structlog and the operator's logger never reaches caplog's handler.
+    """
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    with patch.object(module, "pod_databricks_env", autospec=True, return_value={}):
+        op.pre_execute({})
+    captured = capsys.readouterr()
+    logged = captured.out + captured.err
+    assert module.POD_MEMORY in logged
+    assert module.POD_EPHEMERAL_STORAGE in logged
+
+
 def test_pod_sizing_fits_astro_limits():
     """The numbers are load-bearing against ceilings outside this repo: a pod
     over the deployment memory quota fails at admission, Astro caps a task pod
