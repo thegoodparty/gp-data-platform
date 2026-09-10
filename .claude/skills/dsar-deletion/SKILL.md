@@ -121,9 +121,15 @@ a record the matcher missed will not appear. Trust the sweep over the view for n
 
 ## Step 2: record the identifiers
 
-Insert one row per identifier you will act on. Email and phone are worth recording even
-when nothing matches them today, because they are the standing guard if a vendor delivers
-the person later.
+Insert one row per identifier the sweep surfaced. Email and phone are worth recording
+even when nothing matches them today, because they are the standing guard if a vendor
+delivers the person later.
+
+**Record every identifier type the filters key on, not just the email.** Each staging
+filter matches one type, so an identifier you leave out is a filter that silently passes
+everyone through. In particular Amplitude keys on `gp_api_user_id`, because its `user_id`
+column is the gp-api user id and never an email address. If the subject has a gp-api
+account and you record only their email, Amplitude events are not suppressed.
 
 ```sql
 insert into goodparty_data_catalog.source_dsar.suppressed_identifiers
@@ -131,8 +137,26 @@ insert into goodparty_data_catalog.source_dsar.suppressed_identifiers
      received_at, respond_by, notes, created_at, created_by)
 values ('DATA-XXXX', '<name>', 'email', '<lowercased email>',
         date '<received>', date '<received + 45d>', '<why>',
+        current_timestamp(), '<you>'),
+       ('DATA-XXXX', '<name>', 'phone', '<digits only>',
+        date '<received>', date '<received + 45d>', '<why>',
+        current_timestamp(), '<you>'),
+       ('DATA-XXXX', '<name>', 'gp_api_user_id', '<numeric id from the sweep>',
+        date '<received>', date '<received + 45d>', '<why>',
         current_timestamp(), '<you>');
 ```
+
+Which type each source is filtered on:
+
+| identifier_type | filters |
+|---|---|
+| `email` | gp-api users, HubSpot contacts and companies, HubSpot archive models, BallotReady candidacies and office holders, TechSpeed candidates and officeholders |
+| `phone` | the same set |
+| `gp_api_user_id` | Amplitude events |
+| `ddhq_candidate_id` | DDHQ election results |
+
+Drop the rows that do not apply. A subject with no gp-api account has no
+`gp_api_user_id` to record, and the constraints will reject a blank one.
 
 ## Step 3: delete at the sources, in this order
 

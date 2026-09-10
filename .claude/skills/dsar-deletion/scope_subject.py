@@ -470,7 +470,14 @@ def main() -> int:
     print("     received_at, respond_by, notes, created_at, created_by)")
     print("values")
     print(f"    ('<TICKET>', {lit(args.name)}, 'email', {lit(args.email.lower())},")
+    print("     date '<received>', date '<received + 45d>', '<note>', current_timestamp(), '<you>'),")
+    if digits(args.phone):
+        print(f"    ('<TICKET>', {lit(args.name)}, 'phone', {lit(digits(args.phone))},")
+        print("     date '<received>', date '<received + 45d>', '<note>', current_timestamp(), '<you>'),")
+    print(f"    ('<TICKET>', {lit(args.name)}, 'gp_api_user_id', '<id from the gp_api_db_user hit>',")
     print("     date '<received>', date '<received + 45d>', '<note>', current_timestamp(), '<you>');")
+    print("\nAmplitude keys on gp_api_user_id, not email. Omitting it leaves Amplitude unsuppressed.")
+    print("Drop any row that does not apply; a subject with no gp-api account has no user id.")
     print("\nPresence in that table means suppress. Do not add an identifier you will not act on.")
 
     if args.out:
