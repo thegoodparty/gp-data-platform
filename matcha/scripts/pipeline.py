@@ -50,9 +50,12 @@ def _print_duckdb_budget(api: DuckDBAPI) -> None:
             "SELECT current_setting('memory_limit'), current_setting('threads')"
         ).fetchone()
     except duckdb.Error as e:  # a diagnostic must never fail the run
-        print(f"Could not read DuckDB budget: {e}")
+        print(f"Could not read DuckDB budget: {e}", flush=True)
         return
-    print(f"DuckDB budget: memory_limit={memory} threads={threads}")
+    # Flushed: stdout is block-buffered when redirected, and this line exists for
+    # runs that end in a SIGKILL from a timeout or the OOM killer, which would
+    # discard an unflushed buffer and lose exactly the evidence being gathered.
+    print(f"DuckDB budget: memory_limit={memory} threads={threads}", flush=True)
 
 
 def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFrame]:

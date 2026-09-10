@@ -1,6 +1,8 @@
 # tests/test_pipeline.py
 """Tests for pipeline.load_and_prepare."""
 
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -411,6 +413,28 @@ def test_duckdb_budget_is_reported(monkeypatch, capsys):
     assert "DuckDB budget:" in out
     assert "memory_limit=" in out
     assert "threads=" in out
+
+
+def test_duckdb_budget_survives_an_unclean_exit(tmp_path):
+    """The budget line must reach the log even when the process dies abruptly.
+
+    This line exists for runs killed by a task timeout or the OOM killer, and
+    stdout is block-buffered when redirected, so an unflushed write would be
+    discarded and lose the evidence. `os._exit` skips flushing the same way a
+    signal does.
+    """
+    script = tmp_path / "run.py"
+    script.write_text(
+        "import os, sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})\n"
+        "from scripts.pipeline import _duckdb_api\n"
+        "_duckdb_api()\n"
+        "os._exit(1)\n"
+    )
+    out = tmp_path / "out.txt"
+    with out.open("w") as fh:
+        subprocess.run([sys.executable, str(script)], stdout=fh, stderr=subprocess.DEVNULL, check=False)
+    assert "DuckDB budget:" in out.read_text()
 
 
 def test_duckdb_api_memory_limit_applied(monkeypatch):
