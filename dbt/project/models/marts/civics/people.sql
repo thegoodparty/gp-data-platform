@@ -15,8 +15,7 @@ with
             substring_index(ci.record_key, '|', -1) as source_id,
             ci.first_seen_at,
             ci.group_size,
-            pg.had_conflict,
-            pg.identity_count,
+            ci.identity_count,
             -- Per-source native identifiers, stage/race suffixes stripped so a
             -- vendor person's primary+general rows collapse to one value.
             case when ci.source_name = 'ballotready' then source_id end as br_id_val,
@@ -30,7 +29,6 @@ with
                 then {{ strip_ts_stage_suffix("source_id") }}
             end as ts_code_val
         from {{ ref("int__civics_person_canonical_ids") }} as ci
-        left join {{ ref("int__civics_person_groups") }} as pg using (record_key)
     ),
 
     -- Scalar where unambiguous: the case has no else branch, so a group with
@@ -63,8 +61,7 @@ with
             gp_person_id,
             min(first_seen_at) as first_seen_at,
             max(group_size) as group_size,
-            coalesce(bool_or(had_conflict), false) as had_conflict,
-            coalesce(max(identity_count), 1) as identity_count
+            max(identity_count) as identity_count
         from records
         group by gp_person_id
     ),
@@ -425,7 +422,6 @@ select
 
     pb.first_seen_at,
     pb.group_size,
-    pb.had_conflict,
 
     -- Merge provenance, not a caveat a consumer has to act on: a group holding
     -- two BallotReady people is refused upstream rather than flagged here.
