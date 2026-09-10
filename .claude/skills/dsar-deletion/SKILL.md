@@ -109,6 +109,12 @@ Probes that error are not clear. Check them by hand before concluding anything. 
 taking over 60 seconds are listed separately so a slow source is visible rather than
 silently near timeout.
 
+**The sweep reads raw sources, never the filtered staging models.** Its job is to report
+what we hold, and a staging model with `dsar_not_suppressed` applied hides exactly the
+rows an audit needs to see. A record suppressed for an earlier subject would otherwise
+read as absent for a new one. This also means suppressing someone does not make them
+disappear from the sweep, which is what you want at Step 6: only a real delete does.
+
 Three source families are listed as not probed because they have no person-level columns
 at all: `ballotready_s3_recruitment_v1` is race and position level, the DDHQ gsheet
 tables are keyed on `race_id`, and the CivicEngine GraphQL tables carry no person names.

@@ -263,15 +263,20 @@ def build_probes(
         ),
         (
             "B vendor civic",
-            "dbt.stg_airbyte_source__ballotready_s3_office_holders_v3",
-            f"""select id, first_name, middle_name, last_name, nickname, email, phone,
-                       office_holder_mailing_address_line_1
-                from {CATALOG}.dbt.stg_airbyte_source__ballotready_s3_office_holders_v3
+            # Raw source, like every other probe: the staging view applies the
+            # suppression filter, so reading it would hide records we still hold.
+            # email and phone live inside the `contacts` array, which the staging
+            # model parses; match the serialized blob rather than duplicating that
+            # parser here, normalizing to digits so formatting cannot hide a number.
+            "airbyte_source.ballotready_s3_office_holders_v3",
+            f"""select id, first_name, middle_name, last_name, nickname,
+                       office_holder_mailing_address_line_1, contacts
+                from {CATALOG}.airbyte_source.ballotready_s3_office_holders_v3
                 where lower(coalesce(last_name,'')) like {last_like}
                    or lower(coalesce(nickname,'')) like {last_like}
-                   or lower(coalesce(email,'')) = {e}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
-                   or lower(coalesce(office_holder_mailing_address_line_1,'')) like {addr_like}""",
+                   or lower(coalesce(office_holder_mailing_address_line_1,'')) like {addr_like}
+                   or lower(cast(contacts as string)) like {email_like}
+                   or regexp_replace(cast(contacts as string), '[^0-9]', '') like {phone_like}""",
         ),
         (
             "B vendor civic",
