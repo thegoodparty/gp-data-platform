@@ -70,4 +70,6 @@ select
     invalid_reason,
     _ab_source_file_url
 from with_checks
-where invalid_reason is not null
+where
+    invalid_reason is not null
+    and {{ dsar_not_suppressed("candidate_id", "ddhq_candidate_id") }}
