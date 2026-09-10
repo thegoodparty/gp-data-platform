@@ -35,13 +35,16 @@ Set on the Astro deployment as **Airflow Variables**:
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
+| `matcha_pod_memory` | Match pod memory. Defaults to `16Gi`. |
+| `matcha_pod_cpu` | Match pod CPU. Defaults to `4`. |
+| `matcha_pod_ephemeral_storage` | Match pod local disk. Defaults to `50Gi`. |
 | `databricks_scopes` | OAuth scopes the Databricks token requests ask for, comma or space separated. Shared with the other DAGs. Unset means the SDK default of `all-apis`. See "OAuth scopes". |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 16Gi memory / 4 CPU, which is most of the 20Gi deployment quota on its own. 16Gi rather than 8Gi because election_stage blocks on three low-cardinality keys and the comparison set for its first EM session was killing the pod at 8Gi. This
+requests 16Gi memory / 4 CPU / 50Gi disk, most of the 20Gi memory quota on its own. `election_stage` sets all three: it blocks on three low-cardinality keys, so Splink's comparison sets are enormous — at 8Gi the pod was killed mid-EM, and at 10Gi of disk it was evicted for spilling. candidacy is larger in rows but blocks finely and never comes close. All three are Variables read in `pre_execute`, so resizing is a Variable edit and a re-run rather than a deploy. Requests equal limits, keeping the pod Guaranteed. This
 is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
 on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
 quota bump.
