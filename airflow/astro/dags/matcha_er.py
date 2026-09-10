@@ -146,8 +146,6 @@ class _MatchaPodOperator(KubernetesPodOperator):
         # Replaces rather than extends: these four values are the pod's whole environment,
         # and pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
-        # The pod spec KPO logs on failure already shows the resolved values.
-        self.container_resources = _pod_resources()
         self._log_image_provenance()
         super().pre_execute(context)
 
@@ -181,36 +179,23 @@ class _MatchaPodOperator(KubernetesPodOperator):
         )
 
 
-POD_MEMORY_VARIABLE = "matcha_pod_memory"
-POD_CPU_VARIABLE = "matcha_pod_cpu"
-POD_EPHEMERAL_STORAGE_VARIABLE = "matcha_pod_ephemeral_storage"
-DEFAULT_POD_MEMORY = "16Gi"
-DEFAULT_POD_CPU = "4"
-DEFAULT_POD_EPHEMERAL_STORAGE = "50Gi"
+POD_MEMORY = "32Gi"
+POD_CPU = "4"
+POD_EPHEMERAL_STORAGE = "50Gi"
 
 
-def _pod_resources(defaults_only: bool = False) -> k8s.V1ResourceRequirements:
+def _pod_resources() -> k8s.V1ResourceRequirements:
     """Match pod resources, with requests equal to limits.
 
-    Equal on purpose: it keeps the pod Guaranteed, which is evicted last when
-    a node comes under pressure. `defaults_only` builds the parse-time object,
-    since Astro exposes no Variables to the DAG processor; pre_execute rebuilds
-    it from the Variables at task runtime.
+    Equal on purpose: it keeps the pod Guaranteed, which is evicted last when a
+    node comes under pressure. Astro sets requests to limits for task pods
+    regardless, and bills on the limit.
     """
-    if defaults_only:
-        quantities = {
-            "memory": DEFAULT_POD_MEMORY,
-            "cpu": DEFAULT_POD_CPU,
-            "ephemeral-storage": DEFAULT_POD_EPHEMERAL_STORAGE,
-        }
-    else:
-        quantities = {
-            "memory": Variable.get(POD_MEMORY_VARIABLE, default=DEFAULT_POD_MEMORY),
-            "cpu": Variable.get(POD_CPU_VARIABLE, default=DEFAULT_POD_CPU),
-            "ephemeral-storage": Variable.get(
-                POD_EPHEMERAL_STORAGE_VARIABLE, default=DEFAULT_POD_EPHEMERAL_STORAGE
-            ),
-        }
+    quantities = {
+        "memory": POD_MEMORY,
+        "cpu": POD_CPU,
+        "ephemeral-storage": POD_EPHEMERAL_STORAGE,
+    }
     return k8s.V1ResourceRequirements(requests=dict(quantities), limits=dict(quantities))
 
 
@@ -239,16 +224,13 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # Sized for election_stage, the outlier: it blocks on state + election_date +
-        # office_level, three low-cardinality keys, so Splink's comparison sets are enormous.
-        # At 8Gi the pod was killed mid-EM; at 10Gi of disk it was evicted for spilling.
-        # candidacy is bigger in rows but blocks finely and never comes close.
-        #
-        # Resized in pre_execute from Variables — a wrong guess here otherwise costs a
-        # deploy cycle per attempt, and Astro exposes no Variables to the DAG processor at
-        # parse. ephemeral-storage is declared rather than inherited: Astro's namespace
-        # default is 256Mi, which a real run blows through in minutes.
-        container_resources=_pod_resources(defaults_only=True),
+        # Sized for election_stage, the outlier. Below ~32Gi DuckDB spills its EM
+        # working set to node ephemeral storage, which is EBS-backed and slow enough
+        # to stall the task for hours: at 16Gi it ran 2.5h without finishing one EM
+        # iteration, and at 8Gi it was OOM-killed. candidacy is bigger in rows but
+        # never comes close. ephemeral-storage is declared rather than inherited:
+        # Astro's namespace default is 256Mi, which a real run blows through in minutes.
+        container_resources=_pod_resources(),
         in_cluster=True,
         get_logs=True,
         on_finish_action="delete_pod",

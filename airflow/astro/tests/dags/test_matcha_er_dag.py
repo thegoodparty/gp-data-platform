@@ -226,28 +226,37 @@ def test_the_er_schema_is_environment_scoped_everywhere():
         assert schema.called, task_id
 
 
-def test_pod_is_resized_from_variables_at_runtime():
-    """Sizing is read in pre_execute, not at parse: Astro exposes no Variables
-    to the DAG processor, and a wrong guess otherwise costs a deploy cycle per
-    attempt. Requests equal limits so the pod stays Guaranteed.
+def test_pod_sizing_survives_pre_execute():
+    """pre_execute rewrites env_vars on every retry; it must not disturb the
+    sizing set at parse. Requests equal limits so the pod stays Guaranteed.
     """
     module = _dag_module()
     op = module._match_pod(_ENTITY_SPECS[0])
-    with (
-        patch.object(module, "pod_databricks_env", autospec=True, return_value={}),
-        patch.object(module, "Variable", autospec=True) as mock_variable,
-    ):
-        mock_variable.get.side_effect = lambda key, default=None: {
-            module.POD_MEMORY_VARIABLE: "24Gi",
-            module.POD_EPHEMERAL_STORAGE_VARIABLE: "80Gi",
-        }.get(key, default)
+    with patch.object(module, "pod_databricks_env", autospec=True, return_value={}):
         op.pre_execute({})
     assert op.container_resources.limits == {
-        "memory": "24Gi",
-        "cpu": module.DEFAULT_POD_CPU,
-        "ephemeral-storage": "80Gi",
+        "memory": module.POD_MEMORY,
+        "cpu": module.POD_CPU,
+        "ephemeral-storage": module.POD_EPHEMERAL_STORAGE,
     }
     assert op.container_resources.requests == op.container_resources.limits
+
+
+def test_pod_sizing_fits_astro_limits():
+    """The numbers are load-bearing against ceilings outside this repo: a pod
+    over the deployment memory quota fails at admission, Astro caps a task pod
+    at 43 vCPU / 86 GiB, and ephemeral storage at 100 GiB. Memory also has to
+    clear the ~32Gi where DuckDB stops spilling to EBS-backed node storage.
+    """
+    module = _dag_module()
+
+    def gib(quantity: str) -> int:
+        assert quantity.endswith("Gi"), quantity
+        return int(quantity[:-2])
+
+    assert 32 <= gib(module.POD_MEMORY) <= 86
+    assert gib(module.POD_EPHEMERAL_STORAGE) <= 100
+    assert int(module.POD_CPU) <= 43
 
 
 def test_match_pods_declare_ephemeral_storage():
@@ -259,10 +268,10 @@ def test_match_pods_declare_ephemeral_storage():
     module = _dag_module()
     for entity in _ENTITIES:
         resources = _DAG.get_task(f"{entity}.match").container_resources
-        assert resources.requests["ephemeral-storage"] == module.DEFAULT_POD_EPHEMERAL_STORAGE
-        assert resources.limits["ephemeral-storage"] == module.DEFAULT_POD_EPHEMERAL_STORAGE
+        assert resources.requests["ephemeral-storage"] == module.POD_EPHEMERAL_STORAGE
+        assert resources.limits["ephemeral-storage"] == module.POD_EPHEMERAL_STORAGE
         # Requests == limits keeps the pod Guaranteed; a burstable pod is evicted first.
-        assert resources.requests["memory"] == resources.limits["memory"] == module.DEFAULT_POD_MEMORY
+        assert resources.requests["memory"] == resources.limits["memory"] == module.POD_MEMORY
 
 
 def test_match_pods_set_the_pull_policy_explicitly():

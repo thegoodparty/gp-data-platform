@@ -35,16 +35,19 @@ Set on the Astro deployment as **Airflow Variables**:
 | `dbt_cloud_job_id` | dbt Cloud job the bookend `DbtCloudRunJobOperator` tasks run steps against. |
 | `matcha_swap_enabled` | Cutover switch. Anything but `"true"` withholds the swap. |
 | `matcha_image_tag` | matcha image tag to run. Defaults to `latest` if unset; set to a sha to pin a deployment without a code change or a deploy. See "Which build a run used". |
-| `matcha_pod_memory` | Match pod memory. Defaults to `16Gi`. |
-| `matcha_pod_cpu` | Match pod CPU. Defaults to `4`. |
-| `matcha_pod_ephemeral_storage` | Match pod local disk. Defaults to `50Gi`. |
 | `databricks_scopes` | OAuth scopes the Databricks token requests ask for, comma or space separated. Shared with the other DAGs. Unset means the SDK default of `all-apis`. See "OAuth scopes". |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M) and `dbt_cloud`, both shared with
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 16Gi memory / 4 CPU / 50Gi disk, most of the 20Gi memory quota on its own. `election_stage` sets all three: it blocks on three low-cardinality keys, so Splink's comparison sets are enormous — at 8Gi the pod was killed mid-EM, and at 10Gi of disk it was evicted for spilling. candidacy is larger in rows but blocks finely and never comes close. All three are Variables read in `pre_execute`, so resizing is a Variable edit and a re-run rather than a deploy. Requests equal limits, keeping the pod Guaranteed. This
+requests 32Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
+a deploy. `election_stage` is what the numbers are for. Below roughly 32Gi, DuckDB spills its EM working
+set to node ephemeral storage, which is EBS-backed and slow enough to stall the task: at 16Gi it ran two
+and a half hours without completing a single EM iteration, at 8Gi it was OOM-killed, and at 10Gi of disk
+it was evicted for spilling. The same workload finishes on a 36GB laptop, where DuckDB gets ~29GB and a
+local SSD absorbs the rest. candidacy is larger in rows but blocks finely and never comes close. Requests
+equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way. This
 is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
 on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
 quota bump.
