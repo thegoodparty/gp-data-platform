@@ -166,12 +166,17 @@ def _pod_runtime(module, *, env=None):
     Only the pod's Databricks environment now — without it, pre_execute reads
     a real connection out of a metastore that is not there.
     """
-    with patch.object(
-        module,
-        "pod_databricks_env",
-        autospec=True,
-        return_value=env if env is not None else {"DATABRICKS_HOST": "https://dbc.example"},
+    with (
+        patch.object(
+            module,
+            "pod_databricks_env",
+            autospec=True,
+            return_value=env if env is not None else {"DATABRICKS_HOST": "https://dbc.example"},
+        ),
+        patch.object(module, "Variable", autospec=True) as mock_variable,
     ):
+        # pre_execute also resizes the pod from Variables; unset means the defaults.
+        mock_variable.get.side_effect = lambda key, default=None: default
         yield
 
 
@@ -221,18 +226,43 @@ def test_the_er_schema_is_environment_scoped_everywhere():
         assert schema.called, task_id
 
 
+def test_pod_is_resized_from_variables_at_runtime():
+    """Sizing is read in pre_execute, not at parse: Astro exposes no Variables
+    to the DAG processor, and a wrong guess otherwise costs a deploy cycle per
+    attempt. Requests equal limits so the pod stays Guaranteed.
+    """
+    module = _dag_module()
+    op = module._match_pod(_ENTITY_SPECS[0])
+    with (
+        patch.object(module, "pod_databricks_env", autospec=True, return_value={}),
+        patch.object(module, "Variable", autospec=True) as mock_variable,
+    ):
+        mock_variable.get.side_effect = lambda key, default=None: {
+            module.POD_MEMORY_VARIABLE: "24Gi",
+            module.POD_EPHEMERAL_STORAGE_VARIABLE: "80Gi",
+        }.get(key, default)
+        op.pre_execute({})
+    assert op.container_resources.limits == {
+        "memory": "24Gi",
+        "cpu": module.DEFAULT_POD_CPU,
+        "ephemeral-storage": "80Gi",
+    }
+    assert op.container_resources.requests == op.container_resources.limits
+
+
 def test_match_pods_declare_ephemeral_storage():
     """Astro injects a 256Mi ephemeral-storage default into the namespace, and
     matcha writes its CSVs and charts to the pod filesystem before uploading,
     so the default gets the pod killed part-way through a real run. Declared
     on both requests and limits, since the kubelet evicts on the limit.
     """
+    module = _dag_module()
     for entity in _ENTITIES:
         resources = _DAG.get_task(f"{entity}.match").container_resources
-        assert resources.requests["ephemeral-storage"] == "10Gi"
-        assert resources.limits["ephemeral-storage"] == "10Gi"
+        assert resources.requests["ephemeral-storage"] == module.DEFAULT_POD_EPHEMERAL_STORAGE
+        assert resources.limits["ephemeral-storage"] == module.DEFAULT_POD_EPHEMERAL_STORAGE
         # Requests == limits keeps the pod Guaranteed; a burstable pod is evicted first.
-        assert resources.requests["memory"] == resources.limits["memory"] == "16Gi"
+        assert resources.requests["memory"] == resources.limits["memory"] == module.DEFAULT_POD_MEMORY
 
 
 def test_match_pods_set_the_pull_policy_explicitly():
