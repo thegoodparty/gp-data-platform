@@ -292,27 +292,6 @@ class TestCohortCeiling:
         assert stub.build_universe_called is False
 
 
-class TestPendingWrap:
-    def test_wrap_filters_and_captures_the_count(self):
-        """Failure this catches: the wrap's captured count drifting from what
-        actually got dropped -- that number is written verbatim to the run
-        log, so a miscount is a false audit record -- or the filter touching
-        an office no quarantine row suppresses.
-        """
-
-        class _PendingOnlyMatcher:
-            def load_pending_offices(self, states=None, limit=None):
-                return pd.DataFrame({"br_database_id": [1, 2, 3], "state": ["CA", "CA", "TX"]})
-
-        matcher = _PendingOnlyMatcher()
-        captured = daily_run._install_daily_pending_wrap(matcher, suppressed_ids={1})
-
-        df = matcher.load_pending_offices()
-
-        assert list(df["br_database_id"]) == [2, 3]
-        assert captured == {"quarantine_dropped": 1}
-
-
 class TestPriorAnswersRead:
     def test_maps_null_district_to_none_and_pins_query_shape(self):
         """Failure this catches: pandas surfacing a SQL NULL district as NaN

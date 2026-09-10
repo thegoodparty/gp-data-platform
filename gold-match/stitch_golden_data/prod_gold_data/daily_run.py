@@ -130,7 +130,9 @@ def _read_quarantine_eligibility(databricks: DatabricksClient, now: datetime) ->
         f"select br_database_id, retry_class, last_failed_at from {QUARANTINE_TABLE_PATH} where released_at is null"
     )
     if not df.empty:
-        # Same aware-UTC pin as _read_prior_answers, for the retry_cutoff comparison.
+        # The connector's timestamp dtype varies by result path; an object-dtype
+        # column of naive datetimes would blow up the aware retry_cutoff
+        # comparison, so pin it to UTC the way the client's datetime64 branch does.
         df["last_failed_at"] = pd.to_datetime(df["last_failed_at"], utc=True)
     retry_cutoff = now - timedelta(days=QUARANTINE_RETRY_DAYS)
     suppressed: set[int] = set()
@@ -149,26 +151,6 @@ def _read_quarantine_eligibility(databricks: DatabricksClient, now: datetime) ->
         else:
             due.add(bid)
     return suppressed, due
-
-
-def _install_daily_pending_wrap(matcher: L2BrMatcher, suppressed_ids: set[int]) -> dict:
-    """Shadow THIS matcher's own `load_pending_offices`, mirroring
-    backlog_run's exclusion wrap: the quarantine filter rides the one read
-    the loop needs anyway, and its count is exactly what the run log persists.
-    """
-    original = matcher.load_pending_offices
-    captured = {"quarantine_dropped": 0}
-
-    def wrapped():
-        # The real loader returns its declared columns even when empty, so
-        # the mask is safe unguarded on an empty frame.
-        df = original()
-        mask = df["br_database_id"].isin(suppressed_ids)
-        captured["quarantine_dropped"] = int(mask.sum())
-        return df[~mask].reset_index(drop=True)
-
-    matcher.load_pending_offices = wrapped
-    return captured
 
 
 # -- The match loop: run()'s own logic, plus a per-office quarantine catch --
@@ -320,8 +302,13 @@ async def _run(args: argparse.Namespace) -> None:
         prior_district_by_bid = _read_prior_answers(matcher.databricks, args.run_key, matcher.pending_offices_path)
         suppressed_ids, due_ids = _read_quarantine_eligibility(matcher.databricks, args.run_key)
 
-        captured = _install_daily_pending_wrap(matcher, suppressed_ids)
         pending_df = matcher.load_pending_offices()
+        # The loader returns its declared columns even when empty, so the mask
+        # is safe unguarded on an empty frame. The count is what the run log
+        # persists.
+        suppressed_mask = pending_df["br_database_id"].isin(suppressed_ids)
+        quarantine_dropped = int(suppressed_mask.sum())
+        pending_df = pending_df[~suppressed_mask].reset_index(drop=True)
         cohort_size = len(pending_df)
         if cohort_size > COHORT_CEILING:
             raise RuntimeError(
@@ -350,7 +337,7 @@ async def _run(args: argparse.Namespace) -> None:
             matcher.databricks,
             run_key=args.run_key,
             cohort_size=cohort_size,
-            quarantine_dropped=captured["quarantine_dropped"],
+            quarantine_dropped=quarantine_dropped,
             matched_written=matched_written,
             abstains_written=abstains_written,
             withdrawals_held=withdrawals_held,
@@ -365,7 +352,7 @@ async def _run(args: argparse.Namespace) -> None:
             "run_key": args.run_key.isoformat(),
             "policy_version": POLICY_VERSION,
             "cohort_size": cohort_size,
-            "quarantine_dropped": captured["quarantine_dropped"],
+            "quarantine_dropped": quarantine_dropped,
             "written": written,
             "matched_written": matched_written,
             "abstains_written": abstains_written,
