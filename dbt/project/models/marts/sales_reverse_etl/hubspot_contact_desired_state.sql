@@ -114,7 +114,7 @@ with
             -- instead, a whitespace-only or malformed-only contact string admits a
             -- row whose payload then carries neither an email nor a phone.
             (
-                c.email rlike '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
+                trim(c.email) rlike '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'
                 or nullif(trim(c.phone_number), '') is not null
             )
             -- non-major-party (inherited verbatim from the legacy feed)
@@ -205,15 +205,25 @@ with
         {%- endif %}
     ),
 
-    -- Our id disagrees with the id already stamped on a contact this person is
-    -- linked to: hold, rather than create a second contact under the newer id.
-    -- Inert until the property is created and backfilled, which is the intended
-    -- arming condition.
-    person_id_mismatches as (
-        select distinct pi.gp_person_id
+    -- A contact whose stamped id disagrees with the person the graph now links it
+    -- to: hold BOTH people rather than let either write to it. The linked person
+    -- would otherwise create a second contact under the newer id, and the stamped
+    -- person would keep landing updates on a contact that is no longer theirs
+    -- (the shape a person-graph split produces). Inert until the property is
+    -- created and backfilled, which is the intended arming condition.
+    stale_stamps as (
+        select pi.gp_person_id as linked_person_id, hc.gp_person_id as stamped_person_id
         from {{ ref("person_identifiers") }} as pi
         join contacts_carrying_a_person_id as hc on hc.hubspot_contact_id = pi.source_id
         where pi.source_name = 'hubspot' and hc.gp_person_id <> pi.gp_person_id
+    ),
+
+    person_id_mismatches as (
+        select linked_person_id as gp_person_id
+        from stale_stamps
+        union
+        select stamped_person_id as gp_person_id
+        from stale_stamps
     ),
 
     with_contact_state as (
