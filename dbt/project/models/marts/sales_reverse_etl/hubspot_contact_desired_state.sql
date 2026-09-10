@@ -183,10 +183,26 @@ with
     ),
 
     -- The mirror is a daily copy, so a contact created today is invisible to it
-    -- until tomorrow; this flow's own log closes that window.
+    -- until tomorrow; this flow's own log closes that window. The job creates and
+    -- owns that log on its first run, so a missing table means the flow has never
+    -- sent anyone, which is the same answer an empty one gives; treating it that way
+    -- keeps this model buildable in every environment the flow has not reached yet,
+    -- and stays in place afterwards so every future flow's first build inherits it.
+    {%- set sent_log = source("reverse_etl", "sent_log_hubspot") %}
+    {%- set sent_log_exists = (
+        execute
+        and adapter.get_relation(
+            database=sent_log.database,
+            schema=sent_log.schema,
+            identifier=sent_log.identifier,
+        )
+        is not none
+    ) %}
     already_sent as (
-        select distinct tracking_key as gp_person_id
-        from {{ source("reverse_etl", "sent_log_hubspot") }}
+        {%- if sent_log_exists %}
+            select distinct tracking_key as gp_person_id from {{ sent_log }}
+        {%- else %}select cast(null as string) as gp_person_id where false
+        {%- endif %}
     ),
 
     -- Our id disagrees with the id already stamped on a contact this person is
