@@ -301,6 +301,8 @@ def fetch_users_daily(api_key: str, start: date, end: date, now: datetime) -> li
                         "raw_json": json.dumps(r),
                     }
                 )
+            if body.get("has_more") and not body.get("next_page"):
+                raise RuntimeError("users endpoint returned has_more=true with no next_page cursor")
             if not body.get("next_page"):
                 break
             page = body["next_page"]

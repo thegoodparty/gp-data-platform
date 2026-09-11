@@ -98,3 +98,9 @@ def test_usage_non_regression_fails_on_large_swing(monkeypatch, cfg):
     _patch_query_rows(monkeypatch, [["1", "50"]])
     with pytest.raises(assertions.AssertionFailure, match="tokens total moved"):
         assertions.assert_usage_non_regression(cfg, (Decimal(1000), Decimal(50)), "a", "b")
+
+
+def test_usage_non_regression_fails_on_large_request_swing(monkeypatch, cfg):
+    _patch_query_rows(monkeypatch, [["1000", "1"]])
+    with pytest.raises(assertions.AssertionFailure, match="requests total moved"):
+        assertions.assert_usage_non_regression(cfg, (Decimal(1000), Decimal(50)), "a", "b")
