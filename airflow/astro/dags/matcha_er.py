@@ -184,7 +184,7 @@ class _MatchaPodOperator(KubernetesPodOperator):
 
 
 POD_MEMORY = "32Gi"
-POD_CPU = "4"
+POD_CPU = "16"
 POD_EPHEMERAL_STORAGE = "50Gi"
 
 
@@ -228,12 +228,14 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # Sized for election_stage, the outlier. Below ~32Gi DuckDB spills its EM
-        # working set to node ephemeral storage, which is EBS-backed and slow enough
-        # to stall the task for hours: at 16Gi it ran 2.5h without finishing one EM
-        # iteration, and at 8Gi it was OOM-killed. candidacy is bigger in rows but
-        # never comes close. ephemeral-storage is declared rather than inherited:
-        # Astro's namespace default is 256Mi, which a real run blows through in minutes.
+        # Sized for election_stage, the outlier. DuckDB reads both limits from the
+        # cgroup, so these set its budget directly: at 32Gi it reports a 25.5 GiB
+        # memory limit and one thread per CPU. Memory below ~32Gi spills the EM
+        # working set to EBS-backed node storage and stalls for hours; CPU is the
+        # parallelism, and at 4 an EM iteration took 18 minutes against seconds on a
+        # laptop reporting 28.7 GiB and 18 threads. ephemeral-storage is declared
+        # rather than inherited: Astro's namespace default is 256Mi, which a real run
+        # blows through in minutes.
         container_resources=_pod_resources(),
         in_cluster=True,
         get_logs=True,
