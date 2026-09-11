@@ -28,11 +28,34 @@ def _duckdb_api() -> DuckDBAPI:
     """
     limit = os.environ.get("MATCHA_DUCKDB_MEMORY_LIMIT")
     if not limit:
-        return DuckDBAPI()
+        api = DuckDBAPI()
+    else:
+        try:
+            api = DuckDBAPI(connection=duckdb.connect(config={"memory_limit": limit}))
+        except duckdb.Error as e:
+            raise ValueError(f"Invalid MATCHA_DUCKDB_MEMORY_LIMIT={limit!r}: {e}") from e
+    _print_duckdb_budget(api)
+    return api
+
+
+def _print_duckdb_budget(api: DuckDBAPI) -> None:
+    """Report the memory and thread budget DuckDB actually resolved.
+
+    Inside a container these are the two numbers that decide whether a run
+    spills or oversubscribes its cores, and DuckDB derives both itself unless
+    told otherwise, so the configured pod size is not evidence of either.
+    """
     try:
-        return DuckDBAPI(connection=duckdb.connect(config={"memory_limit": limit}))
-    except duckdb.Error as e:
-        raise ValueError(f"Invalid MATCHA_DUCKDB_MEMORY_LIMIT={limit!r}: {e}") from e
+        memory, threads = api._con.execute(
+            "SELECT current_setting('memory_limit'), current_setting('threads')"
+        ).fetchone()
+    except duckdb.Error as e:  # a diagnostic must never fail the run
+        print(f"Could not read DuckDB budget: {e}", flush=True)
+        return
+    # Flushed: stdout is block-buffered when redirected, and this line exists for
+    # runs that end in a SIGKILL from a timeout or the OOM killer, which would
+    # discard an unflushed buffer and lose exactly the evidence being gathered.
+    print(f"DuckDB budget: memory_limit={memory} threads={threads}", flush=True)
 
 
 def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFrame]:
