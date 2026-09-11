@@ -24,6 +24,9 @@ ELECTION_STAGE_CONFIG = EntityConfig(
         cl.ExactMatch("office_level"),
         cl.ExactMatch("office_type"),
         cl.ExactMatch("district_identifier"),
+        # Cross-source only since the prematch model started parsing it out of
+        # official_office_name; before that it was BallotReady-only and inert.
+        cl.ExactMatch("seat_name"),
         # ── Election cycle ──
         cl.ExactMatch("election_date"),
         cl.ExactMatch("election_stage"),
@@ -71,10 +74,8 @@ ELECTION_STAGE_CONFIG = EntityConfig(
     additional_columns_to_retain=[
         "source_name",
         "source_id",
-        # Retained explicitly rather than as comparisons: both are BallotReady-only,
-        # so no cross-source pair can agree on them, but
-        # stg_er_source__clustered_election_stages selects both.
-        "seat_name",
+        # Retained rather than compared: BallotReady-only, so no cross-source pair
+        # can agree on it, but stg_er_source__clustered_election_stages selects it.
         "ballotready_position_id",
         "district_raw",
         "br_race_id",
@@ -126,6 +127,7 @@ ELECTION_STAGE_CONFIG = EntityConfig(
         "gamma_office_level",
         "gamma_office_type",
         "gamma_district_identifier",
+        "gamma_seat_name",
         "gamma_election_date",
         "gamma_election_stage",
         "gamma_is_special",
