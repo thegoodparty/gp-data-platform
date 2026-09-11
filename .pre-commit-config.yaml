@@ -29,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|apps/genie-tools|reverse-etl)/
+        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|reverse-etl)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -94,13 +94,6 @@ repos:
         entry: bash -c 'cd analytics && uv run pytest'
         language: system
         files: ^analytics/
-        pass_filenames: false
-        stages: [pre-push]
-    -   id: pytest-genie-tools
-        name: genie-tools tests (pre-push)
-        entry: bash -c 'cd apps/genie-tools && uv run pytest'
-        language: system
-        files: ^apps/genie-tools/
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-reverse-etl

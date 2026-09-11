@@ -21,7 +21,6 @@ Each subproject manages its own deps. `cd` into the right one before you install
 | `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
 | `gold-match/` | uv | 3.14 | L2-to-BallotReady district matcher, moved from omni @ `766137e50` and owned here — edit via normal PRs. `cd gold-match && uv sync`, `uv run pytest`. `bedrock_clients/` is the live model stack; the two Gemini modules in `shared/` are dormant until the evaluation gate passes, and `shared/` stays excluded from ruff (omni's inherited lint debt). |
-| `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
 | `reverse-etl/` | uv | 3.14 | Daily diff of a Databricks desired-state model against a destination (HubSpot contacts, CSV), keyed on a stable person id. `cd reverse-etl && uv sync`, `uv run ...`. Console script `retl`. Imports no Airflow code; the DAG passes credentials through the environment. |
 
 Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
@@ -54,7 +53,7 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, `apps/genie-tools/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
 ## Never
 
