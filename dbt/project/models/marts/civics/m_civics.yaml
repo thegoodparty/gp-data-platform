@@ -845,6 +845,16 @@ models:
           - unique
           - not_null
           - is_uuid
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the product campaign's user, and the
+          candidacy's stage rows.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
       - name: viability_score
         description: >
           Numeric viability rating (0..5): the broad civics score
