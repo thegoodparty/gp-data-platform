@@ -1,13 +1,14 @@
-# Reverse-ETL HubSpot-leads daily DAG (`reverse_etl_hubspot_leads`)
+# Reverse-ETL HubSpot contact sync, daily DAG (`reverse_etl_hubspot`)
 
-Operational reference for the DAG that keeps HubSpot's independent-candidate leads in sync with
-Databricks: one daily task diffs the desired-state contact model against what HubSpot already
-holds, upserts whatever differs, and logs what HubSpot confirmed.
+Operational reference for the DAG that keeps HubSpot's contacts in sync with Databricks: one
+daily task diffs the desired-state contact model against what HubSpot already holds, upserts
+whatever differs, and logs what HubSpot confirmed. One contact sync carrying every property we
+own, not a lead feed, so a new attribute is a column on its model rather than a second flow.
 
 ## What it does
 
 Daily at 17:00 UTC: `send_pod` runs the `retl` image as a Kubernetes pod, executing
-`retl --source=hubspot_leads --destination=hubspot_contacts`. Everything about the diff — reading
+`retl --source=hubspot --destination=hubspot_contacts`. Everything about the diff — reading
 the desired-state model, subtracting the flow's own send log, the volume and empty-log guards, the
 batch upsert, appending confirmed payloads back to the log — happens inside that container. This
 DAG's job is narrower: resolve the pod's credentials and config at task runtime, run it, and turn a
@@ -81,10 +82,10 @@ Set on the Astro deployment:
 | `reverse_etl_image_tag` | REQUIRED, no default: the merged build's sha. An unattended loop on `latest` would silently run whatever main last published after every merge, so the evaluated artifact must be the production artifact — a merge changes nothing until this Variable is deliberately bumped to the new build's sha. Unset fails the run loudly at render, before any pod runs. |
 | `reverse_etl_image_pull_secret` | Kubernetes image pull secret name from Astronomer support. The GHCR package is private, so a deployment needs this set before any pod can run there; empty leaves the pod pulling anonymously (fails at the registry, not silently). |
 | `reverse_etl_hubspot_token` | HubSpot private-app token for the batch contact upsert ("token" in the name so the secrets masker redacts it). |
-| `reverse_etl_hubspot_leads_source_relation` | The desired-state model's fully qualified relation name. |
-| `reverse_etl_hubspot_leads_excluded_columns` | Comma-separated columns the payload never carries — must include the model's build-clock column, or every build resends its entire population. |
-| `reverse_etl_hubspot_leads_cap` | The flow's send-cap; sized at enable time to admit the full eligible population without tripping on a legitimate recompute day. |
-| `reverse_etl_hubspot_leads_log_table` | This flow's own send-log table. No default: a default would point a dev deployment at the production log. |
+| `reverse_etl_hubspot_source_relation` | The desired-state model's fully qualified relation name. |
+| `reverse_etl_hubspot_excluded_columns` | Comma-separated columns the payload never carries — must include the model's build-clock column, or every build resends its entire population. |
+| `reverse_etl_hubspot_cap` | The flow's send-cap; sized at enable time to admit the full eligible population without tripping on a legitimate recompute day. |
+| `reverse_etl_hubspot_log_table` | This flow's own send-log table. No default: a default would point a dev deployment at the production log. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M), shared with the other DAGs.
 The pod's credentials resolve in `pre_execute` (never in the rendered-template snapshot), mapped to

@@ -3467,6 +3467,45 @@ models:
           - not_null
           - unique
 
+  - name: int__civics_person_edges_probabilistic
+    description: >
+      Splink person-matcher edges, one row per undirected record-key pair at or
+      above a 0.95 match probability. Held apart from int__civics_person_edges
+      so the deterministic pregroups cannot read matcher output: the pregroup
+      model sits upstream of the matcher, so the separation is enforced by DAG
+      topology rather than by convention.
+
+      Pairs whose first names agree only through the nickname alias arrays, with
+      no shared email or phone, are dropped. That class was measured at six
+      false positives in fifty sampled pairs while every other class read clean,
+      and a wrong person merge is destructive once it reaches HubSpot.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: person_probabilistic_edges_are_ordered
+          arguments:
+            expression: "record_key_1 < record_key_2"
+    columns:
+      - name: record_key_1
+        description: Lexically smaller record key of the pair.
+        data_tests:
+          - not_null
+      - name: record_key_2
+        description: Lexically larger record key of the pair.
+        data_tests:
+          - not_null
+      - name: edge_type
+        description: Always `e10_splink_person`; named to sit alongside E1-E7.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["e10_splink_person"]
+      - name: match_probability
+        description: >
+          Highest Splink posterior among the prematch pairs that produced this
+          record-key pair. Audit only; propagation treats every edge alike.
+        data_tests:
+          - not_null
+
   - name: int__civics_person_groups
     description: >
       Person groups. One row per int__civics_person_nodes record_key with its

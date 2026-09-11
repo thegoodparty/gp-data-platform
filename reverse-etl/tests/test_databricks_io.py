@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from unittest.mock import patch
 
 import pytest
 
-from retl.databricks_io import DatabricksConnConfig, config_from_env, fetch_all_rows
+from retl.databricks_io import DatabricksConnConfig, config_from_env, connect, fetch_all_rows
 
 
 class _FakeCursorForFetch:
@@ -67,3 +68,44 @@ def test_config_from_env_reads_token_and_client_credentials() -> None:
         client_id="cid",
         client_secret="csecret",
     )
+
+
+def test_config_from_env_reads_and_trims_the_scopes_variable() -> None:
+    """Catches: the variable is declared but never parsed, so a deployment that
+    narrowed its service principal still has retl asking for `all-apis` and being
+    refused at the token endpoint before it reads a row."""
+    base = {"DATABRICKS_HOST": "dbc.example.com", "DATABRICKS_HTTP_PATH": "/sql/1.0/x"}
+    assert config_from_env({**base, "DATABRICKS_SCOPES": "  sql, unity-catalog  "}).scopes == (
+        "sql, unity-catalog"
+    )
+    assert config_from_env(base).scopes == ""
+
+
+def _connect_capturing_sdk_config(scopes: str):
+    """Drive the real `connect()` M2M path with the SDK and driver stubbed out.
+
+    `connect()` is otherwise left untested because it must reach a live warehouse --
+    which is exactly what would not show a dropped scope until one was refused.
+    """
+    config = DatabricksConnConfig(
+        server_hostname="dbc.example.com",
+        http_path="/sql/1.0/x",
+        client_id="cid",
+        client_secret="secret",
+        scopes=scopes,
+    )
+    with (
+        patch("databricks.sdk.core.Config") as mock_config,
+        # No need to patch oauth_service_principal: the mocked driver never invokes
+        # the credentials callback that would call it.
+        patch("databricks.sql.connect"),
+    ):
+        connect(config)
+    return mock_config.call_args.kwargs
+
+
+def test_connect_passes_the_configured_scopes_to_the_sdk() -> None:
+    """Catches the whole point of the variable being dropped on the floor: the SDK
+    gives `scopes` no env binding, so a config that carries the value but never hands
+    it to Config still requests `all-apis` and is refused."""
+    assert _connect_capturing_sdk_config("sql, unity-catalog")["scopes"] == "sql, unity-catalog"

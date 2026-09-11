@@ -1,6 +1,6 @@
-"""## Reverse-ETL: HubSpot leads, daily
+"""## Reverse-ETL: HubSpot contacts, daily
 
-One task, `send_pod`, runs the `retl` container (`retl --source=hubspot_leads
+One task, `send_pod`, runs the `retl` container (`retl --source=hubspot
 --destination=hubspot_contacts`): diff the desired-state contact model against HubSpot,
 upsert whatever differs, and log what HubSpot confirmed. The diff, the guards, the batch
 upsert, and the send-log append all live inside that container; this DAG only supplies
@@ -40,11 +40,11 @@ The DAG deploys `is_paused_upon_creation=True`. Unpausing is the owner-gated ena
   GHCR package is private). Empty means the pod pulls anonymously.
 - `reverse_etl_hubspot_token` — HubSpot private-app token ("token" in the name so the
   secrets masker redacts it in logs).
-- `reverse_etl_hubspot_leads_source_relation` — the desired-state model's relation name.
-- `reverse_etl_hubspot_leads_excluded_columns` — comma-separated columns the payload
+- `reverse_etl_hubspot_source_relation` — the desired-state model's relation name.
+- `reverse_etl_hubspot_excluded_columns` — comma-separated columns the payload
   never carries (must include the model's build-clock column).
-- `reverse_etl_hubspot_leads_cap` — the flow's send-cap, sized at enable time.
-- `reverse_etl_hubspot_leads_log_table` — this flow's own send-log table. No default:
+- `reverse_etl_hubspot_cap` — the flow's send-cap, sized at enable time.
+- `reverse_etl_hubspot_log_table` — this flow's own send-log table. No default:
   a default would point a dev deployment at the production log.
 """
 
@@ -71,7 +71,7 @@ t_log = logging.getLogger("airflow.task")
 # (`@sha256:...`) counts as pinned too.
 _PINNED_TAG = re.compile(r"[0-9a-f]{40}")
 
-FLOW_ID = "hubspot_leads"
+FLOW_ID = "hubspot"
 DESTINATION = "hubspot_contacts"
 # The spec pins the key; it is not sized or renamed per deployment, so it is a code
 # constant rather than a Variable.
@@ -130,6 +130,9 @@ def _reverse_etl_pod_env() -> dict[str, str]:
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
         "DATABRICKS_CLIENT_SECRET": fields["client_secret"],
+        # From the connection, so the pod cannot drift from the tasks beside it, and
+        # always sent so the pod's env surface does not vary with a Variable's state.
+        "DATABRICKS_SCOPES": ", ".join(fields["scopes"] or []),
         _FLOW_ENV_PREFIX + "SOURCE_RELATION": Variable.get(SOURCE_RELATION_VARIABLE),
         _FLOW_ENV_PREFIX + "KEY_COLUMN": KEY_COLUMN,
         _FLOW_ENV_PREFIX + "EXCLUDED_COLUMNS": Variable.get(EXCLUDED_COLUMNS_VARIABLE),
@@ -273,7 +276,7 @@ def _send_pod() -> _ReverseEtlPodOperator:
     """The container run: diff the flow's desired state against HubSpot, upsert, log."""
     return _ReverseEtlPodOperator(
         task_id="send_pod",
-        name="reverse-etl-hubspot-leads",
+        name="reverse-etl-hubspot",
         image=REVERSE_ETL_IMAGE,
         image_pull_policy="Always",
         arguments=[f"--source={FLOW_ID}", f"--destination={DESTINATION}"],
@@ -304,7 +307,7 @@ def _send_pod() -> _ReverseEtlPodOperator:
 
 
 @dag(
-    dag_id="reverse_etl_hubspot_leads",
+    dag_id="reverse_etl_hubspot",
     schedule="0 17 * * *",
     start_date=pendulum_datetime(2026, 9, 9, tz="UTC"),
     catchup=False,
@@ -317,8 +320,8 @@ def _send_pod() -> _ReverseEtlPodOperator:
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["reverse-etl", "hubspot"],
 )
-def reverse_etl_hubspot_leads():
+def reverse_etl_hubspot():
     _send_pod()
 
 
-reverse_etl_hubspot_leads()
+reverse_etl_hubspot()
