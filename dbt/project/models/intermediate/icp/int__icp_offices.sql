@@ -7,16 +7,89 @@ with
         select * from {{ ref("int__ballotready_normalized_position") }}
     ),
 
+    -- The override seed takes precedence over the LLM match here for the same
+    -- reason it does in m_election_api__position: it is the curated correction.
+    -- Sizing off the raw match leaves a corrected office measured against the
+    -- district it was deliberately moved off.
+    --
+    -- Full outer join, not left: an override is also honored when its position
+    -- has no match row at all (positions added after the match snapshot), which
+    -- a left join from the match table would drop.
+    --
+    -- the allocation normalizes district names (case, whitespace, trailing
+    -- "(EST.)"); match labels carry the universe's current spelling, which
+    -- can differ from the aggregation's vintage, so carry a normalized copy
+    -- for the population join and the voter-count fallback below.
     l2_match as (
-        -- the allocation normalizes district names (case, whitespace, trailing
-        -- "(EST.)"); match labels carry the universe's current spelling, which
-        -- can differ from the aggregation's vintage, so carry a normalized copy
-        -- for the population join and the voter-count fallback below.
         select
-            *,
-            {{ normalize_l2_district_name("l2_district_name") }}
+            coalesce(
+                tbl_override.br_database_id, tbl_match.br_database_id
+            ) as br_database_id,
+            coalesce(
+                tbl_override.l2_district_type, tbl_match.l2_district_type
+            ) as l2_district_type,
+            coalesce(
+                tbl_override.l2_district_name, tbl_match.l2_district_name
+            ) as l2_district_name,
+            -- An override is a manual match. Not a coalesce: `x is not null`
+            -- yields false rather than null, which would force every
+            -- unoverridden row to false instead of the matcher's own verdict.
+            case
+                when tbl_override.br_database_id is not null
+                then true
+                else tbl_match.is_matched
+            end as is_matched,
+            {{
+                normalize_l2_district_name(
+                    "coalesce(tbl_override.l2_district_name, tbl_match.l2_district_name)"
+                )
+            }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
+        full outer join
+            {{ ref("l2_br_match_overrides") }} as tbl_override
+            on tbl_match.br_database_id = tbl_override.br_database_id
+    ),
+
+    -- Districts on an adopted proposed map are aggregated in their own model
+    -- rather than in int__l2_district_aggregations, and the override seed points
+    -- at them by their minted type (Congressional_District_2026 and
+    -- State_Senate_District_2026 today). Without this leg an override onto an
+    -- adopted map resolves to a null voter_count and the office loses all three
+    -- ICP gates. No match row carries a minted type, so this reaches only
+    -- positions the override seed moves.
+    district_counts_both_maps as (
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            voter_count,
+            1 as source_rank
+        from {{ ref("int__l2_district_aggregations") }}
+        union all
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            voter_count,
+            2 as source_rank
+        from {{ ref("int__l2_proposed_district_aggregations") }}
+    ),
+
+    -- Dedup keeps both lookups below 1:1, which the unique test on
+    -- br_database_position_id depends on: 33 keys sit in both models. The
+    -- current-map aggregation wins so no already-sized position changes value.
+    district_counts_all as (
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            coalesce(
+                max(case when source_rank = 1 then voter_count end),
+                max(case when source_rank = 2 then voter_count end)
+            ) as voter_count
+        from district_counts_both_maps
+        group by state_postal_code, district_type, district_name
     ),
 
     -- aliased on both lookups: a bare voter_count on either would shadow the
@@ -27,7 +100,7 @@ with
             district_type,
             district_name,
             voter_count as voter_count_exact
-        from {{ ref("int__l2_district_aggregations") }}
+        from district_counts_all
     ),
 
     -- Fallback keyed on the normalized name: match labels can carry "(EST.)"
@@ -42,7 +115,7 @@ with
             district_type,
             {{ normalize_l2_district_name("district_name") }} as district_name,
             max(voter_count) as voter_count_normalized
-        from {{ ref("int__l2_district_aggregations") }}
+        from district_counts_all
         group by
             state_postal_code,
             district_type,
