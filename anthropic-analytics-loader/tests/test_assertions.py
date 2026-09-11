@@ -104,3 +104,17 @@ def test_usage_non_regression_fails_on_large_request_swing(monkeypatch, cfg):
     _patch_query_rows(monkeypatch, [["1000", "1"]])
     with pytest.raises(assertions.AssertionFailure, match="requests total moved"):
         assertions.assert_usage_non_regression(cfg, (Decimal(1000), Decimal(50)), "a", "b")
+
+
+def test_usage_non_regression_passes_when_one_leg_stays_zero(monkeypatch, cfg):
+    # before_requests is legitimately 0 (e.g. NULL requests for that range) while tokens are
+    # nonzero; as long as requests stays 0 after resync too, that leg is not a regression.
+    _patch_query_rows(monkeypatch, [["1000", "0"]])
+    assertions.assert_usage_non_regression(cfg, (Decimal(1000), Decimal(0)), "a", "b")
+
+
+def test_usage_non_regression_fails_when_value_appears_from_zero_baseline(monkeypatch, cfg):
+    # before_requests == 0 must not let a real jump (0 -> 500) divide out to a false "0% change".
+    _patch_query_rows(monkeypatch, [["1000", "500"]])
+    with pytest.raises(assertions.AssertionFailure, match="new data appeared"):
+        assertions.assert_usage_non_regression(cfg, (Decimal(1000), Decimal(0)), "a", "b")

@@ -170,7 +170,14 @@ def assert_usage_non_regression(cfg: Config, before: tuple[Decimal, Decimal], ra
         ("tokens", before_tokens, after_tokens),
         ("requests", before_requests, after_requests),
     ):
-        diff_pct = abs(after_val - before_val) / before_val if before_val else Decimal(0)
+        if before_val == 0 and after_val == 0:
+            continue
+        if before_val == 0:
+            raise AssertionFailure(
+                f"org_usage_report {label} total moved from {before_val} to {after_val} "
+                "(new data appeared where none existed before)"
+            )
+        diff_pct = abs(after_val - before_val) / before_val
         if diff_pct > USAGE_NON_REGRESSION_TOLERANCE:
             raise AssertionFailure(
                 f"org_usage_report {label} total moved from {before_val} to {after_val} "
