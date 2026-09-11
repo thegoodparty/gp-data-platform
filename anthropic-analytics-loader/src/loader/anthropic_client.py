@@ -217,13 +217,44 @@ def fetch_summaries(api_key: str, start: datetime, end: datetime, now: datetime)
     rows = []
     params = {"starting_date": start.date().isoformat(), "ending_date": end.date().isoformat()}
     body = _get("summaries", api_key, params)
+    if body.get("has_more"):
+        raise RuntimeError("summaries endpoint returned has_more=true; pagination not implemented")
     for r in body.get("summaries", []):
-        row = dict(r)
-        row["starting_at"] = parse_ts(r["starting_at"])
-        row["ending_at"] = parse_ts(r["ending_at"])
-        row["ingested_at"] = now
-        row["raw_json"] = json.dumps(r)
-        rows.append(row)
+        rows.append(
+            {
+                "starting_at": parse_ts(r["starting_at"]),
+                "ending_at": parse_ts(r["ending_at"]),
+                "assigned_seat_count": r.get("assigned_seat_count"),
+                "pending_invite_count": r.get("pending_invite_count"),
+                "daily_active_user_count": r.get("daily_active_user_count"),
+                "weekly_active_user_count": r.get("weekly_active_user_count"),
+                "monthly_active_user_count": r.get("monthly_active_user_count"),
+                "daily_adoption_rate": r.get("daily_adoption_rate"),
+                "weekly_adoption_rate": r.get("weekly_adoption_rate"),
+                "monthly_adoption_rate": r.get("monthly_adoption_rate"),
+                "chat_daily_active_user_count": r.get("chat_daily_active_user_count"),
+                "chat_weekly_active_user_count": r.get("chat_weekly_active_user_count"),
+                "chat_monthly_active_user_count": r.get("chat_monthly_active_user_count"),
+                "claude_code_daily_active_user_count": r.get("claude_code_daily_active_user_count"),
+                "claude_code_weekly_active_user_count": r.get("claude_code_weekly_active_user_count"),
+                "claude_code_monthly_active_user_count": r.get("claude_code_monthly_active_user_count"),
+                "cowork_daily_active_user_count": r.get("cowork_daily_active_user_count"),
+                "cowork_weekly_active_user_count": r.get("cowork_weekly_active_user_count"),
+                "cowork_monthly_active_user_count": r.get("cowork_monthly_active_user_count"),
+                "claude_design_daily_active_user_count": r.get("claude_design_daily_active_user_count"),
+                "claude_design_weekly_active_user_count": r.get("claude_design_weekly_active_user_count"),
+                "claude_design_monthly_active_user_count": r.get("claude_design_monthly_active_user_count"),
+                "office_agent_daily_active_user_count": r.get("office_agent_daily_active_user_count"),
+                "office_agent_weekly_active_user_count": r.get("office_agent_weekly_active_user_count"),
+                "office_agent_monthly_active_user_count": r.get("office_agent_monthly_active_user_count"),
+                "science_daily_active_user_count": r.get("science_daily_active_user_count"),
+                "science_weekly_active_user_count": r.get("science_weekly_active_user_count"),
+                "science_monthly_active_user_count": r.get("science_monthly_active_user_count"),
+                "science_entitled_user_count": r.get("science_entitled_user_count"),
+                "ingested_at": now,
+                "raw_json": json.dumps(r),
+            }
+        )
     return rows
 
 

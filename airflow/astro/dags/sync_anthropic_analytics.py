@@ -31,6 +31,10 @@ _DBX_ENV: dict[str, str] = {
     "LOADER_DATABRICKS_WAREHOUSE_ID": "{% set c = "
     + _DBX_CONN_EXPR
     + " %}{{ c.extra_dejson.get('http_path', '').rstrip('/').split('/') | last }}",
+    # LOADER_SCHEMA has no default in loader.config (a personal dev schema is not a safe silent
+    # fallback for a scheduled sync) -- this is the same dbt_audrey target the loader has always
+    # written to; promote this to a real dbt source/schema once the tables are validated.
+    "LOADER_SCHEMA": "dbt_audrey",
 }
 
 

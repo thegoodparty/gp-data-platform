@@ -15,8 +15,8 @@ from dataclasses import dataclass
 class Config:
     anthropic_analytics_api_key: str
     databricks_warehouse_id: str
+    schema: str
     catalog: str = "goodparty_data_catalog"
-    schema: str = "dbt_audrey"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -26,9 +26,14 @@ class Config:
         warehouse_id = os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID")
         if not warehouse_id:
             raise RuntimeError("LOADER_DATABRICKS_WAREHOUSE_ID is not set.")
+        # No default: dbt_audrey is a personal dev schema, not a safe fallback for a scheduled
+        # production sync. Every caller (DAG env, local .env) must set this explicitly.
+        schema = os.environ.get("LOADER_SCHEMA")
+        if not schema:
+            raise RuntimeError("LOADER_SCHEMA is not set.")
         return cls(
             anthropic_analytics_api_key=key,
             databricks_warehouse_id=warehouse_id,
+            schema=schema,
             catalog=os.environ.get("LOADER_CATALOG", "goodparty_data_catalog"),
-            schema=os.environ.get("LOADER_SCHEMA", "dbt_audrey"),
         )

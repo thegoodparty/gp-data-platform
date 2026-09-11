@@ -18,8 +18,6 @@ from loader.pricing import MAX_PUBLISHED_OUTPUT_PRICE_PER_TOKEN
 
 log = structlog.get_logger()
 
-# "agree within a few percent" per the investigation that motivated these checks.
-CROSS_TABLE_TOLERANCE = Decimal("0.05")
 # Usage revisions land within ~24h of the underlying event (see anthropic_client module docs);
 # a full-range resync should reproduce the same totals to within noise, not swing wildly.
 USAGE_NON_REGRESSION_TOLERANCE = Decimal("0.01")
@@ -90,9 +88,10 @@ def assert_amount_within_list_amount(
 
 
 def assert_cross_table_cost_agreement(cfg: Config, range_start, range_end) -> None:
-    """org_cost_report and user_cost_report total spend for the same window must roughly agree --
-    a real divergence usually means one side is mis-scaled or the two aren't covering the same
-    range.
+    """user_cost_report total must not exceed org_cost_report total. Per-user spend is a subset of
+    org-wide spend (org includes non-user-attributed usage, e.g. service/API-key traffic), so the
+    only direction that can indicate corruption is users summing to more than the org total --
+    exactly what a mis-scaled amount column would produce.
     """
     sql = f"""
         SELECT
@@ -106,14 +105,10 @@ def assert_cross_table_cost_agreement(cfg: Config, range_start, range_end) -> No
     rows = writer.query_rows(cfg.databricks_warehouse_id, sql)
     org_total = _decimal(rows[0][0])
     user_total = _decimal(rows[0][1])
-    if org_total == 0 and user_total == 0:
-        return
-    denom = max(org_total, user_total)
-    diff_pct = abs(org_total - user_total) / denom if denom else Decimal(0)
-    if diff_pct > CROSS_TABLE_TOLERANCE:
+    if user_total > org_total:
         raise AssertionFailure(
-            f"org_cost_report total ({org_total}) and user_cost_report total ({user_total}) "
-            f"diverge by {diff_pct:.1%}, more than the {CROSS_TABLE_TOLERANCE:.0%} tolerance"
+            f"user_cost_report total ({user_total}) exceeds org_cost_report total ({org_total}); "
+            "per-user spend cannot exceed org-wide spend -- one side is mis-scaled"
         )
 
 
@@ -167,10 +162,10 @@ def assert_usage_non_regression(cfg: Config, before: tuple[Decimal, Decimal], ra
     (within noise from Anthropic's own late-arriving revisions) by whatever else this sync did.
     """
     before_tokens, before_requests = before
-    after_tokens, after_requests = snapshot_usage_totals(cfg, range_start, range_end)
     if before_tokens == 0 and before_requests == 0:
         log.info("usage_non_regression_skipped", reason="no prior data for range")
         return
+    after_tokens, after_requests = snapshot_usage_totals(cfg, range_start, range_end)
     for label, before_val, after_val in (
         ("tokens", before_tokens, after_tokens),
         ("requests", before_requests, after_requests),
