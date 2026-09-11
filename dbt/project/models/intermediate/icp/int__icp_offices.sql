@@ -7,14 +7,9 @@ with
         select * from {{ ref("int__ballotready_normalized_position") }}
     ),
 
-    -- The override seed takes precedence over the LLM match here for the same
-    -- reason it does in m_election_api__position: it is the curated correction.
-    -- Sizing off the raw match leaves a corrected office measured against the
-    -- district it was deliberately moved off.
-    --
-    -- Full outer join, not left: an override is also honored when its position
-    -- has no match row at all (positions added after the match snapshot), which
-    -- a left join from the match table would drop.
+    -- The override seed wins over the match, as it does in
+    -- m_election_api__position. Full outer join so an override with no match row
+    -- is still honored.
     --
     -- the allocation normalizes district names (case, whitespace, trailing
     -- "(EST.)"); match labels carry the universe's current spelling, which
@@ -31,9 +26,8 @@ with
             coalesce(
                 tbl_override.l2_district_name, tbl_match.l2_district_name
             ) as l2_district_name,
-            -- An override is a manual match. Not a coalesce: `x is not null`
-            -- yields false rather than null, which would force every
-            -- unoverridden row to false instead of the matcher's own verdict.
+            -- case, not coalesce: `x is not null` yields false rather than
+            -- null, which would force every unoverridden row to false.
             case
                 when tbl_override.br_database_id is not null
                 then true
@@ -51,13 +45,9 @@ with
             on tbl_match.br_database_id = tbl_override.br_database_id
     ),
 
-    -- Districts on an adopted proposed map are aggregated in their own model
-    -- rather than in int__l2_district_aggregations, and the override seed points
-    -- at them by their minted type (Congressional_District_2026 and
-    -- State_Senate_District_2026 today). Without this leg an override onto an
-    -- adopted map resolves to a null voter_count and the office loses all three
-    -- ICP gates. No match row carries a minted type, so this reaches only
-    -- positions the override seed moves.
+    -- Overrides onto an adopted proposed map name a minted district type, which
+    -- only the proposed model aggregates. Without this leg those offices size to
+    -- null and lose all three ICP gates.
     district_counts_both_maps as (
         select
             state_postal_code,
@@ -76,9 +66,8 @@ with
         from {{ ref("int__l2_proposed_district_aggregations") }}
     ),
 
-    -- Dedup keeps both lookups below 1:1, which the unique test on
-    -- br_database_position_id depends on: 33 keys sit in both models. The
-    -- current-map aggregation wins so no already-sized position changes value.
+    -- Keys present in both models would fan out the joins below, so dedup with
+    -- the current map winning: no already-sized position changes value.
     district_counts_all as (
         select
             state_postal_code,
