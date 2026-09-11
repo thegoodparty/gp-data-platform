@@ -98,8 +98,6 @@ models:
         +tblproperties:
           delta.columnMapping.mode: "name"
         +tags: ["mart", "sales_reverse_etl"]
-      mban2026:
-        +schema: mart_mban2026
       serve_agents:
         +schema: mart_serve_agents
         +materialized: view
