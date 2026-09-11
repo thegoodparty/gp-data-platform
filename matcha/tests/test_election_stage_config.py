@@ -8,7 +8,12 @@ def test_entity_type():
 
 
 def test_comparisons_include_required_signals():
-    """Election-stage matching needs office + date + geo + special signals."""
+    """Election-stage matching needs office + date + geo + special signals.
+
+    seat_name and ballotready_position_id are deliberately absent: the prematch
+    model populates both on BallotReady rows only, and this is a link_only job,
+    so no cross-source pair can ever agree on them.
+    """
     comparison_columns = [
         c.get_comparison("duckdb").output_column_name for c in ELECTION_STAGE_CONFIG.comparisons
     ]
@@ -21,11 +26,32 @@ def test_comparisons_include_required_signals():
         "district_identifier",
         "office_level",
         "office_type",
-        "ballotready_position_id",
         "candidate_office",
-        "seat_name",
     ):
         assert required in comparison_columns, f"missing comparison: {required}"
+    for single_source in ("seat_name", "ballotready_position_id"):
+        assert single_source not in comparison_columns, single_source
+
+
+def test_em_blocks_avoid_ballotready_only_keys():
+    """A training block requiring agreement on a BallotReady-only column yields
+    zero pairs in a link_only job, so EM training on it fails outright. This is
+    what broke election_stage: the prematch model populates seat_name and
+    ballotready_position_id on BallotReady rows only.
+    """
+    ballotready_only = {"seat_name", "ballotready_position_id"}
+    for cols in ELECTION_STAGE_CONFIG.em_training_blocks:
+        assert not (set(cols) & ballotready_only), cols
+
+
+def test_cluster_threshold_is_the_measured_operating_point():
+    """0.94 rather than the 0.95 default. Dropping the BallotReady-only
+    comparisons and bounding the third EM block shifted scores up, moving the
+    operating point: measured on 775,742 records, 0.94 reproduces every
+    cross-source pair 0.95 produced beforehand and adds 818, with no growth in
+    the largest cluster.
+    """
+    assert ELECTION_STAGE_CONFIG.cluster_threshold == 0.94
 
 
 def test_no_person_level_comparisons():
