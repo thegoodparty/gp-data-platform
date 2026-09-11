@@ -41,15 +41,22 @@ Set on the Astro deployment as **Airflow Variables**:
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 32Gi memory / 16 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
-a deploy. `election_stage` is what the numbers are for, and DuckDB reads both limits from the cgroup, so
-they set its budget directly: at 32Gi and 16 CPU it reports `memory_limit=25.5 GiB threads=16`, which the
-match tasks log at launch. Memory below ~32Gi spills the EM working set to node ephemeral storage, which
-is EBS-backed and slow enough to stall the task: at 16Gi it ran two and a half hours without completing a
-single EM iteration, at 8Gi it was OOM-killed, and at 10Gi of disk it was evicted for spilling. CPU is the
-parallelism, and at 4 an EM iteration took 18 minutes against seconds on a 36GB laptop reporting
-`memory_limit=28.7 GiB threads=18`. candidacy is larger in rows but blocks finely and never comes close.
-Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way. This
+requests 32Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
+a deploy. DuckDB reads both limits from the cgroup, so these are its budget: 32Gi reports as
+`memory_limit=25.5 GiB` and one thread per CPU, which the match tasks log at launch. Below ~32Gi the pod
+is OOM-killed at 8Gi, and at 10Gi of disk it was evicted for spilling. 16 CPU was tried and reverted: it
+made `election_stage` no faster (20-25 min per EM iteration against ~18 at 4 CPU) and bought candidacy
+only ~17%, while pods bill on the configured limit.
+
+The match tasks set `retries=0`. A match failure is deterministic, so the default 2 retries turned one
+four-hour `election_stage` timeout into three.
+
+`election_stage` remains unable to complete anywhere, in Airflow or locally, for reasons unrelated to
+sizing: its second EM training block requires both sides to share `ballotready_position_id`, which only
+BallotReady rows carry, so in a `link_only` job it yields no pairs, and the resulting guard fails on
+`seat_name` (populated on 3.3% of rows). candidacy is larger in rows but blocks finely and never comes
+close. Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way.
+This
 is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
 on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
 quota bump.

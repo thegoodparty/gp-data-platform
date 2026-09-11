@@ -184,7 +184,7 @@ class _MatchaPodOperator(KubernetesPodOperator):
 
 
 POD_MEMORY = "32Gi"
-POD_CPU = "16"
+POD_CPU = "4"
 POD_EPHEMERAL_STORAGE = "50Gi"
 
 
@@ -228,15 +228,16 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # Sized for election_stage, the outlier. DuckDB reads both limits from the
-        # cgroup, so these set its budget directly: at 32Gi it reports a 25.5 GiB
-        # memory limit and one thread per CPU. Memory below ~32Gi spills the EM
-        # working set to EBS-backed node storage and stalls for hours; CPU is the
-        # parallelism, and at 4 an EM iteration took 18 minutes against seconds on a
-        # laptop reporting 28.7 GiB and 18 threads. ephemeral-storage is declared
+        # DuckDB reads both limits from the cgroup, so these are its budget: 32Gi
+        # reports as a 25.5 GiB memory limit and one thread per CPU. Memory below
+        # ~32Gi gets the pod OOM-killed or evicted; 16 CPU was measured and made
+        # election_stage no faster, so it stayed at 4. ephemeral-storage is declared
         # rather than inherited: Astro's namespace default is 256Mi, which a real run
         # blows through in minutes.
         container_resources=_pod_resources(),
+        # A match that fails does so deterministically, and a timeout burns a
+        # four-hour pod per attempt. The DAG's other tasks keep the default retries.
+        retries=0,
         in_cluster=True,
         get_logs=True,
         on_finish_action="delete_pod",
@@ -254,8 +255,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
-    # One 16Gi/4CPU pod is most of the 20Gi deployment quota, so only one task
-    # in the DAG runs at a time. Deliberately not an Airflow pool: a pool has to be created on
+    # Deliberately not an Airflow pool: a pool has to be created on
     # each deployment out of band, and a missing one parks the pooled tasks in `scheduled`
     # forever with nothing but a scheduler-log warning to say why. This deploys with the DAG.
     # The cost is that a finished entity's gate/swap waits behind the next entity's match —

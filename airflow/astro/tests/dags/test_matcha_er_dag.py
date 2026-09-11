@@ -242,6 +242,15 @@ def test_pod_sizing_survives_pre_execute():
     assert op.container_resources.requests == op.container_resources.limits
 
 
+def test_match_tasks_do_not_retry():
+    """A match failure is deterministic and each attempt costs a four-hour pod,
+    so retrying only multiplies the bill. Everything else keeps the default.
+    """
+    for entity in _ENTITIES:
+        assert _DAG.get_task(f"{entity}.match").retries == 0, entity
+    assert _DAG.get_task("dbt_refresh_prematch").retries == 2
+
+
 def test_pod_resources_are_logged(capsys):
     """A successful KPO run prints no pod spec, so without this line there is no
     record of what a run was sized at. Verified against real dev logs: a passing
