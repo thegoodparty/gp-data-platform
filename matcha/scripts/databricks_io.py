@@ -82,14 +82,10 @@ def is_databricks_fqn(value: str) -> bool:
 
 
 def _scoped_config() -> Config | None:
-    """A Config carrying DATABRICKS_SCOPES, or None when none are configured.
+    """Config carrying DATABRICKS_SCOPES, or None when unset.
 
-    Two auth paths need it: the SQL connector for queries, and a
-    WorkspaceClient for the parquet upload to the staging volume. The SDK gives
-    its `scopes` attribute no env binding, so the value has to be passed in —
-    and a path that does not still asks for `all-apis`, which fails where the
-    service principal was never granted it. None means "say nothing", leaving
-    each caller's own default construction alone.
+    The SDK gives `scopes` no env binding, so it must be passed explicitly; a
+    path that does not asks for `all-apis`, which the service principal lacks.
     """
     scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
     return Config(scopes=scopes) if scopes else None

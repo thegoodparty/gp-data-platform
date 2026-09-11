@@ -363,10 +363,9 @@ def test_build_connect_kwargs_strips_scheme_from_host(mock_config):
 @patch("scripts.databricks_io.Config")
 @patch.dict("os.environ", {"DATABRICKS_SCOPES": "sql"}, clear=False)
 def test_write_table_gives_the_workspace_client_the_same_scopes(mock_config, mock_conn, mock_ws):
-    """The parquet upload to the staging volume goes through a WorkspaceClient,
-    which builds its own Config. Left bare it asks for all-apis and fails where
-    the service principal was not granted it — after the table was already
-    created, so the failure lands mid-write."""
+    """A bare WorkspaceClient asks for all-apis and fails after the table is
+    created, so the write breaks halfway. call_args_list[0] pins the Config
+    that feeds the client, not a later one."""
     mock_config.return_value = MagicMock(host="https://h", client_id="cid", client_secret="s")
     mock_conn.return_value.cursor.side_effect = RuntimeError("stop after the client is built")
 
@@ -374,13 +373,12 @@ def test_write_table_gives_the_workspace_client_the_same_scopes(mock_config, moc
         write_table(pd.DataFrame({"a": ["1"]}), "cat.sch.tbl", overwrite=True)
 
     assert mock_ws.call_args.kwargs["config"] is mock_config.return_value
-    assert mock_config.call_args.kwargs == {"scopes": "sql"}
+    assert mock_config.call_args_list[0].kwargs == {"scopes": "sql"}
 
 
 @patch.dict("os.environ", {"DATABRICKS_SCOPES": ""}, clear=False)
 def test_scoped_config_is_none_when_blank():
-    """None rather than a bare Config, so each caller keeps its own default
-    construction and the tests around them need no Databricks credentials."""
+    """None, not a bare Config, so callers keep their own default construction."""
     assert _scoped_config() is None
 
 
