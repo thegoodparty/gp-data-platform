@@ -792,14 +792,19 @@ models:
           - relationships:
               # Warn-severity: multi-TS-record Splink clusters keep one
               # ts_source_candidate_id in the mart row by design (cluster
-              # dedup drops the other natural keys). error_if=">100" guards
+              # dedup drops the other natural keys). The ceiling guards
               # regressions while tolerating the expected handful.
+              #
+              # Re-baselined from 100 when person-level ER began collapsing
+              # groups: more records share a person, so cluster dedup drops
+              # more TS natural keys. Measured at 102; the headroom is for
+              # ordinary drift, not for another step change.
               arguments:
                 to: ref('candidacy_stage')
                 field: ts_source_candidate_id
               config:
                 warn_if: ">0"
-                error_if: ">100"
+                error_if: ">150"
 
       - name: election_result
         description: Result of the election stage (Won or null, general stages only)
@@ -3337,9 +3342,9 @@ models:
       source_id) participating in person identity: BR persons (all-time
       candidacies + officeholder terms), gp_api users, HubSpot contacts,
       non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
-      Also unions in the cluster- and bridge-derived gp_api user ids so every
-      edge endpoint is guaranteed a label seed in the propagation.
-      Deterministically derived, no probabilistic matching.
+      Also unions in every link endpoint, so the set matcha closes over and
+      the set the mint falls back to are the same set. Deterministically
+      derived, no probabilistic matching.
     columns:
       - name: record_key
         description: Primary key.
@@ -3360,39 +3365,46 @@ models:
                   - techspeed_officeholder
                   - ddhq
 
-  - name: int__civics_person_edges
+  - name: int__civics_person_links
     description: >
-      Deterministic person edges. One row per typed edge between two record
-      keys (record_key = source_name || '|' || source_id). Direction-agnostic
-      (record_key_1 <= record_key_2). No new matching: edges derive from native
-      ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
-      linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
-      Splink cluster co-membership (E5, hub to the cluster's min record key),
-      and within-source vendor keys (E7).
+      Person links. One row per undirected pair of record keys
+      (record_key = source_name || '|' || source_id) asserting sameness:
+      native identifiers (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
+      ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E7
+      within-source vendor keys) and candidacy-stage cluster co-membership (E5,
+      hub to the cluster's min record key). Input to matcha's person lane,
+      which closes over the non-conflicting pairs and publishes
+      er_source.person_groups. No closure happens in dbt.
+
+      Closure is only sound for transitive evidence. Native identifiers are
+      transitive by definition. E5 is a Splink clustering, so it is transitive
+      only in practice, and where it is not, it is detectable: a cluster
+      spanning two BallotReady people cannot say which one it means. Those
+      pairs, and reused vendor keys in the same position, are flagged
+      is_conflict and matcha leaves them out of the closure.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [record_key_1, record_key_2, edge_type]
-      # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
-      # (mostly DDHQ candidate_id reuse across cycles). Excluded from
-      # propagation and flagged. Warn on any; error on a large jump that would
-      # signal an E7-keying regression. Baseline is ~1188 over the all-time
-      # historical ER universe (was ~23 before pre-2026 candidacies were
-      # included). No severity override: severity warn would disable error_if.
+            combination_of_columns: [record_key_1, record_key_2, link_type]
+      # Conflicting links span >1 distinct br_candidate_id: reused vendor keys
+      # (mostly DDHQ candidate_id reuse across cycles) and candidacy clusters.
+      # Excluded from the closure and flagged. Warn on any; error on a jump
+      # that would signal a keying regression. Baseline ~1,200 E7 plus ~620 E5.
+      # No severity override: severity warn would disable error_if.
       - dbt_utils.expression_is_true:
-          name: person_edges_conflict_count_warn
+          name: person_links_conflict_count_warn
           arguments:
             expression: "not is_conflict"
           config:
             warn_if: ">0"
-            error_if: ">2000"
+            error_if: ">3000"
     columns:
       - name: record_key_1
-        description: Lower of the two endpoint record keys (source_name || '|' || source_id).
+        description: Lower of the two endpoint record keys.
         data_tests:
           - not_null
           # Every endpoint must exist in the node universe; a missing endpoint
-          # silently drops a propagation neighbor in one direction.
+          # would be a record matcha links but the mint never sees.
           - relationships:
               arguments:
                 to: ref('int__civics_person_nodes')
@@ -3405,8 +3417,8 @@ models:
               arguments:
                 to: ref('int__civics_person_nodes')
                 field: record_key
-      - name: edge_type
-        description: Trust-ordered edge provenance.
+      - name: link_type
+        description: Which identifier or cluster asserted the pair.
         data_tests:
           - not_null
           - accepted_values:
@@ -3415,13 +3427,15 @@ models:
                   - e1_hubspot_user
                   - e3_hubspot_br_candidacy
                   - e4_ts_officeholder
-                  - e5_cluster
+                  - e5_candidacy_cluster
                   - e6_eo_bridge
                   - e7_within_source
       - name: is_conflict
         description: >
-          true for E7 edges whose within-source key resolves to more than one
-          distinct br_candidate_id. Flagged and excluded from propagation.
+          true when the key or cluster the pair derives from resolves to more
+          than one distinct br_candidate_id. Two BallotReady people are a
+          cannot-link, and evidence that cannot say which one it means is left
+          out of the closure by matcha.
         data_tests:
           - not_null
 
@@ -3466,126 +3480,6 @@ models:
         data_tests:
           - not_null
           - unique
-
-  - name: int__civics_person_edges_probabilistic
-    description: >
-      Splink person-matcher edges, one row per undirected record-key pair at or
-      above a 0.95 match probability. Held apart from int__civics_person_edges
-      so the deterministic pregroups cannot read matcher output: the pregroup
-      model sits upstream of the matcher, so the separation is enforced by DAG
-      topology rather than by convention.
-
-      Pairs whose first names agree only through the nickname alias arrays, with
-      no shared email or phone, are dropped. That class was measured at six
-      false positives in fifty sampled pairs while every other class read clean,
-      and a wrong person merge is destructive once it reaches HubSpot.
-    data_tests:
-      - dbt_utils.expression_is_true:
-          name: person_probabilistic_edges_are_ordered
-          arguments:
-            expression: "record_key_1 < record_key_2"
-    columns:
-      - name: record_key_1
-        description: Lexically smaller record key of the pair.
-        data_tests:
-          - not_null
-      - name: record_key_2
-        description: Lexically larger record key of the pair.
-        data_tests:
-          - not_null
-      - name: edge_type
-        description: Always `e10_splink_person`; named to sit alongside E1-E7.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: ["e10_splink_person"]
-      - name: match_probability
-        description: >
-          Highest Splink posterior among the prematch pairs that produced this
-          record-key pair. Audit only; propagation treats every edge alike.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_groups
-    description: >
-      Person groups. One row per int__civics_person_nodes record_key with its
-      person_group_key: the min record_key reachable over the non-conflicting
-      edges, via min-label propagation across 15 unrolled passes (Spark SQL,
-      no recursion). Pass count exceeds the largest component's diameter with
-      headroom; convergence is tested (penultimate pass == final).
-      had_conflict rolls up E7 conflict edges to the group (both endpoints).
-    tests:
-      # Propagation converged: the last two passes agree for every record.
-      - dbt_utils.expression_is_true:
-          name: person_groups_converged
-          arguments:
-            expression: "person_group_key = pass_penultimate_key"
-      # At most one distinct br_candidate_id per group. ~223 known cluster
-      # conflicts resolve to the min br_candidate_id (plan decision 1); warn
-      # on the known set, error on a regression. See the singular test
-      # assert_person_group_single_br_candidate.
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id for the source record.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: person_group_key
-        description: Min record_key reachable over non-conflicting edges. Stable person label.
-        data_tests:
-          - not_null
-      - name: had_conflict
-        description: true when the group is touched by an E7 conflict edge.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_groups_deterministic
-    description: >
-      Deterministic-only person groups: the same min-label propagation as
-      int__civics_person_groups, but structurally restricted to the
-      deterministic edge model. This is the pregroup source for the Splink
-      person entity, so a published probabilistic person match can never feed
-      back into the next run's pregroups.
-    tests:
-      - dbt_utils.expression_is_true:
-          name: person_groups_deterministic_converged
-          arguments:
-            expression: "deterministic_group_key = pass_penultimate_key"
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id for the source record.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: deterministic_group_key
-        description: >
-          Min record_key reachable over non-conflicting deterministic edges.
-        data_tests:
-          - not_null
 
   - name: int__er_prematch_people
     description: >
@@ -3675,23 +3569,17 @@ models:
           mint. Feeds earliest-member id minting.
         data_tests:
           - not_null
-      - name: pregroup_id
-        description: >
-          Deterministic person group of the record (falls back to unique_id
-          for records not yet in the graph). Splink blocks on it to score those
-          pairs, but does not assert them. Canonical identity is settled
-          downstream in int__civics_person_groups, which unions these groups
-          with the Splink clusters.
-        data_tests:
-          - not_null
 
   - name: int__civics_person_canonical_ids
     description: >
-      Canonical gp_person_id per record. One row per record_key. The id is minted
-      from the group member earliest by first_seen_at (ties: source_name,
-      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
-      so first-in wins uniformly and the id survives a later record joining the
-      group. first_seen_at is computed inline where each record's native id and
+      Canonical gp_person_id per record. One row per int__civics_person_nodes
+      record_key. The person group is the one matcha published in
+      er_source.person_groups; a record the vintage has not seen stands alone
+      under its own key. The id is minted from the group member earliest by
+      first_seen_at (ties: source_name, source_id) via
+      generate_salted_uuid([source_name, source_id], salt=person), so first-in
+      wins uniformly and the id survives a later record joining the group.
+      first_seen_at is computed inline where each record's native id and
       source timestamp share a row.
     columns:
       - name: record_key
@@ -3704,9 +3592,35 @@ models:
         data_tests:
           - not_null
       - name: person_group_key
-        description: The record's person group (from int__civics_person_groups).
+        description: >
+          The record's person group: the published matcha group, else the
+          record's own key. Min record_key of the group.
         data_tests:
           - not_null
+      - name: identity_key
+        description: >
+          The record's identity before any similarity merge: the published
+          deterministic component, else the record's own key. Two distinct
+          values under one gp_person_id is what a merge looks like.
+        data_tests:
+          - not_null
+      - name: rejected_reason
+        description: >
+          Why matcha refused a merge this record's identity was proposed for,
+          null when nothing was proposed or it was admitted. br_cannot_link is
+          the hard constraint; incomplete_support is a proposal held together
+          by chaining rather than by direct evidence on every pair.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_cannot_link", "incomplete_support"]
+      - name: identity_count
+        description: How many identities the published merge fused into this group. 1 means nothing merged.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
       - name: first_seen_at
         description: >
           Earliest source-native timestamp for the record. Drives the mint.

@@ -3051,13 +3051,22 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
-      - name: had_conflict
+      - name: identity_count
         description: >
-          True when the group was touched by a within-source (E7) edge that
-          spanned more than one BR person; those conflicting edges are dropped
-          upstream, so the flag is advisory.
+          How many native-id identities the published matcha merge fused into
+          this person. 1 means nothing merged. Provenance for tracing where a
+          person came from, not a caveat a consumer has to act on: an admitted
+          merge has direct evidence on every pair, and one that would fuse two
+          BallotReady people is refused in matcha.
         data_tests:
           - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: gp_api_user_ids
+        description: >
+          Every gp_api user id in the group, sorted. The scalar gp_api_user_id
+          nulls when a group holds more than one; this keeps them reachable.
       - name: is_candidate
         description: See model description for the exact derivation.
         data_tests:
@@ -3103,6 +3112,11 @@ models:
         description: Native identifier of the record within its source system.
         data_tests:
           - not_null
+      - name: identity_key
+        description: >
+          The record's identity before any similarity merge. Two distinct
+          values under one gp_person_id is what a merge looks like from here,
+          which makes one traceable back to what it fused.
       - name: record_key
         description: >
           source_name || '|' || source_id, the person-graph node key. The

@@ -165,6 +165,55 @@ def train_model(linker: Linker, config: EntityConfig) -> int:
     return successful_blocks
 
 
+def _keep_expression(filters: list[str]) -> str:
+    """AND the post-prediction filters; coalesce so a NULL predicate lands in
+    exactly one of the kept and filtered sets rather than being dropped from both."""
+    inner = " AND ".join(f"({f.strip()})" for f in filters)
+    return f"coalesce({inner}, false)"
+
+
+def _check_gamma_columns(filters: list[str], available_cols: set[str]) -> None:
+    # Splink drops gamma_<col> from the prediction frame when a comparison is
+    # never trained (blocking-only or all-NULL columns). A filter referencing
+    # one would either raise a binder error or silently skip the guard and
+    # over-match, so fail loudly; the fix is to reference the raw _l/_r columns.
+    for f in filters:
+        missing = sorted(set(re.findall(r"\bgamma_\w+", f)) - available_cols)
+        if missing:
+            raise ValueError(
+                "Post-prediction filter references gamma column(s) absent "
+                f"from the prediction frame: {missing}. Splink drops gamma "
+                "columns for untrained comparisons (blocking-only or "
+                "all-NULL columns); reference the raw _l/_r columns instead."
+            )
+
+
+def filter_pairwise(pairwise_df: pd.DataFrame, config: EntityConfig) -> pd.DataFrame:
+    """Apply the config's post-prediction filters to an already-scored pairwise
+    frame (a published vintage), so a vintage can be re-clustered under the
+    current filters without re-scoring."""
+    if not config.post_prediction_filters or pairwise_df.empty:
+        return pairwise_df
+    _check_gamma_columns(config.post_prediction_filters, set(pairwise_df.columns))
+    # Published vintages and Databricks reads arrive all-string; the filters
+    # compare gammas and scores numerically.
+    typed = pairwise_df.copy()
+    for col in typed.columns:
+        if col.startswith("gamma_") or col in ("match_probability", "match_weight"):
+            typed[col] = pd.to_numeric(typed[col], errors="coerce")
+    con = duckdb.connect()
+    try:
+        con.register("pairwise", typed)
+        kept = con.execute(
+            f"SELECT * FROM pairwise WHERE {_keep_expression(config.post_prediction_filters)}"
+        ).fetchdf()
+    finally:
+        con.close()
+    if (removed := len(pairwise_df) - len(kept)) > 0:
+        print(f"Post-prediction filters: removed {removed:,} pairs")
+    return kept
+
+
 def predict_and_cluster(
     linker: Linker, config: EntityConfig
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -185,30 +234,11 @@ def predict_and_cluster(
 
     filtered_df = pd.DataFrame()
     if config.post_prediction_filters:
-        # Splink drops gamma_<col> from the prediction frame when a comparison
-        # is never trained — e.g. a column used only as an exact-equality
-        # blocking key (m never estimated) or one that is NULL across the whole
-        # input. A post-prediction filter that references such a gamma column
-        # would either raise a DuckDB binder error or, worse, silently skip the
-        # guard and over-match. Fail loudly instead: the fix is to reference the
-        # retained raw _l/_r columns (see ELECTION_STAGE_POST_PREDICTION_FILTER).
         available_cols = {
             d[0] for d in linker._db_api._con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description
         }
-        for f in config.post_prediction_filters:
-            missing = sorted(set(re.findall(r"\bgamma_\w+", f)) - available_cols)
-            if missing:
-                raise ValueError(
-                    "Post-prediction filter references gamma column(s) absent "
-                    f"from the prediction frame: {missing}. Splink drops gamma "
-                    "columns for untrained comparisons (blocking-only or "
-                    "all-NULL columns); reference the raw _l/_r columns instead."
-                )
-
-        # coalesce so a NULL predicate lands in exactly one of the two sets
-        # rather than being dropped from both.
-        inner = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
-        keep = f"coalesce({inner}, false)"
+        _check_gamma_columns(config.post_prediction_filters, available_cols)
+        keep = _keep_expression(config.post_prediction_filters)
 
         filtered_df = linker._db_api._con.execute(f"""
             SELECT
