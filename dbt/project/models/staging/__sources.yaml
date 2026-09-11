@@ -1679,6 +1679,21 @@ sources:
           span both sources form the BR↔TS crosswalk; single-record clusters indicate
           unmatched records.
 
+      - name: clustered_people
+        description: >
+          Person-level cluster assignments (threshold: 0.95 match probability).
+          One row per person record from BallotReady, gp_api, HubSpot or
+          TechSpeed. Published for audit only: canonical person identity is
+          resolved in int__civics_person_groups, which unions these edges with
+          the deterministic graph rather than adopting Splink's clustering.
+
+      - name: pairwise_people
+        description: >
+          Scored person pairs from Splink prediction (threshold: 0.01 match
+          probability), after the post-prediction filters. This, not the
+          clustered table, is what the person graph consumes, so that an edge
+          can be dropped on its own evidence before propagation.
+
       - name: pairwise_candidacy_stages
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),

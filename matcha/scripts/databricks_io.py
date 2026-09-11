@@ -81,6 +81,16 @@ def is_databricks_fqn(value: str) -> bool:
         return False
 
 
+def _scoped_config() -> Config | None:
+    """Config carrying DATABRICKS_SCOPES, or None when unset.
+
+    The SDK gives `scopes` no env binding, so it must be passed explicitly; a
+    path that does not asks for `all-apis`, which the service principal lacks.
+    """
+    scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
+    return Config(scopes=scopes) if scopes else None
+
+
 def _build_connect_kwargs() -> dict:
     """Return kwargs for databricks_sql.connect().
 
@@ -93,8 +103,7 @@ def _build_connect_kwargs() -> dict:
     if not http_path:
         raise ValueError("DATABRICKS_HTTP_PATH env var is required")
 
-    scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
-    config = Config(scopes=scopes) if scopes else Config()
+    config = _scoped_config() or Config()
     # Printed because the token request either succeeds or fails on exactly this
     # value, and the failure names the client rather than the scope it refused.
     print(f"OAuth scopes requested: {config.get_scopes_as_string()}")
@@ -220,7 +229,8 @@ def write_table(
     t = TableFQN.parse(fqn)
     df = _coerce_to_string_df(df)
     schema_spec = _df_to_databricks_schema(df)
-    w = WorkspaceClient()
+    scoped = _scoped_config()
+    w = WorkspaceClient(config=scoped) if scoped else WorkspaceClient()
 
     conn = get_connection()
     try:
