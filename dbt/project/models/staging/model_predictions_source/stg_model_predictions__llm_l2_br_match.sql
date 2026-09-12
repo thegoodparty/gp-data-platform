@@ -19,8 +19,7 @@ with
     ),
 
     -- No ltrim/nullif here: the results table is written from canonical
-    -- universe labels already, unlike the raw snapshot the dated sibling
-    -- normalizes.
+    -- universe labels already.
     renamed as (
         select
             br_database_id,

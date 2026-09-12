@@ -48,83 +48,17 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_model_predictions__llm_l2_br_match_20260126
-    description: gemini outputs to string match L2 districts to BallotReady positions/offices
-    columns:
-      - name: id
-        description: unique id
-        data_tests:
-          - not_null
-          - unique
-      - name: state
-        description: State postal code
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: [
-                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
-                  "DC", "US",
-                ]
-      - name: br_database_id
-        description: BallotReady database id
-        tests:
-          - not_null
-          - unique
-      - name: is_matched
-        description: >
-          Whether the model resolved this position to an L2 district. This is the
-          only predicate for match state: do not infer it from the district
-          columns being populated.
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: [true, false]
-      - name: l2_district_type
-        description: >
-          L2 district column name, null when is_matched is false. The raw snapshot
-          spells no-match as the literal NOT_MATCHED here; staging nulls it so the
-          column cannot be mistaken for a real district.
-      - name: l2_district_name
-        description: >
-          L2 district name, null when is_matched is false. Zero padding is stripped
-          (the snapshot is not self-consistent about it) and the NOT_MATCHED
-          sentinel is nulled.
-    data_tests:
-      # Earliest guard on name drift; other district types have a legitimate unresolvable tail.
-      - l2_district_tuple_exists:
-          arguments:
-            to: ref('int__l2_district_aggregations')
-            state_column: state
-            to_state_column: state_postal_code
-            to_district_type_column: district_type
-            to_district_name_column: district_name
-            row_condition: >
-              is_matched and l2_district_type in (
-                'State_House_District',
-                'State_Senate_District',
-                'State_Legislative_District',
-                'US_Congressional_District'
-              )
-
   - name: stg_model_predictions__llm_l2_br_match
     description: >
       One row per office: the newest attempt from the append-only,
       matcher-written llm_l2_br_match_results table, ordered by attempted_at
       desc and never by confidence or match state. A populated district is
-      what "matched" means now; there is no status column. Supersedes
-      stg_model_predictions__llm_l2_br_match_20260126 for every consumer
-      except candidates_outreach, which is retired separately. Accepted
-      skew: the matcher appends on its own schedule, so a build that
-      overlaps an append can hand consumers built before and after it
-      different newest rows until the next build; supervised runs pause the
-      scheduled job across the run, and the automated loop is expected to
-      schedule around the nightly build.
+      what "matched" means now; there is no status column. Accepted skew:
+      the matcher appends on its own schedule, so a build that overlaps an
+      append can hand consumers built before and after it different newest
+      rows until the next build; supervised runs pause the scheduled job
+      across the run, and the automated loop is expected to schedule around
+      the nightly build.
     columns:
       - name: br_database_id
         description: BallotReady office database id; the model is one row per office.

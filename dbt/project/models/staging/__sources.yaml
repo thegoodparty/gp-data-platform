@@ -1249,8 +1249,6 @@ sources:
         description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251202
         description: output of gemini string matching between DDHQ election results and candidacies
-      - name: llm_l2_br_match_20260126
-        description: output of gemini string matching between L2 districts and BallotReady office positions
       - name: llm_l2_br_match_results
         description: >
           One row per attempt and office, append-only. A populated district
