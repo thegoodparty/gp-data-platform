@@ -57,6 +57,8 @@ def _paginate_buckets(path: str, api_key: str, base_params: dict[str, Any]) -> I
         yield from body["data"]
         if not body.get("has_more"):
             return
+        if not body.get("next_page"):
+            raise RuntimeError(f"{path}: has_more=true with no next_page cursor")
         page = body["next_page"]
 
 
@@ -71,6 +73,8 @@ def _paginate_rows(path: str, api_key: str, base_params: dict[str, Any]) -> Iter
         yield from body["data"]
         if not body.get("has_more"):
             return
+        if not body.get("next_page"):
+            raise RuntimeError(f"{path}: has_more=true with no next_page cursor")
         page = body["next_page"]
 
 
