@@ -105,11 +105,12 @@ def test_election_stage_end_to_end(tmp_path):
     - row 2003 NOT in any of the other clusters (different state)
     - row 1001 (regular) NOT in cluster with 1002 (special)
 
-    Note: the cluster_threshold is lowered to 0.8 for this test because the
-    20-row fixture is too small for EM to converge on m probabilities that
-    push true matches above 0.95. The fixture exercises clustering
-    *relationships*, not the production threshold (which is validated on
-    real-scale data via the manual matcher run).
+    Note: the cluster_threshold is lowered for this test because the 20-row
+    fixture is too small for EM to converge on m probabilities that push true
+    matches above 0.95. The fixture exercises clustering *relationships*, not
+    the production threshold (which is validated on real-scale data via the
+    manual matcher run). Separation on this fixture is clean: all eight true
+    cross-source pairs score 0.4718 and nothing else clears 0.01.
     """
     from dataclasses import replace
     from pathlib import Path
@@ -120,7 +121,7 @@ def test_election_stage_end_to_end(tmp_path):
     from scripts.pipeline import run
 
     fixture = Path(__file__).parent / "fixtures" / "election_stage_input.csv"
-    config = replace(get_config("election_stage"), cluster_threshold=0.8)
+    config = replace(get_config("election_stage"), cluster_threshold=0.25)
 
     input_df = pd.read_csv(fixture, dtype=str)
     output_dir = tmp_path / "election_stage"

@@ -7,16 +7,78 @@ with
         select * from {{ ref("int__ballotready_normalized_position") }}
     ),
 
+    -- The override seed wins over the match, as it does in
+    -- m_election_api__position. Full outer join so an override with no match row
+    -- is still honored.
+    --
+    -- the allocation normalizes district names (case, whitespace, trailing
+    -- "(EST.)"); match labels carry the universe's current spelling, which
+    -- can differ from the aggregation's vintage, so carry a normalized copy
+    -- for the population join and the voter-count fallback below.
     l2_match as (
-        -- the allocation normalizes district names (case, whitespace, trailing
-        -- "(EST.)"); match labels carry the universe's current spelling, which
-        -- can differ from the aggregation's vintage, so carry a normalized copy
-        -- for the population join and the voter-count fallback below.
         select
-            *,
-            {{ normalize_l2_district_name("l2_district_name") }}
+            coalesce(
+                tbl_override.br_database_id, tbl_match.br_database_id
+            ) as br_database_id,
+            coalesce(
+                tbl_override.l2_district_type, tbl_match.l2_district_type
+            ) as l2_district_type,
+            coalesce(
+                tbl_override.l2_district_name, tbl_match.l2_district_name
+            ) as l2_district_name,
+            -- case, not coalesce: `x is not null` yields false rather than
+            -- null, which would force every unoverridden row to false.
+            case
+                when tbl_override.br_database_id is not null
+                then true
+                else tbl_match.is_matched
+            end as is_matched,
+            {{
+                normalize_l2_district_name(
+                    "coalesce(tbl_override.l2_district_name, tbl_match.l2_district_name)"
+                )
+            }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
+        full outer join
+            {{ ref("l2_br_match_overrides") }} as tbl_override
+            on tbl_match.br_database_id = tbl_override.br_database_id
+    ),
+
+    -- Overrides onto an adopted proposed map name a minted district type, which
+    -- only the proposed model aggregates. Without this leg those offices size to
+    -- null and lose all three ICP gates.
+    district_counts_both_maps as (
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            voter_count,
+            1 as source_rank
+        from {{ ref("int__l2_district_aggregations") }}
+        union all
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            voter_count,
+            2 as source_rank
+        from {{ ref("int__l2_proposed_district_aggregations") }}
+    ),
+
+    -- Keys present in both models would fan out the joins below, so dedup with
+    -- the current map winning: no already-sized position changes value.
+    district_counts_all as (
+        select
+            state_postal_code,
+            district_type,
+            district_name,
+            coalesce(
+                max(case when source_rank = 1 then voter_count end),
+                max(case when source_rank = 2 then voter_count end)
+            ) as voter_count
+        from district_counts_both_maps
+        group by state_postal_code, district_type, district_name
     ),
 
     -- aliased on both lookups: a bare voter_count on either would shadow the
@@ -27,7 +89,7 @@ with
             district_type,
             district_name,
             voter_count as voter_count_exact
-        from {{ ref("int__l2_district_aggregations") }}
+        from district_counts_all
     ),
 
     -- Fallback keyed on the normalized name: match labels can carry "(EST.)"
@@ -42,7 +104,7 @@ with
             district_type,
             {{ normalize_l2_district_name("district_name") }} as district_name,
             max(voter_count) as voter_count_normalized
-        from {{ ref("int__l2_district_aggregations") }}
+        from district_counts_all
         group by
             state_postal_code,
             district_type,
