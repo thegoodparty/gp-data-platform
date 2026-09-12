@@ -59,3 +59,6 @@ select
     createdat as created_at,
     updatedat as updated_at
 from {{ source("airbyte_source", "hubspot_api_companies") }}
+where
+    {{ dsar_not_suppressed("properties_candidate_email", "email") }}
+    and {{ dsar_not_suppressed("properties_phone", "phone") }}
