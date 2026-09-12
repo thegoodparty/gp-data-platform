@@ -183,7 +183,7 @@ class _MatchaPodOperator(KubernetesPodOperator):
         )
 
 
-POD_MEMORY = "32Gi"
+POD_MEMORY = "48Gi"
 POD_CPU = "4"
 POD_EPHEMERAL_STORAGE = "50Gi"
 
@@ -228,12 +228,14 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # DuckDB reads both limits from the cgroup, so these are its budget: 32Gi
-        # reports as a 25.5 GiB memory limit and one thread per CPU. Memory below
-        # ~32Gi gets the pod OOM-killed or evicted; 16 CPU was measured and made
-        # election_stage no faster, so it stayed at 4. ephemeral-storage is declared
-        # rather than inherited: Astro's namespace default is 256Mi, which a real run
-        # blows through in minutes.
+        # DuckDB reads both limits from the cgroup and takes 80% of memory, so it
+        # gets ~38 GiB of 48Gi and one thread per CPU. The remaining ~10Gi is for
+        # the Python side, which is what 32Gi ran out of: election_stage was
+        # OOM-killed (exit 137) writing and filtering ~20M predicted pairs, after
+        # EM training had finished. 16 CPU was measured and made no difference, so
+        # CPU stayed at 4. ephemeral-storage is declared rather than inherited:
+        # Astro's namespace default is 256Mi, which a real run blows through in
+        # minutes.
         container_resources=_pod_resources(),
         # A match that fails does so deterministically, and a timeout burns a
         # four-hour pod per attempt. The DAG's other tasks keep the default retries.

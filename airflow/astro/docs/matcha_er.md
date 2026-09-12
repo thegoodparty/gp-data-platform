@@ -41,12 +41,13 @@ Set on the Astro deployment as **Airflow Variables**:
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 32Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
-a deploy. DuckDB reads both limits from the cgroup, so these are its budget: 32Gi reports as
-`memory_limit=25.5 GiB` and one thread per CPU, which the match tasks log at launch. Below ~32Gi the pod
-is OOM-killed at 8Gi, and at 10Gi of disk it was evicted for spilling. 16 CPU was tried and reverted: it
-made `election_stage` no faster (20-25 min per EM iteration against ~18 at 4 CPU) and bought candidacy
-only ~17%, while pods bill on the configured limit.
+requests 48Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
+a deploy. DuckDB reads both limits from the cgroup and takes 80% of memory, so it gets ~38 GiB of the 48Gi
+and one thread per CPU, and logs both at launch as `DuckDB budget: ...`. The remaining ~10Gi is for the
+Python side. That headroom is what 32Gi lacked: `election_stage` was OOM-killed (exit 137) 33 minutes in,
+while writing and filtering ~20M predicted pairs, after EM training had already finished. Smaller sizes
+fail earlier: OOM-killed at 8Gi, and evicted at 10Gi of disk. 16 CPU was tried and reverted, making
+`election_stage` no faster and buying candidacy only ~17%, while pods bill on the configured limit.
 
 The match tasks set `retries=0`. A match failure is deterministic, so the default 2 retries turned one
 four-hour `election_stage` timeout into three.
