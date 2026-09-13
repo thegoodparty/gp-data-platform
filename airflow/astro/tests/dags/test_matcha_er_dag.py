@@ -65,14 +65,12 @@ def test_every_entity_has_the_three_step_chain():
 
 
 def test_one_task_at_a_time_without_an_airflow_pool():
-    """One 16Gi/4CPU pod is most of the 20Gi deployment quota, so
-    the DAG caps itself at one running task.
+    """One 48Gi match pod against a 96Gi deployment quota, so the DAG caps
+    itself at one running task.
 
-    Asserts the absence of a custom pool as well as the cap. A pool would do
-    the same job, but has to exist on every deployment before the DAG runs,
-    and Airflow answers a missing one by parking those tasks in `scheduled`
-    indefinitely — visible only as a scheduler-log warning. max_active_tasks
-    ships with the DAG and cannot go missing.
+    Asserts no custom pool either: a pool does the same job but must exist on
+    every deployment first, and Airflow answers a missing one by parking tasks
+    in `scheduled` indefinitely. max_active_tasks ships with the DAG.
     """
     assert _DAG.max_active_tasks == 1
     for entity in _ENTITIES:
@@ -196,15 +194,10 @@ def test_the_pod_carries_no_image_pull_secrets():
 
 
 def test_the_er_schema_is_environment_scoped_everywhere():
-    """One catalog serves both environments, so the schema is the only thing
-    separating them. Hardcoded, a dev run writes the same dated table names
-    into the same schema as prod — first writer owns the vintage, the other's
-    CREATE OR REPLACE is refused — and a dev swap renames the live tables the
-    civics marts read.
-
-    Checks the pod arguments (templated, since Astro exposes no Variables at
-    parse) and the gate/swap/cleanup callables, which read it at runtime. All
-    four have to agree or a run gates one schema and swaps another.
+    """One catalog serves both environments, so the schema is what separates
+    them: hardcoded, a dev swap would rename the live tables the civics marts
+    read. Checks the pod arguments and the gate/swap/cleanup callables, since
+    all four must agree or a run gates one schema and swaps another.
     """
     module = _dag_module()
     for entity in _ENTITIES:
@@ -272,8 +265,9 @@ def test_pod_resources_are_logged(capsys):
 def test_pod_sizing_fits_astro_limits():
     """The numbers are load-bearing against ceilings outside this repo: a pod
     over the deployment memory quota fails at admission, Astro caps a task pod
-    at 43 vCPU / 86 GiB, and ephemeral storage at 100 GiB. Memory also has to
-    clear the ~32Gi where DuckDB stops spilling to EBS-backed node storage.
+    at 43 vCPU / 86 GiB, and ephemeral storage at 100 GiB. The memory floor is
+    measured, not guessed: 32Gi OOM-killed election_stage while it wrote ~20M
+    pairs, so anything at or below that is known to fail.
     """
     module = _dag_module()
 
@@ -281,7 +275,7 @@ def test_pod_sizing_fits_astro_limits():
         assert quantity.endswith("Gi"), quantity
         return int(quantity[:-2])
 
-    assert 32 <= gib(module.POD_MEMORY) <= 86
+    assert 32 < gib(module.POD_MEMORY) <= 86
     assert gib(module.POD_EPHEMERAL_STORAGE) <= 100
     assert int(module.POD_CPU) <= 43
 
@@ -437,21 +431,13 @@ def test_a_retry_does_not_accumulate_env_vars():
 
 
 def test_gate_task_checks_its_own_entitys_tables():
-    """`gate` and `swap` read `entity` from the enclosing closure at task
-    EXECUTION time, unlike `match`'s eagerly-resolved arguments — so a bare
-    `for entity in ENTITIES:` loop in place of the `entity_group` factory
-    would pass every structural test above while every group's gate/swap
-    silently operated on the same (last-iteration) entity's tables. DagBag
-    exposes the TaskFlow-wrapped closure via `python_callable`, so invoke it
-    directly and assert it gates THAT group's own tables.
+    """`gate` and `swap` read `entity` from the closure at EXECUTION time, so a
+    bare `for entity in ENTITIES:` loop would pass every structural test above
+    while every group gated the last entity's tables.
 
-    Checks table (args[3]) paired with its OWN gate (args[5]), not just that
-    the right tables and gates each showed up somewhere: a swapped pairing
-    (cluster table checked against the pairwise gate, or vice versa) would
-    under-gate the cluster table — silently dropping its identity/source
-    checks — which is exactly the failure class this branch exists to catch.
-    Index 4 (the dated table name) is skipped: it's derived from args[3] in
-    the same expression and cannot diverge from it independently.
+    Pairs table (args[3]) with its OWN gate (args[5]), not merely that both
+    appeared: a swapped pairing would silently under-gate the cluster table.
+    args[4] is derived from args[3] and cannot diverge independently.
     """
     # autospec=True on every patch below: a plain MagicMock accepts any keyword argument
     # silently, which is exactly how a wrong kwarg on a real call (e.g. Variable.get's

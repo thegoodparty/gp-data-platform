@@ -1,58 +1,20 @@
 """## Matcha entity resolution on a schedule
 
-Runs the Splink entity-resolution container once a week for each of the three
-entity types, gates its output, and swaps it into the tables dbt reads.
+Runs the Splink entity-resolution container weekly for each of the three entity
+types, gates its output, and swaps it into the tables dbt reads. One task group
+per entity: **match** runs the container as a Kubernetes pod, **gate** checks
+what it produced, **swap** renames it into place.
 
-Each entity is one task group: **match** runs the container as a Kubernetes
-pod, **gate** checks what it produced, **swap** renames it into place. matcha
-writes a DATED table (`clustered_candidacy_stages_20260825`) and never a live
-one — its upload is `CREATE OR REPLACE TABLE` followed by `COPY INTO`, so
-aiming it at a live table would let a mid-upload failure leave every downstream
-dbt model reading an empty or partial table.
+matcha writes a DATED table and never a live one, because its upload is
+`CREATE OR REPLACE TABLE` then `COPY INTO` -- aimed at a live table, a
+mid-upload failure would leave downstream dbt reading a partial one.
 
-The three entities carry no dependency edges between them WITHIN THIS DAG:
-each match task depends only on `dbt_refresh_prematch`, so one entity failing
-does not block another from matching, gating, or swapping. That does not mean
-the entities are independent downstream of `er_source` — `marts/civics/
-candidacy_stage.sql` joins the candidacy clustered table with
-`ref("election_stage")`, which derives from `clustered_election_stages`, so a
-civics mart can read a mix of one entity's fresh vintage and another's stale
-one regardless of what this DAG does. What serialises the pods today is the
-DAG's own `max_active_tasks=1`, a quota accommodation rather than a modelling
-decision — one 16Gi pod already takes most of the 20Gi deployment
-quota. Raising the quota means raising that number here, in the same change
-as the terraform quota bump.
+The three entities have no dependency edges between them here: each match
+depends only on `dbt_refresh_prematch`. `max_active_tasks=1` serialises them
+anyway, which is a quota accommodation, not a modelling decision.
 
-`dbt_build_er_source` waits on all three swaps, so THIS DAG's own staging
-rebuild never runs against a partially-swapped set. That is not the same as
-`er_source` itself staying consistent: if one entity's swap fails after the
-other two have already replaced their live tables, those two ARE published —
-`er_source` already holds a mix of this run's fresh tables and whichever
-vintage the failed entity's live table was last swapped from. Any other job
-reading `er_source` before a retry succeeds sees that mix; only this DAG's
-own `dbt_build_er_source` step is withheld.
-
-The swap is held behind the `matcha_swap_enabled` Variable: anything but
-"true" withholds only the rename, making every run a full dress rehearsal that
-still builds and gates the dated tables.
-
-### Connections (set in Astro Environment Manager):
-- `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
-- `dbt_cloud` — dbt Cloud API, shared with the other DAGs.
-
-### Variables (set in Astro Environment Manager):
-- `databricks_conn_id` — selects the Databricks connection.
-- `databricks_catalog` — Databricks catalog name.
-- `databricks_er_schema` — schema the dated vintages and live tables live in.
-  Defaults to `er_source`; dev points at its own so a dev run cannot collide
-  with, or rename, what prod serves.
-- `dbt_cloud_job_id` — dbt Cloud job the bookends run steps against.
-- `matcha_swap_enabled` — cutover switch. Anything but "true" is rehearsal.
-- `matcha_image_tag` — matcha image tag to run. Defaults to `latest`; set to
-  a sha to pin a deployment without a code change.
-- `databricks_scopes` — OAuth scopes the Databricks token requests ask for,
-  shared with the other DAGs. Unset means the SDK default of `all-apis`.
-
+`docs/matcha_er.md` covers the Variables and Connections this expects, why dev
+needs its own schema, rehearsal vs. live, and the gate/swap recovery paths.
 """
 
 from __future__ import annotations
@@ -83,37 +45,28 @@ from pendulum import duration
 
 t_log = logging.getLogger("airflow.task")
 
-# The tag CI publishes beside `latest` on every merge to main, i.e. the only tag form that
-# makes a run reproducible. A digest reference (`@sha256:...`) counts as pinned as well.
+# The sha tag CI publishes beside `latest`; a `@sha256:` digest counts as pinned too.
 _PINNED_TAG = re.compile(r"[0-9a-f]{40}")
 
-# `image` is a KPO template field, so the tag resolves at task runtime, not parse — any merge
-# touching matcha/** would otherwise silently change what the next scheduled run executes with
-# no code change to show for it. A deployment can pin a sha via the Variable with no redeploy;
-# the default keeps today's behavior.
+# A Variable so a deployment can pin a sha with no redeploy. `image` is a KPO template
+# field, so it resolves at task runtime.
 MATCHA_IMAGE_TAG_VARIABLE = "matcha_image_tag"
 MATCHA_IMAGE = (
     "ghcr.io/thegoodparty/gp-data-platform/matcha:"
     f"{{{{ var.value.get('{MATCHA_IMAGE_TAG_VARIABLE}', 'latest') }}}}"
 )
-# Explicit because Kubernetes otherwise infers it from the tag (Always for `:latest`,
-# IfNotPresent for anything else), so pinning the tag Variable would flip pull behavior as a
-# side effect. Always over IfNotPresent: a node-local cache can hold a matcher build older
-# than the tag now points at and would run it silently, and it buys little coherence between
-# this run's pods, which max_active_tasks serializes onto generally separate nodes.
+# Explicit: Kubernetes otherwise infers it from the tag, so pinning the tag would flip pull
+# behaviour as a side effect. IfNotPresent would let a node run a stale cached build.
 MATCHA_IMAGE_PULL_POLICY = "Always"
-# A hung Splink pod would otherwise hold the single task slot indefinitely, blocking the other
-# two entities and the following week's run. startup_timeout_seconds only bounds scheduling.
+# A hung pod would otherwise hold the single task slot indefinitely.
+# startup_timeout_seconds only bounds scheduling, not the run.
 MATCH_EXECUTION_TIMEOUT = duration(hours=4)
-# There is one catalog for both environments, so the schema is what separates them. Left
-# hardcoded, a dev run writes the SAME dated table names into the SAME schema as prod:
-# whichever runs first owns that day's vintage and the other's CREATE OR REPLACE is refused,
-# and a dev swap would rename the live tables the civics marts read. Matches how
-# extract_ballotready scopes its writes with `databricks_source_schema`.
+# One catalog serves both environments, so the schema is what separates them: hardcoded, a
+# dev run would fight prod for the same dated table names and its swap would rename the live
+# tables the civics marts read.
 ER_SCHEMA_VARIABLE = "databricks_er_schema"
 DEFAULT_ER_SCHEMA = "er_source"
-# Resolved at task runtime for the Python tasks; the pod gets the same value templated into
-# its arguments, since Astro does not expose Variables to the DAG processor at parse.
+# Templated for the pod's arguments; Astro exposes no Variables at parse time.
 ER_SCHEMA_TEMPLATE = f"{{{{ var.value.get('{ER_SCHEMA_VARIABLE}', '{DEFAULT_ER_SCHEMA}') }}}}"
 DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
@@ -129,44 +82,29 @@ def er_schema() -> str:
 class _MatchaPodOperator(KubernetesPodOperator):
     """KPO that resolves its Databricks env at task runtime.
 
-    The matcha GHCR package is public and stays that way, so the pod pulls
-    anonymously and carries no `image_pull_secrets` at all.
-
-    The credentials resolve at runtime rather than as templates because
-    Airflow snapshots an operator's rendered template fields — `env_vars`,
-    plus the whole KPO pod YAML — into the metadata DB before `pre_execute`
-    runs, and serves them in the UI. It redacts values the secrets masker
-    knows, and a connection password is registered with the masker the moment
-    the connection loads, so a templated credential would in practice come
-    back `***`. Resolving after the snapshot means there is nothing to redact:
-    the credential is only ever in the pod spec this operator submits.
+    Runtime rather than templated because Airflow snapshots rendered template
+    fields into the metadata DB and serves them in the UI. Resolving after that
+    snapshot leaves nothing to redact: the credential only ever reaches the pod
+    spec this operator submits. The GHCR package is public, so no pull secret.
     """
 
     def pre_execute(self, context) -> None:
-        # Replaces rather than extends: these four values are the pod's whole environment,
-        # and pre_execute runs again on every retry.
+        # Replaces rather than extends: pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
-        # KPO only prints the pod spec when a pod fails, so a successful run otherwise
-        # leaves no record of what it was sized at.
+        # KPO prints the pod spec only on failure, so a passing run would otherwise
+        # record nothing about its sizing.
         resources = self.container_resources
         self.log.info("match pod resources: %s", resources.limits if resources else None)
         self._log_image_provenance()
         super().pre_execute(context)
 
     def _log_image_provenance(self) -> None:
-        """Record which image this pod is about to run, and whether it is pinned.
+        """Record which image this pod runs, and whether it is pinned.
 
-        `image` is a template field, so what a run actually executed is only
-        knowable from the run's own logs. A mutable tag additionally means the
-        three entity pods of one run are not guaranteed to be the same build:
-        max_active_tasks serializes them, so a merge touching `matcha/**` landing
-        between two pods republishes `latest` and the later pod runs different
-        matcher code. Nothing is corrupted by that — each entity's tables come
-        from a single pod — but a gate failure stops being attributable to the
-        data rather than to a matcher change, which is the one distinction the
-        vintage-and-gate design exists to make. Pinning the tag to the sha CI
-        publishes on every merge removes the ambiguity; the warning says so at
-        the point where the run is about to pay for not having done it.
+        On a mutable tag the run's pods are not guaranteed to be the same build,
+        since a merge landing mid-run republishes `latest`. Nothing corrupts --
+        each entity's tables come from one pod -- but a gate failure stops being
+        attributable to the data rather than to a matcher change.
         """
         image = self.image or ""
         _, _, tag = image.rpartition(":")
@@ -189,11 +127,10 @@ POD_EPHEMERAL_STORAGE = "50Gi"
 
 
 def _pod_resources() -> k8s.V1ResourceRequirements:
-    """Match pod resources, with requests equal to limits.
+    """Match pod resources, requests equal to limits.
 
-    Equal on purpose: it keeps the pod Guaranteed, which is evicted last when a
-    node comes under pressure. Astro sets requests to limits for task pods
-    regardless, and bills on the limit.
+    Equal keeps the pod Guaranteed, so it is evicted last. Astro does this to
+    task pods anyway, and bills on the limit.
     """
     quantities = {
         "memory": POD_MEMORY,
@@ -228,17 +165,12 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # DuckDB reads both limits from the cgroup and takes 80% of memory, so it
-        # gets ~38 GiB of 48Gi and one thread per CPU. The remaining ~10Gi is for
-        # the Python side, which is what 32Gi ran out of: election_stage was
-        # OOM-killed (exit 137) writing and filtering ~20M predicted pairs, after
-        # EM training had finished. 16 CPU was measured and made no difference, so
-        # CPU stayed at 4. ephemeral-storage is declared rather than inherited:
-        # Astro's namespace default is 256Mi, which a real run blows through in
-        # minutes.
+        # DuckDB takes 80% of the memory limit and one thread per CPU, so 48Gi gives it
+        # ~38 GiB and leaves ~10Gi for the Python side -- which is what 32Gi ran out of,
+        # OOM-killing election_stage while writing ~20M pairs. 16 CPU made no difference.
+        # ephemeral-storage is declared because Astro's namespace default is 256Mi.
         container_resources=_pod_resources(),
-        # A match that fails does so deterministically, and a timeout burns a
-        # four-hour pod per attempt. The DAG's other tasks keep the default retries.
+        # A match fails deterministically and each attempt burns a four-hour pod.
         retries=0,
         in_cluster=True,
         get_logs=True,
@@ -252,24 +184,20 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     schedule="@weekly",
     start_date=pendulum_datetime(2026, 9, 1, tz="UTC"),
     catchup=False,
-    # Created paused (like the other prod DAGs) so a fresh deploy doesn't auto-fire the
-    # current weekly interval — catchup=False only suppresses historical backfill.
+    # catchup=False only suppresses historical backfill, not the current interval.
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
-    # Deliberately not an Airflow pool: a pool has to be created on
-    # each deployment out of band, and a missing one parks the pooled tasks in `scheduled`
-    # forever with nothing but a scheduler-log warning to say why. This deploys with the DAG.
-    # The cost is that a finished entity's gate/swap waits behind the next entity's match —
-    # seconds of SQL against hours of Splink. Raising it belongs with a terraform quota bump.
+    # One 48Gi match pod at a time, against a 96Gi deployment quota. Deliberately not an
+    # Airflow pool: a pool must exist on each deployment out of band, and a missing one parks
+    # tasks in `scheduled` forever. The cost is a finished entity's gate/swap waiting behind
+    # the next entity's match -- seconds of SQL behind hours of Splink.
     max_active_tasks=1,
-    # An overlapping manual trigger would otherwise give two runs with different ds_nodash
-    # whose swaps can interleave DROP/RENAME on the same live table.
+    # Two runs with different ds_nodash can interleave DROP/RENAME on one live table.
     max_active_runs=1,
 )
 def matcha_er():
-    # `dbt build` is run plus test, so the prematch not-null/unique tests gate the
-    # match: bad input fails here rather than inside Splink.
+    # `dbt build` is run plus test, so bad input fails here rather than inside Splink.
     refresh_prematch = DbtCloudRunJobOperator(
         task_id="dbt_refresh_prematch",
         dbt_cloud_conn_id="dbt_cloud",
@@ -290,12 +218,11 @@ def matcha_er():
 
     @task(task_id="ensure_er_schema")
     def ensure_er_schema() -> str:
-        """Make sure this deployment's ER schema exists before any pod writes.
+        """Create this deployment's ER schema if absent, before any pod writes.
 
         Whoever creates it owns it, so a deployment pointed at its own schema
-        (dev) needs no grant beyond the catalog-level CREATE_SCHEMA the airflow
-        SPs already hold. Pointed at a schema someone else owns, this is a
-        no-op and the grants have to come from elsewhere.
+        needs no grant beyond the catalog-level CREATE_SCHEMA the airflow SPs
+        hold. Pointed at someone else's schema this is a no-op.
         """
         catalog = Variable.get(CATALOG_VARIABLE)
         schema = er_schema()
@@ -310,21 +237,14 @@ def matcha_er():
     def cleanup(run_date: str) -> dict[str, list[str]]:
         """Drop the renamed-aside tables and vintages past the retention window.
 
-        Runs only after the downstream build succeeds, so `_old` stays available
-        as the rollback position for as long as it is useful.
-
-        A rehearsal run keeps `_old` instead: no swap promoted anything, so the
-        `_old` it would drop belongs to whichever run last swapped for real,
-        and dropping it would remove that vintage's only rollback path while
-        replacing it with nothing. Keeping it is safe because the next live
-        swap pre-drops `_old` before renaming aside, so a preserved one cannot
-        collide with it. Stale vintages are still reaped either way — they are
-        never a rollback position once a swap has consumed them.
+        A rehearsal run keeps `_old`: no swap promoted anything, so it belongs to
+        whichever run last swapped for real and is that vintage's only rollback
+        path. Safe to keep, since the next live swap pre-drops it. Stale vintages
+        are reaped either way -- a consumed vintage is never a rollback position.
         """
         catalog = Variable.get(CATALOG_VARIABLE)
         schema = er_schema()
-        # One read for the whole task: a mid-task flip would otherwise drop some entities'
-        # backups and keep others'.
+        # One read per task, so a mid-task flip cannot drop some entities' backups only.
         drop_backups = swap_enabled()
         if not drop_backups:
             t_log.info(
@@ -352,8 +272,8 @@ def matcha_er():
     def entity_group(entity: EntitySpec):
         """Build one entity's match -> gate -> swap chain.
 
-        A factory rather than a loop body: closing over the loop variable
-        directly would late-bind every group to the last entity.
+        A factory, not a loop body: closing over the loop variable would
+        late-bind every group to the last entity.
         """
 
         @task_group(group_id=entity.entity_type)

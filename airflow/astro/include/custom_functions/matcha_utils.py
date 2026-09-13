@@ -1,20 +1,11 @@
 """Pre-swap quality gates and the dated-vintage swap for the matcha ER outputs.
 
-The matcha container writes each run to a DATED table
-(`er_source.clustered_candidacy_stages_20260825`) and never to a live one: its
-upload is `CREATE OR REPLACE TABLE` followed by `COPY INTO`, so pointing it at
-a live table means a mid-upload failure leaves every downstream dbt model
-reading an empty or partial table. This module is the other half of that
-contract — it gates the dated table, then renames it into the live name.
+Gates the dated table the container wrote, then renames it into the live name.
 
 Unity Catalog has no multi-statement transaction, so the swap is an explicit
-sequence rather than one atomic statement. It is idempotent for a crash
-WITHIN one table's three statements — the leftover `_old` from a crashed run
-is dropped first, so a crash never wedges the next attempt. It is NOT
-idempotent across a full table promotion: a completed swap CONSUMES the dated
-table (it becomes the live table), so `swap_table` guards on the dated
-table's existence before doing anything, rather than re-running drop+rename
-against a table that is already gone.
+sequence. It is idempotent for a crash WITHIN one table's statements, because
+the leftover `_old` is dropped first. It is NOT idempotent once a promotion
+commits: the dated table is consumed, so `swap_table` guards on its existence.
 
 Everything above the "Databricks execution" divider is pure, so the gate logic
 is testable without a warehouse.
@@ -38,12 +29,10 @@ logger = logging.getLogger("airflow.task")
 class TableGate:
     """Pre-swap gate for one er_source table.
 
-    Cluster and pairwise tables are deliberately gated differently. The civics
-    marts build their crosswalks from the cluster tables, so those get identity
-    and source-coverage checks. Pairwise is audit-only and its row volume
-    swings legitimately with blocking and threshold tuning, so a gate as tight
-    as the cluster one would fail on ordinary model work and train us to
-    ignore it.
+    Cluster and pairwise are gated differently on purpose: the civics marts
+    build crosswalks from the cluster tables, so those get identity and
+    source-coverage checks. Pairwise is audit-only and its row count swings
+    legitimately with threshold tuning, so a tight gate there would cry wolf.
     """
 
     # Minimum plausible row count when no prior live table exists.
@@ -298,16 +287,10 @@ def swap_statements(
 ) -> list[str]:
     """Ordered statements that promote a dated vintage into the live name.
 
-    Unity Catalog gives no multi-statement transaction, so the sequence is
-    explicit. It is idempotent for a crash WITHIN these three statements: the
-    pre-drop MUST come first, since a crash between the swap and cleanup
-    leaves an `_old` table behind, and the next attempt's rename-aside would
-    collide with it — failing run after run until a human intervened. It is
-    NOT idempotent once the final rename has committed: the dated table no
-    longer exists at that point, and building this same statement list again
-    would fail on a missing table. Callers must not invoke this a second time
-    for a table already promoted — `swap_table` enforces that by checking the
-    dated table's existence first.
+    The pre-drop MUST come first: a crash between swap and cleanup leaves an
+    `_old` behind, and the next attempt's rename-aside would collide with it,
+    failing every run until a human intervened. Not safe to call twice for one
+    table -- `swap_table` guards that.
     """
     aside = old_name(live_table)
     statements = [f"DROP TABLE IF EXISTS {fqn(catalog, schema, aside)}"]
@@ -345,11 +328,8 @@ def stale_vintages(existing_tables: list[str], table: str, cutoff: str) -> list[
 def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> dict[str, str]:
     """The DATABRICKS_* variables the matcha container authenticates with.
 
-    Read at task runtime rather than templated into the operator, so the
-    credentials are never a rendered template value: Airflow snapshots
-    rendered fields (and the KPO pod YAML) into the metadata DB before
-    `pre_execute` runs, and while it redacts known secrets on the way in,
-    values that never reach the snapshot need no redaction to be safe.
+    Read at task runtime, not templated, so the credentials never reach the
+    rendered-field snapshot Airflow stores and serves.
     """
     fields = conn_kwargs(databricks_conn_id_var)
     return {
@@ -357,11 +337,9 @@ def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> di
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
         "DATABRICKS_CLIENT_SECRET": fields["client_secret"],
-        # Same `databricks_scopes` Variable the tasks' own connection uses, so the pod
-        # and the gate/swap around it can never ask for different scopes. The SDK reads
-        # every other DATABRICKS_* var from the environment itself but not this one —
-        # its `scopes` attribute has no env binding — so the container passes it to
-        # Config explicitly. Empty means the SDK default of all-apis.
+        # The same Variable the tasks' own connection uses, so pod and gate can never
+        # ask for different scopes. The SDK gives `scopes` no env binding, so the
+        # container passes it to Config explicitly. Empty means all-apis.
         "DATABRICKS_SCOPES": " ".join(fields["scopes"] or ()),
     }
 
@@ -369,14 +347,11 @@ def pod_databricks_env(databricks_conn_id_var: str = "databricks_conn_id") -> di
 def open_connection(databricks_conn_id_var: str = "databricks_conn_id"):
     """Open a warehouse connection from the deployment's Databricks connection.
 
-    WHICH connection is chosen at task runtime from the shared
-    `databricks_conn_id` Variable (`databricks_dev` on dev, `databricks` on
-    prod), matching the other DAGs. Must not be called at DAG parse.
+    Which connection comes from the shared `databricks_conn_id` Variable at
+    task runtime, so this must not be called at DAG parse.
 
-    `use_cloud_fetch=False` is stated rather than inherited: this connection
-    only runs scalar COUNT/EXISTS and small DISTINCT queries, and CloudFetch
-    would route those through pre-signed S3 URLs — a pointless round-trip at
-    best, and a failure where the warehouse or VPC does not allow it.
+    `use_cloud_fetch=False` is stated, not inherited: these are scalar COUNT and
+    EXISTS queries, and CloudFetch would route them through pre-signed S3 URLs.
     """
     return connect_from_conn_id(databricks_conn_id_var, use_cloud_fetch=False)
 
@@ -465,13 +440,10 @@ def run_gate(
 def create_schema_if_missing(conn, catalog: str, schema: str) -> None:
     """Create the ER schema when it does not exist yet.
 
-    The creating principal becomes the owner in Unity Catalog, and an owner can
-    create, rename and drop everything inside — which is what the swap needs
-    and what a plain CREATE_TABLE grant never covers. So a deployment writing
-    its own schema (dev) needs no grant at all: the airflow SPs already hold
-    CREATE_SCHEMA on the catalog. A deployment writing a schema someone else
-    owns (prod's er_source, which the civics marts read) is a no-op here and
-    does need granting.
+    The creator owns it in Unity Catalog, and an owner can rename and drop
+    inside it -- which the swap needs and a CREATE_TABLE grant never covers. So
+    a deployment writing its own schema needs no grant; one writing a schema
+    someone else owns is a no-op here and does need granting.
     """
     cursor = conn.cursor()
     try:
@@ -485,14 +457,10 @@ def create_schema_if_missing(conn, catalog: str, schema: str) -> None:
 def swap_table(conn, catalog: str, schema: str, live_table: str, dated_table: str) -> None:
     """Promote the dated vintage into the live name.
 
-    Guards on the DATED table's existence, not just the live one's. The
-    `swap` task loops cluster then pairwise with retries: if the cluster
-    swap completes and the pairwise swap then raises, a naive retry that
-    only checks the live table would see it present and re-run drop+rename —
-    destroying `_old` (the backup) and then failing the final rename because
-    the dated table it's looking for was already consumed by attempt one.
-    Checking the dated table first makes each table's swap resumable: once
-    it's gone, there is nothing left to do.
+    Guards on the DATED table, not the live one. The task loops cluster then
+    pairwise with retries: if pairwise raises after cluster committed, a retry
+    checking only the live table would re-run drop+rename, destroying the `_old`
+    backup and then failing on the already-consumed dated table.
     """
     dated_present = table_exists(conn, catalog, schema, dated_table)
     live_present = table_exists(conn, catalog, schema, live_table)
