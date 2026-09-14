@@ -36,6 +36,9 @@ anything; unpausing is the owner-gated activation checklist.
   support (the GHCR package is private; the pull secret is required).
 - `BRAINTRUST_API_KEY` — injected into the pod; the pinned prompt fails
   closed without it.
+- `gold_match_aws_role_arn` / `gold_match_aws_external_id` — the
+  GoodParty-account role the pod assumes for Bedrock and its trust
+  ExternalId; the pod's own identity is Astronomer's.
 """
 
 from __future__ import annotations
