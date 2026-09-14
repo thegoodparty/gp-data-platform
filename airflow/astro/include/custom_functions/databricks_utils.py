@@ -103,7 +103,11 @@ class _ConnKwargs(TypedDict):
 
 
 def conn_kwargs(databricks_conn_id_var: str = "databricks_conn_id") -> _ConnKwargs:
-    """The host and OAuth credentials of the Databricks connection an Airflow Variable names."""
+    """The host and OAuth credentials of the Databricks connection an Airflow Variable names.
+
+    Public because the matcha pod needs the same values as its own env vars, so
+    the pod and the tasks around it read one accessor and cannot drift.
+    """
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
 
