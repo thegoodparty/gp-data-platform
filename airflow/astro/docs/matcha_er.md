@@ -48,19 +48,14 @@ Python side. That headroom is what 32Gi lacked: `election_stage` was OOM-killed 
 while writing and filtering ~20M predicted pairs, after EM training had already finished. Smaller sizes
 fail earlier: OOM-killed at 8Gi, and evicted at 10Gi of disk. 16 CPU was tried and reverted, making
 `election_stage` no faster and buying candidacy only ~17%, while pods bill on the configured limit.
+Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way.
 
 The match tasks set `retries=0`. A match failure is deterministic, so the default 2 retries turned one
 four-hour `election_stage` timeout into three.
 
-`election_stage` remains unable to complete anywhere, in Airflow or locally, for reasons unrelated to
-sizing: its second EM training block requires both sides to share `ballotready_position_id`, which only
-BallotReady rows carry, so in a `link_only` job it yields no pairs, and the resulting guard fails on
-`seat_name` (populated on 3.3% of rows). candidacy is larger in rows but blocks finely and never comes
-close. Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way.
-This
-is a quota accommodation, not a modeling decision — within this DAG the three entities have no dependency
-on each other and would otherwise run concurrently. Raising it belongs in the same change as the terraform
-quota bump.
+`max_active_tasks=1` is a quota accommodation, not a modeling decision — within this DAG the three
+entities have no dependency on each other and would otherwise run concurrently. Raising it belongs in the
+same change as a terraform quota bump.
 
 An Airflow pool would do the same job and was used at first, but it has to be created on each deployment
 before the DAG runs, and Airflow answers a missing pool by leaving those tasks in `scheduled` forever —
