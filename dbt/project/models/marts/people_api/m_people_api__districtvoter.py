@@ -27,6 +27,33 @@ THIS_SCHEMA = StructType(
 NON_VOTER_DISTRICT_TYPES = {"state", "country"}
 
 
+def _assigned_voters(assignments: DataFrame, voter_df: DataFrame) -> DataFrame | None:
+    """Voters carrying a manually assigned district.
+
+    Mirrors the leg in int__l2_nationwide_uniform_w_haystaq, which is where the
+    reasoning lives. Narrowed to the seed's own states so this does not walk
+    every voter to find the handful of states that carry an assignment.
+    """
+    pairs = assignments.select("state", "l2_district_type").distinct().collect()
+    if not pairs:
+        return None
+    states = sorted({r[0] for r in pairs})
+    scoped_voters = voter_df.filter(col("State").isin(states))
+
+    matched = None
+    for district_type in sorted({r[1] for r in pairs}):
+        if district_type not in voter_df.columns:
+            continue
+        scoped = assignments.filter(col("l2_district_type") == district_type).alias("a")
+        found = scoped_voters.alias("v").join(
+            scoped,
+            (col("v.State") == col("a.state")) & (col(f"v.`{district_type}`") == col("a.l2_district_name")),
+            how="left_semi",
+        )
+        matched = found if matched is None else matched.unionByName(found)
+    return matched
+
+
 def _district_columns(voter_df: DataFrame, district_df: DataFrame) -> list[str]:
     """
     The district columns to unpivot, derived from the district table.
@@ -75,7 +102,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if dbt.is_incremental:
         this_df: DataFrame = session.table(f"{dbt.this}")
         max_updated_at = this_df.agg({"updated_at": "max"}).collect()[0][0]
-        voter_df = voter_df.filter(col("updated_at") > max_updated_at)
+        # updated_at is the L2 loaded_at, so a manual district assignment never
+        # advances it and the watermark alone would skip those voters for good.
+        assigned = _assigned_voters(dbt.ref("l2_manual_district_assignments"), voter_df)
+        fresh = voter_df.filter(col("updated_at") > max_updated_at)
+        voter_df = fresh if assigned is None else fresh.unionByName(assigned).dropDuplicates(["id"])
 
     # check if count is 0, exit early
     voter_df_count = voter_df.count()

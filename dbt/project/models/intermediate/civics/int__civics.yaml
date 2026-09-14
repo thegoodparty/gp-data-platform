@@ -2388,6 +2388,17 @@ models:
           source constructs race_name with a 2-letter state prefix, so the
           prefix is left intact for cross-source comparability.
 
+      - name: seat_name
+        description: >
+          Seat identifier for multi-seat bodies, where district_identifier is
+          NULL. Only BR carries a source column, and it misses the
+          "(surname seat)" naming, so the value is parsed out of
+          official_office_name for every source: "(surname seat)", "seat N",
+          "position N" / "office no. N", "group N", "place N", "division N".
+          Lowercased, and numbers are de-zero-padded so a parsed "01" matches
+          BR's "1". "at large" is not parsed: it marks the absence of a
+          district and identifies no particular seat.
+
       - name: ballotready_position_id
         description: >
           BR position FK. Populated for BR rows; NULL for DDHQ and TS in V1.
