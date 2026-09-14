@@ -1,8 +1,7 @@
 """The Bedrock session builder: on Astro the pod's own identity is Astronomer's
-and must never be what calls Bedrock, and the assumed credentials must refresh
-across a multi-hour run. No network: the fetcher is a fake, never invoked."""
+and must never be what calls Bedrock. No network: static env credentials head
+the chain and the STS fetcher is a fake."""
 
-import boto3
 import pytest
 from botocore.config import Config
 
@@ -22,34 +21,53 @@ def test_without_a_role_the_ambient_chain_is_used(monkeypatch):
     """Failure this catches: a local supervised run trying to assume a role it
     was never given, instead of using the operator's own credentials."""
     monkeypatch.delenv(aws.ROLE_ARN_ENV, raising=False)
+    # Static env credentials resolve first in the chain, so nothing here can
+    # reach a metadata endpoint.
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AMBIENT")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "ambient-secret")
+    monkeypatch.setattr(aws, "AssumeRoleCredentialFetcher", lambda **kw: pytest.fail("no role was named"))
+
     s = aws.bedrock_session("us-east-1")
-    assert isinstance(s, boto3.Session)
+
     assert s.region_name == "us-east-1"
+    assert s.get_credentials().access_key == "AMBIENT"
 
 
-def test_with_a_role_the_session_assumes_it_lazily_with_the_external_id(monkeypatch):
+def test_with_a_role_the_session_carries_the_assumed_credentials(monkeypatch):
     """Failure this catches: the target role or the ExternalId not reaching STS
-    (the trust policy then refuses the pod), or credentials fetched eagerly at
-    construction (one fixed hour of validity, expiring mid-wave)."""
+    (the trust policy then refuses the pod), the assumed credentials not being
+    what the session resolves (ambient ones silently used instead), or the
+    assumption happening at construction rather than on first use."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AMBIENT")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "ambient-secret")
+    monkeypatch.setenv(aws.ROLE_ARN_ENV, "arn:aws:iam::333:role/gold-match-bedrock-dev")
+    monkeypatch.setenv(aws.EXTERNAL_ID_ENV, "ext-123")
     captured: dict = {}
+    fetches: list[int] = []
 
     class _Fetcher:
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
         def fetch_credentials(self):
-            raise AssertionError("credentials must be fetched lazily, not at session build")
+            fetches.append(1)
+            return {
+                "access_key": "ASSUMED",
+                "secret_key": "assumed-secret",
+                "token": "t",
+                "expiry_time": "2099-01-01T00:00:00Z",
+            }
 
     monkeypatch.setattr(aws, "AssumeRoleCredentialFetcher", _Fetcher)
-    monkeypatch.setenv(aws.ROLE_ARN_ENV, "arn:aws:iam::333:role/gold-match-bedrock-dev")
-    monkeypatch.setenv(aws.EXTERNAL_ID_ENV, "ext-123")
 
     s = aws.bedrock_session("us-east-1")
 
-    assert isinstance(s, boto3.Session)
     assert s.region_name == "us-east-1"
     assert captured["role_arn"] == "arn:aws:iam::333:role/gold-match-bedrock-dev"
     assert captured["extra_args"] == {"RoleSessionName": "gold-match", "ExternalId": "ext-123"}
+    assert fetches == []  # nothing assumed until a call needs credentials
+    assert s.get_credentials().access_key == "ASSUMED"
+    assert fetches == [1]
 
 
 def test_both_clients_build_their_runtime_from_the_shared_session(monkeypatch):
