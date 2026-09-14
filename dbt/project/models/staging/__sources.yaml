@@ -121,6 +121,8 @@ sources:
           freshness: null
       - name: gp_api_db_annotation_review
         description: raw data load from gp_api_db postgres db from table `annotation_review`
+        config:
+          freshness: null
       - name: gp_api_db_artifact_feedback
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
@@ -271,10 +273,12 @@ sources:
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
         description: Stripe invoice line items and billing details
+        # Rewritten in bursts, with observed gaps between writes of up to 99
+        # days, so the previous 60/90 bound tripped on normal cadence.
         config:
           freshness:
-            warn_after: { count: 60, period: day }
-            error_after: { count: 90, period: day }
+            warn_after: { count: 120, period: day }
+            error_after: { count: 180, period: day }
       - name: stripe_api_invoice_line_items
         description: Stripe invoice line items and detailed billing breakdowns
       - name: stripe_api_invoices
@@ -327,10 +331,13 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        # Loaded once, on 2026-03-02, while the sibling candidates feed keeps
+        # syncing. Left warning rather than nulled so the gap stays visible to
+        # the civics models that read it.
         config:
           freshness:
-            warn_after: { count: 90, period: day }
-            error_after: { count: 180, period: day }
+            warn_after: { count: 180, period: day }
+            error_after: { count: 365, period: day }
         columns:
           - name: is_incumbent
             data_tests:
