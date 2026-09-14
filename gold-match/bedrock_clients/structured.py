@@ -102,13 +102,13 @@ class BedrockStructuredContentClient:
         if bedrock_runtime is not None:
             self._client = bedrock_runtime
         else:
-            import boto3
             from botocore.config import Config
 
+            from bedrock_clients.aws import bedrock_session
+
             # Our retry policy is the only one; pool sized to the cap.
-            self._client = boto3.client(
+            self._client = bedrock_session(region).client(
                 "bedrock-runtime",
-                region_name=region,
                 config=Config(
                     max_pool_connections=max_concurrency,
                     retries={"max_attempts": 1, "mode": "standard"},

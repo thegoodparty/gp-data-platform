@@ -55,7 +55,12 @@ def test_pod_env_speaks_the_clients_names():
         patch.object(gm, "conn_kwargs", autospec=True, return_value=fields),
         patch.object(gm, "Variable", autospec=True) as mock_variable,
     ):
-        mock_variable.get.return_value = "bt-key"
+        variables = {
+            "BRAINTRUST_API_KEY": "bt-key",
+            "gold_match_aws_role_arn": "arn:aws:iam::333:role/gold-match-bedrock-prod",
+            "gold_match_aws_external_id": "ext-123",
+        }
+        mock_variable.get.side_effect = variables.__getitem__
         env = gm.gold_match_pod_env()
     assert env == {
         "DATABRICKS_SERVER_HOSTNAME": "dbc.example",
@@ -63,9 +68,15 @@ def test_pod_env_speaks_the_clients_names():
         "DATABRICKS_CLIENT_ID": "cid",
         "DATABRICKS_CLIENT_SECRET": "sec",
         "BRAINTRUST_API_KEY": "bt-key",
+        # The GoodParty-account role the pod assumes for Bedrock; its own
+        # identity is Astronomer's and cannot hold the grant.
+        "GOLD_MATCH_AWS_ROLE_ARN": "arn:aws:iam::333:role/gold-match-bedrock-prod",
+        "GOLD_MATCH_AWS_EXTERNAL_ID": "ext-123",
         "ENVIRONMENT": "production",
     }
-    mock_variable.get.assert_called_once_with("BRAINTRUST_API_KEY")
+    # Every Variable is read through Variable.get, so an unset one fails here,
+    # before the paid pod starts.
+    assert {c.args[0] for c in mock_variable.get.call_args_list} == set(variables)
 
 
 def test_pod_env_forwards_narrowed_scopes():

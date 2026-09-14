@@ -28,6 +28,11 @@ RESULTS_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_result
 QUARANTINE_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine"
 
 BRAINTRUST_VARIABLE = "BRAINTRUST_API_KEY"
+# The GoodParty-account role the pod assumes for Bedrock, and the trust
+# policy's ExternalId: the pod's own identity is Astronomer's and cannot
+# hold the grant (gold_match_iam.tf in gp-terraform-dataplatform).
+AWS_ROLE_ARN_VARIABLE = "gold_match_aws_role_arn"
+AWS_EXTERNAL_ID_VARIABLE = "gold_match_aws_external_id"
 
 
 def run_key_of(dag_run: Any) -> datetime:
@@ -57,6 +62,10 @@ def gold_match_pod_env() -> dict[str, str]:
         # Fail here (Variable.get raises) rather than inside the paid pod: the
         # pinned prompt refuses to load without the key anyway.
         "BRAINTRUST_API_KEY": Variable.get(BRAINTRUST_VARIABLE),
+        # Same fail-here posture: without the role the pod would call Bedrock as
+        # Astronomer's identity and be refused after the (paid) universe build began.
+        "GOLD_MATCH_AWS_ROLE_ARN": Variable.get(AWS_ROLE_ARN_VARIABLE),
+        "GOLD_MATCH_AWS_EXTERNAL_ID": Variable.get(AWS_EXTERNAL_ID_VARIABLE),
         "ENVIRONMENT": "production",
     }
     # The deployment-wide `databricks_scopes` Variable mirrors the scopes the
