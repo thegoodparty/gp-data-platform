@@ -23,6 +23,42 @@ def _apply_state_allowlist(df: DataFrame, allowlist: set[str] | None) -> DataFra
     return df.filter(col("state_postal_code").isin(sorted(allowlist)))
 
 
+def _assigned_voter_ids(assignments: DataFrame, uniform: DataFrame) -> DataFrame | None:
+    """Voters carrying a manually assigned district, matched on the assigned name.
+
+    The same leg int__l2_district_aggregations needs, for the same reason: the
+    seed reaches voters through a coalesce in int__l2_nationwide_uniform
+    without moving any voter's loaded_at, so the watermark below never re-reads
+    them. Matched on the name rather than the seed's geography tuple because
+    the view has already applied it.
+
+    Narrowed to the seed's own states first. The cost here is scanning the
+    view per district type, not the merge, so without that filter this walks
+    all 219M voters to find the two states that have any assignment.
+    """
+    pairs = assignments.select("state", "l2_district_type").distinct().collect()
+    if not pairs:
+        return None
+    states = sorted({r[0] for r in pairs})
+    scoped_uniform = uniform.filter(col("state_postal_code").isin(states))
+
+    ids = None
+    for district_type in sorted({r[1] for r in pairs}):
+        scoped = assignments.filter(col("l2_district_type") == district_type).alias("a")
+        found = (
+            scoped_uniform.alias("u")
+            .join(
+                scoped,
+                (col("u.state_postal_code") == col("a.state"))
+                & (col(f"u.`{district_type}`") == col("a.l2_district_name")),
+                how="left_semi",
+            )
+            .select(col("LALVOTERID"))
+        )
+        ids = found if ids is None else ids.union(found)
+    return ids
+
+
 def model(dbt, session: SparkSession) -> DataFrame:
     """
     Join nationwide L2 uniform data to nationwide Haystaq flags + scores on LALVOTERID.
@@ -109,7 +145,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .select("LALVOTERID")
         )
 
-        changed_ids = uniform_updates.union(flags_updates).union(scores_updates).distinct()
+        changed_ids = uniform_updates.union(flags_updates).union(scores_updates)
+
+        assigned_ids = _assigned_voter_ids(dbt.ref("l2_manual_district_assignments"), uniform_df)
+        if assigned_ids is not None:
+            changed_ids = changed_ids.union(assigned_ids)
+
+        changed_ids = changed_ids.distinct()
 
         if not changed_ids.take(1):
             return (
