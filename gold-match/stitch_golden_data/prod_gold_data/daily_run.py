@@ -39,6 +39,11 @@ from stitch_golden_data.prod_gold_data.l2_br_match_schema import (
 from stitch_golden_data.prod_gold_data.l2_br_match_writer import MatchResultWriter
 from stitch_golden_data.prod_gold_data.l2_br_matcher import L2BrMatcher, MatchResult, _positive_int
 
+# The loop's permanent contract: offices never attempted or last attempted at
+# or after Run B's key are its diet; offices last attempted before it are a
+# separately gated, supervised population and never enter (the runbook
+# carries the history).
+CUTOVER_BOUNDARY = datetime(2026, 8, 31, 19, 46, 39, tzinfo=UTC)
 # A pending list bigger than this is a de facto full re-match, which is a
 # supervised owner decision; the ~8k monthly abstain wave sits comfortably
 # under it. Deliberately not configurable -- a single-use knob here would
@@ -53,9 +58,9 @@ QUARANTINE_CIRCUIT_BREAKER = 10
 QUARANTINE_RETRY_DAYS = 30
 # Identity of the WHOLE cohort semantics: the pending-selector rule and the
 # outcome write policy together. Bump this when either changes. v2 lifted the
-# pre-cutover boundary (the tuning-era rerun it reserved offices for was
-# closed without one); the write policy is unchanged.
-POLICY_VERSION = "v2-hold-withdrawals"
+# pre-cutover boundary; v3 reinstated it after the first automated run's audit;
+# the write policy is unchanged throughout.
+POLICY_VERSION = "v3-hold-withdrawals"
 # The only reason code that exists today; bounded enum, never exception text.
 REASON_STRUCTURED_OUTPUT = "structured_output_shape"
 
@@ -88,33 +93,51 @@ def split_by_write_policy(
     return [r for r in results if r.l2_district_name is not None or prior_district_by_bid.get(r.br_database_id) is None]
 
 
-# -- Warehouse reads ----------------------------------------------------------
-
-
-def _read_prior_answers(databricks: DatabricksClient, before: datetime, pending_table: str) -> dict[int, str | None]:
-    """Newest district per pending office as of just before this run -- the
-    same qualify-newest-row shape as backlog_run's `_prior_answers_sha256`,
-    but returning the district name directly rather than a hash, so the
-    "latest answer" `split_by_write_policy` judges against has one definition.
-    Semi-joined to the pending table because the policy only ever looks up
-    pending offices, and the results history grows without bound while the
-    daily cohort stays small.
+def boundary_filter(office_ids: list[int], prior_attempted_at: dict[int, datetime]) -> list[int]:
+    """Ids whose latest attempt predates CUTOVER_BOUNDARY: the supervised
+    population. Ids with no prior attempt at all are never dropped.
     """
+    return [bid for bid in office_ids if (at := prior_attempted_at.get(bid)) is not None and at < CUTOVER_BOUNDARY]
+
+
+# -- Warehouse reads: one query feeds the write policy and the boundary --------
+
+
+def _read_prior_answers(
+    databricks: DatabricksClient, before: datetime, office_ids: list[int]
+) -> dict[int, tuple[str | None, datetime]]:
+    """Newest row per worklist office as of just before this run -- the same
+    qualify-newest-row shape as backlog_run's `_prior_answers_sha256`, but
+    returning the district name and timestamp directly rather than a hash:
+    `split_by_write_policy` and `boundary_filter` both derive from this one
+    read, so there is only one place the "latest answer" definition can
+    drift. Scoped to the ids the run actually loaded rather than a second
+    read of the pending table, so a rebuild landing between the two reads
+    cannot slip an office past the boundary or the write policy.
+    """
+    if not office_ids:
+        return {}
     cutoff = before.isoformat(sep=" ", timespec="seconds")
+    ids = ",".join(str(bid) for bid in sorted(set(office_ids)))
     df = databricks.execute_query(
         f"""
-        select br_database_id, l2_district_name
+        select br_database_id, l2_district_name, attempted_at
         from {RESULTS_TABLE_PATH}
         where
             attempted_at < timestamp'{cutoff}'
-            and br_database_id in (select br_database_id from {pending_table})
+            and br_database_id in ({ids})
         qualify row_number() over (
             partition by br_database_id order by attempted_at desc, l2_district_name nulls first
         ) = 1
         """
     )
+    if not df.empty:
+        # The connector's timestamp dtype varies by result path; an object-dtype
+        # column of naive datetimes would blow up the aware comparison against
+        # CUTOVER_BOUNDARY, so pin it to UTC the way the client's datetime64 branch does.
+        df["attempted_at"] = pd.to_datetime(df["attempted_at"], utc=True)
     return {
-        int(row.br_database_id): (None if pd.isna(row.l2_district_name) else row.l2_district_name)
+        int(row.br_database_id): (None if pd.isna(row.l2_district_name) else row.l2_district_name, row.attempted_at)
         for row in df.itertuples(index=False)
     }
 
@@ -259,16 +282,17 @@ def _write_run_log(databricks: DatabricksClient, **counts) -> None:
         cursor.execute(
             f"""
             insert into {RUN_LOG_TABLE_PATH}
-                (run_key, policy_version, cohort_size, quarantine_dropped,
+                (run_key, policy_version, cohort_size, quarantine_dropped, backlog_boundary_dropped,
                  matched_written, abstains_written, withdrawals_held, quarantined_this_run,
                  embedding_config, llm_config, prompt_provenance, git_sha, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 counts["run_key"],
                 POLICY_VERSION,
                 counts["cohort_size"],
                 counts["quarantine_dropped"],
+                counts["backlog_boundary_dropped"],
                 counts["matched_written"],
                 counts["abstains_written"],
                 counts["withdrawals_held"],
@@ -299,16 +323,24 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         _require_pinned_prompt(matcher)
 
-        prior_district_by_bid = _read_prior_answers(matcher.databricks, args.run_key, matcher.pending_offices_path)
+        pending_df = matcher.load_pending_offices()
+        worklist_ids = [int(bid) for bid in pending_df["br_database_id"]]
+        prior_answers = _read_prior_answers(matcher.databricks, args.run_key, worklist_ids)
+        prior_district_by_bid = {bid: district for bid, (district, _at) in prior_answers.items()}
+        prior_attempted_at = {bid: at for bid, (_district, at) in prior_answers.items()}
         suppressed_ids, due_ids = _read_quarantine_eligibility(matcher.databricks, args.run_key)
 
-        pending_df = matcher.load_pending_offices()
         # The loader returns its declared columns even when empty, so the mask
         # is safe unguarded on an empty frame. The count is what the run log
         # persists.
         suppressed_mask = pending_df["br_database_id"].isin(suppressed_ids)
         quarantine_dropped = int(suppressed_mask.sum())
-        pending_df = pending_df[~suppressed_mask].reset_index(drop=True)
+        pending_df = pending_df[~suppressed_mask]
+        pre_cutover_ids = boundary_filter(list(pending_df["br_database_id"]), prior_attempted_at)
+        # Distinct ids: the count is a durable audit number and must not inflate
+        # if the pending frame ever carries a repeated office.
+        backlog_boundary_dropped = len(set(pre_cutover_ids))
+        pending_df = pending_df[~pending_df["br_database_id"].isin(pre_cutover_ids)].reset_index(drop=True)
         cohort_size = len(pending_df)
         if cohort_size > COHORT_CEILING:
             raise RuntimeError(
@@ -338,6 +370,7 @@ async def _run(args: argparse.Namespace) -> None:
             run_key=args.run_key,
             cohort_size=cohort_size,
             quarantine_dropped=quarantine_dropped,
+            backlog_boundary_dropped=backlog_boundary_dropped,
             matched_written=matched_written,
             abstains_written=abstains_written,
             withdrawals_held=withdrawals_held,
@@ -353,6 +386,7 @@ async def _run(args: argparse.Namespace) -> None:
             "policy_version": POLICY_VERSION,
             "cohort_size": cohort_size,
             "quarantine_dropped": quarantine_dropped,
+            "backlog_boundary_dropped": backlog_boundary_dropped,
             "written": written,
             "matched_written": matched_written,
             "abstains_written": abstains_written,

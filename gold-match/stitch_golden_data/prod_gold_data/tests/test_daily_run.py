@@ -1,6 +1,6 @@
 """The daily entry point's policy core (the outcome-conditional write
-policy) and its match loop (per-office quarantine, the circuit breaker,
-quarantine-table eligibility and release).
+policy, the pre-cutover boundary) and its match loop (per-office quarantine,
+the circuit breaker, quarantine-table eligibility and release).
 No live AWS/Databricks calls -- every collaborator here is a self-contained
 fake, never a real warehouse or a real matcher.
 """
@@ -221,6 +221,7 @@ class TestRunLogInsert:
             run_key=run_key,
             cohort_size=11,
             quarantine_dropped=33,
+            backlog_boundary_dropped=22,
             matched_written=44,
             abstains_written=55,
             withdrawals_held=66,
@@ -239,6 +240,7 @@ class TestRunLogInsert:
         assert by_column["policy_version"] == daily_run.POLICY_VERSION
         assert by_column["cohort_size"] == 11
         assert by_column["quarantine_dropped"] == 33
+        assert by_column["backlog_boundary_dropped"] == 22
         assert by_column["matched_written"] == 44
         assert by_column["abstains_written"] == 55
         assert by_column["withdrawals_held"] == 66
@@ -292,25 +294,56 @@ class TestCohortCeiling:
         assert stub.build_universe_called is False
 
 
+class TestBoundaryFilter:
+    def test_drops_only_offices_last_attempted_before_the_cutover(self):
+        """Failure this catches: the strict-< boundary drifting to <= (which
+        would drop Run B's own rows and starve the ~09-30 abstain wave), or a
+        never-attempted office being dropped for lacking a prior attempt.
+        """
+        boundary = daily_run.CUTOVER_BOUNDARY
+        prior_attempted_at = {
+            2: boundary - timedelta(seconds=1),  # pre-cutover: the supervised population
+            3: boundary,  # exactly at the key: Run B's own row, this loop's diet
+        }
+        assert daily_run.boundary_filter([1, 2, 3], prior_attempted_at) == [2]
+
+
 class TestPriorAnswersRead:
     def test_maps_null_district_to_none_and_pins_query_shape(self):
         """Failure this catches: pandas surfacing a SQL NULL district as NaN
         (which would make every prior abstain look like a match to the write
-        policy, silencing the withdrawal hold), the query losing its pending
-        semi-join (the read would scan unbounded history again), or the
+        policy, silencing the withdrawal hold), the query losing its worklist
+        scope (the read would scan unbounded history again), or the
         tie-break drifting from the staging model's abstain-wins ordering,
         which must stay character-identical or "latest answer" silently
         changes meaning.
         """
-        rows = pd.DataFrame({"br_database_id": [1, 2], "l2_district_name": [float("nan"), "District 3"]})
+        ts_old = datetime(2026, 8, 31, 20, 0, 0, tzinfo=UTC)
+        ts_new = datetime(2026, 9, 1, 20, 0, 0, tzinfo=UTC)
+        rows = pd.DataFrame(
+            {
+                "br_database_id": [1, 2],
+                "l2_district_name": [float("nan"), "District 3"],
+                "attempted_at": [ts_old, ts_new],
+            }
+        )
         client = _FakeDatabricksClient(query_result=rows)
 
-        out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), "cat.dbt.pending")
+        out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), [2, 1, 2])
 
-        assert out == {1: None, 2: "District 3"}
+        assert out == {1: (None, ts_old), 2: ("District 3", ts_new)}
         (sql,) = client.queries
-        assert "in (select br_database_id from cat.dbt.pending)" in sql
+        # Scoped to the worklist the run loaded, never a second pending-table read.
+        assert "br_database_id in (1,2)" in sql
+        assert "pending" not in sql
         assert "order by attempted_at desc, l2_district_name nulls first" in sql
+
+    def test_empty_worklist_reads_nothing(self):
+        """Failure this catches: an empty cohort producing `in ()` SQL (a
+        syntax error that would fail an otherwise healthy no-work day)."""
+        client = _FakeDatabricksClient()
+        assert daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), []) == {}
+        assert client.queries == []
 
 
 class TestQuarantineEligibility:

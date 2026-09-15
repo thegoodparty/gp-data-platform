@@ -45,6 +45,7 @@ create table if not exists {RUN_LOG_TABLE_PATH} (
     policy_version string not null comment 'Identity of the whole cohort semantics: the pending-selector rule and the outcome write policy together. Bumped when either changes.',
     cohort_size int not null comment 'Pending offices after the quarantine-suppression filter, before the ceiling check.',
     quarantine_dropped int not null comment 'Offices dropped because an active quarantine row currently suppresses them.',
+    backlog_boundary_dropped int comment 'Offices dropped because the latest attempt predates the pre-cutover boundary (the supervised population). Null on rows written under policy v2, which had no boundary.',
     matched_written int not null comment 'Rows written this run carrying a district: a new match or a healed dead label.',
     abstains_written int not null comment 'Abstains written this run: a first abstain or a re-abstain, never a withdrawal.',
     withdrawals_held int not null comment 'Abstains NOT written because the prior serving answer was a match, held per the hold-withdrawals write policy until the rename-normalization lever lands.',

@@ -17,6 +17,10 @@ rebuild, and re-raises — so serving is back to yesterday's state and the DAG r
 human should look at something that is not this run's fault. Tomorrow's scheduled run is the
 retry for everything self-healing.
 
+The cohort is post-cutover only: an office whose latest attempt predates the 2026-08-31 cutover run
+belongs to a separately gated, supervised population and never enters this loop (the first automated
+pass over that population, 2026-09-14, matched most of it wrongly and was rolled back).
+
 The pod writes at end: a pod that dies mid-match has written nothing, and one run key has exactly
 one writer (`retries=0` on the pod, `max_active_runs=1` on the DAG, and the pod is deleted at
 task termination).
