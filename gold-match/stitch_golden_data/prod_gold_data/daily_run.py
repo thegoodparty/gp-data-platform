@@ -282,16 +282,17 @@ def _write_run_log(databricks: DatabricksClient, **counts) -> None:
         cursor.execute(
             f"""
             insert into {RUN_LOG_TABLE_PATH}
-                (run_key, policy_version, cohort_size, quarantine_dropped,
+                (run_key, policy_version, cohort_size, quarantine_dropped, backlog_boundary_dropped,
                  matched_written, abstains_written, withdrawals_held, quarantined_this_run,
                  embedding_config, llm_config, prompt_provenance, git_sha, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 counts["run_key"],
                 POLICY_VERSION,
                 counts["cohort_size"],
                 counts["quarantine_dropped"],
+                counts["backlog_boundary_dropped"],
                 counts["matched_written"],
                 counts["abstains_written"],
                 counts["withdrawals_held"],
@@ -367,6 +368,7 @@ async def _run(args: argparse.Namespace) -> None:
             run_key=args.run_key,
             cohort_size=cohort_size,
             quarantine_dropped=quarantine_dropped,
+            backlog_boundary_dropped=backlog_boundary_dropped,
             matched_written=matched_written,
             abstains_written=abstains_written,
             withdrawals_held=withdrawals_held,

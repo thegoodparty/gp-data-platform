@@ -221,6 +221,7 @@ class TestRunLogInsert:
             run_key=run_key,
             cohort_size=11,
             quarantine_dropped=33,
+            backlog_boundary_dropped=22,
             matched_written=44,
             abstains_written=55,
             withdrawals_held=66,
@@ -239,6 +240,7 @@ class TestRunLogInsert:
         assert by_column["policy_version"] == daily_run.POLICY_VERSION
         assert by_column["cohort_size"] == 11
         assert by_column["quarantine_dropped"] == 33
+        assert by_column["backlog_boundary_dropped"] == 22
         assert by_column["matched_written"] == 44
         assert by_column["abstains_written"] == 55
         assert by_column["withdrawals_held"] == 66
