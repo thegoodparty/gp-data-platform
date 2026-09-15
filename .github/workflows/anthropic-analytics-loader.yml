@@ -1,0 +1,42 @@
+name: anthropic-analytics-loader
+
+# Standalone (not via uv-subproject.yml): this project uses the Astral type
+# checker `ty` instead of mypy, and keeps its dev deps in an optional-deps
+# extra, so it needs `--extra dev`. Same pattern as people-api-loader.yml.
+# Ruff is covered repo-wide by pre-commit.yml.
+on:
+  pull_request:
+    paths:
+      - 'anthropic-analytics-loader/**'
+      - '.github/workflows/anthropic-analytics-loader.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'anthropic-analytics-loader/**'
+      - '.github/workflows/anthropic-analytics-loader.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: anthropic-analytics-loader
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: anthropic-analytics-loader/uv.lock
+      - name: Install
+        run: uv sync --frozen --extra dev
+      - name: Type check (ty)
+        run: uv run ty check
+      - name: Pytest
+        run: uv run pytest -ra
