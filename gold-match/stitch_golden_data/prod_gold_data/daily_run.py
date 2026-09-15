@@ -39,12 +39,10 @@ from stitch_golden_data.prod_gold_data.l2_br_match_schema import (
 from stitch_golden_data.prod_gold_data.l2_br_match_writer import MatchResultWriter
 from stitch_golden_data.prod_gold_data.l2_br_matcher import L2BrMatcher, MatchResult, _positive_int
 
-# The daily loop's diet is post-cutover work: arrivals, abstains maturing on
-# the 30-day clock, and dead-label heals for offices whose latest attempt is
-# at or after Run B's key (2026-08-31). Offices last attempted BEFORE it are a
-# separately gated, supervised population -- the first automated pass over
-# them (2026-09-14, rolled back) matched most of them wrongly -- and never
-# enter this loop. Permanent contract, not a placeholder.
+# The loop's permanent contract: offices never attempted or last attempted at
+# or after Run B's key are its diet; offices last attempted before it are a
+# separately gated, supervised population and never enter (the runbook
+# carries the history).
 CUTOVER_BOUNDARY = datetime(2026, 8, 31, 19, 46, 39, tzinfo=UTC)
 # A pending list bigger than this is a de facto full re-match, which is a
 # supervised owner decision; the ~8k monthly abstain wave sits comfortably
@@ -106,25 +104,28 @@ def boundary_filter(office_ids: list[int], prior_attempted_at: dict[int, datetim
 
 
 def _read_prior_answers(
-    databricks: DatabricksClient, before: datetime, pending_table: str
+    databricks: DatabricksClient, before: datetime, office_ids: list[int]
 ) -> dict[int, tuple[str | None, datetime]]:
-    """Newest row per pending office as of just before this run -- the same
+    """Newest row per worklist office as of just before this run -- the same
     qualify-newest-row shape as backlog_run's `_prior_answers_sha256`, but
     returning the district name and timestamp directly rather than a hash:
     `split_by_write_policy` and `boundary_filter` both derive from this one
     read, so there is only one place the "latest answer" definition can
-    drift. Semi-joined to the pending table because both consumers only ever
-    look up pending offices, and the results history grows without bound
-    while the daily cohort stays small.
+    drift. Scoped to the ids the run actually loaded rather than a second
+    read of the pending table, so a rebuild landing between the two reads
+    cannot slip an office past the boundary or the write policy.
     """
+    if not office_ids:
+        return {}
     cutoff = before.isoformat(sep=" ", timespec="seconds")
+    ids = ",".join(str(bid) for bid in sorted(set(office_ids)))
     df = databricks.execute_query(
         f"""
         select br_database_id, l2_district_name, attempted_at
         from {RESULTS_TABLE_PATH}
         where
             attempted_at < timestamp'{cutoff}'
-            and br_database_id in (select br_database_id from {pending_table})
+            and br_database_id in ({ids})
         qualify row_number() over (
             partition by br_database_id order by attempted_at desc, l2_district_name nulls first
         ) = 1
@@ -321,12 +322,13 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         _require_pinned_prompt(matcher)
 
-        prior_answers = _read_prior_answers(matcher.databricks, args.run_key, matcher.pending_offices_path)
+        pending_df = matcher.load_pending_offices()
+        worklist_ids = [int(bid) for bid in pending_df["br_database_id"]]
+        prior_answers = _read_prior_answers(matcher.databricks, args.run_key, worklist_ids)
         prior_district_by_bid = {bid: district for bid, (district, _at) in prior_answers.items()}
         prior_attempted_at = {bid: at for bid, (_district, at) in prior_answers.items()}
         suppressed_ids, due_ids = _read_quarantine_eligibility(matcher.databricks, args.run_key)
 
-        pending_df = matcher.load_pending_offices()
         # The loader returns its declared columns even when empty, so the mask
         # is safe unguarded on an empty frame. The count is what the run log
         # persists.

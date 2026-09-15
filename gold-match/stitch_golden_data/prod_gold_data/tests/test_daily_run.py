@@ -310,8 +310,8 @@ class TestPriorAnswersRead:
     def test_maps_null_district_to_none_and_pins_query_shape(self):
         """Failure this catches: pandas surfacing a SQL NULL district as NaN
         (which would make every prior abstain look like a match to the write
-        policy, silencing the withdrawal hold), the query losing its pending
-        semi-join (the read would scan unbounded history again), or the
+        policy, silencing the withdrawal hold), the query losing its worklist
+        scope (the read would scan unbounded history again), or the
         tie-break drifting from the staging model's abstain-wins ordering,
         which must stay character-identical or "latest answer" silently
         changes meaning.
@@ -327,12 +327,21 @@ class TestPriorAnswersRead:
         )
         client = _FakeDatabricksClient(query_result=rows)
 
-        out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), "cat.dbt.pending")
+        out = daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), [2, 1, 2])
 
         assert out == {1: (None, ts_old), 2: ("District 3", ts_new)}
         (sql,) = client.queries
-        assert "in (select br_database_id from cat.dbt.pending)" in sql
+        # Scoped to the worklist the run loaded, never a second pending-table read.
+        assert "br_database_id in (1,2)" in sql
+        assert "pending" not in sql
         assert "order by attempted_at desc, l2_district_name nulls first" in sql
+
+    def test_empty_worklist_reads_nothing(self):
+        """Failure this catches: an empty cohort producing `in ()` SQL (a
+        syntax error that would fail an otherwise healthy no-work day)."""
+        client = _FakeDatabricksClient()
+        assert daily_run._read_prior_answers(client, datetime(2026, 9, 2, tzinfo=UTC), []) == {}
+        assert client.queries == []
 
 
 class TestQuarantineEligibility:
