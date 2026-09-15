@@ -24,6 +24,7 @@ with
 
 select
     cy.gp_candidacy_id,
+    cy.gp_person_id,
     cy.gp_candidate_id,
     cy.gp_election_id,
     cy.product_campaign_id,
