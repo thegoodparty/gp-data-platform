@@ -337,7 +337,9 @@ async def _run(args: argparse.Namespace) -> None:
         quarantine_dropped = int(suppressed_mask.sum())
         pending_df = pending_df[~suppressed_mask]
         pre_cutover_ids = boundary_filter(list(pending_df["br_database_id"]), prior_attempted_at)
-        backlog_boundary_dropped = len(pre_cutover_ids)
+        # Distinct ids: the count is a durable audit number and must not inflate
+        # if the pending frame ever carries a repeated office.
+        backlog_boundary_dropped = len(set(pre_cutover_ids))
         pending_df = pending_df[~pending_df["br_database_id"].isin(pre_cutover_ids)].reset_index(drop=True)
         cohort_size = len(pending_df)
         if cohort_size > COHORT_CEILING:
