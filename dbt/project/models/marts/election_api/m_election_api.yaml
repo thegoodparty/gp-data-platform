@@ -919,10 +919,12 @@ models:
       - name: retired_at
         description: >
           The later of the slug snapshot run that closed the id's Person row
-          and the canonical-ids snapshot run that closed its last mint, so a
-          row never lands behind the feed consumer's cursor. Ids retired before
-          slug history began carry only the second. One batch shares a
-          timestamp; the API feed cursor is keyset on (retired_at, retired_id).
+          and the canonical-ids snapshot run that closed its last mint, so an
+          id that left the public mart before it retired is not stamped with
+          that earlier exit. Ids retired before slug history began carry only
+          the second. One batch shares a timestamp. Descriptive, not an event
+          time: a row held back for an unpublished survivor appears later with
+          an older value, and a rewritten survivor does not advance it.
         tests:
           - not_null
       - name: created_at

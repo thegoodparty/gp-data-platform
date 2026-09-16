@@ -65,9 +65,16 @@ then resolves them only when no live person and no other retired id shares the 8
 Only the `sync_election_api` DAG writes `PersonMerge`, exactly as with `Person`; the application
 never writes it. gp-api drains `GET /v1/person-merges` with a keyset cursor on
 `(retired_at, retired_id)` to repoint its own person ids. `retired_at` is stable for a given
-retirement and identical across a batch, which that cursor handles. It is the later of the id
-leaving Person and leaving the mint: an id can drop out of the public mart while still canonical
-and retire later, and stamping the earlier exit would land the row behind the cursor.
+retirement and identical across a batch. It is the later of the id leaving Person and leaving the
+mint: an id can drop out of the public mart while still canonical and retire later, and stamping
+the earlier exit would land the row behind the cursor.
+
+This table is a current routing map, not an event log. A row's `surviving_id` is rewritten in
+place when its survivor is itself absorbed (`A -> B` becomes `A -> C` with no new row), a row
+disappears when its id becomes live again, and a row held back for an unpublished survivor
+appears later with an older `retired_at`. A consumer that only follows the cursor misses all
+three. Reconcile the full table periodically (it is small) and treat the cursor as a way to pick
+up new retirements between reconciles.
 
 ## Accepted gaps
 
