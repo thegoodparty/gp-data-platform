@@ -886,6 +886,46 @@ models:
           config:
             severity: warn
 
+  - name: m_election_api__person_merge
+    description: >
+      Forwarding addresses for retired person ids (election-api "PersonMerge"
+      table). One row per gp_person_id that was minted at some point since
+      Person went live and is no longer anyone's id, pointing at the id its
+      minting record carries today, which is the terminal survivor by
+      construction. Limited to survivors that are live public profiles. The
+      API consults this table on a slug miss and redirects to the survivor;
+      gp-api drains it to repoint its own person ids. Lands in Postgres in the
+      same swap as Person. Contract and derivation:
+      PERSON_ID_RETIREMENT_HANDOFF.md under marts/civics.
+    columns:
+      - name: retired_id
+        description: >
+          The retired person UUID. Primary key. Never an FK: the Person row it
+          names is gone by design.
+        tests:
+          - not_null
+          - unique
+      - name: surviving_id
+        description: "The terminal survivor's UUID, live in m_election_api__person."
+        tests:
+          - not_null
+      - name: retired_slug
+        description: >
+          Always null, by agreement with the app team. The API uses it only to
+          break a tie when a retired id shares its 8-hex prefix with a live
+          person; without it that URL keeps resolving to the live person, as
+          it does today. Recording every published slug forever was not worth
+          that.
+      - name: retired_at
+        description: >
+          The canonical-ids snapshot run that closed the id's last mint. One
+          batch shares a timestamp and the value advances in publication
+          order; the API feed cursor is keyset on (retired_at, retired_id).
+        tests:
+          - not_null
+      - name: created_at
+        description: "Build timestamp; the table is swap-replaced wholesale each run."
+
   - name: m_election_api__office_holder
     description: >
       Office terms for public /people profiles (election-api "OfficeHolder"
