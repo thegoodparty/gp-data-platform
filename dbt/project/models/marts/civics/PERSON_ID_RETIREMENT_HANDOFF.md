@@ -78,7 +78,11 @@ up new retirements between reconciles.
 
 ## Accepted gaps
 
-- A minting record that vanished upstream cannot be mapped; its id stays a hard 404.
+- A minting record that vanished upstream cannot be mapped; its id stays a hard 404. That holds
+  even for a row published earlier: the table is recomputed from current evidence each run.
+- A retired cluster whose members scattered to several clusters follows its minting record.
+  The other members' destinations are not represented; this is rare and a redirect target for
+  such an id is a guess either way.
 - A survivor that is not a public profile is held back until it is; if that happens after gp-api's
   cursor has passed the row's `retired_at`, gp-api sees it only on a full re-read.
 - A split (a retired id becoming a minter again) drops its row. The id is live again and Person
