@@ -777,7 +777,9 @@ seeds:
       Proposed_District values that are known and deliberately not minted as
       districts. The column is a catch-all for district changes, so alongside
       the congressional and state senate maps it carries county-commissioner
-      rows and local annexation records that are not seats at all.
+      rows and local annexation records that are not seats at all. It also
+      parks real seats whose minting is deferred by decision, such as a map
+      for an election year the minted district types do not cover yet.
 
       This exists so the drift guard can tell "known and ignored" from "new
       shape nobody has looked at". Removing a row makes the build fail rather
@@ -796,8 +798,9 @@ seeds:
           - is_state_abbreviation
       - name: reason
         description: >
-          Why it is not a seat. Each was located by voter geography and then
-          verified against the jurisdiction's own records.
+          Why it is not minted: either not a seat, or a deferral with what
+          would lift it. Each was located by voter geography and then verified
+          against the jurisdiction's own records.
         data_tests:
           - not_null
 

@@ -72,8 +72,9 @@ models:
 
   - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
     description: >
-      TechSpeed candidate rows that fail data quality checks.
-      Currently catches rows with null/empty first_name, last_name, or state.
+      TechSpeed candidate rows that fail data quality checks: null/empty
+      first_name, last_name, or state, or a state that, after the clean_states
+      mapping, is not a postal code the candidate mart's state test accepts.
     columns:
       - name: _airbyte_raw_id
         data_tests:
@@ -83,7 +84,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["null_name_or_state"]
+                values: ["null_name_or_state", "unrecognized_state"]
 
   - name: stg_airbyte_source__techspeed_gdrive_officeholders
     description: Officeholders data load from TechSpeed Google Drive
