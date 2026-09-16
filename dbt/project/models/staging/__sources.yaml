@@ -29,6 +29,52 @@ sources:
           (GET /api/2/taxonomy/event, showDeleted=true). one row per event_type
           with human-curated metadata (category, description, is_active,
           is_hidden_*, tags, owner).
+      # Claude Enterprise Analytics API via a custom Airbyte Builder source, synced
+      # daily at 20:00 UTC; tighter freshness than the block default to match.
+      # Amounts land as the API's fractional-cent decimal strings.
+      - name: anthropic_api_cost_report
+        description: >
+          One row per daily bucket of org-wide Claude cost from
+          `/v1/organizations/analytics/cost_report`; `results` is a JSON array with
+          one entry per product, model, cost_type and token_type.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_usage_report
+        description: >
+          One row per daily bucket of org-wide Claude token usage from
+          `/v1/organizations/analytics/usage_report`; `results` is a JSON array with
+          one entry per product and model.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_user_cost_report
+        description: >
+          One row per seat user per day of Claude cost from
+          `/v1/organizations/analytics/user_cost_report` (bucket_width=1d, ungrouped).
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_users
+        description: >
+          One row per seat user per day of Claude activity from
+          `/v1/organizations/analytics/users`; the connector stamps the requested
+          day onto each row as `activity_date`. Metric blocks are nested JSON.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_summaries
+        description: >
+          One row per day of org-wide active-user and seat counts from
+          `/v1/organizations/analytics/summaries`.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue

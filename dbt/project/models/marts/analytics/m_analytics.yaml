@@ -1799,3 +1799,35 @@ models:
             # so this is only a breakage guard.
             where: "cohort = 'active' and metric_variant = 'count_once' and office_type = 'all'"
             severity: warn
+
+  - name: anthropic_analytics_org_cost_report
+    description: >
+      Exposure of stg_airbyte_source__anthropic_api_cost_report into
+      mart_analytics (Sigma reads marts only): org-wide Claude cost in USD, one
+      row per day, product, model, cost_type and token_type. Amounts are
+      post-discount, pre-credit, so they can exceed the invoice when usage is
+      covered by credits.
+
+  - name: anthropic_analytics_org_usage_report
+    description: >
+      Exposure of stg_airbyte_source__anthropic_api_usage_report into
+      mart_analytics (Sigma reads marts only): org-wide Claude token usage, one
+      row per day, product and model.
+
+  - name: anthropic_analytics_user_cost_report
+    description: >
+      Exposure of stg_airbyte_source__anthropic_api_user_cost_report into
+      mart_analytics (Sigma reads marts only): Claude cost in USD per seat user
+      per day.
+
+  - name: anthropic_analytics_users_daily
+    description: >
+      Exposure of stg_airbyte_source__anthropic_api_users into mart_analytics
+      (Sigma reads marts only): Claude activity counters per seat user per day.
+
+
+  - name: anthropic_analytics_summaries
+    description: >
+      Exposure of stg_airbyte_source__anthropic_api_summaries into
+      mart_analytics (Sigma reads marts only): org-wide active users, seats and
+      adoption rates, one row per day.
