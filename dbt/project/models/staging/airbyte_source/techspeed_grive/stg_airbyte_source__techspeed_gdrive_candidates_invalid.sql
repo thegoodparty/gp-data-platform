@@ -7,10 +7,37 @@
 -- check strips non-alphabetic characters first, mirroring the staging model's
 -- normalization: column-shifted rows arrive with a ZIP code in the state cell,
 -- which is non-empty raw but normalizes to '' and so is no state at all.
+-- unrecognized_state: the state, after the clean_states mapping staging applies,
+-- is not a postal code the candidate mart's is_state_abbreviation test accepts.
+-- A delivery with an unbalanced quote folds the rows after it into one and a
+-- field list lands in the state cell as text; staging would pass that text
+-- through as the postal code and the mart test would fail the whole build.
 --
+{% set allowed_states = get_us_states_list(include_US=true, include_territories=true) %}
+
 with
     source as (
         select * from {{ source("airbyte_source", "techspeed_gdrive_candidates") }}
+    ),
+
+    clean_states as (select * from {{ ref("clean_states") }}),
+
+    normalized as (
+        select *, trim(regexp_replace(state, '[^A-Za-z ]', '')) as state_normalized
+        from source
+    ),
+
+    -- Same mapping staging applies, so the check sees the code the mart would.
+    with_postal_code as (
+        select
+            src.*,
+            coalesce(
+                cs.state_cleaned_postal_code, src.state_normalized
+            ) as state_postal_code
+        from normalized as src
+        left join
+            clean_states as cs
+            on upper(src.state_normalized) = upper(trim(cs.state_raw))
     ),
 
     with_checks as (
@@ -30,10 +57,17 @@ with
                 when
                     nullif(trim(first_name), '') is null
                     or nullif(trim(last_name), '') is null
-                    or nullif(trim(regexp_replace(state, '[^A-Za-z ]', '')), '') is null
+                    or nullif(state_normalized, '') is null
                 then 'null_name_or_state'
+                when
+                    state_postal_code not in (
+                        {%- for allowed_state in allowed_states -%}
+                            '{{ allowed_state }}'{% if not loop.last %}, {% endif %}
+                        {%- endfor -%}
+                    )
+                then 'unrecognized_state'
             end as invalid_reason
-        from source
+        from with_postal_code
     )
 
 select *
