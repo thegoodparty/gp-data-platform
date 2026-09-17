@@ -4481,3 +4481,28 @@ models:
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
           - not_null
+  - name: int__civics_campaign_versions
+    description: >
+      One row per campaign version. The product database overwrites a campaign
+      in place when a user reuses it for a new election; a version is a distinct
+      combination of campaign id and election context (election date, position,
+      office, state).
+
+      History is the frozen Airbyte raw stream, which recorded every overwrite
+      until the Databricks destination's Direct-Load upgrade stopped writing raw
+      tables. Current state comes from the live campaign table, so the latest
+      version is always fresh. Versions overwritten after the upgrade are not
+      recorded; recording them is a known follow-up.
+    columns:
+      - name: campaign_version_id
+        description: >
+          Surrogate key for a campaign version, from the campaign id and the
+          election context fields (election date, position, office, state).
+          Changing those fields re-mints every id downstream.
+        data_tests:
+          - unique
+          - not_null
+      - name: id
+        description: Campaign id from the product database. Repeats across versions.
+        data_tests:
+          - not_null

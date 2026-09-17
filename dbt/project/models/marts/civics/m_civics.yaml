@@ -133,10 +133,11 @@ models:
       Goodparty.org application campaigns with historical version tracking.
 
       When a user reuses their campaign for a new election, the product database
-      overwrites the campaign row in place. This model recovers historical
-      versions from Airbyte's insert-only raw stream, so both past and current
-      campaign data are available for tracking historical performance and
-      election results.
+      overwrites the campaign row in place. Historical versions come from the
+      Airbyte raw stream, frozen at the destination's Direct-Load upgrade;
+      current state comes from the live campaign table. Both past and current
+      campaign data stay available for tracking performance and election
+      results.
 
       Grain: One row per campaign version (a campaign may have multiple rows if
       the user reused it for different elections).

@@ -1,7 +1,5 @@
 with
-    campaigns as (
-        select * from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
-    ),
+    campaigns as (select * from {{ ref("int__civics_campaign_versions") }}),
 
     users as (select * from {{ ref("stg_airbyte_source__gp_api_db_user") }}),
 

@@ -1,8 +1,6 @@
--- Parses the insert-only raw Airbyte stream for campaigns and deduplicates
--- to one row per distinct campaign version. When a user reuses a campaign
--- for a new election, the product DB overwrites the row in place. This model
--- recovers historical versions by detecting changes in election context fields
--- (election date, position, office, state) across Airbyte sync snapshots.
+-- Parse of the frozen Airbyte raw stream for campaigns. The destination's
+-- Direct-Load upgrade stopped writing this table, so it holds every state
+-- extracted before then and nothing after. Not deduplicated.
 with
     source as (
         select *
@@ -40,60 +38,7 @@ with
             _airbyte_data:completed_task_ids::string as completed_task_ids,
             _airbyte_data:organization_slug::string as organization_slug
         from source
-    ),
-
-    -- Create a fingerprint based on election context fields. A change in any
-    -- of these indicates the user started a new campaign that overwrote the
-    -- previous one in the product DB.
-    versioned as (
-        select
-            *,
-            {{
-                dbt_utils.generate_surrogate_key(
-                    [
-                        "id",
-                        "details:electiondate::string",
-                        "details:positionid::string",
-                        "details:office::string",
-                        "details:state::string",
-                    ]
-                )
-            }} as campaign_version_id
-        from parsed
-    ),
-
-    deduplicated as (
-        select *
-        from versioned
-        qualify
-            row_number() over (
-                partition by campaign_version_id order by _airbyte_extracted_at desc
-            )
-            = 1
     )
 
-select
-    _airbyte_raw_id,
-    _airbyte_extracted_at,
-    _airbyte_meta,
-    _airbyte_generation_id,
-    campaign_version_id,
-    id,
-    data,
-    slug,
-    tier,
-    is_pro,
-    details,
-    did_win,
-    is_demo,
-    user_id,
-    is_active,
-    ai_content,
-    created_at,
-    updated_at,
-    is_verified,
-    date_verified,
-    vendor_ts_data,
-    completed_task_ids,
-    organization_slug
-from deduplicated
+select *
+from parsed
