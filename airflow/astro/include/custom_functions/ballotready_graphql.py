@@ -732,21 +732,26 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
         return (row[0], int(row[1])) if row else (None, None)
 
 
-def _has_cursor(after_changed_at: str | None, after_source_id: int | None) -> bool:
-    """A cursor is only usable as a pair; one half alone reads as no cursor at all.
+def _cursor_pair(after_changed_at: str | None, after_source_id: int | None) -> tuple[str, int] | None:
+    """The cursor as a usable pair, or None when either half is missing.
 
-    Degrading to a full sweep rather than raising is deliberate: an over-broad worklist
-    is safe, and a raise here would stall a run over a partial value.
+    A cursor is only usable as a pair; one half alone reads as no cursor at all. Degrading
+    to a full sweep rather than raising is deliberate: an over-broad worklist is safe, and a
+    raise here would stall a run over a partial value. Returned as a tuple rather than a
+    bool so callers get both halves narrowed to non-None.
     """
-    return after_changed_at is not None and after_source_id is not None
+    if after_changed_at is None or after_source_id is None:
+        return None
+    return after_changed_at, int(after_source_id)
 
 
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
     """The keyset half of the WHERE clause, or an always-true stand-in."""
-    if not _has_cursor(after_changed_at, after_source_id):
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return "source_changed_at IS NOT NULL"
-    ts = format_cursor_ts(after_changed_at)
-    sid = int(after_source_id)
+    ts = format_cursor_ts(pair[0])
+    sid = pair[1]
     return (
         "source_changed_at IS NOT NULL AND ("
         f"source_changed_at > TIMESTAMP '{ts}' OR "
@@ -771,9 +776,10 @@ def _cursor_floor(
     Gated on the same both-halves-present rule as _keyset_predicate, so a partial cursor
     still degrades to a genuinely full sweep rather than one silently floored by timestamp.
     """
-    if not _has_cursor(after_changed_at, after_source_id):
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return ""
-    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(after_changed_at)}'"
+    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(pair[0])}'"
 
 
 def _keyed_worklist(
@@ -809,7 +815,7 @@ def _keyed_worklist(
     )
     predicate = _keyset_predicate(after_changed_at, after_source_id)
     ordered = "ORDER BY source_changed_at ASC, source_id ASC"
-    if own_landing_table is None or not _has_cursor(after_changed_at, after_source_id):
+    if own_landing_table is None or _cursor_pair(after_changed_at, after_source_id) is None:
         return (
             f"WITH worklist AS ({grouped}) "
             f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
@@ -881,7 +887,8 @@ def candidacy_worklist_sql(
             "GROUP BY cast(candidacy.databaseId AS bigint)"
         )
         return (
-            "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
+            "SELECT source_id, source_changed_at FROM ("
+            "SELECT try_cast(br_candidacy_id AS bigint) AS source_id, "
             # Cast each argument, never the result. The live staging schema (`dbt`) types
             # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
             # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
@@ -890,7 +897,10 @@ def candidacy_worklist_sql(
             "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
             "AS source_changed_at "
             f"FROM {candidacies} "
-            "WHERE br_candidacy_id IS NOT NULL "
+            "WHERE br_candidacy_id IS NOT NULL"
+            # try_cast plus a post-cast guard, as in _derived_worklist_sql: the feed marks a
+            # missing id with '' rather than NULL, and the unseen scan has no floor to hide it.
+            ") feed WHERE source_id IS NOT NULL "
             "UNION ALL "
             "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
             f"FROM ({upcoming}) upcoming"

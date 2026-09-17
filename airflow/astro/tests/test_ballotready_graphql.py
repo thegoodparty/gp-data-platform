@@ -899,6 +899,23 @@ def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
     assert "race_updated_at AS source_changed_at" in sql
 
 
+def test_candidacy_worklist_skips_a_feed_id_that_does_not_cast():
+    """The feed marks missing ids with '' rather than NULL (seen on geofence ids), and the unseen
+    branch scans every feed row with no floor, so a single blank candidacy id would fail the four
+    candidacy-keyed tasks under ANSI mode. Same try_cast and post-cast guard as the derived builders.
+    """
+    sql = candidacy_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table="`cat`.`src`.`ballotready_candidacy_raw`",
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert "try_cast(br_candidacy_id AS bigint) AS source_id" in sql
+    assert ") feed WHERE source_id IS NOT NULL" in sql
+
+
 def test_candidacy_worklist_pushes_the_cursor_floor_into_the_upcoming_roster_scan():
     """Without it, every run explodes the candidacies array of every upcoming race."""
     sql = candidacy_worklist_sql(
