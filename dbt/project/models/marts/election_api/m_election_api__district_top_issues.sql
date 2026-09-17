@@ -95,6 +95,8 @@
 ] -%}
 
 with
+    resolved_districts as ({{ l2_district_spelling_resolution() }}),
+
     target_districts as (
         select distinct m.l2_state, m.l2_district_type, m.l2_district_name
         from {{ ref("stg_model_predictions__llm_l2_br_match") }} as m
@@ -108,6 +110,26 @@ with
         -- only districts the adoption seed cleared exist in that model at all.
         select state_postal_code, district_type, district_name
         from {{ ref("int__l2_proposed_district_aggregations") }}
+        union
+        -- An override can point a position at a district no matched row names:
+        -- one minted by l2_manual_district_assignments, or one the matcher
+        -- abstained on. The position serves it, so it must score here too, or
+        -- the voter-issues endpoint comes back empty for that campaign. Resolved
+        -- through the same spelling map as the position mart, so an override
+        -- naming a stale L2 spelling scores the district that carries voters.
+        select distinct
+            tbl_district.state,
+            tbl_district.l2_district_type,
+            tbl_district.l2_district_name
+        from {{ ref("l2_br_match_overrides") }} as tbl_override
+        inner join
+            resolved_districts as tbl_resolved
+            on tbl_override.state = tbl_resolved.state
+            and tbl_override.l2_district_type = tbl_resolved.l2_district_type
+            and tbl_override.l2_district_name = tbl_resolved.l2_district_name
+        inner join
+            {{ ref("m_election_api__district") }} as tbl_district
+            on tbl_resolved.district_id = tbl_district.id
     ),
 
     l2_voter_data as (
