@@ -732,12 +732,18 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
         return (row[0], int(row[1])) if row else (None, None)
 
 
+def _has_cursor(after_changed_at: str | None, after_source_id: int | None) -> bool:
+    """A cursor is only usable as a pair; one half alone reads as no cursor at all.
+
+    Degrading to a full sweep rather than raising is deliberate: an over-broad worklist
+    is safe, and a raise here would stall a run over a partial value.
+    """
+    return after_changed_at is not None and after_source_id is not None
+
+
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
     """The keyset half of the WHERE clause, or an always-true stand-in."""
-    # A cursor is only usable as a pair; if just one half is missing, treat it as
-    # no cursor at all (a full sweep) rather than raise, since an over-broad
-    # worklist is safe and a raise here would stall a run over a partial value.
-    if after_changed_at is None or after_source_id is None:
+    if not _has_cursor(after_changed_at, after_source_id):
         return "source_changed_at IS NOT NULL"
     ts = format_cursor_ts(after_changed_at)
     sid = int(after_source_id)
@@ -765,7 +771,7 @@ def _cursor_floor(
     Gated on the same both-halves-present rule as _keyset_predicate, so a partial cursor
     still degrades to a genuinely full sweep rather than one silently floored by timestamp.
     """
-    if after_changed_at is None or after_source_id is None:
+    if not _has_cursor(after_changed_at, after_source_id):
         return ""
     return f" AND {column} >= TIMESTAMP '{format_cursor_ts(after_changed_at)}'"
 
@@ -803,8 +809,7 @@ def _keyed_worklist(
     )
     predicate = _keyset_predicate(after_changed_at, after_source_id)
     ordered = "ORDER BY source_changed_at ASC, source_id ASC"
-    has_cursor = after_changed_at is not None and after_source_id is not None
-    if own_landing_table is None or not has_cursor:
+    if own_landing_table is None or not _has_cursor(after_changed_at, after_source_id):
         return (
             f"WITH worklist AS ({grouped}) "
             f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
@@ -869,9 +874,9 @@ def candidacy_worklist_sql(
             f"FROM {elections} "
             "WHERE election_day >= current_date()) "
             "AND candidacy.databaseId IS NOT NULL"
-            # Same cursor floor as _keyed_worklist applies below its own GROUP BY, pushed one
-            # level further down: without it every run explodes the candidacies array of every
-            # upcoming race, which is the most expensive scan in the DAG.
+            # Keeps the keyed page cheap: the floor stops it exploding the candidacies array of
+            # every upcoming race. The unseen branch pays that full explode once per run on
+            # purpose; see the scan(None, None) call below.
             f"{_cursor_floor(floor_changed_at, floor_source_id, 'r.updated_at')} "
             "GROUP BY cast(candidacy.databaseId AS bigint)"
         )
@@ -1344,7 +1349,12 @@ def read_worklist(
         after_source_id=after_source_id,
         # Keyed on the calling entity, not the builder: party, stance and endorsement share
         # candidacy's builder but each has its own landing table to check "never landed" against.
-        own_landing_table=landing_table(config.catalog, config.source_schema, spec.name),
+        # Validated here because the builder interpolates the rendered name as-is.
+        own_landing_table=landing_table(
+            validate_identifier("catalog", config.catalog),
+            validate_identifier("source_schema", config.source_schema),
+            validate_identifier("entity", spec.name),
+        ),
     )
     ids: array = array("q")
     changed_at: list[datetime] = []
@@ -1456,8 +1466,6 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         # Non-zero means the endpoint returned short pages and batch_size is above its
         # ceiling. Handled, not fatal, so it would otherwise only exist in the logs.
         "bisects": bisects.count,
-        # Never-landed ids admitted below the cursor by the unseen branch; nonzero means a
-        # source delivered rows late.
         "stragglers": stragglers,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.

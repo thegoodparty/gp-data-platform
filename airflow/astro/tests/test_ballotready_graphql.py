@@ -1610,6 +1610,19 @@ def test_read_worklist_hands_each_builder_that_entitys_own_landing_table(entity)
     assert seen["own_landing_table"] == f"`cat`.`src`.`ballotready_{entity}_raw`"
 
 
+@pytest.mark.parametrize(
+    "field,value", [("catalog", "cat; drop table x"), ("source_schema", "src; drop table x")]
+)
+def test_read_worklist_rejects_an_injected_identifier_before_rendering_the_landing_table(field, value):
+    """The landing table name reaches the builder pre-rendered, so it is validated where it is
+    built rather than relying on the DDL call that happens to run first in extract_entity.
+    """
+    spec = EntitySpec("candidacy", "Candidacy", CANDIDACY_SELECTION, 100, lambda *a, **k: "SELECT 1")
+    with pytest.raises(ValueError, match=field):
+        # The connection is never reached: validation must fail before any SQL is rendered.
+        read_worklist(None, spec, _config(**{field: value}), (None, None))
+
+
 def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
     monkeypatch.setattr(
         "include.custom_functions.ballotready_graphql.read_worklist", lambda *a, **k: ([], [])
