@@ -186,7 +186,12 @@ def _match_pod() -> _GoldMatchPodOperator:
 def gold_match_daily():
     match_pod = _match_pod()
 
-    @task.short_circuit(ignore_downstream_trigger_rules=False, execution_timeout=duration(minutes=10))
+    # retries=0: the budget check is a clock comparison and the in-flight check
+    # a snapshot, so a retry minutes later could admit a start the first
+    # attempt declined; a failed admission is the day declined, not retried.
+    @task.short_circuit(
+        ignore_downstream_trigger_rules=False, retries=0, execution_timeout=duration(minutes=10)
+    )
     def admission(dag_run=None, ti=None) -> bool:
         """Decline the day cleanly, before anything is written, when the loop
         cannot publish safely: another run of a prod-writing dbt job is in
