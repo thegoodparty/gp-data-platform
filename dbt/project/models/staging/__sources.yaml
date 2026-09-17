@@ -1711,8 +1711,7 @@ sources:
         description: >
           Frozen raw stream for the gp_api_db campaign table: every state
           Airbyte extracted until the Direct-Load upgrade, including campaign
-          versions the product later overwrote in place. Read only by
-          int__civics_campaign_versions.
+          versions the product later overwrote in place.
 
   - name: er_source
     schema: er_source

@@ -4492,13 +4492,13 @@ models:
       until the Databricks destination's Direct-Load upgrade stopped writing raw
       tables. Current state comes from the live campaign table, so the latest
       version is always fresh. Versions overwritten after the upgrade are not
-      recorded; whether to add a recorder is a separate decision on the ticket.
+      recorded; recording them is a known follow-up.
     columns:
       - name: campaign_version_id
         description: >
           Surrogate key for a campaign version, from the campaign id and the
-          election context fields. Same expression as the retired raw-stream
-          model, so ids are stable across the swap.
+          election context fields (election date, position, office, state).
+          Changing those fields re-mints every id downstream.
         data_tests:
           - unique
           - not_null

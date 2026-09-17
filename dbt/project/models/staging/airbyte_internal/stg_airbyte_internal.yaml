@@ -1,0 +1,17 @@
+models:
+  - name: stg_airbyte_internal__raw_gp_api_db_campaign
+    description: >
+      Parsed rows of the frozen Airbyte raw stream for campaigns: one row per
+      record Airbyte extracted before the destination's Direct-Load upgrade,
+      including states the product later overwrote in place. Not deduplicated;
+      versioning happens downstream.
+    columns:
+      - name: _airbyte_raw_id
+        description: Airbyte record id, unique per extracted record.
+        data_tests:
+          - unique
+          - not_null
+      - name: id
+        description: Campaign id from the product database. Repeats across extracted states.
+        data_tests:
+          - not_null
