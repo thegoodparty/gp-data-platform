@@ -571,7 +571,7 @@ def _classify_office_geography(
         denied as for any other slice office -- NEW for the flagged school
         class, which used to pass through unrestricted. The zero-subtype
         abstain runs first so the body test can only add abstains, never a
-        menu (DATA-2415 candidate 2, class A). Third difference: a flagged
+        menu (the matcher-quality lane's candidate 2, class A). Third difference: a flagged
         school office with a sub-area, in a state whose school rows are
         parents only (no school sub-type present), now takes that same
         zero-subtype abstain instead of the unrestricted menu it got
@@ -602,7 +602,7 @@ def _classify_office_geography(
         # format cannot place the office; the body test does instead. Under the
         # ratified electorate standard the whole-district row is never the truth
         # for a sub-district seat, so denying it is right whenever the body's own
-        # sub-rows exist (measured in .tickets/DATA-2415/candidate2/dev-measurement/ and spec section 4).
+        # sub-rows exist (measured in the matcher-quality lane's development evidence, linked from the PR).
         school_rows = _SCHOOL_FAMILY_PRESENCE_TYPES & set(state_district_types)
         # Kept even though the zero-subtype check just below also abstains: the audit mirror labels
         # the two populations differently (no school rows at all vs school parents only).
@@ -625,7 +625,7 @@ def _classify_office_geography(
         if not sub_types_present:
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Body level, after the family level: a body with no sub-rows of its own must not be offered
-        # coarser rows (measured in .tickets/DATA-2415/candidate2/dev-measurement/ and spec section 4).
+        # coarser rows (measured in the matcher-quality lane's development evidence, linked from the PR).
         if not _body_present(office_name, state_district_types, state_district_names, family):
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Two slice provenances, two honest sentences: with the flag set the

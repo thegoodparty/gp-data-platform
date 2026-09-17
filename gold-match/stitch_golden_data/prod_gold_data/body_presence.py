@@ -1,4 +1,4 @@
-"""Body-level sub-row presence for candidate 2 class A (DATA-2415).
+"""Body-level sub-row presence for the matcher-quality lane's candidate 2, class A.
 
 Answers one question from the office name and the state's universe lists: does this body have sub-level rows in L2?
 Type-agnostic on purpose: BallotReady files special districts under the county and place mtfccs while L2 types their
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-# The drafting tokenizer's stop list (.tickets/DATA-2415/instrument/tools/assemble_drafts.py STOP), copied so the
+# The drafting tokenizer's stop list (the lane's drafting tokenizer's stop list), copied so the
 # matcher does not import lane tooling.
 STOP_WORDS: frozenset[str] = frozenset(
     {
@@ -70,7 +70,7 @@ STOP_WORDS: frozenset[str] = frozenset(
     }
 )
 # Role, level, compass and school-suffix words that never name a body; measured list, see
-# .tickets/DATA-2415/candidate2/dev-measurement/dev_rule_eval_2026-09-17.py (GENERIC).
+# the lane's development evaluator (GENERIC).
 GENERIC_WORDS: frozenset[str] = STOP_WORDS | frozenset(
     {
         "PARISH",

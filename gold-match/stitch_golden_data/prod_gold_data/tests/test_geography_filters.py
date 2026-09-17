@@ -260,7 +260,7 @@ class TestR2DecisionTable:
 
 
 class TestFlaggedSchoolArm:
-    """The school arm rejoined the slice rule (DATA-2415 candidate 2, class
+    """The school arm rejoined the slice rule (the matcher-quality lane's candidate 2, class
     A): a flagged school office now needs a real school sub-type present in
     the state AND a matching body sub-row before its whole-district types
     are denied; either gate failing abstains it, replacing the old
