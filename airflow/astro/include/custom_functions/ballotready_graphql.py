@@ -1105,11 +1105,9 @@ def person_worklist_sql(
     candidacy's own cursor is still filling. If a candidacy run stops mid-way through a
     group of rows sharing one `source_changed_at`, and person's cursor then advances past
     that timestamp, persons first referenced by the rest of that tied group can never
-    satisfy `source_changed_at = T AND source_id > Z` and are skipped permanently. In
-    production this is rare and small (roughly 0.2% of truncation boundaries land inside a
-    tie, costing at most ~30 persons when it does); recover with a `full_reload: true` run
-    of person, which resets the cursor and re-sweeps — safe because the landing table is
-    append-only and downstream dedup resolves the resulting duplicates.
+    satisfy `source_changed_at = T AND source_id > Z` on the keyed page. The unseen branch
+    (see _keyed_worklist) picks them up on the next run instead, since they have no person
+    row yet, so a `full_reload: true` run of person is no longer needed for that case.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:

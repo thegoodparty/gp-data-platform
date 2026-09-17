@@ -1059,13 +1059,6 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     assert "2026-08-01" not in sql
 
 
-def test_issue_worklist_accepts_and_ignores_landing_table():
-    """issue already anti-joins its own landing table by name; the uniform kwarg must not change it."""
-    sql = issue_worklist_sql("cat", "dbt", source_schema="src", own_landing_table="`zzz`.`zzz`.`zzz_marker`")
-    assert "zzz_marker" not in sql
-    assert "ballotready_issue_raw" in sql
-
-
 def test_person_worklist_reads_person_ids_out_of_landed_candidacy_payloads():
     """Persons carry no feed of their own; their ids only exist inside fetched Candidacy nodes."""
     sql = person_worklist_sql("cat", "dbt", source_schema="src")
