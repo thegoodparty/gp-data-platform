@@ -61,12 +61,14 @@ def test_retries_meet_the_repo_floor():
 
 
 def test_single_attempt_tasks():
-    """match_pod: the daily retry is tomorrow's run — a same-key retry reopens
-    the resume/overlap states the design removed. rebuild: the schedule
-    geometry assumes ONE ~2h attempt; inherited retries would push cleanup past
-    the ~22:00 operational rule. cleanup_finalizer: the default retry policy
-    must not loop the ~100-minute repair cycle toward midnight."""
-    for task_id in ("match_pod", "rebuild", "cleanup_finalizer"):
+    """admission: its clock and in-flight checks are snapshots, so a retry
+    minutes later could admit a start the first attempt declined. match_pod:
+    the daily retry is tomorrow's run — a same-key retry reopens the
+    resume/overlap states the design removed. rebuild: the schedule geometry
+    assumes ONE ~2h attempt; inherited retries would push cleanup past the
+    ~22:00 operational rule. cleanup_finalizer: the default retry policy must
+    not loop the ~100-minute repair cycle toward midnight."""
+    for task_id in ("admission", "match_pod", "rebuild", "cleanup_finalizer"):
         assert _DAG.get_task(task_id).retries == 0, task_id
 
 
@@ -296,14 +298,18 @@ def test_gates_fail_only_when_destroying_this_run_is_the_remedy():
 def _signal(module, *, fresh, gates_xcom, declined=None):
     signal_fn = _DAG.get_task("operator_signal").python_callable
     ti = MagicMock()
-    ti.xcom_pull.side_effect = lambda task_ids, key=None: {"gates": gates_xcom, "admission": declined}[
-        task_ids
-    ]
+    # Dispatch on (task_ids, key): a typo in the DAG's key would read None and
+    # make a declined day look healthy, so the key is part of the contract.
+    ti.xcom_pull.side_effect = lambda task_ids, key=None: {
+        ("gates", None): gates_xcom,
+        ("admission", "declined_reason"): declined,
+    }.get((task_ids, key))
     with (
         patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()),
         patch.object(module, "new_quarantine_count", autospec=True, return_value=fresh),
     ):
         signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
+    return ti
 
 
 def test_signal_raises_for_first_quarantines_and_older_dead_labels_only():
@@ -330,6 +336,8 @@ def test_signal_reports_a_declined_day():
             gates_xcom=None,
             declined="another prod build is in flight: job 70471823431463 run 9 (RUNNING)",
         )
+    ti = _signal(module, fresh=0, gates_xcom=None)  # no decline pushed: nothing to signal
+    ti.xcom_pull.assert_any_call(task_ids="admission", key="declined_reason")
 
 
 def test_cleanup_cancels_deletes_always_rebuilds_and_reraises():
