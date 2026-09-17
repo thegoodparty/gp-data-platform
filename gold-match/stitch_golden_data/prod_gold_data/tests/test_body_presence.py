@@ -115,3 +115,18 @@ def test_sub_level_type_detection(t, expected):
 def test_type_words_come_from_the_loaded_vocabulary():
     """Catches: GENERIC drifting from L2's vocabulary; SANITARY must be generic once the type exists."""
     assert "SANITARY" in bp.type_words(CA_TYPES) and "MONTEBELLO" not in bp.type_words(CA_TYPES)
+
+
+def test_known_sub_type_counts_even_when_the_pattern_misses_it():
+    """Catches: a canonical family sub type (County_Legislative_District) escaping the sub-level scope."""
+    assert bp.is_sub_level_type("County_Legislative_District") is False
+    assert bp.is_sub_level_type("County_Legislative_District", frozenset({"County_Legislative_District"})) is True
+    assert (
+        bp.body_has_sub_rows(
+            "Clay County Council - District 3",
+            ["County", "County_Legislative_District"],
+            ["CLAY", "CLAY CNTY CNCL DIST III"],
+            frozenset({"County_Legislative_District"}),
+        )
+        is True
+    )

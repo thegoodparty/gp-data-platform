@@ -212,21 +212,26 @@ def anchor_tokens(office_name: str, generic: frozenset[str]) -> frozenset[str]:
     return frozenset(anchors) if anchors else frozenset(body - ROLE_WORDS)
 
 
-def is_sub_level_type(district_type: str) -> bool:
-    return bool(SUB_LEVEL_TYPE_PATTERN.search(district_type or ""))
+def is_sub_level_type(district_type: str, known_sub_types: frozenset[str] = frozenset()) -> bool:
+    return district_type in known_sub_types or bool(SUB_LEVEL_TYPE_PATTERN.search(district_type or ""))
 
 
 def _carries(row_tokens: set[str], anchor: str) -> bool:
     return anchor in row_tokens or (len(anchor) >= MIN_COMPOUND_LEN and any(anchor in r for r in row_tokens))
 
 
-def body_has_sub_rows(office_name: str, district_types: list[str], district_names: list[str]) -> bool:
+def body_has_sub_rows(
+    office_name: str,
+    district_types: list[str],
+    district_names: list[str],
+    known_sub_types: frozenset[str] = frozenset(),
+) -> bool:
     generic = GENERIC_WORDS | type_words(district_types)
     anchors = anchor_tokens(office_name, generic)
     if not anchors:
         return True  # nothing to test against: err toward present
     for t, n in zip(district_types, district_names, strict=True):
-        if not is_sub_level_type(t):
+        if not is_sub_level_type(t, known_sub_types):
             continue
         row = {PROPER_ABBREVIATIONS.get(x, x) for x in tokens(re.sub(r"\([^)]*\)", " ", n))}
         if all(_carries(row, a) for a in anchors):
