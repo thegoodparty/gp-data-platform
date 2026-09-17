@@ -791,6 +791,67 @@ def test_keyed_worklist_treats_a_partial_cursor_as_no_cursor(
     assert "TIMESTAMP '" not in sql
 
 
+CURSOR_TS = "2026-08-01 12:00:00.000000"
+X_LANDING = "`cat`.`src`.`ballotready_x_raw`"
+
+
+def test_keyed_worklist_requests_ids_never_landed_regardless_of_the_cursor(keyed_builder):
+    """A row first delivered with timestamps already behind the cursor is otherwise never requested
+    (DATA-2465: 2,588 candidacies from one late BallotReady snapshot). The anti-join against the
+    entity's own landing table is the shape issue_worklist_sql already uses.
+    """
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert f"NOT EXISTS (SELECT 1 FROM {X_LANDING} landed WHERE landed.requested_id = scan.source_id)" in sql
+    # Appended to the keyed page rather than filtered by it, and the union is what gets ordered.
+    assert "FROM unseen WHERE NOT (" in sql
+    assert sql.rstrip().endswith("ORDER BY source_changed_at ASC, source_id ASC")
+
+
+def test_keyed_worklist_unseen_branch_is_not_floored_at_the_cursor(keyed_builder):
+    """A cursor floor is exactly what would hide a straggler, so the unseen scan runs without any:
+    neither the source_changed_at floor _keyed_worklist pushes below its GROUP BY nor, for candidacy,
+    the r.updated_at floor pushed into the roster explode. A race row that reaches Airbyte after the
+    cursor has passed its updated_at is the same late arrival as a late feed row.
+    """
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    unseen = sql[sql.index("unseen AS (") :]
+    unseen = unseen[: unseen.index("GROUP BY source_id")]
+    assert ">= TIMESTAMP" not in unseen
+
+
+def test_keyed_worklist_omits_the_unseen_branch_without_a_landing_table(keyed_builder):
+    sql = keyed_builder("cat", "dbt", after_changed_at=CURSOR_TS, after_source_id=99)
+    assert "unseen AS (" not in sql
+    assert "NOT EXISTS" not in sql
+
+
+def test_keyed_worklist_omits_the_unseen_branch_on_a_full_sweep(keyed_builder):
+    """With no cursor the keyed page already lists every discoverable id; the anti-join is pure cost."""
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=None,
+        after_source_id=None,
+    )
+    assert "unseen AS (" not in sql
+
+
 def test_candidacy_worklist_unions_the_upcoming_ids_source():
     """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
     sql = candidacy_worklist_sql("cat", "dbt_staging", after_changed_at=None, after_source_id=None)
@@ -980,6 +1041,13 @@ def test_issue_worklist_accepts_the_full_uniform_kwarg_set():
     assert "2026-08-01" not in sql
 
 
+def test_issue_worklist_accepts_and_ignores_landing_table():
+    """issue already anti-joins its own landing table by name; the uniform kwarg must not change it."""
+    sql = issue_worklist_sql("cat", "dbt", source_schema="src", own_landing_table="`zzz`.`zzz`.`zzz_marker`")
+    assert "zzz_marker" not in sql
+    assert "ballotready_issue_raw" in sql
+
+
 def test_person_worklist_reads_person_ids_out_of_landed_candidacy_payloads():
     """Persons carry no feed of their own; their ids only exist inside fetched Candidacy nodes."""
     sql = person_worklist_sql("cat", "dbt", source_schema="src")
@@ -1038,6 +1106,27 @@ def test_person_worklist_pages_by_the_keyset_cursor():
     assert "source_changed_at > TIMESTAMP '2026-08-01 12:00:00.000000'" in sql
     assert "source_changed_at = TIMESTAMP '2026-08-01 12:00:00.000000' AND source_id > 42" in sql
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
+
+
+def test_person_worklist_requests_never_landed_persons_against_its_own_landing_table():
+    """Persons are discovered from landed candidacy payloads, so the scan reads the candidacy
+    landing table while the never-landed check must run against the person landing table. Without
+    it, a straggler candidacy lands with its old timestamp and its person is skipped a second time.
+    """
+    person_landing = "`cat`.`src`.`ballotready_person_raw`"
+    sql = person_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=person_landing,
+        after_changed_at=CURSOR_TS,
+        after_source_id=42,
+    )
+    assert (
+        f"NOT EXISTS (SELECT 1 FROM {person_landing} landed WHERE landed.requested_id = scan.source_id)"
+        in sql
+    )
+    assert "`cat`.`src`.`ballotready_candidacy_raw`" in sql
 
 
 EXPECTED_ENTITIES = {
@@ -1127,6 +1216,7 @@ def test_every_worklist_builder_accepts_the_uniform_signature(entity):
         "cat",
         "dbt",
         source_schema="src",
+        own_landing_table=landing_table("cat", "src", entity),
         after_changed_at=None,
         after_source_id=None,
     )
@@ -1461,6 +1551,45 @@ def test_read_worklist_drains_the_cursor_in_chunks_rather_than_all_at_once():
     assert len(changed_at) == 5000
     assert ids[0] == 1 and ids[-1] == 5000
     assert len(calls) > 1, "the cursor was drained in one call, not in chunks"
+
+
+@pytest.mark.parametrize("entity", ["candidacy", "party", "person"])
+def test_read_worklist_hands_each_builder_that_entitys_own_landing_table(entity):
+    """party, stance and endorsement share candidacy's builder but land in their own tables, so the
+    never-landed check has to be keyed on the calling entity, which only read_worklist knows.
+    """
+    seen = {}
+
+    def recording_builder(
+        catalog,
+        dbt_schema,
+        *,
+        source_schema=None,
+        after_changed_at=None,
+        after_source_id=None,
+        own_landing_table=None,
+    ):
+        seen["own_landing_table"] = own_landing_table
+        return "SELECT 1"
+
+    class EmptyCursor:
+        def execute(self, sql, parameters=None):
+            pass
+
+        def fetchmany(self, size):
+            return []
+
+        def close(self):
+            pass
+
+    class Conn:
+        def cursor(self, *a, **k):
+            return EmptyCursor()
+
+    spec = EntitySpec(entity, "Candidacy", CANDIDACY_SELECTION, 100, recording_builder)
+    read_worklist(Conn(), spec, _config(), (None, None))
+
+    assert seen["own_landing_table"] == f"`cat`.`src`.`ballotready_{entity}_raw`"
 
 
 def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
@@ -1820,6 +1949,52 @@ def test_committed_windows_form_a_cursor_prefix_so_a_retry_resumes_after_them(mo
     landed_ids = [row[0] for row in connection.rows]
     assert sorted(landed_ids) == [1, 2, 3, 4, 5]
     assert len(landed_ids) == len(set(landed_ids))  # no duplicates: the retry did not redo window 1
+
+
+def test_extract_entity_lands_a_straggler_below_the_cursor_without_moving_it(monkeypatch):
+    """A worklist row the unseen branch contributed carries its own old timestamp. It must land,
+    and it must not become the cursor, or a later keyed page would start behind rows already seen.
+    The timestamps are the real DATA-2465 ones: cursor 08-31, straggler 08-29, fresh row 09-14.
+    """
+    cursor_ts = datetime(2026, 8, 31, 6, 44, 6)
+    straggler_ts = datetime(2026, 8, 29, 3, 39, 25)
+    fresh_ts = datetime(2026, 9, 14, 7, 0, 46)
+    connection = _LandingConnection()
+    connection.rows.append((1122681, cursor_ts))  # what read_cursor reports before the run
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist([(1239731, straggler_ts), (1251683, fresh_ts)]),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+
+    summary = extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
+
+    landed = dict(connection.rows)
+    assert landed[1239731] == straggler_ts
+    assert landed[1251683] == fresh_ts
+    assert summary["stragglers"] == 1
+    assert summary["cursor_source_changed_at"] == format_cursor_ts(fresh_ts)
+    assert read_cursor(connection, "cat", "src", "candidacy") == (fresh_ts, 1251683)
+
+
+def test_extract_entity_reports_zero_stragglers_when_there_is_no_cursor(monkeypatch):
+    """On a full sweep nothing is behind a cursor, so the count must not mistake old rows for it."""
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist([(1, datetime(2026, 8, 1)), (2, datetime(2026, 8, 2))]),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", MagicMock())
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(full_reload=True))
+
+    assert summary["stragglers"] == 0
 
 
 def test_make_session_pool_covers_every_worker():
