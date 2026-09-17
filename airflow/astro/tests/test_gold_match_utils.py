@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, call, patch
 
 import include.custom_functions.gold_match_utils as gm
+import pytest
+from airflow.exceptions import AirflowException
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudJobRunStatus
 
 _RUN_KEY = datetime(2026, 9, 2, 14, 30, 3, tzinfo=UTC)
@@ -137,12 +139,15 @@ def test_delete_targets_only_the_runs_rows_and_reports_the_count():
 
 def test_new_quarantine_reads_first_entries_only():
     """Inserts stamp first_failed_at = the run key exactly; backoff re-fails
-    only re-stamp last_failed_at and must stay silent."""
+    only re-stamp last_failed_at and must stay silent; and a hand-written
+    adjudication hold stamped with the run key is the operator's own doing,
+    not a pod failure the alarm should fire for."""
     cursor = _FakeCursor(rows=[(3,)])
     assert gm.new_quarantine_count(_FakeConn(cursor), _RUN_KEY) == 3
     sql, params = cursor.calls[0]
     assert "first_failed_at = :run_key" in sql
-    assert params == {"run_key": _RUN_KEY}
+    assert "reason_code <> :adjudicated" in sql
+    assert params == {"run_key": _RUN_KEY, "adjudicated": "adjudicated_wrong"}
 
 
 def test_cancel_requires_terminal_confirmation_after_cancelling():
@@ -167,17 +172,187 @@ def test_cancel_tolerates_an_already_terminal_run():
     assert hook.wait_for_job_run_status.called
 
 
-def test_trigger_rebuild_waits_for_success_with_the_given_cause():
-    """The repair rebuild is unconditional and must carry the operator-readable
-    cause; waiting on SUCCESS makes a failed repair raise (the hook raises on
-    wrong-terminal and on timeout) instead of silently passing."""
+def _clean_results(**overrides):
+    """run_results.json with every listed model built and every listed test
+    passed (the generic test carrying its real hash suffix), plus an
+    unrelated failing test elsewhere in the project."""
+    results = [{"unique_id": uid, "status": "success"} for uid in gm.MATCHER_DEPENDENT_MODELS]
+    for uid in gm.MATCHER_RELEVANT_TESTS:
+        # generic tests carry dbt's hash suffix after the argument-derived name
+        generic = "tuple_exists" in uid or "not_null_" in uid or "unique_" in uid
+        results.append(
+            {
+                "unique_id": uid + (".0c4b2ae075" if generic else ""),
+                "status": "warn" if "tuple_exists" in uid else "pass",
+            }
+        )
+    results.append(
+        {
+            "unique_id": "test.goodparty_data_catalog.not_null_stg_airbyte_source__gp_api_db_outreach_campaignId.1",
+            "status": "fail",
+        }
+    )
+    for uid, status in overrides.items():
+        for r in results:
+            if r["unique_id"].startswith(uid):
+                r["status"] = status
+    return {"results": results}
+
+
+def test_trigger_rebuild_turns_docs_off_and_carries_the_cause():
+    """The docs step re-entering the loop's runs is how three builds died at
+    the plan's memory cap after completing; both trigger paths go through
+    here, so one assertion covers the rebuild and the repair."""
     hook = MagicMock()
     hook.trigger_job_run.return_value.json.return_value = {"data": {"id": 777}}
-    run_id = gm.trigger_rebuild_and_wait(hook, cause="gold-match daily: cleanup rebuild after failed run (t)")
-    assert run_id == 777
-    trigger_kwargs = hook.trigger_job_run.call_args.kwargs
-    assert trigger_kwargs["job_id"] == gm.GOLD_MATCH_REBUILD_JOB_ID
-    assert trigger_kwargs["cause"].startswith("gold-match daily: cleanup rebuild")
+    assert gm.trigger_rebuild(hook, cause="gold-match daily: post-write rebuild (run t)") == 777
+    kwargs = hook.trigger_job_run.call_args.kwargs
+    assert kwargs["job_id"] == gm.GOLD_MATCH_REBUILD_JOB_ID
+    assert kwargs["cause"].startswith("gold-match daily: post-write rebuild")
+    assert kwargs["additional_run_config"] == {"generate_docs_override": False}
+
+
+def test_result_problems_pass_an_unrelated_red_and_fail_a_skipped_model_or_failed_test():
+    """A full-project build is red whenever ANY test fails; the loop must
+    publish when its own lineage is clean and must NOT when a matcher model
+    was skipped or a matcher-relevant test failed, whatever the run status."""
+    assert gm.rebuild_result_problems(_clean_results()) == []
+    skipped = gm.rebuild_result_problems(
+        _clean_results(**{"model.goodparty_data_catalog.m_election_api__position": "skipped"})
+    )
+    assert skipped and "m_election_api__position" in skipped[0]
+    failed = gm.rebuild_result_problems(
+        _clean_results(
+            **{"test.goodparty_data_catalog.assert_position_district_voter_coverage_floor": "fail"}
+        )
+    )
+    assert failed and "assert_position_district_voter_coverage_floor" in failed[0]
+
+
+def test_result_problems_treat_an_absent_listed_node_as_not_built():
+    """A narrowed selection (or a renamed model) that drops a listed node
+    must fail loudly rather than pass by omission."""
+    results = _clean_results()
+    results["results"] = [r for r in results["results"] if "pending_offices" not in r["unique_id"]]
+    problems = gm.rebuild_result_problems(results)
+    assert any("int__l2_br_match_pending_offices" in p and "not in the build" in p for p in problems)
+
+
+def test_build_step_results_come_from_the_dbt_build_step_not_the_last_step():
+    """dbt Cloud serves artifacts for the LAST step by default; the docs step
+    (or a freshness step) after the build has no build results, so the step
+    index must come from the run's own step list."""
+    hook = MagicMock()
+    hook.get_job_run.return_value.json.return_value = {
+        "data": {
+            "run_steps": [
+                {"index": 5, "name": "Invoke dbt with `dbt seed`"},
+                {"index": 6, "name": "Invoke dbt with `dbt build`"},
+                {"index": 7, "name": "Generation of docs"},
+            ]
+        }
+    }
+    hook.get_job_run_artifact.return_value.json.return_value = _clean_results()
+    gm.build_step_run_results(hook, 555)
+    assert hook.get_job_run_artifact.call_args.kwargs["step"] == 6
+    assert hook.get_job_run_artifact.call_args.kwargs["path"] == "run_results.json"
+
+
+def test_build_step_results_probe_steps_when_the_step_list_is_unavailable():
+    """If the API does not return run_steps, the last step's artifact may be
+    a docs or freshness step with no build results; the lookup must probe
+    step indices until it finds the matcher lineage rather than fail or,
+    worse, pass on an empty artifact."""
+    hook = MagicMock()
+    hook.get_job_run.side_effect = RuntimeError("no run_steps")
+    by_step = {None: {"results": []}, 1: RuntimeError("404"), 2: _clean_results()}
+
+    def artifact(run_id, path, step):
+        value = by_step.get(step, RuntimeError("404"))
+        if isinstance(value, Exception):
+            raise value
+        return MagicMock(json=lambda: value)
+
+    hook.get_job_run_artifact.side_effect = artifact
+    assert gm.build_step_run_results(hook, 555) == _clean_results()
+    assert [c.kwargs["step"] for c in hook.get_job_run_artifact.call_args_list] == [None, 1, 2]
+
+
+def test_build_step_results_fail_loud_when_no_lineage_results_are_readable():
+    """An unreadable rebuild must be treated like a failed one, never like a
+    passed one: no step's artifact carrying a matcher model is not evidence
+    of a build."""
+    hook = MagicMock()
+    hook.get_job_run.side_effect = RuntimeError("no run_steps")
+    hook.get_job_run_artifact.return_value.json.return_value = {
+        "results": [{"unique_id": "model.x.y", "status": "success"}]
+    }
+    with pytest.raises(AirflowException, match="no build results"):
+        gm.build_step_run_results(hook, 555)
+
+
+def test_wait_for_rebuild_judges_by_results_not_status():
+    """The wait accepts ANY terminal status (the hook raises only on timeout);
+    an ERROR run that is clean on the lineage passes and a SUCCESS run that
+    skipped a matcher model fails."""
+    hook = MagicMock()
+    hook.get_job_run_status.return_value = DbtCloudJobRunStatus.ERROR.value
+    with patch.object(gm, "build_step_run_results", autospec=True, return_value=_clean_results()):
+        gm.wait_for_rebuild(hook, 555, timeout_s=60)
     wait_kwargs = hook.wait_for_job_run_status.call_args.kwargs
-    assert wait_kwargs["run_id"] == 777
-    assert wait_kwargs["expected_statuses"] == DbtCloudJobRunStatus.SUCCESS.value
+    assert wait_kwargs["expected_statuses"] == DbtCloudJobRunStatus.TERMINAL_STATUSES.value
+    assert wait_kwargs["timeout"] == 60
+    hook.get_job_run_status.return_value = DbtCloudJobRunStatus.SUCCESS.value
+    bad = _clean_results(**{"model.goodparty_data_catalog.int__icp_offices": "skipped"})
+    with (
+        patch.object(gm, "build_step_run_results", autospec=True, return_value=bad),
+        pytest.raises(AirflowException, match="not good for publication.*int__icp_offices"),
+    ):
+        gm.wait_for_rebuild(hook, 555, timeout_s=60)
+
+
+def test_trigger_rebuild_and_wait_is_the_repair_path_with_the_same_criterion():
+    """The repair rebuild is unconditional, carries the operator-readable
+    cause, and is judged like the post-write rebuild, so an unrelated red
+    never reads as a failed repair."""
+    hook = MagicMock()
+    hook.trigger_job_run.return_value.json.return_value = {"data": {"id": 777}}
+    hook.get_job_run_status.return_value = DbtCloudJobRunStatus.ERROR.value
+    with patch.object(gm, "build_step_run_results", autospec=True, return_value=_clean_results()):
+        run_id = gm.trigger_rebuild_and_wait(
+            hook, cause="gold-match daily: cleanup rebuild after failed run (t)"
+        )
+    assert run_id == 777
+    assert hook.trigger_job_run.call_args.kwargs["cause"].startswith("gold-match daily: cleanup rebuild")
+    assert hook.wait_for_job_run_status.call_args.kwargs["run_id"] == 777
+
+
+def test_inflight_prod_builds_reports_live_runs_of_both_prod_jobs_only():
+    """Admission must see a queued or running run of either prod-writing job
+    and ignore finished ones; a live run is always among the newest, so one
+    page ordered by -id suffices."""
+    hook = MagicMock()
+    pages = {
+        gm.GOLD_MATCH_REBUILD_JOB_ID: [{"id": 1, "status": 10}, {"id": 2, "status": 3}],
+        gm.ON_MERGE_BUILD_JOB_ID: [{"id": 3, "status": 20}, {"id": 4, "status": 1}],
+    }
+    hook.get_job_runs.side_effect = lambda payload: MagicMock(
+        json=lambda: {"data": pages[payload["job_definition_id"]]}
+    )
+    live = gm.inflight_prod_builds(hook)
+    assert live == [
+        f"job {gm.GOLD_MATCH_REBUILD_JOB_ID} run 2 (RUNNING)",
+        f"job {gm.ON_MERGE_BUILD_JOB_ID} run 4 (QUEUED)",
+    ]
+    assert {c.kwargs["payload"]["order_by"] for c in hook.get_job_runs.call_args_list} == {"-id"}
+
+
+def test_next_sync_deadline_is_todays_sync_until_it_passes():
+    """A run before 22:00Z is measured against today's sync; one after it
+    against tomorrow's, or a late run would be declined forever."""
+    assert gm.next_sync_deadline(datetime(2026, 9, 17, 14, 30, tzinfo=UTC)) == datetime(
+        2026, 9, 17, 22, 0, tzinfo=UTC
+    )
+    assert gm.next_sync_deadline(datetime(2026, 9, 17, 23, 0, tzinfo=UTC)) == datetime(
+        2026, 9, 18, 22, 0, tzinfo=UTC
+    )

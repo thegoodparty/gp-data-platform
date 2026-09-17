@@ -92,8 +92,19 @@ def test_signal_runs_regardless_and_cannot_trigger_cleanup():
 
 
 def test_pipeline_order():
+    assert {t.task_id for t in _DAG.get_task("match_pod").upstream_list} == {"admission"}
     assert {t.task_id for t in _DAG.get_task("rebuild").upstream_list} == {"match_pod"}
     assert {t.task_id for t in _DAG.get_task("gates").upstream_list} == {"rebuild"}
+
+
+def test_admission_skips_only_the_pipeline_and_can_never_trigger_cleanup():
+    """A declined day must write nothing AND delete nothing: admission skips
+    its direct downstream and lets trigger rules propagate (so operator_signal
+    still runs and reports it), and it is not in cleanup's one_failed set,
+    because a skip is not a failure."""
+    admission = _DAG.get_task("admission")
+    assert admission.ignore_downstream_trigger_rules is False
+    assert "admission" not in {t.task_id for t in _DAG.get_task("cleanup_finalizer").upstream_list}
 
 
 def test_pod_runs_the_daily_module_with_the_dagrun_key():
@@ -125,14 +136,85 @@ def test_pod_declares_no_credentials_before_it_runs():
     assert _DAG.get_task("match_pod").env_vars == []
 
 
-def test_rebuild_targets_the_scheduled_build_with_an_honest_cause():
+def test_rebuild_triggers_with_an_honest_cause_and_pushes_the_run_id_before_waiting():
     """A hardcoded 'rollback' cause once got a healthy rebuild cancelled by a
-    teammate acting reasonably on what it said; the cause is an interface."""
-    rebuild = _DAG.get_task("rebuild")
-    assert rebuild.job_id == 70471823431462
-    assert rebuild.trigger_reason.startswith("gold-match daily: post-write rebuild")
-    assert "{{ dag_run.start_date }}" in rebuild.trigger_reason
-    assert rebuild.wait_for_termination is True
+    teammate acting reasonably on what it said; and the run id must reach
+    XCom BEFORE the wait, or a timeout leaves cleanup nothing to cancel."""
+    module = _dag_module()
+    rebuild_fn = _DAG.get_task("rebuild").python_callable
+    order = []
+    ti = MagicMock()
+    ti.xcom_push.side_effect = lambda **k: order.append(("push", k["key"], k["value"]))
+    with (
+        patch.object(module, "DbtCloudHook", autospec=True),
+        patch.object(module, "trigger_rebuild", autospec=True, return_value=555) as mock_trigger,
+        patch.object(
+            module, "wait_for_rebuild", autospec=True, side_effect=lambda *a, **k: order.append("wait")
+        ) as mock_wait,
+    ):
+        assert rebuild_fn(dag_run=_FAKE_DAG_RUN, ti=ti) == 555
+    cause = mock_trigger.call_args.kwargs["cause"]
+    assert cause.startswith(module.POST_WRITE_CAUSE_PREFIX)
+    assert "2026-09-02T14:30:03+00:00" in cause
+    assert order == [("push", "job_run_id", 555), "wait"]
+    assert mock_wait.call_args.args[1:] == (555, module.REBUILD_TIMEOUT_S)
+
+
+def _admit(module, *, start, live):
+    admission_fn = _DAG.get_task("admission").python_callable
+    ti = MagicMock()
+    with (
+        patch.object(module, "DbtCloudHook", autospec=True),
+        patch.object(module, "inflight_prod_builds", autospec=True, side_effect=live),
+    ):
+        admitted = admission_fn(dag_run=SimpleNamespace(start_date=start), ti=ti)
+    pushed = ti.xcom_push.call_args.kwargs["value"] if ti.xcom_push.called else None
+    return admitted, pushed
+
+
+def test_admission_admits_the_scheduled_slot_with_no_live_prod_build():
+    module = _dag_module()
+    admitted, pushed = _admit(
+        module, start=datetime(2026, 9, 17, 14, 30, 0, 479435, tzinfo=UTC), live=lambda hook: []
+    )
+    assert admitted is True and pushed is None
+
+
+def test_admission_declines_while_another_prod_build_is_in_flight():
+    """Two prod builds on the same tables lost a mart write on 2026-09-17;
+    the loop must wait for tomorrow rather than write into a live build."""
+    module = _dag_module()
+    admitted, pushed = _admit(
+        module,
+        start=datetime(2026, 9, 17, 14, 30, tzinfo=UTC),
+        live=lambda hook: ["job 70471823431463 run 9 (RUNNING)"],
+    )
+    assert admitted is False
+    assert "in flight" in pushed and "70471823431463" in pushed
+
+
+def test_admission_declines_a_start_that_cannot_fit_pod_and_rebuild_before_the_sync():
+    """A 16:21Z start on 2026-09-15 ran its rebuild into the 3h ceiling and
+    the finalizer; the ceilings ARE the budget, so that start is declined."""
+    module = _dag_module()
+    admitted, pushed = _admit(
+        module, start=datetime(2026, 9, 15, 16, 21, 2, tzinfo=UTC), live=lambda hook: []
+    )
+    assert admitted is False
+    assert "passes the 2026-09-15T22:00:00+00:00 sync" in pushed
+
+
+def test_admission_declines_when_dbt_cloud_cannot_be_asked():
+    """If the in-flight check cannot reach dbt Cloud, the rebuild could not
+    run either: decline (nothing written), never write and hope."""
+    module = _dag_module()
+
+    def boom(hook):
+        raise ConnectionError("api down")
+
+    admitted, pushed = _admit(module, start=datetime(2026, 9, 17, 14, 30, tzinfo=UTC), live=boom)
+    assert admitted is False
+    assert "unreachable" in pushed
 
 
 def test_cause_strings_are_the_agreed_literals():
@@ -211,27 +293,43 @@ def test_gates_fail_only_when_destroying_this_run_is_the_remedy():
     assert _gates_with_metrics(module, {"run_scoped_dead": 0, "global_dead": 3}) == 3
 
 
+def _signal(module, *, fresh, gates_xcom, declined=None):
+    signal_fn = _DAG.get_task("operator_signal").python_callable
+    ti = MagicMock()
+    ti.xcom_pull.side_effect = lambda task_ids, key=None: {"gates": gates_xcom, "admission": declined}[
+        task_ids
+    ]
+    with (
+        patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()),
+        patch.object(module, "new_quarantine_count", autospec=True, return_value=fresh),
+    ):
+        signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
+
+
 def test_signal_raises_for_first_quarantines_and_older_dead_labels_only():
     """Each failure story a human must see, without deleting anything: a first
     quarantine entry, or a global label warn with the run-scoped count zero."""
     module = _dag_module()
-    signal_fn = _DAG.get_task("operator_signal").python_callable
-
-    def run(fresh, gates_xcom):
-        ti = MagicMock()
-        ti.xcom_pull.return_value = gates_xcom
-        with (
-            patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()),
-            patch.object(module, "new_quarantine_count", autospec=True, return_value=fresh),
-        ):
-            signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
-
     with pytest.raises(AirflowException, match="quarantine"):
-        run(fresh=1, gates_xcom=0)
+        _signal(module, fresh=1, gates_xcom=0)
     with pytest.raises(AirflowException, match="OLDER"):
-        run(fresh=0, gates_xcom=4)
-    run(fresh=0, gates_xcom=0)  # nothing to signal
-    run(fresh=0, gates_xcom=None)  # gates never ran (upstream failed); quarantine-only read
+        _signal(module, fresh=0, gates_xcom=4)
+    _signal(module, fresh=0, gates_xcom=0)  # nothing to signal
+    _signal(module, fresh=0, gates_xcom=None)  # gates never ran (upstream failed); quarantine-only read
+
+
+def test_signal_reports_a_declined_day():
+    """A declined day skips the pipeline, so nothing else fails; the alert
+    must still fire, carrying admission's reason, or a silent decline reads
+    as a healthy day."""
+    module = _dag_module()
+    with pytest.raises(AirflowException, match="declined at admission.*in flight"):
+        _signal(
+            module,
+            fresh=0,
+            gates_xcom=None,
+            declined="another prod build is in flight: job 70471823431463 run 9 (RUNNING)",
+        )
 
 
 def test_cleanup_cancels_deletes_always_rebuilds_and_reraises():

@@ -6,11 +6,16 @@ itself on any failure.
 
 ## What it does
 
-Daily at 14:30 UTC: `match_pod` runs the gold-match image as a Kubernetes pod, executing the
-unattended entry point (`stitch_golden_data.prod_gold_data.daily_run`) with this DagRun's own
-start timestamp as the run key; `rebuild` triggers the scheduled dbt Cloud build (job
-70471823431462) so the new rows flow into the serving tables; `gates` re-checks the published
-labels. Any failure among those three routes to `cleanup_finalizer`, which cancels a still-live
+Daily at 14:30 UTC: `admission` declines the day before anything is written when another run of a
+prod-writing dbt job (the scheduled build 70471823431462 or the on-merge build 70471823431463) is in
+flight, or when the start time plus the pod's and the rebuild's ceilings passes the 22:00 UTC sync;
+`match_pod` runs the gold-match image as a Kubernetes pod, executing the unattended entry point
+(`stitch_golden_data.prod_gold_data.daily_run`) with this DagRun's own start timestamp as the run
+key; `rebuild` triggers the scheduled dbt Cloud build (job 70471823431462, docs generation
+overridden off) and judges it by its RESULTS: the rebuild is good when every matcher-dependent
+model built and every matcher-relevant test passed (both lists, with a reason per entry, in
+`gold_match_utils.py`), whatever else in the project is red that day; `gates` re-checks the
+published labels. Any failure among those three routes to `cleanup_finalizer`, which cancels a still-live
 rebuild (and confirms it terminal), deletes the run's rows by key, ALWAYS triggers a repair
 rebuild, and re-raises — so serving is back to yesterday's state and the DAG run ends FAILED.
 `operator_signal` is a separate notification-only leaf: it fails the DAG (nothing deleted) when a
@@ -33,16 +38,21 @@ read which task failed:
 | Failing task | What happened | What to do |
 |---|---|---|
 | `match_pod` | Pod crash, timeout, the cohort ceiling (a pending list over 20k is a de facto full re-match), or the quarantine circuit breaker (>10 response-shape failures in one run). | Self-healing for crashes/timeouts: cleanup ran, tomorrow retries. Ceiling or circuit breaker means something systemic — read the pod log's last lines before tomorrow's run. |
-| `rebuild` | The dbt build failed — including the voter-coverage floor, which runs in this job at error severity. | Cleanup cancelled/deleted/repaired. Find the run in dbt Cloud by its cause string ("gold-match daily: post-write rebuild"). A failure that repeats daily is deterministic: fix at source. |
+| `rebuild` | A matcher-dependent model did not build (error or skipped) or a matcher-relevant test failed — including the voter-coverage floor, which runs in this job at error severity — or the build's results could not be read, or the wait timed out. A red test OUTSIDE the matcher lineage does NOT fail this task: the run shows Error in dbt Cloud while the loop publishes ("unrelated test red, publication kept"). | Cleanup cancelled/deleted/repaired. Find the run in dbt Cloud by its cause string ("gold-match daily: post-write rebuild"); the task's error message names the offending nodes. A failure that repeats daily is deterministic: fix at source. |
 | `gates` | THIS run matched district labels that are dead in the current universe. | Cleanup deleted the run. Investigate the universe churn (the run-scoped label check in the error message names the count). |
-| `operator_signal` | Nothing was deleted. Either offices FIRST entered quarantine this run, or dead labels from OLDER runs exist in the serving state (deleting today's run cannot clear those). | Check the quarantine table for the new rows; for older dead labels, repair at source. The rest of the run may have succeeded. |
+| `operator_signal` | Nothing was deleted. Either the day was DECLINED at admission ("publication declined at admission: ..." names the live build or the clock), or offices FIRST entered quarantine this run, or dead labels from OLDER runs exist in the serving state (deleting today's run cannot clear those). | A declined day needs nothing: tomorrow's run retries, or trigger a manual run once the other build has finished and the clock fits. Otherwise check the quarantine table for the new rows; for older dead labels, repair at source. The rest of the run may have succeeded. |
 | `cleanup_finalizer` | Read its ERROR MESSAGE — this task fails by design even when cleanup worked. "cleanup completed after an upstream failure" means the delete and repair rebuild SUCCEEDED: nothing more to do here, read the failed upstream task's row instead. Any other message (cancel unconfirmed, delete raised, repair rebuild failed) is the one genuinely urgent story. | For the urgent messages only: if a run failed after writing and its cleanup cannot be confirmed, flip `election_api_swap_enabled` to false before the 22:00 UTC sync until repair lands (the existing product-side hard stop; no new wiring). |
 
 ## The day's geometry
 
 The 08:00 L2 load and the 12:02 scheduled build (ends ~13:47) move the universe; this DAG runs
 14:30; a steady-state write lands ~14:35 (a wave day's ~8k offices add roughly an hour); the
-post-write rebuild ends ~16:25-17:30; gates follow. The election-api sync runs at 22:00 UTC (it
+post-write rebuild ends ~16:25-17:30; gates follow. On a day the L2 load delivers new files the
+full build rebuilds the voter-file models from scratch and the rebuild runs about 95 minutes
+longer (2026-09-15: 181 minutes, into the 3h ceiling), so a LATE start on such a day is the case
+admission declines rather than lets run into the finalizer; the admitted budget is the pod's and the
+rebuild's ceilings, not an estimate. A merge to main during the rebuild window starts the on-merge
+build (job 70471823431463) on the same tables; admission declines a start while it is in flight. The election-api sync runs at 22:00 UTC (it
 deliberately precedes the dev deployment's 01:00 hibernation). A typical failure day's delete +
 repair rebuild ends ~18:20-19:30, comfortably before the sync; the one theoretical path that can
 brush 22:00 is a repair rebuild running out the finalizer's full 4h ceiling after a late gate
@@ -104,6 +114,12 @@ fires only when someone explicitly overrides to `latest` for supervised debuggin
 - `model_predictions.llm_l2_br_match_quarantine` — per-office response-shape failures. `auto`
   rows retry after 30 days; `held` rows release only by a client fix or a manual UPDATE (UC ACLs
   govern who). Cleanup never deletes quarantine rows; they are the record `operator_signal` reads.
+  A second kind of `held` row is written by hand: `reason_code = 'adjudicated_wrong'` marks an office
+  whose match the run audit adjudicated wrong on the pinned build, stamped with the audited run's key
+  so the office leaves tomorrow's cohort and cannot re-fail deterministically; `operator_signal`
+  ignores these rows. Release path when the quality lane re-pins: `update ... set released_at =
+  current_timestamp(), release_note = '<build sha>' where reason_code = 'adjudicated_wrong' and
+  released_at is null`; the offices re-enter as never-attempted on the next run.
 
 ## Dev rehearsals
 

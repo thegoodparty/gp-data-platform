@@ -8,9 +8,10 @@ drives the same dbt Cloud rebuild job the supervised runs use.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
+from airflow.exceptions import AirflowException
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudHook, DbtCloudJobRunStatus
 from airflow.sdk import Variable
 from include.custom_functions.databricks_utils import conn_kwargs, execute_with_retry
@@ -20,12 +21,118 @@ logger = logging.getLogger("airflow.task")
 # The scheduled build: universe + every consumer. Mirrors backlog_run.py's
 # DBT_CLOUD_REBUILD_JOB_ID in gold-match, which the supervised runs trigger.
 GOLD_MATCH_REBUILD_JOB_ID = 70471823431462
+# "dbt build on merge" (state:modified+ --full-refresh on every merge to main).
+# A merge touching an upstream of the matcher marts during the loop's rebuild
+# window puts two prod builds on the same tables (2026-09-17: two hours of
+# overlap, one mart write lost to the collision), so admission checks it too.
+ON_MERGE_BUILD_JOB_ID = 70471823431463
+PROD_BUILD_JOB_IDS = (GOLD_MATCH_REBUILD_JOB_ID, ON_MERGE_BUILD_JOB_ID)
+# The election-api sync reads the marts at this hour; the runbook's geometry
+# section is the source of truth and this constant must move with it.
+ELECTION_API_SYNC_HOUR_UTC = 22
+# The plan's per-run memory cap killed three builds in their docs step AFTER
+# the build had completed (2026-09-15/17), and the loop read the whole-run
+# CANCELLED as a failure. The loop's runs never need a catalog; the setting
+# is also off on the job, and this override keeps it off if that is toggled.
+NO_DOCS_RUN_CONFIG = {"generate_docs_override": False}
+
+# Success is judged from the run's results, not its status: a full-project
+# build is red whenever ANY test in the project fails, and three of the loop's
+# first four days were rolled back by failures outside the matcher's lineage
+# (an unrelated staging test, a docs step). The rebuild is good when every
+# model below built and every test below passed; anything else in the run is
+# someone else's red. unique_id prefixes, matched exactly or before a dot so
+# generic tests' hash suffixes do not need to be known here.
+MATCHER_DEPENDENT_MODELS: dict[str, str] = {
+    # The rule for membership: the model's OUTPUT carries the matcher's answer
+    # (a district link, is_matched, or a voter count derived from one) and a
+    # consumer reads it. Marts that merely join a listed mart for ids or names
+    # (m_election_api__candidacy, office_holder) are not listed: their red is
+    # not the matcher's, and the loop is what keeps THEIR red from blocking it.
+    "model.goodparty_data_catalog.stg_model_predictions__llm_l2_br_match": "serves the newest answer per office",
+    "model.goodparty_data_catalog.int__l2_district_universe": "the label gates read it; a dead label is one absent here",
+    "model.goodparty_data_catalog.int__l2_br_match_pending_offices": "tomorrow's cohort; reads the results table directly",
+    "model.goodparty_data_catalog.int__icp_offices": "is_matched and the district population feed lead sourcing",
+    "model.goodparty_data_catalog.leads_win_candidacy": "carries the ICP office flags to lead sourcing",
+    "model.goodparty_data_catalog.users_win_candidacy": "carries the ICP office flags to user analytics",
+    "model.goodparty_data_catalog.int__zip_code_to_br_office": "the zip funnel",
+    "model.goodparty_data_catalog.m_election_api__district": "the position mart's district ids and voter counts",
+    "model.goodparty_data_catalog.m_election_api__position": "the product's position-to-district link",
+    "model.goodparty_data_catalog.m_election_api__race": "carries the position link into races",
+    "model.goodparty_data_catalog.m_election_api__zip_to_position": "the product's zip lookup",
+    "model.goodparty_data_catalog.m_election_api__district_top_issues": "picks districts from the match",
+    "model.goodparty_data_catalog.m_election_api__elected_official_support": "reads the position's icp_voter_count",
+    "model.goodparty_data_catalog.int__serve_district_resolution": "Serve's district resolution reads is_matched",
+    "model.goodparty_data_catalog.int__serve_block_coverage": "Serve coverage downstream of the resolution",
+    "model.goodparty_data_catalog.people_served": "the Serve mart downstream of the resolution",
+}
+# Every error-severity singular test that reads a listed model, plus the
+# staging model's own generic tests: a listed mart with its own hard test
+# red is not a publication, whatever the rest of the project did. Generic
+# tests carry dbt's argument-derived name and then a hash; the full name is
+# pinned so an argument change fails loudly as "not in the build".
+MATCHER_RELEVANT_TESTS: dict[str, str] = {
+    "test.goodparty_data_catalog.not_null_stg_model_predictions__llm_l2_br_match_br_database_id": "staging identity",
+    "test.goodparty_data_catalog.unique_stg_model_predictions__llm_l2_br_match_br_database_id": (
+        "one served answer per office; a duplicate means the newest-row qualify broke"
+    ),
+    "test.goodparty_data_catalog.l2_district_tuple_exists_stg_model_predictions__llm_l2_br_match_attempted_at_"
+    "timestamp_2026_01_26___l2_state__ref_int__l2_district_universe___district_name__district_type__state_postal_code": (
+        "the staging label check (warn severity; the gates fail the run-scoped case)"
+    ),
+    "test.goodparty_data_catalog.assert_l2_br_match_staging_serves_newest_attempt": "staging must serve the run's rows",
+    "test.goodparty_data_catalog.assert_l2_br_match_pending_offices_excludes_current_matches": (
+        "a matched office must leave tomorrow's cohort"
+    ),
+    "test.goodparty_data_catalog.assert_llm_normalized_respellings_have_zip_coverage": "hard test on staging + the zip funnel",
+    "test.goodparty_data_catalog.assert_override_positions_have_zip_coverage": "hard test on staging + the zip funnel",
+    "test.goodparty_data_catalog.assert_icp_offices_district_population_null_share_by_type": "hard test on ICP offices",
+    "test.goodparty_data_catalog.assert_icp_offices_voter_count_binds_l2": "hard test on ICP offices",
+    "test.goodparty_data_catalog.assert_icp_offices_voter_count_null_share": "hard test on ICP offices",
+    "test.goodparty_data_catalog.assert_icp_offices_voter_count_null_share_by_type": "hard test on ICP offices",
+    "test.goodparty_data_catalog.assert_zip_to_br_office_one_district_type_per_br": "the zip funnel's shape",
+    "test.goodparty_data_catalog.assert_zip_to_br_office_voters_in_zip_invariant": "the zip funnel's counts",
+    "test.goodparty_data_catalog.assert_statewide_coverage_is_genuinely_statewide": "hard test on the zip funnel",
+    "test.goodparty_data_catalog.assert_legislative_positions_have_zip_coverage": "hard test on the zip funnel + positions",
+    "test.goodparty_data_catalog.assert_position_district_voter_coverage_floor": (
+        "the voter-coverage floor; the DAG's gates deliberately delegate it to the build"
+    ),
+    "test.goodparty_data_catalog.assert_position_districts_are_not_voterless_duplicates": (
+        "a rename must not bind positions to an empty duplicate district"
+    ),
+    "test.goodparty_data_catalog.assert_legislative_positions_resolve_to_a_populated_district": (
+        "the product-facing link must carry voters"
+    ),
+    "test.goodparty_data_catalog.assert_override_seed_resolves_to_position_district": "hard test on positions",
+    "test.goodparty_data_catalog.assert_race_election_code_matches_day_rule": "hard test on positions + races",
+    "test.goodparty_data_catalog.assert_race_projection_two_way_inference_parity": "hard test on positions + races",
+    "test.goodparty_data_catalog.mart_election_api_race_win_number_estimate_coverage_warn": (
+        "hard test (error severity despite the name) on positions + races"
+    ),
+    "test.goodparty_data_catalog.assert_race_filing_date_overrides_applied": "hard test on races",
+    "test.goodparty_data_catalog.assert_race_seats_match_ballotready_stage": "hard test on races",
+    "test.goodparty_data_catalog.assert_race_slug_prefix_matches_place_slug": "hard test on races",
+    "test.goodparty_data_catalog.assert_district_top_issues_seed_coverage": "hard test on district top issues",
+    "test.goodparty_data_catalog.assert_override_districts_have_top_issues": "hard test on district top issues",
+    "test.goodparty_data_catalog.assert_serve_district_resolution_coverage_floor": "Serve's coverage floor",
+    "test.goodparty_data_catalog.assert_serve_statewide_binds_district_census_stats": "hard test on Serve resolution",
+    "test.goodparty_data_catalog.assert_people_served_cohort_contract": "hard test on the Serve mart",
+    "test.goodparty_data_catalog.assert_people_served_ordering_invariant": "hard test on the Serve mart",
+}
+# Passing outcomes per node kind in run_results.json; a warn-severity test
+# reporting rows is a pass here because the gates own that decision.
+_MODEL_OK = {"success"}
+_TEST_OK = {"pass", "warn"}
 
 # The matcher's tables, mirroring gold-match's l2_br_match_schema paths. The
 # entry point writes the production catalog unconditionally, so these are
 # constants rather than the catalog Variable the ER tables use.
 RESULTS_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_results"
 QUARANTINE_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine"
+# A hand-written `held` row for an office whose match the run audit adjudicated
+# WRONG on the pinned build; released by hand when the quality lane re-pins.
+# The pod's own rows carry the client's response-shape reason instead.
+QUARANTINE_REASON_ADJUDICATED_WRONG = "adjudicated_wrong"
 
 BRAINTRUST_VARIABLE = "BRAINTRUST_API_KEY"
 # The GoodParty-account role the pod assumes for Bedrock, and the trust
@@ -136,13 +243,17 @@ def new_quarantine_count(conn: Any, run_key: datetime) -> int:
     """Offices that FIRST entered quarantine on this run: inserts stamp
     first_failed_at with the run key exactly, while backoff re-fails only
     re-stamp last_failed_at and stay silent. Equality rather than an interval
-    so a manual trigger's sub-second offsets cannot hide the run's own rows."""
+    so a manual trigger's sub-second offsets cannot hide the run's own rows.
+    Hand-written adjudication holds are stamped with the audited run's key by
+    convention and are the operator's own doing, so they never raise the
+    alarm meant for the pod's response-shape failures."""
     cursor = conn.cursor()
     try:
         execute_with_retry(
             cursor,
-            f"select count(*) from {QUARANTINE_TABLE} where first_failed_at = :run_key",
-            {"run_key": run_key},
+            f"select count(*) from {QUARANTINE_TABLE} "
+            "where first_failed_at = :run_key and reason_code <> :adjudicated",
+            {"run_key": run_key, "adjudicated": QUARANTINE_REASON_ADJUDICATED_WRONG},
         )
         return int(cursor.fetchone()[0])
     finally:
@@ -195,16 +306,130 @@ def cancel_dbt_run_and_confirm(hook: DbtCloudHook, run_id: int, timeout_s: int =
     )
 
 
-def trigger_rebuild_and_wait(hook: DbtCloudHook, cause: str, timeout_s: int = 10800) -> int:
-    """Trigger the rebuild job with an operator-readable cause and wait for
-    SUCCESS (the hook raises on a failed run and on timeout). The cause string
-    is an interface: a mislabeled trigger once got a healthy rebuild cancelled
-    by a teammate acting reasonably on what it said."""
-    run_id = int(hook.trigger_job_run(job_id=GOLD_MATCH_REBUILD_JOB_ID, cause=cause).json()["data"]["id"])
+def trigger_rebuild(hook: DbtCloudHook, cause: str) -> int:
+    """Trigger the rebuild job with an operator-readable cause and no docs
+    step. The cause string is an interface: a mislabeled trigger once got a
+    healthy rebuild cancelled by a teammate acting reasonably on what it said."""
+    response = hook.trigger_job_run(
+        job_id=GOLD_MATCH_REBUILD_JOB_ID, cause=cause, additional_run_config=dict(NO_DOCS_RUN_CONFIG)
+    )
+    return int(response.json()["data"]["id"])
+
+
+def _matches(unique_id: str, prefix: str) -> bool:
+    return unique_id == prefix or unique_id.startswith(prefix + ".")
+
+
+def rebuild_result_problems(run_results: dict[str, Any]) -> list[str]:
+    """What is wrong with a rebuild, judged from its build step's run_results:
+    every matcher-dependent model must have built and every matcher-relevant
+    test must have passed; a listed node absent from the results counts as
+    not built, so a narrowed selection cannot silently drop one. An empty
+    list means the rebuild is good whatever the run's overall status."""
+    status_by_id = {r.get("unique_id", ""): r.get("status", "") for r in run_results.get("results", [])}
+    problems = []
+    for prefix in MATCHER_DEPENDENT_MODELS:
+        statuses = [st for uid, st in status_by_id.items() if _matches(uid, prefix)]
+        if not statuses or any(st not in _MODEL_OK for st in statuses):
+            problems.append(f"model {prefix.rsplit('.', 1)[-1]}: {statuses or 'not in the build'}")
+    for prefix in MATCHER_RELEVANT_TESTS:
+        statuses = [st for uid, st in status_by_id.items() if _matches(uid, prefix)]
+        if not statuses or any(st not in _TEST_OK for st in statuses):
+            problems.append(f"test {prefix.rsplit('.', 1)[-1]}: {statuses or 'not in the build'}")
+    return problems
+
+
+def _has_lineage(results: dict[str, Any]) -> bool:
+    return any(
+        _matches(r.get("unique_id", ""), p)
+        for r in results.get("results", [])
+        for p in MATCHER_DEPENDENT_MODELS
+    )
+
+
+def build_step_run_results(hook: DbtCloudHook, run_id: int) -> dict[str, Any]:
+    """The `dbt build` step's run_results.json. dbt Cloud serves artifacts per
+    step and defaults to the LAST step, which need not be the build, so the
+    step index comes from the run's own step list when the API returns it;
+    otherwise the last step and then the first dozen are tried in turn until
+    one carries the matcher lineage. Fails loudly when none does: an
+    unreadable rebuild is treated exactly like a failed one."""
+    candidates: list[int | None] = []
+    try:
+        run_steps = (
+            hook.get_job_run(run_id, include_related=["run_steps"]).json()["data"].get("run_steps") or []
+        )
+    except Exception:
+        logger.warning("run_steps unavailable for dbt run %s; probing the steps' artifacts", run_id)
+        run_steps = []
+    candidates.extend(rs.get("index") for rs in run_steps if "dbt build" in str(rs.get("name", "")).lower())
+    candidates.extend([None, *range(1, 13)])
+    for step in candidates:
+        try:
+            results = hook.get_job_run_artifact(run_id, path="run_results.json", step=step).json()
+        except Exception:
+            continue
+        if _has_lineage(results):
+            return results
+    raise AirflowException(f"dbt run {run_id}: no build results for the matcher lineage were readable")
+
+
+def wait_for_rebuild(hook: DbtCloudHook, run_id: int, timeout_s: int) -> None:
+    """Wait for the run to end, then judge it by its results. The hook raises
+    only on timeout here (any terminal status is expected); a run that is
+    ERROR on someone else's test but clean on the matcher lineage passes, and
+    a SUCCESS run that skipped a matcher model does not."""
     hook.wait_for_job_run_status(
         run_id=run_id,
-        expected_statuses=DbtCloudJobRunStatus.SUCCESS.value,
+        expected_statuses=DbtCloudJobRunStatus.TERMINAL_STATUSES.value,
         check_interval=60,
         timeout=timeout_s,
     )
+    status = DbtCloudJobRunStatus(hook.get_job_run_status(run_id)).name
+    problems = rebuild_result_problems(build_step_run_results(hook, run_id))
+    if problems:
+        raise AirflowException(
+            f"dbt run {run_id} ({status}) is not good for publication: " + "; ".join(problems)
+        )
+    logger.info(
+        "dbt run %s (%s): every matcher-dependent model built and every matcher-relevant test passed",
+        run_id,
+        status,
+    )
+
+
+def trigger_rebuild_and_wait(hook: DbtCloudHook, cause: str, timeout_s: int = 10800) -> int:
+    """The repair path: trigger, then wait and judge with the same criterion
+    the post-write rebuild uses, so an unrelated red never reads as a failed
+    repair."""
+    run_id = trigger_rebuild(hook, cause)
+    wait_for_rebuild(hook, run_id, timeout_s)
     return run_id
+
+
+def inflight_prod_builds(hook: DbtCloudHook) -> list[str]:
+    """Runs of the two prod-writing jobs that are queued, starting or running,
+    as operator-readable labels. Newest runs only (one page, ordered by -id):
+    a live run is always among the newest of its job."""
+    live = {
+        DbtCloudJobRunStatus.QUEUED.value,
+        DbtCloudJobRunStatus.STARTING.value,
+        DbtCloudJobRunStatus.RUNNING.value,
+    }
+    found: list[str] = []
+    for job_id in PROD_BUILD_JOB_IDS:
+        runs = hook.get_job_runs(
+            payload={"job_definition_id": job_id, "order_by": "-id", "limit": 20}
+        ).json()["data"]
+        found.extend(
+            f"job {job_id} run {r['id']} ({DbtCloudJobRunStatus(r['status']).name})"
+            for r in runs
+            if r["status"] in live
+        )
+    return found
+
+
+def next_sync_deadline(now: datetime) -> datetime:
+    """The next election-api sync at or after `now`, in UTC."""
+    today = datetime.combine(now.astimezone(UTC).date(), time(ELECTION_API_SYNC_HOUR_UTC), tzinfo=UTC)
+    return today if now <= today else today + timedelta(days=1)

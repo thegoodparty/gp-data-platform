@@ -6,9 +6,14 @@ itself on any failure.
 
 The pod does exactly what the supervised entry point does (read cohort,
 match, write under the run key this DAG passes in); the DAG owns everything
-around it: the post-write dbt rebuild, the label gates, a cleanup finalizer
-(cancel any live rebuild, delete the run's rows, ALWAYS rebuild, re-raise),
-and one notification-only `operator_signal` leaf. Every alert-worthy state is
+around it: an admission check that declines the day (nothing written) while
+another prod build is in flight or the clock cannot fit the pod and the
+rebuild before the sync, the post-write dbt rebuild judged by its RESULTS
+(every matcher-dependent model built, every matcher-relevant test passed;
+an unrelated red elsewhere in the project is not a failed rebuild), the
+label gates, a cleanup finalizer (cancel any live rebuild, delete the run's
+rows, ALWAYS rebuild, re-raise), and one notification-only `operator_signal`
+leaf. Every alert-worthy state is
 a failed DAG run on the existing failed-DAG Slack alert, and the failing
 TASK's name carries the story — see `docs/gold_match_daily.md`.
 
@@ -49,18 +54,20 @@ import re
 from airflow.exceptions import AirflowException
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudHook
-from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
 from airflow.sdk import Variable, dag, task
 from include.custom_functions.databricks_utils import connect_from_conn_id
 from include.custom_functions.gold_match_utils import (
-    GOLD_MATCH_REBUILD_JOB_ID,
     cancel_dbt_run_and_confirm,
     delete_run_rows,
     gold_match_pod_env,
+    inflight_prod_builds,
     new_quarantine_count,
+    next_sync_deadline,
     run_gate_queries,
     run_key_of,
+    trigger_rebuild,
     trigger_rebuild_and_wait,
+    wait_for_rebuild,
 )
 from kubernetes.client import models as k8s
 from pendulum import datetime as pendulum_datetime
@@ -87,6 +94,11 @@ IMAGE_PULL_SECRET_VARIABLE = "gold_match_image_pull_secret"
 # 3h bounds a hung pod without cutting a legitimate wave short.
 MATCH_EXECUTION_TIMEOUT = duration(hours=3)
 REBUILD_TIMEOUT_S = 3 * 3600
+# What a day must fit before the sync to be admitted: the pod's and the
+# rebuild's own ceilings, so the budget moves with them and adds no number
+# of its own. A late manual start that cannot fit is declined, not rolled
+# back at 22:00 (2026-09-15: a 16:21 start timed out into the finalizer).
+PUBLICATION_BUDGET = MATCH_EXECUTION_TIMEOUT + duration(seconds=REBUILD_TIMEOUT_S)
 # The rollback wording is confined to the supervised rollback path: a cause
 # string is an interface, and a healthy rebuild labeled "rollback" once got
 # cancelled by a teammate acting reasonably on what it said.
@@ -174,21 +186,57 @@ def _match_pod() -> _GoldMatchPodOperator:
 def gold_match_daily():
     match_pod = _match_pod()
 
-    rebuild = DbtCloudRunJobOperator(
-        task_id="rebuild",
-        dbt_cloud_conn_id="dbt_cloud",
-        job_id=GOLD_MATCH_REBUILD_JOB_ID,
-        trigger_reason=POST_WRITE_CAUSE_PREFIX + " (run {{ dag_run.start_date }})",
-        wait_for_termination=True,
-        timeout=REBUILD_TIMEOUT_S,
-        check_interval=60,
-        # One ~2h attempt, deliberately: the pre-sync margin (the election-api
-        # sync runs at 22:00 UTC) assumes no retry loops here, and a
-        # deterministic failure — the coverage floor runs in this job at error
-        # severity — would fail identically anyway. Cleanup restores
-        # yesterday's state; tomorrow's run is the retry.
-        retries=0,
-    )
+    @task.short_circuit(ignore_downstream_trigger_rules=False, execution_timeout=duration(minutes=10))
+    def admission(dag_run=None, ti=None) -> bool:
+        """Decline the day cleanly, before anything is written, when the loop
+        cannot publish safely: another run of a prod-writing dbt job is in
+        flight (two builds on the same tables lost a mart write on
+        2026-09-17), or the remaining wall clock cannot fit the pod and the
+        rebuild before the sync. Skips only its direct downstream and lets
+        trigger rules propagate, so operator_signal still runs (and reports
+        the declined day) while cleanup_finalizer, seeing nothing failed,
+        never fires. An unreachable dbt Cloud declines too: the rebuild could
+        not run either."""
+        run_key = run_key_of(dag_run)
+        deadline = next_sync_deadline(run_key)
+        reasons = []
+        # >=: a budget that lands exactly on the sync leaves no second for the gates.
+        if run_key + PUBLICATION_BUDGET >= deadline:
+            reasons.append(
+                f"a start at {run_key.isoformat()} plus the pod and rebuild ceilings passes the "
+                f"{deadline.isoformat()} sync"
+            )
+        try:
+            live = inflight_prod_builds(DbtCloudHook("dbt_cloud"))
+        except Exception as exc:
+            live = [f"dbt Cloud unreachable for the in-flight check ({exc.__class__.__name__})"]
+        if live:
+            reasons.append("another prod build is in flight: " + ", ".join(live))
+        if reasons:
+            reason = "; ".join(reasons)
+            t_log.warning("publication declined at admission: %s", reason)
+            ti.xcom_push(key="declined_reason", value=reason)
+            return False
+        return True
+
+    # One ~2h attempt, deliberately: the pre-sync margin (the election-api
+    # sync runs at 22:00 UTC) assumes no retry loops here. Cleanup restores
+    # yesterday's state; tomorrow's run is the retry. The task ceiling sits
+    # above the wait's own timeout so the hook's readable message wins.
+    @task(retries=0, execution_timeout=duration(seconds=REBUILD_TIMEOUT_S) + duration(minutes=15))
+    def rebuild(dag_run=None, ti=None) -> int:
+        """Trigger the scheduled build with an honest cause and no docs step,
+        then judge it by its results, not its status: the loop publishes when
+        the matcher lineage built and its tests passed, whatever else in the
+        project is red that day."""
+        run_key = run_key_of(dag_run)
+        hook = DbtCloudHook("dbt_cloud")
+        run_id = trigger_rebuild(hook, cause=f"{POST_WRITE_CAUSE_PREFIX} (run {run_key.isoformat()})")
+        # Pushed BEFORE the wait so cleanup can cancel a live run after a
+        # timeout or a mid-poll crash.
+        ti.xcom_push(key="job_run_id", value=run_id)
+        wait_for_rebuild(hook, run_id, REBUILD_TIMEOUT_S)
+        return run_id
 
     @task(execution_timeout=duration(minutes=30))
     def gates(dag_run=None) -> int:
@@ -224,6 +272,11 @@ def gold_match_daily():
         finally:
             conn.close()
         problems = []
+        declined = ti.xcom_pull(task_ids="admission", key="declined_reason")
+        if declined:
+            problems.append(
+                f"publication declined at admission ({declined}); nothing was written, tomorrow retries"
+            )
         if fresh:
             problems.append(f"{fresh} office(s) first entered quarantine this run")
         global_dead = ti.xcom_pull(task_ids="gates")
@@ -279,17 +332,21 @@ def gold_match_daily():
             "repair rebuild succeeded) — see the failed upstream task for the cause"
         )
 
+    admission_task = admission()
+    rebuild_task = rebuild()
     gates_task = gates()
     signal_task = operator_signal()
     cleanup_task = cleanup_finalizer()
 
-    match_pod >> rebuild >> gates_task
+    admission_task >> match_pod >> rebuild_task >> gates_task
     [match_pod, gates_task] >> signal_task
     # Trigger-set membership IS the contract: one_failed fires on a failed OR
     # upstream_failed direct upstream (verified in the installed scheduler's
     # trigger_rule_dep), so what keeps a deliberate operator_signal failure
-    # from ever destroying a gated run is that it is NOT in this list.
-    [match_pod, rebuild, gates_task] >> cleanup_task
+    # from ever destroying a gated run is that it is NOT in this list, and
+    # what keeps a declined day from deleting anything is that admission is
+    # not in it either (a skip is not a failure).
+    [match_pod, rebuild_task, gates_task] >> cleanup_task
 
 
 gold_match_daily()
