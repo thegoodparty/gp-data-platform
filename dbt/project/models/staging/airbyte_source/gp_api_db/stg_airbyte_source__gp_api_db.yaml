@@ -825,13 +825,18 @@ models:
         tests:
           - not_null
       - name: campaignId
-        description: "Foreign key reference to the campaign"
+        description: >
+          Foreign key reference to the campaign. Null for Serve outreach, which
+          the product scopes by organization alone; see organization_slug.
         tests:
-          - not_null
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_campaign')
                 field: id
+      - name: organization_slug
+        description: >
+          Organization the outreach belongs to. A Serve organization runs
+          outreach with no campaign, so this is the only owner on those rows.
       - name: project_id
         description: "Project ID associated with the outreach campaign"
       - name: identity_id
@@ -846,6 +851,12 @@ models:
         description: "Audience request parameters for the outreach campaign"
       - name: voter_file_filter_id
         description: "ID of the voter file filter applied to the outreach campaign"
+    data_tests:
+      # The product scopes an outreach by campaign (Win) or by organization alone
+      # (Serve). A row with neither has no owner and should still fail loudly.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: campaignId is not null or organization_slug is not null
   - name: stg_airbyte_source__gp_api_db_path_to_victory
     description: raw data load from gp_api_db postgres db from table `path_to_victory`
     columns:
