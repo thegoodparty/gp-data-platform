@@ -446,6 +446,10 @@ with
                     and geo_level.has_unknown_boundaries
                     and not (coalesce(sv.has_school_presence_type, false) or coalesce(sv.has_school_subtype, false))
                     then 'school_flag_no_school_rows'
+                -- RETIRED by DATA-2415 candidate 2: the matcher no longer passes a flagged school
+                -- sub-area through unrestricted, so a current run should never legitimately land
+                -- here. Kept only so this SQL mirror still labels runs from before candidate 2
+                -- shipped; use the Python mirror below for any run at or after it.
                 when
                     geo_level.family = 'school'
                     and geo_level.has_unknown_boundaries
@@ -497,6 +501,51 @@ from labeled
 group by rule_class, outcome, transition
 order by rule_class, outcome, transition
 ```
+
+### The body-level mirror (Python)
+
+The SQL mirror cannot express candidate 2's body test (DATA-2415), so Step 2 labels the run's offices with the
+matcher's own classifier. Export the run's offices from BR position staging with `dbsql.py --csv`:
+
+```sql
+select database_id as br_database_id, name, state, mtfcc, geo_id, sub_area_name, sub_area_value, is_judicial,
+    has_unknown_boundaries
+from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position
+where database_id in (<the run's ids>)
+```
+
+and the universe the run saw:
+
+```sql
+select state_postal_code, district_type, district_name
+from goodparty_data_catalog.dbt.int__l2_district_universe
+```
+
+(the live table may have drifted since the run -- prefer a universe snapshot taken at run time when one exists).
+Then:
+
+    cd gold-match && uv run python ../.claude/skills/gold-match-run-audit/classify_run_offices.py \
+        offices.csv universe.csv rule-classes.csv
+
+Join `rule-classes.csv` to the run rows on br_database_id and report the same
+`rule_class, outcome, transition` table. Where the SQL and Python labels disagree on an in-class office, the
+Python label wins (it ran the code); a disagreement on an out-of-class office is a bug to report.
+
+Three labels only the Python mirror can produce, because they depend on the body test:
+
+- `R2_school_flagged_slice_asserted`: flagged school office with a sub-area whose body has sub-level rows; whole-district types denied.
+- `R2_school_flagged_body_absent_abstain`: flagged school office with a sub-area whose body has no sub-level rows; abstained.
+- `R2_slice_body_absent_abstain`: sliced office whose state carries the family's sub-types but whose body has no sub-level rows; abstained.
+
+Not a rule class: `UNIVERSE_STATE_MISSING` means the CLI found zero universe rows for that office's state (an
+incomplete or drifted export, warned to stderr) and skipped classifying it rather than mislabeling it against an
+empty universe.
+
+`R2_slice_asserted` now means: sliced office whose body has sub-level rows; the family's whole-body types denied.
+Both mirrors can emit it, but only the Python mirror's body test earns it correctly post-candidate-2 -- the SQL
+mirror's `R2_slice_asserted` branch predates the body test and does not check for one. The SQL mirror's
+`R2_school_flagged_passthrough` branch is RETIRED by DATA-2415 candidate 2 (see the comment at that branch); read
+its output only for runs from before candidate 2 shipped.
 
 Row-level drill-down: the identical statement above, with the final `select`
 replaced by a filter to one `(rule_class, transition)` pair:
