@@ -45,16 +45,17 @@ NO_DOCS_RUN_CONFIG = {"generate_docs_override": False}
 # generic tests' hash suffixes do not need to be known here.
 MATCHER_DEPENDENT_MODELS: dict[str, str] = {
     # The rule for membership: the model's OUTPUT carries the matcher's answer
-    # (a district link, is_matched, or a voter count derived from one) and a
-    # consumer reads it. Marts that merely join a listed mart for ids or names
-    # (m_election_api__candidacy, office_holder) are not listed: their red is
-    # not the matcher's, and the loop is what keeps THEIR red from blocking it.
+    # (a district link, is_matched, or a voter count derived from one) AND a
+    # publication surface reads it: the election-api sync, the ICP/lead funnel,
+    # or Serve's resolution. Marts that merely join a listed mart for ids or
+    # names (m_election_api__candidacy, office_holder) and analytics-only
+    # reporting marts (leads/users_win_candidacy, people_served) are not
+    # listed: their red is not the matcher's, protects no reader of the
+    # publication, and the loop is what keeps THEIR red from blocking it.
     "model.goodparty_data_catalog.stg_model_predictions__llm_l2_br_match": "serves the newest answer per office",
     "model.goodparty_data_catalog.int__l2_district_universe": "the label gates read it; a dead label is one absent here",
     "model.goodparty_data_catalog.int__l2_br_match_pending_offices": "tomorrow's cohort; reads the results table directly",
-    "model.goodparty_data_catalog.int__icp_offices": "is_matched and the district population feed lead sourcing",
-    "model.goodparty_data_catalog.leads_win_candidacy": "carries the ICP office flags to lead sourcing",
-    "model.goodparty_data_catalog.users_win_candidacy": "carries the ICP office flags to user analytics",
+    "model.goodparty_data_catalog.int__icp_offices": "is_matched and the district population feed the ICP/lead funnel",
     "model.goodparty_data_catalog.int__zip_code_to_br_office": "the zip funnel",
     "model.goodparty_data_catalog.m_election_api__district": "the position mart's district ids and voter counts",
     "model.goodparty_data_catalog.m_election_api__position": "the product's position-to-district link",
@@ -64,7 +65,6 @@ MATCHER_DEPENDENT_MODELS: dict[str, str] = {
     "model.goodparty_data_catalog.m_election_api__elected_official_support": "reads the position's icp_voter_count",
     "model.goodparty_data_catalog.int__serve_district_resolution": "Serve's district resolution reads is_matched",
     "model.goodparty_data_catalog.int__serve_block_coverage": "Serve coverage downstream of the resolution",
-    "model.goodparty_data_catalog.people_served": "the Serve mart downstream of the resolution",
 }
 # Every error-severity singular test that reads a listed model, plus the
 # staging model's own generic tests: a listed mart with its own hard test
@@ -116,8 +116,6 @@ MATCHER_RELEVANT_TESTS: dict[str, str] = {
     "test.goodparty_data_catalog.assert_override_districts_have_top_issues": "hard test on district top issues",
     "test.goodparty_data_catalog.assert_serve_district_resolution_coverage_floor": "Serve's coverage floor",
     "test.goodparty_data_catalog.assert_serve_statewide_binds_district_census_stats": "hard test on Serve resolution",
-    "test.goodparty_data_catalog.assert_people_served_cohort_contract": "hard test on the Serve mart",
-    "test.goodparty_data_catalog.assert_people_served_ordering_invariant": "hard test on the Serve mart",
 }
 # Passing outcomes per node kind in run_results.json; a warn-severity test
 # reporting rows is a pass here because the gates own that decision.
