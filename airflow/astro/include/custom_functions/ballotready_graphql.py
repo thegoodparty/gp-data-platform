@@ -927,10 +927,14 @@ def _derived_worklist_sql(
     if explode is not None:
         array_column, alias = explode
         from_clause = f"{table} LATERAL VIEW explode({array_column}) AS {alias}"
-    inner = (
-        f"SELECT cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
+    scanned = (
+        f"SELECT try_cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
         f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
     )
+    # try_cast plus a post-cast guard: the feed marks a missing geofence with '' rather than
+    # NULL, which a plain cast rejects under ANSI mode. The keyed page only survived that because
+    # the cursor floor dropped those rows before the cast ran; the unseen branch has no floor.
+    inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
     return _keyed_worklist(
         inner,
         after_changed_at=after_changed_at,

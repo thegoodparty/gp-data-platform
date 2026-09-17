@@ -921,6 +921,24 @@ def test_geofence_worklist_casts_source_changed_at_to_timestamp():
     assert "cast(candidacy_updated_at AS timestamp) AS source_changed_at" in sql
 
 
+def test_geofence_worklist_skips_a_feed_id_that_does_not_cast():
+    """The feed marks a missing geofence with '' rather than NULL, which a plain cast rejects under
+    ANSI mode. The keyed page only survived that because the cursor floor dropped those rows before
+    the cast ran; the unseen branch scans every row, so without try_cast and a post-cast guard the
+    whole geofence task fails on the first blank id.
+    """
+    sql = geofence_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table="`cat`.`src`.`ballotready_geofence_raw`",
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert "try_cast(br_geofence_id AS bigint) AS source_id" in sql
+    assert "WHERE source_id IS NOT NULL" in sql
+
+
 def test_filing_period_worklist_explodes_filing_periods():
     """Filing period ids only exist nested in each race's filing_periods array."""
     sql = filing_period_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
