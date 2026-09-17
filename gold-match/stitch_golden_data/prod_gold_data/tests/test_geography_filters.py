@@ -680,8 +680,19 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
             # The Maine shape: a flagged school office in a state whose
             # universe carries no school-family row at all.
             ("G5420", False, "45", ["Town_District", "County", "State"]),
+            # A sliced place office whose sub-type is present but its OWN body has no sub-rows: the
+            # fixture's names are "Name 0..n" (no anchor), so the pre-menu abstain must fire before
+            # match_office builds the menu -- an early-return regression here costs an embedding and
+            # a model call per abstained office.
+            ("G4110", False, "3", ["City", "City_Ward", "State"]),
         ],
-        ids=["party-committee", "judicial-no-vocabulary", "zero-subtype-slice", "school-flag-no-school-rows"],
+        ids=[
+            "party-committee",
+            "judicial-no-vocabulary",
+            "zero-subtype-slice",
+            "school-flag-no-school-rows",
+            "body-absent-slice",
+        ],
     )
     def test_an_abstaining_verdict_never_reaches_embeddings_or_the_llm(
         self, mock_dependencies, mtfcc, is_judicial, sub_area_value, types
@@ -689,7 +700,7 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
         """Failure this catches: `match_office`'s early return moved or
         deleted, so an abstaining office still pays for query embeddings
         and an LLM call -- every classifier-level test stays green because
-        none of them goes through the caller. Covers all four abstain
+        none of them goes through the caller. Covers all five abstain
         families and pins confidence=None (no model judgment happened).
         """
         matcher = L2BrMatcher()
@@ -919,6 +930,22 @@ class TestR2BodyLevel:
         """Catches: a flagged school seat whose body has no sub-level row anywhere taking the whole SD (the trap)."""
         v = _classify(
             "Smiths Station Board of Education - District 1",
+            AL_TYPES,
+            AL_NAMES,
+            mtfcc="G5420",
+            geo_id="0102820",
+            has_unknown_boundaries=True,
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is True
+
+    def test_flagged_school_cross_family_anchor_abstains_instead_of_a_restricted_menu(self):
+        """Catches: cross-family presence denying the school parent and steering the model to a
+        same-name ward -- Phenix City's own council district shares the body's anchor, but a
+        council district is not a school sub-row, so it must not save the office from the abstain."""
+        v = _classify(
+            "Phenix City Board of Education - District 1",
             AL_TYPES,
             AL_NAMES,
             mtfcc="G5420",

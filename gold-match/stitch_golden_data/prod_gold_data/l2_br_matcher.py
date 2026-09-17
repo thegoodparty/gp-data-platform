@@ -119,10 +119,10 @@ class _GeographyVerdict:
     and the sentence `districts_text` carries for it.
 
     `eligible_indices=None` means no restriction (pass-through, judicial
-    with no vocabulary in the state (handled by `abstain` instead), a
-    gated-off school whole-assertion, or a flagged school office whose
-    state carries at least one school-family row): callers must check
-    for `None` rather than compare against a full index range, so a
+    with no vocabulary in the state (handled by `abstain` instead), or a
+    gated-off school whole-assertion -- a flagged school office with a
+    sub-area now always abstains or gets a restricted menu, never this):
+    callers must check for `None` rather than compare against a full index range, so a
     state whose universe shrinks between runs is never mistaken for
     "nothing eligible". `verdict_sentence` is `None` unless R2 actually
     fired.
@@ -515,10 +515,22 @@ def _build_geography_block(
 _ALL_FAMILY_SUB_TYPES: frozenset[str] = frozenset().union(*_FAMILY_SUB_TYPES.values())
 
 
-def _body_present(office_name, state_district_types, state_district_names) -> bool:
+def _body_present(office_name, state_district_types, state_district_names, family) -> bool:
     # Fail loud rather than silently skip: an in-class office without names would revert to the trap.
     if office_name is None or state_district_names is None:
         raise ValueError("body test needs office_name and state_district_names")
+    if family == "school":
+        # BallotReady overloads the county and place codes with special districts, so those stay
+        # type-agnostic; a school code is a school, and a same-anchor row from another family (a
+        # council ward) counting as presence would deny the school parent and steer the model to
+        # the wrong row -- a miss becoming a wrong match, not just a miss.
+        return body_has_sub_rows(
+            office_name,
+            state_district_types,
+            state_district_names,
+            known_sub_types=_FAMILY_SUB_TYPES["school"],
+            only_known_sub_types=True,
+        )
     return body_has_sub_rows(office_name, state_district_types, state_district_names, _ALL_FAMILY_SUB_TYPES)
 
 
@@ -556,9 +568,14 @@ def _classify_office_geography(
         rejoin this rule) then take the BODY test: when no sub-level row in
         the state carries the body's anchor tokens (body_presence), the
         office abstains; when some do, the family's whole-body types are
-        denied as before. The zero-subtype abstain runs first so the body
-        test can only add abstains, never a menu (DATA-2415 candidate 2,
-        class A).
+        denied as for any other slice office -- NEW for the flagged school
+        class, which used to pass through unrestricted. The zero-subtype
+        abstain runs first so the body test can only add abstains, never a
+        menu (DATA-2415 candidate 2, class A). Third difference: a flagged
+        school office with a sub-area, in a state whose school rows are
+        parents only (no school sub-type present), now takes that same
+        zero-subtype abstain instead of the unrestricted menu it got
+        before.
 
     `state_district_types` is positional against the caller's own
     embedded universe lists (`_StateUniverse.district_types`), so the
@@ -585,8 +602,10 @@ def _classify_office_geography(
         # format cannot place the office; the body test does instead. Under the
         # ratified electorate standard the whole-district row is never the truth
         # for a sub-district seat, so denying it is right whenever the body's own
-        # sub-rows exist (DATA-2415 dev evidence: 6 wrong / 0 correct parent picks).
+        # sub-rows exist (measured in .tickets/DATA-2415/candidate2/dev-measurement/ and spec section 4).
         school_rows = _SCHOOL_FAMILY_PRESENCE_TYPES & set(state_district_types)
+        # Kept even though the zero-subtype check just below also abstains: the audit mirror labels
+        # the two populations differently (no school rows at all vs school parents only).
         if not school_rows:
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Rejoined slice rule: the shared slice block below runs the family-level check, then the body test, once.
@@ -606,8 +625,8 @@ def _classify_office_geography(
         if not sub_types_present:
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Body level, after the family level: a body with no sub-rows of its own must not be offered
-        # coarser rows (the parent-row trap, 72% of the instrument's hard-cohort truth).
-        if not _body_present(office_name, state_district_types, state_district_names):
+        # coarser rows (measured in .tickets/DATA-2415/candidate2/dev-measurement/ and spec section 4).
+        if not _body_present(office_name, state_district_types, state_district_names, family):
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Two slice provenances, two honest sentences: with the flag set the
         # displayed geometry is a stand-in (the boundary line in the block

@@ -130,3 +130,47 @@ def test_known_sub_type_counts_even_when_the_pattern_misses_it():
         )
         is True
     )
+
+
+def test_only_known_sub_types_ignores_a_cross_family_pattern_match():
+    """Catches: a school-scoped body test still counting a same-anchor council ward as a school
+    sub-row (cross-family presence turning a miss into a wrong match) -- with only_known_sub_types
+    set, the pattern match that would otherwise catch City_Council_Commissioner_District is never
+    consulted."""
+    assert (
+        bp.body_has_sub_rows(
+            "Big Bear Lake Unified School Board - Area 2",
+            CA_TYPES,
+            CA_NAMES,
+            known_sub_types=frozenset({"Unified_School_SubDistrict"}),
+            only_known_sub_types=True,
+        )
+        is False
+    )
+
+
+def test_canonical_type_words_cover_a_type_the_states_own_universe_never_loaded():
+    """Catches: an abbreviation false absence (RECREATION vs REC) that a fixture's extra type was
+    masking -- here the state's own universe carries no Recreation type at all, so only the
+    canonical dbt vocabulary can make RECREATION generic."""
+    assert (
+        bp.body_has_sub_rows(
+            "Shafter Recreation and Park District Board - Area 2",
+            ["State", "Park_SubDistrict"],
+            ["CA", "SHAFTER REC AND PARK DIST DIV 2"],
+        )
+        is True
+    )
+
+
+def test_institutional_suffix_is_generic_not_a_mandatory_anchor():
+    """Catches: SYSTEM (or a like institutional suffix naming the body's legal form) becoming a
+    mandatory anchor and rejecting the body's own sub-row."""
+    assert (
+        bp.body_has_sub_rows(
+            "Hoover City School System Board - District 1",
+            ["State", "School_Subdistrict"],
+            ["AL", "HOOVER CITY SD DIST 1"],
+        )
+        is True
+    )
