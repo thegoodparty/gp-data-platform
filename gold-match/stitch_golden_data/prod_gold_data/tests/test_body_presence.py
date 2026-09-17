@@ -149,15 +149,30 @@ def test_only_known_sub_types_ignores_a_cross_family_pattern_match():
     )
 
 
-def test_canonical_type_words_cover_a_type_the_states_own_universe_never_loaded():
-    """Catches: an abbreviation false absence (RECREATION vs REC) that a fixture's extra type was
-    masking -- here the state's own universe carries no Recreation type at all, so only the
-    canonical dbt vocabulary can make RECREATION generic."""
+def test_abbreviation_expansion_covers_a_type_the_states_own_universe_never_loaded():
+    """Catches: an abbreviation false absence (RECREATION vs REC) even when the state's own
+    universe carries no Recreation type at all -- REC expands to RECREATION on both the anchor
+    side and the row side, so it never depends on which types happen to be loaded."""
     assert (
         bp.body_has_sub_rows(
             "Shafter Recreation and Park District Board - Area 2",
             ["State", "Park_SubDistrict"],
             ["CA", "SHAFTER REC AND PARK DIST DIV 2"],
+        )
+        is True
+    )
+
+
+def test_word_abbreviation_expansion_survives_a_type_vocabulary_collision():
+    """Catches: a type-vocabulary word (CENTER, shared with the loaded Justice_Center_District)
+    erasing a body's only anchor and the fallback then demanding words L2 abbreviates (the 5 lost
+    Center Joint matches of 2026-09-17) -- USD and JT expand on both sides so the sub-row still
+    carries every fallback anchor (CENTER, JOINT, UNIFIED, SCHOOL)."""
+    assert (
+        bp.body_has_sub_rows(
+            "Center Joint Unified School Board - Area 1",
+            ["State", "Unified_School_District", "Unified_School_SubDistrict", "Justice_Center_District"],
+            ["CA", "CENTER USD", "CENTER JT USD TA 1 - 2025", "SOME JUSTICE CENTER 1"],
         )
         is True
     )
