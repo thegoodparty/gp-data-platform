@@ -1456,7 +1456,8 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         # Non-zero means the endpoint returned short pages and batch_size is above its
         # ceiling. Handled, not fatal, so it would otherwise only exist in the logs.
         "bisects": bisects.count,
-        # Never-landed ids admitted below the cursor by the unseen branch (DATA-2465).
+        # Never-landed ids admitted below the cursor by the unseen branch; nonzero means a
+        # source delivered rows late.
         "stragglers": stragglers,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.

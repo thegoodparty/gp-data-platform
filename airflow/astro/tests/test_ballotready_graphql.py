@@ -796,9 +796,9 @@ X_LANDING = "`cat`.`src`.`ballotready_x_raw`"
 
 
 def test_keyed_worklist_requests_ids_never_landed_regardless_of_the_cursor(keyed_builder):
-    """A row first delivered with timestamps already behind the cursor is otherwise never requested
-    (DATA-2465: 2,588 candidacies from one late BallotReady snapshot). The anti-join against the
-    entity's own landing table is the shape issue_worklist_sql already uses.
+    """A row first delivered with timestamps already behind the cursor is otherwise never requested,
+    which is how one late BallotReady snapshot stranded thousands of upcoming candidacies. The
+    anti-join against the entity's own landing table is the shape issue_worklist_sql already uses.
     """
     sql = keyed_builder(
         "cat",
@@ -1972,7 +1972,7 @@ def test_committed_windows_form_a_cursor_prefix_so_a_retry_resumes_after_them(mo
 def test_extract_entity_lands_a_straggler_below_the_cursor_without_moving_it(monkeypatch):
     """A worklist row the unseen branch contributed carries its own old timestamp. It must land,
     and it must not become the cursor, or a later keyed page would start behind rows already seen.
-    The timestamps are the real DATA-2465 ones: cursor 08-31, straggler 08-29, fresh row 09-14.
+    The timestamps mirror the production incident: cursor 08-31, straggler 08-29, fresh row 09-14.
     """
     cursor_ts = datetime(2026, 8, 31, 6, 44, 6)
     straggler_ts = datetime(2026, 8, 29, 3, 39, 25)
