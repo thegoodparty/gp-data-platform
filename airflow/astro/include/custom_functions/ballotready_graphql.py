@@ -797,9 +797,9 @@ def _keyed_worklist(
     result by the exact keyset pair. A builder supplies only its own scan.
 
     The keyset page assumes source timestamps arrive in roughly cursor order. BallotReady's
-    weekly feed does not: its delta files omit rows for reasons unrelated to `updated_at`,
-    and a later snapshot delivers them stamped months back, already behind the cursor, so
-    the page never lists them. With `own_landing_table` and a cursor, a second branch adds
+    weekly full export does not: a candidacy enters the file days after its created_at and
+    updated_at, and the race stream's fresher clock has usually moved the cursor past those
+    days by then, so the page never lists it. With `own_landing_table` and a cursor, a second branch adds
     every id in the scan with no row at all in that table, at its own timestamp. Those rows
     sort first, land below the cursor and never move it, and on the next run they have a
     landing row and drop out again. `unseen_inner_sql` lets a builder hand this branch a

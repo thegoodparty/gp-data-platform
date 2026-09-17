@@ -797,8 +797,9 @@ X_LANDING = "`cat`.`src`.`ballotready_x_raw`"
 
 def test_keyed_worklist_requests_ids_never_landed_regardless_of_the_cursor(keyed_builder):
     """A row first delivered with timestamps already behind the cursor is otherwise never requested,
-    which is how one late BallotReady snapshot stranded thousands of upcoming candidacies. The
-    anti-join against the entity's own landing table is the shape issue_worklist_sql already uses.
+    which is how candidacies BallotReady added to its weekly export days after creating them went
+    unfetched by the thousand. The anti-join against the entity's own landing table is the shape
+    issue_worklist_sql already uses.
     """
     sql = keyed_builder(
         "cat",
