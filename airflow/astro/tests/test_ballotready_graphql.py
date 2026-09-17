@@ -2011,6 +2011,34 @@ def test_extract_entity_lands_a_straggler_below_the_cursor_without_moving_it(mon
     assert read_cursor(connection, "cat", "src", "candidacy") == (fresh_ts, 1251683)
 
 
+def test_extract_entity_summary_keeps_the_prior_cursor_when_only_stragglers_ran(monkeypatch):
+    """A straggler-only worklist, which is what the first run after a late snapshot looks like,
+    lands nothing above the cursor. The summary must then report the cursor unchanged, as the
+    landing table itself will on the next read, not the last straggler's old stamp.
+    """
+    cursor_ts = datetime(2026, 8, 31, 6, 44, 6)
+    connection = _LandingConnection()
+    connection.rows.append((1122681, cursor_ts))
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist(
+            [(1239731, datetime(2026, 8, 29, 3, 39, 25)), (1239732, datetime(2026, 8, 29, 3, 40, 0))]
+        ),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+
+    summary = extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
+
+    assert summary["stragglers"] == 2
+    assert summary["rows_written"] == 2
+    assert summary["cursor_source_changed_at"] == format_cursor_ts(cursor_ts)
+    assert summary["cursor_requested_id"] == 1122681
+    assert read_cursor(connection, "cat", "src", "candidacy") == (cursor_ts, 1122681)
+
+
 def test_extract_entity_reports_zero_stragglers_when_there_is_no_cursor(monkeypatch):
     """On a full sweep nothing is behind a cursor, so the count must not mistake old rows for it."""
     monkeypatch.setattr(

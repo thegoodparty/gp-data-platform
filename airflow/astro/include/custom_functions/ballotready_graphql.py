@@ -1455,8 +1455,14 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
             unresolved += sum(1 for row in rows if row.payload is None)
             windows += 1
 
-    cursor_id = ids[-1] if len(ids) else after[1]
-    cursor_changed_at = changed_at[-1] if changed_at else after[0]
+    # The worklist tail is the new cursor only when it is ahead of the prior one. A
+    # straggler-only run lands everything below the cursor, and the landing table will
+    # report the prior pair on the next read, so the summary must say the same.
+    cursor_changed_at, cursor_id = after
+    if len(ids):
+        tail = (changed_at[-1], ids[-1])
+        if after[0] is None or tail > after:
+            cursor_changed_at, cursor_id = tail
     return {
         "entity": spec.name,
         "ids_requested": len(ids),
