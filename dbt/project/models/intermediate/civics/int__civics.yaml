@@ -4541,22 +4541,31 @@ models:
           term exists but is held by someone else or is vacant. NULL when no
           term covers election day, which is unknown rather than challenger.
 
+          Either leg can establish TRUE, combined with greatest() rather than
+          coalesce() so that an exact-position FALSE cannot mask a genuine
+          holder found under an earlier cycle's position id.
+
           Incumbent counts are a floor: the BallotReady office-holder method
           runs near 100% precision and roughly 80% recall, so misses land in the
           FALSE bucket, never the reverse.
       - name: n_covering_terms
         description: >
-          How many office-holder terms covered election day on the matched seat.
-          A precision diagnostic for the bare-name match arm: the higher this
-          is, the more holders a shared name could collide with.
+          How many office-holder terms covered election day on the matched seat,
+          for whichever leg produced is_incumbent. A precision diagnostic for
+          the bare-name match arm: the higher this is, the more holders a shared
+          name could collide with.
       - name: seat_key_source
         description: >
-          Which seat key produced the match. 'br_position_id' is the campaign's
-          exact declared position and is tried first. 'normalized_position' is
-          the fill for seats whose holder was elected under a different,
-          cycle-specific position id; it spans every seat of that type in the
-          geo, so it is consulted only where the exact key found nothing. NULL
-          when no term covered election day.
+          Which leg produced is_incumbent. 'br_position_id' is the campaign's
+          exact declared position, and it decides on its own wherever it finds a
+          covering term. 'normalized_position' is the recovery leg for seats
+          whose holder was elected under a different, cycle-specific position id.
+
+          Because the normalized key spans every seat of that type in the geo,
+          the recovery leg can only assert TRUE when the two position names
+          match; without that guard it flags candidates running for a different
+          ward, post or seat of the same body. NULL when no term covered
+          election day.
         data_tests:
           - accepted_values:
               arguments:
