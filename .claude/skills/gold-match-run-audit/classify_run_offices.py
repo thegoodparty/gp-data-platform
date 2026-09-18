@@ -19,8 +19,8 @@ from stitch_golden_data.prod_gold_data import l2_br_matcher as M
 
 
 def _opt(v):
-    v = (v or "").strip()
-    return None if v.lower() in ("", "null") else v
+    # Same sentinel test as load_pending_offices; a kept value stays unstripped, as in production.
+    return None if (v or "").strip().lower() in ("", "null") else v
 
 
 def rule_class_for(
