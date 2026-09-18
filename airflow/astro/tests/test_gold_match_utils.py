@@ -146,11 +146,13 @@ def test_latest_scheduled_build_succeeded_reads_the_newest_scheduled_run():
                     _run(7, 20),
                 ]
             }
-        )
+        ),
+        now=_NOW,
     )
     assert ok is True and "run 8" in label and "SUCCESS" in label
     ok, label = gm.latest_scheduled_build_succeeded(
-        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 30), _run(7, 10)]})
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 30), _run(7, 10)]}),
+        now=_NOW,
     )
     assert ok is False and "CANCELLED" in label
 
