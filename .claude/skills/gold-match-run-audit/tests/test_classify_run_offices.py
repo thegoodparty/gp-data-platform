@@ -71,6 +71,10 @@ def test_labels_follow_the_matcher_branches():
         cro.rule_class_for(office("Montebello City Mayor", sub_area_name="", sub_area_value=""), TYPES, NAMES)
         == "pass_through"
     )
+    assert (
+        cro.rule_class_for(office("Montebello City Council - District 1", geo_id="12"), TYPES, NAMES)
+        == "pass_through"
+    )
     assert cro.rule_class_for(office("Any Judge", is_judicial="true"), TYPES, NAMES) == "R1_judicial_abstain"
     assert (
         cro.rule_class_for(
@@ -101,6 +105,9 @@ def test_whole_school_label_flips_with_the_assertion_flag():
         cro.rule_class_for(whole_school_office, TYPES, NAMES, school_whole_assertion_enabled=True)
         == "R2_whole_asserted"
     )
+    assert cro.rule_class_for(
+        office("County Board - District 1", mtfcc="G4020", geo_id="06037"), TYPES, NAMES
+    ) == ("R2_whole_asserted")
 
 
 def test_cli_writes_one_labeled_row_per_office(tmp_path):
