@@ -732,15 +732,26 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
         return (row[0], int(row[1])) if row else (None, None)
 
 
+def _cursor_pair(after_changed_at: str | None, after_source_id: int | None) -> tuple[str, int] | None:
+    """The cursor as a usable pair, or None when either half is missing.
+
+    A cursor is only usable as a pair; one half alone reads as no cursor at all. Degrading
+    to a full sweep rather than raising is deliberate: an over-broad worklist is safe, and a
+    raise here would stall a run over a partial value. Returned as a tuple rather than a
+    bool so callers get both halves narrowed to non-None.
+    """
+    if after_changed_at is None or after_source_id is None:
+        return None
+    return after_changed_at, int(after_source_id)
+
+
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
     """The keyset half of the WHERE clause, or an always-true stand-in."""
-    # A cursor is only usable as a pair; if just one half is missing, treat it as
-    # no cursor at all (a full sweep) rather than raise, since an over-broad
-    # worklist is safe and a raise here would stall a run over a partial value.
-    if after_changed_at is None or after_source_id is None:
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return "source_changed_at IS NOT NULL"
-    ts = format_cursor_ts(after_changed_at)
-    sid = int(after_source_id)
+    ts = format_cursor_ts(pair[0])
+    sid = pair[1]
     return (
         "source_changed_at IS NOT NULL AND ("
         f"source_changed_at > TIMESTAMP '{ts}' OR "
@@ -765,9 +776,10 @@ def _cursor_floor(
     Gated on the same both-halves-present rule as _keyset_predicate, so a partial cursor
     still degrades to a genuinely full sweep rather than one silently floored by timestamp.
     """
-    if after_changed_at is None or after_source_id is None:
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return ""
-    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(after_changed_at)}'"
+    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(pair[0])}'"
 
 
 def _keyed_worklist(
@@ -775,12 +787,25 @@ def _keyed_worklist(
     *,
     after_changed_at: str | None,
     after_source_id: int | None,
+    own_landing_table: str | None = None,
+    unseen_inner_sql: str | None = None,
 ) -> str:
     """Wrap an (source_id, source_changed_at) scan as a cursor-paged worklist.
 
     Owns the parts every keyed builder needs identically: collapse to one row per id on
     max(source_changed_at), push the cursor floor below that aggregate, then page the
     result by the exact keyset pair. A builder supplies only its own scan.
+
+    The keyset page assumes source timestamps arrive in roughly cursor order. BallotReady's
+    weekly full export does not: a candidacy enters the file days after its created_at and
+    updated_at, and the race stream's fresher clock has usually moved the cursor past those
+    days by then, so the page never lists it. With `own_landing_table` and a cursor, a second branch adds
+    every id in the scan with no row at all in that table, at its own timestamp. Those rows
+    sort first, land below the cursor and never move it, and on the next run they have a
+    landing row and drop out again. `unseen_inner_sql` lets a builder hand this branch a
+    scan without any cursor floor of its own (candidacy's roster explode carries one), since
+    a floor is exactly what hides a late arrival. Omitted on a full sweep, which already
+    lists every discoverable id.
     """
     grouped = (
         "SELECT source_id, max(source_changed_at) AS source_changed_at "
@@ -789,10 +814,27 @@ def _keyed_worklist(
         "GROUP BY source_id"
     )
     predicate = _keyset_predicate(after_changed_at, after_source_id)
+    ordered = "ORDER BY source_changed_at ASC, source_id ASC"
+    if own_landing_table is None or _cursor_pair(after_changed_at, after_source_id) is None:
+        return (
+            f"WITH worklist AS ({grouped}) "
+            f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
+            f"{ordered}"
+        )
+    unseen = (
+        "SELECT source_id, max(source_changed_at) AS source_changed_at "
+        f"FROM ({unseen_inner_sql or inner_sql}) scan "
+        "WHERE source_changed_at IS NOT NULL AND NOT EXISTS ("
+        f"SELECT 1 FROM {own_landing_table} landed WHERE landed.requested_id = scan.source_id) "
+        "GROUP BY source_id"
+    )
     return (
-        f"WITH worklist AS ({grouped}) "
+        f"WITH worklist AS ({grouped}), unseen AS ({unseen}) "
         f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
-        "ORDER BY source_changed_at ASC, source_id ASC"
+        "UNION ALL "
+        # NOT predicate, so an unseen id that is also above the cursor is listed once.
+        f"SELECT source_id, source_changed_at FROM unseen WHERE NOT ({predicate}) "
+        f"{ordered}"
     )
 
 
@@ -814,6 +856,7 @@ def candidacy_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Candidacy ids from the S3 feed plus the upcoming-race roster.
 
@@ -826,37 +869,53 @@ def candidacy_worklist_sql(
     races = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_race")
     elections = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_election")
     candidacies = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_s3_candidacies_v3")
-    upcoming = (
-        "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
-        "max(r.updated_at) AS race_updated_at "
-        f"FROM {races} r "
-        "LATERAL VIEW explode(r.candidacies) AS candidacy "
-        "WHERE r.election.databaseId IN (SELECT database_id "
-        f"FROM {elections} "
-        "WHERE election_day >= current_date()) "
-        "AND candidacy.databaseId IS NOT NULL"
-        # Same cursor floor as _keyed_worklist applies below its own GROUP BY, pushed one
-        # level further down: without it every run explodes the candidacies array of every
-        # upcoming race, which is the most expensive scan in the DAG.
-        f"{_cursor_floor(after_changed_at, after_source_id, 'r.updated_at')} "
-        "GROUP BY cast(candidacy.databaseId AS bigint)"
+
+    def scan(floor_changed_at: str | None, floor_source_id: int | None) -> str:
+        upcoming = (
+            "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
+            "max(r.updated_at) AS race_updated_at "
+            f"FROM {races} r "
+            "LATERAL VIEW explode(r.candidacies) AS candidacy "
+            "WHERE r.election.databaseId IN (SELECT database_id "
+            f"FROM {elections} "
+            "WHERE election_day >= current_date()) "
+            "AND candidacy.databaseId IS NOT NULL"
+            # Keeps the keyed page cheap: the floor stops it exploding the candidacies array of
+            # every upcoming race. The unseen branch pays that full explode once per run on
+            # purpose; see the scan(None, None) call below.
+            f"{_cursor_floor(floor_changed_at, floor_source_id, 'r.updated_at')} "
+            "GROUP BY cast(candidacy.databaseId AS bigint)"
+        )
+        return (
+            "SELECT source_id, source_changed_at FROM ("
+            "SELECT try_cast(br_candidacy_id AS bigint) AS source_id, "
+            # Cast each argument, never the result. The live staging schema (`dbt`) types
+            # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
+            # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
+            # coercing, so casting the result is applied too late to help. Per-argument casts
+            # work whichever way either column is typed, and keep both UNION branches TIMESTAMP.
+            "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
+            "AS source_changed_at "
+            f"FROM {candidacies} "
+            "WHERE br_candidacy_id IS NOT NULL"
+            # try_cast plus a post-cast guard, as in _derived_worklist_sql: the feed marks a
+            # missing id with '' rather than NULL, and the unseen scan has no floor to hide it.
+            ") feed WHERE source_id IS NOT NULL "
+            "UNION ALL "
+            "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
+            f"FROM ({upcoming}) upcoming"
+        )
+
+    return _keyed_worklist(
+        scan(after_changed_at, after_source_id),
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+        # The roster floor is a page optimisation; the unseen branch needs the whole roster,
+        # because a race row that reaches Airbyte after the cursor has passed its updated_at
+        # strands its new candidacies exactly like a late feed row.
+        unseen_inner_sql=scan(None, None),
     )
-    inner = (
-        "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
-        # Cast each argument, never the result. The live staging schema (`dbt`) types
-        # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
-        # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
-        # coercing, so casting the result is applied too late to help. Per-argument casts
-        # work whichever way either column is typed, and keep both UNION branches TIMESTAMP.
-        "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
-        "AS source_changed_at "
-        f"FROM {candidacies} "
-        "WHERE br_candidacy_id IS NOT NULL "
-        "UNION ALL "
-        "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
-        f"FROM ({upcoming}) upcoming"
-    )
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
 
 
 def _derived_worklist_sql(
@@ -869,6 +928,7 @@ def _derived_worklist_sql(
     explode: tuple[str, str] | None,
     after_changed_at: str | None,
     after_source_id: int | None,
+    own_landing_table: str | None,
 ) -> str:
     """Worklist for ids carried on another entity's staging rows.
 
@@ -882,11 +942,20 @@ def _derived_worklist_sql(
     if explode is not None:
         array_column, alias = explode
         from_clause = f"{table} LATERAL VIEW explode({array_column}) AS {alias}"
-    inner = (
-        f"SELECT cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
+    scanned = (
+        f"SELECT try_cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
         f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
     )
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
+    # try_cast plus a post-cast guard: the feed marks a missing geofence with '' rather than
+    # NULL, which a plain cast rejects under ANSI mode. The keyed page only survived that because
+    # the cursor floor dropped those rows before the cast ran; the unseen branch has no floor.
+    inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
+    return _keyed_worklist(
+        inner,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+    )
 
 
 def geofence_worklist_sql(
@@ -896,6 +965,7 @@ def geofence_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Geofence ids referenced by candidacies; geofences carry no update feed of their own."""
     return _derived_worklist_sql(
@@ -909,6 +979,7 @@ def geofence_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -919,6 +990,7 @@ def filing_period_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Filing period ids exploded out of each race's `filing_periods` array."""
     return _derived_worklist_sql(
@@ -930,6 +1002,7 @@ def filing_period_worklist_sql(
         explode=("filing_periods", "filing_period"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -940,6 +1013,7 @@ def normalized_position_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Normalized position ids carried on each position row."""
     return _derived_worklist_sql(
@@ -951,6 +1025,7 @@ def normalized_position_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -961,6 +1036,7 @@ def position_election_frequency_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Election frequency ids exploded out of each position's `election_frequencies` array."""
     return _derived_worklist_sql(
@@ -972,6 +1048,7 @@ def position_election_frequency_worklist_sql(
         explode=("election_frequencies", "election_frequency"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -982,15 +1059,17 @@ def issue_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Issue ids referenced by landed stances that have not been fetched yet.
 
     Issues have no timestamped feed to key a cursor on, and the set is small and
     slow-changing, so "everything referenced but not yet landed" is both correct
-    and cheap. dbt_schema and the keyset cursor args are accepted but unused, so
-    this builder is callable identically to the rest. Because of this,
-    `full_reload` has no effect on issue: there is no cursor to ignore, and the
-    anti-join against already-landed rows always applies.
+    and cheap. dbt_schema, the keyset cursor args and own_landing_table (this builder
+    already names its landing table) are accepted but unused, so it is callable
+    identically to the rest. Because of this, `full_reload` has no effect on issue:
+    there is no cursor to ignore, and the anti-join against already-landed rows
+    always applies.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -1022,6 +1101,7 @@ def person_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Person ids referenced by landed candidacies; persons carry no update feed of their own.
 
@@ -1035,11 +1115,9 @@ def person_worklist_sql(
     candidacy's own cursor is still filling. If a candidacy run stops mid-way through a
     group of rows sharing one `source_changed_at`, and person's cursor then advances past
     that timestamp, persons first referenced by the rest of that tied group can never
-    satisfy `source_changed_at = T AND source_id > Z` and are skipped permanently. In
-    production this is rare and small (roughly 0.2% of truncation boundaries land inside a
-    tie, costing at most ~30 persons when it does); recover with a `full_reload: true` run
-    of person, which resets the cursor and re-sweeps — safe because the landing table is
-    append-only and downstream dedup resolves the resulting duplicates.
+    satisfy `source_changed_at = T AND source_id > Z` on the keyed page. The unseen branch
+    (see _keyed_worklist) picks them up on the next run instead, since they have no person
+    row yet, so a `full_reload: true` run of person is no longer needed for that case.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -1055,7 +1133,15 @@ def person_worklist_sql(
     # Post-cast null filter for consistency with issue_worklist_sql. Defence-in-depth: on
     # ANSI mode a malformed databaseId raises CAST_INVALID_INPUT rather than producing a null.
     inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
+    # own_landing_table is the person table; the scan above reads candidacy's. A straggler
+    # candidacy lands at its old timestamp, below person's cursor, so only the unseen branch
+    # can ever surface its person.
+    return _keyed_worklist(
+        inner,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+    )
 
 
 def build_insert_rows(
@@ -1269,6 +1355,14 @@ def read_worklist(
         source_schema=config.source_schema,
         after_changed_at=format_cursor_ts(after_changed_at) if after_changed_at is not None else None,
         after_source_id=after_source_id,
+        # Keyed on the calling entity, not the builder: party, stance and endorsement share
+        # candidacy's builder but each has its own landing table to check "never landed" against.
+        # Validated here because the builder interpolates the rendered name as-is.
+        own_landing_table=landing_table(
+            validate_identifier("catalog", config.catalog),
+            validate_identifier("source_schema", config.source_schema),
+            validate_identifier("entity", spec.name),
+        ),
     )
     ids: array = array("q")
     changed_at: list[datetime] = []
@@ -1296,6 +1390,10 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     forever. Landing windows in cursor order instead means a crash mid-run always leaves
     a contiguous prefix committed, so the cursor read on retry is exactly right and
     picks back up where the failure left off.
+
+    Ids the worklist's unseen branch contributed (see _keyed_worklist) sort ahead of the
+    keyed page because they carry timestamps at or below the cursor. They land at those
+    timestamps, so they never become the cursor, and they are counted as `stragglers`.
     """
     create_landing_table(connection, config.catalog, config.source_schema, spec.name)
     # An entities-filtered run can skip the task that would normally create this table
@@ -1311,6 +1409,12 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     )
 
     ids, changed_at = read_worklist(connection, spec, config, after)
+
+    # Only the unseen branch can list an id at or below the cursor pair, so this count is how
+    # many never-landed ids the run recovered. Nonzero means a source delivered rows late.
+    stragglers = 0
+    if after[0] is not None and after[1] is not None:
+        stragglers = sum(1 for i, ts in zip(ids, changed_at, strict=True) if (ts, i) <= after)
 
     rows_written = 0
     windows = 0
@@ -1359,8 +1463,14 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
             unresolved += sum(1 for row in rows if row.payload is None)
             windows += 1
 
-    cursor_id = ids[-1] if len(ids) else after[1]
-    cursor_changed_at = changed_at[-1] if changed_at else after[0]
+    # The worklist tail is the new cursor only when it is ahead of the prior one. A
+    # straggler-only run lands everything below the cursor, and the landing table will
+    # report the prior pair on the next read, so the summary must say the same.
+    cursor_changed_at, cursor_id = after
+    if len(ids):
+        tail = (changed_at[-1], ids[-1])
+        if after[0] is None or tail > after:
+            cursor_changed_at, cursor_id = tail
     return {
         "entity": spec.name,
         "ids_requested": len(ids),
@@ -1370,6 +1480,7 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         # Non-zero means the endpoint returned short pages and batch_size is above its
         # ceiling. Handled, not fatal, so it would otherwise only exist in the logs.
         "bisects": bisects.count,
+        "stragglers": stragglers,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.
         "cursor_source_changed_at": format_cursor_ts(cursor_changed_at)
