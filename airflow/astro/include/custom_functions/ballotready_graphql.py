@@ -500,7 +500,12 @@ def fetch_list(
         body = _post_graphql(
             payload, api_token, limiter, session, timeout, max_retries, sleep, f"{root} page {page}"
         )
-        connection = (body.get("data") or {}).get(root) or {}
+        connection = (body.get("data") or {}).get(root)
+        if connection is None:
+            # The schema declares the root non-null, so this needs a top-level error the
+            # helper would already have raised on; guard anyway, because the alternative
+            # is a silent zero-row "success".
+            raise RuntimeError(f"CivicEngine returned null for {root} on page {page}")
         raw_nodes = connection.get("nodes") or []
         nodes = [node for node in raw_nodes if node is not None]
         yield nodes, len(raw_nodes) - len(nodes)
@@ -1482,6 +1487,8 @@ def read_worklist(
     over the whole worklist.
     """
     after_changed_at, after_source_id = after
+    if spec.worklist_sql is None:
+        raise ValueError(f"{spec.name} is a list entity and has no worklist")
     sql = spec.worklist_sql(
         config.catalog,
         config.dbt_schema,
@@ -1634,6 +1641,8 @@ def extract_list(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     requested_id is the node's own databaseId, since nothing requested it by id. Rows
     are inserted in WINDOW_SIZE buffers so a history pull never holds the listing.
     """
+    if spec.list_root is None:
+        raise ValueError(f"{spec.name} is a worklist entity, not a list entity")
     create_landing_table(connection, config.catalog, config.source_schema, spec.name)
     filter_by = spec.list_filter(config) if spec.list_filter else None
     rows_written = 0
