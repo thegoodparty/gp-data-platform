@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: serve_agent_people
+    description: >
+      Person-grain HubSpot crosswalk for the Serve product's AI agents.
+      Pass-through of the identifier columns of the civics person mart, so the
+      Serve credential resolves a contact from its own schema; the person
+      mart's name, email and phone columns are deliberately not exposed here.
+      One row per gp_person_id, inherited from people.
+    columns:
+      - name: gp_person_id
+        description: "Canonical GoodParty person identifier."
+      - name: hs_contact_id
+        description: >
+          HubSpot contact id, scalar only where the person group carries
+          exactly one; null for a group with zero or more than one, so an
+          ambiguous person resolves to nothing rather than an arbitrary
+          contact.
