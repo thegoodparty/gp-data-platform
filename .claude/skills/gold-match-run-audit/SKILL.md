@@ -248,9 +248,10 @@ Read the printed rows, then interpret against these lines:
   scheduled build lands a run's rows in the internal marts and the 12:02 build
   feeds the 22:00 election-api sync), so Step 1 is read in two phases. SAME
   DAY, minutes after the write: `rows_under_key`, `rows_matched`,
-  `run_label_check_missing` (this run's labels against the universe the 12:02
-  build just refreshed), the feed-absence and rule-class reads below, and the
-  spot-check. The staging-wide `label_check_warn_count` and the coverage ratio
+  `run_label_check_missing` (this run's labels against the current universe;
+  the pod's menu is drawn from that same table, so a nonzero here means the
+  universe moved after the write), the feed-absence and rule-class reads below,
+  and the spot-check. The staging-wide `label_check_warn_count` and the coverage ratio
   read a MIXED snapshot same-day: the staging model is a view over live rows,
   so it already includes the appended run, while the marts are still the last
   build. Read those two the NEXT MORNING, after the 00:02 build and before the
