@@ -18,9 +18,11 @@ story — see `docs/gold_match_daily.md`.
 
 Schedule contract (in place of any dependency wiring, by design): 14:30 UTC
 sits after the day's two universe-moving events (08:00 L2 load, 12:02 build);
-the nightly's own tests are the publication gate, and a red nightly makes
-admission fail closed the next day, so a matcher-caused red pauses the loop
-until the operator removes the offending rows.
+the nightly's tests page on bad rows but do not roll them back (dbt builds a
+model before testing it), so the operator's same-day audit with delete-by-key
+is the internal-mart stop and the sync's own gates are the product stop; a red
+nightly does make admission fail closed the next day, pausing the loop until
+the operator removes the offending rows.
 
 The DAG deploys `is_paused_upon_creation=True`. BUILD must not schedule
 anything; unpausing is the owner-gated activation checklist.
@@ -203,25 +205,26 @@ def gold_match_daily():
     def operator_signal(dag_run=None, ti=None) -> None:
         """Notification-only leaf: fails (so the DAG fails and the alert
         fires) on what a human must see. Runs on all_done so a declined day
-        still signals; it reads the quarantine table, which the pod appends
-        to for response-shape failures (the operator's own adjudication holds
-        are excluded by their reason code)."""
+        still signals; on a declined day nothing was written, so the reason is
+        the whole story and the warehouse is not asked. Otherwise it reads the
+        quarantine table, which the pod appends to for response-shape failures
+        (the operator's own adjudication holds are excluded by their reason)."""
+        declined = ti.xcom_pull(task_ids="admission", key="declined_reason")
+        if declined:
+            raise AirflowException(
+                f"needs a human, nothing deleted: publication declined at admission ({declined}); "
+                "nothing was written, tomorrow retries"
+            )
         run_key = run_key_of(dag_run)
         conn = connect_from_conn_id()
         try:
             fresh = new_quarantine_count(conn, run_key)
         finally:
             conn.close()
-        problems = []
-        declined = ti.xcom_pull(task_ids="admission", key="declined_reason")
-        if declined:
-            problems.append(
-                f"publication declined at admission ({declined}); nothing was written, tomorrow retries"
-            )
         if fresh:
-            problems.append(f"{fresh} office(s) first entered quarantine this run")
-        if problems:
-            raise AirflowException("needs a human, nothing deleted: " + "; ".join(problems))
+            raise AirflowException(
+                f"needs a human, nothing deleted: {fresh} office(s) first entered quarantine this run"
+            )
         t_log.info("nothing to signal")
 
     admission_task = admission()

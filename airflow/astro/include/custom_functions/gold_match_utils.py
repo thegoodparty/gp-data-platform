@@ -7,15 +7,12 @@ signal task cannot drift on which connection fields they need). It triggers no
 dbt build: the scheduled nightly publishes what the pod writes.
 """
 
-import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudHook, DbtCloudJobRunStatus
 from airflow.sdk import Variable
 from include.custom_functions.databricks_utils import conn_kwargs, execute_with_retry
-
-logger = logging.getLogger("airflow.task")
 
 # The scheduled full prod build (00:02 and 12:02 UTC): universe + every
 # consumer. The loop rides it instead of triggering its own; admission asks
@@ -31,11 +28,14 @@ _LIVE_STATUSES = {
     DbtCloudJobRunStatus.STARTING.value,
     DbtCloudJobRunStatus.RUNNING.value,
 }
+# The prod build runs twice a day, so a scheduled success older than this is
+# not "the latest nightly": the schedule was disabled, missed, or never created,
+# and the universe the pod would match against is stale.
+SCHEDULED_BUILD_MAX_AGE = timedelta(hours=24)
 
-# The matcher's tables, mirroring gold-match's l2_br_match_schema paths. The
-# entry point writes the production catalog unconditionally, so these are
-# constants rather than the catalog Variable the ER tables use.
-RESULTS_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_results"
+# The matcher's quarantine table, mirroring gold-match's l2_br_match_schema
+# path. The entry point writes the production catalog unconditionally, so this
+# is a constant rather than the catalog Variable the ER tables use.
 QUARANTINE_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine"
 # A hand-written `held` row for an office whose match the run audit adjudicated
 # WRONG on the pinned build; released by hand when the quality lane re-pins.
@@ -131,16 +131,27 @@ def _is_scheduled(run: dict[str, Any]) -> bool:
     return "schedul" in cause.lower() if cause else True
 
 
-def latest_scheduled_build_succeeded(hook: DbtCloudHook) -> tuple[bool, str]:
-    """Whether the newest SCHEDULED run of the prod build ended SUCCESS, with
-    an operator-readable label of that run. No scheduled run in the newest
-    page is a decline too: the universe's freshness is unknown."""
+def latest_scheduled_build_succeeded(hook: DbtCloudHook, now: datetime | None = None) -> tuple[bool, str]:
+    """Whether the newest SCHEDULED run of the prod build ended SUCCESS within
+    the last day, with an operator-readable label of that run. No scheduled
+    run in the newest page, or one older than SCHEDULED_BUILD_MAX_AGE, or one
+    without a finish time, is a decline: the universe's freshness is unknown."""
+    now = now or datetime.now(UTC)
     for run in _newest_runs(hook, SCHEDULED_BUILD_JOB_ID):
         if not _is_scheduled(run):
             continue
         status = DbtCloudJobRunStatus(run["status"]).name
-        label = f"job {SCHEDULED_BUILD_JOB_ID} run {run['id']} ({status})"
-        return run["status"] == DbtCloudJobRunStatus.SUCCESS.value, label
+        finished = str(run.get("finished_at") or "")
+        label = f"job {SCHEDULED_BUILD_JOB_ID} run {run['id']} ({status}, finished {finished or 'unknown'})"
+        if run["status"] != DbtCloudJobRunStatus.SUCCESS.value:
+            return False, label
+        try:
+            finished_at = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+        except ValueError:
+            return False, label
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=UTC)
+        return now - finished_at <= SCHEDULED_BUILD_MAX_AGE, label
     return False, f"no scheduled run of job {SCHEDULED_BUILD_JOB_ID} among its newest runs"
 
 

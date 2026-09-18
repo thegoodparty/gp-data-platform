@@ -14,7 +14,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from airflow.exceptions import AirflowException
 from airflow.models import DagBag
 
@@ -221,6 +220,8 @@ def test_admission_fails_closed_when_dbt_cloud_cannot_be_asked():
 
 
 def _signal(module, *, fresh, declined=None):
+    """Runs operator_signal; returns the fake ti, the warehouse-connect mock, and
+    the AirflowException it raised (None when it signalled nothing)."""
     signal_fn = _DAG.get_task("operator_signal").python_callable
     ti = MagicMock()
     # Dispatch on (task_ids, key): a typo in the DAG's key would read None and
@@ -228,24 +229,31 @@ def _signal(module, *, fresh, declined=None):
     ti.xcom_pull.side_effect = lambda task_ids, key=None: {("admission", "declined_reason"): declined}.get(
         (task_ids, key)
     )
+    raised = None
     with (
-        patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()),
+        patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()) as connect,
         patch.object(module, "new_quarantine_count", autospec=True, return_value=fresh),
     ):
-        signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
-    return ti
+        try:
+            signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
+        except AirflowException as exc:
+            raised = exc
+    return ti, connect, raised
 
 
 def test_signal_raises_for_first_quarantines_and_declined_days_only():
     """Each story a human must see, without deleting anything: offices that
     first entered quarantine this run (the operator's own adjudication holds
-    are excluded in the helper), or a day declined at admission."""
+    are excluded in the helper), or a day declined at admission. On a declined
+    day nothing was written, so the warehouse is not asked."""
     module = _dag_module()
-    with pytest.raises(AirflowException, match="quarantine"):
-        _signal(module, fresh=1)
-    with pytest.raises(AirflowException, match="declined at admission.*in flight"):
-        _signal(
-            module, fresh=0, declined="another prod build is in flight: job 70471823431463 run 9 (RUNNING)"
-        )
-    ti = _signal(module, fresh=0)  # nothing to signal
+    _, connect, raised = _signal(module, fresh=1)
+    assert "first entered quarantine" in str(raised) and connect.called
+    _, connect, raised = _signal(
+        module, fresh=0, declined="another prod build is in flight: job 70471823431463 run 9 (RUNNING)"
+    )
+    assert "declined at admission" in str(raised) and "in flight" in str(raised)
+    assert not connect.called
+    ti, connect, raised = _signal(module, fresh=0)  # nothing to signal
+    assert raised is None and connect.called
     ti.xcom_pull.assert_any_call(task_ids="admission", key="declined_reason")

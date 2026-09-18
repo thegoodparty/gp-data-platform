@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import include.custom_functions.gold_match_utils as gm
-from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudJobRunStatus
 
 _RUN_KEY = datetime(2026, 9, 2, 14, 30, 3, tzinfo=UTC)
 
@@ -127,8 +126,11 @@ def _hook(pages):
     return hook
 
 
-def _run(run_id, status, cause="Triggered via schedule"):
-    return {"id": run_id, "status": status, "trigger": {"cause": cause}}
+_NOW = datetime(2026, 9, 18, 14, 30, tzinfo=UTC)
+
+
+def _run(run_id, status, cause="Triggered via schedule", finished="2026-09-18T13:47:00Z"):
+    return {"id": run_id, "status": status, "trigger": {"cause": cause}, "finished_at": finished}
 
 
 def test_latest_scheduled_build_succeeded_reads_the_newest_scheduled_run():
@@ -158,11 +160,11 @@ def test_latest_scheduled_build_declines_when_no_scheduled_run_is_found_and_coun
     unknown: decline. Without trigger data (an API shape change) every run
     counts, so an unknown latest run that failed still declines."""
     ok, label = gm.latest_scheduled_build_succeeded(
-        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(9, 10, cause="Triggered via API")]})
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(9, 10, cause="Triggered via API")]}), now=_NOW
     )
     assert ok is False and "no scheduled run" in label
     ok, _ = gm.latest_scheduled_build_succeeded(
-        _hook({gm.SCHEDULED_BUILD_JOB_ID: [{"id": 9, "status": 20}, {"id": 8, "status": 10}]})
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [{"id": 9, "status": 20}, {"id": 8, "status": 10}]}), now=_NOW
     )
     assert ok is False
 
@@ -193,4 +195,3 @@ def test_no_dbt_trigger_or_cancel_remains_in_the_helpers():
     source = inspect.getsource(gm)
     assert "trigger_job_run" not in source
     assert "cancel_job_run" not in source
-    assert DbtCloudJobRunStatus.SUCCESS.value == 10  # the status the admission read compares against
