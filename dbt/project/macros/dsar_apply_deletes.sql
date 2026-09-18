@@ -224,6 +224,11 @@
                             "type": "phone",
                             "match": "scalar",
                         },
+                        {
+                            "expr": raw.replace("{path}", "$.phone_clean"),
+                            "type": "phone",
+                            "match": "scalar",
+                        },
                     ],
                 },
                 {
@@ -364,6 +369,17 @@
     {%- set register = source("source_dsar", "suppressed_identifiers") -%}
     {%- set scope = "" -%}
     {%- if request_id -%}
+        {#- The id lands in SQL, so only ticket-shaped values get that far. -#}
+        {%- if not modules.re.match(
+            "^[A-Za-z0-9][A-Za-z0-9_-]*$", request_id | string
+        ) -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "dsar_apply_deletes: request_id must be letters, digits, hyphens or underscores, got "
+                    ~ (request_id | string)
+                )
+            }}
+        {%- endif -%}
         {%- set scope = " and r.request_id = '" ~ request_id ~ "'" -%}
     {%- endif -%}
 
