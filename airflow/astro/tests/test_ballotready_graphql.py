@@ -19,6 +19,7 @@ from include.custom_functions.ballotready_graphql import (
     INSERT_COLUMNS,
     ISSUE_SELECTION,
     MAX_INSERT_PARAM_CHARS,
+    MEASURE_SELECTION,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
     PERSON_SELECTION,
@@ -38,6 +39,7 @@ from include.custom_functions.ballotready_graphql import (
     create_landing_table,
     encode_node_id,
     extract_entity,
+    fetch_list,
     fetch_nodes,
     filing_period_worklist_sql,
     format_cursor_ts,
@@ -47,6 +49,7 @@ from include.custom_functions.ballotready_graphql import (
     issue_worklist_sql,
     landing_table,
     make_session,
+    measure_list_filter,
     normalized_position_worklist_sql,
     person_worklist_sql,
     position_election_frequency_worklist_sql,
@@ -187,10 +190,13 @@ class FakeSession:
         self._responses = list(responses)
         self.requested_id_counts = []
         self.requested_ids = []
+        self.variables = []
 
     def post(self, url, json, headers, timeout):
-        self.requested_id_counts.append(len(json["variables"]["ids"]))
-        self.requested_ids.append(json["variables"]["ids"])
+        self.variables.append(json["variables"])
+        ids = json["variables"].get("ids", [])
+        self.requested_id_counts.append(len(ids))
+        self.requested_ids.append(ids)
         response = self._responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -497,6 +503,7 @@ ALL_SELECTIONS = {
     "FilingPeriod": FILING_PERIOD_SELECTION,
     "Geofence": GEOFENCE_SELECTION,
     "Issue": ISSUE_SELECTION,
+    "Measure": MEASURE_SELECTION,
     "NormalizedPosition": NORMALIZED_POSITION_SELECTION,
     "Party": PARTY_SELECTION,
     "Person": PERSON_SELECTION,
@@ -562,6 +569,30 @@ def _top_level_fields(selection: str) -> frozenset[str]:
 # source it was copied from. A dropped, renamed, or newly added top-level
 # field fails this even if it is buried among a dozen others.
 EXPECTED_TOP_LEVEL_FIELDS = {
+    "Measure": frozenset(
+        {
+            "arguments",
+            "conSnippet",
+            "createdAt",
+            "databaseId",
+            "election",
+            "endorsements",
+            "geoId",
+            "hasUnknownBoundaries",
+            "id",
+            "issue",
+            "mtfcc",
+            "name",
+            "party",
+            "proSnippet",
+            "slug",
+            "state",
+            "summary",
+            "text",
+            "title",
+            "updatedAt",
+        }
+    ),
     "Candidacy": frozenset(
         {
             "candidate",
@@ -1164,6 +1195,7 @@ EXPECTED_ENTITIES = {
     "filing_period",
     "geofence",
     "issue",
+    "measure",
     "normalized_position",
     "party",
     "person",
@@ -1172,7 +1204,7 @@ EXPECTED_ENTITIES = {
 }
 
 
-def test_registry_covers_exactly_the_ten_entities():
+def test_registry_covers_exactly_the_expected_entities():
     assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
 
 
@@ -1192,6 +1224,7 @@ EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
     "person": ("candidacy",),
     "position_election_frequency": (),
     "issue": ("stance",),
+    "measure": (),
 }
 
 
@@ -1209,11 +1242,15 @@ def test_every_spec_ships_at_the_proven_page_size():
     assert {s.batch_size for s in ENTITY_SPECS.values()} == {100}
 
 
+# measure is the one list-mode entity; every other spec is fetched by id off a worklist.
+WORKLIST_ENTITIES = EXPECTED_ENTITIES - {"measure"}
+
+
 @pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
-def test_every_spec_has_a_selection_and_a_worklist_builder(entity):
+def test_every_spec_has_a_selection_and_exactly_one_mode(entity):
     spec = ENTITY_SPECS[entity]
     assert spec.selection.strip()
-    assert callable(spec.worklist_sql)
+    assert (spec.worklist_sql is None) != (spec.list_root is None)
 
 
 @pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
@@ -1234,7 +1271,7 @@ def test_node_types_match_the_ballotready_object_names():
     assert ENTITY_SPECS["position_election_frequency"].node_type == "PositionElectionFrequency"
 
 
-@pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
+@pytest.mark.parametrize("entity", sorted(WORKLIST_ENTITIES))
 def test_every_worklist_builder_accepts_the_uniform_signature(entity):
     """Every builder is called the same way, so the task body needs no branch.
 
@@ -2090,3 +2127,81 @@ def test_dbt_declares_a_source_for_every_registered_entity():
     declared = {table["name"] for table in airflow_source["tables"]}
 
     assert declared == {f"ballotready_{entity}_raw" for entity in ENTITY_SPECS}
+
+
+def _measure(i):
+    return {"id": f"gid-{i}", "databaseId": i, "updatedAt": "2026-09-01T12:00:00Z", "name": f"Measure {i}"}
+
+
+def _measures_page(nodes, has_next, end_cursor):
+    page_info = {"hasNextPage": has_next, "endCursor": end_cursor}
+    return {"data": {"measures": {"nodes": nodes, "pageInfo": page_info}}}
+
+
+def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
+    session = FakeSession(
+        [
+            FakeResponse(body=_measures_page([_measure(1), _measure(2)], True, "c1")),
+            FakeResponse(body=_measures_page([_measure(3)], False, "c2")),
+        ]
+    )
+    floor = {"electionDay": {"gte": "2026-09-18"}}
+
+    pages = list(fetch_list("measures", "Measure", MEASURE_SELECTION, floor, "tok", _limiter(), session))
+
+    assert [[n["databaseId"] for n in nodes] for nodes, _ in pages] == [[1, 2], [3]]
+    assert [v["after"] for v in session.variables] == [None, "c1"]
+    assert session.variables[0]["first"] == 100
+    assert session.variables[0]["filterBy"] == floor
+
+    # hasNextPage with a null or already-seen cursor would refetch pages forever, and
+    # max_active_runs=1 would then hold every later schedule behind it.
+    stuck = FakeSession([FakeResponse(body=_measures_page([_measure(1)], True, None))])
+    cycling = FakeSession(
+        [
+            FakeResponse(body=_measures_page([_measure(1)], True, "a")),
+            FakeResponse(body=_measures_page([_measure(2)], True, "b")),
+            FakeResponse(body=_measures_page([_measure(3)], True, "a")),
+        ]
+    )
+    for session in (stuck, cycling):
+        with pytest.raises(RuntimeError, match="without a new endCursor"):
+            list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
+
+
+def test_extract_entity_lists_measures_and_lands_every_non_null_node(monkeypatch):
+    pages = iter(
+        [
+            _measures_page([_measure(1), None, _measure(2)], True, "c1"),
+            _measures_page([_measure(3)], False, "c2"),
+        ]
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql._post_graphql", lambda *a, **k: next(pages)
+    )
+    inserted = MagicMock()
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", inserted)
+
+    summary = extract_entity(ENTITY_SPECS["measure"], FakeConnection([]), _config())
+
+    rows = inserted.call_args.args[4]
+    assert [(r.requested_id, r.database_id, r.node_id) for r in rows] == [
+        (1, 1, "gid-1"),
+        (2, 2, "gid-2"),
+        (3, 3, "gid-3"),
+    ]
+    assert rows[0].source_changed_at == "2026-09-01 12:00:00.000000"
+    assert json.loads(rows[0].payload)["name"] == "Measure 1"
+    assert summary == {
+        "entity": "measure",
+        "rows_written": 3,
+        "null_nodes": 1,
+        "election_day_floor": "2026-08-25",
+    }
+
+
+def test_measure_list_filter_floors_at_the_run_date_unless_full_reload():
+    assert measure_list_filter(_config(extracted_at="2026-09-18T23:59:59+00:00")) == {
+        "electionDay": {"gte": "2026-09-18"}
+    }
+    assert measure_list_filter(_config(full_reload=True)) is None
