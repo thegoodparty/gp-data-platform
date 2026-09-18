@@ -82,7 +82,7 @@ Fix these in `omni`, not here. A display label is presentation, and publishing o
 
 Two habits that paid off:
 
-- **Count the blast radius from the position mart, not from the ticket.** The ticket named one state; grouping positions by the name the picker sees showed the filter gap hit ~5,015 positions across 44 states while the label gap hit 8. The bigger one was invisible from the ticket text.
+- **Count the blast radius from the position mart, not from the ticket.** The ticket named one state; grouping positions by the name the picker sees showed the filter gap hit 4,918 positions across 49 states while the label gap hit 8. The bigger one was invisible from the ticket text.
 - **Read the name vocabulary before writing a pattern against it.** The same query that sized the problem showed BallotReady names congressional seats `U.S. House of Representatives - ...`, which a plain match would have swept into a state-chamber bucket, and that ~130 borough and municipal "Assembly" bodies are councils, not legislatures. Both were regressions written from intuition and caught by data.
 
 `omni` conventions worth knowing before you edit it: `AGENTS.md` is the source of truth and `CLAUDE.md` is a symlink to it, `docs/product-copy.md` governs any string a user reads (rule 4, use their words not ours, is usually the argument for this class of fix), and a stale local checkout will hand you moved paths — read from `origin/main` with `git show`/`git grep`.
