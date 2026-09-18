@@ -4,11 +4,10 @@ Warehouse calls run against a recording fake connection; dbt Cloud calls
 against a mocked hook. Every test names the production failure it catches.
 """
 
-from datetime import UTC, datetime
-from unittest.mock import MagicMock, call, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import include.custom_functions.gold_match_utils as gm
-from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudJobRunStatus
 
 _RUN_KEY = datetime(2026, 9, 2, 14, 30, 3, tzinfo=UTC)
 
@@ -101,83 +100,115 @@ def test_pod_env_forwards_narrowed_scopes():
 
 def test_run_key_truncates_to_the_writers_precision():
     """attempted_at is written truncated to whole seconds; an untruncated key
-    in the delete/gate SQL matches ZERO rows while reporting success."""
+    in the signal SQL matches ZERO rows while reporting nothing to signal."""
     dag_run = type("R", (), {"start_date": datetime(2026, 9, 2, 14, 30, 3, 999999, tzinfo=UTC)})
     assert gm.run_key_of(dag_run) == _RUN_KEY
 
 
-def test_gate_queries_bind_the_run_key_and_map_both_metrics():
-    """The run-scoped count must be scoped by attempted_at equality — an
-    unscoped query would attribute every historical dead tuple to this run and
-    delete a healthy day's work."""
-    cursor = _FakeCursor(rows=[(2,), (5,)])
-    metrics = gm.run_gate_queries(_FakeConn(cursor), _RUN_KEY)
-    assert metrics == {"run_scoped_dead": 2, "global_dead": 5}
-    run_sql, run_params = cursor.calls[0]
-    assert "attempted_at = :run_key" in run_sql
-    assert run_params == {"run_key": _RUN_KEY}
-    global_sql, _ = cursor.calls[1]
-    assert "stg_model_predictions__llm_l2_br_match" in global_sql
-    # The baseline exclusion mirrors the staging label test, with the UTC
-    # offset pinned (a bare literal reads in the session timezone).
-    assert "timestamp'2026-01-26 00:00:00+00:00'" in global_sql
-
-
-def test_delete_targets_only_the_runs_rows_and_reports_the_count():
-    """Cleanup deletes by key with no expected_count (a pod dead mid-write has
-    no recorded count); the pre-count is the operator's audit line."""
-    cursor = _FakeCursor(rows=[(7,), None])
-    deleted = gm.delete_run_rows(_FakeConn(cursor), _RUN_KEY)
-    assert deleted == 7
-    delete_sql, delete_params = cursor.calls[1]
-    assert delete_sql.startswith(f"delete from {gm.RESULTS_TABLE}")
-    assert "attempted_at = :run_key" in delete_sql
-    assert delete_params == {"run_key": _RUN_KEY}
-
-
-def test_new_quarantine_reads_first_entries_only():
+def test_new_quarantine_reads_first_entries_only_and_ignores_adjudication_holds():
     """Inserts stamp first_failed_at = the run key exactly; backoff re-fails
-    only re-stamp last_failed_at and must stay silent."""
+    only re-stamp last_failed_at and must stay silent; and a hand-written
+    adjudication hold stamped with the run key is the operator's own doing,
+    not a pod failure the alarm should fire for."""
     cursor = _FakeCursor(rows=[(3,)])
     assert gm.new_quarantine_count(_FakeConn(cursor), _RUN_KEY) == 3
     sql, params = cursor.calls[0]
     assert "first_failed_at = :run_key" in sql
-    assert params == {"run_key": _RUN_KEY}
+    assert "reason_code <> :adjudicated" in sql
+    assert params == {"run_key": _RUN_KEY, "adjudicated": "adjudicated_wrong"}
 
 
-def test_cancel_requires_terminal_confirmation_after_cancelling():
-    """The provider's own kill path only warns on cancel/confirm failure;
-    cleanup must not delete-and-rebuild while a cancelled rebuild could still
-    be writing, so the wait (which raises on timeout) comes AFTER the cancel."""
+def _hook(pages):
     hook = MagicMock()
-    gm.cancel_dbt_run_and_confirm(hook, 555)
-    assert hook.mock_calls[0] == call.cancel_job_run(555)
-    wait_kwargs = hook.wait_for_job_run_status.call_args.kwargs
-    assert wait_kwargs["run_id"] == 555
-    assert wait_kwargs["expected_statuses"] == DbtCloudJobRunStatus.TERMINAL_STATUSES.value
+    hook.get_job_runs.side_effect = lambda payload: MagicMock(
+        json=lambda: {"data": pages[payload["job_definition_id"]]}
+    )
+    return hook
 
 
-def test_cancel_tolerates_an_already_terminal_run():
-    """On the common gates-failure path the rebuild already SUCCEEDED; an API
-    objection to cancelling a terminal run must not kill cleanup before the
-    delete — the terminal-confirmation wait still runs."""
-    hook = MagicMock()
-    hook.cancel_job_run.side_effect = RuntimeError("run already terminal")
-    gm.cancel_dbt_run_and_confirm(hook, 555)
-    assert hook.wait_for_job_run_status.called
+_NOW = datetime(2026, 9, 18, 14, 30, tzinfo=UTC)
 
 
-def test_trigger_rebuild_waits_for_success_with_the_given_cause():
-    """The repair rebuild is unconditional and must carry the operator-readable
-    cause; waiting on SUCCESS makes a failed repair raise (the hook raises on
-    wrong-terminal and on timeout) instead of silently passing."""
-    hook = MagicMock()
-    hook.trigger_job_run.return_value.json.return_value = {"data": {"id": 777}}
-    run_id = gm.trigger_rebuild_and_wait(hook, cause="gold-match daily: cleanup rebuild after failed run (t)")
-    assert run_id == 777
-    trigger_kwargs = hook.trigger_job_run.call_args.kwargs
-    assert trigger_kwargs["job_id"] == gm.GOLD_MATCH_REBUILD_JOB_ID
-    assert trigger_kwargs["cause"].startswith("gold-match daily: cleanup rebuild")
-    wait_kwargs = hook.wait_for_job_run_status.call_args.kwargs
-    assert wait_kwargs["run_id"] == 777
-    assert wait_kwargs["expected_statuses"] == DbtCloudJobRunStatus.SUCCESS.value
+def _run(run_id, status, cause="Triggered via schedule", finished="2026-09-18T13:47:00Z"):
+    return {"id": run_id, "status": status, "trigger": {"cause": cause}, "finished_at": finished}
+
+
+def test_latest_scheduled_build_succeeded_reads_the_newest_scheduled_run():
+    """A hand-triggered or API-triggered run newer than the schedule (the old
+    loop's rebuilds, a teammate's re-run) must not stand in for the nightly;
+    the newest SCHEDULED run decides."""
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook(
+            {
+                gm.SCHEDULED_BUILD_JOB_ID: [
+                    _run(9, 20, cause="Triggered via API by x"),
+                    _run(8, 10),
+                    _run(7, 20),
+                ]
+            }
+        ),
+        now=_NOW,
+    )
+    assert ok is True and "run 8" in label and "SUCCESS" in label
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 30), _run(7, 10)]}),
+        now=_NOW,
+    )
+    assert ok is False and "CANCELLED" in label
+
+
+def test_latest_scheduled_build_declines_when_no_scheduled_run_is_found_and_counts_untagged_runs():
+    """No scheduled run in the newest page means the universe's freshness is
+    unknown: decline. Without trigger data (an API shape change) every run
+    counts, so an unknown latest run that failed still declines."""
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(9, 10, cause="Triggered via API")]}), now=_NOW
+    )
+    assert ok is False and "no scheduled run" in label
+    ok, _ = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [{"id": 9, "status": 20}, {"id": 8, "status": 10}]}), now=_NOW
+    )
+    assert ok is False
+
+
+def test_latest_scheduled_build_declines_a_stale_or_undated_success():
+    """A SUCCESS older than SCHEDULED_BUILD_MAX_AGE (the schedule was missed or
+    disabled) or one without a finish time (an API shape change) leaves the
+    universe's freshness unknown: decline rather than match against it."""
+    stale = (_NOW - gm.SCHEDULED_BUILD_MAX_AGE - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 10, finished=stale)]}), now=_NOW
+    )
+    assert ok is False and "SUCCESS" in label
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 10, finished=None)]}), now=_NOW
+    )
+    assert ok is False and "unknown" in label
+
+
+def test_inflight_prod_builds_reports_live_runs_of_both_prod_jobs_only():
+    """Admission must see a queued, starting or running run of either prod-
+    writing job and ignore finished ones; a live run is always among the
+    newest, so one page ordered by -id suffices."""
+    live = gm.inflight_prod_builds(
+        _hook(
+            {
+                gm.SCHEDULED_BUILD_JOB_ID: [_run(1, 10), _run(2, 3)],
+                gm.ON_MERGE_BUILD_JOB_ID: [_run(3, 20), _run(4, 1)],
+            }
+        )
+    )
+    assert live == [
+        f"job {gm.SCHEDULED_BUILD_JOB_ID} run 2 (RUNNING)",
+        f"job {gm.ON_MERGE_BUILD_JOB_ID} run 4 (QUEUED)",
+    ]
+
+
+def test_no_dbt_trigger_or_cancel_remains_in_the_helpers():
+    """The loop rides the scheduled nightly; a trigger or cancel call creeping
+    back in would re-couple publication to a build the DAG owns."""
+    import inspect
+
+    source = inspect.getsource(gm)
+    assert "trigger_job_run" not in source
+    assert "cancel_job_run" not in source
