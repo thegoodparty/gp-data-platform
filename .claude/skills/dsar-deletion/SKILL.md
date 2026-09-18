@@ -201,18 +201,36 @@ Order matters. Clearing a warehouse copy before its source means the next sync r
 The gp-api Airbyte source replicates by Xmin, not CDC, so a Postgres delete never reaches
 Databricks. There is no `_ab_cdc_deleted_at` column. The row simply stops updating and
 persists forever, and `dbt build --full-refresh` faithfully reproduces it. The staging
-filter hides these rows; it does not remove them. Removal is a dbt operation:
+filter hides these rows; it does not remove them. Removal is a dbt operation,
+`dsar_apply_deletes`, and who runs it decides whether it can delete.
+
+**Dry run from the CLI, as yourself.** Counting needs only SELECT, which every engineer has:
 
 ```bash
 cd dbt/project
-dbt run-operation dsar_apply_deletes                                    # dry run: counts per table
-dbt run-operation dsar_apply_deletes --args '{request_id: DATA-XXXX}'   # dry run, one request
-dbt run-operation dsar_apply_deletes --args '{dry_run: false}'          # delete
+dbt run-operation dsar_apply_deletes                                    # counts per table
+dbt run-operation dsar_apply_deletes --args '{request_id: DATA-XXXX}'   # one request
 ```
 
-Run the dry run first and read the counts against the sweep. A table the sweep flagged
-that counts zero here means the register is missing an identifier type, so go back to
-Step 2 rather than deleting by hand.
+Read the counts against the sweep. A table the sweep flagged that counts zero here means
+the register is missing an identifier type, so go back to Step 2 rather than deleting by
+hand.
+
+**Delete through the dbt Cloud job, never from the CLI.** The CLI runs in your development
+environment with your own Databricks credentials, which do not hold MODIFY on the raw
+sources. The `DSAR apply deletes` job in the Prod deployment environment runs as the dbt
+Cloud service principal, which does. `run_deletes.py` starts it over the Admin API with
+the operation's arguments as a step override and waits for the result:
+
+```bash
+python .claude/skills/dsar-deletion/run_deletes.py --request-id DATA-XXXX          # dry run in the job
+python .claude/skills/dsar-deletion/run_deletes.py --request-id DATA-XXXX --apply  # delete
+```
+
+It reads the same `~/.dbt/dbt_cloud.yml` the CLI uses, so there is nothing to configure,
+and it prints the run URL and the per-table counts when the job finishes. The job's own
+scheduled step is the unscoped delete, which is the standing control against sources that
+re-ingest a deleted person on their next sync.
 
 The operation covers every copy that mirrors a staging filter: the Airbyte landing tables
 for gp-api users, HubSpot contacts and companies, BallotReady candidacies and office
@@ -222,10 +240,8 @@ HubSpot contact and company snapshots. Its target list and the staging filters s
 normalization macro, so what the filter hides is exactly what the operation removes. A
 filter added to a staging model needs its raw expression added to `dsar_delete_targets`.
 
-It runs as the dbt Cloud principal, which already holds MODIFY across the catalog. No
-engineer needs standing delete rights on raw sources, and the run is in the dbt Cloud job
-history. It is idempotent and scheduled, so it is also the standing control against a
-source that re-ingests a deleted person on its next sync.
+No engineer needs standing delete rights on raw sources, and every deletion is a dbt
+Cloud run with its cause, its arguments and its counts in the job history.
 
 Copies the operation does not reach, which still need a hand `DELETE` when the sweep
 finds the subject there:
@@ -276,9 +292,10 @@ Keep the request record. Close the ticket and update the linked HubSpot ticket.
 - `dbt_cloud` needs SELECT on `source_dsar` for the staging filter to run. It has
   catalog-wide SELECT today, so tightening that grant would break the filter quietly.
 - The delete operation needs MODIFY on `airbyte_source`, `airbyte_internal` and `dbt`.
-  `dbt_cloud` holds catalog-wide MODIFY today, so run it from dbt Cloud rather than as
-  yourself. The data-engineers group has MANAGE, not MODIFY, on those schemas; granting
-  yourself MODIFY to delete by hand is the path this operation exists to avoid.
+  `dbt_cloud` holds catalog-wide MODIFY; your CLI session does not, whatever the
+  target. A `dry_run: false` from the CLI fails on the first raw table. The
+  data-engineers group has MANAGE, not MODIFY, on those schemas; granting yourself
+  MODIFY to delete by hand is the path the job exists to avoid.
 - Purpose limitation is the real compliance risk. The anti-join in staging is a permitted
   use. A `left join` that adds a "requested deletion" flag to a user table is not. Never
   join this table into a mart or expose it in a BI tool.

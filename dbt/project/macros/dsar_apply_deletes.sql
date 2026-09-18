@@ -344,10 +344,13 @@
             dbt run-operation dsar_apply_deletes --args '{dry_run: false}'         -- delete
             dbt run-operation dsar_apply_deletes --args '{request_id: DATA-XXXX}'  -- one request
 
-        Runs as the dbt Cloud principal, which already holds MODIFY across the
-        catalog, so no engineer needs standing delete rights on raw sources. Safe to
-        run on a schedule: it is idempotent, and it is the standing control against
-        sources that re-ingest a deleted person on their next sync.
+        Who runs it decides whether it can delete. From the dbt Cloud CLI it runs
+        with your own Databricks credentials, which can count but hold no MODIFY on
+        the raw sources, so the CLI is for dry runs. Deletes go through the dbt Cloud
+        job in the Prod deployment environment, which runs as the dbt Cloud service
+        principal; the skill's run_deletes.py triggers it with these arguments as a
+        step override. Idempotent, so the job's scheduled unscoped run is the
+        standing control against sources that re-ingest a deleted person.
 
         Deletes are logical. No purge, no vacuum; the legal review settled that a
         Delta DELETE meets the statute.
