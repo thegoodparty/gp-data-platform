@@ -70,6 +70,10 @@ Find the source ticket in `airbyte_source.hubspot_api_tickets`. The ClickUp cust
 naming the HubSpot ticket has been wrong before, so match on content rather than trusting
 it, and correct the field if it disagrees.
 
+Then read the full conversation in HubSpot itself. The warehouse row holds only the first
+message, and a request that opens with "remove my profile" can turn into an explicit
+CCPA deletion two messages later. Scope from the whole thread, not the first line.
+
 ## Step 1: scope
 
 ```bash
@@ -95,6 +99,11 @@ treat a fuzzy hit as a match without reading the row.
 
 Both matter. The anchor alone would miss a misspelling or a name split across the wrong
 fields. The fuzzy pass alone buries a real answer in noise.
+
+**Rerun the sweep with every email and phone the first pass surfaces.** A vendor record
+often carries a work address and office phone that the request never mentioned, and
+those are the identifiers the staging filters key on. One pass on the requester's own
+details is not a complete scope.
 
 Coverage is roughly 25 probes: product data, HubSpot contacts and companies including
 the archive and snapshot copies, Segment, Amplitude, Stripe, ClickUp, the vendor civic
@@ -191,19 +200,64 @@ Order matters. Clearing a warehouse copy before its source means the next sync r
 
 The gp-api Airbyte source replicates by Xmin, not CDC, so a Postgres delete never reaches
 Databricks. There is no `_ab_cdc_deleted_at` column. The row simply stops updating and
-persists forever, and `dbt build --full-refresh` faithfully reproduces it. Every one of
-these needs an explicit `DELETE`:
+persists forever, and `dbt build --full-refresh` faithfully reproduces it. The staging
+filter hides these rows; it does not remove them. Removal is a dbt operation,
+`dsar_apply_deletes`, and who runs it decides whether it can delete.
 
-- `airbyte_source.gp_api_db_*`, all 36 person-bearing streams
-- `airbyte_internal.airbyte_source_raw__stream_*`, insert-only raw JSON of every version
-  ever extracted. A stream resync does not clear prior generations.
+**Dry run from the CLI, as yourself.** Counting needs only SELECT, which every engineer has:
+
+```bash
+cd dbt/project
+dbt run-operation dsar_apply_deletes                                    # counts per table
+dbt run-operation dsar_apply_deletes --args '{request_id: DATA-XXXX}'   # one request
+```
+
+Read the counts against the sweep. A table the sweep flagged that counts zero here means
+the register is missing an identifier type, so go back to Step 2 rather than deleting by
+hand.
+
+**Delete through the dbt Cloud job, never from the CLI.** The CLI runs in your development
+environment with your own Databricks credentials, which do not hold MODIFY on the raw
+sources. The `DSAR apply deletes` job in the Prod deployment environment runs as the dbt
+Cloud service principal, which does. `run_deletes.py` starts it over the Admin API with
+the operation's arguments as a step override and waits for the result:
+
+```bash
+python .claude/skills/dsar-deletion/run_deletes.py --request-id DATA-XXXX          # dry run in the job
+python .claude/skills/dsar-deletion/run_deletes.py --request-id DATA-XXXX --apply  # delete
+```
+
+It reads the same `~/.dbt/dbt_cloud.yml` the CLI uses, so there is nothing to configure,
+and it prints the run URL and the per-table counts when the job finishes. The job's own
+scheduled step is the unscoped delete, which is the standing control against sources that
+re-ingest a deleted person on their next sync.
+
+The operation covers every copy that mirrors a staging filter: the Airbyte landing tables
+for gp-api users, HubSpot contacts and companies, BallotReady candidacies and office
+holders, TechSpeed candidates and officeholders, DDHQ results and Amplitude events; their
+insert-only `airbyte_internal` raw JSON, which a stream resync never clears; and the
+HubSpot contact and company snapshots. Its target list and the staging filters share one
+normalization macro, so what the filter hides is exactly what the operation removes. A
+filter added to a staging model needs its raw expression added to `dsar_delete_targets`.
+
+No engineer needs standing delete rights on raw sources, and every deletion is a dbt
+Cloud run with its cause, its arguments and its counts in the job history.
+
+Copies the operation does not reach, which still need a hand `DELETE` when the sweep
+finds the subject there:
+
+- the other `airbyte_source.gp_api_db_*` streams, when the subject has a gp-api account
 - `segment_storage` tables in the `gp_api` and `web_app` schemas
-- `airbyte_source.amplitude_api_events`
-- `airbyte_source.hubspot_api_contacts`, the three `snapshot__hubspot_api_*` tables, and
-  the three `archives.airbyte_source__hubspot_api_*_20260122` tables
+- the three `archives.airbyte_source__hubspot_api_*_20260122` tables
 - `historical.ballotready_records_sent_to_hubspot` and `..._sent_to_techspeed`. Read these
   first; they record what we disclosed onward.
 - `model_predictions.candidacy_ddhq_matches_*`
+- `dbt.snapshot__int__civics_person_canonical_ids`, which records removal rather than
+  erasing it
+- `er_source.*`, which the matcha rerun in Step 5 regenerates from clean inputs
+
+Everything downstream of staging, including PR and dev schemas, is a derived copy that the
+next rebuild clears. Do not chase those by hand.
 
 Stop there. No purge, no vacuum.
 
@@ -237,6 +291,11 @@ Keep the request record. Close the ticket and update the linked HubSpot ticket.
   contact id, so a subject may have more than one. Insert a row for each.
 - `dbt_cloud` needs SELECT on `source_dsar` for the staging filter to run. It has
   catalog-wide SELECT today, so tightening that grant would break the filter quietly.
+- The delete operation needs MODIFY on `airbyte_source`, `airbyte_internal` and `dbt`.
+  `dbt_cloud` holds catalog-wide MODIFY; your CLI session does not, whatever the
+  target. A `dry_run: false` from the CLI fails on the first raw table. The
+  data-engineers group has MANAGE, not MODIFY, on those schemas; granting yourself
+  MODIFY to delete by hand is the path the job exists to avoid.
 - Purpose limitation is the real compliance risk. The anti-join in staging is a permitted
   use. A `left join` that adds a "requested deletion" flag to a user table is not. Never
   join this table into a mart or expose it in a BI tool.
