@@ -254,7 +254,8 @@ Read the printed rows, then interpret against these lines:
   read a MIXED snapshot same-day: the staging model is a view over live rows,
   so it already includes the appended run, while the marts are still the last
   build. Read those two the NEXT MORNING, after the 00:02 build and before the
-  12:02 product backstop. Never gate on the same-day reading of either.
+  12:02 product backstop, by re-running this Step 1 SQL with the same run key.
+  Never gate on the same-day reading of either.
 - A nonzero `run_label_check_missing` is a HARD STOP before the 00:02 build:
   THIS run shipped labels the current universe does not carry — delete the
   run's rows by key, quarantine the offices, and let the next scheduled build
@@ -702,7 +703,7 @@ Restate only the hard conditions, each naming where it was measured:
 - [ ] `run_label_check_missing` is zero (Step 1, read same day before the 00:02
   build) — a nonzero here is THIS run's hard stop.
 - [ ] `label_check_warn_count` is zero before release (Step 1, read after the
-  00:02 build lands the run) — zero POST-baseline dead tuples, the warn test's own scope. January-origin dead labels are the
+  00:02 build lands the run and before the 12:02 product backstop) — zero POST-baseline dead tuples, the warn test's own scope. January-origin dead labels are the
   pending backlog, deliberately out of scope, and join nothing while they wait.
   A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
   by deleting this one.
@@ -712,8 +713,9 @@ Restate only the hard conditions, each naming where it was measured:
   reclassification caused by BR/universe drift between run and audit is not a
   violation).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
-  floor (Step 1, read after the 00:02 build lands the run; same-day the mart is
-  still the prior build, so never gate on that reading).
+  floor (Step 1, read after the 00:02 build lands the run and before the 12:02
+  product backstop; same-day the mart is still the prior build, so never gate on
+  that reading).
 - [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
   the owner (Step 2).
 - [ ] Holdout gate verdict is PASS **for the arm this run actually used**
