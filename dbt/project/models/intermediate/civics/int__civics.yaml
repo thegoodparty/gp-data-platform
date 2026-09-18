@@ -4506,3 +4506,58 @@ models:
         description: Campaign id from the product database. Repeats across versions.
         data_tests:
           - not_null
+
+  - name: int__civics_campaign_incumbency
+    description: >
+      Office-first incumbency for product campaigns: on election day, does this
+      signup already hold the seat they are running for?
+
+      Grain: one row per latest-version, non-demo campaign that has a
+      BallotReady position and an election date.
+
+      Exists because candidacy.is_incumbent only covers campaigns that clear the
+      candidacy mart's vendor-corroboration gate, which is 27% of 2026 Win
+      campaigns. Anchoring on the campaign's own ballotready_position_id reaches
+      88%, and asks nothing of third-party confirmation that the person is on a
+      ballot. Semantics are identical to candidacy.is_incumbent so the two can
+      be coalesced.
+    columns:
+      - name: campaign_id
+        description: Campaign id from the product database. One row per campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: >
+          The campaign's own election date, carried so consumers can join
+          version-aware and a version cannot inherit another cycle's answer.
+        data_tests:
+          - not_null
+      - name: is_incumbent
+        description: >
+          Three-valued, matching candidacy.is_incumbent. TRUE when a term
+          covering election day on this seat belongs to this person, matched on
+          canonical person id or first plus last name. FALSE when a covering
+          term exists but is held by someone else or is vacant. NULL when no
+          term covers election day, which is unknown rather than challenger.
+
+          Incumbent counts are a floor: the BallotReady office-holder method
+          runs near 100% precision and roughly 80% recall, so misses land in the
+          FALSE bucket, never the reverse.
+      - name: n_covering_terms
+        description: >
+          How many office-holder terms covered election day on the matched seat.
+          A precision diagnostic for the bare-name match arm: the higher this
+          is, the more holders a shared name could collide with.
+      - name: seat_key_source
+        description: >
+          Which seat key produced the match. 'br_position_id' is the campaign's
+          exact declared position and is tried first. 'normalized_position' is
+          the fill for seats whose holder was elected under a different,
+          cycle-specific position id; it spans every seat of that type in the
+          geo, so it is consulted only where the exact key found nothing. NULL
+          when no term covered election day.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_position_id", "normalized_position"]

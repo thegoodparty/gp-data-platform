@@ -80,6 +80,16 @@ with
             icp.normalized_position_type as br_normalized_position_type,
 
             -- Candidacy fields
+            -- Incumbency: the civics mart where its corroboration gate let a
+            -- candidacy through, else the office-first derivation, which needs
+            -- only the campaign's own position and that seat's current holder.
+            coalesce(cand.is_incumbent, inc.is_incumbent) as is_incumbent,
+            case
+                when cand.is_incumbent is not null
+                then 'candidacy'
+                when inc.is_incumbent is not null
+                then 'office_holder_term'
+            end as incumbency_source,
             initcap(cand.official_office_name) as official_office_name,
             cand.office_type,
             cand.candidacy_result,
@@ -118,6 +128,13 @@ with
             and (
                 c.election_date = cand.general_election_date or c.election_date is null
             )
+
+        -- Office-first incumbency at campaign grain. Same version-aware join
+        -- as candidacy above so each version keeps its own cycle's answer.
+        left join
+            {{ ref("int__civics_campaign_incumbency") }} inc
+            on c.campaign_id = inc.campaign_id
+            and c.election_date = inc.election_date
 
         -- Stage results pivoted
         left join
