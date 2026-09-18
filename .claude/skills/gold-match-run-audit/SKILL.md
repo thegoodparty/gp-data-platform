@@ -96,9 +96,11 @@ with
             and quarantine.br_database_id is null
     ),
 
-    -- Mirrors int__l2_br_match_pending_offices' universe_normalized CTE (the
-    -- normalize_l2_district_name macro + the spellings = 1 rule): a label the
-    -- vendor merely respelled still resolves in the mart, so it is not dead.
+    -- Mirrors the l2_normalized_district_keys macro int__l2_br_match_pending_offices
+    -- uses (normalize_l2_district_name + the spellings = 1 rule + the blank-key
+    -- guard: a name that normalizes to nothing must never make every
+    -- blank-normalizing label resolvable): a label the vendor merely respelled
+    -- still resolves in the mart, so it is not dead.
     universe_normalized as (
         select
             state_postal_code,
@@ -107,6 +109,7 @@ with
                 as normalized_district_name,
             count(distinct district_name) as spellings
         from goodparty_data_catalog.dbt.int__l2_district_universe
+        where upper(regexp_replace(trim(regexp_replace(district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', '')) != ''
         group by 1, 2, 3
     ),
 
