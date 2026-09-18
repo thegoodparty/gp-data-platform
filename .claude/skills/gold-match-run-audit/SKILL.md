@@ -699,8 +699,8 @@ review, not an automatic stop.
 Restate only the hard conditions, each naming where it was measured:
 
 - [ ] Batch count reconciles (Step 0's operator count vs Step 1's `rows_under_key`).
-- [ ] `run_label_check_missing` is zero (Step 1) — a nonzero here is THIS run's
-  hard stop.
+- [ ] `run_label_check_missing` is zero (Step 1, read same day before the 00:02
+  build) — a nonzero here is THIS run's hard stop.
 - [ ] `label_check_warn_count` is zero before release (Step 1, read after the
   00:02 build lands the run) — zero POST-baseline dead tuples, the warn test's own scope. January-origin dead labels are the
   pending backlog, deliberately out of scope, and join nothing while they wait.
