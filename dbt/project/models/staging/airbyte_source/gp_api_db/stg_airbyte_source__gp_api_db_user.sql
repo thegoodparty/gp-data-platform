@@ -27,3 +27,6 @@ with
     )
 select *
 from renamed
+where
+    {{ dsar_not_suppressed("email", "email") }}
+    and {{ dsar_not_suppressed("phone", "phone") }}

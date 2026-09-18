@@ -120,3 +120,6 @@ with
     )
 select *
 from flattened_contacts_and_urls
+where
+    {{ dsar_not_suppressed("email", "email") }}
+    and {{ dsar_not_suppressed("phone", "phone") }}
