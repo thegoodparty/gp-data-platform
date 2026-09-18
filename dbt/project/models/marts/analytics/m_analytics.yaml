@@ -1010,6 +1010,30 @@ models:
       - name: br_normalized_position_type
         description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
 
+      - name: is_incumbent
+        description: >
+          Whether this user already holds the seat they are running for, on
+          election day. Three-valued: TRUE, FALSE (a covering term exists and is
+          someone else's or vacant), NULL (unknown - no covering term, or the
+          seat did not resolve).
+
+          Sourced from civics.candidacy where its corroboration gate let a
+          candidacy through, else derived office-first from BallotReady
+          office-holder terms via int__civics_campaign_incumbency. Use
+          incumbency_source to tell which. Counting incumbents off the candidacy
+          route alone biases the rate upward roughly 3.5x, because clearing that
+          gate correlates with already holding office.
+      - name: incumbency_source
+        description: >
+          Which arm produced is_incumbent: 'candidacy' (civics.candidacy, which
+          includes TechSpeed's enrichment where it covered the candidacy),
+          'office_holder_term' (the office-first derivation), or NULL when
+          is_incumbent is NULL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["candidacy", "office_holder_term"]
+
       - name: official_office_name
         description: Formal office title from candidacy data (title case)
 
