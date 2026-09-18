@@ -1,10 +1,10 @@
-"""Helpers for the gold-match daily DAG: pod environment, label gates,
-run-row cleanup, and dbt Cloud control with terminal confirmation.
+"""Helpers for the gold-match daily DAG: pod environment, the admission
+reads against dbt Cloud, and the operator signal's quarantine read.
 
-The matcher owns its tables; the DAG reads and repairs them over the
-deployment's Databricks connection (the shared `conn_kwargs` accessor, so the
-pod and the gate tasks cannot drift on which connection fields they need) and
-drives the same dbt Cloud rebuild job the supervised runs use.
+The matcher owns its tables; the DAG reads them over the deployment's
+Databricks connection (the shared `conn_kwargs` accessor, so the pod and the
+signal task cannot drift on which connection fields they need). It triggers no
+dbt build: the scheduled nightly publishes what the pod writes.
 """
 
 import logging
@@ -17,15 +17,30 @@ from include.custom_functions.databricks_utils import conn_kwargs, execute_with_
 
 logger = logging.getLogger("airflow.task")
 
-# The scheduled build: universe + every consumer. Mirrors backlog_run.py's
-# DBT_CLOUD_REBUILD_JOB_ID in gold-match, which the supervised runs trigger.
-GOLD_MATCH_REBUILD_JOB_ID = 70471823431462
+# The scheduled full prod build (00:02 and 12:02 UTC): universe + every
+# consumer. The loop rides it instead of triggering its own; admission asks
+# whether its latest scheduled run succeeded and whether one is in flight.
+SCHEDULED_BUILD_JOB_ID = 70471823431462
+# "dbt build on merge" (state:modified+ --full-refresh on every merge to main).
+# A merge touching an upstream of the matcher marts while the pod writes puts
+# a build on the same tables; admission checks it too.
+ON_MERGE_BUILD_JOB_ID = 70471823431463
+PROD_BUILD_JOB_IDS = (SCHEDULED_BUILD_JOB_ID, ON_MERGE_BUILD_JOB_ID)
+_LIVE_STATUSES = {
+    DbtCloudJobRunStatus.QUEUED.value,
+    DbtCloudJobRunStatus.STARTING.value,
+    DbtCloudJobRunStatus.RUNNING.value,
+}
 
 # The matcher's tables, mirroring gold-match's l2_br_match_schema paths. The
 # entry point writes the production catalog unconditionally, so these are
 # constants rather than the catalog Variable the ER tables use.
 RESULTS_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_results"
 QUARANTINE_TABLE = "goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine"
+# A hand-written `held` row for an office whose match the run audit adjudicated
+# WRONG on the pinned build; released by hand when the quality lane re-pins.
+# The pod's own rows carry the client's response-shape reason instead.
+QUARANTINE_REASON_ADJUDICATED_WRONG = "adjudicated_wrong"
 
 BRAINTRUST_VARIABLE = "BRAINTRUST_API_KEY"
 # The GoodParty-account role the pod assumes for Bedrock, and the trust
@@ -78,133 +93,65 @@ def gold_match_pod_env() -> dict[str, str]:
     return env
 
 
-# Mirrors the gold-match run-audit's Step 1 label checks: matched tuples
-# against the current district universe. The 2026-01-26 baseline run predates
-# the universe contract and is excluded for the same reason the staging label
-# test excludes it. The literal pins its UTC offset because a bare timestamp
-# reads in the warehouse SESSION timezone, which nothing here pins (the
-# TestTimestampLiteralsPreserveOffset precedent in gold-match).
-_GLOBAL_DEAD_SQL = """
-    with label_check_tuples as (
-        select distinct l2_state, l2_district_type, l2_district_name
-        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match
-        where l2_district_name is not null and attempted_at <> timestamp'2026-01-26 00:00:00+00:00'
-    )
-    select count(*)
-    from label_check_tuples
-    left join goodparty_data_catalog.dbt.int__l2_district_universe as universe
-        on universe.state_postal_code = label_check_tuples.l2_state
-        and universe.district_type = label_check_tuples.l2_district_type
-        and universe.district_name = label_check_tuples.l2_district_name
-    where universe.state_postal_code is null
-"""
-
-_RUN_DEAD_SQL = f"""
-    with run_rows as (
-        select distinct l2_state, l2_district_type, l2_district_name
-        from {RESULTS_TABLE}
-        where attempted_at = :run_key and l2_district_name is not null
-    )
-    select count(*)
-    from run_rows
-    left join goodparty_data_catalog.dbt.int__l2_district_universe as universe
-        on universe.state_postal_code = run_rows.l2_state
-        and universe.district_type = run_rows.l2_district_type
-        and universe.district_name = run_rows.l2_district_name
-    where universe.state_postal_code is null
-"""
-
-
-def run_gate_queries(conn: Any, run_key: datetime) -> dict[str, int]:
-    """The two label metrics. Run-scoped nonzero means THIS run matched a
-    now-dead tuple (destroying the run is the remedy); global-with-run-zero is
-    an older run's dead tuple (repair at source, never by deleting this run).
-    The coverage floor is deliberately absent: the rebuild job runs it at
-    error severity, so a breach fails the rebuild task instead."""
-    cursor = conn.cursor()
-    try:
-        execute_with_retry(cursor, _RUN_DEAD_SQL, {"run_key": run_key})
-        run_scoped = int(cursor.fetchone()[0])
-        execute_with_retry(cursor, _GLOBAL_DEAD_SQL)
-        global_dead = int(cursor.fetchone()[0])
-    finally:
-        cursor.close()
-    return {"run_scoped_dead": run_scoped, "global_dead": global_dead}
-
-
 def new_quarantine_count(conn: Any, run_key: datetime) -> int:
     """Offices that FIRST entered quarantine on this run: inserts stamp
     first_failed_at with the run key exactly, while backoff re-fails only
     re-stamp last_failed_at and stay silent. Equality rather than an interval
-    so a manual trigger's sub-second offsets cannot hide the run's own rows."""
+    so a manual trigger's sub-second offsets cannot hide the run's own rows.
+    Hand-written adjudication holds are stamped with the audited run's key by
+    convention and are the operator's own doing, so they never raise the
+    alarm meant for the pod's response-shape failures."""
     cursor = conn.cursor()
     try:
         execute_with_retry(
             cursor,
-            f"select count(*) from {QUARANTINE_TABLE} where first_failed_at = :run_key",
-            {"run_key": run_key},
+            f"select count(*) from {QUARANTINE_TABLE} "
+            "where first_failed_at = :run_key and reason_code <> :adjudicated",
+            {"run_key": run_key, "adjudicated": QUARANTINE_REASON_ADJUDICATED_WRONG},
         )
         return int(cursor.fetchone()[0])
     finally:
         cursor.close()
 
 
-def delete_run_rows(conn: Any, run_key: datetime) -> int:
-    """Delete the run's rows by key. No expected_count on purpose: unlike the
-    supervised rollback, cleanup can fire before any count exists (a pod dead
-    mid-write), so the honest contract is delete-whatever-landed, with the
-    pre-count logged as the audit line."""
-    cursor = conn.cursor()
-    try:
-        execute_with_retry(
-            cursor,
-            f"select count(*) from {RESULTS_TABLE} where attempted_at = :run_key",
-            {"run_key": run_key},
+def _newest_runs(hook: DbtCloudHook, job_id: int, limit: int = 20) -> list[dict[str, Any]]:
+    """The newest runs of one job, newest first, with their trigger attached.
+    One page: a live or latest run is always among the newest."""
+    payload = {"job_definition_id": job_id, "order_by": "-id", "limit": limit, "include_related": ["trigger"]}
+    return list(hook.get_job_runs(payload=payload).json()["data"])
+
+
+def _is_scheduled(run: dict[str, Any]) -> bool:
+    """dbt Cloud marks a scheduled run by its trigger's cause; API-triggered
+    runs (a hand re-run, another DAG) say so instead. Without trigger data
+    every run counts, which is the safe direction: an unknown latest run that
+    failed still declines."""
+    trigger = run.get("trigger") or {}
+    cause = str(trigger.get("cause") or "")
+    return "schedul" in cause.lower() if cause else True
+
+
+def latest_scheduled_build_succeeded(hook: DbtCloudHook) -> tuple[bool, str]:
+    """Whether the newest SCHEDULED run of the prod build ended SUCCESS, with
+    an operator-readable label of that run. No scheduled run in the newest
+    page is a decline too: the universe's freshness is unknown."""
+    for run in _newest_runs(hook, SCHEDULED_BUILD_JOB_ID):
+        if not _is_scheduled(run):
+            continue
+        status = DbtCloudJobRunStatus(run["status"]).name
+        label = f"job {SCHEDULED_BUILD_JOB_ID} run {run['id']} ({status})"
+        return run["status"] == DbtCloudJobRunStatus.SUCCESS.value, label
+    return False, f"no scheduled run of job {SCHEDULED_BUILD_JOB_ID} among its newest runs"
+
+
+def inflight_prod_builds(hook: DbtCloudHook) -> list[str]:
+    """Runs of the two prod-writing jobs that are queued, starting or running,
+    as operator-readable labels."""
+    found: list[str] = []
+    for job_id in PROD_BUILD_JOB_IDS:
+        found.extend(
+            f"job {job_id} run {r['id']} ({DbtCloudJobRunStatus(r['status']).name})"
+            for r in _newest_runs(hook, job_id)
+            if r["status"] in _LIVE_STATUSES
         )
-        count = int(cursor.fetchone()[0])
-        execute_with_retry(
-            cursor,
-            f"delete from {RESULTS_TABLE} where attempted_at = :run_key",
-            {"run_key": run_key},
-        )
-    finally:
-        cursor.close()
-    logger.info("Deleted %d result row(s) under run key %s", count, run_key.isoformat())
-    return count
-
-
-def cancel_dbt_run_and_confirm(hook: DbtCloudHook, run_id: int, timeout_s: int = 300) -> None:
-    """Cancel a live dbt run and REQUIRE terminal confirmation: the provider's
-    own kill path only warns when cancel or confirm fails, and cleanup must
-    not delete-and-rebuild while a cancelled rebuild could still be writing.
-    Any terminal state confirms (a run that finished just before the cancel is
-    equally safe); the wait raises on timeout. The cancel POST itself is
-    best-effort: on the common gates-failure path the rebuild already
-    SUCCEEDED, and an API objection to cancelling a terminal run must not
-    kill cleanup before the delete — the contract is terminal-confirmed,
-    not cancel-succeeded."""
-    try:
-        hook.cancel_job_run(run_id)
-    except Exception:
-        logger.warning("cancel_job_run(%s) raised; confirming terminal state anyway", run_id, exc_info=True)
-    hook.wait_for_job_run_status(
-        run_id=run_id,
-        expected_statuses=DbtCloudJobRunStatus.TERMINAL_STATUSES.value,
-        check_interval=10,
-        timeout=timeout_s,
-    )
-
-
-def trigger_rebuild_and_wait(hook: DbtCloudHook, cause: str, timeout_s: int = 10800) -> int:
-    """Trigger the rebuild job with an operator-readable cause and wait for
-    SUCCESS (the hook raises on a failed run and on timeout). The cause string
-    is an interface: a mislabeled trigger once got a healthy rebuild cancelled
-    by a teammate acting reasonably on what it said."""
-    run_id = int(hook.trigger_job_run(job_id=GOLD_MATCH_REBUILD_JOB_ID, cause=cause).json()["data"]["id"])
-    hook.wait_for_job_run_status(
-        run_id=run_id,
-        expected_statuses=DbtCloudJobRunStatus.SUCCESS.value,
-        check_interval=60,
-        timeout=timeout_s,
-    )
-    return run_id
+    return found

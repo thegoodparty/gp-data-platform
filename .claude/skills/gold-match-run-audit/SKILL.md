@@ -74,10 +74,33 @@ with
     -- generic test's own `district_name is not null` filter
     -- (dbt/project/tests/generic/test_l2_district_tuple_exists.sql), not a
     -- separate predicate restated here.
+    -- Offices under an active quarantine hold are parked on purpose (a hand
+    -- written adjudication, or a response-shape failure in backoff); their
+    -- labels are nobody's action item, so they leave the serving-state count.
     label_check_tuples as (
-        select distinct l2_state, l2_district_type, l2_district_name
-        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match
-        where l2_district_name is not null and attempted_at <> timestamp'2026-01-26'
+        select distinct staging.l2_state, staging.l2_district_type, staging.l2_district_name
+        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match as staging
+        left join
+            goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine as quarantine
+            on quarantine.br_database_id = staging.br_database_id and quarantine.released_at is null
+        where
+            staging.l2_district_name is not null
+            and staging.attempted_at <> timestamp'2026-01-26'
+            and quarantine.br_database_id is null
+    ),
+
+    -- Mirrors int__l2_br_match_pending_offices' universe_normalized CTE (the
+    -- normalize_l2_district_name macro + the spellings = 1 rule): a label the
+    -- vendor merely respelled still resolves in the mart, so it is not dead.
+    universe_normalized as (
+        select
+            state_postal_code,
+            district_type,
+            upper(regexp_replace(trim(regexp_replace(district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', ''))
+                as normalized_district_name,
+            count(distinct district_name) as spellings
+        from goodparty_data_catalog.dbt.int__l2_district_universe
+        group by 1, 2, 3
     ),
 
     label_check_missing as (
@@ -88,7 +111,19 @@ with
             on universe.state_postal_code = label_check_tuples.l2_state
             and universe.district_type = label_check_tuples.l2_district_type
             and universe.district_name = label_check_tuples.l2_district_name
-        where universe.state_postal_code is null
+        left join
+            universe_normalized
+            on universe_normalized.state_postal_code = label_check_tuples.l2_state
+            and universe_normalized.district_type = label_check_tuples.l2_district_type
+            and universe_normalized.normalized_district_name = upper(
+                regexp_replace(
+                    trim(regexp_replace(label_check_tuples.l2_district_name, '\\s+', ' ')),
+                    '\\s*\\(EST\\.\\)$',
+                    ''
+                )
+            )
+            and universe_normalized.spellings = 1
+        where universe.state_postal_code is null and universe_normalized.state_postal_code is null
     ),
 
     -- The run-scoped variant: THIS run's own matched tuples against the
@@ -197,7 +232,10 @@ Read the printed rows, then interpret against these lines:
 - `label_check_warn_count` nonzero while `run_label_check_missing` is zero
   means the dead tuple belongs to a DIFFERENT run — an earlier run's answer, or
   a later relabel wave when auditing post hoc. Deleting this run's rows cannot
-  clear it; repair it at its source before publication. For a post-hoc audit of
+  clear it; repair it at its source before publication. The count already
+  ignores labels the mart resolves by normalized name (a respelling is not
+  dead) and offices under an active quarantine hold (parked on purpose), so
+  what remains is actionable: a served office whose label vanished. For a post-hoc audit of
   a superseded run, only the run-scoped metric speaks for the audited run.
   The January baseline stratum is deliberately OUT OF SCOPE for both metrics'
   staging-wide reading, mirroring the warn test's own scoping: a January-origin
