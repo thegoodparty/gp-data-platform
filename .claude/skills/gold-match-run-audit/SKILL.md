@@ -74,40 +74,10 @@ with
     -- generic test's own `district_name is not null` filter
     -- (dbt/project/tests/generic/test_l2_district_tuple_exists.sql), not a
     -- separate predicate restated here.
-    -- Offices a quarantine row currently SUPPRESSES are parked on purpose (a
-    -- hand-written hold, or a response-shape failure inside its 30-day
-    -- backoff); their labels are nobody's action item, so they leave the
-    -- serving-state count. An auto row past its backoff suppresses nothing:
-    -- the office is back in the cohort and its label counts again.
     label_check_tuples as (
-        select distinct staging.l2_state, staging.l2_district_type, staging.l2_district_name
-        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match as staging
-        left join
-            goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine as quarantine
-            on quarantine.br_database_id = staging.br_database_id
-            and quarantine.released_at is null
-            and (
-                quarantine.retry_class = 'held'
-                or quarantine.last_failed_at > current_timestamp() - interval 30 days
-            )
-        where
-            staging.l2_district_name is not null
-            and staging.attempted_at <> timestamp'2026-01-26'
-            and quarantine.br_database_id is null
-    ),
-
-    -- Mirrors int__l2_br_match_pending_offices' universe_normalized CTE (the
-    -- normalize_l2_district_name macro + the spellings = 1 rule): a label the
-    -- vendor merely respelled still resolves in the mart, so it is not dead.
-    universe_normalized as (
-        select
-            state_postal_code,
-            district_type,
-            upper(regexp_replace(trim(regexp_replace(district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', ''))
-                as normalized_district_name,
-            count(distinct district_name) as spellings
-        from goodparty_data_catalog.dbt.int__l2_district_universe
-        group by 1, 2, 3
+        select distinct l2_state, l2_district_type, l2_district_name
+        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match
+        where l2_district_name is not null and attempted_at <> timestamp'2026-01-26'
     ),
 
     label_check_missing as (
@@ -118,25 +88,12 @@ with
             on universe.state_postal_code = label_check_tuples.l2_state
             and universe.district_type = label_check_tuples.l2_district_type
             and universe.district_name = label_check_tuples.l2_district_name
-        left join
-            universe_normalized
-            on universe_normalized.state_postal_code = label_check_tuples.l2_state
-            and universe_normalized.district_type = label_check_tuples.l2_district_type
-            and universe_normalized.normalized_district_name = upper(
-                regexp_replace(
-                    trim(regexp_replace(label_check_tuples.l2_district_name, '\\s+', ' ')),
-                    '\\s*\\(EST\\.\\)$',
-                    ''
-                )
-            )
-            and universe_normalized.spellings = 1
-        where universe.state_postal_code is null and universe_normalized.state_postal_code is null
+        where universe.state_postal_code is null
     ),
 
     -- The run-scoped variant: THIS run's own matched tuples against the
-    -- current universe, under the same normalized-name rule. The staging-wide
-    -- count above describes the serving state; only this one attributes a
-    -- dead label to the audited run.
+    -- current universe. The staging-wide count above describes the serving
+    -- state; only this one attributes a dead label to the audited run.
     run_label_missing as (
         select distinct run_rows.l2_state, run_rows.l2_district_type, run_rows.l2_district_name
         from run_rows
@@ -145,20 +102,7 @@ with
             on universe.state_postal_code = run_rows.l2_state
             and universe.district_type = run_rows.l2_district_type
             and universe.district_name = run_rows.l2_district_name
-        left join
-            universe_normalized
-            on universe_normalized.state_postal_code = run_rows.l2_state
-            and universe_normalized.district_type = run_rows.l2_district_type
-            and universe_normalized.normalized_district_name = upper(
-                regexp_replace(
-                    trim(regexp_replace(run_rows.l2_district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', ''
-                )
-            )
-            and universe_normalized.spellings = 1
-        where
-            run_rows.l2_district_name is not null
-            and universe.state_postal_code is null
-            and universe_normalized.state_postal_code is null
+        where run_rows.l2_district_name is not null and universe.state_postal_code is null
     ),
 
     -- Same join as dbt/project/tests/assert_position_district_voter_coverage_floor.sql;
@@ -241,28 +185,19 @@ from coverage
 
 Read the printed rows, then interpret against these lines:
 
-- Publication is next-day (the daily DAG triggers no rebuild; the 00:02 UTC
-  scheduled build lands a run's rows in the internal marts and the 12:02 build
-  feeds the 22:00 election-api sync), so Step 1 is read in two phases. SAME
-  DAY, minutes after the write: `rows_under_key`, `rows_matched`,
-  `run_label_check_missing` (this run's labels against the universe the 12:02
-  build just refreshed), the feed-absence and rule-class reads below, and the
-  spot-check. The staging-wide `label_check_warn_count` and the coverage ratio
-  read a MIXED snapshot same-day: the staging model is a view over live rows,
-  so it already includes the appended run, while the marts are still the last
-  build. Read those two the NEXT MORNING, after the 00:02 build and before the
-  12:02 product backstop. Never gate on the same-day reading of either.
-- A nonzero `run_label_check_missing` is a HARD STOP before the 00:02 build:
-  THIS run shipped labels the current universe does not carry — delete the
-  run's rows by key, quarantine the offices, and let the next scheduled build
-  drop them from the marts; stop.
+- Both label metrics and the coverage ratio are meaningful only AFTER the
+  post-append dbt rebuild (the cutover's rebuild-then-gate ordering). Before
+  it, they read a MIXED snapshot — the staging model is a view over live rows,
+  so it already includes the appended run, while the universe and the
+  election-api marts are still the last build — which is neither the previous
+  publication nor this one. Never gate on the pre-rebuild reading.
+- A nonzero `run_label_check_missing` is a HARD STOP before publication: THIS
+  run shipped labels the current universe does not carry — delete the run's
+  rows per SPEC 3.5, rebuild, stop.
 - `label_check_warn_count` nonzero while `run_label_check_missing` is zero
   means the dead tuple belongs to a DIFFERENT run — an earlier run's answer, or
   a later relabel wave when auditing post hoc. Deleting this run's rows cannot
-  clear it; repair it at its source before publication. The count already
-  ignores labels the mart resolves by normalized name (a respelling is not
-  dead) and offices under an active quarantine hold (parked on purpose), so
-  what remains is actionable: a served office whose label vanished. For a post-hoc audit of
+  clear it; repair it at its source before publication. For a post-hoc audit of
   a superseded run, only the run-scoped metric speaks for the audited run.
   The January baseline stratum is deliberately OUT OF SCOPE for both metrics'
   staging-wide reading, mirroring the warn test's own scoping: a January-origin
@@ -698,8 +633,8 @@ Restate only the hard conditions, each naming where it was measured:
 - [ ] Batch count reconciles (Step 0's operator count vs Step 1's `rows_under_key`).
 - [ ] `run_label_check_missing` is zero (Step 1) — a nonzero here is THIS run's
   hard stop.
-- [ ] `label_check_warn_count` is zero before release (Step 1, read after the
-  00:02 build lands the run) — zero POST-baseline dead tuples, the warn test's own scope. January-origin dead labels are the
+- [ ] `label_check_warn_count` is zero before release (Step 1) — zero POST-baseline
+  dead tuples, the warn test's own scope. January-origin dead labels are the
   pending backlog, deliberately out of scope, and join nothing while they wait.
   A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
   by deleting this one.
