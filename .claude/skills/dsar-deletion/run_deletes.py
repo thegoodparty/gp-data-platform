@@ -66,7 +66,8 @@ class Client:
 
 
 def find_job(client: Client, name: str) -> dict:
-    jobs = [j for j in client.get("/jobs/") if j["name"] == name]
+    # The UI keeps stray whitespace in a saved name; do not let that hide the job.
+    jobs = [j for j in client.get("/jobs/") if j["name"].strip() == name.strip()]
     if not jobs:
         sys.exit(f"No dbt Cloud job named {name!r}. Create it in the Prod deployment environment first.")
     if len(jobs) > 1:
