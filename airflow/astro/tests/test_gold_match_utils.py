@@ -4,7 +4,7 @@ Warehouse calls run against a recording fake connection; dbt Cloud calls
 against a mocked hook. Every test names the production failure it catches.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import include.custom_functions.gold_match_utils as gm
@@ -169,6 +169,21 @@ def test_latest_scheduled_build_declines_when_no_scheduled_run_is_found_and_coun
         _hook({gm.SCHEDULED_BUILD_JOB_ID: [{"id": 9, "status": 20}, {"id": 8, "status": 10}]}), now=_NOW
     )
     assert ok is False
+
+
+def test_latest_scheduled_build_declines_a_stale_or_undated_success():
+    """A SUCCESS older than SCHEDULED_BUILD_MAX_AGE (the schedule was missed or
+    disabled) or one without a finish time (an API shape change) leaves the
+    universe's freshness unknown: decline rather than match against it."""
+    stale = (_NOW - gm.SCHEDULED_BUILD_MAX_AGE - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 10, finished=stale)]}), now=_NOW
+    )
+    assert ok is False and "SUCCESS" in label
+    ok, label = gm.latest_scheduled_build_succeeded(
+        _hook({gm.SCHEDULED_BUILD_JOB_ID: [_run(8, 10, finished=None)]}), now=_NOW
+    )
+    assert ok is False and "unknown" in label
 
 
 def test_inflight_prod_builds_reports_live_runs_of_both_prod_jobs_only():
