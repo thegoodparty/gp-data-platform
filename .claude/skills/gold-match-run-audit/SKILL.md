@@ -712,7 +712,8 @@ Restate only the hard conditions, each naming where it was measured:
   reclassification caused by BR/universe drift between run and audit is not a
   violation).
 - [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
-  floor (Step 1).
+  floor (Step 1, read after the 00:02 build lands the run; same-day the mart is
+  still the prior build, so never gate on that reading).
 - [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
   the owner (Step 2).
 - [ ] Holdout gate verdict is PASS **for the arm this run actually used**
