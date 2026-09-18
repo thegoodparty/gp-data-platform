@@ -11,6 +11,9 @@ models:
     columns:
       - name: gp_person_id
         description: "Canonical GoodParty person identifier."
+        data_tests:
+          - unique
+          - not_null
       - name: hs_contact_id
         description: >
           HubSpot contact id, scalar only where the person group carries
