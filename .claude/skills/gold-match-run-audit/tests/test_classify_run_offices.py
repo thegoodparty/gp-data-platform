@@ -45,20 +45,14 @@ def test_labels_follow_the_matcher_branches():
         cro.rule_class_for(office("Pleasant Valley City Council - District 1"), TYPES, NAMES)
         == "R2_slice_body_absent_abstain"
     )
-    assert (
-        cro.rule_class_for(
-            office(
-                "Montebello Unified School Board - Area 1",
-                mtfcc="G5420",
-                geo_id="0624840",
-                has_unknown_boundaries="true",
-                sub_area_name="Area",
-            ),
-            TYPES,
-            NAMES,
-        )
-        == "R2_school_flagged_slice_asserted"
+    flagged_school = office(
+        "Montebello Unified School Board - Area 1",
+        mtfcc="G5420",
+        geo_id="0624840",
+        has_unknown_boundaries="true",
+        sub_area_name="Area",
     )
+    assert cro.rule_class_for(flagged_school, TYPES, NAMES) == "R2_school_flagged_slice_asserted"
     assert (
         cro.rule_class_for(
             office(
@@ -78,6 +72,26 @@ def test_labels_follow_the_matcher_branches():
         == "pass_through"
     )
     assert cro.rule_class_for(office("Any Judge", is_judicial="true"), TYPES, NAMES) == "R1_judicial_abstain"
+    assert (
+        cro.rule_class_for(
+            office("Any Judge", is_judicial="true"), [*TYPES, "Judicial_District"], [*NAMES, "X"]
+        )
+        == "R1_judicial_menu"
+    )
+    assert (
+        cro.rule_class_for(office("State Central Committee", mtfcc="X0024"), TYPES, NAMES)
+        == "R0_party_committee"
+    )
+    parents_only = (["State", "City"], ["CA", "MONTEBELLO CITY"])
+    assert cro.rule_class_for(flagged_school, *parents_only) == "school_flag_no_school_rows"
+    assert (
+        cro.rule_class_for(flagged_school, ["Unified_School_District"], ["MONTEBELLO USD"])
+        == "R2_slice_zero_subtype_abstain"
+    )
+    assert (
+        cro.rule_class_for(office("Montebello City Council - District 1"), *parents_only)
+        == "R2_slice_zero_subtype_abstain"
+    )
 
 
 def test_whole_school_label_flips_with_the_assertion_flag():
