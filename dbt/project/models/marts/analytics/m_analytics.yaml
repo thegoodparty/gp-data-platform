@@ -2467,7 +2467,7 @@ models:
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
-                min_value: 0
+                min_value: 1
       - name: pos_tier
         description: >
           BallotReady's own level ordinal for the seat.

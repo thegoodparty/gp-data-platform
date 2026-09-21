@@ -192,24 +192,29 @@ select
 
     -- Salary: amount, period, and a three-way paid / expenses / unpaid class.
     salary_amount as pos_salary_amount,
+    -- A leading boundary only, not a full word boundary. "$750/monthly",
+    -- "board meetings" and "bi-weekly" are all real period statements that a
+    -- trailing boundary would throw away (28 positions); requiring only that
+    -- the word is not preceded by a letter drops "determined" -> term, which
+    -- is the single genuine false positive in the corpus.
     case
-        when salary_lower like '%year%'
+        when salary_lower rlike '(^|[^a-z])year'
         then 'year'
-        when salary_lower like '%month%'
+        when salary_lower rlike '(^|[^a-z])month'
         then 'month'
-        when salary_lower like '%week%'
+        when salary_lower rlike '(^|[^a-z])week'
         then 'week'
-        when salary_lower like '%day%'
+        when salary_lower rlike '(^|[^a-z])day'
         then 'day'
-        when salary_lower like '%hour%'
+        when salary_lower rlike '(^|[^a-z])hour'
         then 'hour'
-        when salary_lower like '%meeting%'
+        when salary_lower rlike '(^|[^a-z])meeting'
         then 'meeting'
-        when salary_lower like '%session%'
+        when salary_lower rlike '(^|[^a-z])session'
         then 'session'
-        when salary_lower like '%term%'
+        when salary_lower rlike '(^|[^a-z])term'
         then 'term'
-        when salary_lower like '%annum%'
+        when salary_lower rlike '(^|[^a-z])annum'
         then 'annum'
     end as pos_salary_period,
     case

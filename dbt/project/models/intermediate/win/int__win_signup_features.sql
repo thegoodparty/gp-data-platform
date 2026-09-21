@@ -460,7 +460,7 @@ select
                 'cox.net'
             )
         then 'free'
-        when email_domain = ''
+        when email_domain is null or email_domain = ''
         then 'missing'
         else 'custom'
     end as email_domain_class,
