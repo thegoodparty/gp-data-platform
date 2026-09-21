@@ -132,6 +132,86 @@ models:
           no updatedAt, so this is stamped at staging build time.
         data_type: timestamp
 
+  - name: int__ballotready_measure
+    description: >
+      BallotReady ballot measures, transformed from the raw payloads the extract_ballotready
+      DAG lands. Listed whole each run for upcoming election days, so a measure keeps its last
+      landed payload after its election passes. The contract keeps the schema stable for
+      consumers.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: database_id
+        description: The BallotReady integer id for the measure.
+        data_type: int
+      - name: id
+        description: Base64 GraphQL global id for the measure.
+        data_type: string
+      - name: name
+        description: Name as it appears on the ballot.
+        data_type: string
+      - name: title
+        description: Descriptive title.
+        data_type: string
+      - name: summary
+        description: Plain-language summary of the measure.
+        data_type: string
+      - name: text
+        description: Full ballot text.
+        data_type: string
+      - name: pro_snippet
+        description: What a yes vote means.
+        data_type: string
+      - name: con_snippet
+        description: What a no vote means.
+        data_type: string
+      - name: state
+        description: Two-letter state code.
+        data_type: string
+      - name: geo_id
+        description: GEOID of the jurisdiction voting on the measure; a Census GEOID unless mtfcc starts with X, when it is a BallotReady custom identifier.
+        data_type: string
+      - name: mtfcc
+        description: Census MTFCC of that jurisdiction (G4000 state, G4020 county, G4110 city, G54xx school districts; X codes are BallotReady custom).
+        data_type: string
+      - name: has_unknown_boundaries
+        description: True when BallotReady used a broader geography because the exact one is unknown.
+        data_type: boolean
+      - name: election_database_id
+        description: BallotReady integer id of the election the measure is on.
+        data_type: int
+      - name: election_day
+        description: Election day.
+        data_type: date
+      - name: election_name
+        description: BallotReady's name for the election.
+        data_type: string
+      - name: issue_database_id
+        description: BallotReady issue id tagged on the measure, when any.
+        data_type: int
+      - name: party_database_id
+        description: BallotReady party id on the measure (nonpartisan for most).
+        data_type: int
+      - name: arguments
+        description: Raw JSON array of pro/con arguments with source URLs.
+        data_type: string
+      - name: endorsements
+        description: Raw JSON array of endorsements.
+        data_type: string
+      - name: created_at
+        description: BallotReady creation timestamp.
+        data_type: timestamp
+      - name: updated_at
+        description: BallotReady last-update timestamp.
+        data_type: timestamp
+      - name: extracted_at
+        description: When the extraction run that last landed this measure ran. Runs list upcoming measures whole, and a history pull stamps past measures too, so any notion of "still listed" is for the consumer to define from this and dag_run_id.
+        data_type: timestamp
+      - name: dag_run_id
+        description: Airflow run id of the extraction run that last landed this measure.
+        data_type: string
+
   - name: int__ballotready_normalized_position
     description: >
       BallotReady normalized positions, transformed from the raw payloads the extract_ballotready
