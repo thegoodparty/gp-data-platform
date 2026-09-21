@@ -31,16 +31,13 @@ with
             -- not a taxonomy family, so the list stays explicit here. The
             -- single-source classifier is int__amplitude_event_catalog; a singular
             -- test (assert_milestone_events_classified) guards that every event
-            -- below classifies to a non-'other' family.
+            -- this filter admits classifies to a non-'other' family.
             and (
                 event_type in (
                     'Onboarding - Registration Completed',
                     'onboarding_complete',
                     'pro_upgrade_complete',
                     'Voter Outreach - Campaign Completed',
-                    'Dashboard - Candidate Dashboard Viewed',
-                    'Dashboard - Campaign Plan Viewed',
-                    'Campaign Plan - Campaign Tracker Viewed',
                     'Serve Onboarding - Getting Started Viewed',
                     'Serve Onboarding - Constituency Profile Viewed',
                     'Serve Onboarding - Poll Value Props Viewed',
@@ -49,13 +46,17 @@ with
                     'Serve Onboarding - Poll Preview Viewed',
                     'Serve Onboarding - SMS Poll Sent'
                 )
-                -- Page-path leg of the dashboard-view union. The path predicate has
-                -- to be here rather than downstream: 'Viewed' is site-wide (4.5M
-                -- rows) and only its ~106k '/dashboard' rows are dashboard views.
-                or (
-                    event_type = 'Viewed'
-                    and event_properties:path::string = '/dashboard'
-                )
+                -- The dashboard-view union is read from the same macro the consumers
+                -- below use, so a re-anchor cannot admit rows downstream that this
+                -- filter has already dropped. It has to be applied here and not only
+                -- downstream: 'Viewed' is site-wide (4.5M rows) and only its ~106k
+                -- '/dashboard' rows are dashboard views. The page_path select alias
+                -- is not in scope in a WHERE clause, hence the raw expression.
+                or {{
+                    is_dashboard_view_event(
+                        "event_type", "event_properties:path::string"
+                    )
+                }}
             )
     ),
 

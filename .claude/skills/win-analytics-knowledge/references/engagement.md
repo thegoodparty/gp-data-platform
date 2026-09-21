@@ -14,7 +14,7 @@ stream they're computed from.
 
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
 - IF the analysis spans the **2026-05-07 onboarding cutover or the 2026-06-08 Onboarding V2 rebuild** → resolve events per era (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`, and do NOT treat any single completion event as version-agnostic.
-- IF a dashboard-view metric touches **2026-05 or later** → use the 2-event dashboard union; the legacy event died 2026-06-13 (see Dashboard surface migration).
+- IF a dashboard-view metric touches **2026-05 or later** → use the dashboard-view union declared in `win_active_candidates_30d`'s `config.meta.anchored_on` in `sem_analytics__users_win.yml` (currently four legs; see Dashboard surface migration).
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
 - IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see `event-lifecycle-assets.md` in the analytics-process skill (cross-product; when installed). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
@@ -125,7 +125,7 @@ and single digits since. Successor per gp-meta supersession:
 7-day measurement hole (07-31 → 08-06) carrying no dashboard-view instrument at all.
 
 Two traps in the successor. It is classified `win_compliance_or_planning` with
-`is_recurrent = false`, so the 2-event union **and** any family-based dashboard read both miss it.
+`is_recurrent = false`, so the dashboard-view union declared in `config.meta.anchored_on` (sem_analytics__users_win.yml) **and** any family-based dashboard read both miss it.
 And the damage is already visible rather than pending: `is_active_candidate_7d` reads **24** against
 ~168 weekly dashboard viewers before the break; `_30d` reads 382 and is decaying; `_90d` follows.
 Repair (union extension + taxonomy fix + a liveness guard) is ticketed **DATA-2337**, urgent — two

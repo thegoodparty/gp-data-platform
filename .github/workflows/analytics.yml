@@ -1,10 +1,25 @@
 name: analytics
+# The anchor guard (tests/test_semantic_catalog_anchor_macro.py) reads the dbt macro,
+# the semantic files and the milestone model, so a PR touching only those still has to
+# run this suite.
 on:
   pull_request:
-    paths: ['analytics/**', '.github/workflows/analytics.yml', '.github/workflows/uv-subproject.yml']
+    paths:
+      - 'analytics/**'
+      - 'dbt/project/macros/**'
+      - 'dbt/project/models/marts/analytics/sem_analytics__*.yml'
+      - 'dbt/project/models/intermediate/amplitude/int__amplitude_user_milestones.sql'
+      - '.github/workflows/analytics.yml'
+      - '.github/workflows/uv-subproject.yml'
   push:
     branches: [main]
-    paths: ['analytics/**', '.github/workflows/analytics.yml', '.github/workflows/uv-subproject.yml']
+    paths:
+      - 'analytics/**'
+      - 'dbt/project/macros/**'
+      - 'dbt/project/models/marts/analytics/sem_analytics__*.yml'
+      - 'dbt/project/models/intermediate/amplitude/int__amplitude_user_milestones.sql'
+      - '.github/workflows/analytics.yml'
+      - '.github/workflows/uv-subproject.yml'
 jobs:
   test:
     uses: ./.github/workflows/uv-subproject.yml
