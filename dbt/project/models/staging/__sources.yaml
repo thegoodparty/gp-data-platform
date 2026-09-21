@@ -1262,6 +1262,9 @@ sources:
       - name: ballotready_geofence_raw
         description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
         columns: *ballotready_raw_columns
+      - name: ballotready_measure_raw
+        description: Raw CivicEngine GraphQL Measure nodes landed by the extract_ballotready DAG, listed whole (upcoming measures) each run rather than fetched by id
+        columns: *ballotready_raw_columns
       - name: ballotready_issue_raw
         description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
         # issue has no cursor: the worklist is an anti-join of issue ids referenced
