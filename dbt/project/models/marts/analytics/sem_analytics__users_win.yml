@@ -75,6 +75,18 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
+        # DATA-2421: the raw events that count as a dashboard view. This is the
+        # kernel — macros/amplitude_event_taxonomy.sql derives its SQL from this
+        # list, and omni's health monitor watches these for dormancy. Adding or
+        # removing a leg is a governed change, not an implementation detail.
+        anchored_on:
+          - event: Viewed
+            path: /dashboard
+          - event: Dashboard - Candidate Dashboard Viewed
+            era: historical   # died in-data 2026-06-13
+          - event: Dashboard - Campaign Plan Viewed
+            era: historical   # died in-data 2026-07-31
+          - event: Campaign Plan - Campaign Tracker Viewed
 
   - name: win_activated_users
     label: Win Activated Users
@@ -90,3 +102,5 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
+        anchored_on:
+          - event: Voter Outreach - Campaign Completed

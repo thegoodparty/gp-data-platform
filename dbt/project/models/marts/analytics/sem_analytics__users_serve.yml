@@ -103,6 +103,8 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: sources.md
+        anchored_on:
+          - event: Serve Onboarding - SMS Poll Sent
 
   - name: serve_users
     label: Serve Users
