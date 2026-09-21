@@ -585,7 +585,6 @@ EXPECTED_TOP_LEVEL_FIELDS = {
             "name",
             "party",
             "proSnippet",
-            "slug",
             "state",
             "summary",
             "text",
@@ -2138,10 +2137,17 @@ def _measures_page(nodes, has_next, end_cursor):
     return {"data": {"measures": {"nodes": nodes, "pageInfo": page_info}}}
 
 
+def _partial_page(nodes, has_next, end_cursor):
+    """GraphQL partial result: a nulled node plus the error that explains it."""
+    body = _measures_page(nodes, has_next, end_cursor)
+    body["errors"] = [{"message": "Cannot return null for non-nullable field Measure.slug"}]
+    return body
+
+
 def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
     session = FakeSession(
         [
-            FakeResponse(body=_measures_page([_measure(1), _measure(2)], True, "c1")),
+            FakeResponse(body=_partial_page([_measure(1), None, _measure(2)], True, "c1")),
             FakeResponse(body=_measures_page([_measure(3)], False, "c2")),
         ]
     )
@@ -2150,6 +2156,7 @@ def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
     pages = list(fetch_list("measures", "Measure", MEASURE_SELECTION, floor, "tok", _limiter(), session))
 
     assert [[n["databaseId"] for n in nodes] for nodes, _ in pages] == [[1, 2], [3]]
+    assert [nulls for _, nulls in pages] == [1, 0]
     assert [v["after"] for v in session.variables] == [None, "c1"]
     assert session.variables[0]["first"] == 100
     assert session.variables[0]["filterBy"] == floor
