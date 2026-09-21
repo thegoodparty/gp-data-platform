@@ -26,12 +26,18 @@ models:
       - name: gp_person_id
         description: >
           Canonical person for this account, from the civics person graph.
-          Populated for every user today, so a null is a regression rather than
-          a tolerance. Not a durable external identifier: it retires when two
-          person groups merge and the other group's minting record is earlier,
-          and election-api's PersonMerge is the forwarding address.
+          Null only for a user who signed up between the person-graph rebuild
+          and this build, so a handful of the very newest accounts can lack one
+          until the next run. Not a durable external identifier either: it
+          retires when two person groups merge and the other group's minting
+          record is earlier, and election-api's PersonMerge is the forwarding
+          address.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                severity: error
+                warn_if: ">0"
+                error_if: ">100"
       - name: account_count
         description: >
           gp-api accounts in this row's person group. Greater than one means
