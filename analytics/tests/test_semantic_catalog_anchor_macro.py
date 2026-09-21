@@ -1,16 +1,25 @@
-"""The dbt macro must emit exactly the legs the metric declares (DATA-2421).
+"""The dbt side must emit exactly the legs the metrics declare (DATA-2421).
 
 `is_dashboard_view_event` no longer holds its own event list; it reads
 `config.meta.anchored_on` off `win_active_candidates_30d`. This guard renders the real
 macro source against the real declaration and asserts the emitted predicate carries
-every leg, so a declaration the macro cannot actually read fails here rather than
-silently narrowing an OKR.
+every leg and nothing else, so a declaration the macro cannot actually read fails here
+rather than silently narrowing an OKR.
+
+It also guards the filter one model upstream. `int__amplitude_user_milestones` is the
+sole source feeding the macro's call sites, so an anchor event its WHERE clause drops
+never reaches the predicate at all, however correct the predicate is. That filter still
+names the activated-user anchors literally, which is a deliberate call: one event name
+in an allowlist is far less drift-prone than a union that has already changed three
+times, and rebuilding the whole milestone pick from metrics is a bigger change than
+this ticket carries. The test below is what makes that call safe.
 
 Pure Jinja with stubs for dbt's `execute`, `graph`, `exceptions` and `return`: no dbt,
 no warehouse, no network, so it runs anywhere. It is therefore a check on the macro's
 logic against the declaration, not on a compiled artifact.
 """
 
+import re
 import types
 from pathlib import Path
 
@@ -22,11 +31,17 @@ from semantic_catalog.anchors import parse_anchors
 
 ROOT = Path(__file__).resolve().parents[2]
 MACROS = ROOT / "dbt/project/macros/amplitude_event_taxonomy.sql"
-SEM = ROOT / "dbt/project/models/marts/analytics/sem_analytics__users_win.yml"
+MODELS = ROOT / "dbt/project/models"
+SEM = MODELS / "marts/analytics/sem_analytics__users_win.yml"
+SERVE_SEM = MODELS / "marts/analytics/sem_analytics__users_serve.yml"
+MILESTONES = MODELS / "intermediate/amplitude/int__amplitude_user_milestones.sql"
 
 METRIC = "win_active_candidates_30d"
 EVENT_COL = "event_type"
 PATH_COL = "event_properties:path::string"
+
+MACRO_CALL = re.compile(r"\{\{\s*is_dashboard_view_event\([^)]*\)\s*\}\}")
+SQL_LITERAL = re.compile(r"'([^']*)'")
 
 
 class MacroReturn(Exception):
@@ -95,6 +110,24 @@ def render(execute: bool, meta: dict) -> str:
     return " ".join(sql.split())
 
 
+def declared_legs() -> dict:
+    """Every metric's normalised legs, across both semantic files that declare one."""
+    legs: dict = {}
+    for path in (SEM, SERVE_SEM):
+        legs.update(parse_anchors(yaml.safe_load(path.read_text())))
+    return legs
+
+
+def milestone_filter() -> str:
+    """The milestone_events WHERE predicate, with its macro call expanded."""
+    src = MILESTONES.read_text()
+    block = src[src.index("milestone_events as (") : src.index("dashboard_view_flags as (")]
+    rendered = render(True, declared_meta())
+    expanded, substitutions = MACRO_CALL.subn(lambda _match: rendered, block)
+    assert substitutions == 1, "milestone_events no longer reads the dashboard union from the macro"
+    return " ".join(expanded.split())
+
+
 def test_the_accessor_reads_every_declared_leg():
     legs = anchored_events(True, declared_meta())
     assert legs == parse_anchors(yaml.safe_load(SEM.read_text()))[METRIC]
@@ -115,6 +148,14 @@ def test_each_path_leg_renders_with_its_path_predicate():
         assert f"{EVENT_COL} = '{leg['event']}' and {PATH_COL} = '{leg['path']}'" in sql
 
 
+def test_the_rendered_predicate_carries_no_undeclared_event():
+    """Narrowing is not the only drift: a re-hardcoded or extra leg widens the metric."""
+    sql = render(True, declared_meta())
+    legs = parse_anchors(yaml.safe_load(SEM.read_text()))[METRIC]
+    declared = {leg["event"] for leg in legs} | {leg["path"] for leg in legs if leg["path"]}
+    assert set(SQL_LITERAL.findall(sql)) == declared
+
+
 def test_parse_time_renders_the_false_fallback():
     assert render(False, declared_meta()) == "(false)"
 
@@ -122,3 +163,26 @@ def test_parse_time_renders_the_false_fallback():
 def test_an_empty_declaration_raises_rather_than_zeroing_the_metric():
     with pytest.raises(CompilerError):
         render(True, {"anchored_on": []})
+
+
+def test_the_milestone_filter_admits_every_declared_anchor_event():
+    """The filter upstream of the predicate must not drop an event the metrics anchor on.
+
+    Covers all three anchored metrics, including the two whose anchors the filter still
+    names literally, so re-anchoring any of them fails here.
+    """
+    admitted = milestone_filter()
+    missing = [
+        leg["event"]
+        for legs in declared_legs().values()
+        for leg in legs
+        if f"'{leg['event']}'" not in admitted
+    ]
+    assert not missing, f"declared but dropped by milestone_events: {missing}"
+
+
+def test_the_milestone_filter_keeps_the_path_leg_condition():
+    """'Viewed' is site-wide; admitting it unconditionally would widen the filter hugely."""
+    admitted = milestone_filter()
+    for leg in (leg for leg in declared_legs()[METRIC] if leg["path"]):
+        assert f"{EVENT_COL} = '{leg['event']}' and {PATH_COL} = '{leg['path']}'" in admitted

@@ -59,10 +59,17 @@ def test_real_sem_files_declare_anchors_for_the_okr_metrics():
 
 
 def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical():
+    # Pinned by exact string, historical legs included: dropping a dead name silently
+    # rewrites the metric's history, so changing this list has to be deliberate.
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     legs = parse_anchors(doc)["win_active_candidates_30d"]
+    assert legs == [
+        {"event": "Viewed", "path": "/dashboard", "era": None},
+        {"event": "Dashboard - Candidate Dashboard Viewed", "path": None, "era": "historical"},
+        {"event": "Dashboard - Campaign Plan Viewed", "path": None, "era": "historical"},
+        {"event": "Campaign Plan - Campaign Tracker Viewed", "path": None, "era": None},
+    ]
     live = [leg for leg in legs if leg["era"] != "historical"]
-    assert {"event": "Viewed", "path": "/dashboard", "era": None} in live
     assert len(live) == 2  # the path leg plus the current named event
 
 

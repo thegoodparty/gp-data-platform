@@ -93,7 +93,15 @@ repos:
         name: analytics tests (pre-push)
         entry: bash -c 'cd analytics && uv run pytest'
         language: system
-        files: ^analytics/
+        # The anchor guard lives here but reads the dbt macro, the semantic files and
+        # the milestone model, so those have to trigger it too.
+        files: >
+            (?x)^(
+              analytics/
+              |dbt/project/macros/
+              |dbt/project/models/marts/analytics/sem_analytics__
+              |dbt/project/models/intermediate/amplitude/int__amplitude_user_milestones\.sql
+            )
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-reverse-etl
