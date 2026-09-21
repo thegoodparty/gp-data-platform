@@ -85,8 +85,10 @@ GOLD_MATCH_IMAGE = (
 )
 IMAGE_PULL_SECRET_VARIABLE = "gold_match_image_pull_secret"
 # Steady state is minutes; a wave day (~8k offices) adds roughly an hour, so
-# 3h bounds a hung pod without cutting a legitimate wave short.
-MATCH_EXECUTION_TIMEOUT = duration(hours=3)
+# Bounds a hung pod without cutting a legitimate wave short: an all-states
+# 8k-office cohort measures ~40 min (universe embedding dominates), and the pod
+# must still leave the same-day audit its window before the 00:02Z build.
+MATCH_EXECUTION_TIMEOUT = duration(hours=5)
 
 
 class _GoldMatchPodOperator(KubernetesPodOperator):
