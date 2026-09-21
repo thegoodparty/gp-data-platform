@@ -229,6 +229,11 @@ with
         group by cs.gp_candidacy_id, rg.br_position_id, rg.election_day
     ),
 
+    -- The election date is part of the key, not just the campaign id:
+    -- product_campaign_id is not unique in the candidacy mart (87 campaigns
+    -- carry rows for more than one cycle). This id is published on the mart so
+    -- no consumer has to re-derive it and risk resolving a different cycle
+    -- than the arrival count below was computed against.
     user_candidacy as (
         select u.user_id, cand.gp_candidacy_id
         from users as u
@@ -291,6 +296,7 @@ with
             u.user_id,
             u.signup_date,
             u.campaign_id,
+            uc.gp_candidacy_id,
             u.br_position_id,
 
             -- Block 1
@@ -398,6 +404,7 @@ with
         left join zip_state as zs on zs.zip_code = substring(trim(u.user_zip), 1, 5)
         left join signup_geo as sg on sg.user_id = u.user_id
         left join {{ ref("us_states") }} as st on st.state_name = sg.region
+        left join user_candidacy as uc on uc.user_id = u.user_id
         left join timing as t on t.user_id = u.user_id
         left join arrivals as ar on ar.user_id = u.user_id
     )
@@ -406,6 +413,7 @@ select
     user_id,
     signup_date,
     campaign_id,
+    gp_candidacy_id,
     br_position_id,
 
     usr_phone_present,

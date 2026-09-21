@@ -35,6 +35,14 @@ models:
         description: The campaign whose race-level columns this row carries.
         data_tests:
           - not_null
+      - name: gp_candidacy_id
+        description: >
+          Canonical candidacy for that campaign, keyed on campaign plus
+          election date. The date is part of the key because
+          product_campaign_id is not unique in the candidacy mart, so a
+          campaign-only join can resolve a different cycle's candidacy than
+          the arrival count below was computed against. Consumers read this
+          id rather than re-deriving it.
       - name: br_position_id
         description: BallotReady position declared by that campaign, where one resolved.
       - name: email_domain_class

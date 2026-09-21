@@ -1915,6 +1915,12 @@ models:
         description: >
           Canonical candidacy for the chosen campaign, where one resolves.
           Null for users the civics mart has no candidacy for.
+
+          Resolved once, in int__win_signup_features, and read from there
+          rather than re-joined here. The key is campaign plus election date,
+          not campaign alone: product_campaign_id is not unique in the
+          candidacy mart, so a campaign-only join can land on a different
+          cycle's candidacy than the arrival count was computed against.
       - name: br_position_id
         description: >
           BallotReady position declared by the chosen campaign. Null when the

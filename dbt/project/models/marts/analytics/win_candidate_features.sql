@@ -38,15 +38,6 @@ with
                 order by u.election_date desc nulls last, u.campaign_id desc
             )
             = 1
-    ),
-
-    candidacy_link as (
-        select s.user_id, cand.gp_candidacy_id
-        from spine as s
-        inner join
-            {{ ref("candidacy") }} as cand on s.campaign_id = cand.product_campaign_id
-        qualify
-            row_number() over (partition by s.user_id order by cand.gp_candidacy_id) = 1
     )
 
 select
@@ -58,7 +49,7 @@ select
     -- needs to know which snapshot produced the row.
     current_timestamp() as snapshot_at,
     s.campaign_id,
-    cl.gp_candidacy_id,
+    sf.gp_candidacy_id,
     s.br_position_id,
 
     -- Categoricals
@@ -151,7 +142,6 @@ select
     inc.inc_term_ends_within_1y
 from spine as s
 left join {{ ref("int__win_signup_features") }} as sf on sf.user_id = s.user_id
-left join candidacy_link as cl on cl.user_id = s.user_id
 left join
     {{ ref("int__win_position_features") }} as pf
     on pf.br_position_id = s.br_position_id
