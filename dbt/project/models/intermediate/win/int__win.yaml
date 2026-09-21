@@ -211,10 +211,19 @@ models:
           - not_null
       - name: inc_is_officeholder_at_signup
         description: >
-          1 when a term matching this person had already begun at signup. The
-          zero is genuine rather than a sentinel: the match is exhaustive over
-          the term mart, so no match means no holder record with this name in
-          this state.
+          1 when a term of theirs had already begun by signup, whether or not
+          it was still running then. This is the wider of the two officeholder
+          flags; inc_serving_at_signup is the narrower one, and the gap
+          between them is the former officeholder — someone who served and is
+          running again, which is a different candidate from both a
+          first-timer and a sitting incumbent. 862 of 43,499 users sit in that
+          gap, so the two columns are not interchangeable.
+
+          The zero is genuine rather than a sentinel: the match is exhaustive
+          over the term mart, so no match means no holder record with this
+          name in this state. Users with no declared state are absent from
+          this model entirely rather than scored zero, because there is no key
+          to match them on.
         data_tests:
           - not_null
           - accepted_values:

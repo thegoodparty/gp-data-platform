@@ -2926,8 +2926,12 @@ models:
                 max_value: 1
       - name: inc_is_officeholder_at_signup
         description: >
-          1 when a term matching this person had already begun at signup. A
-          genuine zero: the match is exhaustive over the term mart.
+          1 when a term of theirs had already BEGUN by signup, whether or not
+          it was still running. Read with inc_serving_at_signup: the gap
+          between the two is the former officeholder, someone who served and
+          is running again, which is a different candidate from both a first-
+          timer and a sitting incumbent (862 of 43,499 users). A genuine zero,
+          since the match is exhaustive over the term mart.
         meta:
           pit_class: B
           available_from: "the office holder's term start"
@@ -2944,9 +2948,11 @@ models:
                 values: [0, 1]
       - name: inc_serving_at_signup
         description: >
-          1 when a matched term was still running at signup. A term with no
-          recorded end reads as not serving here, which is the definition this
-          feature was accepted under.
+          1 when a matched term was STILL RUNNING at signup, which is the
+          narrower of the two officeholder flags. A term with no recorded end
+          reads as not serving here, which is the definition this feature was
+          accepted under and the opposite of how the governed election-day
+          flag reads the same null; it separates 2 users of 43,499.
         meta:
           pit_class: B
           available_from: "the office holder's term start"
