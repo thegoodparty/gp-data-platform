@@ -6,13 +6,19 @@ macro source against the real declaration and asserts the emitted predicate carr
 every leg and nothing else, so a declaration the macro cannot actually read fails here
 rather than silently narrowing an OKR.
 
-It also guards the filter one model upstream. `int__amplitude_user_milestones` is the
-sole source feeding the macro's call sites, so an anchor event its WHERE clause drops
-never reaches the predicate at all, however correct the predicate is. That filter still
-names the activated-user anchors literally, which is a deliberate call: one event name
-in an allowlist is far less drift-prone than a union that has already changed three
-times, and rebuilding the whole milestone pick from metrics is a bigger change than
-this ticket carries. The test below is what makes that call safe.
+It also guards the filter one model upstream. `int__amplitude_user_milestones` is one
+of the models calling the macro, and it is the one on the Active Candidates path
+(`users_win_base` reads it), so an anchor event its WHERE clause drops never reaches
+the predicate at all, however correct the predicate is. That filter still names the
+activated-user anchors literally, which is a deliberate call: one event name in an
+allowlist is far less drift-prone than a union that has already changed three times,
+and rebuilding the whole milestone pick from metrics is a bigger change than this
+ticket carries. The test below is what makes that call safe.
+
+`int__amplitude_win_activity` and its weekly variant also call the macro, and their
+own intake gate (`is_recurrent` plus a hardcoded `Viewed` / `/dashboard` leg) is NOT
+derived from the declaration. They feed the separate `users_win_activity` mart, not
+Active Candidates, so they are a follow-up rather than part of this guard.
 
 Pure Jinja with stubs for dbt's `execute`, `graph`, `exceptions` and `return`: no dbt,
 no warehouse, no network, so it runs anywhere. It is therefore a check on the macro's
@@ -42,6 +48,7 @@ PATH_COL = "event_properties:path::string"
 
 MACRO_CALL = re.compile(r"\{\{\s*is_dashboard_view_event\([^)]*\)\s*\}\}")
 SQL_LITERAL = re.compile(r"'([^']*)'")
+ACCESSOR_CALL = re.compile(r"metric_anchored_events\(\s*\"([^\"]+)\"\s*\)")
 
 
 class MacroReturn(Exception):
@@ -126,6 +133,17 @@ def milestone_filter() -> str:
     expanded, substitutions = MACRO_CALL.subn(lambda _match: rendered, block)
     assert substitutions == 1, "milestone_events no longer reads the dashboard union from the macro"
     return " ".join(expanded.split())
+
+
+def test_the_predicate_reads_the_active_candidates_metric():
+    """Pointing the macro at a different real metric is the silent way to break this.
+
+    The tests below stub the accessor, so they never see which metric was asked for.
+    A non-existent name raises at compile time, but `win_activated_users` is one line
+    away in the same file, resolves cleanly, and would render the predicate as a
+    single voter-outreach event — zeroing Active Candidates with everything green.
+    """
+    assert ACCESSOR_CALL.findall(macro_source("is_dashboard_view_event")) == [METRIC]
 
 
 def test_the_accessor_reads_every_declared_leg():
