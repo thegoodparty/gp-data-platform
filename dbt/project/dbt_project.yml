@@ -75,6 +75,10 @@ models:
       +create_notebook: True
       civics:
         +materialized: table
+      # Wide feature tables read by a mart and by several tests each; as views
+      # every reader re-executes the full join.
+      win:
+        +materialized: table
     # Applies to all files under models/marts/
     marts:
       +materialized: table
