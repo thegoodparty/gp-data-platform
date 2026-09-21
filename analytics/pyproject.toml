@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "GoodParty analytics (win analysis, churn)"
 requires-python = ">=3.14"
 dependencies = [
-    "pandas>=3.0.5,<4.0.0",
+    "pandas>=3.0.6,<4.0.0",
     "pyyaml>=6.0",
     "databricks-sql-connector>=4.5.0",
-    "databricks-sdk>=0.135.0",
+    "databricks-sdk>=0.139.0",
 ]
 
 [dependency-groups]

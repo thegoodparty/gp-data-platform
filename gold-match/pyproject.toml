@@ -49,7 +49,7 @@ build-backend = "hatchling.build"
 packages = ["shared", "stitch_golden_data", "bedrock_clients"]
 
 [tool.pytest.ini_options]
-testpaths = ["stitch_golden_data/prod_gold_data/tests", "bedrock_clients/tests"]
+testpaths = ["stitch_golden_data/prod_gold_data/tests", "bedrock_clients/tests", "../.claude/skills/gold-match-run-audit/tests"]
 
 # The matcher tree is owned here and linted like any other code. shared/
 # stays excluded: it is omni's client copies carrying omni's tracked lint

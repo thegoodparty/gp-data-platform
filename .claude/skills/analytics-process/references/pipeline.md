@@ -78,6 +78,7 @@ Build each reviewer's invocation prompt from this template — and nothing more:
 - **Artifacts by path:** the brief YAML and the executed notebook/script (plus any figures directory). The reviewer reads these on the merits.
 - **Product context:** the product, its knowledge skill, the decision cadence, and the intended audience/consumer of the deliverable.
 - **Docs to load:** the reviewer doc pointers from the product knowledge skill's `methodology_defaults.md` (which names the two or three docs each reviewer needs, per role).
+- **The intended claims:** what the deliverable will assert and what decision it feeds, taken from the brief. State them flat, without evidence or confidence. A reviewer can only attack an argument it knows is being made, and an *absent* cut is the hardest defect to flag: on DATA-2247 both reviewers independently caught the within-frame exposure artifact and neither caught the same error across frames, because the section that relied on it had not been written yet.
 - **The ask:** review per your role (methodology + interpretation, or usefulness + actionability).
 
 **The dispatch must not lead the witness.** Do not summarize the analysis's conclusions, characterize the result's quality ("clean", "strong", "confirms X"), or include the orchestrator's interpretation. The orchestrator that produced the analysis writes this prompt; anything beyond paths, product context, and doc pointers contaminates a review whose value is its fresh context.

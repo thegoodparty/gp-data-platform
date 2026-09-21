@@ -1,10 +1,16 @@
 -- A null voter_count on an L2-backed district is a broken join, not an unknown size,
 -- and it silently nulls icp_office_win / icp_office_serve.
 with
+    -- Both maps, matching int__icp_offices: an override onto an adopted
+    -- proposed map resolves through the minted types only this model carries.
     l2_districts as (
         select distinct
             state_postal_code as state, district_type, district_name, voter_count
         from {{ ref("int__l2_district_aggregations") }}
+        union all
+        select distinct
+            state_postal_code as state, district_type, district_name, voter_count
+        from {{ ref("int__l2_proposed_district_aggregations") }}
     )
 
 select icp.br_database_position_id, icp.l2_district_type, icp.l2_district_name

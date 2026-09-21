@@ -2,7 +2,8 @@
 
 Uses the UC metadata API (no SQL warehouse): WorkspaceClient().tables.get(fqn).
 WorkspaceClient() picks up auth from the standard databricks env/config
-(DATABRICKS_HOST + token, or a profile)."""
+(DATABRICKS_HOST + token, or a profile), except the OAuth scopes, which have no
+env binding and are passed from DATABRICKS_SCOPES."""
 
 from __future__ import annotations
 
@@ -31,7 +32,9 @@ def introspect_mart(fqn: str) -> list[MartColumn]:
     """
     from databricks.sdk import WorkspaceClient
 
-    table = WorkspaceClient().tables.get(full_name=fqn)
+    from loader.core.databricks import databricks_scopes
+
+    table = WorkspaceClient(scopes=databricks_scopes()).tables.get(full_name=fqn)
     if not getattr(table, "columns", None):
         raise RuntimeError(f"Unity Catalog table {fqn!r} returned no columns")
     return columns_from_uc_table(table)

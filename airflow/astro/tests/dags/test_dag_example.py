@@ -167,7 +167,7 @@ def test_extract_ballotready_has_a_task_per_entity():
     assert _BR_DAG is not None, f"extract_ballotready failed to load from {_BR_DAG_FILE}"
     assert {t.task_id for t in _BR_DAG.tasks} == {f"extract_{name}" for name in ENTITY_SPECS}
     # The registry is the authority; a shrunk one would otherwise make this vacuously true.
-    assert len(ENTITY_SPECS) == 10
+    assert len(ENTITY_SPECS) == 11
 
 
 def test_person_is_addressed_under_the_candidate_id_namespace():

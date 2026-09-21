@@ -6,6 +6,8 @@ Mirrors core/aws.py's thin-client style. The SDK is imported lazily so unit test
 
 from __future__ import annotations
 
+import os
+import re
 import time
 from typing import Any
 
@@ -16,12 +18,24 @@ _TERMINAL_BAD = {"FAILED", "CANCELED", "CLOSED"}
 _POLL_SECONDS = 5
 
 
+def databricks_scopes() -> list[str] | None:
+    """OAuth scopes to request, from DATABRICKS_SCOPES (comma- or space-separated).
+
+    None leaves the SDK's default of all-apis. The value has to be a subset of
+    what the service principal's secret was minted with, or the token endpoint
+    refuses the request outright. `scopes` is the one Config field with no env
+    binding of its own, so every WorkspaceClient here passes it explicitly.
+    """
+    scopes = [s for s in re.split(r"[,\s]+", os.environ.get("DATABRICKS_SCOPES", "")) if s]
+    return scopes or None
+
+
 def workspace_client(cfg: BaseLoaderConfig) -> Any:
     """A databricks WorkspaceClient (auth from standard databricks env/config)."""
     del cfg  # auth is ambient; cfg reserved for a future explicit-host path
     from databricks.sdk import WorkspaceClient
 
-    return WorkspaceClient()
+    return WorkspaceClient(scopes=databricks_scopes())
 
 
 def _poll_sleep() -> None:

@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from stitch_golden_data.prod_gold_data.l2_br_matcher import (
+    _FAMILY_PARENT_TYPES,
     L2BrMatcher,
     _build_geography_block,
     _classify_office_geography,
@@ -212,7 +213,12 @@ class TestR2DecisionTable:
         ],
     )
     def test_the_table(self, has_unknown_boundaries, geo_id, expected):
+        """The slice rows now also clear the body test: names carry a matching
+        anchor (ANYTOWN) on the City_Ward row so the table's own slice/whole/
+        pass-through distinction stays the thing under test, not the body test.
+        """
         types = ["City", "City_Ward", "State"]
+        names = ["Anytown City", "Anytown City Ward 3", "State"]
         verdict = _classify_office_geography(
             mtfcc="G4110",
             is_judicial=False,
@@ -221,6 +227,8 @@ class TestR2DecisionTable:
             sub_area_name="Ward",
             sub_area_value="3",
             state_district_types=types,
+            office_name="Anytown City Council - Ward 3",
+            state_district_names=names,
         )
         assert verdict.abstain is False
         if expected == "slice":
@@ -252,71 +260,116 @@ class TestR2DecisionTable:
 
 
 class TestFlaggedSchoolArm:
-    """The new school arm (DATA-2399 slice 2): a flagged school office
-    never denies its parent type -- it passes through unrestricted
-    whenever the state carries any school-family row, and abstains only
-    when it carries none. Kept apart from TestR2DecisionTable so a
+    """The school arm rejoined the slice rule (the matcher-quality lane's candidate 2, class
+    A): a flagged school office now needs a real school sub-type present in
+    the state AND a matching body sub-row before its whole-district types
+    are denied; either gate failing abstains it, replacing the old
+    unrestricted pass-through. Kept apart from TestR2DecisionTable so a
     school fixture can never contaminate the generic place-family
     assertions there.
     """
 
     @pytest.mark.parametrize(
-        ("has_unknown_boundaries", "sub_area_name", "sub_area_value", "state_district_types", "expected"),
+        ("state_district_types", "office_name", "state_district_names", "expected"),
         [
-            (True, "District", "B", ["School_District", "School_Board_District", "State"], "passthrough"),
-            (True, "District", "B", ["School_District", "State"], "passthrough"),
-            (True, "District", "B", ["School_Board_District", "State"], "passthrough"),
-            (True, "District", "B", ["School_District_Vocational", "State"], "passthrough"),
-            (True, "District", "B", ["County", "City", "State"], "abstain"),
-            (True, None, None, ["County", "State"], "passthrough"),
+            (
+                ["School_District", "School_Board_District", "State"],
+                "Example Board of Education - District B",
+                ["Example Board of Education", "Example Board of Education District B", "State"],
+                "restrict",
+            ),
+            (
+                ["School_District", "State"],
+                "Example Board of Education - District B",
+                ["Example Board of Education", "State"],
+                "abstain",
+            ),
+            (
+                ["School_Board_District", "State"],
+                "Example Board of Education - District B",
+                ["Example Board of Education District B", "State"],
+                "restrict",
+            ),
+            (
+                ["School_District_Vocational", "State"],
+                "Example Vocational School District - District B",
+                ["Example Vocational School District", "State"],
+                "abstain",
+            ),
+            (
+                ["County", "City", "State"],
+                "Example Board of Education - District B",
+                ["Example County", "Example City", "State"],
+                "abstain",
+            ),
         ],
         ids=[
-            "parent-and-sub-present",
-            "parent-only-present",
-            "sub-only-present-florida-shape",
-            "vocational-only-presence",
+            "parent-and-sub-present-body-present-denies-parent",
+            "parent-only-present-abstains-before-the-body-test",
+            "sub-only-present-florida-shape-body-present-nothing-to-deny",
+            "vocational-only-presence-abstains-not-a-real-sub-type",
             "no-school-family-types-at-all",
-            "no-sub-area-flag-true",
         ],
     )
-    def test_the_table(self, has_unknown_boundaries, sub_area_name, sub_area_value, state_district_types, expected):
-        """Failure this catches: an accidental parents-AND-subs guard (rows
-        2 and 3 would wrongly abstain if the arm required both sets
-        non-empty instead of their union); the presence test narrowed back
-        to the DENIAL sets, which omit office-bearing types like vocational
-        JVSD boards (row 4); a genuinely school-less state failing to
-        abstain (row 5); and row 6 -- vacuous against the arm's current
-        position, deliberately -- pins the no-sub-area flagged school class
-        (a measured population the design names as untouched) as
-        pass-through, so it fails if the arm is ever moved above the
-        has_sub_area family gate or re-keyed on mtfcc, either of which
-        would abstain that class in a school-less state.
+    def test_the_table(self, state_district_types, office_name, state_district_names, expected):
+        """Failure this catches: the union-vs-intersection guard on
+        school_rows collapsing into an AND (rows 1 and 3 must not require
+        both parent and sub present to reach the body test); vocational-only
+        presence (row 4) wrongly still passing through unrestricted instead
+        of abstaining, now that the rejoin requires a genuine school
+        sub-type, not just any school-family row; a genuinely school-less
+        state failing to abstain (row 5); and the old unrestricted
+        pass-through surviving instead of the new explicit, body-tested
+        menu (rows 1 and 3).
         """
         verdict = _classify_office_geography(
             mtfcc="G5420",
             is_judicial=False,
-            has_unknown_boundaries=has_unknown_boundaries,
+            has_unknown_boundaries=True,
             geo_id="0804920",
-            sub_area_name=sub_area_name,
-            sub_area_value=sub_area_value,
+            sub_area_name="District",
+            sub_area_value="B",
             state_district_types=state_district_types,
+            office_name=office_name,
+            state_district_names=state_district_names,
         )
-        if expected == "passthrough":
-            assert verdict.abstain is False
-            assert verdict.eligible_indices is None
-        else:
+        if expected == "abstain":
             assert verdict.abstain is True
             assert verdict.eligible_indices == frozenset()
+        else:  # "restrict": both gates passed, so the whole-district types deny same as any other slice
+            assert verdict.abstain is False
+            eligible_types = {state_district_types[i] for i in verdict.eligible_indices}
+            assert eligible_types == set(state_district_types) - _FAMILY_PARENT_TYPES["school"]
+            assert verdict.verdict_sentence and "stand-in" in verdict.verdict_sentence
+
+    def test_no_sub_area_flagged_school_stays_pass_through(self):
+        """Failure this catches: the no-sub-area flagged school class (a
+        measured population the design names as untouched) losing its
+        pass-through -- family is None before the school arm is ever
+        reached, so the body test must never touch this class.
+        """
+        verdict = _classify_office_geography(
+            mtfcc="G5420",
+            is_judicial=False,
+            has_unknown_boundaries=True,
+            geo_id="0804920",
+            sub_area_name=None,
+            sub_area_value=None,
+            state_district_types=["County", "State"],
+        )
+        assert verdict.abstain is False
+        assert verdict.eligible_indices is None
         assert verdict.verdict_sentence is None
 
     def test_weld_county_re_3j_school_board_district_b(self):
-        """Failure this catches: the documented regression itself -- Weld
-        RE-3J's correct answer, the parent School_District, being denied
-        (the pre-2026-09 rule) because the office is flagged and its
-        sub_area (District/B) looks like a real slice. City and county
-        rows, out of family, stay eligible either way.
+        """Failure this catches: the superseded regression assertion --
+        Weld RE-3J's hand-seeded universe carries no school sub-type at
+        all, so under the class-A rejoin it now abstains (the "abstain
+        when none" arm of the new contract) rather than reinstating the
+        old unrestricted parent pass-through.
         """
         types = ["School_District", "City", "County", "State"]
+        names = ["Weld County RE-3J", "Weld City", "Weld County", "CO"]
         verdict = _classify_office_geography(
             mtfcc="G5420",
             is_judicial=False,
@@ -325,10 +378,11 @@ class TestFlaggedSchoolArm:
             sub_area_name="District",
             sub_area_value="B",
             state_district_types=types,
+            office_name="Weld RE-3J School Board - District B",
+            state_district_names=names,
         )
-        assert verdict.abstain is False
-        assert verdict.eligible_indices is None  # School_District is not denied
-        assert verdict.verdict_sentence is None
+        assert verdict.abstain is True
+        assert verdict.eligible_indices == frozenset()
 
 
 class TestNamedRegressions:
@@ -343,9 +397,12 @@ class TestNamedRegressions:
         """Failure this catches: the documented regression itself -- a
         trustee-area seat (a genuine slice, boundaries known) still able
         to match the too-broad parent Unified_School_District, as
-        January did.
+        January did. Names carry a matching COMPTON anchor on the
+        subdistrict row so the body test (now also wired into this
+        known-boundaries slice path) does not itself abstain the office.
         """
         types = ["Unified_School_District", "Unified_School_SubDistrict", "City", "State"]
+        names = ["COMPTON USD", "COMPTON USD TA C", "COMPTON CITY", "CA"]
         verdict = _classify_office_geography(
             mtfcc="X0102",
             is_judicial=False,
@@ -354,6 +411,8 @@ class TestNamedRegressions:
             sub_area_name="Area",
             sub_area_value="C",
             state_district_types=types,
+            office_name="Compton Unified School District - Trustee Area C",
+            state_district_names=names,
         )
         assert verdict.abstain is False
         eligible_types = {types[i] for i in verdict.eligible_indices}
@@ -621,8 +680,19 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
             # The Maine shape: a flagged school office in a state whose
             # universe carries no school-family row at all.
             ("G5420", False, "45", ["Town_District", "County", "State"]),
+            # A sliced place office whose sub-type is present but its OWN body has no sub-rows: the
+            # fixture's names are "Name 0..n" (no anchor), so the pre-menu abstain must fire before
+            # match_office builds the menu -- an early-return regression here costs an embedding and
+            # a model call per abstained office.
+            ("G4110", False, "3", ["City", "City_Ward", "State"]),
         ],
-        ids=["party-committee", "judicial-no-vocabulary", "zero-subtype-slice", "school-flag-no-school-rows"],
+        ids=[
+            "party-committee",
+            "judicial-no-vocabulary",
+            "zero-subtype-slice",
+            "school-flag-no-school-rows",
+            "body-absent-slice",
+        ],
     )
     def test_an_abstaining_verdict_never_reaches_embeddings_or_the_llm(
         self, mock_dependencies, mtfcc, is_judicial, sub_area_value, types
@@ -630,7 +700,7 @@ class TestMatchOfficeAbstainsBeforeAnyCall:
         """Failure this catches: `match_office`'s early return moved or
         deleted, so an abstaining office still pays for query embeddings
         and an LLM call -- every classifier-level test stays green because
-        none of them goes through the caller. Covers all four abstain
+        none of them goes through the caller. Covers all five abstain
         families and pins confidence=None (no model judgment happened).
         """
         matcher = L2BrMatcher()
@@ -689,7 +759,9 @@ class TestCountySubdivisionParentLength:
         10-digit parent id) sharing another family's length -- a 10-digit
         geo_id must read as whole for G4040 while it reads as slice for the
         7-digit families, and nothing else in the suite can see that
-        distinction.
+        distinction. The sliced call carries a matching EXAMPLE anchor on
+        the Town_Ward row so the body test (now wired into this
+        known-boundaries slice path too) does not itself abstain the office.
         """
         types = ["Township", "Town_Ward", "State"]
         whole = _classify_office_geography(
@@ -704,6 +776,7 @@ class TestCountySubdivisionParentLength:
         assert whole.eligible_indices is not None
         assert "Town_Ward" not in {types[i] for i in whole.eligible_indices}
 
+        names = ["Example Township", "Example Township Ward 2", "State"]
         sliced = _classify_office_geography(
             mtfcc="G4040",
             is_judicial=False,
@@ -712,6 +785,8 @@ class TestCountySubdivisionParentLength:
             sub_area_name="District",
             sub_area_value="2",
             state_district_types=types,
+            office_name="Example Township - District 2",
+            state_district_names=names,
         )
         assert sliced.eligible_indices is not None
         assert "Township" not in {types[i] for i in sliced.eligible_indices}
@@ -746,3 +821,227 @@ class TestMainForwardsTheSchoolGateFlag:
             asyncio.run(main())
 
         assert captured["school_whole_assertion_enabled"] is True
+
+
+AL_TYPES = [
+    "State",
+    "County",
+    "County_Commissioner_District",
+    "City",
+    "City_Council_Commissioner_District",
+    "School_District",
+    "Board_of_Education_District",
+    "School_Board_District",
+]
+AL_NAMES = [
+    "AL",
+    "RUSSELL",
+    "RUSSELL CNTY COMM DIST 1",
+    "PHENIX CITY",
+    "PHENIX CITY CNCL 1",
+    "PHENIX CITY SD",
+    "RUSSELL CNTY BOE",
+    "RUSSELL CNTY SCHL BD DIST 1",
+]
+CA_TYPES = [
+    "State",
+    "County",
+    "Unified_School_District",
+    "Unified_School_SubDistrict",
+    "City",
+    "City_Council_Commissioner_District",
+    "Sanitary_District",
+    "Sanitary_SubDistrict",
+]
+CA_NAMES = [
+    "CA",
+    "LOS ANGELES",
+    "MONTEBELLO USD",
+    "MONTEBELLO USD TA 1",
+    "MONTEBELLO CITY",
+    "MONTEBELLO CITY CNCL 1",
+    "MT VIEW SANITARY",
+    "MT VIEW SANITARY DIST AREA 3",
+]
+
+
+def _classify(name, types, names, **kw):
+    base = {
+        "is_judicial": False,
+        "has_unknown_boundaries": False,
+        "geo_id": None,
+        "sub_area_name": None,
+        "sub_area_value": None,
+        "state_district_types": types,
+        "office_name": name,
+        "state_district_names": names,
+    }
+    base.update(kw)
+    return _classify_office_geography(**base)
+
+
+class TestR2BodyLevel:
+    def test_sliced_office_with_no_body_sub_rows_abstains(self):
+        """Catches: a sub-district seat whose body has no sub-rows being offered coarser rows (the parent-row trap)."""
+        v = _classify(
+            "Pleasant Valley School Board - Area 1",
+            CA_TYPES,
+            CA_NAMES,
+            mtfcc="G5420",
+            geo_id="0630000",
+            has_unknown_boundaries=True,
+            sub_area_name="Area",
+            sub_area_value="1",
+        )
+        assert v.abstain is True and v.eligible_indices == frozenset()
+
+    def test_sliced_office_with_body_sub_rows_keeps_parent_denial(self):
+        """Catches: the body test removing today's whole-body denial for a place office whose wards exist."""
+        v = _classify(
+            "Montebello City Council - District 1",
+            CA_TYPES,
+            CA_NAMES,
+            mtfcc="G4110",
+            geo_id="0648592001",
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is False
+        assert all(CA_TYPES[i] not in _FAMILY_PARENT_TYPES["place"] for i in v.eligible_indices)
+        assert any(CA_TYPES[i] == "City_Council_Commissioner_District" for i in v.eligible_indices)
+
+    def test_flagged_school_with_body_sub_rows_denies_whole_district_types(self):
+        """Catches: Montebello Area 1 taking MONTEBELLO USD over MONTEBELLO USD TA 1 (unrestricted flagged pass-through)."""
+        v = _classify(
+            "Montebello Unified School Board - Area 1",
+            CA_TYPES,
+            CA_NAMES,
+            mtfcc="G5420",
+            geo_id="0624840",
+            has_unknown_boundaries=True,
+            sub_area_name="Area",
+            sub_area_value="1",
+        )
+        assert v.abstain is False and v.eligible_indices is not None
+        assert all(CA_TYPES[i] not in _FAMILY_PARENT_TYPES["school"] for i in v.eligible_indices)
+        assert v.verdict_sentence and "stand-in" in v.verdict_sentence
+
+    def test_flagged_school_with_no_body_sub_rows_abstains(self):
+        """Catches: a flagged school seat whose body has no sub-level row anywhere taking the whole SD (the trap)."""
+        v = _classify(
+            "Smiths Station Board of Education - District 1",
+            AL_TYPES,
+            AL_NAMES,
+            mtfcc="G5420",
+            geo_id="0102820",
+            has_unknown_boundaries=True,
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is True
+
+    def test_flagged_school_cross_family_anchor_abstains_instead_of_a_restricted_menu(self):
+        """Catches: cross-family presence denying the school parent and steering the model to a
+        same-name ward -- Phenix City's own council district shares the body's anchor, but a
+        council district is not a school sub-row, so it must not save the office from the abstain."""
+        v = _classify(
+            "Phenix City Board of Education - District 1",
+            AL_TYPES,
+            AL_NAMES,
+            mtfcc="G5420",
+            geo_id="0102820",
+            has_unknown_boundaries=True,
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is True
+
+    def test_flagged_school_in_a_state_without_school_sub_types_abstains_first(self):
+        """Catches: a flagged school seat in a zero-school-sub state reaching the body test or a menu (monotone order;
+        the rejoin makes it a zero-subtype abstain, never a whole-SD match)."""
+        types = ["State", "County", "City", "City_Council_Commissioner_District", "School_District"]
+        names = ["AL", "RUSSELL", "PHENIX CITY", "PHENIX CITY CNCL 1", "PHENIX CITY SD"]
+        v = _classify(
+            "Phenix City Board of Education - District 1, Place 1",
+            types,
+            names,
+            mtfcc="G5420",
+            geo_id="0102820",
+            has_unknown_boundaries=True,
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is True
+
+    def test_flagged_school_without_sub_area_stays_pass_through(self):
+        """Catches: the body test reaching the no-sub-area flagged school class (byte-identity fence)."""
+        v = _classify(
+            "Montebello Unified School Board",
+            CA_TYPES,
+            CA_NAMES,
+            mtfcc="G5420",
+            geo_id="0624840",
+            has_unknown_boundaries=True,
+        )
+        assert v.abstain is False and v.eligible_indices is None and v.verdict_sentence is None
+
+    def test_zero_subtype_state_still_abstains_before_the_body_test(self):
+        """Catches: the body test handing a menu to an office that abstains today (monotone ordering, spec 2.3)."""
+        types = ["State", "County", "Sanitary_SubDistrict", "City"]
+        names = ["KS", "SEDGWICK", "WICHITA SANITARY DIST AREA 1", "WICHITA CITY"]
+        v = _classify(
+            "Wichita City Council - District 1",
+            types,
+            names,
+            mtfcc="G4110",
+            geo_id="2079000001",
+            sub_area_name="District",
+            sub_area_value="1",
+        )
+        assert v.abstain is True
+
+    def test_in_class_office_without_names_fails_loud(self):
+        """Catches: a caller silently skipping the body test by omitting the names (production must never)."""
+        with pytest.raises(ValueError, match="body test"):
+            _classify_office_geography(
+                mtfcc="G4110",
+                is_judicial=False,
+                has_unknown_boundaries=False,
+                geo_id="0648592001",
+                sub_area_name="District",
+                sub_area_value="1",
+                state_district_types=CA_TYPES,
+            )
+
+    @pytest.mark.parametrize(
+        "kw",
+        [
+            {"mtfcc": "X0024"},
+            {"mtfcc": "G4020", "is_judicial": True},
+            {"mtfcc": "G4110"},  # no sub-area: pass-through
+            {"mtfcc": "G4110", "geo_id": "0648592", "sub_area_name": "Place", "sub_area_value": "3"},  # whole-level
+            {"mtfcc": "G4110", "geo_id": "abc", "sub_area_name": "District", "sub_area_value": "1"},  # malformed
+            {
+                "mtfcc": "G5420",
+                "geo_id": "0624840",
+                "sub_area_name": "Area",
+                "sub_area_value": "1",
+            },  # school whole, gated
+        ],
+    )
+    def test_out_of_class_verdicts_are_identical_with_and_without_names(self, kw):
+        """Catches: any out-of-class office changing verdict because of the new inputs (the equivalence proof's unit form)."""
+        base = {
+            "is_judicial": False,
+            "has_unknown_boundaries": False,
+            "geo_id": None,
+            "sub_area_name": None,
+            "sub_area_value": None,
+            "state_district_types": CA_TYPES,
+        }
+        base.update(kw)
+        without = _classify_office_geography(**base)
+        with_names = _classify_office_geography(
+            **base, office_name="Any Office - District 1", state_district_names=CA_NAMES
+        )
+        assert without == with_names

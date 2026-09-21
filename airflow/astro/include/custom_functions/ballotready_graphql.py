@@ -1,9 +1,9 @@
 """Extraction helpers for the extract_ballotready DAG.
 
-Pulls BallotReady (CivicEngine) GraphQL objects by id and lands the raw node
-payloads in Databricks. Every entity is addressed the same way, through
-`nodes(ids:)` over base64 global ids, so one client and one registry cover all
-of them.
+Pulls BallotReady (CivicEngine) GraphQL objects and lands the raw node payloads in
+Databricks. Worklist entities are addressed through `nodes(ids:)` over base64 global
+ids; list entities (measure) page a root field to the end. One client and one
+registry cover all of them.
 """
 
 import contextlib
@@ -319,36 +319,27 @@ def _check_positional_mapping(fetched: list[FetchedNode], ids: Sequence[int], no
         )
 
 
-def fetch_nodes(
-    ids: Sequence[int],
-    node_type: str,
-    selection: str,
+def _post_graphql(
+    payload: Mapping[str, Any],
     api_token: str,
     limiter: RateLimiter,
     session,
-    timeout: int = 60,
-    max_retries: int = 5,
-    sleep: Callable[[float], None] = time.sleep,
-    bisects: BisectCounter | None = None,
-) -> list[FetchedNode]:
-    """Fetch `ids` in one nodes() call, mapping results positionally.
+    timeout: int,
+    max_retries: int,
+    sleep: Callable[[float], None],
+    describe: str,
+) -> dict[str, Any]:
+    """POST one GraphQL request and return its decoded body, retrying what is retryable.
 
-    A response shorter than the request is how CivicEngine signals that the page
-    was too large; it is not an error status. Bisect and retry rather than
-    accept the loss, because the missing rows would land as null payloads that
-    are indistinguishable from a genuine absence downstream.
-
-    `api_token` is stripped here regardless of what the caller already did, so a
-    stray newline or space from an Airflow Variable can never reach the header.
+    Shared by the nodes() and list paths; `describe` names the request in logs
+    ("100 Candidacy ids", "measures page 3"). `api_token` is stripped here regardless
+    of what the caller already did, so a stray newline or space from an Airflow
+    Variable can never reach the header.
     """
     api_token = api_token.strip()
     if not api_token:
         raise ValueError("civicengine_api_token is empty or missing")
 
-    payload = {
-        "query": _build_query(selection),
-        "variables": {"ids": [encode_node_id(node_type, i) for i in ids]},
-    }
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -368,16 +359,15 @@ def fetch_nodes(
                 # printed; this loses the original frames, accepted over leaking a token into
                 # logs that persist in S3.
                 raise RuntimeError(
-                    f"CivicEngine request failed for {len(ids)} {node_type} ids after "
+                    f"CivicEngine request failed for {describe} after "
                     f"{max_retries} retries: {type(exc).__name__}: {_redact(str(exc), api_token)}"
                 ) from None
             wait = retry_wait_seconds({}, attempt)
             # requests embeds the offending header value in exceptions like InvalidHeader, so
             # the exception's own text could carry the bearer token; redact before logging it.
             logger.warning(
-                "CivicEngine request failed for %d %s ids (attempt %d/%d); retrying in %.1fs: %s: %s",
-                len(ids),
-                node_type,
+                "CivicEngine request failed for %s (attempt %d/%d); retrying in %.1fs: %s: %s",
+                describe,
                 attempt + 1,
                 max_retries,
                 wait,
@@ -395,10 +385,9 @@ def fetch_nodes(
                 # Hold every worker, not just this one, or the others earn more 429s.
                 limiter.pause_for(wait)
             logger.warning(
-                "CivicEngine returned %s for %d %s ids (attempt %d/%d); retrying in %.1fs",
+                "CivicEngine returned %s for %s (attempt %d/%d); retrying in %.1fs",
                 response.status_code,
-                len(ids),
-                node_type,
+                describe,
                 attempt + 1,
                 max_retries,
                 wait,
@@ -410,35 +399,128 @@ def fetch_nodes(
         body = response.json()
         if body.get("errors"):
             raise RuntimeError(f"CivicEngine GraphQL errors: {body['errors']}")
-        nodes = (body.get("data") or {}).get("nodes") or []
+        return body
 
-        if len(nodes) != len(ids):
-            if len(ids) == 1:
-                raise RuntimeError(
-                    f"CivicEngine returned {len(nodes)} nodes for 1 id "
-                    f"({node_type} {ids[0]}); cannot bisect further"
-                )
-            midpoint = len(ids) // 2
-            logger.warning(
-                "CivicEngine returned %d nodes for %d %s ids: page size is above the "
-                "server's ceiling. Bisecting to %d.",
-                len(nodes),
-                len(ids),
-                node_type,
-                midpoint,
+    raise RuntimeError("Unreachable: _post_graphql exhausted retries without returning")
+
+
+def fetch_nodes(
+    ids: Sequence[int],
+    node_type: str,
+    selection: str,
+    api_token: str,
+    limiter: RateLimiter,
+    session,
+    timeout: int = 60,
+    max_retries: int = 5,
+    sleep: Callable[[float], None] = time.sleep,
+    bisects: BisectCounter | None = None,
+) -> list[FetchedNode]:
+    """Fetch `ids` in one nodes() call, mapping results positionally.
+
+    A response shorter than the request is how CivicEngine signals that the page
+    was too large; it is not an error status. Bisect and retry rather than
+    accept the loss, because the missing rows would land as null payloads that
+    are indistinguishable from a genuine absence downstream.
+    """
+    payload = {
+        "query": _build_query(selection),
+        "variables": {"ids": [encode_node_id(node_type, i) for i in ids]},
+    }
+    body = _post_graphql(
+        payload, api_token, limiter, session, timeout, max_retries, sleep, f"{len(ids)} {node_type} ids"
+    )
+    nodes = (body.get("data") or {}).get("nodes") or []
+
+    if len(nodes) != len(ids):
+        if len(ids) == 1:
+            raise RuntimeError(
+                f"CivicEngine returned {len(nodes)} nodes for 1 id "
+                f"({node_type} {ids[0]}); cannot bisect further"
             )
-            if bisects is not None:
-                bisects.increment()
-            args = (node_type, selection, api_token, limiter, session, timeout, max_retries, sleep)
-            return fetch_nodes(ids[:midpoint], *args, bisects=bisects) + fetch_nodes(
-                ids[midpoint:], *args, bisects=bisects
+        midpoint = len(ids) // 2
+        logger.warning(
+            "CivicEngine returned %d nodes for %d %s ids: page size is above the "
+            "server's ceiling. Bisecting to %d.",
+            len(nodes),
+            len(ids),
+            node_type,
+            midpoint,
+        )
+        if bisects is not None:
+            bisects.increment()
+        args = (node_type, selection, api_token, limiter, session, timeout, max_retries, sleep)
+        return fetch_nodes(ids[:midpoint], *args, bisects=bisects) + fetch_nodes(
+            ids[midpoint:], *args, bisects=bisects
+        )
+
+    fetched = [FetchedNode(requested_id=i, node=n) for i, n in zip(ids, nodes, strict=True)]
+    _check_positional_mapping(fetched, ids, node_type)
+    return fetched
+
+
+def _build_list_query(root: str, node_type: str, selection: str) -> str:
+    return (
+        f"query List($first: Int, $after: String, $filterBy: {node_type}Filter) "
+        f"{{ {root}(first: $first, after: $after, filterBy: $filterBy) "
+        f"{{ nodes {{ {selection} }} pageInfo {{ hasNextPage endCursor }} }} }}"
+    )
+
+
+def fetch_list(
+    root: str,
+    node_type: str,
+    selection: str,
+    filter_by: Mapping[str, Any] | None,
+    api_token: str,
+    limiter: RateLimiter,
+    session,
+    page_size: int = 100,
+    timeout: int = 60,
+    max_retries: int = 5,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Iterator[tuple[list[dict[str, Any]], int]]:
+    """Page a list root (e.g. `measures(first:, after:)`) to the end, one page per yield.
+
+    Yields (nodes, nulls) per page: the API's `nodes: [T]` may hold null elements for
+    objects the token cannot see, so they are dropped here and counted rather than
+    landed as empty rows. Pages are yielded rather than collected so a history pull
+    never holds the whole listing in memory.
+
+    A page claiming hasNextPage with a null or already-seen endCursor would loop forever, and the
+    DAG's max_active_runs=1 would then block every later schedule; raise instead.
+    """
+    query = _build_list_query(root, node_type, selection)
+    after: str | None = None
+    seen: set[str] = set()
+    page = 0
+    while True:
+        page += 1
+        payload = {"query": query, "variables": {"first": page_size, "after": after, "filterBy": filter_by}}
+        body = _post_graphql(
+            payload, api_token, limiter, session, timeout, max_retries, sleep, f"{root} page {page}"
+        )
+        connection = (body.get("data") or {}).get(root)
+        if connection is None:
+            # The schema declares the root non-null, so this needs a top-level error the
+            # helper would already have raised on; guard anyway, because the alternative
+            # is a silent zero-row "success".
+            raise RuntimeError(f"CivicEngine returned null for {root} on page {page}")
+        raw_nodes = connection.get("nodes") or []
+        nodes = [node for node in raw_nodes if node is not None]
+        yield nodes, len(raw_nodes) - len(nodes)
+
+        page_info = connection.get("pageInfo") or {}
+        if not page_info.get("hasNextPage"):
+            return
+        next_after = page_info.get("endCursor")
+        if not next_after or next_after in seen:
+            raise RuntimeError(
+                f"CivicEngine {root} page {page} reports hasNextPage without a new endCursor "
+                f"({next_after!r}); refusing to loop"
             )
-
-        fetched = [FetchedNode(requested_id=i, node=n) for i, n in zip(ids, nodes, strict=True)]
-        _check_positional_mapping(fetched, ids, node_type)
-        return fetched
-
-    raise RuntimeError("Unreachable: fetch_nodes exhausted retries without returning")
+        seen.add(next_after)
+        after = next_after
 
 
 # Selections below are copied verbatim (field-for-field) from the dbt Python
@@ -665,22 +747,57 @@ STANCE_SELECTION = """
 """
 
 
+# Listed rather than fetched by id (see fetch_list); the inline-fragment shape is kept so
+# the selection tests apply to it unchanged.
+MEASURE_SELECTION = """
+... on Measure {
+    arguments { databaseId id proCon sourceUrl text }
+    conSnippet
+    createdAt
+    databaseId
+    election { databaseId electionDay id name state }
+    endorsements { databaseId endorser id recommendation status }
+    geoId
+    hasUnknownBoundaries
+    id
+    issue { databaseId id key name }
+    mtfcc
+    name
+    party { databaseId id name shortName }
+    proSnippet
+    slug
+    state
+    summary
+    text
+    title
+    updatedAt
+}
+"""
+
+
 @dataclass(frozen=True)
 class EntitySpec:
-    """Everything that differs between the ten entity tasks.
+    """Everything that differs between the entity tasks.
 
-    The task body is identical for all of them; only this differs.
+    The task body is identical for all of them; only this differs. Two modes: a
+    worklist entity supplies `worklist_sql` and is fetched by id through nodes(); a
+    list entity supplies `list_root` (a paged root field such as `measures`) and is
+    listed whole every run. Exactly one of the two is set (the registry tests enforce it).
     """
 
     name: str
     node_type: str
     selection: str
+    # nodes() ids per call for a worklist entity; `first` per page for a list entity.
     batch_size: int
-    worklist_sql: Callable[..., str]
+    worklist_sql: Callable[..., str] | None
     # Other entities whose landing tables this entity's worklist reads (e.g. issue reads
     # stance's). extract_entity must create these too, or an entities-filtered run that
     # skips the other side never creates the table this one's worklist queries.
     reads_tables: tuple[str, ...] = ()
+    list_root: str | None = None
+    # Builds the root's filterBy argument from the run config; None means unfiltered.
+    list_filter: Callable[["ExtractConfig"], dict[str, Any] | None] | None = None
 
 
 def landing_table(catalog: str, schema: str, entity: str) -> str:
@@ -732,15 +849,26 @@ def read_cursor(connection, catalog: str, schema: str, entity: str) -> tuple[dat
         return (row[0], int(row[1])) if row else (None, None)
 
 
+def _cursor_pair(after_changed_at: str | None, after_source_id: int | None) -> tuple[str, int] | None:
+    """The cursor as a usable pair, or None when either half is missing.
+
+    A cursor is only usable as a pair; one half alone reads as no cursor at all. Degrading
+    to a full sweep rather than raising is deliberate: an over-broad worklist is safe, and a
+    raise here would stall a run over a partial value. Returned as a tuple rather than a
+    bool so callers get both halves narrowed to non-None.
+    """
+    if after_changed_at is None or after_source_id is None:
+        return None
+    return after_changed_at, int(after_source_id)
+
+
 def _keyset_predicate(after_changed_at: str | None, after_source_id: int | None) -> str:
     """The keyset half of the WHERE clause, or an always-true stand-in."""
-    # A cursor is only usable as a pair; if just one half is missing, treat it as
-    # no cursor at all (a full sweep) rather than raise, since an over-broad
-    # worklist is safe and a raise here would stall a run over a partial value.
-    if after_changed_at is None or after_source_id is None:
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return "source_changed_at IS NOT NULL"
-    ts = format_cursor_ts(after_changed_at)
-    sid = int(after_source_id)
+    ts = format_cursor_ts(pair[0])
+    sid = pair[1]
     return (
         "source_changed_at IS NOT NULL AND ("
         f"source_changed_at > TIMESTAMP '{ts}' OR "
@@ -765,9 +893,10 @@ def _cursor_floor(
     Gated on the same both-halves-present rule as _keyset_predicate, so a partial cursor
     still degrades to a genuinely full sweep rather than one silently floored by timestamp.
     """
-    if after_changed_at is None or after_source_id is None:
+    pair = _cursor_pair(after_changed_at, after_source_id)
+    if pair is None:
         return ""
-    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(after_changed_at)}'"
+    return f" AND {column} >= TIMESTAMP '{format_cursor_ts(pair[0])}'"
 
 
 def _keyed_worklist(
@@ -775,12 +904,25 @@ def _keyed_worklist(
     *,
     after_changed_at: str | None,
     after_source_id: int | None,
+    own_landing_table: str | None = None,
+    unseen_inner_sql: str | None = None,
 ) -> str:
     """Wrap an (source_id, source_changed_at) scan as a cursor-paged worklist.
 
     Owns the parts every keyed builder needs identically: collapse to one row per id on
     max(source_changed_at), push the cursor floor below that aggregate, then page the
     result by the exact keyset pair. A builder supplies only its own scan.
+
+    The keyset page assumes source timestamps arrive in roughly cursor order. BallotReady's
+    weekly full export does not: a candidacy enters the file days after its created_at and
+    updated_at, and the race stream's fresher clock has usually moved the cursor past those
+    days by then, so the page never lists it. With `own_landing_table` and a cursor, a second branch adds
+    every id in the scan with no row at all in that table, at its own timestamp. Those rows
+    sort first, land below the cursor and never move it, and on the next run they have a
+    landing row and drop out again. `unseen_inner_sql` lets a builder hand this branch a
+    scan without any cursor floor of its own (candidacy's roster explode carries one), since
+    a floor is exactly what hides a late arrival. Omitted on a full sweep, which already
+    lists every discoverable id.
     """
     grouped = (
         "SELECT source_id, max(source_changed_at) AS source_changed_at "
@@ -789,10 +931,27 @@ def _keyed_worklist(
         "GROUP BY source_id"
     )
     predicate = _keyset_predicate(after_changed_at, after_source_id)
+    ordered = "ORDER BY source_changed_at ASC, source_id ASC"
+    if own_landing_table is None or _cursor_pair(after_changed_at, after_source_id) is None:
+        return (
+            f"WITH worklist AS ({grouped}) "
+            f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
+            f"{ordered}"
+        )
+    unseen = (
+        "SELECT source_id, max(source_changed_at) AS source_changed_at "
+        f"FROM ({unseen_inner_sql or inner_sql}) scan "
+        "WHERE source_changed_at IS NOT NULL AND NOT EXISTS ("
+        f"SELECT 1 FROM {own_landing_table} landed WHERE landed.requested_id = scan.source_id) "
+        "GROUP BY source_id"
+    )
     return (
-        f"WITH worklist AS ({grouped}) "
+        f"WITH worklist AS ({grouped}), unseen AS ({unseen}) "
         f"SELECT source_id, source_changed_at FROM worklist WHERE {predicate} "
-        "ORDER BY source_changed_at ASC, source_id ASC"
+        "UNION ALL "
+        # NOT predicate, so an unseen id that is also above the cursor is listed once.
+        f"SELECT source_id, source_changed_at FROM unseen WHERE NOT ({predicate}) "
+        f"{ordered}"
     )
 
 
@@ -814,6 +973,7 @@ def candidacy_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Candidacy ids from the S3 feed plus the upcoming-race roster.
 
@@ -826,37 +986,53 @@ def candidacy_worklist_sql(
     races = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_race")
     elections = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_api_election")
     candidacies = _dbt_model(catalog, dbt_schema, "stg_airbyte_source__ballotready_s3_candidacies_v3")
-    upcoming = (
-        "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
-        "max(r.updated_at) AS race_updated_at "
-        f"FROM {races} r "
-        "LATERAL VIEW explode(r.candidacies) AS candidacy "
-        "WHERE r.election.databaseId IN (SELECT database_id "
-        f"FROM {elections} "
-        "WHERE election_day >= current_date()) "
-        "AND candidacy.databaseId IS NOT NULL"
-        # Same cursor floor as _keyed_worklist applies below its own GROUP BY, pushed one
-        # level further down: without it every run explodes the candidacies array of every
-        # upcoming race, which is the most expensive scan in the DAG.
-        f"{_cursor_floor(after_changed_at, after_source_id, 'r.updated_at')} "
-        "GROUP BY cast(candidacy.databaseId AS bigint)"
+
+    def scan(floor_changed_at: str | None, floor_source_id: int | None) -> str:
+        upcoming = (
+            "SELECT cast(candidacy.databaseId AS bigint) AS br_candidacy_id, "
+            "max(r.updated_at) AS race_updated_at "
+            f"FROM {races} r "
+            "LATERAL VIEW explode(r.candidacies) AS candidacy "
+            "WHERE r.election.databaseId IN (SELECT database_id "
+            f"FROM {elections} "
+            "WHERE election_day >= current_date()) "
+            "AND candidacy.databaseId IS NOT NULL"
+            # Keeps the keyed page cheap: the floor stops it exploding the candidacies array of
+            # every upcoming race. The unseen branch pays that full explode once per run on
+            # purpose; see the scan(None, None) call below.
+            f"{_cursor_floor(floor_changed_at, floor_source_id, 'r.updated_at')} "
+            "GROUP BY cast(candidacy.databaseId AS bigint)"
+        )
+        return (
+            "SELECT source_id, source_changed_at FROM ("
+            "SELECT try_cast(br_candidacy_id AS bigint) AS source_id, "
+            # Cast each argument, never the result. The live staging schema (`dbt`) types
+            # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
+            # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
+            # coercing, so casting the result is applied too late to help. Per-argument casts
+            # work whichever way either column is typed, and keep both UNION branches TIMESTAMP.
+            "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
+            "AS source_changed_at "
+            f"FROM {candidacies} "
+            "WHERE br_candidacy_id IS NOT NULL"
+            # try_cast plus a post-cast guard, as in _derived_worklist_sql: the feed marks a
+            # missing id with '' rather than NULL, and the unseen scan has no floor to hide it.
+            ") feed WHERE source_id IS NOT NULL "
+            "UNION ALL "
+            "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
+            f"FROM ({upcoming}) upcoming"
+        )
+
+    return _keyed_worklist(
+        scan(after_changed_at, after_source_id),
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+        # The roster floor is a page optimisation; the unseen branch needs the whole roster,
+        # because a race row that reaches Airbyte after the cursor has passed its updated_at
+        # strands its new candidacies exactly like a late feed row.
+        unseen_inner_sql=scan(None, None),
     )
-    inner = (
-        "SELECT cast(br_candidacy_id AS bigint) AS source_id, "
-        # Cast each argument, never the result. The live staging schema (`dbt`) types
-        # candidacy_created_at as TIMESTAMP while candidacy_updated_at is STRING, and
-        # greatest() rejects mixed input types outright (DATATYPE_MISMATCH) rather than
-        # coercing, so casting the result is applied too late to help. Per-argument casts
-        # work whichever way either column is typed, and keep both UNION branches TIMESTAMP.
-        "greatest(cast(candidacy_created_at AS timestamp), cast(candidacy_updated_at AS timestamp)) "
-        "AS source_changed_at "
-        f"FROM {candidacies} "
-        "WHERE br_candidacy_id IS NOT NULL "
-        "UNION ALL "
-        "SELECT br_candidacy_id AS source_id, race_updated_at AS source_changed_at "
-        f"FROM ({upcoming}) upcoming"
-    )
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
 
 
 def _derived_worklist_sql(
@@ -869,6 +1045,7 @@ def _derived_worklist_sql(
     explode: tuple[str, str] | None,
     after_changed_at: str | None,
     after_source_id: int | None,
+    own_landing_table: str | None,
 ) -> str:
     """Worklist for ids carried on another entity's staging rows.
 
@@ -882,11 +1059,20 @@ def _derived_worklist_sql(
     if explode is not None:
         array_column, alias = explode
         from_clause = f"{table} LATERAL VIEW explode({array_column}) AS {alias}"
-    inner = (
-        f"SELECT cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
+    scanned = (
+        f"SELECT try_cast({id_expr} AS bigint) AS source_id, {changed_at_expr} AS source_changed_at "
         f"FROM {from_clause} WHERE {id_expr} IS NOT NULL"
     )
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
+    # try_cast plus a post-cast guard: the feed marks a missing geofence with '' rather than
+    # NULL, which a plain cast rejects under ANSI mode. The keyed page only survived that because
+    # the cursor floor dropped those rows before the cast ran; the unseen branch has no floor.
+    inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
+    return _keyed_worklist(
+        inner,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+    )
 
 
 def geofence_worklist_sql(
@@ -896,6 +1082,7 @@ def geofence_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Geofence ids referenced by candidacies; geofences carry no update feed of their own."""
     return _derived_worklist_sql(
@@ -909,6 +1096,7 @@ def geofence_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -919,6 +1107,7 @@ def filing_period_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Filing period ids exploded out of each race's `filing_periods` array."""
     return _derived_worklist_sql(
@@ -930,6 +1119,7 @@ def filing_period_worklist_sql(
         explode=("filing_periods", "filing_period"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -940,6 +1130,7 @@ def normalized_position_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Normalized position ids carried on each position row."""
     return _derived_worklist_sql(
@@ -951,6 +1142,7 @@ def normalized_position_worklist_sql(
         explode=None,
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -961,6 +1153,7 @@ def position_election_frequency_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Election frequency ids exploded out of each position's `election_frequencies` array."""
     return _derived_worklist_sql(
@@ -972,6 +1165,7 @@ def position_election_frequency_worklist_sql(
         explode=("election_frequencies", "election_frequency"),
         after_changed_at=after_changed_at,
         after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
     )
 
 
@@ -982,15 +1176,17 @@ def issue_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Issue ids referenced by landed stances that have not been fetched yet.
 
     Issues have no timestamped feed to key a cursor on, and the set is small and
     slow-changing, so "everything referenced but not yet landed" is both correct
-    and cheap. dbt_schema and the keyset cursor args are accepted but unused, so
-    this builder is callable identically to the rest. Because of this,
-    `full_reload` has no effect on issue: there is no cursor to ignore, and the
-    anti-join against already-landed rows always applies.
+    and cheap. dbt_schema, the keyset cursor args and own_landing_table (this builder
+    already names its landing table) are accepted but unused, so it is callable
+    identically to the rest. Because of this, `full_reload` has no effect on issue:
+    there is no cursor to ignore, and the anti-join against already-landed rows
+    always applies.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -1022,6 +1218,7 @@ def person_worklist_sql(
     source_schema: str | None = None,
     after_changed_at: str | None = None,
     after_source_id: int | None = None,
+    own_landing_table: str | None = None,
 ) -> str:
     """Person ids referenced by landed candidacies; persons carry no update feed of their own.
 
@@ -1035,11 +1232,9 @@ def person_worklist_sql(
     candidacy's own cursor is still filling. If a candidacy run stops mid-way through a
     group of rows sharing one `source_changed_at`, and person's cursor then advances past
     that timestamp, persons first referenced by the rest of that tied group can never
-    satisfy `source_changed_at = T AND source_id > Z` and are skipped permanently. In
-    production this is rare and small (roughly 0.2% of truncation boundaries land inside a
-    tie, costing at most ~30 persons when it does); recover with a `full_reload: true` run
-    of person, which resets the cursor and re-sweeps — safe because the landing table is
-    append-only and downstream dedup resolves the resulting duplicates.
+    satisfy `source_changed_at = T AND source_id > Z` on the keyed page. The unseen branch
+    (see _keyed_worklist) picks them up on the next run instead, since they have no person
+    row yet, so a `full_reload: true` run of person is no longer needed for that case.
     """
     validate_identifier("catalog", catalog)
     if source_schema is None:
@@ -1055,7 +1250,15 @@ def person_worklist_sql(
     # Post-cast null filter for consistency with issue_worklist_sql. Defence-in-depth: on
     # ANSI mode a malformed databaseId raises CAST_INVALID_INPUT rather than producing a null.
     inner = f"SELECT source_id, source_changed_at FROM ({scanned}) scanned WHERE source_id IS NOT NULL"
-    return _keyed_worklist(inner, after_changed_at=after_changed_at, after_source_id=after_source_id)
+    # own_landing_table is the person table; the scan above reads candidacy's. A straggler
+    # candidacy lands at its old timestamp, below person's cursor, so only the unseen branch
+    # can ever surface its person.
+    return _keyed_worklist(
+        inner,
+        after_changed_at=after_changed_at,
+        after_source_id=after_source_id,
+        own_landing_table=own_landing_table,
+    )
 
 
 def build_insert_rows(
@@ -1155,6 +1358,18 @@ def insert_rows(
             execute_with_retry(cursor, sql, parameters=parameters)
 
 
+def measure_list_filter(config: "ExtractConfig") -> dict[str, Any] | None:
+    """Upcoming measures only: election day on or after the run date (UTC).
+
+    The measures root has no updatedAt filter, so the run lists the whole upcoming set
+    every day and the staging layer keeps the newest row per measure. full_reload drops
+    the floor for a one-time pull of history.
+    """
+    if config.full_reload:
+        return None
+    return {"electionDay": {"gte": config.extracted_at[:10]}}
+
+
 # Four entities share candidacy_worklist_sql: their selections are all inline
 # fragments on Candidacy, keyed off the same candidacy id set from the same feed.
 _SPECS: tuple[EntitySpec, ...] = (
@@ -1184,6 +1399,15 @@ _SPECS: tuple[EntitySpec, ...] = (
     # the only entity where the two disagree.
     EntitySpec(
         "person", "Candidate", PERSON_SELECTION, 100, person_worklist_sql, reads_tables=("candidacy",)
+    ),
+    EntitySpec(
+        "measure",
+        "Measure",
+        MEASURE_SELECTION,
+        100,
+        None,
+        list_root="measures",
+        list_filter=measure_list_filter,
     ),
 )
 
@@ -1263,12 +1487,22 @@ def read_worklist(
     over the whole worklist.
     """
     after_changed_at, after_source_id = after
+    if spec.worklist_sql is None:
+        raise ValueError(f"{spec.name} is a list entity and has no worklist")
     sql = spec.worklist_sql(
         config.catalog,
         config.dbt_schema,
         source_schema=config.source_schema,
         after_changed_at=format_cursor_ts(after_changed_at) if after_changed_at is not None else None,
         after_source_id=after_source_id,
+        # Keyed on the calling entity, not the builder: party, stance and endorsement share
+        # candidacy's builder but each has its own landing table to check "never landed" against.
+        # Validated here because the builder interpolates the rendered name as-is.
+        own_landing_table=landing_table(
+            validate_identifier("catalog", config.catalog),
+            validate_identifier("source_schema", config.source_schema),
+            validate_identifier("entity", spec.name),
+        ),
     )
     ids: array = array("q")
     changed_at: list[datetime] = []
@@ -1296,7 +1530,14 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     forever. Landing windows in cursor order instead means a crash mid-run always leaves
     a contiguous prefix committed, so the cursor read on retry is exactly right and
     picks back up where the failure left off.
+
+    Ids the worklist's unseen branch contributed (see _keyed_worklist) sort ahead of the
+    keyed page because they carry timestamps at or below the cursor. They land at those
+    timestamps, so they never become the cursor, and they are counted as `stragglers`.
     """
+    if spec.list_root:
+        return extract_list(spec, connection, config)
+
     create_landing_table(connection, config.catalog, config.source_schema, spec.name)
     # An entities-filtered run can skip the task that would normally create this table
     # first; create it here too so this entity's worklist never queries a table that
@@ -1311,6 +1552,12 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
     )
 
     ids, changed_at = read_worklist(connection, spec, config, after)
+
+    # Only the unseen branch can list an id at or below the cursor pair, so this count is how
+    # many never-landed ids the run recovered. Nonzero means a source delivered rows late.
+    stragglers = 0
+    if after[0] is not None and after[1] is not None:
+        stragglers = sum(1 for i, ts in zip(ids, changed_at, strict=True) if (ts, i) <= after)
 
     rows_written = 0
     windows = 0
@@ -1359,8 +1606,14 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
             unresolved += sum(1 for row in rows if row.payload is None)
             windows += 1
 
-    cursor_id = ids[-1] if len(ids) else after[1]
-    cursor_changed_at = changed_at[-1] if changed_at else after[0]
+    # The worklist tail is the new cursor only when it is ahead of the prior one. A
+    # straggler-only run lands everything below the cursor, and the landing table will
+    # report the prior pair on the next read, so the summary must say the same.
+    cursor_changed_at, cursor_id = after
+    if len(ids):
+        tail = (changed_at[-1], ids[-1])
+        if after[0] is None or tail > after:
+            cursor_changed_at, cursor_id = tail
     return {
         "entity": spec.name,
         "ids_requested": len(ids),
@@ -1370,10 +1623,76 @@ def extract_entity(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
         # Non-zero means the endpoint returned short pages and batch_size is above its
         # ceiling. Handled, not fatal, so it would otherwise only exist in the logs.
         "bisects": bisects.count,
+        "stragglers": stragglers,
         "windows": windows,
         # Formatted so the UI summary matches the cursor format used everywhere else.
         "cursor_source_changed_at": format_cursor_ts(cursor_changed_at)
         if cursor_changed_at is not None
         else None,
         "cursor_requested_id": cursor_id,
+    }
+
+
+def extract_list(spec: EntitySpec, connection, config: ExtractConfig) -> dict:
+    """Extract a list-mode entity: page the root to the end and land every node.
+
+    No worklist and no cursor: the whole filtered listing lands every run, and staging
+    keeps the newest row per requested_id exactly as it does for the other entities.
+    requested_id is the node's own databaseId, since nothing requested it by id. Rows
+    are inserted in WINDOW_SIZE buffers so a history pull never holds the listing.
+    """
+    if spec.list_root is None:
+        raise ValueError(f"{spec.name} is a worklist entity, not a list entity")
+    create_landing_table(connection, config.catalog, config.source_schema, spec.name)
+    filter_by = spec.list_filter(config) if spec.list_filter else None
+    rows_written = 0
+    null_nodes = 0
+    buffer: list[LandedRow] = []
+
+    def flush() -> None:
+        nonlocal rows_written, buffer
+        insert_rows(connection, config.catalog, config.source_schema, spec.name, buffer)
+        rows_written += len(buffer)
+        buffer = []
+
+    # Paging is sequential on one cursor, so one connection is all the session needs.
+    with contextlib.closing(make_session(1)) as session:
+        limiter = RateLimiter(config.requests_per_second)
+        pages = fetch_list(
+            spec.list_root,
+            spec.node_type,
+            spec.selection,
+            filter_by,
+            config.api_token,
+            limiter,
+            session,
+            page_size=spec.batch_size,
+        )
+        for nodes, nulls in pages:
+            null_nodes += nulls
+            for node in nodes:
+                database_id = int(node["databaseId"])
+                updated_at = node.get("updatedAt")
+                buffer.append(
+                    LandedRow(
+                        requested_id=database_id,
+                        node_id=node.get("id"),
+                        database_id=database_id,
+                        payload=json.dumps(node, default=str),
+                        source_changed_at=format_cursor_ts(updated_at) if updated_at else None,
+                        extracted_at=config.extracted_at,
+                        dag_run_id=config.dag_run_id,
+                    )
+                )
+            if len(buffer) >= WINDOW_SIZE:
+                flush()
+    if buffer:
+        flush()
+
+    return {
+        "entity": spec.name,
+        "rows_written": rows_written,
+        # Null elements of `nodes`: objects the token cannot see. Skipped, not landed.
+        "null_nodes": null_nodes,
+        "election_day_floor": (filter_by or {}).get("electionDay", {}).get("gte"),
     }

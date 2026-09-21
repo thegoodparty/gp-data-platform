@@ -19,6 +19,7 @@ from include.custom_functions.ballotready_graphql import (
     INSERT_COLUMNS,
     ISSUE_SELECTION,
     MAX_INSERT_PARAM_CHARS,
+    MEASURE_SELECTION,
     NORMALIZED_POSITION_SELECTION,
     PARTY_SELECTION,
     PERSON_SELECTION,
@@ -38,6 +39,7 @@ from include.custom_functions.ballotready_graphql import (
     create_landing_table,
     encode_node_id,
     extract_entity,
+    fetch_list,
     fetch_nodes,
     filing_period_worklist_sql,
     format_cursor_ts,
@@ -47,6 +49,7 @@ from include.custom_functions.ballotready_graphql import (
     issue_worklist_sql,
     landing_table,
     make_session,
+    measure_list_filter,
     normalized_position_worklist_sql,
     person_worklist_sql,
     position_election_frequency_worklist_sql,
@@ -187,10 +190,13 @@ class FakeSession:
         self._responses = list(responses)
         self.requested_id_counts = []
         self.requested_ids = []
+        self.variables = []
 
     def post(self, url, json, headers, timeout):
-        self.requested_id_counts.append(len(json["variables"]["ids"]))
-        self.requested_ids.append(json["variables"]["ids"])
+        self.variables.append(json["variables"])
+        ids = json["variables"].get("ids", [])
+        self.requested_id_counts.append(len(ids))
+        self.requested_ids.append(ids)
         response = self._responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -497,6 +503,7 @@ ALL_SELECTIONS = {
     "FilingPeriod": FILING_PERIOD_SELECTION,
     "Geofence": GEOFENCE_SELECTION,
     "Issue": ISSUE_SELECTION,
+    "Measure": MEASURE_SELECTION,
     "NormalizedPosition": NORMALIZED_POSITION_SELECTION,
     "Party": PARTY_SELECTION,
     "Person": PERSON_SELECTION,
@@ -562,6 +569,30 @@ def _top_level_fields(selection: str) -> frozenset[str]:
 # source it was copied from. A dropped, renamed, or newly added top-level
 # field fails this even if it is buried among a dozen others.
 EXPECTED_TOP_LEVEL_FIELDS = {
+    "Measure": frozenset(
+        {
+            "arguments",
+            "conSnippet",
+            "createdAt",
+            "databaseId",
+            "election",
+            "endorsements",
+            "geoId",
+            "hasUnknownBoundaries",
+            "id",
+            "issue",
+            "mtfcc",
+            "name",
+            "party",
+            "proSnippet",
+            "slug",
+            "state",
+            "summary",
+            "text",
+            "title",
+            "updatedAt",
+        }
+    ),
     "Candidacy": frozenset(
         {
             "candidate",
@@ -791,6 +822,68 @@ def test_keyed_worklist_treats_a_partial_cursor_as_no_cursor(
     assert "TIMESTAMP '" not in sql
 
 
+CURSOR_TS = "2026-08-01 12:00:00.000000"
+X_LANDING = "`cat`.`src`.`ballotready_x_raw`"
+
+
+def test_keyed_worklist_requests_ids_never_landed_regardless_of_the_cursor(keyed_builder):
+    """A row first delivered with timestamps already behind the cursor is otherwise never requested,
+    which is how candidacies BallotReady added to its weekly export days after creating them went
+    unfetched by the thousand. The anti-join against the entity's own landing table is the shape
+    issue_worklist_sql already uses.
+    """
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert f"NOT EXISTS (SELECT 1 FROM {X_LANDING} landed WHERE landed.requested_id = scan.source_id)" in sql
+    # Appended to the keyed page rather than filtered by it, and the union is what gets ordered.
+    assert "FROM unseen WHERE NOT (" in sql
+    assert sql.rstrip().endswith("ORDER BY source_changed_at ASC, source_id ASC")
+
+
+def test_keyed_worklist_unseen_branch_is_not_floored_at_the_cursor(keyed_builder):
+    """A cursor floor is exactly what would hide a straggler, so the unseen scan runs without any:
+    neither the source_changed_at floor _keyed_worklist pushes below its GROUP BY nor, for candidacy,
+    the r.updated_at floor pushed into the roster explode. A race row that reaches Airbyte after the
+    cursor has passed its updated_at is the same late arrival as a late feed row.
+    """
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    unseen = sql[sql.index("unseen AS (") :]
+    unseen = unseen[: unseen.index("GROUP BY source_id")]
+    assert ">= TIMESTAMP" not in unseen
+
+
+def test_keyed_worklist_omits_the_unseen_branch_without_a_landing_table(keyed_builder):
+    sql = keyed_builder("cat", "dbt", after_changed_at=CURSOR_TS, after_source_id=99)
+    assert "unseen AS (" not in sql
+    assert "NOT EXISTS" not in sql
+
+
+def test_keyed_worklist_omits_the_unseen_branch_on_a_full_sweep(keyed_builder):
+    """With no cursor the keyed page already lists every discoverable id; the anti-join is pure cost."""
+    sql = keyed_builder(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=X_LANDING,
+        after_changed_at=None,
+        after_source_id=None,
+    )
+    assert "unseen AS (" not in sql
+
+
 def test_candidacy_worklist_unions_the_upcoming_ids_source():
     """The S3 feed omits many upcoming general-stage rosters the API race object carries."""
     sql = candidacy_worklist_sql("cat", "dbt_staging", after_changed_at=None, after_source_id=None)
@@ -838,6 +931,23 @@ def test_candidacy_worklist_both_union_branches_produce_a_timestamp():
     assert "race_updated_at AS source_changed_at" in sql
 
 
+def test_candidacy_worklist_skips_a_feed_id_that_does_not_cast():
+    """The feed marks missing ids with '' rather than NULL (seen on geofence ids), and the unseen
+    branch scans every feed row with no floor, so a single blank candidacy id would fail the four
+    candidacy-keyed tasks under ANSI mode. Same try_cast and post-cast guard as the derived builders.
+    """
+    sql = candidacy_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table="`cat`.`src`.`ballotready_candidacy_raw`",
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert "try_cast(br_candidacy_id AS bigint) AS source_id" in sql
+    assert ") feed WHERE source_id IS NOT NULL" in sql
+
+
 def test_candidacy_worklist_pushes_the_cursor_floor_into_the_upcoming_roster_scan():
     """Without it, every run explodes the candidacies array of every upcoming race."""
     sql = candidacy_worklist_sql(
@@ -858,6 +968,24 @@ def test_geofence_worklist_casts_source_changed_at_to_timestamp():
     """candidacy_updated_at is STRING in staging; the worklist must produce a real timestamp."""
     sql = geofence_worklist_sql("cat", "dbt", after_changed_at=None, after_source_id=None)
     assert "cast(candidacy_updated_at AS timestamp) AS source_changed_at" in sql
+
+
+def test_geofence_worklist_skips_a_feed_id_that_does_not_cast():
+    """The feed marks a missing geofence with '' rather than NULL, which a plain cast rejects under
+    ANSI mode. The keyed page only survived that because the cursor floor dropped those rows before
+    the cast ran; the unseen branch scans every row, so without try_cast and a post-cast guard the
+    whole geofence task fails on the first blank id.
+    """
+    sql = geofence_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table="`cat`.`src`.`ballotready_geofence_raw`",
+        after_changed_at=CURSOR_TS,
+        after_source_id=99,
+    )
+    assert "try_cast(br_geofence_id AS bigint) AS source_id" in sql
+    assert "WHERE source_id IS NOT NULL" in sql
 
 
 def test_filing_period_worklist_explodes_filing_periods():
@@ -1040,12 +1168,34 @@ def test_person_worklist_pages_by_the_keyset_cursor():
     assert "ORDER BY source_changed_at ASC, source_id ASC" in sql
 
 
+def test_person_worklist_requests_never_landed_persons_against_its_own_landing_table():
+    """Persons are discovered from landed candidacy payloads, so the scan reads the candidacy
+    landing table while the never-landed check must run against the person landing table. Without
+    it, a straggler candidacy lands with its old timestamp and its person is skipped a second time.
+    """
+    person_landing = "`cat`.`src`.`ballotready_person_raw`"
+    sql = person_worklist_sql(
+        "cat",
+        "dbt",
+        source_schema="src",
+        own_landing_table=person_landing,
+        after_changed_at=CURSOR_TS,
+        after_source_id=42,
+    )
+    assert (
+        f"NOT EXISTS (SELECT 1 FROM {person_landing} landed WHERE landed.requested_id = scan.source_id)"
+        in sql
+    )
+    assert "`cat`.`src`.`ballotready_candidacy_raw`" in sql
+
+
 EXPECTED_ENTITIES = {
     "candidacy",
     "endorsement",
     "filing_period",
     "geofence",
     "issue",
+    "measure",
     "normalized_position",
     "party",
     "person",
@@ -1054,7 +1204,7 @@ EXPECTED_ENTITIES = {
 }
 
 
-def test_registry_covers_exactly_the_ten_entities():
+def test_registry_covers_exactly_the_expected_entities():
     assert set(ENTITY_SPECS) == EXPECTED_ENTITIES
 
 
@@ -1074,6 +1224,7 @@ EXPECTED_READS_TABLES: dict[str, tuple[str, ...]] = {
     "person": ("candidacy",),
     "position_election_frequency": (),
     "issue": ("stance",),
+    "measure": (),
 }
 
 
@@ -1091,11 +1242,15 @@ def test_every_spec_ships_at_the_proven_page_size():
     assert {s.batch_size for s in ENTITY_SPECS.values()} == {100}
 
 
+# measure is the one list-mode entity; every other spec is fetched by id off a worklist.
+WORKLIST_ENTITIES = EXPECTED_ENTITIES - {"measure"}
+
+
 @pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
-def test_every_spec_has_a_selection_and_a_worklist_builder(entity):
+def test_every_spec_has_a_selection_and_exactly_one_mode(entity):
     spec = ENTITY_SPECS[entity]
     assert spec.selection.strip()
-    assert callable(spec.worklist_sql)
+    assert (spec.worklist_sql is None) != (spec.list_root is None)
 
 
 @pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
@@ -1116,7 +1271,7 @@ def test_node_types_match_the_ballotready_object_names():
     assert ENTITY_SPECS["position_election_frequency"].node_type == "PositionElectionFrequency"
 
 
-@pytest.mark.parametrize("entity", sorted(EXPECTED_ENTITIES))
+@pytest.mark.parametrize("entity", sorted(WORKLIST_ENTITIES))
 def test_every_worklist_builder_accepts_the_uniform_signature(entity):
     """Every builder is called the same way, so the task body needs no branch.
 
@@ -1127,6 +1282,7 @@ def test_every_worklist_builder_accepts_the_uniform_signature(entity):
         "cat",
         "dbt",
         source_schema="src",
+        own_landing_table=landing_table("cat", "src", entity),
         after_changed_at=None,
         after_source_id=None,
     )
@@ -1461,6 +1617,58 @@ def test_read_worklist_drains_the_cursor_in_chunks_rather_than_all_at_once():
     assert len(changed_at) == 5000
     assert ids[0] == 1 and ids[-1] == 5000
     assert len(calls) > 1, "the cursor was drained in one call, not in chunks"
+
+
+@pytest.mark.parametrize("entity", ["candidacy", "party", "person"])
+def test_read_worklist_hands_each_builder_that_entitys_own_landing_table(entity):
+    """party, stance and endorsement share candidacy's builder but land in their own tables, so the
+    never-landed check has to be keyed on the calling entity, which only read_worklist knows.
+    """
+    seen = {}
+
+    def recording_builder(
+        catalog,
+        dbt_schema,
+        *,
+        source_schema=None,
+        after_changed_at=None,
+        after_source_id=None,
+        own_landing_table=None,
+    ):
+        seen["own_landing_table"] = own_landing_table
+        return "SELECT 1"
+
+    class EmptyCursor:
+        def execute(self, sql, parameters=None):
+            pass
+
+        def fetchmany(self, size):
+            return []
+
+        def close(self):
+            pass
+
+    class Conn:
+        def cursor(self, *a, **k):
+            return EmptyCursor()
+
+    spec = EntitySpec(entity, "Candidacy", CANDIDACY_SELECTION, 100, recording_builder)
+    read_worklist(Conn(), spec, _config(), (None, None))
+
+    assert seen["own_landing_table"] == f"`cat`.`src`.`ballotready_{entity}_raw`"
+
+
+@pytest.mark.parametrize(
+    "field,value", [("catalog", "cat; drop table x"), ("source_schema", "src; drop table x")]
+)
+def test_read_worklist_rejects_an_injected_identifier_before_rendering_the_landing_table(field, value):
+    """The landing table name reaches the builder pre-rendered, so it is validated where it is
+    built rather than relying on the DDL call that happens to run first in extract_entity.
+    """
+    spec = EntitySpec("candidacy", "Candidacy", CANDIDACY_SELECTION, 100, lambda *a, **k: "SELECT 1")
+    with pytest.raises(ValueError, match=field):
+        # The connection is never reached: validation must fail before any SQL is rendered.
+        read_worklist(None, spec, _config(**{field: value}), (None, None))
 
 
 def test_extract_entity_returns_early_when_the_worklist_is_empty(monkeypatch):
@@ -1822,6 +2030,80 @@ def test_committed_windows_form_a_cursor_prefix_so_a_retry_resumes_after_them(mo
     assert len(landed_ids) == len(set(landed_ids))  # no duplicates: the retry did not redo window 1
 
 
+def test_extract_entity_lands_a_straggler_below_the_cursor_without_moving_it(monkeypatch):
+    """A worklist row the unseen branch contributed carries its own old timestamp. It must land,
+    and it must not become the cursor, or a later keyed page would start behind rows already seen.
+    The timestamps mirror the production incident: cursor 08-31, straggler 08-29, fresh row 09-14.
+    """
+    cursor_ts = datetime(2026, 8, 31, 6, 44, 6)
+    straggler_ts = datetime(2026, 8, 29, 3, 39, 25)
+    fresh_ts = datetime(2026, 9, 14, 7, 0, 46)
+    connection = _LandingConnection()
+    connection.rows.append((1122681, cursor_ts))  # what read_cursor reports before the run
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist([(1239731, straggler_ts), (1251683, fresh_ts)]),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+
+    summary = extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
+
+    landed = dict(connection.rows)
+    assert landed[1239731] == straggler_ts
+    assert landed[1251683] == fresh_ts
+    assert summary["stragglers"] == 1
+    assert summary["cursor_source_changed_at"] == format_cursor_ts(fresh_ts)
+    assert read_cursor(connection, "cat", "src", "candidacy") == (fresh_ts, 1251683)
+
+
+def test_extract_entity_summary_keeps_the_prior_cursor_when_only_stragglers_ran(monkeypatch):
+    """A straggler-only worklist, which is what the first run after a late snapshot looks like,
+    lands nothing above the cursor. The summary must then report the cursor unchanged, as the
+    landing table itself will on the next read, not the last straggler's old stamp.
+    """
+    cursor_ts = datetime(2026, 8, 31, 6, 44, 6)
+    connection = _LandingConnection()
+    connection.rows.append((1122681, cursor_ts))
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist(
+            [(1239731, datetime(2026, 8, 29, 3, 39, 25)), (1239732, datetime(2026, 8, 29, 3, 40, 0))]
+        ),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+
+    summary = extract_entity(ENTITY_SPECS["candidacy"], connection, _config())
+
+    assert summary["stragglers"] == 2
+    assert summary["rows_written"] == 2
+    assert summary["cursor_source_changed_at"] == format_cursor_ts(cursor_ts)
+    assert summary["cursor_requested_id"] == 1122681
+    assert read_cursor(connection, "cat", "src", "candidacy") == (cursor_ts, 1122681)
+
+
+def test_extract_entity_reports_zero_stragglers_when_there_is_no_cursor(monkeypatch):
+    """On a full sweep nothing is behind a cursor, so the count must not mistake old rows for it."""
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.read_worklist",
+        lambda *a, **k: _worklist([(1, datetime(2026, 8, 1)), (2, datetime(2026, 8, 2))]),
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql.fetch_nodes",
+        lambda batch, *a, **k: [FetchedNode(i, {"databaseId": i, "id": "x"}) for i in batch],
+    )
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", MagicMock())
+
+    summary = extract_entity(ENTITY_SPECS["issue"], FakeConnection([]), _config(full_reload=True))
+
+    assert summary["stragglers"] == 0
+
+
 def test_make_session_pool_covers_every_worker():
     """Below max_workers in the pool, extra threads queue on the pool and gain nothing."""
     session = make_session(8)
@@ -1845,3 +2127,81 @@ def test_dbt_declares_a_source_for_every_registered_entity():
     declared = {table["name"] for table in airflow_source["tables"]}
 
     assert declared == {f"ballotready_{entity}_raw" for entity in ENTITY_SPECS}
+
+
+def _measure(i):
+    return {"id": f"gid-{i}", "databaseId": i, "updatedAt": "2026-09-01T12:00:00Z", "name": f"Measure {i}"}
+
+
+def _measures_page(nodes, has_next, end_cursor):
+    page_info = {"hasNextPage": has_next, "endCursor": end_cursor}
+    return {"data": {"measures": {"nodes": nodes, "pageInfo": page_info}}}
+
+
+def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
+    session = FakeSession(
+        [
+            FakeResponse(body=_measures_page([_measure(1), _measure(2)], True, "c1")),
+            FakeResponse(body=_measures_page([_measure(3)], False, "c2")),
+        ]
+    )
+    floor = {"electionDay": {"gte": "2026-09-18"}}
+
+    pages = list(fetch_list("measures", "Measure", MEASURE_SELECTION, floor, "tok", _limiter(), session))
+
+    assert [[n["databaseId"] for n in nodes] for nodes, _ in pages] == [[1, 2], [3]]
+    assert [v["after"] for v in session.variables] == [None, "c1"]
+    assert session.variables[0]["first"] == 100
+    assert session.variables[0]["filterBy"] == floor
+
+    # hasNextPage with a null or already-seen cursor would refetch pages forever, and
+    # max_active_runs=1 would then hold every later schedule behind it.
+    stuck = FakeSession([FakeResponse(body=_measures_page([_measure(1)], True, None))])
+    cycling = FakeSession(
+        [
+            FakeResponse(body=_measures_page([_measure(1)], True, "a")),
+            FakeResponse(body=_measures_page([_measure(2)], True, "b")),
+            FakeResponse(body=_measures_page([_measure(3)], True, "a")),
+        ]
+    )
+    for session in (stuck, cycling):
+        with pytest.raises(RuntimeError, match="without a new endCursor"):
+            list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
+
+
+def test_extract_entity_lists_measures_and_lands_every_non_null_node(monkeypatch):
+    pages = iter(
+        [
+            _measures_page([_measure(1), None, _measure(2)], True, "c1"),
+            _measures_page([_measure(3)], False, "c2"),
+        ]
+    )
+    monkeypatch.setattr(
+        "include.custom_functions.ballotready_graphql._post_graphql", lambda *a, **k: next(pages)
+    )
+    inserted = MagicMock()
+    monkeypatch.setattr("include.custom_functions.ballotready_graphql.insert_rows", inserted)
+
+    summary = extract_entity(ENTITY_SPECS["measure"], FakeConnection([]), _config())
+
+    rows = inserted.call_args.args[4]
+    assert [(r.requested_id, r.database_id, r.node_id) for r in rows] == [
+        (1, 1, "gid-1"),
+        (2, 2, "gid-2"),
+        (3, 3, "gid-3"),
+    ]
+    assert rows[0].source_changed_at == "2026-09-01 12:00:00.000000"
+    assert json.loads(rows[0].payload)["name"] == "Measure 1"
+    assert summary == {
+        "entity": "measure",
+        "rows_written": 3,
+        "null_nodes": 1,
+        "election_day_floor": "2026-08-25",
+    }
+
+
+def test_measure_list_filter_floors_at_the_run_date_unless_full_reload():
+    assert measure_list_filter(_config(extracted_at="2026-09-18T23:59:59+00:00")) == {
+        "electionDay": {"gte": "2026-09-18"}
+    }
+    assert measure_list_filter(_config(full_reload=True)) is None
