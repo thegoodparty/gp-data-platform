@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: int__user_resolved_keys
+    description: >
+      The keys that reach each downstream source, at gp-api user grain. One row
+      per user in the civics users mart.
+
+      Grain: one row per user_id. Deliberately not person grain. Collapsing the
+      1,120 humans who hold more than one account would cost an aggregation
+      rule per activity column, one of which (distinct active days) cannot be
+      summed at all, and would do nothing for team accounts, where several
+      different humans work one campaign. The person key is carried instead, so
+      an account-spanning view is a group by rather than a rebuild.
+
+      Read this rather than the scalar gp_api_user_id and hs_contact_id columns
+      on the people mart: both go null exactly when the person group holds more
+      than one such record, so a scalar join drops the ambiguous rows without
+      saying so.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: gp_person_id
+        description: >
+          Canonical person for this account, from the civics person graph.
+          Populated for every user today, so a null is a regression rather than
+          a tolerance. Not a durable external identifier: it retires when two
+          person groups merge and the other group's minting record is earlier,
+          and election-api's PersonMerge is the forwarding address.
+        data_tests:
+          - not_null
+      - name: account_count
+        description: >
+          gp-api accounts in this row's person group. Greater than one means
+          the same human signed up more than once.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: is_primary_account
+        description: >
+          Earliest gp-api record in the person group by first_seen_at, tie
+          broken by user_id. Exactly one account per person carries it, so
+          filtering on it yields one row per person. Deliberately not the
+          record that minted the person id: only 61% of user persons are minted
+          by a gp-api record, so a mint-based flag would be false for every
+          account of the remainder.
+        data_tests:
+          - not_null
+      - name: had_conflict
+        description: >
+          The person group was touched by a within-source vendor-key edge that
+          spanned more than one BallotReady person, so its membership is less
+          certain. The row is kept; ambiguity is a column, never a filter.
+        data_tests:
+          - not_null
