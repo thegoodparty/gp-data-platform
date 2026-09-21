@@ -205,7 +205,7 @@ models:
   - name: int__l2_br_match_pending_offices
     description: >
       One row per BallotReady office needing an L2 district match attempt:
-      never attempted, last attempt found nothing more than 30 days ago, or
+      never attempted, last attempt found nothing more than 20 days ago, or
       matched to a district int__l2_district_universe no longer carries. A
       label whose normalized spelling still resolves to exactly one universe
       row is NOT dead -- L2 respells districts routinely, serving resolves
