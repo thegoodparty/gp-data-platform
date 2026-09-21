@@ -72,4 +72,9 @@ with
 
 select *
 from with_checks
-where invalid_reason is not null
+where
+    invalid_reason is not null
+    -- Rejected rows are still materialized and queryable, so they filter like the
+    -- valid ones do.
+    and {{ dsar_not_suppressed("email", "email") }}
+    and {{ dsar_not_suppressed("phone", "phone") }}
