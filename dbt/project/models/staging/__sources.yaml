@@ -29,6 +29,52 @@ sources:
           (GET /api/2/taxonomy/event, showDeleted=true). one row per event_type
           with human-curated metadata (category, description, is_active,
           is_hidden_*, tags, owner).
+      # Claude Enterprise Analytics API via a custom Airbyte Builder source, synced
+      # daily at 20:00 UTC; tighter freshness than the block default to match.
+      # Amounts land as the API's fractional-cent decimal strings.
+      - name: anthropic_api_cost_report
+        description: >
+          One row per daily bucket of org-wide Claude cost from
+          `/v1/organizations/analytics/cost_report`; `results` is a JSON array with
+          one entry per product, model, cost_type and token_type.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_usage_report
+        description: >
+          One row per daily bucket of org-wide Claude token usage from
+          `/v1/organizations/analytics/usage_report`; `results` is a JSON array with
+          one entry per product and model.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_user_cost_report
+        description: >
+          One row per seat user per day of Claude cost from
+          `/v1/organizations/analytics/user_cost_report` (bucket_width=1d, ungrouped).
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_users
+        description: >
+          One row per seat user per day of Claude activity from
+          `/v1/organizations/analytics/users`; the connector stamps the requested
+          day onto each row as `activity_date`. Metric blocks are nested JSON.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_summaries
+        description: >
+          One row per day of org-wide active-user and seat counts from
+          `/v1/organizations/analytics/summaries`.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue
@@ -121,6 +167,8 @@ sources:
           freshness: null
       - name: gp_api_db_annotation_review
         description: raw data load from gp_api_db postgres db from table `annotation_review`
+        config:
+          freshness: null
       - name: gp_api_db_artifact_feedback
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
@@ -271,10 +319,12 @@ sources:
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
         description: Stripe invoice line items and billing details
+        # Rewritten in bursts, with observed gaps between writes of up to 99
+        # days, so the previous 60/90 bound tripped on normal cadence.
         config:
           freshness:
-            warn_after: { count: 60, period: day }
-            error_after: { count: 90, period: day }
+            warn_after: { count: 120, period: day }
+            error_after: { count: 180, period: day }
       - name: stripe_api_invoice_line_items
         description: Stripe invoice line items and detailed billing breakdowns
       - name: stripe_api_invoices
@@ -327,10 +377,13 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        # Loaded once, on 2026-03-02, while the sibling candidates feed keeps
+        # syncing. Left warning rather than nulled so the gap stays visible to
+        # the civics models that read it.
         config:
           freshness:
-            warn_after: { count: 90, period: day }
-            error_after: { count: 180, period: day }
+            warn_after: { count: 180, period: day }
+            error_after: { count: 365, period: day }
         columns:
           - name: is_incumbent
             data_tests:
@@ -1209,6 +1262,9 @@ sources:
       - name: ballotready_geofence_raw
         description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
         columns: *ballotready_raw_columns
+      - name: ballotready_measure_raw
+        description: Raw CivicEngine GraphQL Measure nodes landed by the extract_ballotready DAG, listed whole (upcoming measures) each run rather than fetched by id
+        columns: *ballotready_raw_columns
       - name: ballotready_issue_raw
         description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
         # issue has no cursor: the worklist is an anti-join of issue ids referenced
@@ -1249,8 +1305,6 @@ sources:
         description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251202
         description: output of gemini string matching between DDHQ election results and candidacies
-      - name: llm_l2_br_match_20260126
-        description: output of gemini string matching between L2 districts and BallotReady office positions
       - name: llm_l2_br_match_results
         description: >
           One row per attempt and office, append-only. A populated district
@@ -1651,15 +1705,16 @@ sources:
   - name: airbyte_internal
     schema: airbyte_internal
     description: >
-      Airbyte internal raw data tables. These are insert-only tables that
-      contain every record Airbyte has ever extracted, preserving historical
-      snapshots even when source rows are updated or overwritten.
+      Airbyte's insert-only raw tables from the Typing-and-Deduping era. The
+      Databricks destination stopped writing them at its Direct-Load (4.0.0)
+      upgrade, so they are frozen history, not live sources. No freshness
+      check on purpose.
     tables:
       - name: airbyte_source_raw__stream_gp_api_db_campaign
         description: >
-          Insert-only raw stream for the gp_api_db campaign table. Contains
-          all historical snapshots including overwritten campaign data from
-          users who reused their campaign for a new election.
+          Frozen raw stream for the gp_api_db campaign table: every state
+          Airbyte extracted until the Direct-Load upgrade, including campaign
+          versions the product later overwrote in place.
 
   - name: er_source
     schema: er_source
@@ -1678,6 +1733,21 @@ sources:
           records believed to represent the same real-world candidacy-stage. Clusters that
           span both sources form the BR↔TS crosswalk; single-record clusters indicate
           unmatched records.
+
+      - name: clustered_people
+        description: >
+          Person-level cluster assignments (threshold: 0.95 match probability).
+          One row per person record from BallotReady, gp_api, HubSpot or
+          TechSpeed. Published for audit only: canonical person identity is
+          resolved in int__civics_person_groups, which unions these edges with
+          the deterministic graph rather than adopting Splink's clustering.
+
+      - name: pairwise_people
+        description: >
+          Scored person pairs from Splink prediction (threshold: 0.01 match
+          probability), after the post-prediction filters. This, not the
+          clustered table, is what the person graph consumes, so that an edge
+          can be dropped on its own evidence before propagation.
 
       - name: pairwise_candidacy_stages
         description: >

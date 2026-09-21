@@ -699,3 +699,25 @@ models:
                 values: ["ballotready", "ddhq", "techspeed"]
       - name: br_race_id
         description: BallotReady race id; populated on BR rows, null on DDHQ/TS.
+
+  - name: stg_er_source__pairwise_people
+    description: >
+      Staged person pairs scored by the Splink person matcher. One row per
+      candidate pair above a 0.01 match probability, after the post-prediction
+      filters. The person graph reads these pairs rather than the clustered
+      table so an edge can be judged on its own evidence before propagation.
+    columns:
+      - name: unique_id_l
+        description: Left record key, `source_name|source_id` in prematch grain.
+        data_tests:
+          - not_null
+      - name: unique_id_r
+        description: Right record key, `source_name|source_id` in prematch grain.
+        data_tests:
+          - not_null
+      - name: match_probability
+        description: Splink posterior that the pair is the same person.
+        data_tests:
+          - not_null
+      - name: match_key
+        description: Index of the blocking rule that generated the pair.

@@ -1,13 +1,18 @@
 """
 ## Extract BallotReady (CivicEngine)
 
-Pulls the ten BallotReady GraphQL entities by id and lands their raw node payloads in
-Databricks, replacing the direct-API dbt Python models those tables used to come from:
+Pulls the eleven BallotReady GraphQL entities and lands their raw node payloads in
+Databricks. Ten are fetched by id, replacing the direct-API dbt Python models those tables
+used to come from:
 
     extract_candidacy       extract_endorsement   extract_filing_period
     extract_geofence         extract_issue         extract_normalized_position
     extract_party             extract_person        extract_position_election_frequency
     extract_stance
+
+`extract_measure` is the one list-mode entity: the `measures` root has no updatedAt filter
+and nothing in the warehouse supplies measure ids, so each run pages the whole set of
+upcoming measures (election day on or after the run date) and lands all of them.
 
 Every task is independent except two: `extract_stance -> extract_issue`, because the issue
 worklist reads issue ids out of landed stance payloads (see `issue_worklist_sql`), and
@@ -20,7 +25,7 @@ The other three Candidacy-keyed entities (`party`, `endorsement`, `stance`) shar
 task's output.
 
 Concurrency against the CivicEngine GraphQL endpoint is bounded by `max_active_tasks` (how many
-of the ten tasks can run at once) times each task's own `max_workers` param (how many API calls
+of the eleven tasks can run at once) times each task's own `max_workers` param (how many API calls
 that task makes concurrently) — with the defaults below, 4 x 4 = 16 concurrent callers.
 
 ### Configuration
@@ -40,7 +45,7 @@ Variables:
 
 ### Params
 
-`entities` narrows a manual run to a subset of the ten (empty runs all). An entity not in the
+`entities` narrows a manual run to a subset of the eleven (empty runs all). An entity not in the
 list still runs its task, but as a cheap no-op rather than being removed from the graph — the
 task graph is fixed at parse time, and both `extract_stance -> extract_issue` and
 `extract_candidacy -> extract_person` must keep working when only one side is requested (e.g.
@@ -93,7 +98,8 @@ t_log = logging.getLogger("airflow.task")
             type="boolean",
             description=(
                 "Ignore the cursor and re-sweep. No effect on `issue`: its worklist has no "
-                "cursor and always fetches only what is not yet landed."
+                "cursor and always fetches only what is not yet landed. For `measure`: drop "
+                "the election-day floor and list all history."
             ),
         ),
         "entities": Param([], type="array", description="Run only these entities; empty runs all."),

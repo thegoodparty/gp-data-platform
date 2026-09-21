@@ -335,7 +335,7 @@ class TestConnectionScopes:
         """Prod must not move because dev narrowed."""
         a, b = self._patched("")
         with a, b:
-            assert databricks_utils._conn_kwargs()["scopes"] is None
+            assert databricks_utils.conn_kwargs()["scopes"] is None
 
     @pytest.mark.parametrize(
         "declared,expected",
@@ -349,4 +349,4 @@ class TestConnectionScopes:
     def test_declared_scopes_are_parsed(self, declared, expected):
         a, b = self._patched(declared)
         with a, b:
-            assert databricks_utils._conn_kwargs()["scopes"] == expected
+            assert databricks_utils.conn_kwargs()["scopes"] == expected

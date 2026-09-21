@@ -106,10 +106,11 @@ seeds:
       int__zip_code_to_l2_district is still keyed on voter loaded_at and needs
       a --full-refresh, or the seats stay invisible in the office picker until
       the state's next L2 load.
-      The people chain is gated the same way: rebuild m_people_api__voter (a
-      full-rebuild table) and --full-refresh m_people_api__districtvoter, or
-      the assignment reaches the people DB only when the state's next L2 load
-      bumps loaded_at.
+      The people chain has two watermarks keyed on the same unchanged voter
+      loaded_at, so int__l2_nationwide_uniform_w_haystaq and
+      m_people_api__districtvoter each re-emit the voters carrying an assigned
+      district. Build those two and m_people_api__voter between them, and the
+      assignment reaches the people DB without waiting for an L2 load.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.
     config:
@@ -671,11 +672,10 @@ seeds:
       this seed without renaming the upstream column would break the mart
       compile (column-not-found) and the `relationships` test on
       m_election_api__district_top_issues.issue (mart values would no longer
-      be a subset of seed values). Two known typos currently present:
-      `hs_aliens_governenment_hiding_much` (should be `government`) and
-      `hs_mass_deporations_support` (should be `deportations`). Keep both
-      as-is; if L2 ever fixes them upstream, update the seed, the inline
-      `issue_columns` list in the mart SQL, and rebuild.
+      be a subset of seed values). If L2 ships a column-name typo, add the
+      typo spelling verbatim here and to the `issue_columns` list in the mart
+      SQL; do not silently correct it. When L2 fixes one upstream, rename in
+      both places and rebuild.
     config:
       column_types:
         issue: STRING
@@ -777,7 +777,9 @@ seeds:
       Proposed_District values that are known and deliberately not minted as
       districts. The column is a catch-all for district changes, so alongside
       the congressional and state senate maps it carries county-commissioner
-      rows and local annexation records that are not seats at all.
+      rows and local annexation records that are not seats at all. It also
+      parks real seats whose minting is deferred by decision, such as a map
+      for an election year the minted district types do not cover yet.
 
       This exists so the drift guard can tell "known and ignored" from "new
       shape nobody has looked at". Removing a row makes the build fail rather
@@ -796,8 +798,9 @@ seeds:
           - is_state_abbreviation
       - name: reason
         description: >
-          Why it is not a seat. Each was located by voter geography and then
-          verified against the jurisdiction's own records.
+          Why it is not minted: either not a seat, or a deferral with what
+          would lift it. Each was located by voter geography and then verified
+          against the jurisdiction's own records.
         data_tests:
           - not_null
 

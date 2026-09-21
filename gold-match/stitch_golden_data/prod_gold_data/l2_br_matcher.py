@@ -36,6 +36,7 @@ from shared.databricks_client import DatabricksClient
 from shared.llm_gemini import GeminiEmbeddingClient
 from shared.llm_gemini_3 import Gemini3Client, GeminiModelType, ThinkingLevel
 from shared.logger import get_logger
+from stitch_golden_data.prod_gold_data.body_presence import body_has_sub_rows
 
 PENDING_OFFICES_TABLE = "int__l2_br_match_pending_offices"
 DISTRICT_UNIVERSE_TABLE = "int__l2_district_universe"
@@ -118,10 +119,10 @@ class _GeographyVerdict:
     and the sentence `districts_text` carries for it.
 
     `eligible_indices=None` means no restriction (pass-through, judicial
-    with no vocabulary in the state (handled by `abstain` instead), a
-    gated-off school whole-assertion, or a flagged school office whose
-    state carries at least one school-family row): callers must check
-    for `None` rather than compare against a full index range, so a
+    with no vocabulary in the state (handled by `abstain` instead), or a
+    gated-off school whole-assertion -- a flagged school office with a
+    sub-area now always abstains or gets a restricted menu, never this):
+    callers must check for `None` rather than compare against a full index range, so a
     state whose universe shrinks between runs is never mistaken for
     "nothing eligible". `verdict_sentence` is `None` unless R2 actually
     fired.
@@ -511,6 +512,28 @@ def _build_geography_block(
     return "\n".join(lines)
 
 
+_ALL_FAMILY_SUB_TYPES: frozenset[str] = frozenset().union(*_FAMILY_SUB_TYPES.values())
+
+
+def _body_present(office_name, state_district_types, state_district_names, family) -> bool:
+    # Fail loud rather than silently skip: an in-class office without names would revert to the trap.
+    if office_name is None or state_district_names is None:
+        raise ValueError("body test needs office_name and state_district_names")
+    if family == "school":
+        # BallotReady overloads the county and place codes with special districts, so those stay
+        # type-agnostic; a school code is a school, and a same-anchor row from another family (a
+        # council ward) counting as presence would deny the school parent and steer the model to
+        # the wrong row -- a miss becoming a wrong match, not just a miss.
+        return body_has_sub_rows(
+            office_name,
+            state_district_types,
+            state_district_names,
+            known_sub_types=_FAMILY_SUB_TYPES["school"],
+            only_known_sub_types=True,
+        )
+    return body_has_sub_rows(office_name, state_district_types, state_district_names, _ALL_FAMILY_SUB_TYPES)
+
+
 def _classify_office_geography(
     mtfcc: str,
     is_judicial: bool,
@@ -520,6 +543,9 @@ def _classify_office_geography(
     sub_area_value: str | None,
     state_district_types: list[str],
     school_whole_assertion_enabled: bool = SCHOOL_WHOLE_ASSERTION_ENABLED,
+    *,
+    office_name: str | None = None,
+    state_district_names: list[str] | None = None,
 ) -> _GeographyVerdict:
     """Map one office's geography fields to an abstain-or-restrict verdict
     against its state's already-built universe. Classified by
@@ -538,10 +564,18 @@ def _classify_office_geography(
         sub-level types abstains rather than falling back to an
         out-of-family or statewide answer (the v1 critical fix: within-
         family denial alone can never empty the pool on its own).
-        EXCEPTION: a flagged school office (family == "school" and
-        has_unknown_boundaries) never falls into that slice logic --
-        it passes through unrestricted whenever its state carries any
-        school-family row, and abstains only when it carries none.
+        Sliced offices (and flagged school offices with a sub-area, which
+        rejoin this rule) then take the BODY test: when no sub-level row in
+        the state carries the body's anchor tokens (body_presence), the
+        office abstains; when some do, the family's whole-body types are
+        denied as for any other slice office -- NEW for the flagged school
+        class, which used to pass through unrestricted. The zero-subtype
+        abstain runs first so the body test can only add abstains, never a
+        menu (the matcher-quality lane's candidate 2, class A). Third difference: a flagged
+        school office with a sub-area, in a state whose school rows are
+        parents only (no school sub-type present), now takes that same
+        zero-subtype abstain instead of the unrestricted menu it got
+        before.
 
     `state_district_types` is positional against the caller's own
     embedded universe lists (`_StateUniverse.district_types`), so the
@@ -564,16 +598,19 @@ def _classify_office_geography(
         return _GeographyVerdict(abstain=False, eligible_indices=None, verdict_sentence=None)
 
     if family == "school" and has_unknown_boundaries:
-        # BR's flag means unknown geometry, not real sub-zoning: denying
-        # the parent type (the pre-2026-09 rule) removed the correct
-        # answer at population scale. Abstain only where the state
-        # carries no school-family row at all.
+        # BR's flag means unknown geometry, not real sub-zoning, so the geo_id
+        # format cannot place the office; the body test does instead. Under the
+        # ratified electorate standard the whole-district row is never the truth
+        # for a sub-district seat, so denying it is right whenever the body's own
+        # sub-rows exist (measured in the matcher-quality lane's development evidence, linked from the PR).
         school_rows = _SCHOOL_FAMILY_PRESENCE_TYPES & set(state_district_types)
+        # Kept even though the zero-subtype check just below also abstains: the audit mirror labels
+        # the two populations differently (no school rows at all vs school parents only).
         if not school_rows:
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
-        return _GeographyVerdict(abstain=False, eligible_indices=None, verdict_sentence=None)
-
-    if has_unknown_boundaries:
+        # Rejoined slice rule: the shared slice block below runs the family-level check, then the body test, once.
+        level = "slice"
+    elif has_unknown_boundaries:
         level = "slice"
     else:
         level = _geo_id_family_format(geo_id, _FAMILY_PARENT_GEOID_LENGTH[family])
@@ -586,6 +623,10 @@ def _classify_office_geography(
     if level == "slice":
         sub_types_present = _FAMILY_SUB_TYPES[family] & set(state_district_types)
         if not sub_types_present:
+            return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
+        # Body level, after the family level: a body with no sub-rows of its own must not be offered
+        # coarser rows (measured in the matcher-quality lane's development evidence, linked from the PR).
+        if not _body_present(office_name, state_district_types, state_district_names, family):
             return _GeographyVerdict(abstain=True, eligible_indices=frozenset(), verdict_sentence=None)
         # Two slice provenances, two honest sentences: with the flag set the
         # displayed geometry is a stand-in (the boundary line in the block
@@ -1164,6 +1205,8 @@ Base decisions on semantic meaning, geography, and functional appropriateness.
             sub_area_value=sub_area_value,
             state_district_types=state_universe.district_types,
             school_whole_assertion_enabled=school_whole_assertion_enabled,
+            office_name=br_name,
+            state_district_names=state_universe.district_names,
         )
         if verdict.abstain:
             return MatchResult(br_database_id, None, None, None, confidence=None)

@@ -68,15 +68,15 @@ class BedrockEmbeddingClient:
         if bedrock_runtime is not None:
             self._client = bedrock_runtime
         else:
-            import boto3
             from botocore.config import Config
+
+            from bedrock_clients.aws import bedrock_session
 
             # Our retry policy is the only one: botocore's own retries are off,
             # and the pool is sized to the concurrency cap so the semaphore is
             # what actually bounds in-flight connections.
-            self._client = boto3.client(
+            self._client = bedrock_session(region).client(
                 "bedrock-runtime",
-                region_name=region,
                 config=Config(
                     max_pool_connections=max_concurrency,
                     retries={"max_attempts": 1, "mode": "standard"},

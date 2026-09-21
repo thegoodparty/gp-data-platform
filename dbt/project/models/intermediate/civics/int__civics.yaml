@@ -2388,6 +2388,17 @@ models:
           source constructs race_name with a 2-letter state prefix, so the
           prefix is left intact for cross-source comparability.
 
+      - name: seat_name
+        description: >
+          Seat identifier for multi-seat bodies, where district_identifier is
+          NULL. Only BR carries a source column, and it misses the
+          "(surname seat)" naming, so the value is parsed out of
+          official_office_name for every source: "(surname seat)", "seat N",
+          "position N" / "office no. N", "group N", "place N", "division N".
+          Lowercased, and numbers are de-zero-padded so a parsed "01" matches
+          BR's "1". "at large" is not parsed: it marks the absence of a
+          district and identifies no particular seat.
+
       - name: ballotready_position_id
         description: >
           BR position FK. Populated for BR rows; NULL for DDHQ and TS in V1.
@@ -3467,6 +3478,45 @@ models:
           - not_null
           - unique
 
+  - name: int__civics_person_edges_probabilistic
+    description: >
+      Splink person-matcher edges, one row per undirected record-key pair at or
+      above a 0.95 match probability. Held apart from int__civics_person_edges
+      so the deterministic pregroups cannot read matcher output: the pregroup
+      model sits upstream of the matcher, so the separation is enforced by DAG
+      topology rather than by convention.
+
+      Pairs whose first names agree only through the nickname alias arrays, with
+      no shared email or phone, are dropped. That class was measured at six
+      false positives in fifty sampled pairs while every other class read clean,
+      and a wrong person merge is destructive once it reaches HubSpot.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: person_probabilistic_edges_are_ordered
+          arguments:
+            expression: "record_key_1 < record_key_2"
+    columns:
+      - name: record_key_1
+        description: Lexically smaller record key of the pair.
+        data_tests:
+          - not_null
+      - name: record_key_2
+        description: Lexically larger record key of the pair.
+        data_tests:
+          - not_null
+      - name: edge_type
+        description: Always `e10_splink_person`; named to sit alongside E1-E7.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["e10_splink_person"]
+      - name: match_probability
+        description: >
+          Highest Splink posterior among the prematch pairs that produced this
+          record-key pair. Audit only; propagation treats every edge alike.
+        data_tests:
+          - not_null
+
   - name: int__civics_person_groups
     description: >
       Person groups. One row per int__civics_person_nodes record_key with its
@@ -3564,6 +3614,18 @@ models:
       plus-addressing is stripped, phones must be 10 digits (or 11 with a
       leading country code), and any contact key on more than 25 records
       (institutional inboxes, switchboards) is nulled.
+    data_tests:
+      # Model level so the expression can name the column without the
+      # column-test macro prepending it. Guards the tokenizer silently
+      # emptying every array, which would cost blocking coverage with no
+      # other symptom. The ASCII class keeps the predicate free of regex
+      # escapes, which do not survive the yaml-to-Jinja-to-SQL round trip.
+      - dbt_utils.expression_is_true:
+          name: prematch_people_last_name_tokens_cover_the_surname
+          arguments:
+            expression: "size(last_name_tokens) > 0"
+          config:
+            where: "last_name rlike '[a-z][a-z]'"
     columns:
       - name: unique_id
         description: >
@@ -3593,6 +3655,13 @@ models:
         description: Lowercased surname with generational suffixes stripped.
         data_tests:
           - not_null
+      - name: last_name_tokens
+        description: >
+          Surname split on non-letter characters, single-character tokens
+          dropped. Splink blocks on an overlap in this array so a hyphenated
+          surname written as one part, or a middle name packed into the surname
+          field, still reaches the pair: blocking on the whole surname reaches
+          neither.
       - name: suffix_token
         description: >
           Generational suffix ('' when none) from explicit source columns
@@ -4412,3 +4481,92 @@ models:
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
           - not_null
+  - name: int__civics_campaign_versions
+    description: >
+      One row per campaign version. The product database overwrites a campaign
+      in place when a user reuses it for a new election; a version is a distinct
+      combination of campaign id and election context (election date, position,
+      office, state).
+
+      History is the frozen Airbyte raw stream, which recorded every overwrite
+      until the Databricks destination's Direct-Load upgrade stopped writing raw
+      tables. Current state comes from the live campaign table, so the latest
+      version is always fresh. Versions overwritten after the upgrade are not
+      recorded; recording them is a known follow-up.
+    columns:
+      - name: campaign_version_id
+        description: >
+          Surrogate key for a campaign version, from the campaign id and the
+          election context fields (election date, position, office, state).
+          Changing those fields re-mints every id downstream.
+        data_tests:
+          - unique
+          - not_null
+      - name: id
+        description: Campaign id from the product database. Repeats across versions.
+        data_tests:
+          - not_null
+
+  - name: int__civics_campaign_incumbency
+    description: >
+      Office-first incumbency for product campaigns: on election day, does this
+      signup already hold the seat they are running for?
+
+      Grain: one row per latest-version, non-demo campaign that has a
+      BallotReady position and an election date.
+
+      Exists because candidacy.is_incumbent only covers campaigns that clear the
+      candidacy mart's vendor-corroboration gate, which is 27% of 2026 Win
+      campaigns. Anchoring on the campaign's own ballotready_position_id reaches
+      88%, and asks nothing of third-party confirmation that the person is on a
+      ballot. Semantics are identical to candidacy.is_incumbent so the two can
+      be coalesced.
+    columns:
+      - name: campaign_id
+        description: Campaign id from the product database. One row per campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: >
+          The campaign's own election date, carried so consumers can join
+          version-aware and a version cannot inherit another cycle's answer.
+        data_tests:
+          - not_null
+      - name: is_incumbent
+        description: >
+          Three-valued, matching candidacy.is_incumbent. TRUE when a term
+          covering election day on this seat belongs to this person, matched on
+          canonical person id or first plus last name. FALSE when a covering
+          term exists but is held by someone else or is vacant. NULL when no
+          term covers election day, which is unknown rather than challenger.
+
+          Either leg can establish TRUE, combined with greatest() rather than
+          coalesce() so that an exact-position FALSE cannot mask a genuine
+          holder found under an earlier cycle's position id.
+
+          Incumbent counts are a floor: the BallotReady office-holder method
+          runs near 100% precision and roughly 80% recall, so misses land in the
+          FALSE bucket, never the reverse.
+      - name: n_covering_terms
+        description: >
+          How many office-holder terms covered election day on the matched seat,
+          for whichever leg produced is_incumbent. A precision diagnostic for
+          the bare-name match arm: the higher this is, the more holders a shared
+          name could collide with.
+      - name: seat_key_source
+        description: >
+          Which leg produced is_incumbent. 'br_position_id' is the campaign's
+          exact declared position, and it decides on its own wherever it finds a
+          covering term. 'normalized_position' is the recovery leg for seats
+          whose holder was elected under a different, cycle-specific position id.
+
+          Because the normalized key spans every seat of that type in the geo,
+          the recovery leg can only assert TRUE when the two position names
+          match; without that guard it flags candidates running for a different
+          ward, post or seat of the same body. NULL when no term covered
+          election day.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_position_id", "normalized_position"]

@@ -105,6 +105,12 @@ with
                     then left(tbl_position.geo_id, 5)  -- Fire District
                     when tbl_position.mtfcc = 'X0026'
                     then left(tbl_position.geo_id, 5)  -- Justice Precinct
+                    -- Community College District. BallotReady hand-builds these
+                    -- geo_ids as county FIPS + a district slug for most districts;
+                    -- the few carrying a state-level code roll to nothing and stay
+                    -- placeless, as before.
+                    when tbl_position.mtfcc = 'X0028'
+                    then left(tbl_position.geo_id, 5)
                     when tbl_position.mtfcc = 'X0025'
                     then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
                     else tbl_position.geo_id

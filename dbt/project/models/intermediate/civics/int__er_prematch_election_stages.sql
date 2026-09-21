@@ -117,6 +117,65 @@ with
         union all
         select *
         from techspeed_stages
+    ),
+
+    -- Only BallotReady carries a seat_name column, and it covers the "seat N"
+    -- naming but not the "(surname seat)" one, so the signal was unusable across
+    -- sources: every distinct seat of a multi-seat body looked identical, and a
+    -- single NULL-seat record hub-chained them into one cluster (307 LA County
+    -- judicial races merged into one). All three sources spell the seat inside
+    -- official_office_name in the same vocabulary, so parse it uniformly.
+    -- "at large" is deliberately not parsed: it marks the absence of a district
+    -- and identifies no particular seat.
+    seat_resolved as (
+        select
+            *,
+            lower(
+                trim(
+                    coalesce(
+                        seat_name,
+                        nullif(
+                            regexp_extract(
+                                official_office_name, '\\(([^)]+) seat\\)', 1
+                            ),
+                            ''
+                        ),
+                        nullif(
+                            regexp_extract(
+                                official_office_name, 'seat ([0-9]+|[a-z])\\b', 1
+                            ),
+                            ''
+                        ),
+                        nullif(
+                            regexp_extract(
+                                official_office_name,
+                                '(?:position|office) (?:no\\.? )?([0-9]+)',
+                                1
+                            ),
+                            ''
+                        ),
+                        -- group/place/division are the same idea under other
+                        -- local names (FL circuit courts, TX councils). Letters
+                        -- are allowed only as a single character so "division of
+                        -- elections" cannot parse to "of".
+                        nullif(
+                            regexp_extract(official_office_name, 'group ([0-9]+)', 1),
+                            ''
+                        ),
+                        nullif(
+                            regexp_extract(official_office_name, 'place ([0-9]+)', 1),
+                            ''
+                        ),
+                        nullif(
+                            regexp_extract(
+                                official_office_name, 'division ([0-9]+|[a-z])\\b', 1
+                            ),
+                            ''
+                        )
+                    )
+                )
+            ) as seat_lowered
+        from unioned
     )
 
 select
@@ -138,13 +197,18 @@ select
     u.ballotready_position_id,
     u.br_race_id_int as br_race_id,
     -- Office attributes carried up from the source election_stage models.
-    -- Sparse on some sources (e.g. seat_name is BR-only); Splink's NullLevel
-    -- handles per-row missing values.
+    -- Sparse on some sources; Splink's NullLevel handles per-row missing values.
     u.office_level,
     u.office_type,
     u.district_identifier,
     u.district_raw,
-    u.seat_name,
+    -- De-zero-padded so a parsed "01" matches BallotReady's "1"; without it the
+    -- matcher's seat clause would fail closed on values that agree.
+    case
+        when u.seat_lowered rlike '^[0-9]+$'
+        then cast(cast(u.seat_lowered as int) as string)
+        else u.seat_lowered
+    end as seat_name,
     -- Candidacy-overlap signal: the candidacy_stage ER cluster_ids of this
     -- race's candidacies. Two election_stages sharing a cluster have a matched
     -- candidacy in common (same race even when office names diverge). The
@@ -154,7 +218,7 @@ select
     coalesce(
         cc.matched_candidacy_stage_clusters, array()
     ) as matched_candidacy_stage_clusters
-from unioned as u
+from seat_resolved as u
 left join
     {{ ref("int__er_election_stage_candidacy_clusters") }} as cc
     on u.source_name = cc.source_name

@@ -21,8 +21,8 @@ Before writing any code:
 
 1. **What's the question?** Phrase it as a one-sentence hypothesis. Identify whether the outcome is binary win/loss, time-to-event, funnel completion, or descriptive.
 2. **What's the unit of analysis?** Candidacy / user / campaign-version / event. Mismatching grain is the most common methodological bug.
-3. **What's the time window?** Apply at the right grain. Election-cycle vs engagement-feature windows may differ.
-4. **What's the comparison baseline?** Cohort A vs cohort B requires both to be in scope.
+3. **What's the time window?** Apply at the right grain. Election-cycle vs engagement-feature windows may differ. A flat calendar filter is not a neutral choice: if two populations sit at different points in their lifecycle, the same filter hands one a complete outcome and the other a truncated one. Give the **outcome** variable the point-in-time discipline that model features and labels already get. An outcome the analysis invented gets no PIT scrutiny by default, which is how DATA-2247 shipped five versions comparing a fully-observed frame against one truncated 96 days before its elections.
+4. **What's the comparison baseline?** Cohort A vs cohort B requires both to be in scope, and requires a **comparability pre-flight**: before any cut runs, print both populations' distributions on every dimension the comparison rests on (observation window, lead time or maturity, base rates) as a table, not a sentence. DATA-2247 compared its two frames across five report versions before anyone printed their lead times side by side: 84 days median against 421. An incomparability nobody has measured reads exactly like a finding.
 5. **What confounders matter?** Office level, ICP, Pro, incumbency, opponent count. List explicitly.
 6. **What does success look like?** A specific number / chart you want to produce, OR a specific question to answer.
 
@@ -95,7 +95,7 @@ Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve
 
 For larger query results that exceed `dbt show` truncation, run SQL through the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query(sql) -> DataFrame`, authenticates via the `~/.databrickscfg` profile, set up with `databricks auth login`). Pull-script pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
 
-## Binning conventions
+## Binning and thresholds
 
 When binning a continuous engagement or outcome metric:
 
@@ -103,6 +103,13 @@ When binning a continuous engagement or outcome metric:
 - If bins are chosen after viewing the distribution, document this explicitly in the notebook and report sensitivity to bin choice.
 - Report Wilson 95% CIs where they inform the read — when a bin is small enough to be over-read (see the N<30 flag below) or when a difference between bins or periods is being claimed — so readers can distinguish real differences from sampling noise. Skip them on large-N descriptive cuts where the interval is trivially tight and adds only clutter; when in doubt, include them.
 - Flag any bin with N<30 as small-sample.
+
+When a metric carries a **threshold** (a bar such as "at least 8 view-days"):
+
+- **Anchor before you threshold.** For a duration-sensitive outcome (cumulative counts, day-counts), establish the time anchor empirically before setting a bar. The test: compare candidate anchors by how little the activity distribution moves across cohorts with different runway. DATA-2247 found days-to-election varied 4.0x across lead-time bands while days-since-signup varied 53.6x, so engagement was election-anchored and a signup-anchored bar would have measured runway instead of behaviour.
+- **A changed metric must not inherit a threshold derived on the old one.** Re-derive the rule (the percentile); never carry the number. The Win report's `DASH_P90_PINNED = 14` was p90 of an *undeduped* view count. When the 30s dedup landed, the constant silently became ~2.8x stricter and the tier halved with no decision behind it, because the threshold printed unchanged while its metric moved. Report both: the old bar for a like-for-like delta against published numbers, the re-derived bar as the go-forward rule.
+- **A percentile threshold makes the rate partly definitional.** "Top decile of viewers" selects ~10% of viewers by construction. That is safe for ranking segments inside one frame and a trap for anyone comparing the rate across periods or populations.
+- **Truncation can reorder segments, not just deflate them.** Before carrying a segment ranking from a fully-observed population to a truncated one, measure the per-segment visibility ratio (truncated tier / complete tier). If it varies, the ranking does not transfer. On DATA-2247 it ranged 0.12 to 0.60 across office types and district sizes, which reordered every dimension tested.
 
 ## Verification protocol
 

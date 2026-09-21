@@ -1,0 +1,151 @@
+version: 2
+
+models:
+  - name: stg_airbyte_source__anthropic_api_cost_report
+    description: >
+      Org-wide Claude cost, one row per day, product, model, cost_type and
+      token_type, exploded from the API's daily buckets. Amounts are USD
+      (converted from the API's fractional cents). Values for a day can be
+      revised by the vendor for up to 30 days; the connector re-reads that window.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [bucket_start, product, model, cost_type, token_type]
+      # a token-cost row without a token_type means the connector stopped grouping
+      # by token_type and the five token rows collapsed into one
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "cost_type <> 'tokens' or token_type is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "amount <= list_amount"
+    columns:
+      - name: bucket_start
+        description: Start of the UTC day bucket, inclusive.
+        data_tests:
+          - not_null
+      - name: product
+        description: >
+          Product surface (chat, claude_code, cowork, code_review, ...). Null when
+          the vendor cannot attribute usage to a surface.
+      - name: model
+        description: Model name. Null on rows not attributed to a model, such as code execution.
+      - name: cost_type
+        description: >
+          Cost component. Always populated because the connector groups by it; a
+          null here means that grouping was dropped. New components may appear,
+          so the value list only warns.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [tokens, web_search, code_execution]
+              config:
+                severity: warn
+      - name: token_type
+        description: Token type for cost_type = tokens; null for other cost types.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - uncached_input_tokens
+                  - cache_read_input_tokens
+                  - cache_creation.ephemeral_5m_input_tokens
+                  - cache_creation.ephemeral_1h_input_tokens
+                  - output_tokens
+              config:
+                severity: warn
+      - name: amount
+        description: Post-discount, pre-credit cost in USD.
+        data_tests:
+          - not_null
+      - name: list_amount
+        description: List-price cost in USD before discounts.
+        data_tests:
+          - not_null
+      - name: requests
+        description: >
+          API request count. Null on every row because the vendor does not
+          attribute requests when grouping by cost_type or token_type; read it from
+          the usage report instead.
+
+  - name: stg_airbyte_source__anthropic_api_usage_report
+    description: >
+      Org-wide Claude token usage, one row per day, product and model, exploded
+      from the API's daily buckets.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [bucket_start, product, model]
+    columns:
+      - name: bucket_start
+        description: Start of the UTC day bucket, inclusive.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__anthropic_api_user_cost_report
+    description: >
+      Per seat user Claude cost, one row per user per day, in USD. Only cost
+      attributable to a seat user is included, so the daily sum is at most the
+      org-wide cost report's.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [bucket_start, user_id]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "amount <= list_amount"
+    columns:
+      - name: bucket_start
+        description: Start of the UTC day bucket, inclusive.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Vendor user id, stable across renames and removals.
+        data_tests:
+          - not_null
+      - name: user_email
+        description: Null once the vendor has deleted the account.
+      - name: is_user_deleted
+        description: True when the account is deleted or no longer a member of the org.
+      - name: amount
+        description: Post-discount, pre-credit cost in USD.
+        data_tests:
+          - not_null
+      - name: list_amount
+        description: List-price cost in USD before discounts.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__anthropic_api_users
+    description: >
+      Per seat user Claude activity, one row per user per day, with the chat,
+      Claude Code, Cowork, Claude Design and Office Agent counters flattened.
+      Engagement data lags about a day and can be revised by a few percent over
+      the following days.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [activity_date, user_id]
+    columns:
+      - name: activity_date
+        description: The UTC day requested from the API, stamped by the connector.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Vendor user id.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__anthropic_api_summaries
+    description: >
+      Org-wide daily, weekly and monthly active users, assigned seats, pending
+      invites and adoption rates, one row per day. Keeps the API's
+      starting_at/ending_at names; the daily bucket here is the API's own grain.
+    columns:
+      - name: starting_at
+        description: Start of the UTC day, inclusive.
+        data_tests:
+          - not_null
+          - unique

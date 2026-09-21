@@ -19,6 +19,7 @@ with
             {{ adapter.quote("image_url") }},
             {{ adapter.quote("updatedAt") }},
             {{ adapter.quote("campaignId") }},
+            {{ adapter.quote("organization_slug") }},
             {{ adapter.quote("project_id") }},
             {{ adapter.quote("identity_id") }},
             {{ adapter.quote("outreach_type") }},

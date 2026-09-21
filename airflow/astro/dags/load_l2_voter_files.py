@@ -175,8 +175,12 @@ def load_l2_voter_files():
 
         return [] if dry_run else pending
 
+    # Two at a time: each rebuild holds a Databricks connector process on a default-queue worker
+    # that packs several tasks, and the first full backfill showed that more than two per worker
+    # gets OOM-killed, leaving its CREATE OR REPLACE orphaned on the warehouse. Same sizing rule as
+    # the election-api-sync queue (an A5 fits two).
     @task(
-        max_active_tis_per_dag=8,
+        max_active_tis_per_dag=2,
         execution_timeout=duration(hours=6),
         map_index_template="{{ task.op_kwargs['table_load']['table_name'] }}",
     )

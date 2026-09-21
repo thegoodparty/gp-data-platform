@@ -39,7 +39,7 @@ with
             and (assignments.precinct is null or assignments.precinct = voters.precinct)
     ),
 
-    assigned as (
+    circuit_assigned as (
         select
             voters.* except (`Judicial_Circuit_Court_District`),
             coalesce(
@@ -50,6 +50,45 @@ with
         left join
             {{ ref("l2_manual_district_assignments") }} as assignments
             on assignments.l2_district_type = 'Judicial_Circuit_Court_District'
+            and assignments.state = voters.state_postal_code
+            and (assignments.county is null or assignments.county = voters.county)
+            and (assignments.city is null or assignments.city = voters.city)
+            and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    ),
+
+    -- Louisiana's court column carries the judgeship election sections of
+    -- R.S. 13:477, not whole judicial districts, and leaves Judicial_District
+    -- empty statewide. A district attorney is elected by the whole district,
+    -- so parish rows mint it here without touching the judge sections.
+    judicial_district_assigned as (
+        select
+            voters.* except (`Judicial_District`),
+            coalesce(
+                nullif(voters.`Judicial_District`, ''), assignments.l2_district_name
+            ) as `Judicial_District`
+        from circuit_assigned as voters
+        left join
+            {{ ref("l2_manual_district_assignments") }} as assignments
+            on assignments.l2_district_type = 'Judicial_District'
+            and assignments.state = voters.state_postal_code
+            and (assignments.county is null or assignments.county = voters.county)
+            and (assignments.city is null or assignments.city = voters.city)
+            and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    ),
+
+    -- Louisiana city courts draw their electorate from parish wards by statute,
+    -- so a court spanning several wards has no single L2 district to match.
+    assigned as (
+        select
+            voters.* except (`Judicial_Magistrate_Division`),
+            coalesce(
+                nullif(voters.`Judicial_Magistrate_Division`, ''),
+                assignments.l2_district_name
+            ) as `Judicial_Magistrate_Division`
+        from judicial_district_assigned as voters
+        left join
+            {{ ref("l2_manual_district_assignments") }} as assignments
+            on assignments.l2_district_type = 'Judicial_Magistrate_Division'
             and assignments.state = voters.state_postal_code
             and (assignments.county is null or assignments.county = voters.county)
             and (assignments.city is null or assignments.city = voters.city)

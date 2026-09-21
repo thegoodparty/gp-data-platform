@@ -318,6 +318,26 @@ TABLES: tuple[MartSync, ...] = (
         gate=QualityGate(cold_start_floor=200_000, min_id_overlap=_GRAPH_ID_OVERLAP),
     ),
     MartSync(
+        group_id="person_merge",
+        spec=TableSyncSpec(
+            target_table="PersonMerge",
+            # One row per retired person id. No FKs by design: retired_id names
+            # a Person row that is gone, and surviving_id may itself retire
+            # later. No parents for the same reason; the set-wise swap already
+            # lands these rows in the same transaction as the Person delete.
+            pk_columns=("retired_id",),
+            indexes=(
+                Index("PersonMerge_retired_at_idx", "(retired_at)"),
+                Index("PersonMerge_surviving_id_idx", "(surviving_id)"),
+            ),
+        ),
+        source_model="m_election_api__person_merge",
+        # The first load carries every id retired since Person went live, so a
+        # near-empty cold start means the mart came up empty. Retired ids are
+        # held by gp-api once it drains the merge feed, hence the overlap floor.
+        gate=QualityGate(cold_start_floor=1_000, min_id_overlap=_GRAPH_ID_OVERLAP),
+    ),
+    MartSync(
         group_id="position",
         spec=TableSyncSpec(
             target_table="Position",
