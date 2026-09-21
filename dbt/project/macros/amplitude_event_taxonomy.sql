@@ -176,6 +176,58 @@
     )
 {% endmacro %}
 
+{% macro metric_anchored_events(metric_name) %}
+    {#
+        Legs of a governed metric's `config.meta.anchored_on` (DATA-2421), as dicts
+        with keys event / path / era. The semantic layer is the kernel: this reads the
+        declaration rather than restating it, so the macro cannot drift from the
+        metric it serves.
+
+        Empty at parse time (execute=false), same as the seed accessors in
+        hubspot_contact_property_columns.sql. Callers building a predicate MUST emit a
+        parse-safe fallback for the empty case — see is_dashboard_view_event.
+
+        The metric lives downstream of the models calling this. Reading `graph` creates
+        no ref edge, so there is no cycle, but the direction is deliberate and worth
+        knowing about before you move it.
+    #}
+    {%- set legs = [] -%}
+    {%- if execute -%}
+        {%- set matches = (
+            graph.metrics.values()
+            | selectattr("name", "equalto", metric_name)
+            | list
+        ) -%}
+        {%- if matches | length == 0 -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "metric_anchored_events: no metric named '" ~ metric_name ~ "'"
+                )
+            }}
+        {%- endif -%}
+        {%- set declared = matches[0].config.meta.get("anchored_on") -%}
+        {%- if not declared -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "metric_anchored_events: '"
+                    ~ metric_name
+                    ~ "' declares no anchored_on"
+                )
+            }}
+        {%- endif -%}
+        {%- for leg in declared -%}
+            {%- do legs.append(
+                {
+                    "event": leg["event"],
+                    "path": leg.get("path"),
+                    "era": leg.get("era"),
+                }
+            ) -%}
+        {%- endfor -%}
+    {%- endif -%}
+    {{ return(legs) }}
+{% endmacro %}
+
 {% macro is_dashboard_view_event(event_type_col, page_path_col) %}
     {#
         Membership test for a candidate-dashboard view.
@@ -209,14 +261,44 @@
             page_path_col: SQL expression producing the page path
                 (event_properties:path::string).
     #}
-    (
-        ({{ event_type_col }} = 'Viewed' and {{ page_path_col }} = '/dashboard')
-        or {{ event_type_col }} in (
-            'Dashboard - Candidate Dashboard Viewed',
-            'Dashboard - Campaign Plan Viewed',
-            'Campaign Plan - Campaign Tracker Viewed'
+    {%- set legs = metric_anchored_events("win_active_candidates_30d") -%}
+    {%- if not execute -%}
+        {#-
+            Parse time only: graph is empty, and this SQL is validated but never run.
+            Gate on `not execute`, NEVER on `legs | length == 0`. An empty leg list while
+            execute is true must raise, because emitting (false) there would mark every
+            user inactive and read Active Candidates as zero — which is exactly the
+            2026-06-13 failure this whole ticket exists to prevent, reintroduced by its
+            own fix.
+        -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                "is_dashboard_view_event: win_active_candidates_30d resolved to zero legs at "
+                "execute time. Refusing to emit a predicate that would zero the metric."
+            )
+        }}
+    {%- else -%}
+        {%- set named = legs | rejectattr("path") | map(attribute="event") | list -%}
+        {%- set pathed = legs | selectattr("path") | list -%}
+        (
+            {%- for leg in pathed %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and {{ page_path_col }} = '{{ leg["path"] }}'
+                )
+                {%- if not loop.last or named | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if named | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in named %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
         )
-    )
+    {%- endif -%}
 {% endmacro %}
 
 {% macro dashboard_view_is_new(event_time_col, partition_col, gap_seconds=30) %}
