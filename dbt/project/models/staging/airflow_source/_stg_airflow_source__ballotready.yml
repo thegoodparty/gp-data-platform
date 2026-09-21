@@ -128,6 +128,25 @@ models:
       - name: updated_at
         data_tests: [not_null]
 
+  - name: stg_airflow_source__ballotready_measure_raw
+    description: >
+      One row per BallotReady ballot measure the extraction DAG has listed, newest payload
+      per measure. Measures are listed whole each run for upcoming election days only, so a
+      row stops refreshing once its election has passed.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: database_id = requested_id
+    columns:
+      - name: requested_id
+        data_tests: [not_null, unique]
+      - name: database_id
+        data_tests: [not_null]
+      - name: id
+        data_tests: [not_null, unique]
+      - name: election_day
+        data_tests: [not_null]
+
   - name: stg_airflow_source__ballotready_normalized_position_raw
     description: One row per BallotReady normalized position id landed by the extraction DAG.
     data_tests:
