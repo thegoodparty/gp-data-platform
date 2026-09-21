@@ -71,7 +71,7 @@ def shadow_rows(offices, classes, *, run_key, image_git_sha, shape, universe_loa
                 "is_judicial": _flag(o["is_judicial"]),
                 "has_unknown_boundaries": _flag(o["has_unknown_boundaries"]),
                 "rule_class": rule_class,
-                "universe_loaded_at": universe_loaded_at,
+                "universe_loaded_at": universe_loaded_at.get((o["state"] or "").strip().upper()),
                 "prod_l2_district_type": served_type,
                 "prod_l2_district_name": _opt(o["l2_district_name"]),
                 "prod_confidence": int(o["confidence"]) if _opt(o["confidence"]) else None,
@@ -111,7 +111,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     offices = list(csv.DictReader(open(a.offices_csv, newline="", encoding="utf-8-sig")))
     classes = {r["br_database_id"]: r["rule_class"] for r in csv.DictReader(open(a.classes_csv, newline=""))}
-    universe_loaded_at = max(r["loaded_at"] for r in csv.DictReader(open(a.universe_csv, newline="")))
+    # The universe loads per state, so each office is stamped with its own state's version.
+    universe_loaded_at: dict[str, str] = {}
+    for u in csv.DictReader(open(a.universe_csv, newline="", encoding="utf-8-sig")):
+        st = u["state_postal_code"].strip().upper()
+        universe_loaded_at[st] = max(universe_loaded_at.get(st, ""), u["loaded_at"])
     rows = shadow_rows(
         offices,
         classes,

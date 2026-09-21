@@ -679,9 +679,19 @@ comment 'Supervised monitoring of the body-level sub-row rule (matcher quality l
 
 Daily, after Step 2, from `gold-match/` (all paths relative to it; `<dir>` is wherever the day's exports live):
 
-1. Offices with production's outcome, from the Step 1 statement's join (`br_database_id, name, state, mtfcc, geo_id, sub_area_name,
-   sub_area_value, is_judicial, has_unknown_boundaries, l2_district_type, l2_district_name, confidence`) to `<dir>/run-<date>-offices.csv`;
-   the universe with `loaded_at` to `<dir>/universe-<date>.csv`; the mirror's classes to `<dir>/classes-<date>.csv`.
+1. Export with `dbsql.py --csv`: the run's offices with production's outcome to `<dir>/run-<date>-offices.csv`
+   ```sql
+   select p.database_id as br_database_id, p.name, p.state, p.mtfcc, p.geo_id, p.sub_area_name, p.sub_area_value,
+       p.is_judicial, p.has_unknown_boundaries, r.l2_district_type, r.l2_district_name, r.confidence
+   from goodparty_data_catalog.model_predictions.llm_l2_br_match_results r
+   join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position p on p.database_id = r.br_database_id
+   where r.attempted_at = timestamp'<run_key>'
+   ```
+   and the universe with its per-state version to `<dir>/universe-<date>.csv`
+   ```sql
+   select state_postal_code, district_type, district_name, loaded_at from goodparty_data_catalog.dbt.int__l2_district_universe
+   ```
+   then the mirror over those two files to `<dir>/classes-<date>.csv` (the body-level mirror above).
 2. `uv run python ../.claude/skills/gold-match-run-audit/build_shadow_rows.py <dir>/run-<date>-offices.csv <dir>/classes-<date>.csv
    <dir>/universe-<date>.csv --run-key '<run_key>' --image-git-sha <run_log.git_sha> --shape B_live --out <dir>/shadow-<date>` writes
    `shadow-<date>.csv` and one INSERT in `shadow-<date>.sql`; run the SQL with `dbsql.py -f`. One append per run key; redoing a day is a
@@ -689,14 +699,18 @@ Daily, after Step 2, from `gold-match/` (all paths relative to it; `<dir>` is wh
 3. `uv run python ../.claude/skills/gold-match-run-audit/find_body_rows.py <dir>/shadow-<date>.csv <dir>/universe-<date>.csv
    <dir>/hits-<date>.csv` asks, for every in-class abstain, whether ANY row of ANY type in the state carries the body's anchor tokens
    (the matcher's own `body_presence` logic, widened past the family). Zero hits: the body has no row. Hits: hand review against the
-   listed candidates, and check whether a candidate carries the seat number too (a same-body row with the number is a real loss; a
-   row of another body sharing the name and number is a lookalike the rule was right to refuse).
+   rows in `anchor_hit_rows` (every row that carried all the anchors, up to five) and the `top_candidates` list, and check
+   whether a candidate carries the seat number too (a same-body row with the number is a real loss; a row of another body sharing
+   the name and number is a lookalike the rule was right to refuse). `anchor_hits` of -1 means the body is role words only
+   (nothing to test): review by hand, never count it as zero-hit.
 4. Verdicts by UPDATE keyed on (run_key, br_database_id): `audit_verdict` FIXED (no correct row exists), LOST (a correct row exists),
    UNDETERMINABLE; plus `prod_row_correct`, `audit_note`, `audited_at`, `audited_by`. Correct means the electorate's own row: the parent
    row of a sub-district seat is wrong; an at-large numbered seat's parent row is right. Ten sampled asserted rows per run get
    `prod_row_correct` too.
 5. Report cumulative FIXED / LOST / UNDETERMINABLE and `lost / (fixed + lost)` against the bar the owner set, plus the run log's
-   `withdrawals_held`. The ratio comes from the table, never from a preview file.
+   `withdrawals_held`. Split the zero-subtype rows at report time with `has_unknown_boundaries and mtfcc in the school set`: the
+   flagged-school ones are the rule's own behavior, the rest are the older family-scoped zero-subtype path, and their loss rates
+   differ. The ratio comes from the table, never from a preview file.
 
 Never widen the audit question to whether production's row "looked reasonable", and never audit against a universe export older than
 the run: the classes move when the universe moves.

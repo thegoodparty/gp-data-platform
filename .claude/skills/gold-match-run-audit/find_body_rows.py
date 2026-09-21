@@ -3,7 +3,7 @@
 
 For each in-class abstain in a shadow CSV, ask the rule's own question against EVERY row in the state's universe, of
 any type: does a row carry the body's anchor tokens? Zero hits means no correct row can exist under standard 1 unless
-an abbreviation hid it (sample-check those); hits go to hand review with the best-scoring rows listed. Run from
+an abbreviation hid it (sample-check those); hits go to hand review with the best-scoring rows listed, with the rows that carried every anchor. Run from
 gold-match so body_presence imports:
 
     uv run python find_body_rows.py shadow-<date>.csv universe-<date>.csv hits-<date>.csv
@@ -36,7 +36,7 @@ def body_rows(shadow, universe):
         generic = bp.GENERIC_WORDS | bp.type_words([t for t, _, _ in rows])
         anchors = bp.anchor_tokens(s["name"], generic)
         body = {bp.PROPER_ABBREVIATIONS.get(t, t) for t in bp.tokens(bp._body(s["name"]))} - bp.ROLE_WORDS
-        hits = [n for _, n, toks in rows if anchors and all(bp._carries(toks, a) for a in anchors)]
+        hits = [(t, n) for t, n, toks in rows if anchors and all(bp._carries(toks, a) for a in anchors)]
         # Dice over exact tokens ranks the body's own row above a longer lookalike that merely contains it.
         scored = sorted(
             ((2 * len(body & toks) / (len(body) + len(toks)), t, n) for t, n, toks in rows if body & toks),
@@ -49,7 +49,9 @@ def body_rows(shadow, universe):
                 "state": s["state"],
                 "rule_class": s["rule_class"],
                 "anchors": " ".join(sorted(anchors)),
-                "anchor_hits": len(hits),
+                # -1: the body is role words only, so there is nothing to test; production errs toward present.
+                "anchor_hits": len(hits) if anchors else -1,
+                "anchor_hit_rows": "; ".join(f"{t}: {n}" for t, n in hits[:5]),
                 "top_candidates": "; ".join(f"{t}: {n} ({score:.2f})" for score, t, n in scored),
             }
         )
