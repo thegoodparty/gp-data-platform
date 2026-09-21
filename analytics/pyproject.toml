@@ -14,6 +14,9 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "mypy>=2.3.1",
+    # The anchor guard renders dbt's own macro source with Jinja stubs, so it can
+    # check the emitted predicate against the declaration without dbt or a warehouse.
+    "jinja2>=3.1",
 ]
 
 [tool.uv]
