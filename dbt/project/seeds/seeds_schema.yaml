@@ -911,3 +911,27 @@ seeds:
           - not_null
       - name: notes
         description: Short prose on the map's legal status and any caveat.
+
+  - name: nanp_area_code_states
+    description: >
+      North American Numbering Plan area codes mapped to the US state they
+      were assigned to. Public directory data, compiled a priori: it was
+      written down from the published plan, never grown by inspecting which
+      codes correlated with an outcome.
+
+      Used to ask whether a signup's phone belongs to the state they are
+      running in. A code absent from this seed yields an unknown rather than a
+      mismatch, so a gap here degrades to missing and never to a false signal.
+    columns:
+      - name: area_code
+        description: Three-digit NANP area code.
+        data_tests:
+          - unique
+          - not_null
+      - name: state_postal_code
+        description: Two-letter postal code of the state the area code serves.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_be_in_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"

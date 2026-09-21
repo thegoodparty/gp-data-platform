@@ -1,0 +1,286 @@
+version: 2
+
+models:
+  - name: int__win_signup_features
+    description: >
+      Everything about a Win signup that is knowable when they sign up, at user
+      grain: product-side shapes, name and email shapes, geographic
+      consistency, and race timing.
+
+      Grain: one row per latest-version, non-demo Win user. A user with more
+      than one campaign contributes one row; the race-level columns describe
+      the campaign in campaign_id, chosen by latest election date then highest
+      campaign id, which is the same choice every other model in this feature
+      layer makes.
+
+      Null discipline: a value that is genuinely unknown stays null and carries
+      a companion indicator. It is never filled with a zero, because a zero
+      meaning "unknown" cannot be told apart from a real zero, and a model
+      trained on it learns the coverage of our pipeline instead of the behavior
+      of the candidate.
+
+      The per-column availability contract lives on win_candidate_features,
+      which is where consumers read these columns.
+    columns:
+      - name: user_id
+        description: Product user id. One row per user.
+        data_tests:
+          - unique
+          - not_null
+      - name: signup_date
+        description: Date the user account was created. The point-in-time anchor.
+        data_tests:
+          - not_null
+      - name: campaign_id
+        description: The campaign whose race-level columns this row carries.
+        data_tests:
+          - not_null
+      - name: br_position_id
+        description: BallotReady position declared by that campaign, where one resolved.
+      - name: email_domain_class
+        description: goodparty / free / custom / missing.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["goodparty", "free", "custom", "missing"]
+      - name: det_n_selfreport_keys
+        description: How many of the seven free-text profile fields the user filled in.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 7
+      - name: days_signup_to_election
+        description: >
+          Days from signup to the declared general election. Product election
+          dates are user-entered and a couple of dozen are impossible, so a
+          date more than two years before or twenty years after the signup is
+          discarded and reads as an unknown election date. The range below is
+          that guard's own window with slack for month length, so it can only
+          fail if the guard is removed.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -740
+                max_value: 7400
+      - name: n_br_by_deadline
+        description: >
+          Opponents on the BallotReady roster by the filing deadline, with the
+          subject's own candidacy subtracted. The subtraction is bounded by
+          construction, since the subject is reached through the same join path
+          as the aggregate it is removed from, so a negative value here would
+          mean that path has drifted and the count is no longer opponents-only.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: name_n_tokens
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: name_len
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+  - name: int__win_position_features
+    description: >
+      BallotReady position attributes for the Win feature layer, at position
+      grain: cost of entry to a race (filing fees, signature counts, paperwork
+      burden, salary, seats, cadence) plus the seat's office-holder block.
+
+      Grain: one row per BallotReady position that a Win campaign has declared.
+
+      These are static race properties rather than candidate behavior, so they
+      are knowable before any signup exists. The one caveat, carried in the
+      mart's column metadata, is that BallotReady position records are a
+      current snapshot: an attribute edited after a signup reads at its edited
+      value.
+
+      The office-holder columns here are position-level. They say how many
+      holders a seat has, not whether a given signup is one of them; the
+      person-level question is int__win_candidate_incumbency.
+    columns:
+      - name: br_position_id
+        description: BallotReady position database id. One row per position.
+        data_tests:
+          - unique
+          - not_null
+      - name: pos_seats
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: pos_salary_class
+        description: paid / expenses_only / unpaid, parsed from free-text salary.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["paid", "expenses_only", "unpaid"]
+      - name: pos_salary_period
+        description: Period the parsed salary is quoted over.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["year", "month", "week", "day", "hour", "meeting", "session",
+                   "term", "annum"]
+      - name: pos_br_level
+        description: BallotReady's level for the seat.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["CITY", "LOCAL", "COUNTY", "STATE", "FEDERAL", "TOWNSHIP",
+                   "REGIONAL"]
+      - name: pos_partisan_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["nonpartisan", "partisan", "partisan for primary only"]
+      - name: pos_signature_count
+        description: >
+          Signatures required, parsed out of the filing-requirements text. The
+          count is the feature, not the mention: 94% of positions mention
+          signatures, so a boolean cannot discriminate.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_salary_amount
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_holder_count
+        description: >
+          Office holders BallotReady records for the seat. Null is an unknown
+          count, not an empty seat, and is deliberately not filled.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+  - name: int__win_candidate_incumbency
+    description: >
+      Person-level incumbency for a Win signup, at user grain, in two readings
+      that answer different questions and become knowable at different times.
+
+      The inc_ columns ask whether this person held any office at the moment
+      they signed up, gated to terms that had already begun by then. The gate
+      is the point of the model: a term beginning after signup is frequently
+      the term won in the very election a signup-anchored model is trying to
+      predict, so counting it would feed the outcome back in as an input.
+
+      is_incumbent_at_election is the governed office-first flag, which asks
+      whether this signup holds the seat they are running for on election day.
+      That is strictly later knowledge, so it is not point-in-time at signup
+      and must not enter a model anchored there. It is carried here, and on the
+      user spine, but deliberately not on win_candidate_features.
+
+      Grain: one row per latest-version, non-demo Win user who has a first
+      name, a last name and a declared state. Users missing any of those cannot
+      be matched and are absent.
+
+      The match is on state plus upper-cased first and last name against the
+      term mart, so common names collide. The collision count is deliberately
+      not promoted: name commonness leaks into a corroboration label built by
+      name-matched entity resolution.
+    columns:
+      - name: user_id
+        description: Product user id. One row per user.
+        data_tests:
+          - unique
+          - not_null
+      - name: signup_date
+        data_tests:
+          - not_null
+      - name: inc_is_officeholder_at_signup
+        description: >
+          1 when a term matching this person had already begun at signup. The
+          zero is genuine rather than a sentinel: the match is exhaustive over
+          the term mart, so no match means no holder record with this name in
+          this state.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: inc_n_offices
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: is_incumbent_at_election
+        description: >
+          The governed office-first flag, three-valued as its source emits it:
+          true when a term covering election day on this seat belongs to this
+          person, false when a covering term is held by someone else or is
+          vacant, null when no term covers election day or the seat does not
+          resolve. Not point-in-time at signup.
+      - name: incumbency_seat_key_source
+        description: Which seat key established the governed flag.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_position_id", "normalized_position"]
+
+  - name: int__l2_person_bridge
+    description: >
+      Win signup to L2 voter record, easy-match pass. Exact match on declared
+      state plus first and last name, resolved when that match is unique, or
+      when exactly one of a two-to-five match set shares the user's zip.
+
+      Grain: one row per resolved user. A user this pass cannot resolve simply
+      has no row, so a bridge built by the entity-resolution pipeline can
+      replace this one without a schema change for consumers. Nicknames, edit
+      distance, nationwide search and middle-name tiebreaks all belong there,
+      not here.
+
+      The ambiguity counts stay in this table and are not promoted into any
+      feature table. The match is name-based and the corroboration label is
+      built by name-matched entity resolution, so name commonness is a leak
+      channel into anything trained on that label. They are diagnostics for
+      judging a link, not model inputs.
+    columns:
+      - name: user_id
+        description: Product user id. One row per resolved user.
+        data_tests:
+          - unique
+          - not_null
+      - name: lalvoterid
+        description: L2 voter id this user resolved to.
+        data_tests:
+          - not_null
+      - name: match_type
+        description: >
+          unique when the name and state matched exactly one voter;
+          zip_resolved when the zip broke a tie among two to five.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["unique", "zip_resolved"]
+      - name: n_name_matches
+        description: >
+          How many L2 voters share this name and state. A diagnostic for
+          judging the link, never a model input.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: n_zip_matches
+        description: How many of those also share the user's zip.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0

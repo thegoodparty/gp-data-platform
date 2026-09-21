@@ -1855,3 +1855,1190 @@ models:
       Exposure of stg_airbyte_source__anthropic_api_summaries into
       mart_analytics (Sigma reads marts only): org-wide active users, seats and
       adoption rates, one row per day.
+
+  - name: win_candidate_features
+    description: >
+      The Win candidate feature layer: one row per Win user, carrying the full
+      feature set the corroboration model is composed from, with each column's
+      availability contract attached as metadata.
+
+      Grain: one row per latest-version, non-demo Win user. Where a user has
+      more than one campaign (0.26% of them) the race-level columns describe a
+      single chosen campaign, whose id is carried in campaign_id.
+
+      Read the column metadata before using a column in a time-based model.
+      Every column carries pit_class (B knowable at or before signup and
+      immutable, A otherwise, L knowable only later), available_from (the event
+      that makes it knowable), gate (the rule that keeps it honest) and
+      source_audit (the intake review that accepted it). That record exists so
+      the next time-based modeler does not repeat the point-in-time exercise by
+      hand.
+
+      claim_reserved_for names the claims a column is an input to. A model
+      input cannot also be evidence about the group its own score defines, so
+      an analysis making one of those claims must read the restricted score
+      built without those columns, not this column set in full.
+
+      Two things this table deliberately does not carry. Scores: those have a
+      model id behind them and live in model_predictions, so a feature change
+      and a score change stay separable. Anything knowable only after signup:
+      the governed election-day incumbency flag is on the user spine and on
+      int__win_candidate_incumbency, but not here, because a point-in-time
+      training join against as_of has to be able to trust every column it
+      finds.
+    columns:
+      - name: user_id
+        description: Product user id. One row per user.
+        data_tests:
+          - unique
+          - not_null
+      - name: as_of
+        description: >
+          The signup date, which is the point-in-time anchor every gate in this
+          table is written against. A training join should use this, not the
+          build time.
+        data_tests:
+          - not_null
+      - name: snapshot_at
+        description: >
+          When the row was materialized. The BallotReady position block is read
+          from a current snapshot rather than as of signup, so a consumer
+          comparing two vintages needs to know which snapshot produced the row.
+        data_tests:
+          - not_null
+      - name: campaign_id
+        description: >
+          The campaign whose race-level columns this row carries.
+        data_tests:
+          - not_null
+      - name: gp_candidacy_id
+        description: >
+          Canonical candidacy for the chosen campaign, where one resolves.
+          Null for users the civics mart has no candidacy for.
+      - name: br_position_id
+        description: >
+          BallotReady position declared by the chosen campaign. Null when the
+          campaign never resolved to a position.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int__win_position_features')
+                field: br_position_id
+      - name: campaign_state
+        description: >
+          State the campaign is declared in.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            declared on the campaign; no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+          claim_reserved_for: [geography, sales_profile]
+      - name: office_type
+        description: >
+          Office category resolved for the declared race.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            declared on the campaign; no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+          claim_reserved_for: [office_level, sales_profile]
+      - name: br_normalized_position_type
+        description: >
+          BallotReady normalized position type for the declared race.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            declared on the campaign; no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+          claim_reserved_for: [office_level, sales_profile]
+      - name: campaign_party
+        description: >
+          Party the campaign declares. Free text from the product.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            declared on the campaign; no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+      - name: email_domain_class
+        description: >
+          goodparty / free / custom / missing. The free-domain list is a fixed
+          public list, written down before any outcome rate was computed.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            domain of the signup email; an unparseable address reads as
+            missing
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["goodparty", "free", "custom", "missing"]
+      - name: days_signup_to_election
+        description: >
+          Days from signup to the declared general election. Product election
+          dates are user-entered and 23 of them are impossible (years 0024 and
+          4444, a JavaScript max-date overflow at +275760); those read as an
+          unknown election date rather than as an absurd day count. Dates only
+          a season or two in the past are kept: those are real elections a
+          user mis-selected, not corrupt values.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            election date as declared at campaign creation, discarded when
+            it is more than two years before or twenty years after the
+            signup
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -740
+                max_value: 7400
+      - name: days_signup_to_deadline
+        description: >
+          Days from signup to the filing deadline. Negative after the
+          deadline.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            null when the race has no BallotReady filing period
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+      - name: signed_up_after_deadline
+        description: >
+          1 when the signup postdates the filing deadline.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            false when no deadline is known, so read it with has_deadline
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: has_deadline
+        description: >
+          1 when a BallotReady filing deadline resolved for this race.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: log_voter_count
+        description: >
+          ln(1 + voter_count) for the declared district.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            current district snapshot, not as of signup
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+          claim_reserved_for: [district_size, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: voter_count_missing
+        description: >
+          1 when no voter count resolved for the declared district.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+          claim_reserved_for: [district_size, sales_profile]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: n_br_by_deadline
+        description: >
+          Opponents on the BallotReady roster by the filing deadline. The
+          subject's own candidacy is removed because br_candidacy_id is an
+          ingredient of the corroboration label, so counting yourself feeds
+          the label back in as an input.
+        meta:
+          pit_class: B
+          available_from: "the race's filing deadline"
+          gate: >
+            counts only BallotReady candidacies created on or before the
+            filing deadline, with the subject's own candidacy subtracted;
+            null when no deadline is known
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: any_br_by_deadline
+        description: >
+          1 when at least one opponent had landed by the filing deadline.
+        meta:
+          pit_class: B
+          available_from: "the race's filing deadline"
+          gate: >
+            null when n_br_by_deadline is null
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: br_arrivals_missing
+        description: >
+          1 when the opponent count is unknown. Read alongside
+          n_br_by_deadline so an unknown roster is never mistaken for an empty
+          one.
+        meta:
+          pit_class: B
+          available_from: "the race's filing deadline"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: name_n_tokens
+        description: >
+          Whitespace-separated tokens in the signup name.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: name_len
+        description: >
+          Character length of first plus last name.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: name_has_digit
+        description: >
+          1 when the signup name contains a digit.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: name_has_nonalpha
+        description: >
+          1 when the name contains a character outside letters, space, period,
+          apostrophe and hyphen.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: name_single_char_token
+        description: >
+          1 when any name token is a single character.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: zip_campaign_state_match
+        description: >
+          1 when the state of the signup zip equals the declared campaign
+          state. The zip resolves through where L2 voters in that zip actually
+          live.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            null when the zip does not resolve or no state is declared
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: geo_state_match
+        description: >
+          1 when the login region equals the declared campaign state.
+          Amplitude geography is IP-derived, so server-emitted events carry
+          none and the fields only exist from 2025-04-24. Knowable within a
+          month of signup rather than at the instant of it, which is the one
+          place this table's point-in-time anchor is approximate.
+        meta:
+          pit_class: B
+          available_from: "signup, plus up to 30 days"
+          gate: >
+            earliest geo-bearing event in [signup - 1 day, signup + 30
+            days]; null when none
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: geo_zip_state_match
+        description: >
+          1 when the login region matches the state of the signup zip.
+        meta:
+          pit_class: B
+          available_from: "signup, plus up to 30 days"
+          gate: >
+            same window as geo_state_match; null when either side is unknown
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: geo_country_nonus
+        description: >
+          1 when the near-signup login is outside the United States.
+        meta:
+          pit_class: B
+          available_from: "signup, plus up to 30 days"
+          gate: >
+            same window as geo_state_match; null when no geo-bearing event
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: geo_missing
+        description: >
+          1 when no geo-bearing event exists in the signup window.
+        meta:
+          pit_class: B
+          available_from: "signup, plus up to 30 days"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor brief (2026-08-04)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: usr_phone_present
+        description: >
+          1 when the user's phone parses to a ten-digit North American number.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: usr_phone_area_code_matches_state
+        description: >
+          1 when the phone's area code belongs to the declared campaign state.
+          A real 0 means a relocation or a virtual number; an unmapped code is
+          null, so a gap in the seed degrades to unknown rather than to a
+          false mismatch.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            null when there is no parseable phone or the area code is not in
+            the seed
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: usr_email_is_role_address
+        description: >
+          1 when the local part is a generic org mailbox (info, campaign,
+          office, ...) rather than a person.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: usr_email_has_office_words
+        description: >
+          1 when office or campaign vocabulary appears anywhere in the
+          address. Custom campaign domains are the point, so the whole address
+          is scanned.
+        meta:
+          pit_class: B
+          available_from: "signup"
+          gate: >
+            no gate
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_occupation
+        description: >
+          1 when the user filled in occupation.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_past_experience
+        description: >
+          1 when the user filled in past experience.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_website
+        description: >
+          1 when the user filled in a website.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_running_against
+        description: >
+          1 when the user named who they are running against.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_campaign_committee
+        description: >
+          1 when the user filled in a campaign committee.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_custom_issues
+        description: >
+          1 when the user entered custom issues.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_has_fun_fact
+        description: >
+          1 when the user filled in a fun fact.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: det_n_selfreport_keys
+        description: >
+          How many of the seven free-text profile fields the user filled in.
+          Effort the candidate spent, rather than attention the pipeline paid
+          them.
+        meta:
+          pit_class: B
+          available_from: "campaign creation"
+          gate: >
+            written at campaign creation
+          source_audit: "legit_candidate_predictor/intake/gp_user_details_features.md"
+          claim_reserved_for: [selfreport_effort]
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_seats
+        description: >
+          Seats on the body.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_tier
+        description: >
+          BallotReady's own level ordinal for the seat.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [office_level, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_min_age
+        description: >
+          Minimum age to hold the office.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_max_filing_fee
+        description: >
+          Maximum filing fee. Null is an unknown fee, not a free race.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_filing_fee_known
+        description: >
+          1 when a filing fee is recorded.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: pos_filing_fee_is_zero
+        description: >
+          1 when the recorded fee is zero. Null when no fee is recorded.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_filing_req_len
+        description: >
+          Character length of the filing-requirements text, a crude but honest
+          proxy for procedural burden.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_eligibility_len
+        description: >
+          Character length of the eligibility-requirements text.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_paperwork_len
+        description: >
+          Character length of the paperwork-instructions text.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_signature_count
+        description: >
+          Signatures required, parsed from the filing-requirements text. The
+          count is the feature, not the mention: 94% of positions mention
+          signatures, so the boolean cannot discriminate.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [district_size, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_signature_count_known
+        description: >
+          1 when a signature count parsed out of the text.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [district_size, sales_profile]
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: pos_has_primary
+        description: >
+          1 when the seat holds a primary.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_majority_vote_primary
+        description: >
+          1 when the primary requires a majority.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_ranked_choice_general
+        description: >
+          1 when the general is ranked choice.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_is_partisan
+        description: >
+          1 when the seat is partisan.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_is_judicial
+        description: >
+          1 when the seat is judicial.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_is_staggered_term
+        description: >
+          1 when the body has staggered terms.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_unknown_boundaries
+        description: >
+          1 when BallotReady does not know the district boundaries.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_must_be_registered_voter
+        description: >
+          1 when candidates must be registered voters.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_must_be_resident
+        description: >
+          1 when candidates must be residents.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_must_have_prof_experience
+        description: >
+          1 when professional experience is required.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: pos_salary_amount
+        description: >
+          Salary parsed out of free text. Unparseable text stays null rather
+          than becoming zero.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [district_size, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_salary_period
+        description: >
+          Period the parsed salary is quoted over.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["year", "month", "week", "day", "hour", "meeting", "session", "term", "annum"]
+      - name: pos_salary_class
+        description: >
+          paid / expenses_only / unpaid, from the same free text.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["paid", "expenses_only", "unpaid"]
+      - name: pos_salary_known
+        description: >
+          1 when any salary text exists.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: pos_employment_type
+        description: >
+          Full or part time, as BallotReady records it.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+      - name: pos_partisan_type
+        description: >
+          BallotReady's partisan classification for the seat.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["nonpartisan", "partisan", "partisan for primary only"]
+      - name: pos_br_level
+        description: >
+          BallotReady's level for the seat, with the full seven-value
+          vocabulary rather than the product's four.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [office_level, sales_profile]
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["CITY", "LOCAL", "COUNTY", "STATE", "FEDERAL", "TOWNSHIP", "REGIONAL"]
+      - name: pos_election_frequency_years
+        description: >
+          Years between elections for the seat.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_holder_count
+        description: >
+          Office holders BallotReady records for the seat. Null is an unknown
+          count, not an empty seat.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pos_holder_known
+        description: >
+          1 when BallotReady has any office-holder record for the seat.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: pos_holder_any_vacant
+        description: >
+          1 when any holder record for the seat is a vacancy.
+        meta:
+          pit_class: B
+          available_from: "BallotReady position record (predates any signup)"
+          gate: >
+            current BallotReady snapshot, not as of signup: an attribute
+            edited after a signup reads at its edited value
+          source_audit: "legit_candidate_predictor/intake/br_position_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: inc_is_officeholder_at_signup
+        description: >
+          1 when a term matching this person had already begun at signup. A
+          genuine zero: the match is exhaustive over the term mart.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: inc_serving_at_signup
+        description: >
+          1 when a matched term was still running at signup. A term with no
+          recorded end reads as not serving here, which is the definition this
+          feature was accepted under.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: inc_holds_same_position
+        description: >
+          1 when a matched term is for a position this user declared a
+          campaign for.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: inc_n_offices
+        description: >
+          Distinct offices held at signup. Zero is genuine, not a sentinel.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: inc_years_in_office_at_signup
+        description: >
+          Years from the earliest matched term start to signup. Null when no
+          term matched.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: inc_days_to_term_end
+        description: >
+          Days from signup to the latest matched term end. Null when no term
+          matched or no end is recorded.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+      - name: inc_term_ends_within_1y
+        description: >
+          1 when a matched term ends within a year of signup.
+        meta:
+          pit_class: B
+          available_from: "the office holder's term start"
+          gate: >
+            only terms with term_start_date on or before signup; a term
+            beginning later is often the one won in the election being
+            predicted, so admitting it would feed the outcome back in as an
+            input
+          source_audit: "legit_candidate_predictor/intake/incumbency_features.md"
+          claim_reserved_for: [incumbency, sales_profile]
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
