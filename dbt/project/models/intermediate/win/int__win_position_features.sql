@@ -67,8 +67,11 @@ with
     frequency as (
         select
             fi.br_position_id,
-            -- frequency is an array: a position can carry several cadences.
-            array_max(max(f.frequency)) as election_frequency_years
+            -- frequency is an array and a position can carry several rows, so
+            -- reduce within each array first. Taking max() over the arrays and
+            -- then array_max() would rank them lexicographically, which can
+            -- miss a larger element sitting in a lower-ranked array.
+            max(array_max(f.frequency)) as election_frequency_years
         from frequency_ids as fi
         inner join
             {{ ref("int__ballotready_position_election_frequency") }} as f

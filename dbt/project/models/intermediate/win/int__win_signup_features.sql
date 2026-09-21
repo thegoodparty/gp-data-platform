@@ -303,7 +303,7 @@ with
             pf.usr_phone_present,
             pf.usr_phone_area_code_matches_state,
             cast(
-                split(u.email, '@')[0] in (
+                split(coalesce(u.email, ''), '@')[0] in (
                     'info',
                     'admin',
                     'contact',
