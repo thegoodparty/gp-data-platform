@@ -1702,19 +1702,18 @@ sources:
       - name: voter_outreach_campaign_completed
         description: Segment web app event - voter outreach campaign completed
 
-  - name: airbyte_internal
-    schema: airbyte_internal
+  - name: archives
+    schema: archives
     description: >
-      Airbyte's insert-only raw tables from the Typing-and-Deduping era. The
-      Databricks destination stopped writing them at its Direct-Load (4.0.0)
-      upgrade, so they are frozen history, not live sources. No freshness
-      check on purpose.
+      Point-in-time copies of tables that are no longer written, kept under a
+      dated name so the original can be dropped. No freshness check on purpose.
     tables:
-      - name: airbyte_source_raw__stream_gp_api_db_campaign
+      - name: airbyte_internal__airbyte_source_raw__stream_gp_api_db_campaign_20260918
         description: >
-          Frozen raw stream for the gp_api_db campaign table: every state
-          Airbyte extracted until the Direct-Load upgrade, including campaign
-          versions the product later overwrote in place.
+          Archive of Airbyte's insert-only raw stream for the gp_api_db campaign
+          table, copied after the Databricks destination's Direct-Load upgrade
+          froze it. Holds every state Airbyte extracted until then, including
+          campaign versions the product later overwrote in place.
 
   - name: er_source
     schema: er_source

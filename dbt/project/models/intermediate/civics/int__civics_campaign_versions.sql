@@ -1,8 +1,8 @@
 -- One row per campaign version. The product DB overwrites a campaign in
 -- place when a user reuses it for a new election, so current state alone
--- loses the earlier run. History is the frozen raw stream; current state is
+-- loses the earlier run. History is the archived raw stream; current state is
 -- the live table, so the latest version stays fresh whatever happens to the
--- raw table.
+-- archive.
 with
     frozen_history as (
         select
@@ -31,7 +31,7 @@ with
             -- The same record sits in both tables with the same extracted_at;
             -- ties go to the live table.
             1 as _source_rank
-        from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
+        from {{ ref("stg_archives__raw_gp_api_db_campaign") }}
     ),
 
     -- The live table stores these three timestamps without time zone while

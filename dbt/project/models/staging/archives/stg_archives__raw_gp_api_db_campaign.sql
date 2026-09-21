@@ -1,14 +1,14 @@
--- Parse of the frozen Airbyte raw stream for campaigns. The destination's
--- Direct-Load upgrade stopped writing this table, so it holds every state
--- extracted before then and nothing after. Not deduplicated.
+-- Parse of the archived Airbyte raw stream for campaigns. The destination's
+-- Direct-Load upgrade stopped writing the stream, so the archive holds every
+-- state extracted before then and nothing after. Not deduplicated.
 with
     source as (
         select *
         from
             {{
                 source(
-                    "airbyte_internal",
-                    "airbyte_source_raw__stream_gp_api_db_campaign",
+                    "archives",
+                    "airbyte_internal__airbyte_source_raw__stream_gp_api_db_campaign_20260918",
                 )
             }}
     ),
