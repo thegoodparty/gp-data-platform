@@ -585,7 +585,6 @@ EXPECTED_TOP_LEVEL_FIELDS = {
             "name",
             "party",
             "proSnippet",
-            "slug",
             "state",
             "summary",
             "text",
@@ -2138,10 +2137,17 @@ def _measures_page(nodes, has_next, end_cursor):
     return {"data": {"measures": {"nodes": nodes, "pageInfo": page_info}}}
 
 
+def _partial_page(nodes, has_next, end_cursor):
+    """GraphQL partial result: a nulled node plus the null-propagation error that explains it."""
+    body = _measures_page(nodes, has_next, end_cursor)
+    body["errors"] = [{"message": "Cannot return null for non-nullable field Measure.state"}]
+    return body
+
+
 def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
     session = FakeSession(
         [
-            FakeResponse(body=_measures_page([_measure(1), _measure(2)], True, "c1")),
+            FakeResponse(body=_partial_page([_measure(1), None, _measure(2)], True, "c1")),
             FakeResponse(body=_measures_page([_measure(3)], False, "c2")),
         ]
     )
@@ -2150,6 +2156,7 @@ def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
     pages = list(fetch_list("measures", "Measure", MEASURE_SELECTION, floor, "tok", _limiter(), session))
 
     assert [[n["databaseId"] for n in nodes] for nodes, _ in pages] == [[1, 2], [3]]
+    assert [nulls for _, nulls in pages] == [1, 0]
     assert [v["after"] for v in session.variables] == [None, "c1"]
     assert session.variables[0]["first"] == 100
     assert session.variables[0]["filterBy"] == floor
@@ -2167,6 +2174,29 @@ def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
     for session in (stuck, cycling):
         with pytest.raises(RuntimeError, match="without a new endCursor"):
             list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
+
+
+@pytest.mark.parametrize(
+    "body,match",
+    [
+        # errors with no data at all
+        ({"errors": [{"message": "total failure"}]}, "CivicEngine GraphQL errors"),
+        # an error that is not GraphQL null-propagation, even alongside data
+        (
+            {
+                **_measures_page([_measure(1)], False, None),
+                "errors": [{"message": "Query complexity exceeded"}],
+            },
+            "GraphQL errors on measures",
+        ),
+        # a page whose pageInfo was nulled: reading on would silently truncate the listing
+        ({"data": {"measures": {"nodes": [_measure(1)], "pageInfo": None}}}, "unusable measures page"),
+    ],
+)
+def test_fetch_list_fails_closed_on_anything_but_a_nulled_node(body, match):
+    session = FakeSession([FakeResponse(body=body)])
+    with pytest.raises(RuntimeError, match=match):
+        list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
 
 
 def test_extract_entity_lists_measures_and_lands_every_non_null_node(monkeypatch):

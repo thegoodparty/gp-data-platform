@@ -328,6 +328,7 @@ def _post_graphql(
     max_retries: int,
     sleep: Callable[[float], None],
     describe: str,
+    allow_partial: bool = False,
 ) -> dict[str, Any]:
     """POST one GraphQL request and return its decoded body, retrying what is retryable.
 
@@ -335,6 +336,10 @@ def _post_graphql(
     ("100 Candidacy ids", "measures page 3"). `api_token` is stripped here regardless
     of what the caller already did, so a stray newline or space from an Airflow
     Variable can never reach the header.
+
+    `allow_partial` returns a body that carries both `data` and `errors` instead of
+    raising, so the caller can decide which errors it tolerates; the nodes() path keeps
+    the strict behaviour because a nulled node there would land as a false absence.
     """
     api_token = api_token.strip()
     if not api_token:
@@ -397,8 +402,9 @@ def _post_graphql(
 
         response.raise_for_status()
         body = response.json()
-        if body.get("errors"):
-            raise RuntimeError(f"CivicEngine GraphQL errors: {body['errors']}")
+        errors = body.get("errors")
+        if errors and not (allow_partial and body.get("data")):
+            raise RuntimeError(f"CivicEngine GraphQL errors: {errors}")
         return body
 
     raise RuntimeError("Unreachable: _post_graphql exhausted retries without returning")
@@ -459,6 +465,12 @@ def fetch_nodes(
     return fetched
 
 
+# GraphQL's null-propagation error: a field the schema calls non-null resolved to null,
+# so the server nulled the enclosing node and reported it. BallotReady's data does this
+# (older measures carry no slug). Any other error alongside data is not tolerated.
+_NULL_PROPAGATION_ERROR = re.compile(r"^Cannot return null for non-nullable field \w+\.\w+$")
+
+
 def _build_list_query(root: str, node_type: str, selection: str) -> str:
     return (
         f"query List($first: Int, $after: String, $filterBy: {node_type}Filter) "
@@ -482,9 +494,10 @@ def fetch_list(
 ) -> Iterator[tuple[list[dict[str, Any]], int]]:
     """Page a list root (e.g. `measures(first:, after:)`) to the end, one page per yield.
 
-    Yields (nodes, nulls) per page: the API's `nodes: [T]` may hold null elements for
-    objects the token cannot see, so they are dropped here and counted rather than
-    landed as empty rows. Pages are yielded rather than collected so a history pull
+    Yields (nodes, nulls) per page: the API's `nodes: [T]` holds a null element wherever
+    a field the schema calls non-null resolved to null (BallotReady has such rows; the
+    server nulls the node and reports it under `errors`), so they are dropped here and
+    counted rather than landed as empty rows. Pages are yielded rather than collected so a history pull
     never holds the whole listing in memory.
 
     A page claiming hasNextPage with a null or already-seen endCursor would loop forever, and the
@@ -498,20 +511,46 @@ def fetch_list(
         page += 1
         payload = {"query": query, "variables": {"first": page_size, "after": after, "filterBy": filter_by}}
         body = _post_graphql(
-            payload, api_token, limiter, session, timeout, max_retries, sleep, f"{root} page {page}"
+            payload,
+            api_token,
+            limiter,
+            session,
+            timeout,
+            max_retries,
+            sleep,
+            f"{root} page {page}",
+            allow_partial=True,
         )
+        errors = body.get("errors") or []
+        messages = [str(e.get("message") if isinstance(e, dict) else e) for e in errors]
+        unexpected = [msg for msg in messages if not _NULL_PROPAGATION_ERROR.match(msg)]
+        if unexpected:
+            raise RuntimeError(f"CivicEngine GraphQL errors on {root} page {page}: {unexpected}")
         connection = (body.get("data") or {}).get(root)
-        if connection is None:
-            # The schema declares the root non-null, so this needs a top-level error the
-            # helper would already have raised on; guard anyway, because the alternative
-            # is a silent zero-row "success".
-            raise RuntimeError(f"CivicEngine returned null for {root} on page {page}")
-        raw_nodes = connection.get("nodes") or []
+        raw_nodes = (connection or {}).get("nodes")
+        page_info = (connection or {}).get("pageInfo")
+        # A nulled node is tolerable; a nulled page is not. If the list or its pageInfo
+        # is missing, an error was propagated above the node and reading on would
+        # silently truncate the listing.
+        if (
+            not isinstance(raw_nodes, list)
+            or not isinstance(page_info, dict)
+            or not isinstance(page_info.get("hasNextPage"), bool)
+        ):
+            raise RuntimeError(f"CivicEngine returned an unusable {root} page {page}: {connection!r:.200}")
         nodes = [node for node in raw_nodes if node is not None]
+        if messages:
+            logger.warning(
+                "CivicEngine nulled %d of %d %s nodes on page %d; distinct reasons: %s",
+                len(raw_nodes) - len(nodes),
+                len(raw_nodes),
+                root,
+                page,
+                sorted(set(messages))[:5],
+            )
         yield nodes, len(raw_nodes) - len(nodes)
 
-        page_info = connection.get("pageInfo") or {}
-        if not page_info.get("hasNextPage"):
+        if not page_info["hasNextPage"]:
             return
         next_after = page_info.get("endCursor")
         if not next_after or next_after in seen:
@@ -748,7 +787,8 @@ STANCE_SELECTION = """
 
 
 # Listed rather than fetched by id (see fetch_list); the inline-fragment shape is kept so
-# the selection tests apply to it unchanged.
+# the selection tests apply to it unchanged. No `slug`: the schema calls it non-null but
+# older measures carry none, and requesting it nulls those nodes out of the page.
 MEASURE_SELECTION = """
 ... on Measure {
     arguments { databaseId id proCon sourceUrl text }
@@ -765,7 +805,6 @@ MEASURE_SELECTION = """
     name
     party { databaseId id name shortName }
     proSnippet
-    slug
     state
     summary
     text
