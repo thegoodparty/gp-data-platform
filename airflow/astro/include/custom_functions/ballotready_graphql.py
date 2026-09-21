@@ -337,11 +337,9 @@ def _post_graphql(
     of what the caller already did, so a stray newline or space from an Airflow
     Variable can never reach the header.
 
-    `allow_partial` accepts a body that carries both `data` and `errors`: GraphQL's
-    partial-result shape, where a field the schema calls non-null resolved to null and
-    the server nulled that node out. The list path wants the rest of the page rather
-    than nothing; the nodes() path keeps the strict behaviour because a nulled node
-    there would land as a false absence.
+    `allow_partial` returns a body that carries both `data` and `errors` instead of
+    raising, so the caller can decide which errors it tolerates; the nodes() path keeps
+    the strict behaviour because a nulled node there would land as a false absence.
     """
     api_token = api_token.strip()
     if not api_token:
@@ -407,15 +405,6 @@ def _post_graphql(
         errors = body.get("errors")
         if errors and not (allow_partial and body.get("data")):
             raise RuntimeError(f"CivicEngine GraphQL errors: {errors}")
-        if errors:
-            messages = sorted({str(e.get("message") if isinstance(e, dict) else e) for e in errors})
-            logger.warning(
-                "CivicEngine returned %d GraphQL errors alongside data for %s; the affected "
-                "nodes arrive as null and are skipped. Distinct messages: %s",
-                len(errors),
-                describe,
-                messages[:5],
-            )
         return body
 
     raise RuntimeError("Unreachable: _post_graphql exhausted retries without returning")
@@ -476,6 +465,12 @@ def fetch_nodes(
     return fetched
 
 
+# GraphQL's null-propagation error: a field the schema calls non-null resolved to null,
+# so the server nulled the enclosing node and reported it. BallotReady's data does this
+# (older measures carry no slug). Any other error alongside data is not tolerated.
+_NULL_PROPAGATION_ERROR = re.compile(r"^Cannot return null for non-nullable field \w+\.\w+$")
+
+
 def _build_list_query(root: str, node_type: str, selection: str) -> str:
     return (
         f"query List($first: Int, $after: String, $filterBy: {node_type}Filter) "
@@ -526,18 +521,36 @@ def fetch_list(
             f"{root} page {page}",
             allow_partial=True,
         )
+        errors = body.get("errors") or []
+        messages = [str(e.get("message") if isinstance(e, dict) else e) for e in errors]
+        unexpected = [msg for msg in messages if not _NULL_PROPAGATION_ERROR.match(msg)]
+        if unexpected:
+            raise RuntimeError(f"CivicEngine GraphQL errors on {root} page {page}: {unexpected}")
         connection = (body.get("data") or {}).get(root)
-        if connection is None:
-            # The schema declares the root non-null, so this needs a top-level error the
-            # helper would already have raised on; guard anyway, because the alternative
-            # is a silent zero-row "success".
-            raise RuntimeError(f"CivicEngine returned null for {root} on page {page}")
-        raw_nodes = connection.get("nodes") or []
+        raw_nodes = (connection or {}).get("nodes")
+        page_info = (connection or {}).get("pageInfo")
+        # A nulled node is tolerable; a nulled page is not. If the list or its pageInfo
+        # is missing, an error was propagated above the node and reading on would
+        # silently truncate the listing.
+        if (
+            not isinstance(raw_nodes, list)
+            or not isinstance(page_info, dict)
+            or not isinstance(page_info.get("hasNextPage"), bool)
+        ):
+            raise RuntimeError(f"CivicEngine returned an unusable {root} page {page}: {connection!r:.200}")
         nodes = [node for node in raw_nodes if node is not None]
+        if messages:
+            logger.warning(
+                "CivicEngine nulled %d of %d %s nodes on page %d; distinct reasons: %s",
+                len(raw_nodes) - len(nodes),
+                len(raw_nodes),
+                root,
+                page,
+                sorted(set(messages))[:5],
+            )
         yield nodes, len(raw_nodes) - len(nodes)
 
-        page_info = connection.get("pageInfo") or {}
-        if not page_info.get("hasNextPage"):
+        if not page_info["hasNextPage"]:
             return
         next_after = page_info.get("endCursor")
         if not next_after or next_after in seen:

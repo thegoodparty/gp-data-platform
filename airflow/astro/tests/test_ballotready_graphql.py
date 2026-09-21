@@ -2138,9 +2138,9 @@ def _measures_page(nodes, has_next, end_cursor):
 
 
 def _partial_page(nodes, has_next, end_cursor):
-    """GraphQL partial result: a nulled node plus the error that explains it."""
+    """GraphQL partial result: a nulled node plus the null-propagation error that explains it."""
     body = _measures_page(nodes, has_next, end_cursor)
-    body["errors"] = [{"message": "Cannot return null for non-nullable field Measure.slug"}]
+    body["errors"] = [{"message": "Cannot return null for non-nullable field Measure.state"}]
     return body
 
 
@@ -2176,10 +2176,26 @@ def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
             list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
 
 
-def test_fetch_list_raises_on_an_errors_only_response():
-    """allow_partial accepts errors alongside data; errors with no data must still raise."""
-    session = FakeSession([FakeResponse(body={"errors": [{"message": "total failure"}]})])
-    with pytest.raises(RuntimeError, match="CivicEngine GraphQL errors"):
+@pytest.mark.parametrize(
+    "body,match",
+    [
+        # errors with no data at all
+        ({"errors": [{"message": "total failure"}]}, "CivicEngine GraphQL errors"),
+        # an error that is not GraphQL null-propagation, even alongside data
+        (
+            {
+                **_measures_page([_measure(1)], False, None),
+                "errors": [{"message": "Query complexity exceeded"}],
+            },
+            "GraphQL errors on measures",
+        ),
+        # a page whose pageInfo was nulled: reading on would silently truncate the listing
+        ({"data": {"measures": {"nodes": [_measure(1)], "pageInfo": None}}}, "unusable measures page"),
+    ],
+)
+def test_fetch_list_fails_closed_on_anything_but_a_nulled_node(body, match):
+    session = FakeSession([FakeResponse(body=body)])
+    with pytest.raises(RuntimeError, match=match):
         list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
 
 
