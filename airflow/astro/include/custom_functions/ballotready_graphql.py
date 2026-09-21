@@ -408,7 +408,7 @@ def _post_graphql(
         if errors and not (allow_partial and body.get("data")):
             raise RuntimeError(f"CivicEngine GraphQL errors: {errors}")
         if errors:
-            messages = sorted({str(e.get("message")) for e in errors})
+            messages = sorted({str(e.get("message") if isinstance(e, dict) else e) for e in errors})
             logger.warning(
                 "CivicEngine returned %d GraphQL errors alongside data for %s; the affected "
                 "nodes arrive as null and are skipped. Distinct messages: %s",

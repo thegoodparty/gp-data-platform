@@ -2176,6 +2176,13 @@ def test_fetch_list_pages_to_the_end_and_refuses_a_stuck_cursor():
             list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
 
 
+def test_fetch_list_raises_on_an_errors_only_response():
+    """allow_partial accepts errors alongside data; errors with no data must still raise."""
+    session = FakeSession([FakeResponse(body={"errors": [{"message": "total failure"}]})])
+    with pytest.raises(RuntimeError, match="CivicEngine GraphQL errors"):
+        list(fetch_list("measures", "Measure", MEASURE_SELECTION, None, "tok", _limiter(), session))
+
+
 def test_extract_entity_lists_measures_and_lands_every_non_null_node(monkeypatch):
     pages = iter(
         [
