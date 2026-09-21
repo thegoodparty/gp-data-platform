@@ -123,3 +123,7 @@ from flattened_contacts_and_urls
 where
     {{ dsar_not_suppressed("email", "email") }}
     and {{ dsar_not_suppressed("phone", "phone") }}
+    -- office_phone and central_phone leave this model as their own columns, so a
+    -- suppressed number in the slot the coalesce did not pick must still filter.
+    and {{ dsar_not_suppressed("office_phone", "phone") }}
+    and {{ dsar_not_suppressed("central_phone", "phone") }}
