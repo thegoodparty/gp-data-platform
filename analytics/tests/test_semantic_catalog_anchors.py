@@ -64,3 +64,12 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
     live = [leg for leg in legs if leg["era"] != "historical"]
     assert {"event": "Viewed", "path": "/dashboard", "era": None} in live
     assert len(live) == 2  # the path leg plus the current named event
+
+
+def test_activated_metrics_declare_the_exact_event_string():
+    win_doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
+    serve_doc = yaml.safe_load((MODELS / "sem_analytics__users_serve.yml").read_text())
+    win_legs = parse_anchors(win_doc)["win_activated_users"]
+    serve_legs = parse_anchors(serve_doc)["activated_serve_users"]
+    assert [leg["event"] for leg in win_legs] == ["Voter Outreach - Campaign Completed"]
+    assert [leg["event"] for leg in serve_legs] == ["Serve Onboarding - SMS Poll Sent"]
