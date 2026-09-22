@@ -126,3 +126,52 @@ models:
           distinguished from an abandoned signup. Null rather than zero, because
           a zero meaning "unknown" cannot be told from a real zero. Populate it
           when the membership stream lands.
+
+  - name: int__key_resolution_exceptions
+    description: >
+      Source records that should reach a gp-api user and do not, so "resolves to
+      nobody" is counted rather than dropped.
+
+      Grain: one row per source record. Stripe only today; the shape allows more
+      sources later.
+
+      HubSpot contributes nothing here on purpose. A contact with no user is a
+      prospect, not an exception, and at 362,299 contacts against 72,224 users
+      those rows would bury the few hundred that matter. HubSpot non-coverage is
+      counted from the user side, on hubspot_key_source.
+    columns:
+      - name: source_name
+        description: Source system the unresolved record came from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["stripe"]
+      - name: source_id
+        description: Native identifier within that source.
+        data_tests:
+          - not_null
+      - name: reason_code
+        description: Why the record did not resolve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["stripe_customer_no_user"]
+      - name: first_seen_at
+        description: Source-native created timestamp for the record.
+      - name: has_subscription
+        description: The customer holds any Stripe subscription.
+        data_tests:
+          - not_null
+      - name: has_active_subscription
+        description: >
+          The customer holds an active, trialing or past_due subscription. True
+          here means live revenue with no product account, which is the case
+          worth acting on rather than merely counting.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, source_id]
