@@ -1,1 +1,3 @@
-select * from {{ source("segment_storage_source_web_app", "p2p_upgrade_modal_exit") }}
+select *
+from {{ source("segment_storage_source_web_app", "p2p_upgrade_modal_exit") }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

@@ -6,3 +6,4 @@ from
             "polls_poll_results_issue_details_viewed",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

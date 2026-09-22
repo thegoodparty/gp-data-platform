@@ -6,3 +6,4 @@ from
             "serve_onboarding_getting_started_viewed",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

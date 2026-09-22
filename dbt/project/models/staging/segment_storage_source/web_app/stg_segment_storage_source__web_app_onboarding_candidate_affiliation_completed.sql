@@ -6,3 +6,4 @@ from
             "onboarding_candidate_affiliation_completed",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

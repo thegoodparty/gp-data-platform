@@ -6,3 +6,4 @@ from
             "content_builder_editor_open_version_picker",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

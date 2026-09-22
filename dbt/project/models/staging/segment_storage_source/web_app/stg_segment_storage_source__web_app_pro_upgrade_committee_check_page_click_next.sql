@@ -6,3 +6,4 @@ from
             "pro_upgrade_committee_check_page_click_next",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

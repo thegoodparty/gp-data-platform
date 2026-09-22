@@ -6,3 +6,4 @@ from
             "_10_dlc_compliance_pin_verification_completed",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

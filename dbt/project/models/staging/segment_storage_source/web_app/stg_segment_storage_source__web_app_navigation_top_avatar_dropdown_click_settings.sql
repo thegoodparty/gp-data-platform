@@ -6,3 +6,4 @@ from
             "navigation_top_avatar_dropdown_click_settings",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

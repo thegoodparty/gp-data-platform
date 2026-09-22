@@ -6,3 +6,4 @@ from
             "navigation_dashboard_click_door_knocking",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

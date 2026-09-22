@@ -100,10 +100,14 @@
     select cast(id as int) as office_holder_id
     from {{ source("airbyte_source", "ballotready_s3_office_holders_v3") }}
     where
-        {{ dsar_normalize("candidate_id", "br_person_id") }}
-        in ({{ dsar_register_values("br_person_id") }})
-        or {{ dsar_normalize("candidacy_id", "br_candidacy_id") }}
-        in ({{ dsar_register_values("br_candidacy_id") }})
+        -- A null in a NOT IN list makes the whole predicate unknown.
+        cast(id as int) is not null
+        and (
+            {{ dsar_normalize("candidate_id", "br_person_id") }}
+            in ({{ dsar_register_values("br_person_id") }})
+            or {{ dsar_normalize("candidacy_id", "br_candidacy_id") }}
+            in ({{ dsar_register_values("br_candidacy_id") }})
+        )
 {% endmacro %}
 
 
@@ -125,10 +129,15 @@
         lower(trim(last_name)) as suppressed_last_name
     from {{ source("airbyte_source", "ballotready_s3_candidacies_v3") }}
     where
-        {{ dsar_normalize("candidate_id", "br_person_id") }}
-        in ({{ dsar_register_values("br_person_id") }})
-        or {{ dsar_normalize("candidacy_id", "br_candidacy_id") }}
-        in ({{ dsar_register_values("br_candidacy_id") }})
+        race_id is not null
+        and first_name is not null
+        and last_name is not null
+        and (
+            {{ dsar_normalize("candidate_id", "br_person_id") }}
+            in ({{ dsar_register_values("br_person_id") }})
+            or {{ dsar_normalize("candidacy_id", "br_candidacy_id") }}
+            in ({{ dsar_register_values("br_candidacy_id") }})
+        )
 {% endmacro %}
 
 

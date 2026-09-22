@@ -6,3 +6,4 @@ from
             "voter_data_file_detail_click_download_csv",
         )
     }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

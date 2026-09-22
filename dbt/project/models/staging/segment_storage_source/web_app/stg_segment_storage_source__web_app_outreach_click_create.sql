@@ -1,1 +1,3 @@
-select * from {{ source("segment_storage_source_web_app", "outreach_click_create") }}
+select *
+from {{ source("segment_storage_source_web_app", "outreach_click_create") }}
+where {{ dsar_not_suppressed("user_id", "gp_api_user_id") }}

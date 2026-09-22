@@ -48,7 +48,8 @@
             -- The model drops suppressed contacts before casting, so the raw side
             -- must drop them too or a lawful deletion reads as cast loss.
             where
-                {{
+                {{ dsar_not_suppressed("id", "hs_contact_id") }}
+                and {{
                     dsar_not_suppressed(
                         "get_json_object(properties, '$.email')", "email"
                     )
