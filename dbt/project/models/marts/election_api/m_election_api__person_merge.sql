@@ -69,4 +69,8 @@ cross join slug_history
 -- were never live would be noise. An id minted before slug history began may
 -- have been published and left the mart before we could see it, so every such
 -- id is kept when it retires, and the filter applies to ids minted afterwards.
-where published.id is not null or retired.first_minted_at < slug_history.started_at
+-- With no slug history at all, everything is kept.
+where
+    published.id is not null
+    or slug_history.started_at is null
+    or retired.first_minted_at < slug_history.started_at
