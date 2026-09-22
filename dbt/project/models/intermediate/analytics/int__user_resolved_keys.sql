@@ -48,6 +48,35 @@ with
             had_conflict
         from {{ ref("int__civics_person_groups") }}
         where source_name = 'gp_api'
+    ),
+
+    -- Contacts that still exist. The user row's own hubspot_contact_id is
+    -- carried by 66,664 users but 5,241 of those point at a contact that has
+    -- since been merged or deleted in HubSpot, so a raw join on it reaches
+    -- fewer live contacts than the graph does.
+    live_contacts as (
+        select cast(id as string) as hs_contact_id
+        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+    ),
+
+    own_contact as (
+        select cast(u.id as bigint) as user_id, u.hubspot_contact_id as hs_contact_id
+        from {{ ref("stg_airbyte_source__gp_api_db_user") }} as u
+        inner join live_contacts as lc on lc.hs_contact_id = u.hubspot_contact_id
+    ),
+
+    -- Every HubSpot contact the person group reaches, which is what the graph
+    -- adds over the raw column: the reverse direction (contact.goodparty_user_id)
+    -- and the candidacy path both land here.
+    group_contacts as (
+        select
+            pi.gp_person_id,
+            count(*) as hubspot_contact_count,
+            min(pi.source_id) as fallback_hs_contact_id
+        from {{ ref("person_identifiers") }} as pi
+        inner join live_contacts as lc on lc.hs_contact_id = pi.source_id
+        where pi.source_name = 'hubspot'
+        group by pi.gp_person_id
     )
 
 select
@@ -55,7 +84,23 @@ select
     u.gp_person_id,
     coalesce(r.account_count, 1) as account_count,
     coalesce(r.is_primary_account, true) as is_primary_account,
-    coalesce(g.had_conflict, false) as had_conflict
+    coalesce(g.had_conflict, false) as had_conflict,
+    case
+        when oc.hs_contact_id is not null
+        then 'own_live_id'
+        when gc.fallback_hs_contact_id is not null
+        then 'person_group'
+        else 'none'
+    end as hubspot_key_source,
+    case
+        when hubspot_key_source = 'own_live_id'
+        then oc.hs_contact_id
+        when hubspot_key_source = 'person_group'
+        then gc.fallback_hs_contact_id
+    end as hubspot_contact_id,
+    coalesce(gc.hubspot_contact_count, 0) as hubspot_contact_count
 from users as u
 left join account_ranks as r using (user_id)
 left join groups as g using (user_id)
+left join own_contact as oc using (user_id)
+left join group_contacts as gc on gc.gp_person_id = u.gp_person_id

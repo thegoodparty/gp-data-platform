@@ -65,3 +65,32 @@ models:
           certain. The row is kept; ambiguity is a column, never a filter.
         data_tests:
           - not_null
+      - name: hubspot_contact_id
+        description: >
+          The HubSpot contact for this user, resolved through the person graph.
+          Null when the person group reaches no live contact, which is 11.7% of
+          users. Never read the user row's own hubspot_contact_id instead: it is
+          carried by more users but 5,241 of those ids point at a contact that
+          no longer exists, so it resolves fewer live contacts than this does.
+      - name: hubspot_contact_count
+        description: >
+          Live HubSpot contacts the person group reaches. Kept at the full count
+          even though the row names one, so a consumer can see the fan-out.
+          Greater than one for about 1,478 persons.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: hubspot_key_source
+        description: >
+          How the contact was reached. own_live_id means the user's own id
+          pointed at a contact that still exists. person_group means it did not
+          and the graph supplied one. none means no live contact was reachable,
+          and hubspot_contact_id is null.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["own_live_id", "person_group", "none"]

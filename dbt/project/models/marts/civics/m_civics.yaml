@@ -3004,9 +3004,21 @@ models:
           BallotReady br_candidate_id when the group resolves to exactly one;
           NULL when zero or ambiguous (>1 in the group).
       - name: gp_api_user_id
-        description: gp-api user id when unambiguous, else NULL.
+        description: >
+          gp-api user id when unambiguous, else NULL.
+
+          Null whenever the group holds more than one gp-api account, which is
+          1,120 persons among those holding a user account, so a scalar join on
+          this column silently drops exactly the ambiguous rows. Read
+          person_identifiers, or int__user_resolved_keys at user grain.
       - name: hs_contact_id
-        description: HubSpot contact id when unambiguous, else NULL.
+        description: >
+          HubSpot contact id when unambiguous, else NULL.
+
+          Null whenever the group holds more than one HubSpot contact, which is
+          9,756 persons among those holding a user account, so a scalar join on
+          this column silently drops exactly the ambiguous rows. Read
+          person_identifiers, or int__user_resolved_keys at user grain.
       - name: ddhq_candidate_id
         description: DDHQ candidate_id when unambiguous, else NULL.
       - name: ts_candidate_code
