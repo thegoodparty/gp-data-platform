@@ -3054,3 +3054,71 @@ models:
               arguments:
                 min_value: 0
                 max_value: 1
+
+  - name: user_resolved_keys
+    description: >
+      The keys that reach each downstream source, at gp-api user grain. One row
+      per user. Join this to reach HubSpot, Stripe or the civics person data
+      rather than re-deriving the link, and never join the scalar id columns
+      on the people mart, which go null exactly under ambiguity.
+
+      Grain is the user account, deliberately not the resolved person. The
+      person key is carried as gp_person_id, with account_count and
+      is_primary_account, so an account-spanning view is a group by rather than
+      a rebuild.
+
+      Per-column meaning lives on int__user_resolved_keys; this is a passthrough
+      exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: gp_person_id
+        description: >
+          Canonical person for this account. Populated for every user except a
+          handful of the very newest signups, who fall between the person-graph
+          rebuild and this build; see int__user_resolved_keys for the bound.
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+                warn_if: ">0"
+                error_if: ">100"
+
+  - name: key_resolution_summary
+    description: >
+      Per-source resolution counts, so a coverage drop is visible on the Sigma
+      surface rather than only in a dbt test run. One row per source per
+      outcome.
+    columns:
+      - name: source_name
+        description: Source system the count describes.
+        data_tests:
+          - not_null
+      - name: reason_code
+        description: >
+          resolved, user_no_hubspot_contact, user_never_paid, or an exception
+          reason. User-side reasons count users; exception reasons count
+          source records.
+        data_tests:
+          - not_null
+      - name: count_basis
+        description: >
+          What record_count is denominated in: 'users' for a count of gp-api
+          users, 'source_records' for a count of records in the source system.
+          The two are not summable.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["users", "source_records"]
+      - name: record_count
+        description: Records in this source and outcome.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, reason_code]

@@ -1,0 +1,193 @@
+version: 2
+
+models:
+  - name: int__user_resolved_keys
+    description: >
+      The keys that reach each downstream source, at gp-api user grain. One row
+      per user in the civics users mart.
+
+      Grain: one row per user_id. Deliberately not person grain. Collapsing the
+      about 1,120 humans who hold more than one account would cost an aggregation
+      rule per activity column, one of which (distinct active days) cannot be
+      summed at all, and would do nothing for team accounts, where several
+      different humans work one campaign. The person key is carried instead, so
+      an account-spanning view is a group by rather than a rebuild.
+
+      Read this rather than the scalar gp_api_user_id and hs_contact_id columns
+      on the people mart: both go null exactly when the person group holds more
+      than one such record, so a scalar join drops the ambiguous rows without
+      saying so.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: gp_person_id
+        description: >
+          Canonical person for this account, from the civics person graph.
+          Null only for a user who signed up between the person-graph rebuild
+          and this build, so a handful of the very newest accounts can lack one
+          until the next run. Not a durable external identifier either: it
+          retires when two person groups merge and the other group's minting
+          record is earlier, and election-api's PersonMerge is the forwarding
+          address.
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+                warn_if: ">0"
+                error_if: ">100"
+      - name: account_count
+        description: >
+          gp-api accounts in this row's person group. Greater than one means
+          the same human signed up more than once. Counted over the accounts
+          present in this table, which can be a strict subset of the person
+          graph's gp-api membership.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 50
+                inclusive: true
+      - name: is_primary_account
+        description: >
+          Earliest gp-api record in the person group by first_seen_at, tie
+          broken by user_id. Exactly one account per person carries it, so
+          filtering on it yields one row per person. Deliberately not the
+          record that minted the person id: only 61% of user persons are minted
+          by a gp-api record, so a mint-based flag would be false for every
+          account of the remainder.
+        data_tests:
+          - not_null
+      - name: had_conflict
+        description: >
+          The person group was touched by a within-source vendor-key edge that
+          spanned more than one BallotReady person, so its membership is less
+          certain. The row is kept; ambiguity is a column, never a filter.
+        data_tests:
+          - not_null
+      - name: hubspot_contact_id
+        description: >
+          The HubSpot contact for this user, resolved through the person graph.
+          Null when the person group reaches no live contact, which is 11.7% of
+          users. Never read the user row's own hubspot_contact_id instead: it is
+          carried by more users but 5,241 of those ids point at a contact that
+          no longer exists, so it resolves fewer live contacts than this does.
+      - name: hubspot_contact_count
+        description: >
+          Live HubSpot contacts the person group reaches, floored at one whenever
+          a contact was named, because a contact can resolve through the user's
+          own id while the person graph does not hold that contact. Kept at the
+          full count otherwise, so a consumer can see the fan-out. Greater than
+          one for about 1,480 persons.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: hubspot_key_source
+        description: >
+          How the contact was reached. own_live_id means the user's own id
+          pointed at a contact that still exists. person_group means it did not
+          and the graph supplied one. none means no live contact was reachable,
+          and hubspot_contact_id is null.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["own_live_id", "person_group", "none"]
+      - name: stripe_customer_id
+        description: >
+          Stripe customer for this account, read from the user record's own
+          meta_data.customerId. A native foreign key our product writes at
+          checkout, so this is a join rather than a match, and Stripe is
+          deliberately not a person-graph source. Null for the large majority
+          of users, who have never paid.
+      - name: stripe_customer_count
+        description: >
+          User accounts carrying this row's Stripe customer id. Greater than one
+          for about 41 ids, where one human paid from two accounts. Lifetime
+          revenue must sum over distinct customer ids or it double counts those.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: owns_organization
+        description: >
+          The user owns at least one organization, Win or Serve. Carried partly
+          so the size of the team-accounts problem stays measurable: a user who
+          owns nothing is either an abandoned signup or an invited team member,
+          and today those two cannot be told apart.
+        data_tests:
+          - not_null
+      - name: team_member_count
+        description: >
+          Always null. Team membership is not ingested, so a staffer cannot be
+          distinguished from an abandoned signup. Null rather than zero, because
+          a zero meaning "unknown" cannot be told from a real zero. Populate it
+          when the membership stream lands.
+    # An empty build of this model passes every ratio-based test in this file,
+    # coverage tests included: count(x) * 100.0 / count(*) is 0/0 -> null, and
+    # a `where pct < N` filter on null is false, so zero rows means PASS. A row
+    # count floor is what actually catches an empty build.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 60000
+
+  - name: int__key_resolution_exceptions
+    description: >
+      Source records that should reach a gp-api user and do not, so "resolves to
+      nobody" is counted rather than dropped.
+
+      Grain: one row per source record. Stripe only today; the shape allows more
+      sources later.
+
+      HubSpot contributes nothing here on purpose. A contact with no user is a
+      prospect, not an exception, and at 362,299 contacts against about 72,200
+      users those rows would bury the few hundred that matter. HubSpot
+      non-coverage is counted from the user side, on hubspot_key_source.
+    columns:
+      - name: source_name
+        description: Source system the unresolved record came from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["stripe"]
+      - name: source_id
+        description: Native identifier within that source.
+        data_tests:
+          - not_null
+      - name: reason_code
+        description: Why the record did not resolve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["stripe_customer_no_user"]
+      - name: first_seen_at
+        description: >
+          Source-native created timestamp for the record. Converted from the
+          Stripe epoch-seconds integer, which the connector lands unmodified and
+          the staging layer passes through without casting.
+      - name: has_subscription
+        description: The customer holds any Stripe subscription.
+        data_tests:
+          - not_null
+      - name: has_active_subscription
+        description: >
+          The customer holds an active, trialing or past_due subscription. True
+          here means live revenue with no product account, which is the case
+          worth acting on rather than merely counting.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, source_id]
