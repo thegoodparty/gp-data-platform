@@ -89,10 +89,10 @@ left join
 where
     (
         -- A null attempted_at (never attempted) must reopen immediately, so the
-        -- sentinel is older than the 20-day cutoff rather than newer.
+        -- sentinel is older than the 30-day cutoff rather than newer.
         latest_attempt.l2_district_name is null
         and coalesce(latest_attempt.attempted_at, timestamp '1900-01-01')
-        < current_date() - interval 20 days
+        < current_date() - interval 30 days
     )
     or (
         latest_attempt.l2_district_name is not null
