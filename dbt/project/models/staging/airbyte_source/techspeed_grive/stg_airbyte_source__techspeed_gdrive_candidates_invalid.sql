@@ -49,6 +49,7 @@ with
             trim(state) as state,
             email,
             phone,
+            ballotready_race_id as br_race_id,
             office_name as official_office_name,
             office_normalized as candidate_office,
             office_type,
@@ -72,4 +73,9 @@ with
 
 select *
 from with_checks
-where invalid_reason is not null
+where
+    invalid_reason is not null
+    -- Rejected rows are still materialized and queryable, so they filter like the
+    -- valid ones do: by BallotReady race and name.
+    and
+    {{ dsar_not_suppressed_via_br_candidacy("br_race_id", "first_name", "last_name") }}

@@ -57,3 +57,10 @@ select
     }} as urls,
     loaded_at as feed_extracted_at
 from current_rows
+-- databaseId is BallotReady's person id, the same id the S3 feeds call candidate_id.
+where
+    {{
+        dsar_not_suppressed(
+            "get_json_object(payload, '$.databaseId')", "br_person_id"
+        )
+    }}

@@ -40,3 +40,8 @@ select
     _airbyte_extracted_at
 
 from {{ source("airbyte_source", "hubspot_api_feedback_submissions") }}
+-- HubSpot denormalizes the contact into the submission, so the contacts filter
+-- never sees these rows; they carry their own copy of the email and id.
+where
+    {{ dsar_not_suppressed("properties:hs_contact_email_rollup::string", "email") }}
+    and {{ dsar_not_suppressed("properties:hs_contact_id::string", "hs_contact_id") }}

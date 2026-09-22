@@ -7,6 +7,10 @@ select
     updatedAt as updated_at
     -- fmt: on
 from {{ ref("snapshot__hubspot_api_contacts") }}
+where
+    {{ dsar_not_suppressed("id", "hs_contact_id") }}
+    and {{ dsar_not_suppressed("properties_email", "email") }}
+    and {{ dsar_not_suppressed("properties_phone", "phone") }}
 qualify
     row_number() over (
         partition by id
