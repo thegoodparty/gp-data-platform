@@ -7,7 +7,7 @@ models:
       per user in the civics users mart.
 
       Grain: one row per user_id. Deliberately not person grain. Collapsing the
-      1,120 humans who hold more than one account would cost an aggregation
+      about 1,120 humans who hold more than one account would cost an aggregation
       rule per activity column, one of which (distinct active days) cannot be
       summed at all, and would do nothing for team accounts, where several
       different humans work one campaign. The person key is carried instead, so
@@ -41,12 +41,15 @@ models:
       - name: account_count
         description: >
           gp-api accounts in this row's person group. Greater than one means
-          the same human signed up more than once.
+          the same human signed up more than once. Counted over the accounts
+          present in this table, which can be a strict subset of the person
+          graph's gp-api membership.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+                max_value: 50
                 inclusive: true
       - name: is_primary_account
         description: >
@@ -74,9 +77,11 @@ models:
           no longer exists, so it resolves fewer live contacts than this does.
       - name: hubspot_contact_count
         description: >
-          Live HubSpot contacts the person group reaches. Kept at the full count
-          even though the row names one, so a consumer can see the fan-out.
-          Greater than one for about 1,478 persons.
+          Live HubSpot contacts the person group reaches, floored at one whenever
+          a contact was named, because a contact can resolve through the user's
+          own id while the person graph does not hold that contact. Kept at the
+          full count otherwise, so a consumer can see the fan-out. Greater than
+          one for about 1,480 persons.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -126,6 +131,14 @@ models:
           distinguished from an abandoned signup. Null rather than zero, because
           a zero meaning "unknown" cannot be told from a real zero. Populate it
           when the membership stream lands.
+    # An empty build of this model passes every ratio-based test in this file,
+    # coverage tests included: count(x) * 100.0 / count(*) is 0/0 -> null, and
+    # a `where pct < N` filter on null is false, so zero rows means PASS. A row
+    # count floor is what actually catches an empty build.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 60000
 
   - name: int__key_resolution_exceptions
     description: >
@@ -136,9 +149,9 @@ models:
       sources later.
 
       HubSpot contributes nothing here on purpose. A contact with no user is a
-      prospect, not an exception, and at 362,299 contacts against 72,224 users
-      those rows would bury the few hundred that matter. HubSpot non-coverage is
-      counted from the user side, on hubspot_key_source.
+      prospect, not an exception, and at 362,299 contacts against about 72,200
+      users those rows would bury the few hundred that matter. HubSpot
+      non-coverage is counted from the user side, on hubspot_key_source.
     columns:
       - name: source_name
         description: Source system the unresolved record came from.

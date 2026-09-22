@@ -3008,16 +3008,16 @@ models:
           gp-api user id when unambiguous, else NULL.
 
           Null whenever the group holds more than one gp-api account, which is
-          1,120 persons among those holding a user account, so a scalar join on
-          this column silently drops exactly the ambiguous rows. Read
+          about 1,120 persons among those holding a user account, so a scalar
+          join on this column silently drops exactly the ambiguous rows. Read
           person_identifiers, or int__user_resolved_keys at user grain.
       - name: hs_contact_id
         description: >
           HubSpot contact id when unambiguous, else NULL.
 
-          Null whenever the group holds more than one HubSpot contact, which is
-          9,756 persons among those holding a user account, so a scalar join on
-          this column silently drops exactly the ambiguous rows. Read
+          Null when the group holds zero or more than one HubSpot contact, about
+          9,750 persons among those holding a user account, of which only about
+          1,480 are the ambiguous case rather than simple absence. Read
           person_identifiers, or int__user_resolved_keys at user grain.
       - name: ddhq_candidate_id
         description: DDHQ candidate_id when unambiguous, else NULL.

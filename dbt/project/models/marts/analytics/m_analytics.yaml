@@ -3066,6 +3066,9 @@ models:
       person key is carried as gp_person_id, with account_count and
       is_primary_account, so an account-spanning view is a group by rather than
       a rebuild.
+
+      Per-column meaning lives on int__user_resolved_keys; this is a passthrough
+      exposure and does not restate it.
     columns:
       - name: user_id
         description: gp-api user id. Primary key.
@@ -3096,11 +3099,26 @@ models:
           - not_null
       - name: reason_code
         description: >
-          resolved, or the reason the records did not resolve. User-side reasons
-          count users; exception reasons count source records.
+          resolved, user_no_hubspot_contact, user_never_paid, or an exception
+          reason. User-side reasons count users; exception reasons count
+          source records.
         data_tests:
           - not_null
+      - name: count_basis
+        description: >
+          What record_count is denominated in: 'users' for a count of gp-api
+          users, 'source_records' for a count of records in the source system.
+          The two are not summable.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["users", "source_records"]
       - name: record_count
         description: Records in this source and outcome.
         data_tests:
           - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, reason_code]

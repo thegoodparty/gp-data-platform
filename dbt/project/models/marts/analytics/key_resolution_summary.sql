@@ -16,26 +16,30 @@ with
                 then 'user_no_hubspot_contact'
                 else 'resolved'
             end as reason_code,
+            'users' as count_basis,
             count(*) as record_count
         from keys
-        group by 2
+        group by reason_code
     ),
 
     stripe as (
         select
             'stripe' as source_name,
             case
-                when stripe_customer_id is null
-                then 'user_no_stripe_customer'
-                else 'resolved'
+                when stripe_customer_id is null then 'user_never_paid' else 'resolved'
             end as reason_code,
+            'users' as count_basis,
             count(*) as record_count
         from keys
-        group by 2
+        group by reason_code
     ),
 
     exceptions as (
-        select source_name, reason_code, count(*) as record_count
+        select
+            source_name,
+            reason_code,
+            'source_records' as count_basis,
+            count(*) as record_count
         from {{ ref("int__key_resolution_exceptions") }}
         group by source_name, reason_code
     )

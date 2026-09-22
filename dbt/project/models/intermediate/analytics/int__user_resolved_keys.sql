@@ -2,6 +2,12 @@
 -- this instead of re-deriving the person link, and instead of the scalar id
 -- columns on the people mart, which go null exactly when a person holds more
 -- than one record of that type and so silently drop the ambiguous rows.
+--
+-- Table, not view: this is a wide eight-relation join with two window
+-- functions, read by about 28 tests and by both marts. As a view every one of
+-- those readers re-executes the full join.
+{{ config(materialized="table") }}
+
 with
     users as (select user_id, gp_person_id from {{ ref("users") }}),
 
@@ -72,7 +78,10 @@ with
         select
             pi.gp_person_id,
             count(*) as hubspot_contact_count,
-            min(pi.source_id) as fallback_hs_contact_id
+            -- HubSpot ids ascend, so the numeric minimum is the earliest-created
+            -- contact; a lexicographic minimum on the string would both pick
+            -- arbitrarily ('101' < '99') and flip as the group changes.
+            cast(min(cast(pi.source_id as bigint)) as string) as fallback_hs_contact_id
         from {{ ref("person_identifiers") }} as pi
         inner join live_contacts as lc on lc.hs_contact_id = pi.source_id
         where pi.source_name = 'hubspot'
@@ -124,7 +133,15 @@ select
         when hubspot_key_source = 'person_group'
         then gc.fallback_hs_contact_id
     end as hubspot_contact_id,
-    coalesce(gc.hubspot_contact_count, 0) as hubspot_contact_count,
+    -- A contact can resolve through the user's own id while the person graph
+    -- does not hold that contact, so the count floors at one whenever a
+    -- contact was named: a named contact with a count of zero is wrong as
+    -- published data.
+    case
+        when hubspot_key_source = 'none'
+        then coalesce(gc.hubspot_contact_count, 0)
+        else greatest(coalesce(gc.hubspot_contact_count, 0), 1)
+    end as hubspot_contact_count,
     s.stripe_customer_id,
     coalesce(sf.stripe_customer_count, 0) as stripe_customer_count,
     o.user_id is not null as owns_organization,

@@ -6,6 +6,8 @@
 --
 -- Coverage was 88.4% when this was written; the floor leaves a few points of
 -- headroom for ordinary drift. The companion collapse test is the hard floor.
+-- A null pct means an empty model: count(x) * 100.0 / count(*) is 0/0, which
+-- a plain `pct < 85` would let pass silently, so an empty build is caught too.
 {{ config(severity="warn") }}
 
 with
@@ -19,4 +21,4 @@ with
 
 select users, resolved, pct
 from coverage
-where pct < 85
+where pct < 85 or pct is null

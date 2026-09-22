@@ -3,9 +3,9 @@
 -- than dropping.
 --
 -- HubSpot contributes nothing here by design: a contact with no user is a
--- prospect, and there are 362,299 contacts against 72,224 users, so those rows
--- would bury the ones that matter. HubSpot non-coverage is counted from the
--- user side instead.
+-- prospect, and there are 362,299 contacts against about 72,200 users, so those
+-- rows would bury the ones that matter. HubSpot non-coverage is counted from
+-- the user side instead.
 with
     matched_customers as (
         select distinct stripe_customer_id
