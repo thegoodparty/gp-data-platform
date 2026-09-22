@@ -17,29 +17,24 @@ with
             max(dbt_valid_to) as retired_at
         from {{ ref("snapshot__int__civics_person_canonical_ids") }}
         group by 1, 2
-    ),
-
-    current_ids as (
-        select record_key, gp_person_id
-        from {{ ref("int__civics_person_canonical_ids") }}
-    ),
-
-    retired as (
-        select minted.*
-        from minted
-        left anti join current_ids on current_ids.gp_person_id = minted.gp_person_id
     )
 
 select
-    retired.gp_person_id as retired_id,
+    minted.gp_person_id as retired_id,
     survivor.gp_person_id as surviving_id,
     cast(null as string) as retired_slug,
-    retired.retired_at,
+    minted.retired_at,
     -- build timestamp: the table is swap-replaced wholesale each run
     current_timestamp() as created_at
-from retired
-inner join current_ids as survivor on survivor.record_key = retired.minting_record_key
+from minted
+inner join
+    {{ ref("int__civics_person_canonical_ids") }} as survivor
+    on survivor.record_key = minted.minting_record_key
 -- A survivor missing from Person would redirect to a 404, so the row waits
 -- until the survivor is published.
 inner join
     {{ ref("m_election_api__person") }} as person on person.id = survivor.gp_person_id
+-- The minting record is the earliest member of its own cluster, so it carries
+-- the id it mints for as long as that id exists. A different id today means
+-- the mint moved on and nothing else can still be carrying the old one.
+where survivor.gp_person_id != minted.gp_person_id
