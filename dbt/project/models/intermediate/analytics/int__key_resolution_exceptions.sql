@@ -16,7 +16,7 @@ with
     subscription_state as (
         select
             customer,
-            count(*) > 0 as has_subscription,
+            true as has_subscription,
             max(
                 case when status in ('active', 'trialing', 'past_due') then 1 else 0 end
             )
@@ -30,7 +30,10 @@ select
     'stripe' as source_name,
     c.id as source_id,
     'stripe_customer_no_user' as reason_code,
-    c.created as first_seen_at,
+    -- the Stripe connector lands `created` as epoch seconds and the staging
+    -- layer is a pure passthrough that casts nothing, so the conversion
+    -- happens here
+    timestamp_seconds(c.created) as first_seen_at,
     coalesce(s.has_subscription, false) as has_subscription,
     coalesce(s.has_active_subscription, false) as has_active_subscription
 from {{ ref("stg_airbyte_source__stripe_api_customers") }} as c

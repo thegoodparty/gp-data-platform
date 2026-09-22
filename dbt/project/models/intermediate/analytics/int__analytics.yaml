@@ -159,7 +159,10 @@ models:
               arguments:
                 values: ["stripe_customer_no_user"]
       - name: first_seen_at
-        description: Source-native created timestamp for the record.
+        description: >
+          Source-native created timestamp for the record. Converted from the
+          Stripe epoch-seconds integer, which the connector lands unmodified and
+          the staging layer passes through without casting.
       - name: has_subscription
         description: The customer holds any Stripe subscription.
         data_tests:
