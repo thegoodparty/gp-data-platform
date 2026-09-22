@@ -29,8 +29,8 @@ the URL is unaddressable. `PersonMerge` is the forwarding address.
 |---|---|---|
 | `retired_id` | uuid, PK | the retired `gp_person_id`; no FK, its Person row is gone |
 | `surviving_id` | uuid, not null | the terminal survivor; no FK, it may itself retire later |
-| `retired_slug` | text, null | always null, see below |
-| `retired_at` | timestamp(3), not null | the run in which the id left the mint; one batch shares a timestamp |
+| `retired_slug` | text, null | the slug as last published; null when we never captured it |
+| `retired_at` | timestamp(3), not null | the later of leaving Person and leaving the mint; one batch shares a timestamp |
 | `created_at` | timestamp(3), not null | build timestamp, like Person |
 
 Rules the app relies on, and how the mart meets them:
@@ -45,30 +45,34 @@ Rules the app relies on, and how the mart meets them:
    with one `surviving_id`. The reverse (one retired id, several survivors) cannot occur: an id
    has exactly one minting record.
 
-The app team's original contract also asked for `retired_slug`, the slug as last published, so
-the API could break a tie when a retired id shares its 8-hex prefix with a live person. We
-publish it null by agreement. It changes the outcome only for that collision, a handful of ids,
-and for those the URL keeps resolving to the live person as it does today. Supplying it would
-have meant recording every published slug every night, forever, and depending on that history
-never being lost; that was the only new durable state in the feature and was not worth it. If
-that trade ever changes, a two-column check snapshot of `m_election_api__person` (id, slug) with
-hard deletes invalidated is the way to add it; slugs before that point are unrecoverable.
-
 ## Where the rows come from
 
-`snapshot__int__civics_person_canonical_ids` (check strategy on the id and its minting record,
-hard deletes invalidated) has recorded every id the mint has produced since the Person table
-went live. An id in that history that is no longer anyone's `gp_person_id` is retired, the
-history names the record that minted it, and the run that closed its last row is `retired_at`.
-`m_election_api__person_merge` maps each retired id to its minting record's current id, keeps
-only survivors that are live public profiles, and stamps `created_at`.
+- `snapshot__int__civics_person_canonical_ids` (check strategy on the id and its minting record,
+  hard deletes invalidated) has recorded every id the mint has produced since the Person table
+  went live. An id in that history that is no longer anyone's `gp_person_id` is retired, and the
+  history names the record that minted it.
+- `snapshot__m_election_api__person` (id, slug; check strategy on slug, hard deletes invalidated)
+  supplies the slug as last published and the run that closed the id's last row. It also says
+  whether the id was ever published at all: alias ids that were never live get no row.
+- `m_election_api__person_merge` joins the two, keeps only survivors that are live public
+  profiles, and stamps `created_at`.
+
+An id minted before the slug snapshot began is kept when it retires whether or not the snapshot
+ever saw it, since it may have been published and left the mart before capture started; if the
+snapshot never saw it, `retired_slug` is null. The API reconstructs a missing slug from the
+survivor's name, so a same-name duplicate still redirects; a name-variant duplicate that also
+shares its 8-hex prefix with a live person is a 404 rather than a guess. Those grandfathered
+rows include alias ids that were never published, which are inert. Ids minted after the snapshot
+began get a row only if they were published.
 
 ## Write boundary and pull direction
 
 Only the `sync_election_api` DAG writes `PersonMerge`, exactly as with `Person`; the application
 never writes it. gp-api drains `GET /v1/person-merges` with a keyset cursor on
 `(retired_at, retired_id)` to repoint its own person ids. `retired_at` is stable for a given
-retirement and identical across a batch.
+retirement and identical across a batch. It is the later of the id leaving Person and leaving the
+mint: an id can drop out of the public mart while still canonical and retire later, and stamping
+the earlier exit would land the row behind the cursor.
 
 This table is a current routing map, not an event log. A row's `surviving_id` is rewritten in
 place when its survivor is itself absorbed (`A -> B` becomes `A -> C` with no new row), a row
@@ -84,10 +88,6 @@ up new retirements between reconciles.
 - A retired cluster whose members scattered to several clusters follows its minting record.
   The other members' destinations are not represented; this is rare and a redirect target for
   such an id is a guess either way.
-- A retired id whose 8-hex prefix collides with a live person keeps resolving to that live
-  person, because no slug is published to break the tie.
-- Ids that were minted but never published as a Person also get rows. Nobody ever held those
-  URLs, so the rows are inert.
 - A survivor that is not a public profile is held back until it is; if that happens after gp-api's
   cursor has passed the row's `retired_at`, gp-api sees it only on a full re-read.
 - A split (a retired id becoming a minter again) drops its row. The id is live again and Person
@@ -96,9 +96,15 @@ up new retirements between reconciles.
 
 ## Operating notes
 
-- **The canonical-ids snapshot may not be dropped or recreated.** `dbt build --full-refresh`
-  leaves snapshots alone, but a manual drop loses the id history and with it every forwarding
-  row.
+- **Neither snapshot may be dropped or recreated.** `dbt build --full-refresh` leaves snapshots
+  alone, but a manual drop loses the id history (and with it every forwarding row) or the slug
+  history (every slug becomes null from then on). Neither may be made `appendOnly`: closing a row
+  is an update.
+- **Recovery.** Both snapshots keep 90 days of Delta history (a post_hook sets the file and log
+  retention, because predictive optimization vacuums this schema on the default 7-day window). A
+  bad run is undone with `RESTORE TABLE <snapshot> TO TIMESTAMP AS OF '<before the run>'`, which
+  needs MODIFY. A dropped table comes back with `UNDROP TABLE <snapshot>` within the schema's
+  recovery window, which needs the owner or MANAGE. Check the window before relying on it.
 - **The Person sync refuses a swap when fewer than 90% of live ids survive.** A dedup pass that
   retires more than a tenth of Person in one run fails the whole swap set closed. Size the
   purge in batches or lower `min_id_overlap` for that run, deliberately.
