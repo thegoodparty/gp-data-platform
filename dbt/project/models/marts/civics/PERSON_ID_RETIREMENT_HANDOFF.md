@@ -63,6 +63,14 @@ history names the record that minted it, and the run that closed its last row is
 `m_election_api__person_merge` maps each retired id to its minting record's current id, keeps
 only survivors that are live public profiles, and stamps `created_at`.
 
+The model tests retirement as "the minting record's current id differs from the id it once
+minted" rather than comparing the history against the whole live set. The two are the same
+test: the minting record is the earliest member of its own cluster, so it carries the id it
+mints for as long as that id exists, and any other record carrying that id would have to be in
+a cluster minted by that same record. This holds only while `gp_person_id` stays a pure hash of
+the minting record. If the mint ever gains a component that is not part of that hash, the
+retirement test has to go back to a set difference against `int__civics_person_canonical_ids`.
+
 ## Write boundary and pull direction
 
 Only the `sync_election_api` DAG writes `PersonMerge`, exactly as with `Person`; the application
