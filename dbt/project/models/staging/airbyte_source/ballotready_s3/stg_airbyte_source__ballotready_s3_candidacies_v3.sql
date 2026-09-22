@@ -70,3 +70,7 @@ from renamed
 where
     {{ dsar_not_suppressed("email", "email") }}
     and {{ dsar_not_suppressed("phone", "phone") }}
+    -- A BallotReady record often has no contact fields at all, so the ids are the
+    -- only handle the register has on it.
+    and {{ dsar_not_suppressed("br_candidate_id", "br_person_id") }}
+    and {{ dsar_not_suppressed("br_candidacy_id", "br_candidacy_id") }}

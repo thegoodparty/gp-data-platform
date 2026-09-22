@@ -121,9 +121,11 @@ with
 select *
 from flattened_contacts_and_urls
 where
-    {{ dsar_not_suppressed("email", "email") }}
-    and {{ dsar_not_suppressed("phone", "phone") }}
-    -- office_phone and central_phone leave this model as their own columns, so a
-    -- suppressed number in the slot the coalesce did not pick must still filter.
-    and {{ dsar_not_suppressed("office_phone", "phone") }}
-    and {{ dsar_not_suppressed("central_phone", "phone") }}
+    -- The whole contacts list leaves this model, not just the email and phones
+    -- picked out of it, so every entry is checked.
+    {{ dsar_none_suppressed("transform(contacts, c -> c.email)", "email") }}
+    and {{ dsar_none_suppressed("transform(contacts, c -> c.phone)", "phone") }}
+    -- A BallotReady record often has no contact fields at all, so the ids are the
+    -- only handle the register has on it.
+    and {{ dsar_not_suppressed("br_candidate_id", "br_person_id") }}
+    and {{ dsar_not_suppressed("br_candidacy_id", "br_candidacy_id") }}

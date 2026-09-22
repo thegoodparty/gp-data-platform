@@ -158,10 +158,21 @@ Which type each source is filtered on:
 
 | identifier_type | filters |
 |---|---|
-| `email` | gp-api users, HubSpot contacts and companies, HubSpot archive models, BallotReady candidacies and office holders, TechSpeed candidates and officeholders |
+| `email` | gp-api users, HubSpot contacts, companies, calls and feedback submissions, HubSpot archive models, BallotReady candidacies and office holders (every entry in the contacts list), TechSpeed candidates and officeholders |
 | `phone` | the same set |
+| `br_person_id`, `br_candidacy_id` | BallotReady candidacies and office holders, by id |
 | `gp_api_user_id` | Amplitude events |
+| `hs_contact_id` | HubSpot feedback submissions |
 | `ddhq_candidate_id` | DDHQ election results |
+
+**Record the BallotReady ids whenever the sweep finds a BallotReady record.** Many
+officeholder rows carry no email or phone at all, so the ids are the only handle the
+filters have on them. The sweep prints `br_person_id` (BallotReady's `candidate_id`) and
+`br_candidacy_id` on each hit.
+
+Phones are stored as digits with any leading US country code dropped, so ten digits for a
+US number. The filters normalize both sides the same way, so a source that writes
+`+1 (202) 555-0100` still matches a register row of `2025550100`.
 
 Drop the rows that do not apply. A subject with no gp-api account has no
 `gp_api_user_id` to record, and the constraints will reject a blank one.
@@ -207,14 +218,21 @@ these needs an explicit `DELETE`:
 
 Stop there. No purge, no vacuum.
 
-## Step 5: rebuild downstream
+## Step 5: rebuild downstream, in this order
 
-- `dbt build --full-refresh` on the affected selectors, which clears `mart_civics` and
-  `mart_analytics`.
-- Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
-  excluding the person from `m_election_api__person` removes them from the serving
-  database with no direct delete.
-- Rerun matcha so `er_source.*` regenerates from clean inputs.
+Entity resolution sits in the middle of the chain: matcha reads the `int__er_prematch_*`
+models and writes `er_source.*`, which the person and candidacy marts read back. Rebuild
+the marts before matcha has rerun and they carry the person's name and contact details
+from the previous clustering, and the publish that follows serves them for another day.
+
+1. `dbt build` the `int__er_prematch_*` models, so matcha's inputs come from the filtered
+   staging layer.
+2. Rerun matcha, so `er_source.*` regenerates without the person.
+3. `dbt build --full-refresh` on the affected selectors downstream, which clears
+   `mart_civics` and `mart_analytics`.
+4. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
+   excluding the person from `m_election_api__person` removes them from the serving
+   database with no direct delete.
 
 ## Step 6: verify
 

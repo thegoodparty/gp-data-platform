@@ -63,11 +63,14 @@ NO_PERSON_COLUMNS = [
 
 def lit(value: str) -> str:
     """Render a SQL string literal, escaping quotes and backslashes."""
-    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+    # Backslash escapes only. Databricks evaluates a doubled quote inside a literal
+    # to nothing, so 'O''Brien' searches for OBrien and misses the person.
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def digits(value: str) -> str:
-    return re.sub(r"[^0-9]", "", value or "")
+    """Digits only, minus a leading US country code, matching dsar_normalize in dbt."""
+    return re.sub(r"^1([0-9]{10})$", r"\1", re.sub(r"[^0-9]", "", value or ""))
 
 
 NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "md", "phd", "esq"}
