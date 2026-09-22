@@ -77,6 +77,32 @@ with
         inner join live_contacts as lc on lc.hs_contact_id = pi.source_id
         where pi.source_name = 'hubspot'
         group by pi.gp_person_id
+    ),
+
+    -- meta_data.customerId is a native foreign key our own product writes when
+    -- a logged-in user checks out, so this is a join and not a match. Stripe is
+    -- deliberately not a person-graph source: entity resolution exists to
+    -- reconcile records that do not share a key.
+    stripe as (
+        select
+            cast(id as bigint) as user_id,
+            get_json_object(meta_data, '$.customerId') as stripe_customer_id
+        from {{ ref("stg_airbyte_source__gp_api_db_user") }}
+    ),
+
+    -- One customer id can sit on two accounts, 41 today. Consumers summing
+    -- revenue must sum over distinct ids; this count is how they detect it.
+    stripe_fanout as (
+        select stripe_customer_id, count(*) as stripe_customer_count
+        from stripe
+        where stripe_customer_id is not null
+        group by stripe_customer_id
+    ),
+
+    owners as (
+        select distinct user_id
+        from {{ ref("organizations") }}
+        where user_id is not null
     )
 
 select
@@ -98,9 +124,19 @@ select
         when hubspot_key_source = 'person_group'
         then gc.fallback_hs_contact_id
     end as hubspot_contact_id,
-    coalesce(gc.hubspot_contact_count, 0) as hubspot_contact_count
+    coalesce(gc.hubspot_contact_count, 0) as hubspot_contact_count,
+    s.stripe_customer_id,
+    coalesce(sf.stripe_customer_count, 0) as stripe_customer_count,
+    o.user_id is not null as owns_organization,
+    -- Team membership is not ingested: no organization_membership stream
+    -- exists, and there is no Airbyte stream config in this repo to add one.
+    -- Ships null so consumers see "unknown" rather than a fabricated zero.
+    cast(null as bigint) as team_member_count
 from users as u
 left join account_ranks as r using (user_id)
 left join groups as g using (user_id)
 left join own_contact as oc using (user_id)
 left join group_contacts as gc on gc.gp_person_id = u.gp_person_id
+left join stripe as s using (user_id)
+left join stripe_fanout as sf on sf.stripe_customer_id = s.stripe_customer_id
+left join owners as o using (user_id)

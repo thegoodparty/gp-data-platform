@@ -94,3 +94,35 @@ models:
           - accepted_values:
               arguments:
                 values: ["own_live_id", "person_group", "none"]
+      - name: stripe_customer_id
+        description: >
+          Stripe customer for this account, read from the user record's own
+          meta_data.customerId. A native foreign key our product writes at
+          checkout, so this is a join rather than a match, and Stripe is
+          deliberately not a person-graph source. Null for the large majority
+          of users, who have never paid.
+      - name: stripe_customer_count
+        description: >
+          User accounts carrying this row's Stripe customer id. Greater than one
+          for about 41 ids, where one human paid from two accounts. Lifetime
+          revenue must sum over distinct customer ids or it double counts those.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: owns_organization
+        description: >
+          The user owns at least one organization, Win or Serve. Carried partly
+          so the size of the team-accounts problem stays measurable: a user who
+          owns nothing is either an abandoned signup or an invited team member,
+          and today those two cannot be told apart.
+        data_tests:
+          - not_null
+      - name: team_member_count
+        description: >
+          Always null. Team membership is not ingested, so a staffer cannot be
+          distinguished from an abandoned signup. Null rather than zero, because
+          a zero meaning "unknown" cannot be told from a real zero. Populate it
+          when the membership stream lands.
