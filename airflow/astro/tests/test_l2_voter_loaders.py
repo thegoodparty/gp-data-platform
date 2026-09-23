@@ -24,7 +24,9 @@ BASE = "VM2--MO--2026-08-03"
 MODIFIED = datetime(2026, 8, 3, 20, 0, tzinfo=UTC)
 MODIFIED_TS = MODIFIED.timestamp()
 STAGED = MODIFIED + timedelta(minutes=30)
-UNIFORM = "VM2Uniform--MO--2026-08-03.tab"
+UNIFORM_BASE = "VM2Uniform--MO--2026-08-03"
+UNIFORM = f"{UNIFORM_BASE}.tab"
+UNIFORM_MEMBERS = [UNIFORM, f"{UNIFORM_BASE}_DataDictionary.csv"]
 
 VOTE_HISTORY_ROWS = b"LALVOTERID\tGeneral_2024\nLALMO1\tY\n"
 MEMBERS = [
@@ -41,7 +43,7 @@ UNSTAGED = [
 # One real archive name per group. A group added without one fails the grammar test below.
 ARCHIVE_SAMPLES = {
     "VM2": f"{BASE}.zip",
-    "VM2Uniform": "VM2Uniform--MO--2026-08-03.zip",
+    "VM2Uniform": f"{UNIFORM_BASE}.zip",
     "HaystaqFlags": "mo_haystaqdnaflags_20260520.tab.zip",
     "HaystaqScores": "mo_haystaqdnascores_20260520.tab.zip",
 }
@@ -63,6 +65,15 @@ def vm2_archive() -> bytes:
         archive.writestr(UNSTAGED[2], b"ignored\n")
         archive.writestr(MEMBERS[0], VOTE_HISTORY_ROWS)
         archive.writestr(MEMBERS[1], _data_dictionary(4))
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def uniform_archive() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(UNIFORM_MEMBERS[0], b"LALVOTERID\tZip\nLALMO1\t01854\n")
+        archive.writestr(UNIFORM_MEMBERS[1], _data_dictionary(24))
     return buffer.getvalue()
 
 
@@ -126,11 +137,13 @@ class FakeConnection:
         return self.cursor_obj
 
 
-def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
+def _source(
+    members=None, file_name=f"{BASE}.zip", folder="MO", size=1024, group="VM2", remote_dir="/VMFiles"
+):
     return {
-        "group": "VM2",
+        "group": group,
         "folder": folder,
-        "remote_path": f"/VMFiles/{file_name}",
+        "remote_path": f"{remote_dir}/{file_name}",
         "members": members,
         "size_bytes": size,
         "modified_at": MODIFIED.isoformat(),
@@ -225,6 +238,15 @@ class TestSyncSource:
         assert s3_client.objects[f"staging/prod/MO/{MEMBERS[0]}"] == VOTE_HISTORY_ROWS
         assert [name for name in UNSTAGED if f"staging/prod/MO/{name}" in s3_client.objects] == []
         written = s3_client.objects[f"staging/prod/MO/{MEMBERS[1]}"].decode()
+        assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
+
+    def test_trims_the_uniform_dictionary(self, uniform_archive, tmp_path):
+        """Uniform's is the only 24-row legend we still stage, and it ships in its own archive."""
+        source = _source(UNIFORM_MEMBERS, f"{UNIFORM_BASE}.zip", group="VM2Uniform", remote_dir="/VM2Uniform")
+        s3_client, keys = self._sync(uniform_archive, source, tmp_path)
+
+        assert keys == [f"staging/prod/MO/{member}" for member in UNIFORM_MEMBERS]
+        written = s3_client.objects[f"staging/prod/MO/{UNIFORM_MEMBERS[1]}"].decode()
         assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
 
     def test_refuses_an_archive_larger_than_the_free_space(self, monkeypatch, tmp_path):
