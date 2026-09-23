@@ -71,3 +71,11 @@ def test_insert_sql_quotes_the_statement_api_way():
     assert "timestamp'2026-09-18 14:30:00'" in sql
     assert "'O\\'Brien Ward 1'" in sql
     assert ", 7, " in sql and ", NULL, NULL, NULL, false)" in sql
+
+
+def test_insert_is_chunked_for_the_cli_argument_limit():
+    ids = [str(i) for i in range(1, 1201)]
+    rows = bsr.shadow_rows([office(i) for i in ids], dict.fromkeys(ids, "R2_slice_asserted"), **RUN)
+    chunks = bsr.insert_sql_chunks("cat.sch.tbl", rows, size=500)
+    assert [c.count("\n(") for c in chunks] == [500, 500, 200]
+    assert all(c.startswith("insert into cat.sch.tbl (") for c in chunks)

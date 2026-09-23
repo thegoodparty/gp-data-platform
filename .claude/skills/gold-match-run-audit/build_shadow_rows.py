@@ -5,7 +5,9 @@ the supervised-monitoring table (SKILL.md, "Supervised monitoring of a matcher r
     uv run python build_shadow_rows.py run-<date>-offices.csv classes-<date>.csv universe-<date>.csv \
         --run-key '2026-09-18 14:30:00' --image-git-sha <40-hex> --shape B_live --out shadow-<date>
 
-writes <out>.csv (for the record) and <out>.sql (one INSERT; run it with dbsql.py -f on the owner's go).
+writes <out>.csv (for the record) and <out>-partNN.sql, one INSERT of at most 500 rows each (the CLI hands SQL to the
+warehouse as a process argument, and one statement for a whole re-attempt wave exceeds the OS limit); run each with dbsql.py -f on the
+owner's go, in name order.
 """
 
 from __future__ import annotations
@@ -99,6 +101,13 @@ def insert_sql(table, rows):
     return f"insert into {table} ({', '.join(COLUMNS)}) values\n{values}"
 
 
+INSERT_CHUNK_ROWS = 500  # about 145 KB of SQL per statement; the CLI argument limit is near 1 MB
+
+
+def insert_sql_chunks(table, rows, size=INSERT_CHUNK_ROWS):
+    return [insert_sql(table, rows[i : i + size]) for i in range(0, len(rows), size)]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("offices_csv")
@@ -128,11 +137,15 @@ def main(argv=None):
         w = csv.DictWriter(fh, fieldnames=COLUMNS)
         w.writeheader()
         w.writerows(rows)
-    with open(f"{a.out}.sql", "w") as fh:
-        fh.write(insert_sql(TABLE, rows))
+    chunks = insert_sql_chunks(TABLE, rows)
+    for i, sql in enumerate(chunks):
+        with open(f"{a.out}-part{i:02d}.sql", "w") as fh:
+            fh.write(sql)
     in_class = sum(r["rule_class"] in ABSTAIN_LABELS for r in rows)
     divergent = sum(r["divergent"] for r in rows)
-    print(f"{len(rows)} rows, {in_class} in-class abstains, {divergent} divergent -> {a.out}.csv / .sql")
+    print(
+        f"{len(rows)} rows, {in_class} in-class abstains, {divergent} divergent -> {a.out}.csv + {len(chunks)} INSERT part files"
+    )
 
 
 if __name__ == "__main__":
