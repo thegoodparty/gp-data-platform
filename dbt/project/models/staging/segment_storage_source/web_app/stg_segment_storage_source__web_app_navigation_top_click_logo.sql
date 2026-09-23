@@ -1,1 +1,2 @@
-{{ segment_staging("segment_storage_source_web_app", "navigation_top_click_logo") }}
+select *
+from {{ source("segment_storage_source_web_app", "navigation_top_click_logo") }}

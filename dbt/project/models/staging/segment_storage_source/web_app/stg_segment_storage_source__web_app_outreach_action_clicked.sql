@@ -1,1 +1,1 @@
-{{ segment_staging("segment_storage_source_web_app", "outreach_action_clicked") }}
+select * from {{ source("segment_storage_source_web_app", "outreach_action_clicked") }}

@@ -1,1 +1,2 @@
-{{ segment_staging("segment_storage_source_web_app", "download_voter_file_failure") }}
+select *
+from {{ source("segment_storage_source_web_app", "download_voter_file_failure") }}

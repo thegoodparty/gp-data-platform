@@ -165,7 +165,7 @@ registering it would remove a whole council.
 
 | identifier_type | filters |
 |---|---|
-| `gp_api_user_id` | gp-api users, Amplitude events, every Segment staging model (both the gp-api and web-app schemas) |
+| `gp_api_user_id` | gp-api users and campaigns, Amplitude events. Segment is not filtered in the warehouse; its control is suppression at Segment (Step 3), per the legal review |
 | `hs_contact_id` | HubSpot contacts, the contacts archive, feedback submissions |
 | `email`, `phone` | gp-api users, HubSpot contacts, companies, calls, feedback submissions and archive models. First-party only. |
 | `br_person_id`, `br_candidacy_id` | BallotReady candidacies and office holders, the Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through BallotReady: officeholders by BallotReady's office holder id, candidates by BallotReady race plus name |

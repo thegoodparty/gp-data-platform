@@ -1,5 +1,8 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app", "serve_onboarding_poll_value_props_viewed"
-    )
-}}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app",
+            "serve_onboarding_poll_value_props_viewed",
+        )
+    }}

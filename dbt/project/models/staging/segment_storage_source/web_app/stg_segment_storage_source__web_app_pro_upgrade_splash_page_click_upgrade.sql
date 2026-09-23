@@ -1,5 +1,7 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app", "pro_upgrade_splash_page_click_upgrade"
-    )
-}}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app", "pro_upgrade_splash_page_click_upgrade"
+        )
+    }}

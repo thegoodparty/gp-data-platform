@@ -1,1 +1,2 @@
-{{ segment_staging("segment_storage_source_web_app", "sign_in_click_create_account") }}
+select *
+from {{ source("segment_storage_source_web_app", "sign_in_click_create_account") }}

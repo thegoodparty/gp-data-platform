@@ -1,5 +1,7 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app", "onboarding_pledge_step_click_submit"
-    )
-}}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app", "onboarding_pledge_step_click_submit"
+        )
+    }}

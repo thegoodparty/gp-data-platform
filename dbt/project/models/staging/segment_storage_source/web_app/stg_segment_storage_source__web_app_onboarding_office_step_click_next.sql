@@ -1,5 +1,2 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app", "onboarding_office_step_click_next"
-    )
-}}
+select *
+from {{ source("segment_storage_source_web_app", "onboarding_office_step_click_next") }}

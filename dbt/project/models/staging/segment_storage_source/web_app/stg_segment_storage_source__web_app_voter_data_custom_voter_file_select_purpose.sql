@@ -1,6 +1,8 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app",
-        "voter_data_custom_voter_file_select_purpose",
-    )
-}}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app",
+            "voter_data_custom_voter_file_select_purpose",
+        )
+    }}

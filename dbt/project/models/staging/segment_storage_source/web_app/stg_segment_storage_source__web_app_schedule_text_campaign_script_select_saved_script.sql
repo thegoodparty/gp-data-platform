@@ -1,6 +1,8 @@
-{{
-    segment_staging(
-        "segment_storage_source_web_app",
-        "schedule_text_campaign_script_select_saved_script",
-    )
-}}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app",
+            "schedule_text_campaign_script_select_saved_script",
+        )
+    }}

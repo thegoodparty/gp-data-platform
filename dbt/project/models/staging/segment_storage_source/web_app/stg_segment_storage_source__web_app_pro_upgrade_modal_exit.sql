@@ -1,1 +1,1 @@
-{{ segment_staging("segment_storage_source_web_app", "pro_upgrade_modal_exit") }}
+select * from {{ source("segment_storage_source_web_app", "pro_upgrade_modal_exit") }}

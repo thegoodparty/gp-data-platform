@@ -155,17 +155,3 @@
         where suppressed.suppressed_contact_id = {{ contact_id_column }}
     )
 {% endmacro %}
-
-
-{% macro segment_staging(
-    source_name, table_name, identifiers=[["user_id", "gp_api_user_id"]]
-) %}
-    {#- A Segment staging model: the source, filtered on each identifier that belongs to one person. -#}
-    select *
-    from {{ source(source_name, table_name) }}
-    where
-        {%- for column_name, identifier_type in identifiers %}
-            {{ "and " if not loop.first }}
-            {{ dsar_not_suppressed(column_name, identifier_type) }}
-        {%- endfor %}
-{% endmacro %}
