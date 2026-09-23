@@ -71,3 +71,48 @@ def test_insert_sql_quotes_the_statement_api_way():
     assert "timestamp'2026-09-18 14:30:00'" in sql
     assert "'O\\'Brien Ward 1'" in sql
     assert ", 7, " in sql and ", NULL, NULL, NULL, false)" in sql
+
+
+def test_insert_chunks_stay_under_the_argument_byte_ceiling():
+    ids = [str(i) for i in range(1, 1201)]
+    rows = bsr.shadow_rows([office(i) for i in ids], dict.fromkeys(ids, "R2_slice_asserted"), **RUN)
+    chunks = bsr.insert_sql_chunks("cat.sch.tbl", rows, max_bytes=20_000)
+    assert len(chunks) > 1 and all(len(c.encode()) <= 20_000 for c in chunks)
+    assert sum(c.count("\n(") for c in chunks) == 1200
+    assert all(c.startswith("insert into cat.sch.tbl (") for c in chunks)
+
+
+def _write_run(tmp_path, n):
+    import csv
+
+    offices = [office(str(i)) for i in range(1, n + 1)]
+    with open(tmp_path / "o.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(offices[0].keys()))
+        w.writeheader()
+        w.writerows(offices)
+    with open(tmp_path / "c.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["br_database_id", "rule_class"])
+        w.writerows([o["br_database_id"], "R2_slice_asserted"] for o in offices)
+    with open(tmp_path / "u.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["state_postal_code", "district_type", "district_name", "loaded_at"])
+        w.writerow(["OR", "City", "TOLEDO", "2026-09-18 08:07:00"])
+    args = [str(tmp_path / "o.csv"), str(tmp_path / "c.csv"), str(tmp_path / "u.csv")]
+    return args + [
+        "--run-key",
+        "2026-09-18 14:30:00",
+        "--image-git-sha",
+        "abc",
+        "--shape",
+        "B_live",
+        "--out",
+        str(tmp_path / "shadow"),
+    ]
+
+
+def test_regenerating_a_prefix_removes_its_stale_parts(tmp_path):
+    bsr.main(_write_run(tmp_path, 700))
+    assert len(list(tmp_path.glob("shadow-part*.sql"))) > 1
+    bsr.main(_write_run(tmp_path, 3))
+    assert [p.name for p in tmp_path.glob("shadow-part*.sql")] == ["shadow-part00.sql"]
