@@ -23,6 +23,7 @@ models:
           everything else trimmed. A blank would match every row whose identifier
           normalizes to empty, so the table's CHECK constraint is repeated here.
         data_tests:
+          - not_null
           - dbt_utils.not_empty_string
       - name: received_at
         description: Date the request was received, which starts the 45-day response clock
