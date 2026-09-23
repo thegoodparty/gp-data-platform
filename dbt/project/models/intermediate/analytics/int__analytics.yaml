@@ -101,8 +101,8 @@ models:
                 values: ["own_live_id", "person_group", "none"]
       - name: stripe_customer_id
         description: >
-          Stripe customer for this account, read from the user record's own
-          meta_data.customerId. A native foreign key our product writes at
+          Stripe customer for this account, the user staging model's
+          stripe_customer_id. A native foreign key our product writes at
           checkout, so this is a join rather than a match, and Stripe is
           deliberately not a person-graph source. Null for the large majority
           of users, who have never paid.
