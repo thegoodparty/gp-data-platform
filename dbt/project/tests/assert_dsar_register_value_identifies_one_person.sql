@@ -27,24 +27,24 @@ with
         where identifier_type in ('email', 'phone')
     ),
 
-    -- One (type, value, person) row per contact field, so the register joins on
-    -- equality.
+    -- One (type, value, person) row per contact field, from a single pass per source.
     people as (
         {%- for source_name, id_column, email_column, phone_column in first_party %}
             select
                 '{{ source_name }}' as source_name,
-                'email' as identifier_type,
-                {{ dsar_normalize(email_column, "email") }} as identifier_value,
+                contact.identifier_type,
+                contact.identifier_value,
                 {{ id_column }} as person_id
             from {{ source("airbyte_source", source_name) }}
-            union all
-            select
-                '{{ source_name }}',
-                'phone',
-                {{ dsar_normalize(phone_column, "phone") }},
-                {{ id_column }}
-            from
-                {{ source("airbyte_source", source_name) }}
+            lateral view
+                stack(
+                    2,
+                    'email',
+                    {{ dsar_normalize(email_column, "email") }},
+                    'phone',
+                    {{ dsar_normalize(phone_column, "phone") }}
+                ) contact as identifier_type,
+                identifier_value
                 {{ "union all" if not loop.last }}
         {%- endfor %}
     )

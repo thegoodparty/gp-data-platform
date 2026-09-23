@@ -6,57 +6,41 @@ description: Process a data subject deletion request (CCPA right to be forgotten
 # DSAR deletion
 
 Work a data subject deletion request from intake to response. The response deadline is
-**45 calendar days from receipt**, so establish the receipt date before anything else.
+45 calendar days from receipt, so establish the receipt date before anything else.
 
 ## Scope decisions already settled
 
 These came out of legal review on the first request. Do not re-open them per request.
 
-- **Logical deletion satisfies the statute.** A Delta `DELETE` is enough. Do not run
-  `REORG ... APPLY (PURGE)` or `VACUUM`, and do not try to rewrite vendor files in S3.
-- **The L2 voter file is out of scope.** We cannot delete from a third party's file and it
+- Logical deletion satisfies the statute. Do not purge or vacuum, and do not rewrite
+  vendor files in S3.
+- The L2 voter file is out of scope. We cannot delete from a third party's file and it
   re-ingests on every state refresh. Do not sweep it, do not suppress from it, and do not
-  record a subject-to-`LALVOTERID` link anywhere. An identifier we never filter on is
-  personal information retained for no permitted purpose.
-- **Vendor civic records are treated as public records.** BallotReady, DDHQ and TechSpeed
-  candidate and officeholder data is outside our control. We filter it at staging rather
-  than chasing deletes through the vendor.
-- **Stripe rows stay.** Financial recordkeeping. Anonymize the name, email and billing
+  record a subject-to-`LALVOTERID` link anywhere.
+- Vendor civic records (BallotReady, DDHQ, TechSpeed) are public records outside our
+  control. We filter them at staging rather than chasing deletes through the vendor.
+- Stripe rows stay for financial recordkeeping. Anonymize the name, email and billing
   address; keep the transaction.
-- **No third-party notification is required.** We do not have to forward the request to
-  TechSpeed, Clerk, Peerly or anyone else we sent data to.
-- **The request record itself is retained for 24 months.** The support ticket quoting the
-  person's details is required evidence, not a leftover. Never delete it to be thorough.
+- No third-party notification is required.
+- The request record itself is retained for 24 months as evidence. Never delete it.
 
 ## The suppression table
 
-`goodparty_data_catalog.source_dsar.suppressed_identifiers`. Hand-curated by data
-engineers with `insert into` and `delete`. dbt reads it as a source and never writes it.
+`goodparty_data_catalog.source_dsar.suppressed_identifiers`, one row per identifier per
+request. Hand-curated by data engineers with `insert into` and `delete`; dbt reads it and
+never writes it.
 
-Grain is one row per identifier per request:
-`request_id, subject_name, identifier_type, identifier_value, received_at, respond_by,
-notes, created_at, created_by`.
+Presence means suppress. There is no flag. If a record is found but deliberately left
+alone, document that on the ticket and leave it out of the table.
 
-**Presence means suppress.** There is no flag. Everything in the table gets filtered,
-unconditionally. If a record is found but deliberately left alone, document that on the
-ticket and leave it out of the table.
+Staging models apply it with the `dsar_not_suppressed(column, identifier_type)` macro,
+which owns the normalization. The accepted identifier types are the ones some filter
+matches on; a type nothing filters is rejected by a dbt test, because a row of that type
+would silently do nothing. The table's CHECK constraints reject blank, unnormalized and
+unknown values.
 
-dbt reads the table through the `source_dsar` source and the
-`stg_source_dsar__suppressed_identifiers` staging model, which exposes only the
-identifier columns so the requester's name is not copied into a wider schema. Staging
-models apply it with the `dsar_not_suppressed(column, identifier_type)` macro, which
-owns the normalization so no caller can match the register a different way.
-
-Five check constraints reject bad inserts: `identifier_value_not_blank` (a blank matches
-every source row whose identifier normalizes to an empty string, so one would suppress
-most of the warehouse), `identifier_type_known` (11 allowed types, with `lalvoterid`
-deliberately excluded because L2 is out of scope), `ddhq_candidate_id_digits`,
-`email_normalized` (lowercased and trimmed), `phone_digits_only` (10 to 15 digits, no
-punctuation). Unity Catalog does not enforce uniqueness, so duplicates are caught by a dbt
-test rather than the table.
-
-**Never put an identifier in the repo.** No dbt seed, no fixture, no test, no comment, no
-example in documentation. This repo is public. Identifiers live in Databricks only.
+Never put an identifier in the repo: no seed, fixture, test, comment or documentation
+example. This repo is public.
 
 ## Step 0: intake
 
@@ -66,9 +50,11 @@ was verified on the ticket.
 Collect the receipt date, the name, and every contact detail given. Compute respond-by as
 receipt plus 45 calendar days.
 
-Find the source ticket in `airbyte_source.hubspot_api_tickets`. The ClickUp custom field
-naming the HubSpot ticket has been wrong before, so match on content rather than trusting
-it, and correct the field if it disagrees.
+Read the whole HubSpot conversation, not only the first message. The warehouse copy of
+`airbyte_source.hubspot_api_tickets` holds only the opening message, and a later message
+may widen the request (a profile removal that becomes a full deletion) or add identifiers.
+The ClickUp custom field naming the HubSpot ticket has been wrong before, so match on
+content and correct the field if it disagrees.
 
 ## Step 1: scope
 
@@ -81,186 +67,128 @@ cd analytics && uv run python ../.claude/skills/dsar-deletion/scope_subject.py \
 Pass `--address` whenever the request includes one. A vendor or lead record often carries
 the street address when it carries nothing else you can match on.
 
-The output has two parts, and they answer different questions.
+Read the ANCHOR block first. It reports exact-surname counts per person-bearing source;
+any non-zero is a record to act on. Then read the fuzzy hits. Surnames are matched by
+substring, so hyphenated and mis-split names still land, at the cost of false positives
+(a search for "Mboh" also returns "Schlumbohm"). Read the row before treating a fuzzy hit
+as a match.
 
-**Read the ANCHOR block first.** It reports exact-surname counts across the eleven
-person-bearing sources. Zero everywhere is a clean negative. Any non-zero is a record to
-act on.
+Rerun the sweep with every identifier the first pass surfaces. A vendor record often
+carries a different email or phone than the request, and those need registering too.
 
-**Then read the fuzzy hits.** Surnames are matched by substring, so "First M Last", a
-hyphenated surname, and a middle name sitting in the first-name field all still land.
-The cost is false positives: searching for "Mboh" also returns "Schlumbohm" and
-"Bohnenkamp", because the substring appears inside those names. Eyeball them; do not
-treat a fuzzy hit as a match without reading the row.
+The sweep reads raw sources, never the filtered staging models, so it reports what we
+hold regardless of who is already suppressed. Probes that error are not clear; check them
+by hand. `--deep` adds the `airbyte_internal` raw JSON, which is slow enough to be off by
+default.
 
-Both matter. The anchor alone would miss a misspelling or a name split across the wrong
-fields. The fuzzy pass alone buries a real answer in noise.
-
-Coverage is roughly 25 probes: product data, HubSpot contacts and companies including
-the archive and snapshot copies, Segment, Amplitude, Stripe, ClickUp, the vendor civic
-sources, the BallotReady GraphQL person payloads, the entity-resolution cluster tables,
-and the two `historical.ballotready_records_sent_to_*` disclosure logs. Those last two
-are worth reading even on a clean sweep: they record what we sent onward to HubSpot and
-TechSpeed, which is what tells you whether anyone else received the person's data.
-
-`--deep` adds the `airbyte_internal` raw JSON, which holds every version ever extracted.
-It is slow enough to exhaust the connector's retry budget on the X-Small warehouse, so it
-is off by default. Use it when you expect a hit and the normal sweep does not find one.
-
-Probes that error are not clear. Check them by hand before concluding anything. Probes
-taking over 60 seconds are listed separately so a slow source is visible rather than
-silently near timeout.
-
-**The sweep reads raw sources, never the filtered staging models.** Its job is to report
-what we hold, and a staging model with `dsar_not_suppressed` applied hides exactly the
-rows an audit needs to see. A record suppressed for an earlier subject would otherwise
-read as absent for a new one. This also means suppressing someone does not make them
-disappear from the sweep, which is what you want at Step 6: only a real delete does.
-
-Three source families are listed as not probed because they have no person-level columns
-at all: `ballotready_s3_recruitment_v1` is race and position level, the DDHQ gsheet
-tables are keyed on `race_id`, and the CivicEngine GraphQL tables carry no person names.
-They are reported so a reader can see they were considered rather than forgotten.
-
-If the subject appears in `mart_civics.people`, the sweep also returns their
-`mart_civics.person_identifiers` rows, one per contributing source record, which tells
-you which vendors hold them. That view only reflects what entity resolution clustered, so
-a record the matcher missed will not appear. Trust the sweep over the view for negatives.
+The two `historical.ballotready_records_sent_to_*` probes are worth reading even on a
+clean sweep: they record what we sent onward to HubSpot and TechSpeed.
 
 ## Step 2: record the identifiers
 
-Insert one row per identifier the sweep surfaced. Email and phone are worth recording
-even when nothing matches them today, because they are the standing guard if a vendor
-delivers the person later.
+Insert one row per identifier the sweep surfaced. The sweep prints an insert template
+with the columns filled in.
 
-**Record every identifier type the filters key on, not just the email.** Each staging
-filter matches one type, so an identifier you leave out is a filter that silently passes
-everyone through. In particular Amplitude keys on `gp_api_user_id`, because its `user_id`
-column is the gp-api user id and never an email address. If the subject has a gp-api
-account and you record only their email, Amplitude events are not suppressed.
-
-```sql
-insert into goodparty_data_catalog.source_dsar.suppressed_identifiers
-    (request_id, subject_name, identifier_type, identifier_value,
-     received_at, respond_by, notes, created_at, created_by)
-values ('DATA-XXXX', '<name>', 'email', '<lowercased email>',
-        date '<received>', date '<received + 45d>', '<why>',
-        current_timestamp(), '<you>'),
-       ('DATA-XXXX', '<name>', 'phone', '<digits only>',
-        date '<received>', date '<received + 45d>', '<why>',
-        current_timestamp(), '<you>'),
-       ('DATA-XXXX', '<name>', 'gp_api_user_id', '<numeric id from the sweep>',
-        date '<received>', date '<received + 45d>', '<why>',
-        current_timestamp(), '<you>');
-```
+The rule: match on the identifier that belongs to exactly one person in that source.
+First-party sources, where an email or phone is the person's own, check their record id
+and the personal contact fields. Vendor civic records check the vendor's id only. In the
+BallotReady officeholder file a phone is shared by two or more people a third of the
+time, and one switchboard number is shared by 287 officeholders.
 
 Which type each source is filtered on:
 
-**The rule: match on the identifier that belongs to exactly one person in that source.**
-First-party sources, where an email or phone is the person's own, check their record id
-and the personal contact fields. Vendor civic records check the vendor's id only, never
-a contact field. In the BallotReady officeholder file a phone is shared by two or more
-people a third of the time, and one switchboard number is shared by 287 officeholders;
-registering it would remove a whole council.
+- `gp_api_user_id`: gp-api users and campaigns, Amplitude events. Segment is not filtered
+  in the warehouse; its control is suppression at Segment (Step 3).
+- `hs_contact_id`: HubSpot contacts, the contacts archive, feedback submissions.
+- `email`, `phone`: gp-api users and the HubSpot contacts, companies, calls, feedback
+  submissions and archive models. First-party only.
+- `br_person_id`, `br_candidacy_id`: BallotReady candidacies and office holders, the
+  Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through
+  BallotReady (officeholders by office holder id, candidates by race plus name).
+- `ddhq_candidate_id`: DDHQ election results, valid and invalid.
 
-| identifier_type | filters |
-|---|---|
-| `gp_api_user_id` | gp-api users and campaigns, Amplitude events. Segment is not filtered in the warehouse; its control is suppression at Segment (Step 3), per the legal review |
-| `hs_contact_id` | HubSpot contacts, the contacts archive, feedback submissions |
-| `email`, `phone` | gp-api users, HubSpot contacts, companies, calls, feedback submissions and archive models. First-party only. |
-| `br_person_id`, `br_candidacy_id` | BallotReady candidacies and office holders, the Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through BallotReady: officeholders by BallotReady's office holder id, candidates by BallotReady race plus name |
-| `ddhq_candidate_id` | DDHQ election results, valid and invalid |
+Record the BallotReady ids whenever the sweep finds a BallotReady record; they are the
+only handle the filters have on vendor civic data. The person id covers every candidacy
+and term, a candidacy id covers that one.
 
-**Record the BallotReady ids whenever the sweep finds a BallotReady record.** They are
-the only handle the filters have on vendor civic data. The sweep prints `br_person_id`
-(BallotReady's `candidate_id`) and `br_candidacy_id` on each hit. Registering the person
-id covers every candidacy and term; registering a candidacy id covers that one.
+Never register a shared value. The sweep ends with a register guard that counts how many
+distinct people each proposed email and phone matches in gp-api and HubSpot. Above one is
+a campaign inbox or an office line; suppress that person through their ids instead. A
+warn-level dbt test repeats the check nightly.
 
-**Never register a shared value.** The sweep's register guard reports how many distinct
-people each proposed email and phone matches in gp-api and HubSpot. Anything above one is
-a campaign inbox or an office line, and it does not go in the register; suppress that
-person through their ids instead. A warn-level dbt test repeats the check nightly.
-
-Phones are stored as digits with any leading US country code dropped, so ten digits for a
-US number. The filters normalize both sides the same way, so a source that writes
-`+1 (202) 555-0100` still matches a register row of `2025550100`.
-
-Drop the rows that do not apply. A subject with no gp-api account has no
-`gp_api_user_id` to record, and the constraints will reject a blank one.
+Phones are stored as digits with any leading US country code dropped. The filters
+normalize both sides the same way, so `+1 (202) 555-0100` in a source still matches
+`2025550100` in the register.
 
 ## Step 3: delete at the sources, in this order
 
 Order matters. Clearing a warehouse copy before its source means the next sync restores it.
 
-1. **HubSpot.** Confirm the person is excluded from `mart_sales_reverse_etl.candidacy_hubspot`
+1. HubSpot. Confirm the person is excluded from `mart_sales_reverse_etl.candidacy_hubspot`
    and `candidacy_techspeed` first, or the reverse-ETL recreates them. Then use the GDPR
-   delete endpoint, which permanently deletes and blocks recreation with the same email.
-2. **gp-api.** Run the admin delete flow. It removes the Postgres row in a transaction,
-   deletes the Clerk user, and cancels the Stripe subscription. Then check the tables with
-   no foreign key to `user` by hand: `campaign_plan_version`, `chat_message`,
-   `website_contact`, `poll_individual_message`, `voter_file_filter`.
-3. **Clerk.** Confirm the delete landed rather than assuming the cascade worked.
-4. **Stripe.** Anonymize the customer, charge and invoice records. Keep the rows.
-5. **Segment.** Deletion plus suppression API. Suppression is the part that matters,
-   because the warehouse sync repopulates `segment_storage` otherwise.
-6. **Amplitude.** User privacy deletion API. This does not touch our copy.
-7. **Files we own.** Redact their rows from the DDHQ `goodparty_ddhq_master.csv` in Drive,
+   delete endpoint, which blocks recreation with the same email.
+2. gp-api. Run the admin delete flow (Postgres row, Clerk user, Stripe subscription).
+   Then check the tables with no foreign key to `user` by hand: `campaign_plan_version`,
+   `chat_message`, `website_contact`, `poll_individual_message`, `voter_file_filter`.
+3. Clerk. Confirm the delete landed rather than assuming the cascade worked.
+4. Stripe. Anonymize the customer, charge and invoice records. Keep the rows.
+5. Segment. Deletion plus suppression API. Suppression is the part that matters, because
+   the warehouse sync repopulates `segment_storage` otherwise.
+6. Amplitude. User privacy deletion API. This does not touch our copy.
+7. Files we own. Redact their rows from the DDHQ `goodparty_ddhq_master.csv` in Drive,
    the TechSpeed Drive CSVs, and `s3://goodparty-external-data-share/incoming/techspeed/`.
-   Leave the BallotReady S3 drops alone; the staging filter covers both
-   `candidacies_v3` and `office_holders_v3`.
+   Leave the BallotReady S3 drops alone; the staging filter covers them.
 
-## Step 4: what the warehouse keeps, and why that is fine
+## Step 4: what the warehouse keeps
 
 The staging filter is the control. Once the identifiers are registered, every model from
 staging down excludes the person on its next build, and a source that re-ingests them
 cannot bring them back. We do not delete rows from the warehouse copies of source
-systems: they re-ingest, the legal review settled that logical deletion meets the
-statute, and purpose limitation is what keeps them from being read.
+systems: they re-ingest, logical deletion meets the statute, and purpose limitation keeps
+them from being read.
 
-Copies that sit upstream of the filter and therefore still hold the rows:
+Copies upstream of the filter that still hold the rows:
 
 - `airbyte_source.*` landing tables and the insert-only `airbyte_internal` raw JSON. The
   gp-api source replicates by Xmin, not CDC, so a Postgres delete never reaches them.
-- `stg_airflow_source__ballotready_person_raw`, an incremental merge: its filter stops
-  new rows and its downstream models rebuild, but a row already merged stays until a
+- `stg_airflow_source__ballotready_person_raw`, an incremental merge. Its filter stops new
+  rows and the downstream model re-filters, but a row already merged stays until a
   `--full-refresh` of that model.
-- `snapshot__hubspot_api_*`, and `snapshot__m_election_api__person`, the history of
-  published person ids and slugs. A slug is the person's name, and a snapshot closes a
+- `snapshot__hubspot_api_*` and `snapshot__m_election_api__person`. A snapshot closes a
   row rather than deleting it.
-- `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`
-  (read these: they record what we disclosed onward), `model_predictions.candidacy_ddhq_matches_*`.
+- `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`,
+  `model_predictions.candidacy_ddhq_matches_*`.
 
 Everything from staging down, including PR and dev schemas, is a derived copy that the
-next rebuild clears. Do not chase those by hand. No purge, no vacuum.
+next rebuild clears. Do not chase those by hand.
 
 ## Step 5: rebuild downstream, in this order
 
 Entity resolution sits in the middle of the chain: matcha reads the `int__er_prematch_*`
 models and writes `er_source.*`, which the person and candidacy marts read back. Rebuild
-the marts before matcha has rerun and they carry the person's name and contact details
-from the previous clustering, and the publish that follows serves them for another day.
+the marts before matcha has rerun and they carry the person from the previous clustering.
 
-1. `dbt build` the `int__er_prematch_*` models, so matcha's inputs come from the filtered
-   staging layer.
+1. `dbt build` the `int__er_prematch_*` models.
 2. Rerun matcha, so `er_source.*` regenerates without the person.
 3. `dbt build --full-refresh` on the affected selectors downstream, which clears
    `mart_civics` and `mart_analytics`.
 4. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
    excluding the person from `m_election_api__person` removes them from the serving
-   database with no direct delete.
+   database.
 
 ## Step 6: verify
 
-Rerun the sweep and expect the same hits to be gone. Then check the serving systems
-directly rather than the marts, because a clean mart does not prove a clean serving copy:
-election-api Postgres, people-db, and gp-api.
+Rerun the sweep and expect the same hits to be gone. Pass `--gp-api-user-id` when the
+subject had a gp-api account, because the Amplitude probe otherwise resolves the id from
+the user row that Step 3 deleted. Then check the serving systems directly rather than the
+marts: election-api Postgres, people-db, and gp-api.
 
 ## Step 7: respond and close
 
-Respond before the respond-by date. Say what was deleted by category, and say plainly what
-was retained and why: Stripe records under financial recordkeeping, publicly available
-candidacy and officeholder records, third-party voter file data we do not control, and
-security and audit logs.
+Respond before the respond-by date. Say what was deleted by category, and say plainly
+what was retained and why: Stripe records under financial recordkeeping, publicly
+available candidacy and officeholder records, third-party voter file data we do not
+control, and security and audit logs.
 
 Keep the request record. Close the ticket and update the linked HubSpot ticket.
 
@@ -276,3 +204,6 @@ Keep the request record. Close the ticket and update the linked HubSpot ticket.
 - Deleting a vendor civic record removes the person from opponent research and contrast
   generation for their race. Confirm with product before filtering a candidate or
   officeholder.
+- Two people with the same first and last name in the same BallotReady race cannot be
+  told apart by the TechSpeed candidate filter. Accepted; note it on the ticket if it
+  happens.

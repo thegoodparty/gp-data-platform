@@ -35,6 +35,8 @@ select
     -- fmt: on
 from current_version
 where
-    {{ dsar_not_suppressed("id", "hs_contact_id") }}
-    and {{ dsar_not_suppressed("properties_email", "email") }}
-    and {{ dsar_not_suppressed("properties_phone", "phone") }}
+    {{
+        dsar_first_party_not_suppressed(
+            "id", "hs_contact_id", "properties_email", "properties_phone"
+        )
+    }}

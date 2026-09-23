@@ -67,7 +67,4 @@ with
 
 select *
 from renamed
-where
-    -- Vendor civic record: suppress by id only.
-    {{ dsar_not_suppressed("br_candidate_id", "br_person_id") }}
-    and {{ dsar_not_suppressed("br_candidacy_id", "br_candidacy_id") }}
+where {{ dsar_br_not_suppressed("br_candidate_id", "br_candidacy_id") }}

@@ -1,24 +1,12 @@
-# Dataplatform DSAR deletion inventory
+# Data platform DSAR deletion inventory
 
-Below is an inventory of every place an individual's data lands in Data
-Platform, for consideration when handling Data Subject Acess Request (DSAR)
-deletions, including CCPA. This is inclusive of all "people", not strictly
-GoodParty.org users.
+Where an individual's data lands in the data platform, for scoping a data subject
+deletion request. Covers every person, not only GoodParty.org users.
 
-## Process notes
-
-The gp-api Airbyte source currently uses `Xmin` replication (not CDC), which
-means hard deletes aren't transparently propagated. We need to run manual
-deletes against the user table in Databricks.
-
-The process for deleting gp_api records should be:
-
-1. Delete in Postgres (stops the row being re-sent, and satisfies the product side).
-2. Remove the row from the Airbyte landing table and its `airbyte_internal` raw table,
-   either by clearing connection state and resyncing the stream, or by a direct
-   `DELETE` in Databricks.
-3. Then `dbt build --full-refresh` on the affected selectors to purge downstream.
-
+This inventory predates the legal review. The settled process, including the decision
+not to delete from warehouse copies, is in `.claude/skills/dsar-deletion/SKILL.md`;
+where the two disagree, the skill wins. The Delete column below records what would be
+needed for a physical delete and is kept for reference.
 
 ## Group A: product data
 
@@ -89,15 +77,6 @@ consideration is likely more around necessity to delete from Group B entirely.
 | `mart_mban2026.deid_voters` | Already de-identified: names and contact removed, addresses hashed, `LALVOTERID` retained for linkage | `LALVOTERID` | Retaining `LALVOTERID` means it is pseudonymized rather than anonymized, so it probably still counts as personal information. Worth a legal read. | Rebuilt monthly |
 | `m_people_api__voter`, `m_people_api__districtvoter`, `int__l2_nationwide_uniform*`, `int__voter_turnout_inference`, `model_predictions.voter_turnout_scores_20260730` | Voter-level rows and per-voter turnout scores | `LALVOTERID` | Full refresh once upstream is clean | No |
 
-**There is a half-built suppression pattern to copy.** We currently ingest the
-expired/to-delete voters passed along by L2, but don't perform any hard deletes
-on them yet. Note that these are separate from GoodParty-initiated delete
-requests, but we can probably use the same mechanism **if** we determine we should
-delete these records.
-
-If so, we'll need to rerun deletes on an ongoing basis to prevent reingesting
-affected records.
-
 ## Group D: copies, history, and backups
 
 - dbt PR review schemas (either orphaned or in-flight). We should probably just
@@ -123,24 +102,6 @@ will need to be handled separately (or we just drop the whole table)
 `..._companies_20260122`, `..._engagements_20260122`. Point-in-time HubSpot copies from
 January.
 
-**Delta deletion vectors.** `airbyte_source` tables have
-`delta.enableDeletionVectors: true` and no `delta.deletedFileRetentionDuration`
-override, so the default 7 days applies. A `DELETE` writes a deletion vector and leaves
-the original Parquet in
-`s3://goodparty-warehouse-databricks/goodparty_data_catalog/__unitystorage/`. The bytes
-are still there and still readable via time travel.
-
-**If we decide we need to physically purge these**, we need to run a `REORG TABLE
-<table> APPLY (PURGE)` to rewrite the affected files, then a `VACUUM` whose retention
-window has actually elapsed. Note that `VACUUM` only removes files older than the
-retention period, so a plain `VACUUM` right after the purge removes nothing new. Either
-wait out the 7-day default, or lower `delta.deletedFileRetentionDuration` on the table
-first. Forcing `RETAIN 0 HOURS` requires disabling the retention safety check, which
-risks breaking concurrent readers, so it should not be the default approach.
-
-Again, whether CCPA requires physical erasure or accepts logical deletion is a
-compliance question.
-
 **Other copies to check:** Databricks Delta time travel on every touched table, dbt
 Cloud run artifacts and logs, Airflow task logs on Astronomer (the loader logs row
 counts, not rows, but worth confirming), and `sigma_writeback` plus
@@ -149,56 +110,16 @@ that may be kept for compliance and securtiy purposes.**
 
 ## Group E: external processors
 
-An open question is whether the request has to be forwarded to anyone we sent
-the data to. This may include TechSpeed, Clerk, Stripe, Peerly, etc.
+Legal review settled that the request does not have to be forwarded to processors we
+sent the data to (TechSpeed, Clerk, Stripe, Peerly).
 
-**HubSpot.** In either case, we should delete in HubSpot first. HubSpot has a
-GDPR delete endpoint that permanently deletes and blocks re-creation with the same email.
-This is probably helpful since our sales reverse-ETL feeds
-(`mart_sales_reverse_etl.candidacy_hubspot`, `candidacy_techspeed`) push
-candidate records back into HubSpot.
+**HubSpot.** Delete in HubSpot first. HubSpot has a GDPR delete endpoint that permanently
+deletes and blocks re-creation with the same email, which matters because the sales
+reverse-ETL feeds (`mart_sales_reverse_etl.candidacy_hubspot`, `candidacy_techspeed`)
+push candidate records back into HubSpot. Confirm the person is excluded from those two
+models before the GDPR delete.
 
-The order for HubSpot deletes should be:
-
-1. Confirm the person is excluded from `candidacy_hubspot` and `candidacy_techspeed` in Databricks
-2. GDPR-delete in HubSpot.
-3. Clear our copies: `airbyte_source.hubspot_api_contacts`, the three snapshots, the
-   three `archives` tables, and `airbyte_internal` raws.
-
-**Clerk** holds the auth identity
+**Clerk** holds the auth identity.
 
 **Peerly and Ecanvasser** hold voter contact data, not just user data, so they matter
 for group C as well.
-
-## Ongoing re-delete
-
-Sources that could reintroduce a deleted record on their next run:
-
-1. TechSpeed GDrive
-2. DDHQ GDrive: daily, re-reads the master file.
-3. HubSpot: daily, unless GDPR-deleted.
-4. Segment and Amplitude: daily, unless suppressed at source.
-5. BallotReady S3
-6. L2: on each state refresh, roughly monthly.
-7. matcha ER and people-api loader: on their own schedules, downstream of the above.
-
-Because the of above, we should add a standing suppression list of identifiers
-(hashed email, gp_user_id, hashed voter ID, etc.) and delete from those sources
-on an ongoing basis. We can probably use the same pattern as an L2 expired
-voters job, but this is new work.
-
-## Open questions
-
-1. Does a third-party public-records exemption cover the BallotReady, DDHQ, and
-   TechSpeed candidate and officeholder data? Candidacy for public office is a public
-   record, but TechSpeed enrichment adds contact details that are not, so the answer may
-   differ by source.
-2. Does it matter that the requester is a product user as well as a subject in the
-   public civic data? If those are the same person, is the civic record still exempt?
-3. Do the Stripe financial records fall under a retention exemption?
-4. Does compliance require physical erasure, or is logical deletion enough? This decides
-   whether we need to delete underlying Databricks data on S3 and how we handle
-   the multi-GB L2 `.tab` vintages in S3 that are impractical to rewrite.
-5. Is a suppression list that we purge weekly acceptable as the ongoing control for reingested data?
-6. What is the deadline?
-7. Do we need to notify TechSpeed or other downstream 3rd parties as recipients

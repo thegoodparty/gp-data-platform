@@ -27,7 +27,4 @@ with
     )
 select *
 from renamed
-where
-    {{ dsar_not_suppressed("id", "gp_api_user_id") }}
-    and {{ dsar_not_suppressed("email", "email") }}
-    and {{ dsar_not_suppressed("phone", "phone") }}
+where {{ dsar_first_party_not_suppressed("id", "gp_api_user_id", "email", "phone") }}

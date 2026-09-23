@@ -19,10 +19,10 @@ would only mint a subject-to-LALVOTERID link we have no purpose for.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -31,6 +31,9 @@ sys.path.insert(0, str(REPO_ROOT / "analytics" / "lib"))
 DEFAULT_HTTP_PATH = "/sql/1.0/warehouses/18583d8b081c6486"  # Serverless Starter
 
 CATALOG = "goodparty_data_catalog"
+
+# A pattern no value matches, for identifiers the request did not supply.
+NOMATCH = "'%__nomatch__%'"
 
 # Insert-only raw JSON of every version ever extracted. Large enough that scanning it
 # blows the connector's retry budget on an X-Small warehouse, so it is opt-in.
@@ -52,8 +55,15 @@ ANCHOR_TABLES = [
     ("er_clustered_officials", f"{CATALOG}.er_source.clustered_elected_officials", "last_name"),
 ]
 
-# Structurally cannot hold a person, so there is nothing to probe. Reported so the
-# operator knows it was considered rather than forgotten.
+SEGMENT_TABLES = [
+    ("gp_api", "identifies", "email"),
+    ("gp_api", "users", "email"),
+    ("gp_api", "tracks", "context_traits_email"),
+    ("web_app", "identifies", "email"),
+    ("web_app", "users", "email"),
+]
+
+# No person-level columns, so nothing to probe. Reported so they read as considered.
 NO_PERSON_COLUMNS = [
     ("airbyte_source.ballotready_s3_recruitment_v1", "race and position level only"),
     ("airbyte_source.ddhq_elections_gsheet_*", "race level only, keyed on race_id"),
@@ -75,25 +85,22 @@ def digits(value: str) -> str:
 NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v", "md", "phd", "esq"}
 
 
-def split_name(name: str) -> tuple[str, str]:
-    """Return (first, last). The surname is the last token after dropping suffixes.
-
-    Everything-after-the-first-space is wrong: "First Middle Last" yields the key
-    "middle last", which matches no last_name column and reports a false clear.
-    """
+def surname(name: str) -> str:
+    """Last token after dropping suffixes, so "First Middle Last" keys on "last"."""
     tokens = [t for t in (name or "").split() if t]
     while len(tokens) > 1 and tokens[-1].lower().strip(",") in NAME_SUFFIXES:
         tokens.pop()
-    if not tokens:
-        return "", ""
-    if len(tokens) == 1:
-        return tokens[0], tokens[0]
-    return tokens[0], tokens[-1]
+    return tokens[-1] if tokens else ""
+
+
+def sql_phone_digits(column: str) -> str:
+    """The dbt dsar_normalize phone rule: digits only, minus a leading US country code."""
+    return f"regexp_replace(regexp_replace({column}, '[^0-9]', ''), '^1([0-9]{{10}})$', '$1')"
 
 
 def build_anchors(name: str) -> list[tuple[str, str, str]]:
     """Exact-surname counts per source. The clean signal, free of substring noise."""
-    last = split_name(name)[1].lower()
+    last = surname(name).lower()
     parts = [
         f"select {lit(label)} as source, count(*) as n from {table} where lower(trim({column})) = {lit(last)}"
         for label, table, column in ANCHOR_TABLES
@@ -101,21 +108,23 @@ def build_anchors(name: str) -> list[tuple[str, str, str]]:
     return [("anchor", "exact surname match per source", "\nunion all ".join(parts))]
 
 
-def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[str, str, str]]:
+def build_probes(
+    name: str, email: str, phone: str, address: str, gp_api_user_id: str = ""
+) -> list[tuple[str, str, str]]:
     """Return (group, source, sql) for every source worth checking.
 
     Each probe selects identifying columns rather than a bare count, so a hit tells the
     operator which record to act on without a second query.
     """
-    last = split_name(name)[1]
+    last = surname(name)
     e = lit(email.lower())
     ph = digits(phone)
 
-    last_like = lit(f"%{last.lower()}%") if last else "'%__nomatch__%'"
+    last_like = lit(f"%{last.lower()}%") if last else NOMATCH
     email_like = lit(f"%{email.lower()}%")
     local_like = lit(f"%{email.lower().partition('@')[0]}%")
-    phone_like = lit(f"%{ph}%") if ph else "'%__nomatch__%'"
-    addr_like = lit(f"%{address.lower()}%") if address else "'%__nomatch__%'"
+    phone_like = lit(f"%{ph}%") if ph else NOMATCH
+    addr_like = lit(f"%{address.lower()}%") if address else NOMATCH
 
     # One regex alternation so a JSON blob is scanned once.
     needles = [n for n in (email.lower().partition("@")[0], ph, address.lower()) if n]
@@ -132,7 +141,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.gp_api_db_user
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(email,'')) like {local_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
+                   or {sql_phone_digits("phone")} like {phone_like}
                    or lower(coalesce(last_name,'')) like {last_like}
                    or lower(coalesce(name,'')) like {last_like}""",
         ),
@@ -143,7 +152,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                        ts_candidate_code, first_name, last_name, email, phone, state
                 from {CATALOG}.mart_civics.people
                 where lower(coalesce(email,'')) = {e}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
+                   or {sql_phone_digits("phone")} like {phone_like}
                    or lower(coalesce(last_name,'')) like {last_like}""",
         ),
         (
@@ -154,7 +163,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.hubspot_api_contacts
                 where lower(coalesce(properties_email,'')) = {e}
                    or lower(coalesce(properties_lastname,'')) like {last_like}
-                   or regexp_replace(coalesce(properties_phone,''),'[^0-9]','') like {phone_like}
+                   or {sql_phone_digits("properties_phone")} like {phone_like}
                    or {blob("properties")}""",
         ),
         (
@@ -206,39 +215,23 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.stripe_api_customers
                 where lower(coalesce(email,'')) = {e} or lower(coalesce(name,'')) like {last_like}""",
         ),
-        (
-            "A product",
-            "segment gp_api.identifies",
-            f"select count(*) as n from segment_storage.gp_api.identifies where lower(coalesce(email,'')) = {e} having count(*) > 0",
-        ),
-        (
-            "A product",
-            "segment gp_api.users",
-            f"select count(*) as n from segment_storage.gp_api.users where lower(coalesce(email,'')) = {e} having count(*) > 0",
-        ),
-        (
-            "A product",
-            "segment gp_api.tracks",
-            f"select count(*) as n from segment_storage.gp_api.tracks where lower(coalesce(context_traits_email,'')) = {e} having count(*) > 0",
-        ),
-        (
-            "A product",
-            "segment web_app.identifies",
-            f"select count(*) as n from segment_storage.web_app.identifies where lower(coalesce(email,'')) = {e} having count(*) > 0",
-        ),
-        (
-            "A product",
-            "segment web_app.users",
-            f"select count(*) as n from segment_storage.web_app.users where lower(coalesce(email,'')) = {e} having count(*) > 0",
-        ),
+        *[
+            (
+                "A product",
+                f"segment {schema}.{table}",
+                f"select count(*) as n from segment_storage.{schema}.{table} where lower(coalesce({column},'')) = {e} having count(*) > 0",
+            )
+            for schema, table, column in SEGMENT_TABLES
+        ],
         (
             "A product",
             "airbyte_source.amplitude_api_events",
-            # user_id is the gp-api user id, never an email, so match it through the
-            # user table rather than comparing it to the address directly.
+            # user_id is the gp-api user id, never an email. The explicit id keeps this
+            # probe working after the gp-api row is deleted.
             f"""select count(*) as n
                 from {CATALOG}.airbyte_source.amplitude_api_events
-                where user_id in (
+                where user_id = {lit(gp_api_user_id)}
+                   or user_id in (
                         select cast(id as string)
                         from {CATALOG}.airbyte_source.gp_api_db_user
                         where lower(coalesce(email,'')) = {e}
@@ -259,15 +252,11 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.ballotready_s3_candidacies_v3
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(last_name,'')) like {last_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}""",
+                   or {sql_phone_digits("phone")} like {phone_like}""",
         ),
         (
             "B vendor civic",
-            # Raw source, like every other probe: the staging view applies the
-            # suppression filter, so reading it would hide records we still hold.
-            # email and phone live inside the `contacts` array, which the staging
-            # model parses; match the serialized blob rather than duplicating that
-            # parser here, normalizing to digits so formatting cannot hide a number.
+            # email and phone live inside the `contacts` array; match the serialized blob.
             "airbyte_source.ballotready_s3_office_holders_v3",
             f"""select id, candidate_id as br_person_id, candidacy_id as br_candidacy_id,
                        first_name, middle_name, last_name, nickname,
@@ -277,7 +266,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                    or lower(coalesce(nickname,'')) like {last_like}
                    or lower(coalesce(office_holder_mailing_address_line_1,'')) like {addr_like}
                    or lower(cast(contacts as string)) like {email_like}
-                   or regexp_replace(cast(contacts as string), '[^0-9]', '') like {phone_like}""",
+                   or {sql_phone_digits("cast(contacts as string)")} like {phone_like}""",
         ),
         (
             "B vendor civic",
@@ -297,8 +286,8 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.techspeed_gdrive_candidates
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(last_name,'')) like {last_like}
-                   or regexp_replace(coalesce(phone_clean,''),'[^0-9]','') like {phone_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
+                   or {sql_phone_digits("phone_clean")} like {phone_like}
+                   or {sql_phone_digits("phone")} like {phone_like}
                    or lower(coalesce(street_address,'')) like {addr_like}""",
         ),
         (
@@ -308,7 +297,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.airbyte_source.techspeed_gdrive_officeholders
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(last_name,'')) like {last_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}
+                   or {sql_phone_digits("phone")} like {phone_like}
                    or lower(coalesce(street_address,'')) like {addr_like}""",
         ),
         (
@@ -333,7 +322,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.historical.ballotready_records_sent_to_hubspot
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(last_name,'')) like {last_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}""",
+                   or {sql_phone_digits("phone")} like {phone_like}""",
         ),
         (
             "onward disclosure",
@@ -342,7 +331,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
                 from {CATALOG}.historical.ballotready_records_sent_to_techspeed
                 where lower(coalesce(email,'')) = {e}
                    or lower(coalesce(last_name,'')) like {last_like}
-                   or regexp_replace(coalesce(phone,''),'[^0-9]','') like {phone_like}""",
+                   or {sql_phone_digits("phone")} like {phone_like}""",
         ),
         (
             "B vendor civic",
@@ -372,16 +361,11 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
     ]
 
 
-def sql_phone_digits(column: str) -> str:
-    """The dbt dsar_normalize phone rule: digits only, minus a leading US country code."""
-    return f"regexp_replace(regexp_replace({column}, '[^0-9]', ''), '^1([0-9]{{10}})$', '$1')"
-
-
 def build_guard(email: str, phone: str) -> str:
     """Distinct people each proposed email and phone would suppress, per first-party source."""
     e = lit(email.lower())
     ph = digits(phone)
-    ph_lit = lit(ph) if ph else "'__nophone__'"
+    ph_lit = lit(ph) if ph else NOMATCH
     sources = [
         ("gp_api_db_user", "id", "email", "phone"),
         (
@@ -409,29 +393,23 @@ def build_guard(email: str, phone: str) -> str:
 
 
 def run(probes, dbc):
-    import time
-
     hits, misses, errors = [], [], []
     slow: list[tuple[str, float]] = []
-    summary: list[dict[str, object]] = []
     for group, source, sql in probes:
         started = time.monotonic()
         try:
             df = dbc.run_query(sql)
         except Exception as exc:  # noqa: BLE001
             errors.append((source, str(exc)[:160]))
-            summary.append({"group": group, "source": source, "status": "error"})
             continue
         elapsed = time.monotonic() - started
         if elapsed > 60:
             slow.append((source, elapsed))
         if len(df):
             hits.append((group, source, df))
-            summary.append({"group": group, "source": source, "status": "hit", "rows": len(df)})
         else:
             misses.append((group, source))
-            summary.append({"group": group, "source": source, "status": "miss"})
-    return hits, misses, errors, summary, slow
+    return hits, misses, errors, slow
 
 
 def main() -> int:
@@ -441,11 +419,15 @@ def main() -> int:
     parser.add_argument("--phone", default="", help="Any format; digits are extracted")
     parser.add_argument("--address", default="", help='Street portion only, e.g. "123 Example St"')
     parser.add_argument(
+        "--gp-api-user-id",
+        default="",
+        help="Numeric gp-api user id, once known. Keeps the Amplitude probe working after the user row is deleted.",
+    )
+    parser.add_argument(
         "--deep",
         action="store_true",
         help="Also scan the airbyte_internal raw JSON. Slow; use when a hit is expected but not found.",
     )
-    parser.add_argument("--out", default="", help="Optional path for a JSON summary")
     args = parser.parse_args()
 
     os.environ.setdefault("DATABRICKS_HTTP_PATH", DEFAULT_HTTP_PATH)
@@ -453,7 +435,7 @@ def main() -> int:
 
     print(f"\nDSAR scope for {args.name} <{args.email}>\n" + "=" * 72)
 
-    anchor_hits, _, anchor_errors, _, _ = run(build_anchors(args.name), dbc)
+    anchor_hits, _, anchor_errors, _ = run(build_anchors(args.name), dbc)
     print("\nANCHOR: exact surname match per source")
     if anchor_hits:
         df = anchor_hits[0][2]
@@ -468,10 +450,10 @@ def main() -> int:
 
     probes = [
         p
-        for p in build_probes(args.name, args.email, args.phone, args.address)
+        for p in build_probes(args.name, args.email, args.phone, args.address, args.gp_api_user_id)
         if args.deep or p[1] not in DEEP_ONLY
     ]
-    hits, misses, errors, summary, slow = run(probes, dbc)
+    hits, misses, errors, slow = run(probes, dbc)
 
     if hits:
         print(f"\nFUZZY HITS ({len(hits)} sources) - substring matching, expect false positives\n")
@@ -536,14 +518,7 @@ def main() -> int:
     print("     date '<received>', date '<received + 45d>', '<note>', current_timestamp(), '<you>'),")
     print(f"    ('<TICKET>', {lit(args.name)}, 'br_person_id', '<br_person_id from a BallotReady hit>',")
     print("     date '<received>', date '<received + 45d>', '<note>', current_timestamp(), '<you>');")
-    print("\nVendor civic records (BallotReady, TechSpeed via BallotReady) filter by id only, so a")
-    print("BallotReady hit is not suppressed until br_person_id is registered. Amplitude keys on")
-    print("gp_api_user_id. Drop any row that does not apply; the constraints reject blanks.")
-    print("\nPresence in that table means suppress. Do not add an identifier you will not act on.")
-
-    if args.out:
-        Path(args.out).write_text(json.dumps(summary, indent=2))
-        print(f"\nSummary written to {args.out}")
+    print("\nDrop the rows that do not apply. Presence in the table means suppress.")
 
     return 0
 

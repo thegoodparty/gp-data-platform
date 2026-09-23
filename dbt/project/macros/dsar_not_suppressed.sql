@@ -1,19 +1,16 @@
 {% macro dsar_identifier_types() %}
-    {#- lalvoterid is deliberately absent: the L2 voter file is out of scope. -#}
+    {#- Only types a staging filter matches on. A type nothing filters would let a
+        register row silently do nothing. lalvoterid is absent: L2 is out of scope. -#}
     {{
         return(
             [
                 "email",
                 "phone",
                 "gp_api_user_id",
-                "gp_person_id",
-                "clerk_id",
-                "stripe_customer_id",
                 "hs_contact_id",
                 "br_person_id",
                 "br_candidacy_id",
                 "ddhq_candidate_id",
-                "ts_candidate_code",
             ]
         )
     }}
@@ -43,12 +40,7 @@
 
 
 {% macro dsar_not_suppressed(column_name, identifier_type) %}
-    {#-
-        Keeps a row whose identifier is absent from the register. Match on the
-        identifier that belongs to exactly one person in the source: record ids and
-        personal contact fields for first-party sources, vendor ids only for civic
-        records. Anti-join shape; a null identifier passes.
-    -#}
+    {#- Anti-join against the register; a null identifier passes. -#}
     not exists (
         select 1
         from {{ ref("stg_source_dsar__suppressed_identifiers") }} as register
@@ -60,30 +52,37 @@
 {% endmacro %}
 
 
-{% macro dsar_br_registered(person_id_column, candidacy_id_column) %}
-    {#- A BallotReady row whose person or candidacy is in the register. -#}
-    not (
-        {{ dsar_not_suppressed(person_id_column, "br_person_id") }}
-        and {{ dsar_not_suppressed(candidacy_id_column, "br_candidacy_id") }}
-    )
+{% macro dsar_first_party_not_suppressed(
+    id_column, id_type, email_column, phone_column
+) %}
+    {#- First-party rows carry the person's own contact fields, so those count too. -#}
+    {{ dsar_not_suppressed(id_column, id_type) }}
+    and {{ dsar_not_suppressed(email_column, "email") }}
+    and {{ dsar_not_suppressed(phone_column, "phone") }}
+{% endmacro %}
+
+
+{% macro dsar_br_not_suppressed(person_id_column, candidacy_id_column) %}
+    {#- Vendor civic rows match on ids only; their contact fields are the office's. -#}
+    {{ dsar_not_suppressed(person_id_column, "br_person_id") }}
+    and {{ dsar_not_suppressed(candidacy_id_column, "br_candidacy_id") }}
 {% endmacro %}
 
 
 {#-
-    The two BallotReady lookups below wrap the raw source in a derived table whose
-    columns are named suppressed_*. Callers correlate unqualified outer columns into
-    the subquery; an inner column with the same name (first_name, last_name, id)
-    would shadow them and turn the predicate into a tautology.
+    The lookups below wrap their source in a derived table with suppressed_* column
+    names. Callers correlate unqualified outer columns in; a same-named inner column
+    would shadow them and make the predicate a tautology.
 -#}
 {% macro dsar_not_suppressed_via_br_office_holder(office_holder_id_column) %}
-    {#- TechSpeed's office_holder_id is BallotReady's office_holder_id. -#}
+    {#- TechSpeed's office_holder_id is BallotReady's. -#}
     not exists (
         select 1
         from
             (
                 select try_cast(office_holder_id as int) as suppressed_office_holder_id
                 from {{ source("airbyte_source", "ballotready_s3_office_holders_v3") }}
-                where {{ dsar_br_registered("candidate_id", "candidacy_id") }}
+                where not ({{ dsar_br_not_suppressed("candidate_id", "candidacy_id") }})
             ) as suppressed
         where
             suppressed.suppressed_office_holder_id
@@ -93,14 +92,13 @@
 
 
 {% macro dsar_not_suppressed_via_br_candidacy(
-    race_id_column, first_name_column, last_name_column
+    race_id_column, first_name_column, cleaned_last_name_column
 ) %}
     {#- TechSpeed carries no person id; within a BallotReady race, a name is one candidacy. -#}
     not exists (
         select 1
         from
             (
-                {#- Both sides cleaned the same way, so a suffix on either does not break the match. -#}
                 select
                     cast(race_id as string) as suppressed_race_id,
                     lower(trim(first_name)) as suppressed_first_name,
@@ -112,42 +110,36 @@
                     race_id is not null
                     and first_name is not null
                     and last_name is not null
-                    and {{ dsar_br_registered("candidate_id", "candidacy_id") }}
+                    and not (
+                        {{ dsar_br_not_suppressed("candidate_id", "candidacy_id") }}
+                    )
             ) as suppressed
         where
             suppressed.suppressed_race_id = cast({{ race_id_column }} as string)
             and suppressed.suppressed_first_name = lower(trim({{ first_name_column }}))
-            and suppressed.suppressed_last_name = lower(trim({{ last_name_column }}))
+            and suppressed.suppressed_last_name
+            = lower(trim({{ cleaned_last_name_column }}))
     )
 {% endmacro %}
 
 
 {% macro hubspot_contact_not_suppressed(contact_id_column) %}
-    {#-
-        For models that carry a HubSpot contact id but not the contact's own fields:
-        the row goes when the contact itself is suppressed by any identifier, so a
-        phone-only registration removes the contact's submissions along with the
-        contact. A missing contact row (already deleted in HubSpot) passes here and is
-        caught by the caller's own hs_contact_id predicate.
-    -#}
+    {#- For models that carry a contact id but not the contact's own fields. A contact
+        missing from the source passes; the caller's hs_contact_id predicate covers it. -#}
     not exists (
         select 1
         from
             (
-                {#- Renamed so the caller's outer `properties` or `id` is never shadowed. -#}
                 select id as suppressed_contact_id
                 from {{ source("airbyte_source", "hubspot_api_contacts") }}
                 where
                     not (
-                        {{ dsar_not_suppressed("id", "hs_contact_id") }}
-                        and {{
-                            dsar_not_suppressed(
-                                "get_json_object(properties, '$.email')", "email"
-                            )
-                        }}
-                        and {{
-                            dsar_not_suppressed(
-                                "get_json_object(properties, '$.phone')", "phone"
+                        {{
+                            dsar_first_party_not_suppressed(
+                                "id",
+                                "hs_contact_id",
+                                "get_json_object(properties, '$.email')",
+                                "get_json_object(properties, '$.phone')",
                             )
                         }}
                     )

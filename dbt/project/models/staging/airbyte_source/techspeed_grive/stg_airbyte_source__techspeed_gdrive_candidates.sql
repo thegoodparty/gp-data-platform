@@ -64,17 +64,6 @@ with
 
             -- Candidate identity
             trim(first_name) as first_name,
-            -- Strip middle-initial pollution from last_name.
-            -- Three regex_replace passes after remove_name_suffixes:
-            -- (1) strip a trailing comma left behind by suffix removal
-            -- ("Smith, Jr." -> "Smith," -> "Smith"); (2) strip one-or-more
-            -- leading initial tokens ("A.", "A. ", "A ", "M.J. ", "E L ")
-            -- that look like middle initials but were merged with the
-            -- surname in TS source data; (3) strip a trailing " X" pattern.
-            -- Lookarounds prevent over-stripping legitimate compound
-            -- surnames ("De La Cruz", "Da Silva", "St. John", "AB Smith"),
-            -- which have no period or space between the leading cap(s)
-            -- and the next character.
             {{ clean_techspeed_last_name("last_name") }} as last_name,
             -- Generational suffix, captured from the raw surname before the
             -- stripping above discards it (Jr/Sr distinguish father and son).
