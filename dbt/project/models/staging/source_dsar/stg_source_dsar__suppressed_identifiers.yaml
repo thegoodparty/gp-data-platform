@@ -30,6 +30,15 @@ models:
         data_tests:
           - not_null
     data_tests:
+      # A value the normalizer turns into null would match nothing, silently.
+      - dbt_utils.expression_is_true:
+          name: dsar_register_phone_is_digits
+          arguments:
+            expression: "identifier_type != 'phone' or identifier_value rlike '^[0-9]{10,15}$'"
+      - dbt_utils.expression_is_true:
+          name: dsar_register_email_is_normalized
+          arguments:
+            expression: "identifier_type != 'email' or identifier_value = lower(trim(identifier_value))"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
