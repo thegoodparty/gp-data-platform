@@ -21,18 +21,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values:
-                  - email
-                  - phone
-                  - gp_api_user_id
-                  - gp_person_id
-                  - clerk_id
-                  - stripe_customer_id
-                  - hs_contact_id
-                  - br_person_id
-                  - br_candidacy_id
-                  - ddhq_candidate_id
-                  - ts_candidate_code
+                values: "{{ dsar_identifier_types() }}"
       - name: identifier_value
         description: >
           Normalized identifier. Emails lowercased and trimmed, phones digits only,

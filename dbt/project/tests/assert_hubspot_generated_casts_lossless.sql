@@ -14,7 +14,6 @@
 -- pre-registry hand-written expressions.
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
 -- depends_on: {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
--- depends_on: {{ ref("stg_source_dsar__suppressed_identifiers") }}
 {{ config(severity="error") }}
 
 {%- set typed = [] %}
@@ -45,20 +44,13 @@
                     ) as {{ p.column_name }}{{ "," if not loop.last }}
                 {%- endfor %}
             from {{ source("airbyte_source", "hubspot_api_contacts") }}
-            -- The model drops suppressed contacts before casting, so the raw side
-            -- must drop them too or a lawful deletion reads as cast loss.
+            -- Only rows the model emits, so any filter it applies is honored here.
             where
-                {{ dsar_not_suppressed("id", "hs_contact_id") }}
-                and {{
-                    dsar_not_suppressed(
-                        "get_json_object(properties, '$.email')", "email"
-                    )
-                }}
-                and {{
-                    dsar_not_suppressed(
-                        "get_json_object(properties, '$.phone')", "phone"
-                    )
-                }}
+                id in (
+                    select id
+                    from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+                    where id is not null
+                )
         ),
         model_counts as (
             select

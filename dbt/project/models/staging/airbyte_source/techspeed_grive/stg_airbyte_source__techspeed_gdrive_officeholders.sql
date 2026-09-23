@@ -93,6 +93,5 @@ with
 select *
 from renamed
 where
-    -- Every TechSpeed officeholder row carries BallotReady's office holder id, so a
-    -- registered BallotReady person resolves here exactly, without contact fields.
+    -- Resolves through BallotReady's office holder id.
     {{ dsar_not_suppressed_via_br_office_holder("ts_officeholder_id") }}

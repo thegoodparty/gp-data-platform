@@ -63,8 +63,7 @@ NO_PERSON_COLUMNS = [
 
 def lit(value: str) -> str:
     """Render a SQL string literal, escaping quotes and backslashes."""
-    # Backslash escapes only. Databricks evaluates a doubled quote inside a literal
-    # to nothing, so 'O''Brien' searches for OBrien and misses the person.
+    # Databricks evaluates a doubled quote inside a literal to nothing.
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
@@ -102,15 +101,13 @@ def build_anchors(name: str) -> list[tuple[str, str, str]]:
     return [("anchor", "exact surname match per source", "\nunion all ".join(parts))]
 
 
-def build_probes(
-    name: str, email: str, phone: str, address: str, deep: bool = False
-) -> list[tuple[str, str, str]]:
+def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[str, str, str]]:
     """Return (group, source, sql) for every source worth checking.
 
     Each probe selects identifying columns rather than a bare count, so a hit tells the
     operator which record to act on without a second query.
     """
-    first, last = split_name(name)
+    last = split_name(name)[1]
     e = lit(email.lower())
     ph = digits(phone)
 
@@ -376,37 +373,40 @@ def build_probes(
     ]
 
 
-def build_guard(email: str, phone: str) -> str:
-    """How many distinct people each proposed email and phone would suppress.
+def sql_phone_digits(column: str) -> str:
+    """The dbt dsar_normalize phone rule: digits only, minus a leading US country code."""
+    return f"regexp_replace(regexp_replace({column}, '[^0-9]', ''), '^1([0-9]{{10}})$', '$1')"
 
-    A register value is meant to identify one person. A campaign inbox or an office
-    switchboard identifies many, and registering it suppresses all of them. The count
-    is per first-party source, since those are the only sources that filter on
-    contact fields; vendor civic records filter by id.
-    """
+
+def build_guard(email: str, phone: str) -> str:
+    """Distinct people each proposed email and phone would suppress, per first-party source."""
     e = lit(email.lower())
-    ph = lit(digits(phone)) if digits(phone) else "'__nophone__'"
-    norm_phone = "regexp_replace(regexp_replace({col}, '[^0-9]', ''), '^1([0-9]{{10}})$', '$1')"
-    return f"""
-        select 'email' as identifier_type, 'gp_api_db_user' as source, count(distinct id) as people
-        from {CATALOG}.airbyte_source.gp_api_db_user where lower(trim(email)) = {e}
-        union all
-        select 'phone', 'gp_api_db_user', count(distinct id)
-        from {CATALOG}.airbyte_source.gp_api_db_user where {norm_phone.format(col="phone")} = {ph}
-        union all
-        select 'email', 'hubspot_api_contacts', count(distinct id)
-        from {CATALOG}.airbyte_source.hubspot_api_contacts
-        where lower(trim(get_json_object(properties, '$.email'))) = {e}
-        union all
-        select 'phone', 'hubspot_api_contacts', count(distinct id)
-        from {CATALOG}.airbyte_source.hubspot_api_contacts
-        where {norm_phone.format(col="get_json_object(properties, '$.phone')")} = {ph}
-        union all
-        select 'phone', 'ballotready_s3_office_holders_v3 (not filtered on phone; shown for scale)',
-               count(distinct candidate_id)
-        from {CATALOG}.airbyte_source.ballotready_s3_office_holders_v3
-        where {norm_phone.format(col="cast(contacts as string)")} like concat('%', {ph}, '%')
-    """
+    ph = digits(phone)
+    ph_lit = lit(ph) if ph else "'__nophone__'"
+    sources = [
+        ("gp_api_db_user", "id", "email", "phone"),
+        (
+            "hubspot_api_contacts",
+            "id",
+            "get_json_object(properties, '$.email')",
+            "get_json_object(properties, '$.phone')",
+        ),
+    ]
+    parts = [
+        f"""select {lit(name)} as source,
+                   count(distinct case when lower(trim({email_col})) = {e} then {id_col} end) as people_on_email,
+                   count(distinct case when {sql_phone_digits(phone_col)} = {ph_lit} then {id_col} end) as people_on_phone
+            from {CATALOG}.airbyte_source.{name}"""
+        for name, id_col, email_col, phone_col in sources
+    ]
+    parts.append(
+        f"""select 'ballotready_s3_office_holders_v3 (not filtered on phone; shown for scale)',
+                   0,
+                   count(distinct candidate_id)
+            from {CATALOG}.airbyte_source.ballotready_s3_office_holders_v3
+            where {sql_phone_digits("cast(contacts as string)")} like concat('%', {ph_lit}, '%')"""
+    )
+    return "\nunion all\n".join(parts)
 
 
 def run(probes, dbc):
@@ -458,7 +458,7 @@ def main() -> int:
     print("\nANCHOR: exact surname match per source")
     if anchor_hits:
         df = anchor_hits[0][2]
-        nonzero = df[df["n"] > 0] if "n" in df.columns else df
+        nonzero = df[df["n"] > 0]
         print(df.to_string(index=False))
         print(
             "\n  => "
@@ -469,7 +469,7 @@ def main() -> int:
 
     probes = [
         p
-        for p in build_probes(args.name, args.email, args.phone, args.address, args.deep)
+        for p in build_probes(args.name, args.email, args.phone, args.address)
         if args.deep or p[1] not in DEEP_ONLY
     ]
     hits, misses, errors, summary, slow = run(probes, dbc)
@@ -512,7 +512,8 @@ def main() -> int:
     try:
         guard = dbc.run_query(build_guard(args.email, args.phone))
         print(guard.to_string(index=False))
-        shared = guard[(guard["people"] > 1) & ~guard["source"].str.contains("not filtered")]
+        filtered = guard[~guard["source"].str.contains("not filtered")]
+        shared = filtered[(filtered["people_on_email"] > 1) | (filtered["people_on_phone"] > 1)]
         if len(shared):
             print("\n  => SHARED VALUE. Do not register it; suppress this person through their ids.")
         else:

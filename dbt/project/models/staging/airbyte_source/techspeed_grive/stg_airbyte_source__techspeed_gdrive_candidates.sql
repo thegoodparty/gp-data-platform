@@ -238,7 +238,6 @@ from renamed
 where
     _airbyte_raw_id
     not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)
-    -- TechSpeed enriches BallotReady candidacies and carries no person id of its
-    -- own, so a registered BallotReady person resolves here by race and name.
+    -- No person id here; resolves through BallotReady race and name.
     and
     {{ dsar_not_suppressed_via_br_candidacy("br_race_id", "first_name", "last_name") }}

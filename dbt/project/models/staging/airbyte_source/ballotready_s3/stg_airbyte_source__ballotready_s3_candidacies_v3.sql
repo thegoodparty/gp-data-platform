@@ -68,7 +68,6 @@ with
 select *
 from renamed
 where
-    -- Vendor civic records suppress by id only. Contact fields here are often the
-    -- campaign's or the office's, shared across people, and often absent.
+    -- Vendor civic record: suppress by id only.
     {{ dsar_not_suppressed("br_candidate_id", "br_person_id") }}
     and {{ dsar_not_suppressed("br_candidacy_id", "br_candidacy_id") }}

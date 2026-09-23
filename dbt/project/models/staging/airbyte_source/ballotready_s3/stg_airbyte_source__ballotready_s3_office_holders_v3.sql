@@ -121,7 +121,6 @@ with
 select *
 from flattened_contacts_and_urls
 where
-    -- Vendor civic records suppress by id only. An officeholder's phones are the
-    -- office's and shared by colleagues; one registered number would remove them all.
+    -- Vendor civic record: suppress by id only. Phones here are the office's.
     {{ dsar_not_suppressed("br_candidate_id", "br_person_id") }}
     and {{ dsar_not_suppressed("br_candidacy_id", "br_candidacy_id") }}

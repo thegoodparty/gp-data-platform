@@ -75,7 +75,6 @@ select *
 from with_checks
 where
     invalid_reason is not null
-    -- Rejected rows are still materialized and queryable, so they filter like the
-    -- valid ones do: by BallotReady race and name.
+    -- Rejected rows are still materialized, so they filter too.
     and
     {{ dsar_not_suppressed_via_br_candidacy("br_race_id", "first_name", "last_name") }}
