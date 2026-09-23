@@ -41,8 +41,6 @@ SOURCE_GROUPS: dict[str, dict] = {
         "stem": rf"VM2{_L2_STEM}",
         "archive_suffix": ".zip",
         "members": {
-            "-DEMOGRAPHIC.tab": "demographic",
-            "-DEMOGRAPHIC_DataDictionary.csv": "demographic_data_dictionary",
             "-VOTEHISTORY.tab": "vote_history",
             "-VOTEHISTORY_DataDictionary.csv": "vote_history_data_dictionary",
         },
@@ -81,7 +79,6 @@ _STATE_FOLDER = re.compile(r"^[A-Z]{2}$")
 # is staged verbatim.
 _DICTIONARY_HEADER_ROWS = 15
 _DICTIONARY_FOOTER_ROWS = {
-    "demographic_data_dictionary": 24,
     "uniform_data_dictionary": 24,
     "vote_history_data_dictionary": 4,
 }
