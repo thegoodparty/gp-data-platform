@@ -32,6 +32,4 @@ select
     * except (dbt_scd_id, dbt_updated_at, dbt_valid_from, dbt_valid_to)
     -- fmt: on
 from current_version
-where
-    {{ dsar_not_suppressed("properties_candidate_email", "email") }}
-    and {{ dsar_not_suppressed("properties_phone", "phone") }}
+where {{ dsar_not_suppressed("properties_candidate_email", "email") }}

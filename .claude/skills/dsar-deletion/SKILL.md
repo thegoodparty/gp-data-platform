@@ -100,8 +100,9 @@ Which type each source is filtered on:
 - `gp_api_user_id`: gp-api users and campaigns, Amplitude events. Segment is not filtered
   in the warehouse; its control is suppression at Segment (Step 3).
 - `hs_contact_id`: HubSpot contacts, the contacts archive, feedback submissions.
-- `email`, `phone`: gp-api users and the HubSpot contacts, companies, calls, feedback
-  submissions and archive models. First-party only.
+- `email`, `phone`: gp-api users and the HubSpot contacts, calls, feedback submissions
+  and contacts archive models. HubSpot companies match on the candidate email only,
+  because a company phone can be a shared campaign line. First-party only.
 - `br_person_id`, `br_candidacy_id`: BallotReady candidacies and office holders, the
   Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through
   BallotReady (officeholders by office holder id, candidates by race plus name).
@@ -207,3 +208,6 @@ Keep the request record. Close the ticket and update the linked HubSpot ticket.
 - Two people with the same first and last name in the same BallotReady race cannot be
   told apart by the TechSpeed candidate filter. Accepted; note it on the ticket if it
   happens.
+- A TechSpeed candidate row without a BallotReady race id cannot be reached by that
+  filter at all. Every row carries one today and a warn-level test says so; if that
+  changes, redact the row in the Drive file (Step 3.7).
