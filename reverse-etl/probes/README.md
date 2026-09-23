@@ -16,6 +16,10 @@ export RETL_PROBE_TOKEN=pat-na1-...   # a service key on the sandbox portal
 uv run python -m probes.checks --all
 ```
 
+`RETL_HUBSPOT_TOKEN`, retl's own variable, is accepted as a fallback, so a `.env` already
+configured to run the app against the sandbox runs the checks too. The portal guard below, not
+the variable name, is what keeps a production credential out.
+
 One check at a time: `uv run python -m probes.checks --check 4`.
 
 Output is markdown, ready to paste into the findings doc. `--json` gives the raw findings

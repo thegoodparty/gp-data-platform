@@ -23,6 +23,10 @@ import requests
 CLAUDE_TEST_ZONE_PORTAL_ID = 51780263
 DEFAULT_BASE_URL = "https://api.hubapi.com"
 TOKEN_ENV = "RETL_PROBE_TOKEN"
+# retl's own variable, accepted as a fallback so a sandbox .env configured for the app
+# also runs the probes. Safe because the portal guard, not the variable name, is what
+# stops a production credential: a token for any other portal aborts before the first write.
+FALLBACK_TOKEN_ENV = "RETL_HUBSPOT_TOKEN"
 PORTAL_ENV = "RETL_PROBE_EXPECTED_PORTAL_ID"
 REQUEST_TIMEOUT = 30.0
 
@@ -58,9 +62,9 @@ class SandboxClient:
 
     @classmethod
     def from_env(cls) -> SandboxClient:
-        token = os.environ.get(TOKEN_ENV, "")
+        token = os.environ.get(TOKEN_ENV, "") or os.environ.get(FALLBACK_TOKEN_ENV, "")
         if not token:
-            raise ProbeConfigError(f"{TOKEN_ENV} is not set")
+            raise ProbeConfigError(f"neither {TOKEN_ENV} nor {FALLBACK_TOKEN_ENV} is set")
         portal = int(os.environ.get(PORTAL_ENV) or CLAUDE_TEST_ZONE_PORTAL_ID)
         client = cls(
             token=token,

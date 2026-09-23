@@ -50,9 +50,18 @@ class Finding:
 
 def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> Any:
     """Send one batch through retl's own body builder, so the checks exercise the real
-    request shape rather than a hand-rolled one."""
+    request shape rather than a hand-rolled one.
+
+    Contacts the upsert CREATES are registered for cleanup here rather than in each check:
+    an upsert is how most checks make a contact, and registering at the call site is what
+    stops a run leaving orphans in the portal.
+    """
     serialized = [(key, json.dumps(props)) for key, props in rows]
-    return client.request("POST", UPSERT_PATH, json=build_batch_body(serialized))
+    response = client.request("POST", UPSERT_PATH, json=build_batch_body(serialized))
+    client.created_contact_ids.extend(
+        str(r["id"]) for r in response.body.get("results", []) if r.get("new") and r.get("id")
+    )
+    return response
 
 
 def check_01_merged_contact_ids(client: SandboxClient) -> Finding:
@@ -249,9 +258,6 @@ def check_06_new_flag_reliability(client: SandboxClient) -> Finding:
     def flags(response: Any) -> list[Any]:
         return [r.get("new") for r in response.body.get("results", [])]
 
-    created_ids = [str(r.get("id")) for r in first.body.get("results", []) if r.get("id")]
-    client.created_contact_ids.extend(created_ids)
-
     return Finding(
         check=6,
         title="Whether `new: true` reliably means created",
@@ -280,11 +286,6 @@ def check_07_batch_rate_limit_accounting(client: SandboxClient) -> Finding:
     many = [(client.tag(f"rl-{i}"), {"jobtitle": "rl"}) for i in range(100)]
     hundred = _upsert(client, many)
     after = _rate_limit_remaining(hundred.headers)
-
-    for response in (one, hundred):
-        client.created_contact_ids.extend(
-            str(r["id"]) for r in response.body.get("results", []) if r.get("id")
-        )
 
     def remaining(headers: dict[str, str]) -> int | None:
         for key, value in headers.items():
@@ -321,8 +322,6 @@ def check_08_email_collision(client: SandboxClient) -> Finding:
 
     holder_after = client.get_contact(holder_id, ["email"])
     reassigned = holder_after.get("email") != email
-    created_ids = [str(r["id"]) for r in response.body.get("results", []) if r.get("id")]
-    client.created_contact_ids.extend(i for i in created_ids if i != holder_id)
 
     return Finding(
         check=8,
