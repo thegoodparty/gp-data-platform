@@ -5,15 +5,16 @@ the supervised-monitoring table (SKILL.md, "Supervised monitoring of a matcher r
     uv run python build_shadow_rows.py run-<date>-offices.csv classes-<date>.csv universe-<date>.csv \
         --run-key '2026-09-18 14:30:00' --image-git-sha <40-hex> --shape B_live --out shadow-<date>
 
-writes <out>.csv (for the record) and <out>-partNN.sql, one INSERT of at most 500 rows each (the CLI hands SQL to the
-warehouse as a process argument, and one statement for a whole re-attempt wave exceeds the OS limit); run each with dbsql.py -f on the
-owner's go, in name order.
+writes <out>.csv (for the record) and <out>-partNN.sql, INSERTs of under 100 KB each (the CLI hands SQL to the warehouse as one
+process argument, and one statement for a whole re-attempt wave exceeds the OS limit); run each with dbsql.py -f on the owner's go, in
+name order. Regenerating a prefix removes its earlier parts first.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+from pathlib import Path
 
 TABLE = "goodparty_data_catalog.dbt_sroberts.gm_body_rule_shadow"
 # The body-level rule's in-class abstain labels; R1_judicial_abstain predates the rule.
@@ -101,11 +102,24 @@ def insert_sql(table, rows):
     return f"insert into {table} ({', '.join(COLUMNS)}) values\n{values}"
 
 
-INSERT_CHUNK_ROWS = 500  # about 145 KB of SQL per statement; the CLI argument limit is near 1 MB
+# The CLI hands each statement to the warehouse as ONE process argument; Linux caps a single argument at 128 KiB and macOS
+# caps the whole command line near 1 MB, so the ceiling is bytes of SQL, not rows.
+INSERT_CHUNK_BYTES = 100_000
 
 
-def insert_sql_chunks(table, rows, size=INSERT_CHUNK_ROWS):
-    return [insert_sql(table, rows[i : i + size]) for i in range(0, len(rows), size)]
+def insert_sql_chunks(table, rows, max_bytes=INSERT_CHUNK_BYTES):
+    header = len(f"insert into {table} ({', '.join(COLUMNS)}) values\n".encode())
+    chunks, batch, size = [], [], header
+    for r in rows:
+        line = len(("(" + ", ".join(_literal(c, r[c]) for c in COLUMNS) + "),\n").encode())
+        if batch and size + line > max_bytes:
+            chunks.append(insert_sql(table, batch))
+            batch, size = [], header
+        batch.append(r)
+        size += line
+    if batch:
+        chunks.append(insert_sql(table, batch))
+    return chunks
 
 
 def main(argv=None):
@@ -116,7 +130,7 @@ def main(argv=None):
     ap.add_argument("--run-key", required=True)
     ap.add_argument("--image-git-sha", required=True)
     ap.add_argument("--shape", required=True, choices=["A_shadow", "B_live"])
-    ap.add_argument("--out", required=True, help="path prefix; writes <out>.csv and <out>.sql")
+    ap.add_argument("--out", required=True, help="path prefix; writes <out>.csv and <out>-partNN.sql")
     a = ap.parse_args(argv)
     offices = list(csv.DictReader(open(a.offices_csv, newline="", encoding="utf-8-sig")))
     classes = {r["br_database_id"]: r["rule_class"] for r in csv.DictReader(open(a.classes_csv, newline=""))}
@@ -137,6 +151,9 @@ def main(argv=None):
         w = csv.DictWriter(fh, fieldnames=COLUMNS)
         w.writeheader()
         w.writerows(rows)
+    # A redo with fewer rows must not leave earlier parts behind for the operator's glob to re-insert.
+    for stale in Path(a.out).parent.glob(f"{Path(a.out).name}-part*.sql"):
+        stale.unlink()
     chunks = insert_sql_chunks(TABLE, rows)
     for i, sql in enumerate(chunks):
         with open(f"{a.out}-part{i:02d}.sql", "w") as fh:

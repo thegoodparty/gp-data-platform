@@ -694,8 +694,9 @@ Daily, after Step 2, from `gold-match/` (all paths relative to it; `<dir>` is wh
    then the mirror over those two files to `<dir>/classes-<date>.csv` (the body-level mirror above).
 2. `uv run python ../.claude/skills/gold-match-run-audit/build_shadow_rows.py <dir>/run-<date>-offices.csv <dir>/classes-<date>.csv
    <dir>/universe-<date>.csv --run-key '<run_key>' --image-git-sha <run_log.git_sha> --shape B_live --out <dir>/shadow-<date>` writes
-   `shadow-<date>.csv` and `shadow-<date>-partNN.sql` (INSERTs of at most 500 rows; a whole wave in one statement exceeds the CLI's
-   argument limit); run each part with `dbsql.py -f` in name order. One append per run key; redoing a day is a delete on `run_key`
+   `shadow-<date>.csv` and `shadow-<date>-partNN.sql` (INSERTs under 100 KB each; a whole wave in one statement exceeds the CLI's
+   argument limit, and Linux caps one argument at 128 KiB); run each part with `dbsql.py -f` in name order. Regenerating a prefix
+   removes its earlier parts first. One append per run key; redoing a day is a delete on `run_key`
    then the inserts. Shape is `A_shadow` when production ran a build without the rule, `B_live` when it ran the rule.
 3. `uv run python ../.claude/skills/gold-match-run-audit/find_body_rows.py <dir>/shadow-<date>.csv <dir>/universe-<date>.csv
    <dir>/hits-<date>.csv` asks, for every in-class abstain, whether ANY row of ANY type in the state carries the body's anchor tokens
