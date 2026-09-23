@@ -117,8 +117,7 @@ def build_probes(name: str, email: str, phone: str, address: str) -> list[tuple[
     phone_like = lit(f"%{ph}%") if ph else "'%__nomatch__%'"
     addr_like = lit(f"%{address.lower()}%") if address else "'%__nomatch__%'"
 
-    # One regex alternation rather than three LIKEs, so a JSON blob is scanned once.
-    # Three separate LIKEs over these columns exhausted the connector's retry budget.
+    # One regex alternation so a JSON blob is scanned once.
     needles = [n for n in (email.lower().partition("@")[0], ph, address.lower()) if n]
     blob_pattern = lit("|".join(re.escape(n) for n in needles)) if needles else lit("(?!)")
 

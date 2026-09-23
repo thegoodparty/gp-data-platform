@@ -209,25 +209,29 @@ Order matters. Clearing a warehouse copy before its source means the next sync r
    Leave the BallotReady S3 drops alone; the staging filter covers both
    `candidacies_v3` and `office_holders_v3`.
 
-## Step 4: clear the warehouse copies
+## Step 4: what the warehouse keeps, and why that is fine
 
-The gp-api Airbyte source replicates by Xmin, not CDC, so a Postgres delete never reaches
-Databricks. There is no `_ab_cdc_deleted_at` column. The row simply stops updating and
-persists forever, and `dbt build --full-refresh` faithfully reproduces it. Every one of
-these needs an explicit `DELETE`:
+The staging filter is the control. Once the identifiers are registered, every model from
+staging down excludes the person on its next build, and a source that re-ingests them
+cannot bring them back. We do not delete rows from the warehouse copies of source
+systems: they re-ingest, the legal review settled that logical deletion meets the
+statute, and purpose limitation is what keeps them from being read.
 
-- `airbyte_source.gp_api_db_*`, all 36 person-bearing streams
-- `airbyte_internal.airbyte_source_raw__stream_*`, insert-only raw JSON of every version
-  ever extracted. A stream resync does not clear prior generations.
-- `segment_storage` tables in the `gp_api` and `web_app` schemas
-- `airbyte_source.amplitude_api_events`
-- `airbyte_source.hubspot_api_contacts`, the three `snapshot__hubspot_api_*` tables, and
-  the three `archives.airbyte_source__hubspot_api_*_20260122` tables
-- `historical.ballotready_records_sent_to_hubspot` and `..._sent_to_techspeed`. Read these
-  first; they record what we disclosed onward.
-- `model_predictions.candidacy_ddhq_matches_*`
+Copies that sit upstream of the filter and therefore still hold the rows:
 
-Stop there. No purge, no vacuum.
+- `airbyte_source.*` landing tables and the insert-only `airbyte_internal` raw JSON. The
+  gp-api source replicates by Xmin, not CDC, so a Postgres delete never reaches them.
+- `stg_airflow_source__ballotready_person_raw`, an incremental merge: its filter stops
+  new rows and its downstream models rebuild, but a row already merged stays until a
+  `--full-refresh` of that model.
+- `snapshot__hubspot_api_*`, and `snapshot__m_election_api__person`, the history of
+  published person ids and slugs. A slug is the person's name, and a snapshot closes a
+  row rather than deleting it.
+- `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`
+  (read these: they record what we disclosed onward), `model_predictions.candidacy_ddhq_matches_*`.
+
+Everything from staging down, including PR and dev schemas, is a derived copy that the
+next rebuild clears. Do not chase those by hand. No purge, no vacuum.
 
 ## Step 5: rebuild downstream, in this order
 

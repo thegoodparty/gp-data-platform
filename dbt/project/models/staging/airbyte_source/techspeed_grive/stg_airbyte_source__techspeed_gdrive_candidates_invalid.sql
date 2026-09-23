@@ -76,5 +76,8 @@ from with_checks
 where
     invalid_reason is not null
     -- Rejected rows are still materialized, so they filter too.
-    and
-    {{ dsar_not_suppressed_via_br_candidacy("br_race_id", "first_name", "last_name") }}
+    and {{
+        dsar_not_suppressed_via_br_candidacy(
+            "br_race_id", "first_name", clean_techspeed_last_name("last_name")
+        )
+    }}

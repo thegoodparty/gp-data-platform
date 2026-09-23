@@ -40,7 +40,9 @@ select
     _airbyte_extracted_at
 
 from {{ source("airbyte_source", "hubspot_api_feedback_submissions") }}
--- The contact is copied into each submission, so the contacts filter never sees it.
+-- The contact is copied into each submission, so the contacts filter never sees it;
+-- a submission goes when its contact is suppressed by any identifier.
 where
     {{ dsar_not_suppressed("properties:hs_contact_email_rollup::string", "email") }}
     and {{ dsar_not_suppressed("properties:hs_contact_id::string", "hs_contact_id") }}
+    and {{ hubspot_contact_not_suppressed("properties:hs_contact_id::string") }}

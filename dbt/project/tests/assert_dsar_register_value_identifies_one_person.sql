@@ -51,9 +51,10 @@ with
 
 select
     people.identifier_type,
+    people.identifier_value,
     people.source_name,
     count(distinct people.person_id) as people
 from register
 join people using (identifier_type, identifier_value)
-group by 1, 2
+group by 1, 2, 3
 having count(distinct people.person_id) > 1

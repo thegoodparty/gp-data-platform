@@ -75,17 +75,7 @@ with
             -- surnames ("De La Cruz", "Da Silva", "St. John", "AB Smith"),
             -- which have no period or space between the leading cap(s)
             -- and the next character.
-            regexp_replace(
-                regexp_replace(
-                    regexp_replace(
-                        {{ remove_name_suffixes("trim(last_name)") }}, ',$', ''
-                    ),
-                    '^([A-Z][.] ?|[A-Z] )+(?=[A-Za-z])',
-                    ''
-                ),
-                '(?<=[A-Za-z]) [A-Z]$',
-                ''
-            ) as last_name,
+            {{ clean_techspeed_last_name("last_name") }} as last_name,
             -- Generational suffix, captured from the raw surname before the
             -- stripping above discards it (Jr/Sr distinguish father and son).
             upper(
