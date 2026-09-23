@@ -1090,6 +1090,12 @@ models:
         description: |
           HubSpot contact ID extracted from `meta_data:hubspotid`. Renamed in
           staging so downstream models can use it without re-parsing the JSON.
+      - name: stripe_customer_id
+        description: |
+          Stripe customer ID extracted from `meta_data:customerId`, a native
+          foreign key the product writes at checkout. Renamed in staging so
+          downstream models can use it without re-parsing the JSON. Null for the
+          large majority of users, who have never paid.
   - name: stg_airbyte_source__gp_api_db_website
     description: raw data load from gp_api_db postgres db from table `website`
     columns:

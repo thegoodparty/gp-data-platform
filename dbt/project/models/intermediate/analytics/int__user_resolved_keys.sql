@@ -88,14 +88,12 @@ with
         group by pi.gp_person_id
     ),
 
-    -- meta_data.customerId is a native foreign key our own product writes when
-    -- a logged-in user checks out, so this is a join and not a match. Stripe is
+    -- The customer id is a native foreign key our own product writes when a
+    -- logged-in user checks out, so this is a join and not a match. Stripe is
     -- deliberately not a person-graph source: entity resolution exists to
     -- reconcile records that do not share a key.
     stripe as (
-        select
-            cast(id as bigint) as user_id,
-            get_json_object(meta_data, '$.customerId') as stripe_customer_id
+        select cast(id as bigint) as user_id, stripe_customer_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
