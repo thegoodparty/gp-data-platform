@@ -76,6 +76,12 @@ with
             engagement_type <> 'CALL'
             and contact_ids is not null
             and trim(contact_ids) not in ('', '[]')
+            -- Right-to-erasure suppression. Redundant today, because HubSpot
+            -- strips the contact association when it erases an engagement, so
+            -- all 18 erased rows already fail the association filter above.
+            -- Kept so a partial erasure, or a sync that lands the association
+            -- before the erasure, cannot put a suppressed touch on a user row.
+            and not coalesce(is_gdpr_deleted, false)
     ),
 
     all_touches as (
