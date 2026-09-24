@@ -25,7 +25,29 @@ with
             {{ adapter.quote("outreach_type") }},
             {{ adapter.quote("phone_list_id") }},
             {{ adapter.quote("audience_request") }},
-            {{ adapter.quote("voter_file_filter_id") }}
+            {{ adapter.quote("voter_file_filter_id") }},
+            {{ adapter.quote("denied_at") }},
+            {{ adapter.quote("denied_by") }},
+            {{ adapter.quote("text_count") }},
+            {{ adapter.quote("approved_at") }},
+            {{ adapter.quote("approved_by") }},
+            {{ adapter.quote("archived_at") }},
+            {{ adapter.quote("canceled_at") }},
+            {{ adapter.quote("canceled_by") }},
+            {{ adapter.quote("denied_reason") }},
+            {{ adapter.quote("did_npa_subset") }},
+            {{ adapter.quote("admin_edited_at") }},
+            {{ adapter.quote("admin_edited_by") }},
+            {{ adapter.quote("canceled_by_admin") }},
+            {{ adapter.quote("billable_text_count") }},
+            {{ adapter.quote("campaign_outreach_id") }},
+            {{ adapter.quote("canvass_requested_at") }},
+            {{ adapter.quote("scheduled_local_date") }},
+            {{ adapter.quote("scheduled_local_time") }},
+            {{ adapter.quote("phone_banking_list_id") }},
+            {{ adapter.quote("campaign_plan_due_date") }},
+            {{ adapter.quote("door_knocking_route_id") }},
+            {{ adapter.quote("stripe_checkout_session_id") }}
 
         from source
     )
