@@ -851,6 +851,56 @@ models:
         description: "Audience request parameters for the outreach campaign"
       - name: voter_file_filter_id
         description: "ID of the voter file filter applied to the outreach campaign"
+      - name: denied_at
+        description: "Timestamp when an admin denied the outreach"
+      - name: denied_by
+        description: "Admin who denied the outreach"
+      - name: text_count
+        description: "Number of texts the outreach sent"
+      - name: approved_at
+        description: "Timestamp when an admin approved the outreach"
+      - name: approved_by
+        description: "Admin who approved the outreach"
+      - name: archived_at
+        description: "Timestamp when the outreach was archived"
+      - name: canceled_at
+        description: "Timestamp when the outreach was canceled"
+      - name: canceled_by
+        description: "User who canceled the outreach"
+      - name: denied_reason
+        description: "Reason given when the outreach was denied"
+      - name: did_npa_subset
+        description: "Area-code subset requested for the outreach's sending numbers"
+      - name: admin_edited_at
+        description: "Timestamp when an admin last edited the outreach"
+      - name: admin_edited_by
+        description: "Admin who last edited the outreach"
+      - name: canceled_by_admin
+        description: "Whether the cancellation came from an admin rather than the user"
+      - name: billable_text_count
+        description: "Number of texts billed for the outreach, which can differ from text_count"
+      - name: campaign_outreach_id
+        description: "ID of the campaign outreach record this outreach belongs to"
+      - name: canvass_requested_at
+        description: "Timestamp when a canvass was requested for the outreach"
+      - name: scheduled_local_date
+        description: "Send date in the recipient's local time, stored as text"
+      - name: scheduled_local_time
+        description: "Send time in the recipient's local time, stored as text"
+      - name: phone_banking_list_id
+        description: >
+          Foreign key to the frozen phone banking call list. Non-null only on
+          nativePhoneBanking rows, which is how an in-product call list joins
+          back to its campaign.
+      - name: campaign_plan_due_date
+        description: "Due date for the associated campaign plan, stored as text"
+      - name: door_knocking_route_id
+        description: >
+          Foreign key to the frozen door knocking route. Non-null only on
+          nativeDoorKnocking rows, which is how an in-product walk route joins
+          back to its campaign.
+      - name: stripe_checkout_session_id
+        description: "Stripe checkout session backing a paid outreach"
     data_tests:
       # The product scopes an outreach by campaign (Win) or by organization alone
       # (Serve). A row with neither has no owner and should still fail loudly.
