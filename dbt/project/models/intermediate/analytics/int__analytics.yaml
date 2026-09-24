@@ -175,7 +175,7 @@ models:
         description: >
           Source-native created timestamp for the record. Converted from the
           Stripe epoch-seconds integer, which the connector lands unmodified and
-          the staging layer passes through without casting.
+          the customers staging model passes through without casting.
       - name: has_subscription
         description: The customer holds any Stripe subscription.
         data_tests:
@@ -185,6 +185,31 @@ models:
           The customer holds an active, trialing or past_due subscription. True
           here means live revenue with no product account, which is the case
           worth acting on rather than merely counting.
+        data_tests:
+          - not_null
+      - name: lifetime_paid_usd
+        description: >
+          Everything this unreachable customer has paid, over succeeded and
+          captured charges. Roughly a quarter of all money the account has
+          collected sits on rows here, which is the measure of what a revenue
+          column at user grain cannot see.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: payment_count
+        description: Succeeded, captured charges against the customer.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: email_match_available
+        description: >
+          The customer's Stripe email exactly matches a gp-api user's, which
+          holds for about three quarters of these rows and most of the stranded
+          money. Measured, not acted on: closing it is entity resolution work.
         data_tests:
           - not_null
     data_tests:
@@ -495,3 +520,192 @@ models:
             expression: connected_call_count <= call_count
           config:
             where: has_hubspot_contact
+
+  - name: int__user_revenue_profile
+    description: >
+      The revenue slice of the end-to-end user view: what a user has paid us
+      and what state their subscription is in, at gp-api user grain. One row
+      per user whether or not they ever paid.
+
+      Money is read from charges, not invoices. Stripe raises an invoice for
+      the Pro subscription and for nothing else, so an invoice-only total
+      reports a user who bought a domain, a text-outreach package or a
+      sales-led plan as having paid nothing. Subscription revenue is about a
+      third of what this account has collected from users who reach a row here.
+
+      Amounts are gross of refunds unless the column says otherwise, and are
+      zero rather than null for a user who never paid: no Stripe customer means
+      they paid us nothing, which is a fact and not an absence. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: is_pro
+        description: >
+          The user holds Pro on at least one campaign. Campaign state, which is
+          a different question from whether they paid: the flag and the Stripe
+          customer disagree in both directions and neither corrects the other.
+        data_tests:
+          - not_null
+      - name: pro_campaign_count
+        description: How many of the user's campaigns carry the Pro flag.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pro_since
+        description: >
+          When the user became Pro, as best it can be dated. Null for a user
+          who is not Pro, and null for a Pro user neither route reaches.
+      - name: pro_since_source
+        description: >
+          Which route dated it. The Stripe first payment covers about half the
+          Pro population. The campaign archive begins 2026-04-13, so it only
+          contributes users who flipped while under observation; a user already
+          Pro at first sighting would otherwise be dated to the day the archive
+          opened. The rest are undated, and the column says so rather than
+          leaving the reason to be guessed from a null.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["stripe_first_payment", "campaign_version_change", "undated"]
+      - name: has_stripe_customer
+        description: The user row carries a Stripe customer id.
+        data_tests:
+          - not_null
+      - name: shared_stripe_customer_user_count
+        description: >
+          How many user rows share this Stripe customer id. A handful sit on
+          two, so a person-grain rollup of the money columns has to dedupe on
+          it or it counts that revenue twice.
+      - name: payment_count
+        description: Succeeded, captured charges reaching the user.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_paid_usd
+        description: Everything the user has paid us, gross of refunds.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_refunded_usd
+        description: How much of that has been refunded.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_net_usd
+        description: Paid less refunded. The figure finance recognises.
+        data_tests:
+          - not_null
+      - name: subscription_paid_usd
+        description: The Pro subscription leg, charges that raised an invoice.
+        data_tests:
+          - not_null
+      - name: one_off_paid_usd
+        description: >
+          Named one-off purchases: domain registrations, text outreach, polls.
+          Only charges carrying the product's own checkout metadata land here.
+        data_tests:
+          - not_null
+      - name: sales_led_paid_usd
+        description: >
+          Purchases taken through HubSpot commerce rather than the product.
+          The largest single revenue line and almost invisible from the Pro
+          flag, since most of these buyers never held it.
+        data_tests:
+          - not_null
+      - name: unclassified_paid_usd
+        description: >
+          Own-product one-offs taken after 2026-02-16, when checkout moved
+          behind a payment intent this connector does not ingest and its
+          metadata went with it. The dollars are the user's and are counted in
+          the lifetime total; only the purchase line is unknown. Kept as its
+          own column so the gap is visible rather than folded into a named
+          line.
+        data_tests:
+          - not_null
+      - name: first_payment_at
+        description: The user's first succeeded payment. Null if they never paid.
+      - name: last_payment_at
+        description: Their most recent succeeded payment.
+      - name: subscription_status
+        description: >
+          Stripe status of the user's current subscription, which is the live
+          one where there is one and otherwise the most recent, so a churned
+          user keeps the subscription they churned out of. Churn keys on this,
+          never on subscription_canceled_at, because a subscription set to
+          cancel at period end is still active and already carries a date.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "active",
+                    "past_due",
+                    "unpaid",
+                    "canceled",
+                    "incomplete",
+                    "incomplete_expired",
+                    "trialing",
+                    "paused",
+                  ]
+      - name: subscription_count
+        description: Subscriptions ever held against the user's Stripe customer.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: has_active_subscription
+        description: >
+          The current subscription is active, trialing or past_due. False, not
+          null, for a user who never had one.
+        data_tests:
+          - not_null
+      - name: subscription_started_at
+        description: When the current subscription began.
+      - name: subscription_canceled_at
+        description: >
+          When cancellation was requested. Present on some active
+          subscriptions, which is why it does not define churn.
+      - name: subscription_ended_at
+        description: When the subscription actually ended.
+      - name: subscription_period_end_at
+        description: End of the current billing period.
+      - name: subscription_will_cancel_at_period_end
+        description: Cancellation is scheduled for the end of the current period.
+      - name: subscription_plan_amount_usd
+        description: Recurring amount of the plan on the current subscription.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              subscription_paid_usd + one_off_paid_usd + sales_led_paid_usd
+              + unclassified_paid_usd = lifetime_paid_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: lifetime_net_usd <= lifetime_paid_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: last_payment_at >= first_payment_at
+          config:
+            where: first_payment_at is not null
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: payment_count > 0
+          config:
+            where: lifetime_paid_usd > 0

@@ -88,15 +88,17 @@ base AS (
     FROM goodparty_data_catalog.mart_analytics.users_win_base
 ),
 stripe_subs AS (
+    -- The subscriptions staging model now names and casts its columns, so the
+    -- epoch conversions that used to live here are gone.
     SELECT
         LOWER(cu.email) AS em,
-        s.status,
-        CAST(from_unixtime(s.start_date) AS DATE) AS sub_start,
-        CAST(from_unixtime(CAST(s.ended_at AS BIGINT)) AS DATE) AS sub_end
+        s.subscription_status AS status,
+        CAST(s.started_at AS DATE) AS sub_start,
+        CAST(s.ended_at AS DATE) AS sub_end
     FROM goodparty_data_catalog.dbt.stg_airbyte_source__stripe_api_subscriptions s
     JOIN goodparty_data_catalog.dbt.stg_airbyte_source__stripe_api_customers cu
-        ON s.customer = cu.id
-    WHERE s.livemode AND s.status != 'incomplete_expired'
+        ON s.stripe_customer_id = cu.id
+    WHERE s.is_livemode AND s.subscription_status != 'incomplete_expired'
 ),
 stripe_flags AS (
     -- Interval test in SQL (complex types don't survive the connector without
