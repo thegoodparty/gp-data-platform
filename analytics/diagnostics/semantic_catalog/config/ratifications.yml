@@ -57,15 +57,16 @@ serve_users:
   approved_by_pr: 801
 
 win_activated_users:
+  # auto-recorded: Sign-off landed on the merge of #1067, once both review groups approved. The date is when the second group's approval landed.
   # Coverage completed across two PRs. The business group approved #708 on
   # 2026-07-29, but no data-group approval existed, so the 2026-07-28 date that
   # #708 carried was unbacked and DATA-2249 dropped it to pending. The data
   # group approved #776 on 2026-08-07, which is what this records: that PR
   # carried the metric's sidecar entry precisely so the missing approval could
   # land on it. The definition itself is unchanged since #708.
-  ratified: 2026-08-07
-  definition_sha: '595940c'
-  approved_by_pr: 776
+  ratified: 2026-09-24
+  definition_sha: '23ce443'
+  approved_by_pr: 1067
 
 win_active_candidates_30d:
   # Approved by both groups on #760 and merged, but never recorded: the failure
