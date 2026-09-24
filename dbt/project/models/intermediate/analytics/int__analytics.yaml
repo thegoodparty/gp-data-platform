@@ -381,7 +381,12 @@ models:
           by a day or more against 12% of web-sourced ones, and 93% of them
           have been contacted against 29%. Owner assignment is deliberately not
           part of the rule, since 92% of matched users carry an owner and it
-          separates nothing. Unknown where no contact resolves.
+          separates nothing.
+
+          Unknown covers two states, and the second is defensive: a user who
+          reaches no contact, and a resolved contact carrying no analytics
+          source. No contact is in the second state today, 0 of 63,920, so
+          unknown is in practice the no-contact population.
         data_tests:
           - not_null
           - accepted_values:
