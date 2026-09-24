@@ -38,9 +38,10 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 
 ## Account provenance (join to `dbt.stg_airbyte_source__gp_api_db_user`)
 
-`has_password` is the **signup-channel** dimension and the strongest Win engagement predictor
-measured (CV AUC 0.70 power, 0.79 touch; ranked first in every subset where it varies). It is not
-on `users_win_candidacy` - join from the gp-api user staging table on `user_id`:
+`has_password` is the **signup-channel** dimension **for accounts created before 2026-04-01**, and
+the strongest Win engagement predictor measured on that population (CV AUC 0.70 power, 0.79 touch;
+ranked first in every subset where it varies). It is not on `users_win_candidacy` - join from the
+gp-api user staging table on `user_id`:
 
 ```sql
 left join goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user us
@@ -49,6 +50,40 @@ left join goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user us
 
 - `false` = sales-created off a roster, `true` = self-signup. Roll to candidacy grain with
   `MAX(...)`, which is where the working set's `usr_has_password` comes from.
+- **Dead as a channel marker from April 2026.** Signup moved to magic links, so every account created
+  from 2026-05-01 onward has `has_password = false` regardless of how it arrived, and April 2026
+  is the transition month (measured 2026-09-24: 0% of May to September 2026 signups carry a
+  password; April runs ~50%; January to March ~80%; 2025 99.9%). A 2026-book cut that labels
+  no-password accounts "sales-created" is mislabeling magic-link self-signups. For accounts
+  created from 2026-04-01 onward, read channel from whether a dated HubSpot sales touch predates
+  the account, which is the check the DATA-2239 audit used to validate the flag in the first
+  place. Left-join `mart_analytics.prospects` on the product user id; `u` here is
+  `users_win_candidacy`, which carries `user_created_at`:
+
+  ```sql
+  left join goodparty_data_catalog.mart_analytics.prospects pr
+    on cast(pr.gp_user_id as string) = cast(u.user_id as string)
+  -- sales-sourced when:
+  --   pr.first_sales_touch_at is not null
+  --   and cast(pr.first_sales_touch_at as date) < cast(u.user_created_at as date)
+  ```
+
+  Read the join result as three buckets, not two. **Sales-sourced**: a dated touch strictly before
+  the signup day. **Not sales-sourced**: no `prospects` row at all, or a dated touch on or after
+  the signup day, since a touch that follows the signup cannot have sourced it (sales reached a
+  self-signup after the fact). **Undated**: a row whose `first_sales_touch_at` is NULL. The mart's gate admits contacts on Win-stage strings and
+  pledge or opt-in flags that carry no timestamp, and those flags are set for ordinary
+  self-signups by product automation, so an undated row is evidence of neither channel. The
+  sentinel `9999-01-01` the mart uses inside its `least()` is stripped to NULL before
+  materialization and never appears in the column. It must be a LEFT join: an inner join drops
+  every organic self-signup from the denominator. Measured 2026-09-24 on latest-version, non-demo
+  users created from May 2026 onward (N=2,224): 179 sales-sourced (8%); 507 not sales-sourced
+  (23%), of which 334 have no row, 150 a dated touch after the signup day, and 23 a
+  midnight-stamped HubSpot date on the signup day itself; 1,538 undated (69%). The 23 same-day
+  cases land in not-sales-sourced deliberately: HubSpot lifecycle dates carry no time of day, so
+  same-day ordering is unknowable, and the date cast keeps the definition identical to the
+  audit's. Admin-created accounts also stopped in
+  early 2026, so accounts from April onward are self-signups unless the check says otherwise.
 - Clean as a stratifier: it was deliberately excluded from the corroboration model, so cutting by
   it is not restating a model input.
 - Corroborated rows are 69.9% roster against the frame's 57.7%, so **any** corroboration-filtered
