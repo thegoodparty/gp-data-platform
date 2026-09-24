@@ -26,7 +26,11 @@ from .destinations import DeliveryResult, OnBatchConfirmed, RowError
 
 HUBSPOT_ID_PROPERTY = "gp_person_id"
 BATCH_SIZE = 100
-UPSERT_PATH = "/crm/v3/objects/contacts/batch/upsert"
+# HubSpot's date-based API version. Semantic versions (v1-v4) lose support in Sept 2027,
+# and each dated version carries an 18-month window, so this is a recurring bump rather
+# than a one-time migration -- named here so it is one token to move.
+HUBSPOT_API_VERSION = "2026-09"
+UPSERT_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/batch/upsert"
 
 # Doc-verified retry allowlist. 401/403/414 are explicitly non-retryable; anything
 # else outside this set is ALSO treated as non-retryable by _classify_response's

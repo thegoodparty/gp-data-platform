@@ -343,52 +343,47 @@ def check_08_email_collision(client: SandboxClient) -> Finding:
     )
 
 
-DATED_PATH_CANDIDATES = [
-    "/crm/objects/2026-09/contacts/batch/upsert",
-    "/crm/objects/contacts/batch/upsert/2026-09",
-    "/crm/2026-09/objects/contacts/batch/upsert",
-]
+# The semantic-version path retl used before the date-based migration. Kept only as the
+# comparison baseline for check 10; it loses support in Sept 2027.
+LEGACY_V3_UPSERT_PATH = "/crm/v3/objects/contacts/batch/upsert"
 
 
 def check_10_dated_api_version(client: SandboxClient) -> Finding:
-    """v3 loses support in Sept 2027. Which dated path replaces our one call, and is it identical?"""
+    """Does the dated path retl now calls still work, and still match v3's response shape?
+
+    A regression guard rather than a discovery: dated versions carry an 18-month window, so
+    this is what tells us the configured version is still live and still shaped as parsed.
+    """
     key = client.tag("dated")
-    serialized = [(key, json.dumps({"jobtitle": "dated"}))]
-    body = build_batch_body(serialized)
+    body = build_batch_body([(key, json.dumps({"jobtitle": "dated"}))])
 
-    attempts = {}
-    working = None
-    for path in DATED_PATH_CANDIDATES:
-        response = client.request("POST", path, json=body)
-        attempts[path] = {"status": response.status_code, "body": response.body}
-        if response.status_code in (200, 207) and working is None:
-            working = path
-            client.created_contact_ids.extend(
-                str(r["id"]) for r in response.body.get("results", []) if r.get("id")
-            )
+    configured = client.request("POST", UPSERT_PATH, json=body)
+    client.created_contact_ids.extend(
+        str(r["id"]) for r in configured.body.get("results", []) if r.get("new") and r.get("id")
+    )
+    legacy = client.request("POST", LEGACY_V3_UPSERT_PATH, json=body)
 
-    baseline = client.request("POST", UPSERT_PATH, json=body)
-    dated_keys = sorted(attempts[working]["body"]) if working else []
+    configured_keys, legacy_keys = sorted(configured.body), sorted(legacy.body)
     return Finding(
         check=10,
         title="Date-based API versioning for the batch upsert",
         verdict=(
-            f"working dated path: {working or 'none of the candidates'}; "
-            f"v3 baseline returned {baseline.status_code}"
+            f"configured path {UPSERT_PATH} returned {configured.status_code}; "
+            f"legacy v3 returned {legacy.status_code}"
         ),
         implication=(
-            "If a dated path works with an identical response shape, migrating off v3 is a "
-            "one-line change. A different shape means the 207 parsing needs reworking first."
+            "A non-2xx on the configured path means the dated version has aged out and retl's "
+            "HUBSPOT_API_VERSION needs bumping. A shape difference means the 207 parsing needs "
+            "reworking before that bump."
         ),
         evidence={
-            "attempts": attempts,
-            "v3_response_keys": sorted(baseline.body),
-            "dated_response_keys": dated_keys,
-            "shapes_match": dated_keys == sorted(baseline.body) if working else None,
+            "configured_path": UPSERT_PATH,
+            "configured_status": configured.status_code,
+            "legacy_status": legacy.status_code,
+            "configured_response_keys": configured_keys,
+            "legacy_response_keys": legacy_keys,
+            "shapes_match": configured_keys == legacy_keys,
         },
-        manual_followup=(
-            "" if working else "No candidate path worked; check the API reference version dropdown."
-        ),
     )
 
 
