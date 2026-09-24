@@ -10,9 +10,13 @@
 -- the Win rollups serve, so the event list is read from those declarations here too
 -- rather than retyped: a hand-kept copy is what this guard exists to catch, and it
 -- cannot catch a drift in itself.
-{%- set anchored_metrics = ["win_active_candidates_30d", "win_activated_users"] -%}
-{%- set names = [] -%}
-{%- if execute -%}
+--
+-- The tags below deliberately do not left-trim their whitespace. Trimming pulls
+-- the preamble up onto the last comment line above and takes the `with` with it,
+-- so the query compiles commented out and fails on the first paren.
+{% set anchored_metrics = ["win_active_candidates_30d", "win_activated_users"] %}
+{% set names = [] %}
+{% if execute %}
     {%- for metric_name in anchored_metrics -%}
         {%- for leg in metric_anchored_events(metric_name) -%}
             {#- Pathed legs are excluded from the allowlist, so they are out of scope
@@ -22,7 +26,7 @@
             {%- endif -%}
         {%- endfor -%}
     {%- endfor -%}
-{%- endif -%}
+{% endif %}
 
 with
     recurrent_events(event_type) as (
