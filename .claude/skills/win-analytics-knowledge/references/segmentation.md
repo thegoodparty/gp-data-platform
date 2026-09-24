@@ -69,18 +69,20 @@ left join goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user us
   ```
 
   Read the join result as three buckets, not two. **Sales-sourced**: a dated touch strictly before
-  the signup day. **Not sales-sourced**: no `prospects` row at all. **Undated**: a row whose
-  `first_sales_touch_at` is NULL. The mart's gate admits contacts on Win-stage strings and
+  the signup day. **Not sales-sourced**: no `prospects` row at all, or a dated touch on or after
+  the signup day, since a touch that follows the signup cannot have sourced it (sales reached a
+  self-signup after the fact). **Undated**: a row whose `first_sales_touch_at` is NULL. The mart's gate admits contacts on Win-stage strings and
   pledge or opt-in flags that carry no timestamp, and those flags are set for ordinary
   self-signups by product automation, so an undated row is evidence of neither channel. The
   sentinel `9999-01-01` the mart uses inside its `least()` is stripped to NULL before
   materialization and never appears in the column. It must be a LEFT join: an inner join drops
   every organic self-signup from the denominator. Measured 2026-09-24 on latest-version, non-demo
-  users created from May 2026 onward (N=2,224): 179 sales-sourced (8%), 334 with no row (15%),
-  1,538 undated (69%), 150 with a dated touch after signup (7%), and 23 whose only touch is a
-  midnight-stamped HubSpot date on the signup day itself. Those 23 are deliberately not counted:
-  HubSpot lifecycle dates carry no time of day, so same-day ordering is unknowable, and the date
-  cast keeps the definition identical to the audit's. Admin-created accounts also stopped in
+  users created from May 2026 onward (N=2,224): 179 sales-sourced (8%); 507 not sales-sourced
+  (23%), of which 334 have no row, 150 a dated touch after the signup day, and 23 a
+  midnight-stamped HubSpot date on the signup day itself; 1,538 undated (69%). The 23 same-day
+  cases land in not-sales-sourced deliberately: HubSpot lifecycle dates carry no time of day, so
+  same-day ordering is unknowable, and the date cast keeps the definition identical to the
+  audit's. Admin-created accounts also stopped in
   early 2026, so accounts from April onward are self-signups unless the check says otherwise.
 - Clean as a stratifier: it was deliberately excluded from the corroboration model, so cutting by
   it is not restating a model input.
