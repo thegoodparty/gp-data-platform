@@ -24,6 +24,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from retl.hubspot_destination import (
+    HUBSPOT_API_VERSION,
     HUBSPOT_ID_PROPERTY,
     UPSERT_PATH,
     build_batch_body,
@@ -64,41 +65,71 @@ def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> An
     return response
 
 
+MERGE_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/merge"
+# The three properties a merge survivor carries its absorbed ids in.
+MERGE_HISTORY_PROPERTIES = ("hs_merged_object_ids", "hs_all_contact_vids", "hs_calculated_merged_vids")
+
+
+def _merged_ids(value: str | None) -> list[str]:
+    """The contact ids inside a merge-history property.
+
+    Semicolon-separated, and hs_calculated_merged_vids suffixes each id with ':<epoch ms>'.
+    This is the parse the eventual dbt fix has to do, so the check exercises it here.
+    """
+    if not value:
+        return []
+    return [part.split(":", 1)[0] for part in value.split(";") if part]
+
+
 def check_01_merged_contact_ids(client: SandboxClient) -> Finding:
-    """After sales merges two contacts, does an upsert on the loser's person key still land?"""
+    """After sales merges two contacts, does an upsert on the loser's person key still land?
+
+    Also pins the contract the fix depends on: that the survivor names the retired contact
+    id in a readable property. Without that, merge detection has nothing to join on.
+    """
     key_a, key_b = client.tag("merge-a"), client.tag("merge-b")
     id_a = client.create_contact({HUBSPOT_ID_PROPERTY: key_a}, label="merge-a")
     id_b = client.create_contact({HUBSPOT_ID_PROPERTY: key_b}, label="merge-b")
 
-    merge = client.request(
-        "POST",
-        "/crm/v3/objects/contacts/merge",
-        json={"primaryObjectId": id_a, "objectIdToMerge": id_b},
-    )
+    merge = client.request("POST", MERGE_PATH, json={"primaryObjectId": id_a, "objectIdToMerge": id_b})
     settle()
 
-    after_merge = client.get_contact(id_a, [HUBSPOT_ID_PROPERTY])
+    survivor = client.get_contact(id_a, [HUBSPOT_ID_PROPERTY, *MERGE_HISTORY_PROPERTIES])
+    merge_history = {prop: _merged_ids(survivor.get(prop)) for prop in MERGE_HISTORY_PROPERTIES}
+    carries_retired_id = {prop: id_b in ids for prop, ids in merge_history.items()}
+    retired_read = client.request("GET", f"/crm/v3/objects/contacts/{id_b}")
+
     response = _upsert(client, [(key_b, {"jobtitle": "after merge"})])
     settle()
 
     results = response.body.get("results", [])
     landed_on = str(results[0].get("id")) if results else None
+    recoverable = [prop for prop, found in carries_retired_id.items() if found]
     return Finding(
         check=1,
         title="Merged/retired contact-id behavior on batch upsert",
         verdict=(
-            f"upsert on the merged-away key returned {response.status_code}; "
-            f"landed on contact {landed_on} (survivor was {id_a}, merged-away was {id_b})"
+            f"upsert on the merged-away key landed on contact {landed_on} "
+            f"(survivor {id_a}, merged-away {id_b}); "
+            f"the retired id is recoverable from {recoverable or 'NO property'}"
         ),
         implication=(
-            "If the loser's key creates a NEW contact, a merge silently splits a person "
-            "back into two records and the design's claim that our key survives merges is wrong."
+            "Two things at once. The loser's key creating a NEW contact means a merge splits a "
+            "person back into two records, so the design's claim that our key survives merges is "
+            "wrong. And the merge-history properties are what the fix joins on: if none of them "
+            "names the retired id, merge detection has nothing to work from and needs redesigning."
         ),
         evidence={
             "merge_status": merge.status_code,
-            "survivor_person_id_after_merge": after_merge.get(HUBSPOT_ID_PROPERTY),
+            "survivor_keeps_primary_id": str(merge.body.get("id")) == id_a,
+            "survivor_person_id_after_merge": survivor.get(HUBSPOT_ID_PROPERTY),
+            "person_id_of_loser_dropped": survivor.get(HUBSPOT_ID_PROPERTY) != key_b,
+            "merge_history_raw": {p: survivor.get(p) for p in MERGE_HISTORY_PROPERTIES},
+            "merge_history_parsed": merge_history,
+            "carries_retired_id": carries_retired_id,
+            "retired_id_read_status": retired_read.status_code,
+            "retired_id_redirects_to": str(retired_read.body.get("id") or ""),
             "upsert_status": response.status_code,
-            "upsert_body": response.body,
             "created_new_contact": landed_on not in (id_a, id_b),
         },
     )
