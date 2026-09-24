@@ -29,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|gold-match|analytics|airflow|dbt|reverse-etl)/
+        exclude: ^(matcha|gold-match|analytics|airflow|dbt|reverse-etl)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -43,7 +43,6 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
-        exclude: ^people-api-loader/src/loader/people_api/schema/data/
 
 -   repo: local
     hooks:
@@ -54,13 +53,6 @@ repos:
     # directory's environment, so that env must be set up locally first
     # (`uv sync`, or `pip install ...` for `airflow/astro`). `files:` means a push
     # only runs the suites for directories it actually touched.
-    -   id: pytest-people-api-loader
-        name: people-api-loader tests (pre-push)
-        entry: bash -c 'cd people-api-loader && uv run pytest'
-        language: system
-        files: ^people-api-loader/
-        pass_filenames: false
-        stages: [pre-push]
     -   id: pytest-matcha
         name: matcha tests (pre-push)
         entry: bash -c 'cd matcha && uv run pytest'

@@ -78,9 +78,8 @@ is what keeps that safe: their marts lag District's, so a district an L2 rename
 dropped is a stale row and is pruned, not a failure that would take the whole
 set down.
 
-`people-api-loader` also loads these two marts, into the people-api cluster.
-That copy is what the app reads today and goes away with people-api itself;
-this one is its replacement, not a second live source.
+This is the only copy of these two marts the app reads; the people-api
+cluster that used to carry them is retired.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
