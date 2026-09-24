@@ -6,19 +6,23 @@ macro source against the real declaration and asserts the emitted predicate carr
 every leg and nothing else, so a declaration the macro cannot actually read fails here
 rather than silently narrowing an OKR.
 
-It also guards the filter one model upstream. `int__amplitude_user_milestones` is one
-of the models calling the macro, and it is the one on the Active Candidates path
-(`users_win_base` reads it), so an anchor event its WHERE clause drops never reaches
-the predicate at all, however correct the predicate is. That filter still names the
-activated-user anchors literally, which is a deliberate call: one event name in an
-allowlist is far less drift-prone than a union that has already changed three times,
-and rebuilding the whole milestone pick from metrics is a bigger change than this
-ticket carries. The test below is what makes that call safe.
+`is_outreach_activation_event` is the same construction for `win_activated_users`,
+and carries one thing the dashboard macro does not: a leg can exclude an event
+property. One event name covers three moments there, and only the declaration knows
+which of them the metric counts, so the guards below check the exclusion renders and
+that the macro refuses a qualifier it cannot compile.
 
-`int__amplitude_win_activity` and its weekly variant also call the macro, and their
-own intake gate (`is_recurrent` plus a hardcoded `Viewed` / `/dashboard` leg) is NOT
-derived from the declaration. They feed the separate `users_win_activity` mart, not
-Active Candidates, so they are a follow-up rather than part of this guard.
+It also guards the filter one model upstream. `int__amplitude_user_milestones` is one
+of the models calling both macros, and it is the one on the Active Candidates path
+(`users_win_base` reads it), so an anchor event its WHERE clause drops never reaches
+the predicate at all, however correct the predicate is. Neither anchor is named
+literally in that filter any more: both arrive through their macro, which is what the
+milestone guards below expand.
+
+`int__amplitude_win_activity` and its weekly variant also call both macros. Their
+intake gate is `is_recurrent` plus a hardcoded `Viewed` / `/dashboard` leg, and
+`is_recurrent` is now itself derived from the same two declarations, so a leg added to
+a metric reaches those rollups without a second edit.
 
 Pure Jinja with stubs for dbt's `execute`, `graph`, `exceptions` and `return`: no dbt,
 no warehouse, no network, so it runs anywhere. It is therefore a check on the macro's
@@ -43,10 +47,13 @@ SERVE_SEM = MODELS / "marts/analytics/sem_analytics__users_serve.yml"
 MILESTONES = MODELS / "intermediate/amplitude/int__amplitude_user_milestones.sql"
 
 METRIC = "win_active_candidates_30d"
+ACTIVATION_METRIC = "win_activated_users"
 EVENT_COL = "event_type"
 PATH_COL = "event_properties:path::string"
+METHOD_COL = "event_properties:method::string"
 
 MACRO_CALL = re.compile(r"\{\{\s*is_dashboard_view_event\([^)]*\)\s*\}\}")
+ACTIVATION_MACRO_CALL = re.compile(r"\{\{\s*is_outreach_activation_event\([^)]*\)\s*\}\}")
 SQL_LITERAL = re.compile(r"'([^']*)'")
 ACCESSOR_CALL = re.compile(r"metric_anchored_events\(\s*\"([^\"]+)\"\s*\)")
 
@@ -90,20 +97,26 @@ PREDICATE = ENV.from_string(
 )
 
 
-def declared_meta() -> dict:
+ACTIVATION_PREDICATE = ENV.from_string(
+    macro_source("is_outreach_activation_event")
+    + f"\n{{{{ is_outreach_activation_event('{EVENT_COL}', '{METHOD_COL}') }}}}"
+)
+
+
+def declared_meta(metric: str = METRIC) -> dict:
     """The metric's raw `config.meta`, exactly as the macro would see it on the node."""
     doc = yaml.safe_load(SEM.read_text())
-    metric = next(m for m in doc["metrics"] if m["name"] == METRIC)
-    return metric["config"]["meta"]
+    found = next(m for m in doc["metrics"] if m["name"] == metric)
+    return found["config"]["meta"]
 
 
-def anchored_events(execute: bool, meta: dict):
+def anchored_events(execute: bool, meta: dict, metric: str = METRIC):
     graph = types.SimpleNamespace(
-        metrics={METRIC: types.SimpleNamespace(name=METRIC, config=types.SimpleNamespace(meta=meta))}
+        metrics={metric: types.SimpleNamespace(name=metric, config=types.SimpleNamespace(meta=meta))}
     )
     module = ACCESSOR.make_module({"execute": execute, "graph": graph})
     try:
-        vars(module)["metric_anchored_events"](METRIC)
+        vars(module)["metric_anchored_events"](metric)
     except MacroReturn as returned:
         return returned.value
     raise AssertionError("metric_anchored_events did not return")
@@ -117,6 +130,14 @@ def render(execute: bool, meta: dict) -> str:
     return " ".join(sql.split())
 
 
+def render_activation(execute: bool, meta: dict) -> str:
+    sql = ACTIVATION_PREDICATE.render(
+        execute=execute,
+        metric_anchored_events=lambda _name: anchored_events(execute, meta, ACTIVATION_METRIC),
+    )
+    return " ".join(sql.split())
+
+
 def declared_legs() -> dict:
     """Every metric's normalised legs, across both semantic files that declare one."""
     legs: dict = {}
@@ -126,12 +147,15 @@ def declared_legs() -> dict:
 
 
 def milestone_filter() -> str:
-    """The milestone_events WHERE predicate, with its macro call expanded."""
+    """The milestone_events WHERE predicate, with both macro calls expanded."""
     src = MILESTONES.read_text()
     block = src[src.index("milestone_events as (") : src.index("dashboard_view_flags as (")]
-    rendered = render(True, declared_meta())
-    expanded, substitutions = MACRO_CALL.subn(lambda _match: rendered, block)
+    dashboard = render(True, declared_meta())
+    expanded, substitutions = MACRO_CALL.subn(lambda _match: dashboard, block)
     assert substitutions == 1, "milestone_events no longer reads the dashboard union from the macro"
+    activation = render_activation(True, declared_meta(ACTIVATION_METRIC))
+    expanded, substitutions = ACTIVATION_MACRO_CALL.subn(lambda _match: activation, expanded)
+    assert substitutions == 1, "milestone_events no longer reads the outreach terminals from the macro"
     return " ".join(expanded.split())
 
 
@@ -181,6 +205,78 @@ def test_parse_time_renders_the_false_fallback():
 def test_an_empty_declaration_raises_rather_than_zeroing_the_metric():
     with pytest.raises(CompilerError):
         render(True, {"anchored_on": []})
+
+
+def test_the_activation_predicate_reads_the_activated_users_metric():
+    """The mirror of the dashboard guard above, and the same one-line hazard.
+
+    `win_active_candidates_30d` is a few lines away in the same file and resolves
+    cleanly, so pointing this macro at it would render the dashboard union as an
+    outreach predicate and read activation off page views.
+    """
+    assert ACCESSOR_CALL.findall(macro_source("is_outreach_activation_event")) == [ACTIVATION_METRIC]
+
+
+def test_every_declared_activation_leg_appears_in_the_rendered_predicate():
+    sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
+    legs = parse_anchors(yaml.safe_load(SEM.read_text()))[ACTIVATION_METRIC]
+    missing = [leg["event"] for leg in legs if f"'{leg['event']}'" not in sql]
+    assert not missing, f"declared but not rendered: {missing}"
+
+
+def test_the_rendered_activation_predicate_carries_no_undeclared_event():
+    """A re-hardcoded or extra leg widens an OKR as surely as a dropped one narrows it."""
+    sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
+    legs = parse_anchors(yaml.safe_load(SEM.read_text()))[ACTIVATION_METRIC]
+    declared = {leg["event"] for leg in legs}
+    declared |= {value for leg in legs for value in leg["excluding"].values()}
+    # The empty string is the coalesce sentinel that keeps a null method in, not an
+    # event name. Pinned rather than filtered out, so losing it fails this test too.
+    assert set(SQL_LITERAL.findall(sql)) == declared | {""}
+
+
+def test_the_excluded_method_renders_as_a_negative_condition():
+    """Self-report must be excluded by the emitted SQL, not just by the declaration.
+
+    A declaration carrying an exclusion the predicate ignores is the worst of both:
+    the metric reads correctly documented and counts the thing it says it excludes.
+    """
+    sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
+    assert (
+        f"{EVENT_COL} = 'Voter Outreach - Campaign Completed' "
+        f"and coalesce({METHOD_COL}, '') not in ( 'manual' )"
+    ) in sql
+
+
+def test_a_null_method_is_not_excluded():
+    """The legacy in-product send predates the property, so its method is null.
+
+    Without the coalesce, `null not in ('manual')` is UNKNOWN and every pre-property
+    send drops out, which would silently delete the metric's own history.
+    """
+    sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
+    assert f"coalesce({METHOD_COL}, '')" in sql
+
+
+def test_activation_parse_time_renders_the_false_fallback():
+    assert render_activation(False, declared_meta(ACTIVATION_METRIC)) == "(false)"
+
+
+def test_an_empty_activation_declaration_raises_rather_than_zeroing_the_metric():
+    with pytest.raises(CompilerError):
+        render_activation(True, {"anchored_on": []})
+
+
+def test_an_exclusion_the_macro_cannot_compile_raises():
+    """Silently ignoring an unknown qualifier would widen the metric without a trace."""
+    with pytest.raises(CompilerError):
+        render_activation(True, {"anchored_on": [{"event": "E", "excluding": {"channel": "sms"}}]})
+
+
+def test_a_path_leg_on_the_activation_metric_raises():
+    """This macro takes no page-path column, so a pathed leg must fail, not be dropped."""
+    with pytest.raises(CompilerError):
+        render_activation(True, {"anchored_on": [{"event": "E", "path": "/x"}]})
 
 
 def test_the_milestone_filter_admits_every_declared_anchor_event():

@@ -42,7 +42,12 @@
         -- (session_id = -1, ~1.3k recipients per batch), not a surface view.
         when {{ event_type_col }} = 'Campaign Plan - Campaign Tracker Viewed'
         then 'win_dashboard'
-        when {{ event_type_col }} like 'Voter Outreach -%'
+        when
+            {{ event_type_col }} like 'Voter Outreach -%'
+            -- Robocall is a voter-outreach channel that the product named
+            -- without the prefix, so it fell through to 'other' and was
+            -- invisible to every family-based Win read.
+            or {{ event_type_col }} like 'Robocall -%'
         then 'win_voter_outreach'
         when {{ event_type_col }} like 'Outreach -%'
         then 'win_outreach_planning'
@@ -147,20 +152,19 @@
     {#
         Flag recurrent-activity events vs one-off lifecycle milestones.
 
-        Recurrence is an event-level property (not a family property), so this
-        is a short explicit allowlist rather than a pattern. The set matches
-        exactly the events modeled by the Win activity rollups
-        (int__amplitude_win_activity and its weekly variant). Extend this list
-        when a genuinely recurrent activity event is added to those rollups.
+        Recurrence is an event-level property (not a family property), so this is
+        an allowlist rather than a pattern. The set is the union of the anchor
+        declarations of the two governed metrics the Win activity rollups serve,
+        read from the semantic layer rather than restated here. That direction
+        matters: this allowlist is the rollups' intake gate, so a leg added to a
+        metric but missing here never reaches the model that computes it, and the
+        metric reads as unchanged while looking correctly declared.
 
-        The allowlist now carries 4 events total (1 campaign-outreach event plus
-        the 3 generations of named dashboard-view event, each of which replaced
-        its predecessor when the dashboard surface was rebuilt). This list stays
-        event-name-based, so it does NOT cover the page-path leg of
-        is_dashboard_view_event: 'Viewed' is a site-wide page event and only its
-        '/dashboard' rows are dashboard views, which an event_type allowlist
-        cannot express. Consumers that intake by is_recurrent must therefore
-        admit the page-path leg explicitly alongside it.
+        Pathed legs are deliberately dropped. A pathed leg is a slice of a
+        site-wide event ('Viewed' at '/dashboard'), and an event-name allowlist
+        admitting the bare name would pull in every row of a 4.5M-row event.
+        Consumers that intake by is_recurrent must therefore admit the page-path
+        leg explicitly alongside it, which is what the rollups do.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
@@ -168,20 +172,49 @@
         Usage:
             {{ amplitude_event_is_recurrent('event_type') }} as is_recurrent
     #}
-    {{ event_type_col }} in (
-        'Voter Outreach - Campaign Completed',
-        'Dashboard - Candidate Dashboard Viewed',
-        'Dashboard - Campaign Plan Viewed',
-        'Campaign Plan - Campaign Tracker Viewed'
-    )
+    {%- set anchored_metrics = ["win_active_candidates_30d", "win_activated_users"] -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty name list, which must raise at execute time. -#}
+        (false)
+    {%- else -%}
+        {%- set names = [] -%}
+        {%- for metric_name in anchored_metrics -%}
+            {%- for leg in metric_anchored_events(metric_name) -%}
+                {%- if not leg["path"] and leg["event"] not in names -%}
+                    {%- do names.append(leg["event"]) -%}
+                {%- endif -%}
+            {%- endfor -%}
+        {%- endfor -%}
+        {%- if names | length == 0 -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "amplitude_event_is_recurrent: the anchored metrics resolved to zero "
+                    "name-based legs at execute time. Refusing to emit a predicate that "
+                    "would empty the Win activity rollups."
+                )
+            }}
+        {%- endif -%}
+        {{ event_type_col }} in (
+            {%- for event in names | sort %}'{{ event }}'{{ "," if not loop.last }}
+            {%- endfor %}
+        )
+    {%- endif -%}
 {% endmacro %}
 
 {% macro metric_anchored_events(metric_name) %}
     {#
         Legs of a governed metric's `config.meta.anchored_on` (DATA-2421), as dicts
-        with keys event / path / era. The semantic layer is the kernel: this reads the
-        declaration rather than restating it, so the macro cannot drift from the
-        metric it serves.
+        with keys event / path / era / excluding. The semantic layer is the kernel:
+        this reads the declaration rather than restating it, so the macro cannot
+        drift from the metric it serves.
+
+        `path` narrows a leg to one page-path slice of a site-wide event.
+        `excluding` narrows a leg by an event property, as {property: value};
+        each consuming macro decides which property keys it can compile and must
+        raise on one it cannot, so an exclusion can never be silently ignored.
+        `era` is documentation, not a filter: dead legs stay in the predicate so
+        history is preserved.
 
         Empty at parse time (execute=false), same as the seed accessors in
         hubspot_contact_property_columns.sql. Callers building a predicate MUST emit a
@@ -221,6 +254,7 @@
                     "event": leg["event"],
                     "path": leg.get("path"),
                     "era": leg.get("era"),
+                    "excluding": leg.get("excluding") or {},
                 }
             ) -%}
         {%- endfor -%}
@@ -293,6 +327,110 @@
             {%- if named | length > 0 %}
                 {{ event_type_col }} in (
                     {%- for event in named %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
+{% endmacro %}
+
+{% macro is_outreach_activation_event(event_type_col, method_col) %}
+    {#
+        Membership test for a voter-outreach send that the product observed.
+
+        Anchored on the same declaration the metric publishes, for the same reason
+        is_dashboard_view_event is: the outreach surface has been rebuilt twice and
+        each rebuild silently retired the event the number was computed from. The
+        legacy in-product send leg stopped firing on 2026-09-08 when the flow moved
+        to outreach/v2/, and the count did not visibly fall, because the self-report
+        modal shares the event name and absorbed it.
+
+        Which is why the `method` property matters here. One event name covers three
+        different moments: no `method` was the legacy product-executed send,
+        'native' is a completed door-knocking walk, and 'manual' is a candidate
+        typing in something they did elsewhere. Only the first two are outreach this
+        product performed, so 'manual' is excluded by declaration. A null method
+        passes, because the leg that predates the property is a real send.
+
+        Excluding by property is narrow on purpose: this macro compiles a `method`
+        exclusion and raises on any other key, so a declared exclusion this macro
+        cannot express fails the build instead of quietly widening the metric.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property
+                (event_properties:method::string).
+    #}
+    {%- set legs = metric_anchored_events("win_activated_users") -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty leg list, which must raise at execute time. -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                "is_outreach_activation_event: win_activated_users resolved to zero legs "
+                "at execute time. Refusing to emit a predicate that would read activation "
+                "as zero."
+            )
+        }}
+    {%- else -%}
+        {%- set plain = [] -%}
+        {%- set qualified = [] -%}
+        {%- for leg in legs -%}
+            {%- if leg["path"] -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        "is_outreach_activation_event: leg '"
+                        ~ leg["event"]
+                        ~ "' declares a page path, which this macro cannot compile."
+                    )
+                }}
+            {%- elif leg["excluding"] -%}
+                {%- for property_key in leg["excluding"] -%}
+                    {%- if property_key != "method" -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                "is_outreach_activation_event: leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but this macro only compiles a 'method' exclusion."
+                            )
+                        }}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- set excluded = leg["excluding"]["method"] -%}
+                {%- do qualified.append(
+                    {
+                        "event": leg["event"],
+                        "methods": (
+                            excluded
+                            if excluded is sequence
+                            and excluded is not string
+                            else [excluded]
+                        ),
+                    }
+                ) -%}
+            {%- else -%} {%- do plain.append(leg["event"]) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        (
+            {%- for leg in qualified %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and coalesce({{ method_col }}, '') not in (
+                        {%- for method in leg["methods"] %}
+                            '{{ method }}'{{ "," if not loop.last }}
+                        {%- endfor %}
+                    )
+                )
+                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if plain | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in plain | sort %}
                         '{{ event }}'{{ "," if not loop.last }}
                     {%- endfor %}
                 )

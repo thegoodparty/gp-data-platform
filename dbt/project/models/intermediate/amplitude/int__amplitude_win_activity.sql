@@ -9,6 +9,9 @@ with
             event_type,
             event_time,
             event_properties:path::string as page_path,
+            -- Distinguishes the three moments that share the Campaign Completed
+            -- name; see is_outreach_activation_event.
+            event_properties:method::string as outreach_method,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -25,8 +28,9 @@ with
             user_id is not null
             and try_cast(user_id as bigint) is not null
             -- Recurrent-activity events come from the single-source taxonomy
-            -- instead of a hardcoded list: 'Voter Outreach - Campaign Completed'
-            -- plus the three generations of named dashboard-view event.
+            -- instead of a hardcoded list. That allowlist is itself derived from
+            -- the anchor declarations of the metrics this model feeds, so a leg
+            -- added to a metric cannot be dropped by this intake filter.
             and (
                 event_type in (
                     select event_type
@@ -68,23 +72,46 @@ with
             we.activity_month_year,
 
             count(
-                case when event_type = 'Voter Outreach - Campaign Completed' then 1 end
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
+                    then 1
+                end
             ) as campaigns_sent,
             sum(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
                     then recipient_count
                 end
             ) as recipient_count,
             min(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
                     then event_time
                 end
             ) as first_campaign_sent_at,
             max(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
                     then event_time
                 end
             ) as last_campaign_sent_at,

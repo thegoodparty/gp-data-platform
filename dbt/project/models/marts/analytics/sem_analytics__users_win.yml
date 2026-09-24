@@ -91,9 +91,25 @@ metrics:
   - name: win_activated_users
     label: Win Activated Users
     description: >
-      Count of Win-product users who have activated: sent at least one voter
-      outreach campaign (first_campaign_sent_at is not null). The activated
-      slice of win_users; the Activated Candidates OKR.
+      Count of Win-product users who have activated: the product has performed
+      at least one voter-outreach send for them (first_campaign_sent_at is not
+      null). The activated slice of win_users; the Activated Candidates OKR.
+      Definition owned by users_win_base.is_activated, which is anchored on the
+      outreach-terminal union declared in this metric's config.meta.anchored_on
+      and compiled by is_outreach_activation_event.
+
+      Two things this deliberately does NOT count. Self-reported outreach, where
+      a candidate records something they did off-platform, is excluded by the
+      method qualifier below: it is a real signal but it is not a send this
+      product made, and counting it let the OKR hold steady through a month in
+      which the in-product leg had stopped firing entirely. And preparation to
+      reach voters (creating a call list, downloading a call sheet, building an
+      audience) is not outreach, so no preparation event is a leg.
+
+      Three of the four outreach channels have no send terminal yet, so this is
+      a floor rather than a count until they are instrumented. Because the legs
+      went live at different dates, a series over this metric carries
+      instrumentation steps and must not be read as growth.
     type: simple
     type_params:
       measure: win_user_count
@@ -102,5 +118,21 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
+        # The raw events that count as a product-performed outreach send. This is
+        # the kernel: is_outreach_activation_event derives its SQL from this list
+        # and the Win activity rollups gate their intake on it, so adding or
+        # removing a leg is a governed change, not an implementation detail.
         anchored_on:
           - event: Voter Outreach - Campaign Completed
+            # One event name, three moments. An absent method is the legacy
+            # in-product send (stopped firing 2026-09-08 when the flow moved to
+            # outreach/v2/); 'native' is a completed door-knocking walk; 'manual'
+            # is a candidate self-reporting outreach done elsewhere.
+            excluding:
+              method: manual
+          - event: Robocall - Scheduled
+          # The live phone-banking event is per-call, not per-campaign, so it is
+          # not a leg: it would read as ~26 campaigns for one caller and hide the
+          # fact that the channel has no campaign-grain terminal any more.
+          - event: "Outreach - Phone Banking: Complete"
+            era: historical   # died in-data 2026-08-28, its call site removed
