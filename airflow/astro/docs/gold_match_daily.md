@@ -12,8 +12,10 @@ no run of that job or the on-merge build (job 70471823431463) queued or running;
 dbt Cloud cannot be asked. `match_pod` then runs the gold-match image as a Kubernetes pod, executing the
 unattended entry point (`stitch_golden_data.prod_gold_data.daily_run`) with this DagRun's own start
 timestamp as the run key. `operator_signal` is a notification-only leaf: it fails the DAG (nothing
-deleted) when a human should look at something: a declined day, or offices that first entered quarantine
-this run.
+deleted) when a human should look at something after a run that wrote: offices that first entered
+quarantine this run. A declined day skips the pod and the signal, so the DagRun ends with skipped tasks
+and no alert: the red build behind it already pages through dbt Cloud, and the loop retries tomorrow
+(the declined-day alert was retired 2026-09-24 after two days of duplicate pages).
 
 That is the whole DAG. It triggers no dbt build and deletes nothing: the rows the pod writes reach the
 internal marts at the next scheduled build and the product at the following election-api sync (see the
@@ -32,19 +34,19 @@ the pod, `max_active_runs=1` on the DAG, and the pod is deleted at task terminat
 
 ## Reading a failure (the task name carries the story)
 
-Alerting is the existing failed-DAG Slack alert; there is no other machinery. When the DAG fails,
-read which task failed:
+Alerting is the existing failed-DAG Slack alert; there is no other machinery. A declined day does not
+fail the DAG (below). When the DAG fails, read which task failed:
 
 | Failing task | What happened | What to do |
 |---|---|---|
 | `match_pod` | Pod crash, timeout, the cohort ceiling (a pending list over 20k is a de facto full re-match), or the quarantine circuit breaker (>10 response-shape failures in one run). | Check whether the pod got as far as writing: `select count(*) from model_predictions.llm_l2_br_match_results where attempted_at = <run key>` against a run-log row for the same key. Rows without a run-log row are an incomplete run: delete them by key before the 00:02 build (nothing automated does this any more). No rows: nothing to undo. Tomorrow retries either way. Ceiling or circuit breaker means something systemic — read the pod log's last lines before tomorrow's run. |
-| `operator_signal` with "publication declined at admission" | The day was declined before anything was written, for one of three reasons named in the message: the latest scheduled prod build did not succeed (a red nightly: the universe and the marts are yesterday's; if the matcher's own rows made it red, the loop has paused itself), another prod build was in flight, or dbt Cloud could not be asked. | Nothing to undo. A red nightly: find the failing node in dbt Cloud; if it is the matcher's rows (the coverage floor or the label check), delete the offending rows by key and quarantine the offices, and the next nightly clears them; otherwise it is someone else's red and tomorrow retries. In flight: tomorrow retries, or trigger a manual run once it finishes. |
 | `operator_signal` with "first entered quarantine" | Offices FIRST entered quarantine this run (the pod's response-shape failures; the operator's own `adjudicated_wrong` holds are not counted). Nothing deleted; the run's rows stand. | Check the quarantine table for the new rows. |
 
-Two things that are NOT DAG failures but belong here:
+Three things that are NOT DAG failures but belong here:
 
 | Situation | What serves | Who acts |
 |---|---|---|
+| A declined day (`admission` returned False; `match_pod` and `operator_signal` skipped; DagRun not failed) | Nothing new. Admission's log line and its `declined_reason` XCom name one of three reasons: the latest scheduled prod build did not succeed (a red nightly: the universe and the marts are yesterday's; if the matcher's own rows made it red, the loop has paused itself), another prod build was in flight, or dbt Cloud could not be asked. Nothing was written; tomorrow retries. | Nobody, for the loop. A red nightly: dbt Cloud's own alert already paged it; if the failing node is the matcher's rows (the coverage floor or the label check), delete them by key and quarantine the offices before the next scheduled build; otherwise the owner of the failing model. In flight: tomorrow retries, or trigger a manual run once it finishes. |
 | A red nightly (the 00:02 or 12:02 scheduled build failed) | Depends on WHERE it went red. dbt materializes a model before it tests it, so a failing test (the voter-coverage floor, say) leaves the mart it tested already rebuilt, with the run's rows in it, and skips only the nodes downstream; a model that errored leaves its previous table in place. The sync reads tables, not dbt status, so a red nightly is a page, not a rollback. The next day's admission declines until a scheduled build succeeds, so the loop writes no new rows meanwhile. | dbt Cloud's own failure alert is the page. If the matcher's rows caused it, remove them (below) before 12:02; if the product must not see what the 12:02 build will carry, flip `election_api_swap_enabled` to false before the 22:00 sync (the existing product-side stop; the sync's own quality checks are the other). Otherwise the owner of the failing model. |
 | Wrong rows found in the daily audit | Nothing yet, if the audit finishes before the 00:02 build; the internal marts from 00:02 and the product from the following 22:00 sync otherwise. | The operator, on the owner's decision: `delete from model_predictions.llm_l2_br_match_results where attempted_at = <run key> and br_database_id in (...)`, then insert the offices into the quarantine table as `held` with reason `adjudicated_wrong` (stamped with the run key). Expect the deleted rows gone from the marts at the next scheduled build. |
 
