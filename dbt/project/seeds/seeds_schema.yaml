@@ -787,12 +787,12 @@ seeds:
       column has either a decision or a red build behind it.
     columns:
       - name: proposed_district
-        description: The exact vendor value, matched literally.
+        description: The vendor value, matched on the normalized L2 district name.
         data_tests:
           - not_null
           - unique
       - name: state
-        description: State the value appears in, for orientation only.
+        description: State the value appears in; part of the drift guard's match key.
         data_tests:
           - not_null
           - is_state_abbreviation
