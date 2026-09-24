@@ -566,8 +566,11 @@ models:
           who is not Pro, and null for a Pro user neither route reaches.
       - name: pro_since_source
         description: >
-          Which route dated it. The Stripe first payment covers about half the
-          Pro population. The campaign archive begins 2026-04-13, so it only
+          Which route dated it. The first Stripe subscription payment covers
+          about half the Pro population. It is deliberately the subscription
+          payment and not the first payment of any kind: a Pro user who bought
+          a domain months earlier would otherwise be dated to that purchase,
+          and a domain purchase is not a Pro signal. The campaign archive begins 2026-04-13, so it only
           contributes users who flipped while under observation; a user already
           Pro at first sighting would otherwise be dated to the day the archive
           opened. The rest are undated, and the column says so rather than
@@ -576,7 +579,11 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  ["stripe_first_payment", "campaign_version_change", "undated"]
+                  [
+                    "stripe_first_subscription_payment",
+                    "campaign_version_change",
+                    "undated",
+                  ]
       - name: has_stripe_customer
         description: The user row carries a Stripe customer id.
         data_tests:
@@ -584,8 +591,17 @@ models:
       - name: shared_stripe_customer_user_count
         description: >
           How many user rows share this Stripe customer id. A handful sit on
-          two, so a person-grain rollup of the money columns has to dedupe on
-          it or it counts that revenue twice.
+          two.
+      - name: is_primary_stripe_customer_row
+        description: >
+          True for a user whose Stripe customer is theirs alone, and for one of
+          each shared pair. Both rows of a shared pair carry the customer's
+          real total, because both accounts belong to the payer who made the
+          charge; what that breaks is a sum across the table. Filter on this
+          when totalling any money column, or the total overstates collections
+          by about 1%.
+        data_tests:
+          - not_null
       - name: payment_count
         description: Succeeded, captured charges reaching the user.
         data_tests:
@@ -642,6 +658,11 @@ models:
         description: The user's first succeeded payment. Null if they never paid.
       - name: last_payment_at
         description: Their most recent succeeded payment.
+      - name: first_subscription_payment_at
+        description: >
+          Their first succeeded subscription payment, which is what dates Pro.
+          Null for a payer who only ever bought one-offs or bought through
+          sales, of whom there are a few dozen.
       - name: subscription_status
         description: >
           Stripe status of the user's current subscription, which is the live

@@ -41,6 +41,7 @@ with
         where
             charge_status = 'succeeded'
             and is_captured
+            and is_livemode
             and stripe_customer_id is not null
         group by stripe_customer_id
     ),

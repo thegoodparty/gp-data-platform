@@ -35,7 +35,7 @@ with
             amount_captured_usd,
             amount_refunded_usd
         from {{ ref("stg_airbyte_source__stripe_api_charges") }}
-        where charge_status = 'succeeded' and is_captured
+        where charge_status = 'succeeded' and is_captured and is_livemode
     ),
 
     -- Two ways a charge reaches a user, unioned on the charge id so a charge
@@ -101,7 +101,13 @@ with
                 end
             ) as unclassified_paid_usd,
             min(created_at) as first_payment_at,
-            max(created_at) as last_payment_at
+            max(created_at) as last_payment_at,
+            -- Kept apart from first_payment_at because a Pro user who bought a
+            -- domain first would otherwise be dated to that purchase, and a
+            -- domain purchase is not a Pro signal.
+            min(
+                case when revenue_line = 'subscription' then created_at end
+            ) as first_subscription_payment_at
         from classified
         group by user_id
     ),
@@ -131,10 +137,24 @@ with
                     created_at desc
             ) as rn
         from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
-        where stripe_customer_id is not null
+        where stripe_customer_id is not null and is_livemode
     ),
 
     current_subscription as (select * from ranked_subscriptions where rn = 1),
+
+    -- One Stripe customer can sit on two user rows, 41 do today. Both rows
+    -- carry the customer's real total, because both accounts belong to the
+    -- payer who made the charge. What that breaks is a sum over the table,
+    -- which counts the money twice; this flag makes the dedupe a single
+    -- filter, so summing where it is true gives the collected figure.
+    stripe_customer_owner as (
+        select
+            user_id,
+            row_number() over (partition by stripe_customer_id order by user_id)
+            = 1 as is_primary_stripe_customer_row
+        from keys
+        where stripe_customer_id is not null
+    ),
 
     -- The campaign archive begins 2026-04-13, so a user already Pro at first
     -- sighting has no observable transition and is excluded: taking their
@@ -168,24 +188,27 @@ select
     case
         when coalesce(p.pro_campaign_count, 0) = 0
         then null
-        when r.first_payment_at is not null
-        then r.first_payment_at
+        when r.first_subscription_payment_at is not null
+        then r.first_subscription_payment_at
         else pt.first_pro_seen_at
     end as pro_since,
     case
         when coalesce(p.pro_campaign_count, 0) = 0
         then null
-        when r.first_payment_at is not null
-        then 'stripe_first_payment'
+        when r.first_subscription_payment_at is not null
+        then 'stripe_first_subscription_payment'
         when pt.first_pro_seen_at is not null
         then 'campaign_version_change'
         else 'undated'
     end as pro_since_source,
 
     k.stripe_customer_id is not null as has_stripe_customer,
-    -- How many user rows share this customer id, 41 of which sit on two. A
-    -- person-grain rollup of the money columns has to dedupe on it.
+    -- How many user rows share this customer id, 41 of which sit on two.
     k.stripe_customer_count as shared_stripe_customer_user_count,
+    -- True for users whose customer id is theirs alone and for one of each
+    -- shared pair. Sum the money columns with this as a filter; without it a
+    -- table-level total overstates collections by about 1%.
+    coalesce(o.is_primary_stripe_customer_row, true) as is_primary_stripe_customer_row,
 
     -- Zero where we can see Stripe and nothing was paid, zero as well where
     -- there is no customer at all: a user with no Stripe customer has paid us
@@ -201,6 +224,7 @@ select
     coalesce(r.unclassified_paid_usd, 0) as unclassified_paid_usd,
     r.first_payment_at,
     r.last_payment_at,
+    r.first_subscription_payment_at,
 
     s.subscription_status,
     coalesce(s.subscription_count, 0) as subscription_count,
@@ -217,4 +241,5 @@ from keys as k
 left join pro_state as p using (user_id)
 left join revenue as r using (user_id)
 left join pro_transition as pt using (user_id)
+left join stripe_customer_owner as o using (user_id)
 left join current_subscription as s on s.stripe_customer_id = k.stripe_customer_id
