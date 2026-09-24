@@ -55,10 +55,26 @@ left join goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user us
   2026-09-24: 0% of May to September 2026 signups carry a password; April is a ~50/50 transition
   month; January to March run ~80%; 2025 runs 99.9%). A 2026-book cut that labels no-password
   accounts "sales-created" is mislabeling magic-link self-signups. For accounts created after
-  April 2026, read channel from whether a HubSpot sales touch predates the account
-  (`prospects.first_sales_touch_at < user_created_at`), which is the check the DATA-2239 audit
-  used to validate the flag in the first place. Admin-created accounts also stopped in early 2026,
-  so post-April accounts are self-signups unless that check says otherwise.
+  April 2026, read channel from whether a HubSpot sales touch predates the account, which is the
+  check the DATA-2239 audit used to validate the flag in the first place. Left-join
+  `mart_analytics.prospects` on the product user id; `u` here is `users_win_candidacy`, which
+  carries `user_created_at`:
+
+  ```sql
+  left join goodparty_data_catalog.mart_analytics.prospects pr
+    on cast(pr.gp_user_id as string) = cast(u.user_id as string)
+  -- sales-sourced when:
+  --   pr.first_sales_touch_at is not null
+  --   and cast(pr.first_sales_touch_at as date) < cast(u.user_created_at as date)
+  ```
+
+  It must be a LEFT join: `prospects` only materializes contacts with at least one sales signal,
+  so an inner join drops every organic self-signup from the denominator. No row, a NULL touch, or
+  the `9999-01-01` sentinel the mart uses when a contact has no touch date all mean the same thing:
+  no sales touch before signup, so self-signup. Measured 2026-09-24 on latest-version, non-demo
+  candidacies: 202 of 2,224 users created from May 2026 onward (9%) had a sales touch before
+  signup. Admin-created accounts also stopped in early 2026, so post-April accounts are
+  self-signups unless that check says otherwise.
 - Clean as a stratifier: it was deliberately excluded from the corroboration model, so cutting by
   it is not restating a model input.
 - Corroborated rows are 69.9% roster against the frame's 57.7%, so **any** corroboration-filtered
