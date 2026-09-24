@@ -1637,6 +1637,12 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: is_gdpr_deleted
+        description: >
+          The call was erased under a right-to-erasure request. HubSpot also
+          strips the contact association on erasure, so a consumer filtering
+          on contacts already drops these, but read this rather than relying
+          on that.
       - name: created_at
         description: When the call engagement was created in HubSpot.
       - name: updated_at

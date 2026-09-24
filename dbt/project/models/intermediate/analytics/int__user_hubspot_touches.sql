@@ -5,6 +5,11 @@
 -- stream, read by the per-user rollup, by the mart and by several tests.
 {{ config(materialized="table") }}
 
+-- Both legs suppress right-to-erasure rows. Redundant against today's data,
+-- because HubSpot strips the contact association when it erases an engagement
+-- and all 18 erased rows already fail the association filter, but a partial
+-- erasure or a sync landing the association first would otherwise put a
+-- suppressed touch on a user row.
 with
     keys as (
         select user_id, gp_person_id, hubspot_contact_id
@@ -40,7 +45,10 @@ with
             outcome_family as call_outcome_family,
             explode(from_json(contacts, 'array<string>')) as contact_id
         from {{ ref("int__hubspot_calls") }}
-        where contacts is not null and trim(contacts) not in ('', '[]')
+        where
+            contacts is not null
+            and trim(contacts) not in ('', '[]')
+            and not coalesce(is_gdpr_deleted, false)
     ),
 
     other_touches as (
@@ -76,11 +84,6 @@ with
             engagement_type <> 'CALL'
             and contact_ids is not null
             and trim(contact_ids) not in ('', '[]')
-            -- Right-to-erasure suppression. Redundant today, because HubSpot
-            -- strips the contact association when it erases an engagement, so
-            -- all 18 erased rows already fail the association filter above.
-            -- Kept so a partial erasure, or a sync that lands the association
-            -- before the erasure, cannot put a suppressed touch on a user row.
             and not coalesce(is_gdpr_deleted, false)
     ),
 
