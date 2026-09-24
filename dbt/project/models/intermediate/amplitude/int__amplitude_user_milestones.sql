@@ -10,6 +10,9 @@ with
             event_time,
             country,
             event_properties:path::string as page_path,
+            -- Distinguishes the three moments that share the Campaign Completed
+            -- name; see is_outreach_activation_event.
+            event_properties:method::string as outreach_method,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -37,7 +40,6 @@ with
                     'Onboarding - Registration Completed',
                     'onboarding_complete',
                     'pro_upgrade_complete',
-                    'Voter Outreach - Campaign Completed',
                     'Serve Onboarding - Getting Started Viewed',
                     'Serve Onboarding - Constituency Profile Viewed',
                     'Serve Onboarding - Poll Value Props Viewed',
@@ -55,6 +57,13 @@ with
                 or {{
                     is_dashboard_view_event(
                         "event_type", "event_properties:path::string"
+                    )
+                }}
+                -- Outreach terminals, read from their metric's declaration for the
+                -- same reason. Select aliases are not in scope in a WHERE clause.
+                or {{
+                    is_outreach_activation_event(
+                        "event_type", "event_properties:method::string"
                     )
                 }}
             )
@@ -106,16 +115,34 @@ with
             -- Activated Candidates
             min(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
                     then event_time
                 end
             ) as first_campaign_sent_at,
             count(
-                case when event_type = 'Voter Outreach - Campaign Completed' then 1 end
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
+                    then 1
+                end
             ) as total_campaigns_sent,
             sum(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }}
                     then recipient_count
                 end
             ) as total_recipient_count,
