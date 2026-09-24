@@ -16,6 +16,7 @@ delivery day from reading as a quiet one.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -171,14 +172,47 @@ def _error_tracking_keys(error: Mapping[str, Any]) -> list[str]:
     return [str(t) for t in trace_ids]
 
 
+# HubSpot embeds the offending property inside the error's message text as JSON:
+#   Property values were not valid: [{"isValid":false,...,"name":"email"}]
+_MESSAGE_DETAIL = re.compile(r"\[.*]", re.DOTALL)
+
+
+def _property_from_message(message: Any) -> str | None:
+    """The property name HubSpot buries in an error's message text, if it is there.
+
+    An undocumented format, so every way of failing to read it returns None rather than
+    raising: a diagnostic detail must never be able to fail a delivery. Without this the
+    histogram's property dimension is always None -- the sandbox showed that for the
+    categories we see, the error context carries no property name at all.
+    """
+    if not isinstance(message, str):
+        return None
+    match = _MESSAGE_DETAIL.search(message)
+    if not match:
+        return None
+    try:
+        details = json.loads(match.group())
+    except ValueError:
+        return None
+    if not isinstance(details, list):
+        return None
+    for detail in details:
+        name = detail.get("name") if isinstance(detail, Mapping) else None
+        if name:
+            return str(name)
+    return None
+
+
 def _error_property(error: Mapping[str, Any]) -> str | None:
+    """The context keys come first: they are the structured form, and a 207 from an error
+    category we have not yet seen may well carry them. The message is the observed path."""
     context = error.get("context") or {}
     properties = context.get("properties") or context.get("propertyName")
     if isinstance(properties, list) and properties:
         return str(properties[0])
     if isinstance(properties, str) and properties:
         return properties
-    return None
+    return _property_from_message(error.get("message"))
 
 
 UNKNOWN_DELIVERY_CODE = "UNKNOWN_DELIVERY"

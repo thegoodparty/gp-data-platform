@@ -113,9 +113,58 @@ def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
     ]
 
 
+def test_parse_batch_response_names_the_property_from_the_message_text() -> None:
+    """Catches: the error histogram reporting property=None on every validation reject.
+
+    The message text below is copied verbatim from a sandbox 207. HubSpot's error context
+    carries no property name for this category, so the message is the only place it exists;
+    if HubSpot changes that format, this fails rather than silently going quiet.
+    """
+    response = HttpResponse(
+        status_code=207,
+        body={
+            "results": [],
+            "errors": [
+                {
+                    "status": "error",
+                    "category": "VALIDATION_ERROR",
+                    "message": (
+                        'Property values were not valid: [{"isValid":false,"message":'
+                        '"Email address not-an-email is invalid","error":"INVALID_EMAIL",'
+                        '"name":"email"}]'
+                    ),
+                    "context": {"objectWriteTraceId": ["p1"]},
+                }
+            ],
+        },
+    )
+    result = parse_batch_response(response, flow_id="hubspot", sent_rows={"p1": '{"email":"x"}'})
+    assert [(e.tracking_key, e.property) for e in result.errors] == [("p1", "email")]
+
+
+def test_parse_batch_response_reports_no_property_when_the_message_is_unreadable() -> None:
+    """Catches: a message-format change turning a diagnostic into a crash mid-delivery."""
+    response = HttpResponse(
+        status_code=207,
+        body={
+            "results": [],
+            "errors": [
+                {
+                    "category": "CONFLICT",
+                    "message": "Contact already exists. Existing ID: 123",
+                    "context": {"objectWriteTraceId": ["p1"]},
+                }
+            ],
+        },
+    )
+    result = parse_batch_response(response, flow_id="hubspot", sent_rows={"p1": '{"email":"x"}'})
+    assert [(e.tracking_key, e.error_code, e.property) for e in result.errors] == [("p1", "CONFLICT", None)]
+
+
 def test_parse_batch_response_reads_a_top_level_trace_id_on_an_error() -> None:
-    """Catches: dropping the top-level objectWriteTraceId fallback, in case the real sandbox
-    shape puts it there instead of under context (the documented shape is unverified)."""
+    """Catches: dropping the top-level objectWriteTraceId fallback. The sandbox puts an
+    error's keys under context, but results carry the id at the top level, so an error
+    shaped that way stays readable."""
     response = HttpResponse(
         status_code=207,
         body={"results": [], "errors": [{"objectWriteTraceId": "p1", "category": "VALIDATION_ERROR"}]},
