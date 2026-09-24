@@ -1,6 +1,7 @@
 select
     id,
     archived,
+    properties_hs_gdpr_deleted as is_gdpr_deleted,
     createdat as created_at,
     updatedat as updated_at,
     contacts,

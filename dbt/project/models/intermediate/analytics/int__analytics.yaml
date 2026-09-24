@@ -191,3 +191,303 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, source_id]
+
+  - name: int__user_hubspot_touches
+    description: >
+      Sales and marketing contact history at gp-api user grain. One row per
+      user per HubSpot engagement, across calls, emails, meetings, SMS, tasks,
+      notes and chat sessions.
+
+      Grain: one row per user_id and touch_id. A single engagement appears
+      more than once when it reaches two users, which is what happens when one
+      human holds two accounts or when a thread names two people. It is
+      deliberately not duplicated when two contacts in the same person group
+      share it.
+
+      Touch history follows every HubSpot contact the user's person group
+      reaches, not only the contact named on user_resolved_keys. Following the
+      named contact alone leaves 665 users with no history at all and drops
+      13% of touches, while the extra contacts are overwhelmingly the same
+      human under a second email address.
+
+      Calls are read from int__hubspot_calls, which dedupes the call stream and
+      attaches the disposition. The generic engagement stream carries the same
+      call ids without it and is filtered to exclude them, so a call is never
+      counted twice.
+    columns:
+      - name: user_id
+        description: gp-api user this touch reaches.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: touch_id
+        description: HubSpot engagement id.
+        data_tests:
+          - not_null
+      - name: contact_id
+        description: >
+          The HubSpot contact the touch was reached through. Where two contacts
+          in the person group share an engagement, the lower id is kept so the
+          touch counts once.
+        data_tests:
+          - not_null
+      - name: channel
+        description: >
+          Normalized engagement type. A HubSpot type we have not mapped lands
+          as other rather than disappearing.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "call",
+                    "email",
+                    "inbound_email",
+                    "meeting",
+                    "sms",
+                    "task",
+                    "note",
+                    "conversation",
+                    "other",
+                  ]
+      - name: is_outbound_touch
+        description: >
+          We reached out to the person: a call, email, meeting or SMS. Tasks,
+          notes, inbound mail and chat sessions are carried as history and are
+          never counted as contact made, which is what touch_count_total sums.
+        data_tests:
+          - not_null
+      - name: is_connected_call
+        description: >
+          The call reached a human, from the disposition's outcome family. Null
+          for every channel but calls.
+      - name: touch_at
+        description: >
+          When the activity happened, not when HubSpot recorded it. Meetings
+          and tasks can be in the future: a booked meeting and a task due date
+          are both legitimate rows here.
+        data_tests:
+          - not_null
+      - name: hubspot_owner_id
+        description: >
+          Owner on the engagement, which is the rep who made the touch. Null on
+          activity logged without one.
+      - name: call_outcome_family
+        description: >
+          Disposition family from the hubspot_call_dispositions seed. Null for
+          every channel but calls.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, touch_id]
+
+  - name: int__user_hubspot_profile
+    description: >
+      The HubSpot slice of the end-to-end user view: how we acquired a user and
+      how much sales contact they have had, at gp-api user grain. One row per
+      user whether or not they reach a HubSpot contact.
+
+      Only facts HubSpot originates are read here. A field being present in
+      HubSpot does not make HubSpot its system of record: the contact's
+      utm_source is populated on 60 of 362k contacts while product telemetry
+      carries the real thing for everyone, so UTMs are deliberately absent.
+
+      Counts are zero where we can see HubSpot and nothing happened, and null
+      where we cannot see it at all. Reading one as the other reports an
+      unresolved user as an uncontacted one.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: has_hubspot_contact
+        description: >
+          The user reaches a live HubSpot contact. False for 8,385 users, whose
+          every other column here is null by construction rather than zero.
+        data_tests:
+          - not_null
+      - name: hubspot_unmatched_reason
+        description: >
+          Why the user reaches no contact. Null when they do. A native id that
+          no longer resolves is kept apart from never having had one, because
+          the first is a broken link and the second is an absent record.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["dangling_contact_id", "email_match_unresolved", "no_contact_found"]
+      - name: hubspot_email_match_available
+        description: >
+          An exact email edge would reach a live contact for this unmatched
+          user, which is true for 4,073 of them. Null for users who already
+          resolve. Closing the gap is entity resolution work, not this model's.
+      - name: hubspot_contact_count
+        description: Live HubSpot contacts in the user's person group.
+      - name: hs_owner_id
+        description: HubSpot owner assigned to the contact, which is the salesperson.
+      - name: hs_lifecycle_stage
+        description: HubSpot's own lifecycle stage for the contact.
+      - name: hs_win_lifecycle_stage
+        description: Win-specific lifecycle stage, maintained separately in HubSpot.
+      - name: hs_serve_lifecycle_stage
+        description: Serve-specific lifecycle stage, maintained separately in HubSpot.
+      - name: hs_analytics_source
+        description: >
+          HubSpot's account of how the contact arrived. OFFLINE means the
+          contact was put into HubSpot by an import or integration rather than
+          arriving through its own web session.
+      - name: hs_analytics_source_detail
+        description: >
+          The drill-down under that source: the landing page for a web source,
+          IMPORT or INTEGRATION for an offline one.
+      - name: hs_conversion_source
+        description: Source of the session in which the contact converted.
+      - name: hs_contact_created_at
+        description: When the HubSpot contact record was created.
+      - name: hs_first_analytics_at
+        description: First web session HubSpot attributes to the contact.
+      - name: hs_last_contacted_at
+        description: HubSpot's own last-contacted stamp, across channels.
+      - name: first_touch_at
+        description: >
+          Earliest moment of contact we know of, from HubSpot contact creation,
+          HubSpot's first analytics timestamp or signup, whichever is first.
+          Falls back to signup for a user with no contact.
+        data_tests:
+          - not_null
+      - name: first_touch_is_signup
+        description: >
+          The first touch is the signup itself, so there was no earlier
+          marketing contact. True for 47,320 users, which is why no lead-time
+          average should be computed without filtering on it: the population it
+          means anything for is about 25,000, not 64,000.
+        data_tests:
+          - not_null
+      - name: acquisition_motion
+        description: >
+          Whether sales or marketing sourced the user. Sales-sourced is an
+          OFFLINE analytics source, meaning we put the contact into HubSpot;
+          20,188 of those 21,768 are list imports. Two independent signals
+          agree with the split: 91% of offline-sourced contacts predate signup
+          by a day or more against 12% of web-sourced ones, and 93% of them
+          have been contacted against 29%. Owner assignment is deliberately not
+          part of the rule, since 92% of matched users carry an owner and it
+          separates nothing.
+
+          Unknown covers two states, and the second is defensive: a user who
+          reaches no contact, and a resolved contact carrying no analytics
+          source. No contact is in the second state today, 0 of 63,920, so
+          unknown is in practice the no-contact population.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["marketing_sourced", "sales_sourced", "unknown"]
+      - name: call_count
+        description: Calls logged against the user.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: connected_call_count
+        description: Of those, the ones that reached a human.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: email_count
+        description: Sales emails sent to the user. Inbound replies are counted separately.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: meeting_count
+        description: >
+          Meetings booked with the user, which includes meetings still in the
+          future.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_count
+        description: SMS sent to the user.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: inbound_email_count
+        description: >
+          Emails the user sent us. A reply is engagement, not contact made, so
+          this stays out of touch_count_total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: task_count
+        description: >
+          Internal tasks logged against the contact. Work we planned rather
+          than contact the person received, so it stays out of
+          touch_count_total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: note_count
+        description: Internal notes on the contact. Also not contact made.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: touch_count_total
+        description: Calls plus emails plus meetings plus SMS.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: first_call_at
+        description: First logged call.
+      - name: last_call_at
+        description: Most recent logged call.
+      - name: first_email_at
+        description: First sales email.
+      - name: last_email_at
+        description: Most recent sales email.
+      - name: first_meeting_at
+        description: First meeting booked.
+      - name: last_meeting_at
+        description: Most recent meeting booked, which can be in the future.
+      - name: first_sms_at
+        description: First SMS.
+      - name: last_sms_at
+        description: Most recent SMS.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              touch_count_total = call_count + email_count + meeting_count
+              + sms_count
+          config:
+            where: has_hubspot_contact
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: connected_call_count <= call_count
+          config:
+            where: has_hubspot_contact
