@@ -118,16 +118,18 @@ select
     least(
         c.contact_created_at, c.hs_analytics_first_timestamp, u.registered_at
     ) as first_touch_at,
-    -- True for 38,768 users, where the contact was created by the signup sync
-    -- rather than by an earlier marketing touch. Without it every lead-time
-    -- average is computed over a population that is 61% zeros.
+    -- True for roughly two thirds of matched users, where the contact was
+    -- created by the signup sync rather than by an earlier marketing touch.
+    -- Without it every lead-time average is computed over a population that
+    -- is mostly zeros.
     to_date(first_touch_at) = to_date(u.registered_at) as first_touch_is_signup,
     -- OFFLINE means the contact reached HubSpot by import or integration
-    -- rather than by its own web session: 20,188 of the 21,767 are list
-    -- imports. Timing agrees independently, 91% of those contacts predate
-    -- signup by a day or more against 12% of the web-sourced ones. Owner
-    -- assignment is deliberately not part of the rule: 92% of matched users
-    -- carry an owner, so it separates nothing.
+    -- rather than by its own web session, and all but a few hundred of those
+    -- are list imports. Timing agrees independently: 91% of them predate
+    -- signup by a day or more against 12% of the web-sourced ones, and 93%
+    -- have been contacted against 29%. Owner assignment is deliberately not
+    -- part of the rule, since 91% of matched users carry an owner and it
+    -- separates nothing.
     case
         when k.hubspot_key_source = 'none' or c.hs_analytics_source is null
         then 'unknown'

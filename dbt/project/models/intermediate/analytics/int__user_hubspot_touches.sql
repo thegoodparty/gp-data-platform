@@ -7,7 +7,7 @@
 
 -- Both legs suppress right-to-erasure rows. Redundant against today's data,
 -- because HubSpot strips the contact association when it erases an engagement
--- and all 18 erased rows already fail the association filter, but a partial
+-- and every erased row so far already fails the association filter, but a partial
 -- erasure or a sync landing the association first would otherwise put a
 -- suppressed touch on a user row.
 with
