@@ -311,8 +311,9 @@ models:
                 field: user_id
       - name: has_hubspot_contact
         description: >
-          The user reaches a live HubSpot contact. False for 8,385 users, whose
-          every other column here is null by construction rather than zero.
+          The user reaches a live HubSpot contact. False for about 8,400
+          users, whose every other column here is null by construction rather
+          than zero.
         data_tests:
           - not_null
       - name: hubspot_unmatched_reason
@@ -328,8 +329,9 @@ models:
       - name: hubspot_email_match_available
         description: >
           An exact email edge would reach a live contact for this unmatched
-          user, which is true for 4,073 of them. Null for users who already
-          resolve. Closing the gap is entity resolution work, not this model's.
+          user, which is true for about 4,100 of them. Null for users who
+          already resolve. Closing the gap is entity resolution work, not this
+          model's.
       - name: hubspot_contact_count
         description: Live HubSpot contacts in the user's person group.
       - name: hs_owner_id
@@ -367,26 +369,28 @@ models:
       - name: first_touch_is_signup
         description: >
           The first touch is the signup itself, so there was no earlier
-          marketing contact. True for 47,320 users, which is why no lead-time
-          average should be computed without filtering on it: the population it
-          means anything for is about 25,000, not 64,000.
+          marketing contact. True for roughly two thirds of the table, which
+          is why no lead-time average should be computed without filtering on
+          it: the population it means anything for is about 25,000, not the
+          64,000 who reach a contact.
         data_tests:
           - not_null
       - name: acquisition_motion
         description: >
           Whether sales or marketing sourced the user. Sales-sourced is an
           OFFLINE analytics source, meaning we put the contact into HubSpot;
-          20,188 of those 21,768 are list imports. Two independent signals
-          agree with the split: 91% of offline-sourced contacts predate signup
-          by a day or more against 12% of web-sourced ones, and 93% of them
-          have been contacted against 29%. Owner assignment is deliberately not
-          part of the rule, since 92% of matched users carry an owner and it
-          separates nothing.
+          all but a few hundred of those are list imports. Two independent
+          signals agree with the split, and neither is an input to it: 91% of
+          offline-sourced contacts predate signup by a day or more against 12%
+          of web-sourced ones, and 93% of them have been contacted against
+          29%. Owner assignment is deliberately not part of the rule, since
+          91% of matched users carry an owner and it separates nothing.
 
           Unknown covers two states, and the second is defensive: a user who
           reaches no contact, and a resolved contact carrying no analytics
-          source. No contact is in the second state today, 0 of 63,920, so
-          unknown is in practice the no-contact population.
+          source. No matched contact is in the second state today, so unknown
+          is in practice the no-contact population. If that changes, the split
+          is worth a fourth value rather than a silent merge.
         data_tests:
           - not_null
           - accepted_values:
