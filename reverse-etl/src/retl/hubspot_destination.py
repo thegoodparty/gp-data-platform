@@ -6,11 +6,11 @@ never the idProperty value we upserted on, so objectWriteTraceId is the only way
 attribute a result -- success or error -- back to the row that produced it. A 207
 partial failure is otherwise unattributable.
 
-The exact shape of a 207 partial-failure body has not been exercised against a
-live HubSpot sandbox yet. `parse_batch_response` reads the documented, stable
-outer envelope (`results` / `errors` / status code) and degrades to an
-unattributed error rather than raising when a single error entry does not carry
-enough to name a tracking_key or property.
+The 207 partial-failure body has been exercised against the sandbox: every error
+entry carries `context.objectWriteTraceId` as a list, and every row was attributed.
+`parse_batch_response` still degrades to an unattributed error rather than raising
+when an entry does not name a tracking_key, since that sweep is what keeps a failed
+delivery day from reading as a quiet one.
 """
 
 from __future__ import annotations
@@ -156,15 +156,14 @@ def _error_tracking_keys(error: Mapping[str, Any]) -> list[str]:
     """Every tracking key one error entry names -- an error can cover a GROUP of inputs.
 
     Attributing only the first would report the real category for one row and dump the
-    rest into UNKNOWN_DELIVERY, corrupting the diagnostic histogram. HubSpot's documented
-    error envelope carries the singular context key with a list value; the plural spelling
-    is an unverified fallback until the sandbox settles the real shape -- read both.
+    rest into UNKNOWN_DELIVERY, corrupting the diagnostic histogram. HubSpot carries the
+    keys under the singular context key with a list value, confirmed against the sandbox;
+    a plural spelling was carried as a fallback until then and has been removed.
     """
     trace_id = error.get("objectWriteTraceId")
     if trace_id:
         return [str(trace_id)]
-    context = error.get("context") or {}
-    trace_ids = context.get("objectWriteTraceId") or context.get("objectWriteTraceIds") or []
+    trace_ids = (error.get("context") or {}).get("objectWriteTraceId") or []
     return [str(t) for t in trace_ids]
 
 
