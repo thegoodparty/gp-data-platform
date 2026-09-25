@@ -103,6 +103,22 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: sources.md
+        # What this number MEANS, in words a non-engineer can rule on. It names
+        # no event, no surface and no table: which signals satisfy the rule is
+        # the implementation layer, and it lives in anchored_on.
+        business_rule:
+          counts: >
+            An elected official counts once they have both asked their
+            constituents a question and committed to act on an answer.
+          excludes:
+            - Internal staff accounts.
+            - >
+              Anyone who has done only one of the two. Asking without
+              committing, or committing without asking, is not activation.
+          known_gaps:
+            - >
+              Both halves are lifetime-ever with no recency window, so this
+              number never falls and cannot show anyone going quiet.
         anchored_on:
           - event: Serve Onboarding - SMS Poll Sent
 
@@ -130,3 +146,16 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: sources.md
+        business_rule:
+          counts: >
+            Anyone holding a Serve account, whether or not they have used it.
+          excludes:
+            - Internal staff accounts.
+          known_gaps:
+            - >
+              This is an account population, not an engagement or activity
+              measure.
+            - >
+              It is not a clean superset of the activated count: one account
+              passes the activation gate without carrying the account flag, so
+              neither number is a strict subset of the other.

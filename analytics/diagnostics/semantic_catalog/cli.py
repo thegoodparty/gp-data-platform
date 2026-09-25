@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from semantic_catalog import composition, ratifications, recording
+from semantic_catalog import composition, lanes, ratifications, recording
 from semantic_catalog import lifecycle as lc_mod
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -132,24 +132,29 @@ def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[Metri
 
 
 def _record(args, records: list[MetricRecord]) -> int:
-    """Record the sign-offs this merge earned, if both groups approved it.
+    """Record the sign-offs this merge earned, half by half.
 
     Writes into the WORKING TREE only. The publish workflow commits the result
     to a branch and opens a PR; nothing here pushes to main.
+
+    Each half is earned on its own group's approval, not on both. Requiring both
+    would mean a correctly routed data-only change never records and sits
+    pending forever, which is the failure lane routing would otherwise create.
     """
     reviews = json.loads(args.reviews.read_text()) if args.reviews else []
-    date = composition.completion_date(
+    dates = composition.group_dates(
         reviews,
         [m for m in args.data_members.split(",") if m],
         [m for m in args.business_members.split(",") if m],
     )
+    values = recording.declared_values(args.pr_body.read_text() if args.pr_body else "")
     earned: dict[str, ratifications.Ratification] = {}
 
-    if date is None:
-        print("review coverage incomplete; recording nothing.")
+    if not any(dates.values()):
+        print("no group approved this PR; recording nothing.")
     elif args.base_dir is None or not args.base_dir.is_dir():
-        # Without a base tree there is nothing to compare fingerprints against,
-        # so `before` is empty and EVERY pending metric looks newly earned:
+        # Without a base tree there is nothing to compare seals against, so
+        # `before` is empty and EVERY pending metric looks newly earned:
         # bystanders sharing a file with the reviewed metric would collect a
         # sign-off nobody gave. A missing base is not evidence of approval, so
         # record nothing. The workflow only passes --base-dir when /tmp/base
@@ -164,9 +169,21 @@ def _record(args, records: list[MetricRecord]) -> int:
             # at all, so refuse here too rather than trust an empty diff.
             print("base tree parsed no metrics; recording nothing.")
         else:
-            earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
+            earned = ratifications.earned_by_merge(before, after, dates, args.pr_number, values)
+            # Say what was skipped for want of a number, or the build half goes
+            # quietly unrecorded and reads as nobody having approved it.
+            if dates.get("data"):
+                classified = lanes.classify(before, after)
+                skipped = recording.unvalued(classified[lanes.DATA], values)
+                skipped = [n for n in skipped if not (earned.get(n) and earned[n].data)]
+                for name in skipped:
+                    print(
+                        f"{name}: build approved but the PR body declared no value, so "
+                        f"nothing was recorded. Add {recording.VALUE_MARKER_EXAMPLE} to "
+                        "the PR body and re-run."
+                    )
             if not earned:
-                print("no metric was newly ratified by this merge.")
+                print("no metric was newly signed off by this merge.")
 
     if earned:
         sidecar = ratifications.DEFAULT_PATH
@@ -178,22 +195,57 @@ def _record(args, records: list[MetricRecord]) -> int:
         # Self-verify. catalog-freshness cannot run on a PR opened with the
         # default token, so this is the only check the bot's own output gets.
         by_name = {r.name: r for r in records}
-        for name in earned:
+        for name, sign_off in earned.items():
             rec = by_name.get(name)
-            if rec is None or rec.ratified != date or rec.ratified_stale:
-                print(f"recorded {name} but it does not read as freshly ratified; aborting.", file=sys.stderr)
+            if rec is None:
+                print(f"recorded {name} but it does not parse back; aborting.", file=sys.stderr)
+                return 1
+            if sign_off.rule and (rec.rule_approved != sign_off.rule.approved or rec.rule_stale):
+                print(f"recorded {name} rule half but it does not read as fresh; aborting.", file=sys.stderr)
+                return 1
+            if sign_off.data and (rec.build_approved != sign_off.data.approved or rec.build_stale):
+                print(f"recorded {name} build half but it does not read as fresh; aborting.", file=sys.stderr)
                 return 1
         print(f"recorded {len(earned)}: {', '.join(sorted(earned))}")
 
     if args.emit_recorded:
-        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, date, args.pr_number)))
+        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, args.pr_number)))
     if args.emit_pr_body and earned:
         args.emit_pr_body.write_text(
             recording.pr_body(
-                recording.manifest(earned, records, date, args.pr_number),
+                recording.manifest(earned, records, args.pr_number),
                 repo=os.environ.get("GITHUB_REPOSITORY", "thegoodparty/gp-data-platform"),
             )
         )
+    return 0
+
+
+def _classify_lanes(args) -> int:
+    """Print the review lanes this PR's diff needs, as JSON for the workflow.
+
+    Replaces the CODEOWNERS line. CODEOWNERS matches a path, and a sem_*.yml
+    holds all three layers plus display prose, so it asked both groups for a
+    typo fix. This asks the group whose layer actually moved.
+    """
+    if args.base_dir is None or not args.base_dir.is_dir():
+        # No base means no diff, and a routing step that guesses would either
+        # spam both groups or ask nobody. Say so and request both, which is the
+        # pre-routing behavior and the safe direction to fail in.
+        print(
+            json.dumps(
+                {
+                    "business": [],
+                    "data": [],
+                    "unreviewed": [],
+                    "teams": ["semantic-layer-data", "semantic-layer-business"],
+                    "reason": "no base tree to diff against; requesting both groups",
+                }
+            )
+        )
+        return 0
+    before, after = _before_after(args.base_dir)
+    classified = lanes.classify(before, after)
+    print(json.dumps({**classified, "teams": lanes.teams(classified), "summary": lanes.summary(classified)}))
     return 0
 
 
@@ -213,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--business-members", type=str, default="")
     parser.add_argument("--pr-number", type=int, default=0)
     parser.add_argument("--emit-recorded", type=Path)
+    parser.add_argument("--pr-body", type=Path)
+    parser.add_argument("--classify-lanes", action="store_true")
     parser.add_argument("--emit-pr-body", type=Path)
     args = parser.parse_args(argv)
 
@@ -230,8 +284,14 @@ def main(argv: list[str] | None = None) -> int:
         # Printed quoted, because the sidecar requires quotes: an all-digit
         # hash left bare would be read back as an integer.
         for rec in records:
-            print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
+            print(
+                f"{rec.name}: rule_sha '{ratifications.rule_sha(rec)}' "
+                f"build_sha '{ratifications.build_sha(rec)}'"
+            )
         return 0
+
+    if args.classify_lanes:
+        return _classify_lanes(args)
 
     if args.record_ratifications:
         return _record(args, records)
@@ -269,7 +329,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.emit_slack:
         before, after = _before_after(args.base_dir)
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
-        msg = render_message(before, after, args.pr_url, coverage)
+        # The merge summary warns only about a lane the change actually needed.
+        required = [lane for lane in ("data", "business") if lanes.classify(before, after)[lane]]
+        msg = render_message(before, after, args.pr_url, coverage, required=required)
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
 

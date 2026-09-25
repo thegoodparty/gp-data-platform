@@ -2,10 +2,19 @@
 # Per-metric ownership lives in each metric's config.meta.owner, not here.
 # Human display names for the ClickUp decision-makers section come from an
 # untracked file at publish time, never from this file.
+#
+# A third role has no team because it has no separate sign-off: product
+# analytics owns the implementation layer (which events satisfy the rule), and
+# that is sealed inside build_sha alongside the build. It is named in the SOP so
+# the reader knows who answers "why that event and not this one".
 teams:
   data:
     slug: semantic-layer-data
-    role: Technical review — builds, conventions, value-for-value parity.
+    role: >-
+      Signs the build — source, measure, aggregation, type, filter, and
+      value-for-value parity with the prior definition.
   business:
     slug: semantic-layer-business
-    role: Ratification — confirms the definition itself is correct.
+    role: >-
+      Signs the rule — what the number means, what it excludes, and which gaps
+      are accepted.

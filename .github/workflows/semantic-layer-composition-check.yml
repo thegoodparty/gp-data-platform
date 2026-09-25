@@ -13,9 +13,64 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  # write, because the routing job requests the review teams the diff needs.
+  # This is what replaced the CODEOWNERS line: CODEOWNERS matches a path, and a
+  # sem_*.yml holds all three layers plus display prose in one file.
+  pull-requests: write
 
 jobs:
+  routing:
+    runs-on: ubuntu-latest
+    # Advisory, exactly as the CODEOWNERS line it replaces was: it requests
+    # review, it never blocks merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The classifier compares the PR's records against the base branch's,
+          # so the base commit has to be in the checkout.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install analytics env
+        working-directory: analytics
+        run: uv sync --frozen
+      - name: Classify the diff into review lanes
+        id: lanes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/base "$BASE_SHA"
+          LANES=$(cd analytics && PYTHONPATH=diagnostics \
+            uv run python -m semantic_catalog.cli --classify-lanes --base-dir /tmp/base)
+          echo "lanes=$LANES" >> "$GITHUB_OUTPUT"
+          echo "$LANES" | jq -r '.summary // .reason'
+      - name: Request the review teams that lane needs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          LANES: ${{ steps.lanes.outputs.lanes }}
+        run: |
+          set -euo pipefail
+          TEAMS=$(echo "$LANES" | jq -c '.teams')
+          if [ "$TEAMS" = "[]" ]; then
+            echo "No governed layer moved; requesting no review team."
+            exit 0
+          fi
+          # Only ADDS reviewers. A team already requested stays requested and a
+          # human who added a reviewer by hand is never removed: the lane says
+          # who MUST look, not who may.
+          echo "{\"team_reviewers\": $TEAMS}" \
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
+            || echo "::warning::could not request $TEAMS; request them by hand."
+      - name: Clean up base tree
+        if: always()
+        run: git worktree remove --force /tmp/base || true
+
   composition:
     runs-on: ubuntu-latest
     # Soft gate: report, never block. The job always succeeds.

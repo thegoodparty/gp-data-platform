@@ -210,9 +210,14 @@ jobs:
             # an approver, and coverage would read as incomplete forever.
             DATA=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-data/members --jq '.[].login' | paste -sd, -)
             BIZ=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-business/members --jq '.[].login' | paste -sd, -)
+            # The PR body is where a build sign-off's value_at_signing comes
+            # from. CI cannot compute a metric's value, so the author declares
+            # it in the body and the recorder reads it back out; a build half
+            # with no declared value is skipped and says so.
+            gh api "repos/$REPO/pulls/$PR_NUM" --jq '.body // ""' > /tmp/pr-body.md
             ARGS=(--record-ratifications --reviews /tmp/reviews.json \
                   --data-members "$DATA" --business-members "$BIZ" \
-                  --pr-number "$PR_NUM" \
+                  --pr-number "$PR_NUM" --pr-body /tmp/pr-body.md \
                   --emit-recorded /tmp/recorded.json --emit-pr-body /tmp/ratify-body.md)
             if [ -d /tmp/base ]; then ARGS+=(--base-dir /tmp/base); fi
             uv run python -m semantic_catalog.cli "${ARGS[@]}"
