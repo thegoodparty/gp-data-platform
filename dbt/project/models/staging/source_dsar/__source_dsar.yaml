@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: source_dsar
+    schema: source_dsar
+    description: >
+      Data subject deletion requests. Curated by hand in Databricks; dbt reads it and
+      never writes it, so identifiers never enter this repository. Use only to honor
+      deletion requests, never to enrich or flag records.
+
+    tables:
+      - name: suppressed_identifiers
+        description: One row per identifier per request. The dsar-deletion skill describes intake.

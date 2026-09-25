@@ -67,3 +67,4 @@ with
 
 select *
 from renamed
+where {{ dsar_br_not_suppressed("br_candidate_id", "br_candidacy_id") }}

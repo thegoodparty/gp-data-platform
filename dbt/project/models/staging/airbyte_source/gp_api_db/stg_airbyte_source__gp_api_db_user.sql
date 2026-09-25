@@ -28,3 +28,4 @@ with
     )
 select *
 from renamed
+where {{ dsar_first_party_not_suppressed("id", "gp_api_user_id", "email", "phone") }}
