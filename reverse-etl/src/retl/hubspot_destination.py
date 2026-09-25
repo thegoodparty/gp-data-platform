@@ -40,6 +40,34 @@ UPSERT_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/batch/upsert"
 RETRYABLE_STATUS_CODES = frozenset({429, 423, 477, 502, 503, 504, 523, 524})
 
 
+# The properties a merge survivor carries its absorbed contact ids in. All three were
+# populated in the sandbox; hs_merged_object_ids is the one HubSpot's UI names.
+MERGE_HISTORY_PROPERTIES = ("hs_merged_object_ids", "hs_all_contact_vids", "hs_calculated_merged_vids")
+
+
+def merged_contact_ids(value: str | None) -> list[str]:
+    """The contact ids inside one of `MERGE_HISTORY_PROPERTIES`.
+
+    Semicolon-separated, and `hs_calculated_merged_vids` suffixes each id with its merge
+    timestamp (`<id>:<epoch ms>`), so the suffix is stripped and the list is comparable
+    across all three properties. The survivor's own id is in the list alongside the
+    retired ones; callers that want only the retired ids exclude the survivor's.
+
+    Merge detection needs this because neither key survives a merge: the absorbed
+    record's `gp_person_id` is dropped (the property is unique and one record cannot
+    hold two values), and a batch upsert on a retired contact id is rejected. So the
+    only way to learn that a person's contact was merged away is to find its id here.
+
+    A dbt model doing the same parse in Databricks SQL:
+
+        explode(split(hs_merged_object_ids, ';')) as merged_id
+        ... split_part(merged_id, ':', 1)
+    """
+    if not value:
+        return []
+    return [part.split(":", 1)[0] for part in value.split(";") if part]
+
+
 class MissingTokenError(ValueError):
     def __init__(self, env_var: str):
         super().__init__(f"{env_var} is not set")

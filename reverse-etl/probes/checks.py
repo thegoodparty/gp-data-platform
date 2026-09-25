@@ -26,8 +26,10 @@ from typing import Any
 from retl.hubspot_destination import (
     HUBSPOT_API_VERSION,
     HUBSPOT_ID_PROPERTY,
+    MERGE_HISTORY_PROPERTIES,
     UPSERT_PATH,
     build_batch_body,
+    merged_contact_ids,
     parse_batch_response,
 )
 from retl.hubspot_destination import HttpResponse as RetlHttpResponse
@@ -66,19 +68,6 @@ def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> An
 
 
 MERGE_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/merge"
-# The three properties a merge survivor carries its absorbed ids in.
-MERGE_HISTORY_PROPERTIES = ("hs_merged_object_ids", "hs_all_contact_vids", "hs_calculated_merged_vids")
-
-
-def _merged_ids(value: str | None) -> list[str]:
-    """The contact ids inside a merge-history property.
-
-    Semicolon-separated, and hs_calculated_merged_vids suffixes each id with ':<epoch ms>'.
-    This is the parse the eventual dbt fix has to do, so the check exercises it here.
-    """
-    if not value:
-        return []
-    return [part.split(":", 1)[0] for part in value.split(";") if part]
 
 
 def check_01_merged_contact_ids(client: SandboxClient) -> Finding:
@@ -95,7 +84,7 @@ def check_01_merged_contact_ids(client: SandboxClient) -> Finding:
     settle()
 
     survivor = client.get_contact(id_a, [HUBSPOT_ID_PROPERTY, *MERGE_HISTORY_PROPERTIES])
-    merge_history = {prop: _merged_ids(survivor.get(prop)) for prop in MERGE_HISTORY_PROPERTIES}
+    merge_history = {prop: merged_contact_ids(survivor.get(prop)) for prop in MERGE_HISTORY_PROPERTIES}
     carries_retired_id = {prop: id_b in ids for prop, ids in merge_history.items()}
     retired_read = client.request("GET", f"/crm/v3/objects/contacts/{id_b}")
 

@@ -14,6 +14,7 @@ from retl.hubspot_destination import (
     build_batch_body,
     chunked,
     config_from_env,
+    merged_contact_ids,
     parse_batch_response,
     send_batch_with_retry,
 )
@@ -111,6 +112,24 @@ def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
             retryable=False,
         )
     ]
+
+
+def test_merged_contact_ids_strips_the_timestamp_suffix() -> None:
+    """Catches: merge detection failing to match an id because of the ':<epoch ms>' suffix.
+
+    Both strings are copied verbatim from a sandbox merge survivor. The two properties
+    have to parse to the same ids, or detection depends on which one a model happens to read.
+    """
+    plain = "250791775888;250789008306"
+    stamped = "250789008306:1790293920063;250791775888:1790293920063"
+    assert merged_contact_ids(plain) == ["250791775888", "250789008306"]
+    assert sorted(merged_contact_ids(stamped)) == sorted(merged_contact_ids(plain))
+
+
+def test_merged_contact_ids_is_empty_for_a_contact_never_merged() -> None:
+    """Catches: an unmerged contact producing a phantom id that would hold a real person."""
+    assert merged_contact_ids(None) == []
+    assert merged_contact_ids("") == []
 
 
 def test_parse_batch_response_names_the_property_from_the_message_text() -> None:
