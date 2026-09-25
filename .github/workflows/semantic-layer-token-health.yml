@@ -18,6 +18,7 @@ permissions:
 
 env:
   SLACK_CHANNEL: C08K22X9ZNH   # #data-alignment
+  SLACK_OWNER_DM: U085CFQ96BG  # the semantic-layer owner, for warnings-only runs
   EXPIRY_WARN_DAYS: '7'        # warn when a token expires within this many days
 
 jobs:
@@ -107,7 +108,7 @@ jobs:
                     # path by every governed merge. Names the Slack error so the
                     # usual cause, a missing channels:read / groups:read scope on
                     # the bot token, is actionable rather than guesswork.
-                    warnings+=("Cannot read #data-alignment (${SLACK_CHANNEL}) membership: conversations.info returned '${info_err}'. Membership is unverified — this does NOT mean the bot was removed. If the error is missing_scope, grant the bot channels:read (or groups:read for a private channel) so this check can do its job.")
+                    warnings+=("Cannot read #data-alignment (${SLACK_CHANNEL}) membership: conversations.info returned '${info_err}'. Membership is unverified — this does NOT mean the bot was removed. If the error is missing_scope, grant the bot groups:read (#data-alignment is a private channel) so this check can do its job.")
                   fi
                   ;;
               esac
@@ -125,18 +126,57 @@ jobs:
           for w in "${warnings[@]}"; do msg="${msg}"$'\n'"- [WARNING] ${w}"; done
           echo "$msg"
 
+          # Route by severity. A PROBLEM goes to the channel, where the review
+          # groups can see it. A warnings-only run goes to the owner's DM instead:
+          # this check posted the same warning into #data-alignment every week for
+          # over a month, and a channel that cries wolf weekly is one where the
+          # next real PROBLEM gets scrolled past too. Quieting the routine case is
+          # what keeps the loud case loud.
+          if [ ${#problems[@]} -gt 0 ]; then
+            alert_target="$SLACK_CHANNEL"
+          else
+            alert_target="$SLACK_OWNER_DM"
+          fi
+
           # Best-effort Slack alert. Only lands if the Slack token itself is
           # healthy; when Slack is the broken integration, the job failure below
           # is the signal instead.
           if [ -n "${SLACK_APP_BOT_TOKEN:-}" ]; then
-            curl -sS -X POST https://slack.com/api/chat.postMessage \
+            posted="$(curl -sS -X POST https://slack.com/api/chat.postMessage \
               -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
               -H "Content-type: application/json; charset=utf-8" \
-              --data "$(MSG="$msg" CH="$SLACK_CHANNEL" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" \
-              >/dev/null || true
+              --data "$(MSG="$msg" CH="$alert_target" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" || true)"
+            delivered="$(echo "$posted" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("ok") else "no")' 2>/dev/null || echo "no")"
+            # A DM can be refused for a reason the channel post would not hit — a
+            # missing im:write being the obvious one, which is the same class of
+            # gap this check exists to report. Fall back rather than lose the
+            # alert, and say why it was rerouted.
+            if [ "$delivered" != "yes" ] && [ "$alert_target" != "$SLACK_CHANNEL" ]; then
+              fallback="$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+                -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
+                -H "Content-type: application/json; charset=utf-8" \
+                --data "$(MSG="${msg}"$'\n'"(DM to the owner was refused, so this went to the channel instead.)" CH="$SLACK_CHANNEL" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" || true)"
+              delivered="$(echo "$fallback" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("ok") else "no")' 2>/dev/null || echo "no")"
+              if [ "$delivered" != "yes" ]; then
+                echo "Slack rejected both the owner DM and the channel fallback. Response: ${fallback}"
+              fi
+            fi
+          else
+            delivered="no"
           fi
 
           # Hard problems fail the run so GitHub notifies watchers regardless of
-          # Slack. Warnings-only (e.g. impending expiry) surface without failing.
+          # Slack. Warnings-only (e.g. impending expiry) surface without failing —
+          # but only when they actually reached someone.
           [ ${#problems[@]} -gt 0 ] && exit 1
+
+          # An alert nobody received is not a passing run. Routing warnings to a DM
+          # removed the safety net the hard-problem path has, so an undeliverable
+          # warning would otherwise vanish weekly behind a green check, which is the
+          # precise failure this whole workflow exists to prevent. Failing here puts
+          # it back on GitHub, the one channel that still works when Slack does not.
+          if [ "${delivered:-no}" != "yes" ]; then
+            echo "Could not deliver the warning to Slack; failing so GitHub notifies instead."
+            exit 1
+          fi
           exit 0
