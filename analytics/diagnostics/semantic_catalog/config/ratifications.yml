@@ -57,16 +57,35 @@ serve_users:
   approved_by_pr: 801
 
 win_activated_users:
-  # auto-recorded: Sign-off landed on the merge of #1067, once both review groups approved. The date is when the second group's approval landed.
-  # Coverage completed across two PRs. The business group approved #708 on
-  # 2026-07-29, but no data-group approval existed, so the 2026-07-28 date that
-  # #708 carried was unbacked and DATA-2249 dropped it to pending. The data
-  # group approved #776 on 2026-08-07, which is what this records: that PR
-  # carried the metric's sidecar entry precisely so the missing approval could
-  # land on it. The definition itself is unchanged since #708.
-  ratified: 2026-09-24
-  definition_sha: '23ce443'
-  approved_by_pr: 1067
+  # The definition CHANGED on #1073: the outreach terminal union dropped the
+  # robocall draft-create event and took on the shared pay-commit event, which
+  # moved the metric 1,265 -> 1,260 users. That is a change to what the number
+  # counts, so the previous sign-off does not carry over and the fingerprint
+  # below is the post-#1073 one.
+  #
+  # Hand-authored rather than auto-recorded. The publish hook only records a
+  # sign-off it can see, and on #1073 it correctly saw none: that PR merged on
+  # bot approval alone, with review coverage {data: false, business: false}.
+  #
+  # Accepted by the metric owner directly, on the date below. The business group
+  # was NOT consulted, which is a departure from the two-group convention the
+  # rest of this file follows, so it is recorded rather than left to be inferred
+  # from a date. The owner's reasoning: nothing downstream reads this file — no
+  # model, no metric value, no query — so the entry attests to a review rather
+  # than gating anything, and the definition change it covers was already
+  # measured and merged in #1073.
+  #
+  # Read this as owner acceptance, not as two-group coverage. Whether that is
+  # sufficient for a change to what a metric counts is the open routing question
+  # on DATA-2422; this entry is a data point for it, not a precedent it settles.
+  #
+  # Earlier history, unchanged: coverage first completed across two PRs. The
+  # business group approved #708 on 2026-07-29 with no data-group approval, so
+  # DATA-2249 dropped that unbacked date to pending; the data group approved
+  # #776 on 2026-08-07, which is what the prior record carried.
+  ratified: 2026-09-25
+  definition_sha: 'c322964'
+  approved_by_pr: 1073
 
 win_active_candidates_30d:
   # Re-fingerprinted for a prose edit, not a definition change. #1046 replaced a
