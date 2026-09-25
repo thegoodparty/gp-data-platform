@@ -14,6 +14,7 @@ from retl.hubspot_destination import (
     build_batch_body,
     chunked,
     config_from_env,
+    merged_contact_ids,
     parse_batch_response,
     send_batch_with_retry,
 )
@@ -113,9 +114,76 @@ def test_parse_batch_response_extracts_row_errors_from_a_207() -> None:
     ]
 
 
+def test_merged_contact_ids_strips_the_timestamp_suffix() -> None:
+    """Catches: merge detection failing to match an id because of the ':<epoch ms>' suffix.
+
+    Both strings are copied verbatim from a sandbox merge survivor. The two properties
+    have to parse to the same ids, or detection depends on which one a model happens to read.
+    """
+    plain = "250791775888;250789008306"
+    stamped = "250789008306:1790293920063;250791775888:1790293920063"
+    assert merged_contact_ids(plain) == ["250791775888", "250789008306"]
+    assert sorted(merged_contact_ids(stamped)) == sorted(merged_contact_ids(plain))
+
+
+def test_merged_contact_ids_is_empty_for_a_contact_never_merged() -> None:
+    """Catches: an unmerged contact producing a phantom id that would hold a real person."""
+    assert merged_contact_ids(None) == []
+    assert merged_contact_ids("") == []
+
+
+def test_parse_batch_response_names_the_property_from_the_message_text() -> None:
+    """Catches: the error histogram reporting property=None on every validation reject.
+
+    The message text below is copied verbatim from a sandbox 207. HubSpot's error context
+    carries no property name for this category, so the message is the only place it exists;
+    if HubSpot changes that format, this fails rather than silently going quiet.
+    """
+    response = HttpResponse(
+        status_code=207,
+        body={
+            "results": [],
+            "errors": [
+                {
+                    "status": "error",
+                    "category": "VALIDATION_ERROR",
+                    "message": (
+                        'Property values were not valid: [{"isValid":false,"message":'
+                        '"Email address not-an-email is invalid","error":"INVALID_EMAIL",'
+                        '"name":"email"}]'
+                    ),
+                    "context": {"objectWriteTraceId": ["p1"]},
+                }
+            ],
+        },
+    )
+    result = parse_batch_response(response, flow_id="hubspot", sent_rows={"p1": '{"email":"x"}'})
+    assert [(e.tracking_key, e.property) for e in result.errors] == [("p1", "email")]
+
+
+def test_parse_batch_response_reports_no_property_when_the_message_is_unreadable() -> None:
+    """Catches: a message-format change turning a diagnostic into a crash mid-delivery."""
+    response = HttpResponse(
+        status_code=207,
+        body={
+            "results": [],
+            "errors": [
+                {
+                    "category": "CONFLICT",
+                    "message": "Contact already exists. Existing ID: 123",
+                    "context": {"objectWriteTraceId": ["p1"]},
+                }
+            ],
+        },
+    )
+    result = parse_batch_response(response, flow_id="hubspot", sent_rows={"p1": '{"email":"x"}'})
+    assert [(e.tracking_key, e.error_code, e.property) for e in result.errors] == [("p1", "CONFLICT", None)]
+
+
 def test_parse_batch_response_reads_a_top_level_trace_id_on_an_error() -> None:
-    """Catches: dropping the top-level objectWriteTraceId fallback, in case the real sandbox
-    shape puts it there instead of under context (the documented shape is unverified)."""
+    """Catches: dropping the top-level objectWriteTraceId fallback. The sandbox puts an
+    error's keys under context, but results carry the id at the top level, so an error
+    shaped that way stays readable."""
     response = HttpResponse(
         status_code=207,
         body={"results": [], "errors": [{"objectWriteTraceId": "p1", "category": "VALIDATION_ERROR"}]},

@@ -6,16 +6,17 @@ never the idProperty value we upserted on, so objectWriteTraceId is the only way
 attribute a result -- success or error -- back to the row that produced it. A 207
 partial failure is otherwise unattributable.
 
-The exact shape of a 207 partial-failure body has not been exercised against a
-live HubSpot sandbox yet. `parse_batch_response` reads the documented, stable
-outer envelope (`results` / `errors` / status code) and degrades to an
-unattributed error rather than raising when a single error entry does not carry
-enough to name a tracking_key or property.
+The 207 partial-failure body has been exercised against the sandbox: every error
+entry carries `context.objectWriteTraceId` as a list, and every row was attributed.
+`parse_batch_response` still degrades to an unattributed error rather than raising
+when an entry does not name a tracking_key, since that sweep is what keeps a failed
+delivery day from reading as a quiet one.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -26,13 +27,45 @@ from .destinations import DeliveryResult, OnBatchConfirmed, RowError
 
 HUBSPOT_ID_PROPERTY = "gp_person_id"
 BATCH_SIZE = 100
-UPSERT_PATH = "/crm/v3/objects/contacts/batch/upsert"
+# HubSpot's date-based API version. Semantic versions (v1-v4) lose support in Sept 2027,
+# and each dated version carries an 18-month window, so this is a recurring bump rather
+# than a one-time migration -- named here so it is one token to move.
+HUBSPOT_API_VERSION = "2026-09"
+UPSERT_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/batch/upsert"
 
 # Doc-verified retry allowlist. 401/403/414 are explicitly non-retryable; anything
 # else outside this set is ALSO treated as non-retryable by _classify_response's
 # fallthrough, on the conservative assumption that an unenumerated failure needs a
 # human, not a resend.
 RETRYABLE_STATUS_CODES = frozenset({429, 423, 477, 502, 503, 504, 523, 524})
+
+
+# The properties a merge survivor carries its absorbed contact ids in. All three were
+# populated in the sandbox; hs_merged_object_ids is the one HubSpot's UI names.
+MERGE_HISTORY_PROPERTIES = ("hs_merged_object_ids", "hs_all_contact_vids", "hs_calculated_merged_vids")
+
+
+def merged_contact_ids(value: str | None) -> list[str]:
+    """The contact ids inside one of `MERGE_HISTORY_PROPERTIES`.
+
+    Semicolon-separated, and `hs_calculated_merged_vids` suffixes each id with its merge
+    timestamp (`<id>:<epoch ms>`), so the suffix is stripped and the list is comparable
+    across all three properties. The survivor's own id is in the list alongside the
+    retired ones; callers that want only the retired ids exclude the survivor's.
+
+    Merge detection needs this because neither key survives a merge: the absorbed
+    record's `gp_person_id` is dropped (the property is unique and one record cannot
+    hold two values), and a batch upsert on a retired contact id is rejected. So the
+    only way to learn that a person's contact was merged away is to find its id here.
+
+    A dbt model doing the same parse in Databricks SQL:
+
+        explode(split(hs_merged_object_ids, ';')) as merged_id
+        ... split_part(merged_id, ':', 1)
+    """
+    if not value:
+        return []
+    return [part.split(":", 1)[0] for part in value.split(";") if part]
 
 
 class MissingTokenError(ValueError):
@@ -156,26 +189,58 @@ def _error_tracking_keys(error: Mapping[str, Any]) -> list[str]:
     """Every tracking key one error entry names -- an error can cover a GROUP of inputs.
 
     Attributing only the first would report the real category for one row and dump the
-    rest into UNKNOWN_DELIVERY, corrupting the diagnostic histogram. HubSpot's documented
-    error envelope carries the singular context key with a list value; the plural spelling
-    is an unverified fallback until the sandbox settles the real shape -- read both.
+    rest into UNKNOWN_DELIVERY, corrupting the diagnostic histogram. HubSpot carries the
+    keys under the singular context key with a list value, confirmed against the sandbox;
+    a plural spelling was carried as a fallback until then and has been removed.
     """
     trace_id = error.get("objectWriteTraceId")
     if trace_id:
         return [str(trace_id)]
-    context = error.get("context") or {}
-    trace_ids = context.get("objectWriteTraceId") or context.get("objectWriteTraceIds") or []
+    trace_ids = (error.get("context") or {}).get("objectWriteTraceId") or []
     return [str(t) for t in trace_ids]
 
 
+# HubSpot embeds the offending property inside the error's message text as JSON:
+#   Property values were not valid: [{"isValid":false,...,"name":"email"}]
+_MESSAGE_DETAIL = re.compile(r"\[.*]", re.DOTALL)
+
+
+def _property_from_message(message: Any) -> str | None:
+    """The property name HubSpot buries in an error's message text, if it is there.
+
+    An undocumented format, so every way of failing to read it returns None rather than
+    raising: a diagnostic detail must never be able to fail a delivery. Without this the
+    histogram's property dimension is always None -- the sandbox showed that for the
+    categories we see, the error context carries no property name at all.
+    """
+    if not isinstance(message, str):
+        return None
+    match = _MESSAGE_DETAIL.search(message)
+    if not match:
+        return None
+    try:
+        details = json.loads(match.group())
+    except ValueError:
+        return None
+    if not isinstance(details, list):
+        return None
+    for detail in details:
+        name = detail.get("name") if isinstance(detail, Mapping) else None
+        if name:
+            return str(name)
+    return None
+
+
 def _error_property(error: Mapping[str, Any]) -> str | None:
+    """The context keys come first: they are the structured form, and a 207 from an error
+    category we have not yet seen may well carry them. The message is the observed path."""
     context = error.get("context") or {}
     properties = context.get("properties") or context.get("propertyName")
     if isinstance(properties, list) and properties:
         return str(properties[0])
     if isinstance(properties, str) and properties:
         return properties
-    return None
+    return _property_from_message(error.get("message"))
 
 
 UNKNOWN_DELIVERY_CODE = "UNKNOWN_DELIVERY"
