@@ -7,7 +7,7 @@ from splink import block_on
 from splink.comparison_library import CustomComparison
 
 from scripts.constants import PERSON_POST_PREDICTION_FILTER
-from scripts.entity_config import EntityConfig
+from scripts.entity_config import EntityConfig, GraphInputs
 
 PERSON_CONFIG = EntityConfig(
     entity_type="person",
@@ -73,16 +73,11 @@ PERSON_CONFIG = EntityConfig(
         block_on(
             "state", "last_name_tokens", "substr(first_name, 1, 1)", arrays_to_explode=["last_name_tokens"]
         ),
-        # The dbt graph already resolved these pairs. Scoring them anyway is the
-        # calibration signal: a BallotReady and a TechSpeed record for one
-        # person, agreeing on nothing but the name, lands around 0.45.
-        block_on("pregroup_id"),
     ],
     additional_columns_to_retain=[
         "source_name",
         "source_id",
         # Splink retains comparison columns itself; listing one here duplicates it.
-        "pregroup_id",
         "last_name_tokens",
         "suffix_token",
         "br_candidate_id",
@@ -100,6 +95,14 @@ PERSON_CONFIG = EntityConfig(
     link_type="link_and_dedupe",
     date_columns=["birth_date"],
     clustered_output_name="clustered_people.csv",
+    groups_output_name="person_groups.csv",
+    # Canonical groups close over dbt's deterministic links and admit Splink
+    # pairs under the clique and BallotReady cannot-link rules; see
+    # person_clustering.py. The Splink clusters above are audit only.
+    graph_inputs=GraphInputs(
+        links_table="goodparty_data_catalog.dbt.int__civics_person_links",
+        nodes_table="goodparty_data_catalog.dbt.int__civics_person_nodes",
+    ),
     post_prediction_filters=[PERSON_POST_PREDICTION_FILTER],
     audit_display_columns=[
         "source_name",

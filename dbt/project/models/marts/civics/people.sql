@@ -15,7 +15,7 @@ with
             substring_index(ci.record_key, '|', -1) as source_id,
             ci.first_seen_at,
             ci.group_size,
-            pg.had_conflict,
+            ci.identity_count,
             -- Per-source native identifiers, stage/race suffixes stripped so a
             -- vendor person's primary+general rows collapse to one value.
             case when ci.source_name = 'ballotready' then source_id end as br_id_val,
@@ -29,7 +29,6 @@ with
                 then {{ strip_ts_stage_suffix("source_id") }}
             end as ts_code_val
         from {{ ref("int__civics_person_canonical_ids") }} as ci
-        left join {{ ref("int__civics_person_groups") }} as pg using (record_key)
     ),
 
     -- Scalar where unambiguous: the case has no else branch, so a group with
@@ -51,7 +50,8 @@ with
             end as ddhq_candidate_id,
             case
                 when count(distinct ts_code_val) = 1 then max(ts_code_val)
-            end as ts_candidate_code
+            end as ts_candidate_code,
+            sort_array(collect_set(gp_api_id_val)) as gp_api_user_ids
         from records
         group by gp_person_id
     ),
@@ -61,7 +61,7 @@ with
             gp_person_id,
             min(first_seen_at) as first_seen_at,
             max(group_size) as group_size,
-            coalesce(bool_or(had_conflict), false) as had_conflict
+            max(identity_count) as identity_count
         from records
         group by gp_person_id
     ),
@@ -389,6 +389,7 @@ select
     ids.hs_contact_id,
     ids.ddhq_candidate_id,
     ids.ts_candidate_code,
+    ids.gp_api_user_ids,
 
     -- Contact attributes: gp_api > HubSpot > BR > BR officeholder > TS > TS
     -- officeholder > DDHQ.
@@ -421,7 +422,10 @@ select
 
     pb.first_seen_at,
     pb.group_size,
-    pb.had_conflict,
+
+    -- Merge provenance, not a caveat a consumer has to act on: a group holding
+    -- two BallotReady people is refused upstream rather than flagged here.
+    pb.identity_count,
 
     coalesce(roles.is_candidate, false) as is_candidate,
     coalesce(roles.is_elected_official, false) as is_elected_official

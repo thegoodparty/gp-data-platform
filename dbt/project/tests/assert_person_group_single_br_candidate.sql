@@ -1,16 +1,16 @@
--- At most one distinct br_candidate_id per person group. A handful of
--- candidacy-stage clusters carry >1 distinct br_candidate_id (~223 of 460,443
--- BR-containing groups, 0.05% over the all-time historical ER universe; was
--- ~108 before pre-2026 candidacies were included); propagation resolves each
--- such group to its min br_candidate_id and this test flags the residual. Warn
--- on the known set, error on a regression that would indicate an edge bug. No
--- severity override: severity warn would disable error_if entirely.
-{{ config(warn_if="!= 0", error_if="> 400") }}
-
+-- At most one distinct br_candidate_id per person group, with no tolerance.
+-- Two distinct BallotReady people in one group means gp_person_id claims two
+-- people are one, which is the claim the whole design rests on not making.
+--
+-- Reads the mint's view of the published groups, so it also covers a record
+-- the vintage never saw and a vintage that drifted from tonight's sources.
+-- matcha enforces the rule twice (an identity reaching two BR people
+-- dissolves, a merge that would fuse two is refused); this proves neither
+-- leaks into what dbt publishes.
 with
     br_records as (
         select person_group_key, substring_index(record_key, '|', -1) as br_candidate_id
-        from {{ ref("int__civics_person_groups") }}
+        from {{ ref("int__civics_person_canonical_ids") }}
         where source_name = 'ballotready'
     )
 

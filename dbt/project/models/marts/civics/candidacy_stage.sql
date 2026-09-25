@@ -21,9 +21,11 @@
 -- valid: a BR- or DDHQ-keyed <=2025 row either enriches an archive
 -- row, rides a TS-keyed merged row, or is dropped.
 --
--- gp_person_id is the deterministic min over the person ids reached by a row's
--- native keys; cluster-merged rows are one person by construction, the min is a
--- guard (warn test in m_civics.yaml).
+-- gp_person_id prefers the person the row's BallotReady key reaches, and falls
+-- back to the min over the other native keys. br_candidate_id is the only
+-- person-grain identifier here, so when two native keys reach different people
+-- the BR one decides; a lexical min would pick between them at even odds. Rows
+-- whose keys disagree at all are surfaced by a warn test in m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "candidate_name",
     "source_candidate_id",
@@ -354,15 +356,19 @@ with
             on coalesce(br.merge_key, ts.merge_key, ddhq.merge_key) = gp_api.merge_key
     ),
 
-    -- Resolve gp_person_id (deterministic min over the person ids each native
-    -- key reaches) and the final election_stage (2026+ keeps election_stage's
+    -- Resolve gp_person_id (the BR key's person, else the min over the other
+    -- native keys) and the final election_stage (2026+ keeps election_stage's
     -- stage_type for byte-stability; <=2025 falls back to the native stage).
+    -- BR precedence is what makes every stage of one br_candidate_id resolve to
+    -- one person, which assert_candidacy_stage_one_person_per_br_candidate
+    -- asserts.
     foj as (
         select
             m.*,
             coalesce(es.stage_type, m.native_stage) as election_stage,
-            least(
-                bcp.gp_person_id, tcp.gp_person_id, gcp.gp_person_id, dp.gp_person_id
+            coalesce(
+                bcp.gp_person_id,
+                least(tcp.gp_person_id, gcp.gp_person_id, dp.gp_person_id)
             ) as gp_person_id
         from merged_foj as m
         left join

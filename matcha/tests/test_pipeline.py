@@ -683,7 +683,7 @@ def test_save_results_writes_expected_files(tmp_path):
     assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()
 
 
-# ── Deterministic pregroups ──
+# ── Link types ──
 
 
 def test_build_settings_leaves_other_entities_link_only():
@@ -714,7 +714,7 @@ def test_person_pipeline_smoke(person_results):
 
     assert len(pairwise_df) > 0
     assert (out / "clustered_people.csv").exists()
-    for col in ("source_name", "pregroup_id", "suffix_token", "br_candidate_id"):
+    for col in ("source_name", "suffix_token", "br_candidate_id"):
         assert col in clustered_df.columns, f"Missing retained column: {col}"
 
 

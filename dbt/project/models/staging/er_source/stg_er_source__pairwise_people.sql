@@ -88,8 +88,6 @@ with
             cast(br_candidate_id_r as string) as br_candidate_id_r,
             cast(first_seen_at_l as timestamp) as first_seen_at_l,
             cast(first_seen_at_r as timestamp) as first_seen_at_r,
-            pregroup_id_l,
-            pregroup_id_r,
 
             -- blocking rule that generated this pair
             cast(match_key as int) as match_key

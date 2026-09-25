@@ -1,14 +1,30 @@
--- Canonical gp_person_id per record. One row per record_key. The id is minted
--- from the group member earliest by first_seen_at, ties broken by (source_name,
--- source_id): first-in wins uniformly across sources, so the id is stable when a
--- later record (e.g. a BR row) joins a group minted from a gp_api user.
--- first_seen_at is computed inline where each record's native id and source
--- timestamp share a row -- never reconstructed and re-joined (the centralized
--- attempt failed that way: join drift, coverage gaps, inherited filters).
+-- Canonical gp_person_id per record. One row per record_key. The person group
+-- comes from the published matcha vintage (er_source.person_groups); a record
+-- the vintage has not seen stands alone under its own key until the next run.
+-- No closure happens in dbt.
+--
+-- The id is minted from the group member earliest by first_seen_at, ties
+-- broken by (source_name, source_id): first-in wins uniformly across sources,
+-- so the id is stable when a later record (e.g. a BR row) joins a group minted
+-- from a gp_api user. first_seen_at is computed inline where each record's
+-- native id and source timestamp share a row -- never reconstructed and
+-- re-joined (the centralized attempt failed that way: join drift, coverage
+-- gaps, inherited filters).
 with
+    published as (
+        select record_key, identity_key, person_group_key, rejected_reason
+        from {{ ref("stg_er_source__person_groups") }}
+    ),
+
     groups as (
-        select record_key, source_name, person_group_key
-        from {{ ref("int__civics_person_groups") }}
+        select
+            n.record_key,
+            n.source_name,
+            coalesce(p.person_group_key, n.record_key) as person_group_key,
+            coalesce(p.identity_key, n.record_key) as identity_key,
+            p.rejected_reason
+        from {{ ref("int__civics_person_nodes") }} as n
+        left join published as p using (record_key)
     ),
 
     -- BallotReady: earliest creation across both S3 feeds, keyed on the person
@@ -133,6 +149,8 @@ with
             g.record_key,
             g.source_name,
             g.person_group_key,
+            g.identity_key,
+            g.rejected_reason,
             substring_index(g.record_key, '|', -1) as source_id,
             coalesce(
                 fs.first_seen_at,
@@ -145,6 +163,13 @@ with
         left join ddhq_extracts as de using (record_key)
         cross join ddhq_load_date as dl
         cross join techspeed_load_date as tl
+    ),
+
+    -- How many identities the published merge fused; 1 means nothing merged.
+    identity_counts as (
+        select person_group_key, count(distinct identity_key) as identity_count
+        from records
+        group by 1
     ),
 
     -- Earliest member mints the id. nulls last keeps a stray missing timestamp
@@ -168,6 +193,9 @@ select
     r.record_key,
     r.source_name,
     r.person_group_key,
+    r.identity_key,
+    r.rejected_reason,
+    ic.identity_count,
     r.first_seen_at,
     m.minting_source_name,
     m.minting_source_id,
@@ -179,3 +207,4 @@ select
     }} as gp_person_id
 from records as r
 inner join minting_member as m using (person_group_key)
+inner join identity_counts as ic using (person_group_key)
