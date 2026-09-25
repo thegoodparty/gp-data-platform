@@ -81,7 +81,10 @@ jobs:
               # posted this very alert into the channel it called itself absent
               # from. Five weeks of a false alarm is how a monitor stops being read.
               info="$(curl -sS "https://slack.com/api/conversations.info?channel=${SLACK_CHANNEL}" -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN")"
-              member="$(echo "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("channel",{}).get("is_member") else "no" if d.get("ok") else "unknown")')"
+              # `is_member` present and False is the only confirmed-absent signal.
+              # Testing it for truthiness alone would read an omitted field as a
+              # removal, which is this check's original bug on a different input.
+              member="$(echo "$info" | python3 -c 'import json,sys; im=json.load(sys.stdin).get("channel",{}).get("is_member"); print("yes" if im else "no" if im is False else "unknown")')"
               case "$member" in
                 yes) ;;
                 no)
@@ -89,7 +92,7 @@ jobs:
                   problems+=("The Slack bot is not a member of #data-alignment (${SLACK_CHANNEL}). Re-invite it or announcements will silently fail.")
                   ;;
                 *)
-                  info_err="$(echo "$info" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("error","unparseable response"))' 2>/dev/null || echo "unparseable response")"
+                  info_err="$(echo "$info" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("error") or "ok, but no is_member field in the response")' 2>/dev/null || echo "unparseable response")"
                   if [ "$info_err" = "channel_not_found" ]; then
                     # Not an ambiguous failure. A private channel reports a bot it
                     # has lost as channel_not_found rather than is_member: false,
