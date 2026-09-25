@@ -80,15 +80,20 @@ jobs:
           # Only ADDS reviewers. A team already requested stays requested and a
           # human who added a reviewer by hand is never removed: the lane says
           # who MUST look, not who may.
+          # No `|| echo` here, deliberately. Swallowing the failure would keep
+          # this step green, so `failure()` below would be false and the
+          # fail-safe would never fire — leaving a governed PR with no reviewer
+          # at all, which is the exact gap the fail-safe exists to close. The
+          # job's continue-on-error keeps the PR green either way.
           echo "{\"team_reviewers\": $TEAMS}" \
-            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
-            || echo "::warning::lane routing could not request $TEAMS, so this PR is NOT routed. Request them by hand."
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input -
       - name: Fail-safe, request both teams when routing could not classify
         # CODEOWNERS was the unconditional fallback and this job replaced it, so
         # without this a transient runner failure — a network blip on uv sync, a
-        # base sha that will not check out — leaves a governed PR with nobody
-        # requested, and `continue-on-error` hides it by reporting the job green.
-        # Falling back to both teams is exactly what the removed line did.
+        # base sha that will not check out, or the request POST itself failing —
+        # leaves a governed PR with nobody requested, and `continue-on-error`
+        # hides it by reporting the job green. Falling back to both teams is
+        # exactly what the removed line did.
         if: failure() || steps.lanes.outputs.lanes == ''
         env:
           GH_TOKEN: ${{ secrets.ORG_READ_TOKEN || github.token }}
