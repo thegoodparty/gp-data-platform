@@ -66,11 +66,18 @@ win_activated_users:
   # Hand-authored rather than auto-recorded. The publish hook only records a
   # sign-off it can see, and on #1073 it correctly saw none: that PR merged on
   # bot approval alone, with review coverage {data: false, business: false}.
-  # This entry exists so the approval can land on something.
   #
-  # The `ratified` date below is a PLACEHOLDER. It must be corrected to the day
-  # the SECOND group's approval actually lands before this merges, which is the
-  # rule every other entry in this file follows.
+  # Accepted by the metric owner directly, on the date below. The business group
+  # was NOT consulted, which is a departure from the two-group convention the
+  # rest of this file follows, so it is recorded rather than left to be inferred
+  # from a date. The owner's reasoning: nothing downstream reads this file — no
+  # model, no metric value, no query — so the entry attests to a review rather
+  # than gating anything, and the definition change it covers was already
+  # measured and merged in #1073.
+  #
+  # Read this as owner acceptance, not as two-group coverage. Whether that is
+  # sufficient for a change to what a metric counts is the open routing question
+  # on DATA-2422; this entry is a data point for it, not a precedent it settles.
   #
   # Earlier history, unchanged: coverage first completed across two PRs. The
   # business group approved #708 on 2026-07-29 with no data-group approval, so
