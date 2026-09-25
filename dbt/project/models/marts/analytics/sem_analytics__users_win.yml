@@ -106,10 +106,13 @@ metrics:
       reach voters (creating a call list, downloading a call sheet, building an
       audience) is not outreach, so no preparation event is a leg.
 
-      Three of the four outreach channels have no send terminal yet, so this is
-      a floor rather than a count until they are instrumented. Because the legs
-      went live at different dates, a series over this metric carries
-      instrumentation steps and must not be read as growth.
+      SMS, robocall and social share one send terminal, emitted where the
+      payment commits. Phone banking has none and never will: there is no
+      in-product send, the candidate dials from their own phone, and call-list
+      creation and call-sheet download are preparation, so neither may be
+      borrowed as a proxy. That channel is a declared gap, not a missing
+      instrument. Because the legs went live at different dates, a series over
+      this metric carries instrumentation steps and must not be read as growth.
     type: simple
     type_params:
       measure: win_user_count
@@ -130,7 +133,14 @@ metrics:
             # is a candidate self-reporting outreach done elsewhere.
             excluding:
               method: manual
-          - event: Robocall - Scheduled
+          # Fires where the payment commits, one terminal for sms, robocall and
+          # social, told apart by its `channel` property. It replaced
+          # 'Robocall - Scheduled', which is still emitted but fires at
+          # draft-create on an unpaid row: a candidate who builds a draft and
+          # never pays is not a send. Count distinct outreachId, not rows, for
+          # anything measuring sends; a lapsed robocall hold can be
+          # re-authorized and commits again under the same messageId.
+          - event: Voter Outreach - Campaign Scheduled
           # The live phone-banking event is per-call, not per-campaign, so it is
           # not a leg: it would read as ~26 campaigns for one caller and hide the
           # fact that the channel has no campaign-grain terminal any more.

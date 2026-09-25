@@ -119,7 +119,7 @@ def test_activated_metrics_declare_the_exact_event_string():
     serve_legs = parse_anchors(serve_doc)["activated_serve_users"]
     assert [leg["event"] for leg in win_legs] == [
         "Voter Outreach - Campaign Completed",
-        "Robocall - Scheduled",
+        "Voter Outreach - Campaign Scheduled",
         "Outreach - Phone Banking: Complete",
     ]
     assert [leg["event"] for leg in serve_legs] == ["Serve Onboarding - SMS Poll Sent"]
@@ -151,5 +151,9 @@ def test_win_activation_declares_no_preparation_event():
             "Door Knocking - List Created",
             # Per-call, not per-campaign: the same predicate feeds campaigns_sent.
             "Outreach - Phone Banking: Call Logged",
+            # Fires at robocall draft-create on an unpaid row, so it counted a
+            # candidate who built a draft and never paid. The shared send
+            # terminal replaced it at the pay commit.
+            "Robocall - Scheduled",
         }
     )
