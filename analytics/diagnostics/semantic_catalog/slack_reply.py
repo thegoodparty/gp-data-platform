@@ -1,4 +1,4 @@
-"""Slack Web API helpers for the governance thread (post, permalink, Sigma replies).
+"""Slack Web API helpers for the governance thread (post, permalink).
 
 Stdlib only. The HTTP call goes through an injectable ``urlopen`` seam so tests
 never touch the network. The bot token is passed in by the caller (read from the
@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 SLACK_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage"
@@ -59,20 +59,3 @@ def get_permalink(
     with urlopen(req, timeout=30) as resp:
         d = json.load(resp)
     return str(_check(d, "Slack chat.getPermalink")["permalink"])
-
-
-def reply_in_thread(
-    token: str,
-    channel: str,
-    thread_ts: str,
-    tasks: Iterable[Mapping[str, Any]],
-    *,
-    urlopen: Callable[..., Any] = urllib.request.urlopen,
-) -> None:
-    """Post one threaded reply per created task, each linking its ClickUp task."""
-    for t in tasks:
-        text = f"Sigma build task created for `{t['metric']}`: {t['url']}"
-        try:
-            post_message(token, channel, text, thread_ts=thread_ts, urlopen=urlopen)
-        except RuntimeError as e:
-            raise RuntimeError(f"Slack thread reply failed for {t['metric']}: {e}") from e
