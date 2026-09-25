@@ -152,15 +152,31 @@ jobs:
             # gap this check exists to report. Fall back rather than lose the
             # alert, and say why it was rerouted.
             if [ "$delivered" != "yes" ] && [ "$alert_target" != "$SLACK_CHANNEL" ]; then
-              curl -sS -X POST https://slack.com/api/chat.postMessage \
+              fallback="$(curl -sS -X POST https://slack.com/api/chat.postMessage \
                 -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN" \
                 -H "Content-type: application/json; charset=utf-8" \
-                --data "$(MSG="${msg}"$'\n'"(DM to the owner was refused, so this went to the channel instead.)" CH="$SLACK_CHANNEL" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" \
-                >/dev/null || true
+                --data "$(MSG="${msg}"$'\n'"(DM to the owner was refused, so this went to the channel instead.)" CH="$SLACK_CHANNEL" python3 -c 'import json,os; print(json.dumps({"channel": os.environ["CH"], "text": os.environ["MSG"]}))')" || true)"
+              delivered="$(echo "$fallback" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("ok") else "no")' 2>/dev/null || echo "no")"
+              if [ "$delivered" != "yes" ]; then
+                echo "Slack rejected both the owner DM and the channel fallback. Response: ${fallback}"
+              fi
             fi
+          else
+            delivered="no"
           fi
 
           # Hard problems fail the run so GitHub notifies watchers regardless of
-          # Slack. Warnings-only (e.g. impending expiry) surface without failing.
+          # Slack. Warnings-only (e.g. impending expiry) surface without failing —
+          # but only when they actually reached someone.
           [ ${#problems[@]} -gt 0 ] && exit 1
+
+          # An alert nobody received is not a passing run. Routing warnings to a DM
+          # removed the safety net the hard-problem path has, so an undeliverable
+          # warning would otherwise vanish weekly behind a green check, which is the
+          # precise failure this whole workflow exists to prevent. Failing here puts
+          # it back on GitHub, the one channel that still works when Slack does not.
+          if [ "${delivered:-no}" != "yes" ]; then
+            echo "Could not deliver the warning to Slack; failing so GitHub notifies instead."
+            exit 1
+          fi
           exit 0
