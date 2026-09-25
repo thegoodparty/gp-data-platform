@@ -50,15 +50,31 @@ jobs:
           echo "$LANES" | jq -r '.summary // .reason'
       - name: Request the review teams that lane needs
         env:
-          GH_TOKEN: ${{ github.token }}
+          # ORG_READ_TOKEN first: the default GITHUB_TOKEN is repo-scoped and
+          # cannot always resolve an org team, which comes back as a 422 on a
+          # team id rather than as a permission error. Falls back to the default
+          # token so the step still runs before that secret is provisioned.
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           LANES: ${{ steps.lanes.outputs.lanes }}
         run: |
           set -euo pipefail
-          TEAMS=$(echo "$LANES" | jq -c '.teams')
-          if [ "$TEAMS" = "[]" ]; then
+          WANT=$(echo "$LANES" | jq -c '.teams')
+          if [ "$WANT" = "[]" ]; then
             echo "No governed layer moved; requesting no review team."
+            exit 0
+          fi
+          # Re-requesting a team that is already a requested reviewer is a 422,
+          # so ask only for the ones that are missing. Until this PR's own
+          # CODEOWNERS removal reaches main, the base branch's rule still
+          # requests both groups on every sem file, and every request here would
+          # otherwise fail on that alone.
+          HAVE=$(gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+                   --jq '[.teams[].slug]' || echo '[]')
+          TEAMS=$(jq -cn --argjson want "$WANT" --argjson have "$HAVE" '$want - $have')
+          if [ "$TEAMS" = "[]" ]; then
+            echo "Already requested: $WANT"
             exit 0
           fi
           # Only ADDS reviewers. A team already requested stays requested and a
@@ -66,7 +82,7 @@ jobs:
           # who MUST look, not who may.
           echo "{\"team_reviewers\": $TEAMS}" \
             | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
-            || echo "::warning::could not request $TEAMS; request them by hand."
+            || echo "::warning::lane routing could not request $TEAMS, so this PR is NOT routed. Request them by hand."
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true
