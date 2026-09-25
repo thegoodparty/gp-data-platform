@@ -69,11 +69,25 @@ win_activated_users:
   approved_by_pr: 1067
 
 win_active_candidates_30d:
-  # Approved by both groups on #760 and merged, but never recorded: the failure
-  # that prompted DATA-2249.
-  ratified: 2026-08-05
-  definition_sha: '8bfc0be'
-  approved_by_pr: 760
+  # Re-fingerprinted for a prose edit, not a definition change. #1046 replaced a
+  # stale description — it said "2-event dashboard-view union" when the union had
+  # had four legs since the era-3 repair — with a pointer to config.meta.anchored_on.
+  # The metric's meaning did not move, and neither did any value it produces: the
+  # anchored_on block #1046 added declares exactly the four legs the macro already
+  # applied. `description` is a fingerprint field, so the sha moved anyway and the
+  # catalog has read this metric stale since 2026-09-21.
+  #
+  # The data group's sign-off is #1046's, given by a member of semantic-layer-data
+  # on the PR that made the change. The business group was not asked, deliberately:
+  # what the number counts did not change, so there is nothing for that lane to
+  # rule on. Recording it here rather than re-collecting an approval for an edit
+  # that corrected a document.
+  #
+  # Original coverage: approved by both groups on #760 and merged but never
+  # recorded, which is the failure that prompted DATA-2249.
+  ratified: 2026-09-21
+  definition_sha: '1213bea'
+  approved_by_pr: 1046
 
 win_users:
   # Was recorded as 2026-08-03, the date the line was typed. Coverage actually
