@@ -117,9 +117,8 @@ def parse_semantic_tree(
     `ratifications_path` must be passed explicitly whenever `roots` points at a
     base worktree: the sidecar lives under analytics/, outside the dbt tree, so
     defaulting it there would read the CURRENT sign-offs onto the before side of
-    a diff. Every ratification would then compare equal to itself, the pending
-    to dated edge would vanish from the Slack summary, and no Sigma build task
-    would ever fire (DATA-2199).
+    a diff. Every ratification would then compare equal to itself and the
+    pending to dated edge would vanish from the Slack summary (DATA-2199).
 
     Pass `legacy_ratified` alongside it, for the same reason: a base tree older
     than DATA-2249 keeps its dates in config.meta, where they are history to be

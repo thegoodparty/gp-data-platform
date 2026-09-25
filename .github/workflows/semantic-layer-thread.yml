@@ -1,7 +1,7 @@
 name: semantic-layer-thread
 # DATA-2218: keep the #data-alignment governance thread in sync with the PR
 # lifecycle (anchor at open, approval/dismissal replies, closed/reopened).
-# The merge + Sigma replies stay in semantic-layer-publish.yml.
+# The merge reply stays in semantic-layer-publish.yml.
 #
 # pull_request_review does NOT support paths: filtering, so the cheap gate
 # step below checks the PR's changed files before installing anything. The
