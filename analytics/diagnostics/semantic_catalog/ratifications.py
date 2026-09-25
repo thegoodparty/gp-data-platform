@@ -395,19 +395,28 @@ def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
 
 
 def load_entry_text(block: str, name: str) -> Ratification | None:
-    """Parse one already-isolated block. Returns None if it does not parse as an entry."""
+    """Parse one already-isolated block.
+
+    Returns None when the block holds no sign-off to preserve — it is absent, or
+    it is a header with only comments. RAISES when a block is there but does not
+    parse, because the two cases must not be confused: `upsert` writes only the
+    half a merge earned, so treating an unreadable block as absent would replace
+    it with a structurally valid one-half entry and destroy whichever half WAS
+    readable alongside the corrupt one. `load` would then accept the result
+    without complaint and the evidence would be gone. Failing the publish job is
+    the cheaper outcome; the sidecar is small and a human fixes it by hand.
+    """
     try:
         doc = yaml.safe_load(block) or {}
-        entry = doc.get(name)
-        if not isinstance(entry, dict):
-            return None
-        rule = _read_half(Path(name), name, "business", entry.get("business"), "rule_sha")
-        data = _read_half(Path(name), name, "data", entry.get("data"), "build_sha")
-    except (yaml.YAMLError, ValueError):
-        # An unreadable prior block must not stop the fresh one being written:
-        # the whole point of upsert is that the recorded sign-off lands. The
-        # loader will report the file's real problem on the next parse.
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{name}: existing sidecar block is not valid YAML ({exc})") from exc
+    entry = doc.get(name)
+    if entry is None:
         return None
+    if not isinstance(entry, dict):
+        raise ValueError(f"{name}: existing sidecar block is not a mapping")
+    rule = _read_half(Path(name), name, "business", entry.get("business"), "rule_sha")
+    data = _read_half(Path(name), name, "data", entry.get("data"), "build_sha")
     if rule is None and data is None:
         return None
     return Ratification(rule=rule, data=data, approved_by_pr=entry.get("approved_by_pr"))

@@ -83,6 +83,31 @@ jobs:
           echo "{\"team_reviewers\": $TEAMS}" \
             | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
             || echo "::warning::lane routing could not request $TEAMS, so this PR is NOT routed. Request them by hand."
+      - name: Fail-safe, request both teams when routing could not classify
+        # CODEOWNERS was the unconditional fallback and this job replaced it, so
+        # without this a transient runner failure — a network blip on uv sync, a
+        # base sha that will not check out — leaves a governed PR with nobody
+        # requested, and `continue-on-error` hides it by reporting the job green.
+        # Falling back to both teams is exactly what the removed line did.
+        if: failure() || steps.lanes.outputs.lanes == ''
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN || github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          echo "::warning::lane routing could not classify this diff; requesting both review teams as the fallback."
+          HAVE=$(gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+                   --jq '[.teams[].slug]' || echo '[]')
+          TEAMS=$(jq -cn --argjson have "$HAVE" \
+                    '["semantic-layer-data","semantic-layer-business"] - $have')
+          if [ "$TEAMS" = "[]" ]; then
+            echo "Both teams already requested."
+            exit 0
+          fi
+          echo "{\"team_reviewers\": $TEAMS}" \
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
+            || echo "::warning::could not request fallback reviewers; request them by hand."
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true

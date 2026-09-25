@@ -2,6 +2,7 @@
 earns, and how that lands in the sidecar text.
 """
 
+import pytest
 from semantic_catalog import lanes, ratifications
 from semantic_catalog.composition import completed_at, completion_date, group_dates
 from semantic_catalog.records import MetricRecord
@@ -432,3 +433,36 @@ def test_upsert_writes_a_missing_pr_number_as_yaml_null(tmp_path):
 def test_upsert_is_idempotent_on_the_edit_path(tmp_path):
     once = ratifications.upsert(EXISTING, "activated_serve_users", _sign_off(pr=900))
     assert ratifications.upsert(once, "activated_serve_users", _sign_off(pr=900)) == once
+
+
+def test_upsert_refuses_to_overwrite_a_block_it_cannot_parse():
+    # upsert writes only the half a merge earned. Treating an unreadable block
+    # as absent would replace it with a valid one-half entry and destroy
+    # whichever half WAS readable alongside the corrupt one, and `load` would
+    # then accept the result without complaint. Failing loudly is cheaper.
+    corrupt = (
+        "m:\n"
+        "  business:\n    approved: 2026-08-05\n    rule_sha: 'abc1234'\n"
+        "  data:\n    approved: 2026-09-01\n    build_sha: 'NOTAHEX'\n    value_at_signing: 5\n"
+    )
+    with pytest.raises(ValueError, match="lowercase hex"):
+        ratifications.upsert(corrupt, "m", _sign_off(rule=False))
+
+
+def test_upsert_refuses_a_data_half_that_lost_its_value():
+    # Same shape, the requirement this ticket added: a corrupt half must stop
+    # the write, not be quietly replaced by the earned one.
+    corrupt = (
+        "m:\n"
+        "  business:\n    approved: 2026-08-05\n    rule_sha: 'abc1234'\n"
+        "  data:\n    approved: 2026-09-01\n    build_sha: 'def5678'\n"
+    )
+    with pytest.raises(ValueError, match="value_at_signing"):
+        ratifications.upsert(corrupt, "m", _sign_off(rule=False))
+
+
+def test_a_block_with_only_comments_is_still_fillable():
+    # "No sign-off to preserve" is not the same as "unparseable": a header with
+    # only comments has nothing to lose, so it must stay writable.
+    out = ratifications.upsert("m:\n  # a note, no fields yet\n", "m", _sign_off())
+    assert "a note, no fields yet" in out
