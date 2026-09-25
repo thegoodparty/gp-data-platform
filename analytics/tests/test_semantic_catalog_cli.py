@@ -510,3 +510,13 @@ def test_classify_lanes_requests_both_groups_when_it_cannot_diff(tmp_path, capsy
     got = json.loads(capsys.readouterr().out)
     assert got["teams"] == ["semantic-layer-data", "semantic-layer-business"]
     assert "no base tree" in got["reason"]
+
+
+def test_emit_clickup_says_so_when_the_evidence_check_could_not_run(tmp_path):
+    # The page must never read green because a cross-repo read failed. The
+    # conftest guard leaves the check disabled, which is the condition under test.
+    out = tmp_path / "page.md"
+    assert cli.main(["--emit-clickup", str(out)]) == 0
+    text = out.read_text()
+    assert "Instrument evidence" in text
+    assert "NOT being checked against instrument health" in text

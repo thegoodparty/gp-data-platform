@@ -8,6 +8,13 @@ Part 3 (dynamic): the per-metric catalog, generated from records + git lifecycle
 inside CATALOG_BEGIN/CATALOG_END so any out-of-band page context is preserved.
 Part 4 (static, optional): a footer rendered after the catalog (governance
 diagram + reader explainer), passed in from the repo template.
+
+This is the page where the company reads whether a number can be trusted, so it
+is where instrument evidence lands: a metric whose declared events have gone
+dormant renders its BUILD approval as needing re-verification, with the reason
+underneath. That check is a cross-repo network read, so it applies here and not
+in the offline catalog-freshness gate — and when it cannot run, the page says so
+rather than quietly reading green.
 """
 
 from __future__ import annotations
@@ -45,6 +52,23 @@ def _lifecycle_cell(lc: Lifecycle | None) -> str:
     return f"{created} | {updated}"
 
 
+def _evidence_notes(records: list[MetricRecord], problems: list[str]) -> str:
+    """Why any metric needs re-verification, and any reason the check did not run."""
+    flagged = [r for r in records if r.needs_reverification]
+    if not flagged and not problems:
+        return ""
+    lines = ["### Instrument evidence", ""]
+    for rec in flagged:
+        lines.append(
+            f"- **{_cell(rec.label)}** — build approval needs re-verification: {rec.needs_reverification}"
+        )
+    for problem in problems:
+        # Never silent. A check that disables itself without saying so is the
+        # failure this evidence link exists to remove, rebuilt one layer up.
+        lines.append(f"- :warning: {problem}")
+    return "\n".join(lines)
+
+
 def _catalog(records: list[MetricRecord], lifecycles: dict[str, Lifecycle]) -> str:
     header = (
         "| Metric | Definition | Type | Source | Owner | Ratified | Created | Last updated | Detail |\n"
@@ -68,6 +92,7 @@ def render_page(
     owners: dict,
     people: dict | None = None,
     footer_md: str = "",
+    evidence_problems: list[str] | None = None,
 ) -> str:
     parts = [
         "# Semantic layer reference",
@@ -80,6 +105,9 @@ def render_page(
         "",
         _catalog(records, lifecycles),
     ]
+    notes = _evidence_notes(records, evidence_problems or [])
+    if notes:
+        parts += ["", notes]
     if footer_md:
         parts += ["", footer_md]
     return "\n".join(parts) + "\n"

@@ -95,6 +95,7 @@ def render_message(
     pr_url: str,
     coverage: dict,
     required: list[str] | None = None,
+    evidence_problems: list[str] | None = None,
 ) -> str:
     """`required` is the lanes this diff actually needed (see `lanes.classify`).
 
@@ -107,6 +108,14 @@ def render_message(
     changes = diff_records(before, after)
     body.extend(changes if changes else ["(no metric-level changes detected)"])
     body.append("")
+
+    for rec in after:
+        if rec.needs_reverification:
+            body.append(f":rotating_light: {rec.name} — {rec.needs_reverification}")
+    for problem in evidence_problems or []:
+        body.append(f":warning: {problem}")
+    if after and (any(r.needs_reverification for r in after) or evidence_problems):
+        body.append("")
 
     needed = set(required) if required is not None else {"data", "business"}
     marks = []

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from semantic_catalog import composition, lanes, ratifications, recording
+from semantic_catalog import composition, evidence, lanes, ratifications, recording
 from semantic_catalog import lifecycle as lc_mod
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -320,7 +320,20 @@ def main(argv: list[str] | None = None) -> int:
         owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
         sop_md = (PKG / "templates" / "sop.md").read_text()
         footer_md = (PKG / "templates" / "footer.md").read_text()
-        page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
+        # Instrument evidence applies HERE and not in --check. It is a cross-repo
+        # network read, and the catalog-freshness gate is blocking and must stay
+        # offline and deterministic. This page is the one the company reads to
+        # decide whether a number can be trusted, so it is where the evidence
+        # belongs.
+        latches, evidence_problems = evidence.load_latches()
+        page = render_page(
+            evidence.apply(records, latches),
+            _lifecycles(records),
+            sop_md,
+            owners,
+            footer_md=footer_md,
+            evidence_problems=evidence_problems,
+        )
         # The catalog markers exist for splice-based updates; the ClickUp publish
         # is a full-page replace, and ClickUp's markdown parser glues a trailing
         # HTML comment onto the next heading. Drop the markers from the emitted page.
@@ -342,7 +355,17 @@ def main(argv: list[str] | None = None) -> int:
         required = (
             [lane for lane in ("data", "business") if lanes.classify(before, after)[lane]] if before else None
         )
-        msg = render_message(before, after, args.pr_url, coverage, required=required)
+        # A metric merging while its instrument is latched dormant should say so
+        # in the same message, not only on the catalog page a week later.
+        latches, evidence_problems = evidence.load_latches()
+        msg = render_message(
+            before,
+            evidence.apply(after, latches),
+            args.pr_url,
+            coverage,
+            required=required,
+            evidence_problems=evidence_problems,
+        )
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
 

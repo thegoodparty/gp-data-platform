@@ -62,11 +62,19 @@ class MetricRecord:
     # someone looked; never that the number is right.
     value_at_signing: int | None = None
     seal_scheme: str = SCHEME_TWO_SEAL
+    # Why this metric's BUILD approval needs re-verifying, or None. Set from
+    # evidence about the instrument rather than from the files: a seal compares
+    # two documents and cannot see that the events it names stopped arriving.
+    needs_reverification: str | None = None
 
 
-def _half_cell(label: str, approved: str | None, stale: bool) -> str:
+def _half_cell(label: str, approved: str | None, stale: bool, reverify: bool = False) -> str:
     if not approved:
         return f"{label} pending"
+    # Re-verification wins the cell over staleness. Both can be true at once, and
+    # "the instrument feeding this stopped firing" is the more urgent sentence.
+    if reverify:
+        return f"{label} {approved} (NEEDS RE-VERIFICATION)"
     return f"{label} {approved}" + (" (stale)" if stale else "")
 
 
@@ -82,7 +90,12 @@ def ratified_cell(rec: MetricRecord) -> str:
         text = " · ".join(
             [
                 _half_cell("rule", rec.rule_approved, rec.rule_stale),
-                _half_cell("build", rec.build_approved, rec.build_stale),
+                _half_cell(
+                    "build",
+                    rec.build_approved,
+                    rec.build_stale,
+                    reverify=bool(rec.needs_reverification),
+                ),
             ]
         )
     if rec.retired:
@@ -97,5 +110,11 @@ def by_basename(records: list[MetricRecord]) -> dict[str, MetricRecord]:
     from a base worktree, so the absolute path differs on EVERY record, and
     whole-record equality would otherwise report the entire catalog as changed.
     The basename still catches a real change: a metric moving between sem files.
+
+    `needs_reverification` is dropped for a related reason. It is evidence about
+    the instrument NOW, not part of the definition under review, and only the
+    after-side is ever annotated with it — so leaving it in would report every
+    metric with a dormant anchor as changed by a merge that did not touch it,
+    with no diff line able to say why.
     """
-    return {r.name: replace(r, yaml_file=Path(r.yaml_file).name) for r in records}
+    return {r.name: replace(r, yaml_file=Path(r.yaml_file).name, needs_reverification=None) for r in records}

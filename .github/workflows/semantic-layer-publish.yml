@@ -98,6 +98,15 @@ jobs:
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
+          # Lets the summary say when a metric is merging while its declared
+          # instrument is dormant. Until this secret exists the summary carries a
+          # standing "not being checked" line instead, which is the loud degrade
+          # rather than a silent green.
+          OMNI_READ_TOKEN: ${{ secrets.OMNI_READ_TOKEN }}
+          # The gh fallback is for a laptop run. In Actions gh is authed to this
+          # repo only, so attempting it would fail slower and report a murkier
+          # reason than "the token is not set".
+          OMNI_EVIDENCE_NO_GH: '1'
         run: |
           set -euo pipefail
           if [ -d /tmp/base ]; then
