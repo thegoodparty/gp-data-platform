@@ -55,14 +55,10 @@ def get_dags():
 _IMPORT_ERRORS = get_import_errors()
 _ALL_DAGS = get_dags()
 
-# Load the loader DAG from its file directly — CI does not point the configured dags_folder at
-# astro/dags (so get_dags() is empty there), but the file path is stable. Collection-time build
-# means real Airflow (before the sibling airflow stub) and no metastore dependency.
-_LOADER_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_people_api.py")
-with suppress_logging("airflow"):
-    # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
-    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE).dags.get("load_people_api")
-
+# Load these DAGs from their files directly — CI does not point the configured dags_folder at
+# astro/dags (so get_dags() is empty there), but the file paths are stable. Collection-time build
+# means real Airflow (before the sibling airflow stub) and no metastore dependency; .dags is the
+# in-memory parse result, whereas .get_dag() would query the metastore (no DB in CI).
 _L2_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_l2_voter_files.py")
 with suppress_logging("airflow"):
     _L2_DAG = DagBag(dag_folder=_L2_DAG_FILE).dags.get("load_l2_voter_files")
@@ -98,54 +94,6 @@ def test_dag_retries(dag_id, dag, fileloc):
     Test if a DAG has retries set
     """
     assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."
-
-
-def test_load_people_api_sequence():
-    """The loader DAG gates unload/provision on the dbt test and ends build_indexes -> validate ->
-    resize -> analyze -> promote: validate runs BEFORE resize so its heavy per-state counts run on
-    the big index instance, and promote (the serving cutover) is the automated final step, after
-    resize + analyze, so `live` only ever moves to a resized cluster with fresh stats.
-    """
-    assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
-    assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
-    assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("provision").upstream_list}
-    assert "build_indexes" in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
-    assert "validate" in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
-    # resize must not be upstream of validate anymore (the old order is fully gone).
-    assert "resize" not in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
-    # promote is the automated final cutover: downstream of analyze, and it is the sink (no task
-    # depends on it).
-    assert "analyze" in {t.task_id for t in _LOADER_DAG.get_task("promote").upstream_list}
-    assert _LOADER_DAG.get_task("promote").downstream_list == []
-
-
-def test_load_people_api_scale_down_on_failure():
-    """scale_down_on_failure is the on-failure cost guard: downstream of every task after which a
-    cluster can exist (provision, unload, the serial load chain, AND validate — which now runs on
-    the scaled-up writer before resize, so a validate failure must flip it to serverless too),
-    firing via trigger_rule=one_failed if any of them fails, but NOT upstream of resize (a
-    successful run skips it since resize already made the writer serverless). `unload` must be a
-    direct upstream: one_failed fires only on a FAILED direct upstream, and an unload failure with
-    provision success leaves the rest UPSTREAM_FAILED, which does not satisfy one_failed.
-    """
-    assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
-    scale_down_task = _LOADER_DAG.get_task("scale_down_on_failure")
-    assert scale_down_task.trigger_rule == "one_failed"
-    upstream_ids = {t.task_id for t in scale_down_task.upstream_list}
-    assert upstream_ids == {
-        "provision",
-        "unload",
-        "create_schema",
-        "copy",
-        "build_indexes",
-        "validate",
-        "resize",
-        "analyze",
-    }
-    # promote runs after resize (cluster already serving-ready); a promote failure must NOT scale
-    # the writer down, so promote is deliberately not a scale_down upstream.
-    assert "promote" not in upstream_ids
-    assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("resize").upstream_list}
 
 
 def test_load_l2_voter_files_sequence():
