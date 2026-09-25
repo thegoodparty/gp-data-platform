@@ -73,11 +73,44 @@ jobs:
               err="$(echo "$auth" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("error","unknown"))')"
               problems+=("SLACK_APP_BOT_TOKEN failed auth.test (error: ${err}). Merge announcements will not post.")
             else
+              # Three outcomes, not two. The probe used to collapse "the API call
+              # failed" into "the bot is not a member", which is a different claim
+              # and was the wrong one: this check reported the bot missing from
+              # #data-alignment every Monday from 2026-08-24 onward while that same
+              # bot posted the announcements for #1046, #1067 and #1073 there, and
+              # posted this very alert into the channel it called itself absent
+              # from. Five weeks of a false alarm is how a monitor stops being read.
               info="$(curl -sS "https://slack.com/api/conversations.info?channel=${SLACK_CHANNEL}" -H "Authorization: Bearer $SLACK_APP_BOT_TOKEN")"
-              member="$(echo "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("ok") and d.get("channel",{}).get("is_member") else "no")')"
-              if [ "$member" != "yes" ]; then
-                problems+=("The Slack bot is not a member of #data-alignment (${SLACK_CHANNEL}). Re-invite it or announcements will silently fail.")
-              fi
+              # `is_member` present and False is the only confirmed-absent signal.
+              # Testing it for truthiness alone would read an omitted field as a
+              # removal, which is this check's original bug on a different input.
+              member="$(echo "$info" | python3 -c 'import json,sys; im=json.load(sys.stdin).get("channel",{}).get("is_member"); print("yes" if im else "no" if im is False else "unknown")')"
+              case "$member" in
+                yes) ;;
+                no)
+                  # Definitive: the API answered and said the bot is not in there.
+                  problems+=("The Slack bot is not a member of #data-alignment (${SLACK_CHANNEL}). Re-invite it or announcements will silently fail.")
+                  ;;
+                *)
+                  info_err="$(echo "$info" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("error") or "ok, but no is_member field in the response")' 2>/dev/null || echo "unparseable response")"
+                  if [ "$info_err" = "channel_not_found" ]; then
+                    # Not an ambiguous failure. A private channel reports a bot it
+                    # has lost as channel_not_found rather than is_member: false,
+                    # so downgrading this to a warning would hide the very removal
+                    # this check exists for. A wrong channel id lands here too, and
+                    # is equally worth failing on.
+                    problems+=("The Slack bot cannot see #data-alignment (${SLACK_CHANNEL}): conversations.info returned channel_not_found. Either it was removed from a private channel or the channel id is wrong. Announcements will silently fail.")
+                  else
+                    # Could not determine. A failed read is not evidence of a failed
+                    # integration, so this warns rather than failing the run — the
+                    # token itself is exercised by auth.test above, and the posting
+                    # path by every governed merge. Names the Slack error so the
+                    # usual cause, a missing channels:read / groups:read scope on
+                    # the bot token, is actionable rather than guesswork.
+                    warnings+=("Cannot read #data-alignment (${SLACK_CHANNEL}) membership: conversations.info returned '${info_err}'. Membership is unverified — this does NOT mean the bot was removed. If the error is missing_scope, grant the bot channels:read (or groups:read for a private channel) so this check can do its job.")
+                  fi
+                  ;;
+              esac
             fi
           fi
 
