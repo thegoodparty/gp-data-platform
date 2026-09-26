@@ -282,17 +282,42 @@ def test_a_path_leg_on_the_activation_metric_raises():
 def test_the_milestone_filter_admits_every_declared_anchor_event():
     """The filter upstream of the predicate must not drop an event the metrics anchor on.
 
-    Covers all three anchored metrics, including the two whose anchors the filter still
-    names literally, so re-anchoring any of them fails here.
+    Scoped to the metrics this model actually serves. `win_product_output_users` is
+    anchored too but is computed in `int__user_product_activity`, which admits events
+    by classification rather than by name; its own intake guard is the machine-emitted
+    test below.
     """
     admitted = milestone_filter()
+    served = (METRIC, ACTIVATION_METRIC, "activated_serve_users")
     missing = [
         leg["event"]
-        for legs in declared_legs().values()
+        for metric, legs in declared_legs().items()
+        if metric in served
         for leg in legs
         if f"'{leg['event']}'" not in admitted
     ]
     assert not missing, f"declared but dropped by milestone_events: {missing}"
+
+
+def test_no_product_output_leg_is_classified_machine_emitted():
+    """The product-output model admits events by classification, so its intake gate is
+    the machine-emitted flag rather than a name list. A leg the classifier catches
+    would be dropped before the predicate ever saw it, and the column would quietly
+    under-count instead of failing.
+    """
+    machine = ENV.from_string(
+        macro_source("amplitude_event_is_machine_emitted")
+        + '\n{{ amplitude_event_is_machine_emitted("\'" ~ event ~ "\'") }}'
+    )
+    caught = []
+    for leg in declared_legs()["win_product_output_users"]:
+        rendered = " ".join(machine.render(event=leg["event"]).split())
+        # The predicate is a disjunction of literal comparisons against the event
+        # name, so it is decidable here without a warehouse: a leg is caught only
+        # if one of its own literals matches.
+        if f"= '{leg['event']}'" in rendered or f"'{leg['event']}'," in rendered:
+            caught.append(leg["event"])
+    assert not caught, f"product-output legs the machine classifier drops: {caught}"
 
 
 def test_the_milestone_filter_keeps_the_path_leg_condition():

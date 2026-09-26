@@ -202,19 +202,93 @@
     {%- endif -%}
 {% endmacro %}
 
+{% macro amplitude_event_is_machine_emitted(event_type_col) %}
+    {#
+        Flag events the system emitted on its own behalf, so an activity read can
+        exclude them.
+
+        The test is not "did a server send it". More than half of
+        'Candidate Website - Published' arrives with session_id = -1 and it is
+        plainly a candidate publishing a website, so a session filter classifies
+        that as machine and drops a real action. The test is whether a person did
+        something at the moment the event fired.
+
+        Two shapes qualify, and only the first is visible in the data. Schedulers,
+        broadcasts and pollers run on a clock and name a user only because the job
+        concerned them: a real-session event from the same user lands within five
+        minutes of these 0.0% to 3.5% of the time, against 89% to 91% for the
+        server-emitted generation events a candidate actually clicked. That gap is
+        what separates 'Briefing Assistant - Agenda Created' from
+        'Content Builder: Generation Started', which look alike and are not.
+        Instrumentation bookkeeping is the second shape: experiment assignment,
+        autotrack and page lifecycle sit inside a real session by construction, so
+        co-occurrence cannot find them and they are named here instead.
+
+        The weekly digest alone moved one month's active users by 20%, which is the
+        size of the error this flag exists to stop.
+
+        Deliberately NOT machine: signup, magic link, password reset, Pro
+        confirmation and the 10DLC compliance submissions. Every one is
+        server-emitted and every one records something the user did. Carrier
+        verdicts ('10DLC Compliance Rejected', 'Campaign Approved') are genuinely
+        not user actions, but they reach 11 and 53 users and who emits them is
+        unverified, so they are left in rather than guessed at.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+
+        Usage:
+            {{ amplitude_event_is_machine_emitted('event_type') }} as is_machine_emitted
+    #}
+    (
+        -- Instrumentation bookkeeping: fires in a real session, records no action.
+        {{ event_type_col }} like '[Experiment]%'
+        or {{ event_type_col }} = 'Experiment Viewed'
+        or {{ event_type_col }} like '[Amplitude]%'
+        or {{ event_type_col }} like 'Segment Consent%'
+        or {{ event_type_col }} in (
+            'Scroll Depth',
+            'session_start',
+            'session_end',
+            'page_view',
+            'Page Viewed',
+            'Page',
+            'usersnap_submission'
+        )
+        -- Schedulers deciding whether to dispatch, and the digest they send.
+        or {{ event_type_col }} like '%Dispatch Skipped'
+        or {{ event_type_col }} = 'Campaign Plan - Weekly Tasks Digest'
+        -- A status poller: 71k events across 546 users.
+        or {{ event_type_col }} = 'Campaign Verify Token Status Update'
+        -- Generation with no user in the loop. The Content Builder and Campaign
+        -- Plan V2 generation events are the opposite case and stay activity.
+        or {{ event_type_col }} = 'Poll - Results Synthesis Complete'
+        or {{ event_type_col }} like 'Briefing Assistant - Agenda %Created'
+        or {{ event_type_col }} in (
+            'Community Issues - Initial Issues Generated',
+            'Community Issues - Top Issues Refreshed',
+            'Community Issues - Trending Issues Refreshed',
+            'Community Issues - High Priority Trending Issue Created',
+            'Community Issues - Top Issue Priority Changed'
+        )
+    )
+{% endmacro %}
+
 {% macro metric_anchored_events(metric_name) %}
     {#
-        Legs of a governed metric's `config.meta.anchored_on` (DATA-2421), as dicts
-        with keys event / path / era / excluding. The semantic layer is the kernel:
-        this reads the declaration rather than restating it, so the macro cannot
-        drift from the metric it serves.
+        Legs of a governed metric's `config.meta.anchored_on`, as dicts with keys
+        event / path / era / excluding / paywalled. The semantic layer is the
+        kernel: this reads the declaration rather than restating it, so the macro
+        cannot drift from the metric it serves.
 
         `path` narrows a leg to one page-path slice of a site-wide event.
         `excluding` narrows a leg by an event property, as {property: value};
         each consuming macro decides which property keys it can compile and must
         raise on one it cannot, so an exclusion can never be silently ignored.
         `era` is documentation, not a filter: dead legs stay in the predicate so
-        history is preserved.
+        history is preserved. `paywalled` marks a leg only a paying user can
+        reach, so a consumer building a model label can drop those legs and
+        avoid learning who paid.
 
         Empty at parse time (execute=false), same as the seed accessors in
         hubspot_contact_property_columns.sql. Callers building a predicate MUST emit a
@@ -255,6 +329,7 @@
                     "path": leg.get("path"),
                     "era": leg.get("era"),
                     "excluding": leg.get("excluding") or {},
+                    "paywalled": leg.get("paywalled") or false,
                 }
             ) -%}
         {%- endfor -%}
@@ -393,6 +468,176 @@
                         {{
                             exceptions.raise_compiler_error(
                                 "is_outreach_activation_event: leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but this macro only compiles a 'method' exclusion."
+                            )
+                        }}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- set excluded = leg["excluding"]["method"] -%}
+                {%- do qualified.append(
+                    {
+                        "event": leg["event"],
+                        "methods": (
+                            excluded
+                            if excluded is sequence
+                            and excluded is not string
+                            else [excluded]
+                        ),
+                    }
+                ) -%}
+            {%- else -%} {%- do plain.append(leg["event"]) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        (
+            {%- for leg in qualified %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and coalesce({{ method_col }}, '') not in (
+                        {%- for method in leg["methods"] %}
+                            '{{ method }}'{{ "," if not loop.last }}
+                        {%- endfor %}
+                    )
+                )
+                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if plain | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in plain | sort %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
+{% endmacro %}
+
+{% macro is_product_output_event(event_type_col, method_col) %}
+    {#
+        Membership test for Product Output: the candidate made something with the
+        product that left it.
+
+        A broader concept than activation and a different one. `win_activated_users`
+        asks whether we reached voters for them; this asks whether they got value
+        out. A published website is not voter outreach, which is why the two are
+        separate metrics rather than one widened metric, and why nothing may report
+        one as the other.
+
+        Where the outreach metric has already settled a question, this follows it
+        rather than diverging. Self-reported outreach is excluded by the same
+        `method` qualifier, because a candidate recording what they did elsewhere
+        produced no output here. The robocall draft event is not a leg for the same
+        reason it stopped being one for outreach: it fires at draft-create on an
+        unpaid row, and an unpaid draft never left the product.
+
+        Two caveats ride on any series over this: three legs went live between July
+        and September 2026, so a pre-2026-07 series carries an instrumentation step
+        and not growth; and some legs sit behind a paywall, so a model using this as
+        a label must use the free-action variant instead or it learns who paid.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property
+                (event_properties:method::string).
+    #}
+    {{
+        product_output_predicate(
+            event_type_col, method_col, "is_product_output_event"
+        )
+    }}
+{% endmacro %}
+
+{% macro is_product_output_free_event(event_type_col, method_col) %}
+    {#
+        Product Output restricted to the legs a non-paying user can reach.
+
+        Use this, never the full predicate, as the label for any model predicting
+        who engages. Most Product Output legs sit behind Pro, so a model trained on
+        the full definition learns who paid and reports it as who engaged. Which
+        legs are paywalled is declared on the metric rather than listed here, so
+        adding a leg forces the question to be answered once, in the declaration.
+
+        The gating behind this is code-verified: the voter-contact channels and the
+        voter file require Pro, and the website builder does not. Worth knowing that
+        current Pro state disagrees — only 8.8% of list-export users and none of the
+        call-sheet users hold Pro today — which is either churn plus undatable Pro
+        or a gate that has moved. Marking a leg paywalled is the conservative
+        direction for a label, so the disagreement does not block it.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property.
+    #}
+    {{
+        product_output_predicate(
+            event_type_col, method_col, "is_product_output_free_event", free_only=true
+        )
+    }}
+{% endmacro %}
+
+{% macro product_output_predicate(
+    event_type_col, method_col, caller_macro, free_only=false
+) %}
+    {#
+        Compile the product-output legs into an event-membership predicate,
+        honouring a `method` exclusion on any leg that declares one.
+
+        Shared by the full and free-subset macros above, which differ only in
+        whether they drop the paywalled legs. It deliberately does NOT serve
+        is_outreach_activation_event: that macro is the OKR's compile path and is
+        pinned by its own source-level guards, so it keeps its own body rather
+        than depending on this one.
+
+        Raises on a leg this cannot express — a page path, or an exclusion on any
+        property other than `method` — so a declaration that outruns the compiler
+        fails the build instead of quietly widening the metric.
+
+        Args:
+            event_type_col / method_col: SQL expressions for the event name and its
+                `method` property.
+            caller_macro: the calling macro's name, for error messages.
+            free_only: drop legs the declaration marks `paywalled`, for a label that
+                must not encode who paid.
+    #}
+    {%- set declared = metric_anchored_events("win_product_output_users") -%}
+    {%- set legs = (
+        declared | rejectattr("paywalled") | list if free_only else declared
+    ) -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty leg list, which must raise at execute time. -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                caller_macro
+                ~ ": win_product_output_users resolved to zero legs at execute "
+                "time. Refusing to emit a predicate that would read product "
+                "output as zero."
+            )
+        }}
+    {%- else -%}
+        {%- set plain = [] -%}
+        {%- set qualified = [] -%}
+        {%- for leg in legs -%}
+            {%- if leg["path"] -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        caller_macro
+                        ~ ": leg '"
+                        ~ leg["event"]
+                        ~ "' declares a page path, which this macro cannot compile."
+                    )
+                }}
+            {%- elif leg["excluding"] -%}
+                {%- for property_key in leg["excluding"] -%}
+                    {%- if property_key != "method" -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                caller_macro
+                                ~ ": leg '"
                                 ~ leg["event"]
                                 ~ "' excludes on '"
                                 ~ property_key

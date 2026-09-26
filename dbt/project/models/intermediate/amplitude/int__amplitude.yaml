@@ -576,6 +576,23 @@ models:
         data_tests:
           - not_null
 
+      - name: is_machine_emitted
+        description: >
+          True where the system emitted the event on its own behalf and no user
+          acted at that moment: schedulers, broadcasts, status pollers,
+          server-side generation with nobody in the loop, and instrumentation
+          bookkeeping such as experiment assignment. Exclude these from any
+          "was this user active" read; one weekly digest broadcast was inflating
+          a month's active users by about a fifth.
+
+          Not the same as server-emitted. Over half of
+          'Candidate Website - Published' arrives with session_id = -1 and it is a
+          real candidate action, so a session filter is the wrong instrument here.
+          See the amplitude_event_is_machine_emitted macro for how the two are
+          told apart.
+        data_tests:
+          - not_null
+
       - name: first_seen_date
         description: >
           Date of first appearance in the raw event stream. Use as a drift cutoff

@@ -29,12 +29,13 @@ def test_parse_anchors_returns_only_metrics_that_declare_one():
 def test_parse_anchors_normalises_missing_qualifiers():
     legs = parse_anchors(SEM_DOC)["win_active_candidates_30d"]
     assert legs == [
-        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}},
+        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}, "paywalled": False},
         {
             "event": "Dashboard - Campaign Plan Viewed",
             "path": None,
             "era": "historical",
             "excluding": {},
+            "paywalled": False,
         },
     ]
 
@@ -51,7 +52,7 @@ def test_parse_anchors_carries_a_property_exclusion():
         ]
     }
     assert parse_anchors(doc)["m"] == [
-        {"event": "E", "path": None, "era": None, "excluding": {"method": "manual"}}
+        {"event": "E", "path": None, "era": None, "excluding": {"method": "manual"}, "paywalled": False}
     ]
 
 
@@ -75,6 +76,7 @@ def test_real_sem_files_declare_anchors_for_the_okr_metrics():
     assert set(declared) == {
         "win_active_candidates_30d",
         "win_activated_users",
+        "win_product_output_users",
         "activated_serve_users",
     }
 
@@ -85,24 +87,27 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     legs = parse_anchors(doc)["win_active_candidates_30d"]
     assert legs == [
-        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}},
+        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}, "paywalled": False},
         {
             "event": "Dashboard - Candidate Dashboard Viewed",
             "path": None,
             "era": "historical",
             "excluding": {},
+            "paywalled": False,
         },
         {
             "event": "Dashboard - Campaign Plan Viewed",
             "path": None,
             "era": "historical",
             "excluding": {},
+            "paywalled": False,
         },
         {
             "event": "Campaign Plan - Campaign Tracker Viewed",
             "path": None,
             "era": None,
             "excluding": {},
+            "paywalled": False,
         },
     ]
     live = [leg for leg in legs if leg["era"] != "historical"]
@@ -157,3 +162,39 @@ def test_win_activation_declares_no_preparation_event():
             "Robocall - Scheduled",
         }
     )
+
+
+def test_product_output_declares_the_exact_event_string():
+    # Pinned for the same reason the outreach anchor is, plus one of its own: this
+    # is the broader of two things both once called activation, and the point of
+    # separating them is that neither list can move by accident.
+    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
+    legs = parse_anchors(doc)["win_product_output_users"]
+    assert [leg["event"] for leg in legs] == [
+        "Candidate Website - Published",
+        "Voter Outreach - Campaign Completed",
+        "Voter Data - List Exported",
+        "Voter Outreach - Phone Banking Call Sheet Downloaded",
+        "Voter Outreach - Campaign Scheduled",
+    ]
+
+
+def test_product_output_follows_the_okr_on_self_report_and_the_robocall_draft():
+    # Where the outreach OKR has settled a question, product output follows it
+    # rather than diverging. Self-report produced no output here, and the robocall
+    # draft fires on an unpaid row, so nothing left the product in either case.
+    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
+    legs = parse_anchors(doc)["win_product_output_users"]
+    by_event = {leg["event"]: leg for leg in legs}
+    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": "manual"}
+    assert "Robocall - Scheduled" not in by_event
+
+
+def test_product_output_leaves_one_free_leg_for_use_as_a_label():
+    # A label drawn from the paywalled legs teaches a model who paid and lets it
+    # report that as who engaged. If every leg were marked paywalled the free
+    # variant would read zero for everyone, so the floor is asserted, not assumed.
+    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
+    legs = parse_anchors(doc)["win_product_output_users"]
+    free = [leg["event"] for leg in legs if not leg["paywalled"]]
+    assert free == ["Candidate Website - Published"]

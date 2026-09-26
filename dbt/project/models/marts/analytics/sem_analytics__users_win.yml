@@ -26,6 +26,11 @@ semantic_models:
       - name: is_activated
         description: Has sent at least one voter outreach campaign.
         type: categorical
+      - name: has_product_output
+        description: >
+          Has made something with the product that left it. Broader than
+          is_activated and a different question; see win_product_output_users.
+        type: categorical
       - name: is_pro
         description: Has at least one pro campaign.
         type: categorical
@@ -146,3 +151,64 @@ metrics:
           # fact that the channel has no campaign-grain terminal any more.
           - event: "Outreach - Phone Banking: Complete"
             era: historical   # died in-data 2026-08-28, its call site removed
+
+  - name: win_product_output_users
+    label: Win Users With Product Output
+    description: >
+      Count of Win-product users who have made something with the product that
+      left it: a published website, a completed voter-outreach send, an exported
+      voter list, a downloaded call sheet. Definition owned by
+      users_win_base.has_product_output and compiled by is_product_output_event
+      from this metric's config.meta.anchored_on.
+
+      Read this as "did they get value out of the product", and read
+      win_activated_users as "did we reach voters for them". They are not two
+      measurements of one thing and must never be reported as each other or
+      compared in one series. The gap between them is mostly website publishing,
+      which is not voter outreach, and that is exactly why the OKR was not simply
+      widened to the larger number.
+
+      Where the outreach OKR has settled a question this follows it rather than
+      diverging. Self-reported outreach is excluded by the same method qualifier,
+      because a candidate recording what they did elsewhere produced no output
+      here. The robocall draft event is not a leg for the reason it stopped being
+      one for outreach: it fires at draft-create on an unpaid row, and an unpaid
+      draft never left the product.
+
+      Two caveats travel with any series over this. Three legs went live between
+      July and September 2026, so a series reaching back before 2026-07 has an
+      instrumentation step in it that is not growth. And most legs are marked
+      paywalled below, so a model using this as a label must read the free subset
+      through is_product_output_free_event or it will learn who paid and report it
+      as who engaged.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__has_product_output') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md
+        # The raw events that count as output leaving the product. Same kernel
+        # role as the outreach anchor above: the compiling macros derive their SQL
+        # from this list, so adding or removing a leg is a governed change.
+        #
+        # `paywalled` marks a leg only a paying user can reach, per the
+        # code-verified product gating: the voter-contact channels and the voter
+        # file require Pro, the website builder does not.
+        anchored_on:
+          - event: Candidate Website - Published
+          - event: Voter Outreach - Campaign Completed
+            # Same three moments as the outreach anchor, same exclusion.
+            excluding:
+              method: manual
+            paywalled: true
+          - event: Voter Data - List Exported
+            paywalled: true
+          # Preparation for the outreach OKR, which asks whether a send happened.
+          # Output for this metric, which asks whether anything left: the sheet is
+          # a file in the candidate's hands.
+          - event: Voter Outreach - Phone Banking Call Sheet Downloaded
+            paywalled: true
+          - event: Voter Outreach - Campaign Scheduled
+            paywalled: true

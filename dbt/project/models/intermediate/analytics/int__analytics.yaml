@@ -730,3 +730,180 @@ models:
             expression: payment_count > 0
           config:
             where: lifetime_paid_usd > 0
+
+  - name: int__user_product_activity
+    description: >
+      The product slice of the end-to-end user view: when a user first and last
+      used the product, whether they ever made anything with it, and whether
+      they were active in each of the last three calendar months. One row per
+      user whether or not they ever appeared in Amplitude.
+
+      Machine-emitted events are excluded from every activity read here, and the
+      exclusion is not cosmetic: the dispatch schedulers alone name roughly 1,800
+      users a month who did nothing, which was more than doubling the monthly
+      active count.
+
+      Activity columns are null, not zero, for a user with no telemetry. Product
+      instrumentation starts in April 2025 and most of this table registered
+      before that or never used the product; reading a null as a zero reports
+      about half our users as inactive when we simply cannot see them.
+      has_amplitude_data is the column that tells the two apart. The rolling
+      window is the exception and is zero rather than null, because anyone active
+      in the last three months is instrumented, so a zero there is a real zero.
+
+      Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: has_amplitude_data
+        description: >
+          Any non-machine product event was recorded for this user. False means
+          we cannot see them, not that they were inactive. Roughly half the
+          table.
+        data_tests:
+          - not_null
+      - name: first_activity_at
+        description: Their first recorded product event. Null where we have no telemetry.
+      - name: last_activity_at
+        description: Their most recent product event.
+      - name: total_events
+        description: All non-machine product events, all time.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: active_days_total
+        description: Distinct days with product activity, all time.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: dashboard_view_count
+        description: >
+          Dashboard views across all three instrumentation eras, de-duplicated
+          for the co-fire between the page event and whichever named surface
+          event was live. An era-three-only read recovers about two thirds of
+          this.
+      - name: first_dashboard_viewed_at
+        description: First candidate-dashboard view.
+      - name: last_dashboard_viewed_at
+        description: Most recent candidate-dashboard view.
+      - name: onboarding_completed_at
+        description: >
+          When the onboarding flow fired its own completion event. Not the same
+          question as users_win_base.is_onboarded, which is a US-registration
+          plus dashboard-view-within-14-days construction under a similar name.
+      - name: is_onboarded
+        description: They finished the onboarding flow.
+        data_tests:
+          - not_null
+      - name: product_output_at
+        description: >
+          When they first made something with the product that left it. Null for
+          a user who never has.
+      - name: has_product_output
+        description: >
+          They made something with the product that left it: a published
+          website, a completed outreach send, an exported voter list, a
+          downloaded call sheet. Broader than users_win_base.is_activated, which
+          asks only whether we reached voters for them, and a different question
+          rather than a better version of the same one. Never report one as the
+          other. Definition owned by the win_product_output_users metric's
+          anchored_on declaration.
+
+          Three of its legs went live between July and September 2026, so any
+          series reaching back before 2026-07 carries an instrumentation step
+          that must not be read as growth.
+        data_tests:
+          - not_null
+      - name: free_product_output_at
+        description: When they first produced output through a leg that is not paywalled.
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output. Any model predicting
+          engagement must use this as its label: most output legs sit behind Pro,
+          so a model trained on the full column learns who paid and reports it as
+          who engaged.
+        data_tests:
+          - not_null
+      - name: serve_first_activity_at
+        description: >
+          First Serve product event, machine events excluded. Directional until
+          the Serve activity spine is rebuilt.
+      - name: serve_last_activity_at
+        description: Most recent Serve product event, machine events excluded.
+      - name: active_m0
+        description: >
+          At least one non-machine product event in the current calendar month.
+          A deliberately low bar, chosen so this agrees with the MAU figures
+          already in circulation rather than introducing a quieter second
+          definition of the same word.
+        data_tests:
+          - not_null
+      - name: active_m1
+        description: The same, for the previous calendar month.
+        data_tests:
+          - not_null
+      - name: active_m2
+        description: The same, for the month before that.
+        data_tests:
+          - not_null
+      - name: activity_days_m0
+        description: Distinct active days in the current calendar month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: activity_days_m1
+        description: Distinct active days in the previous calendar month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: activity_days_m2
+        description: Distinct active days in the month before that.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: growth_state
+        description: >
+          The new / retained / resurrected / churned bucket diagram as a column,
+          read off the three rolling flags. Null where we have no telemetry at
+          all, because an unseen user belongs in no bucket.
+
+          'dormant' is the fourth live value and covers most rows: active in none
+          of the three months and not active in either of the two most recent.
+          It is kept apart from 'churned' because calling an unseen signup
+          churned claims we lost someone we may never have had.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["new", "retained", "resurrected", "churned", "dormant"]
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: last_activity_at >= first_activity_at
+      # Free output is a subset of output, so it can never reach a user the
+      # broader column does not. A failure here means the paywalled markers and
+      # the leg list have drifted apart.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: has_product_output
+          config:
+            where: has_free_product_output
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: has_amplitude_data
+          config:
+            where: active_m0 or active_m1 or active_m2

@@ -240,7 +240,24 @@ models:
       - name: is_activated
         description: >
           TRUE if user has completed at least one voter outreach campaign.
-          This is the OKR "Activated Candidates" metric.
+          This is the OKR "Activated Candidates" metric. Asks whether we reached
+          voters for them; for whether they got value out of the product, use
+          has_product_output, which is a different question and a larger number.
+        data_tests:
+          - not_null
+
+      - name: product_output_at
+        description: >
+          When the user first made something with the product that left it.
+          Owned by int__user_product_activity.
+      - name: has_product_output
+        description: >
+          TRUE if the user has made something with the product that left it: a
+          published website, a completed outreach send, an exported voter list,
+          a downloaded call sheet. Broader than is_activated and a different
+          question, not a better version of the same one — the gap between them
+          is mostly website publishing, which is not voter outreach. Never
+          report one as the other or compare them in one series.
         data_tests:
           - not_null
 

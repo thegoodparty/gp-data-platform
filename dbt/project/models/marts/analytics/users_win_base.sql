@@ -24,6 +24,10 @@ with
         select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
     ),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
+    product_activity as (
+        select user_id, product_output_at, has_product_output
+        from {{ ref("int__user_product_activity") }}
+    ),
 
     campaign_elections as (
         -- Filters out-of-range election_date sentinels (e.g. year 19999) from
@@ -132,10 +136,17 @@ with
             m.first_campaign_sent_at,
             (m.first_campaign_sent_at is not null) as is_activated,
             m.total_campaigns_sent,
-            m.total_recipient_count
+            m.total_recipient_count,
+
+            -- Product Output: made something that left the product. Broader than
+            -- is_activated and a different question, so the two sit together here
+            -- rather than one replacing the other.
+            pa.product_output_at,
+            coalesce(pa.has_product_output, false) as has_product_output
         from users u
         left join milestones m on u.user_id = m.user_id
         left join campaign_elections ce on u.user_id = ce.user_id
+        left join product_activity pa on u.user_id = pa.user_id
     )
 
 select *

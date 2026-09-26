@@ -51,6 +51,7 @@ select
     family like 'win_%' as is_win,
     family = 'serve' as is_serve,
     {{ amplitude_event_is_recurrent("s.event_type") }} as is_recurrent,
+    {{ amplitude_event_is_machine_emitted("s.event_type") }} as is_machine_emitted,
     s.first_seen_date,
     s.last_seen_date,
     s.event_count,
