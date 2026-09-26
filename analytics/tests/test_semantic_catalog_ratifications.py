@@ -34,8 +34,9 @@ def _data(approved="2026-08-05", sha=None, rec=None, value=10):
 TWO_HALVES = (
     "m:\n"
     "  business:\n    approved: 2026-08-05\n    rule_sha: 'abc1234'\n"
-    "  data:\n    approved: 2026-09-01\n    build_sha: 'def5678'\n    value_at_signing: 941\n"
-    "  approved_by_pr: 760\n"
+    "    approved_by_pr: 708\n"
+    "  data:\n    approved: 2026-09-01\n    build_sha: 'def5678'\n"
+    "    value_at_signing: 941\n    approved_by_pr: 760\n"
 )
 
 
@@ -56,7 +57,9 @@ def test_load_reads_both_halves(tmp_path):
     assert got.rule.approved == "2026-08-05" and got.rule.sha == "abc1234"
     assert got.data.approved == "2026-09-01" and got.data.sha == "def5678"
     assert got.data.value == 941
-    assert got.approved_by_pr == 760
+    # Per half, because the two were approved on different PRs — which is the
+    # point of splitting them, and which one entry-level field cannot hold.
+    assert got.rule.pr == 708 and got.data.pr == 760
 
 
 def test_load_reads_one_half_and_leaves_the_other_pending(tmp_path):
@@ -104,7 +107,7 @@ def test_load_rejects_a_non_integer_value(tmp_path):
 
 
 def test_load_rejects_an_entry_with_neither_half(tmp_path):
-    with pytest.raises(ValueError, match="neither half"):
+    with pytest.raises(ValueError, match="unknown key"):
         ratifications.load(_sidecar(tmp_path, "m:\n  approved_by_pr: 760\n"))
 
 

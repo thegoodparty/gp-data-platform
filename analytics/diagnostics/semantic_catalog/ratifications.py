@@ -33,10 +33,13 @@ metric's value, so a PR check could only prove that some number is present. The
 number is a snapshot and takes the date of the entry it sits in. It proves
 someone looked, never that the number is right.
 
-`approved_by_pr` is human provenance only. It is deliberately NOT carried on
-MetricRecord: records are compared whole to build the Slack change diff, so a
-provenance-only edit would report the metric as changed with no diff line able
-to explain why.
+`approved_by_pr` is human provenance only, and it lives on each HALF rather than
+on the entry, because the two halves are routinely approved on different PRs —
+that is the point of splitting them. One entry-level field could hold only one
+of the two, so recording a build sign-off would silently restate the business
+half's provenance as its own. It is deliberately NOT carried on MetricRecord:
+records are compared whole to build the Slack change diff, so a provenance-only
+edit would report the metric as changed with no diff line able to explain why.
 
 `upsert`'s optional `note` is written as a comment line prefixed with
 `AUTO_NOTE_PREFIX` ("auto-recorded: "), so the hook's own provenance note can
@@ -81,11 +84,18 @@ _SHA_RE = re.compile(rf"^[0-9a-f]{{{SHA_LEN}}}$")
 @dataclass(frozen=True)
 class SignOff:
     """One half of a sign-off. `value` is set on the data half only: a business
-    approval signs the rule and carries no number."""
+    approval signs the rule and carries no number.
+
+    `pr` is per half, not per entry, because the two halves are routinely
+    approved on different PRs — that is the point of splitting them. One
+    entry-level field could only hold one of the two, so recording a build
+    sign-off would silently restate the business half's provenance as its own.
+    """
 
     approved: str
     sha: str
     value: int | None = None
+    pr: int | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +104,7 @@ class Ratification:
 
     rule: SignOff | None = None
     data: SignOff | None = None
+    # Legacy single-seal entries only; new entries carry the PR on each half.
     approved_by_pr: int | None = None
     scheme: str | None = None
 
@@ -139,6 +150,7 @@ def _read_half(path: Path, name: str, half: str, entry: object, sha_key: str) ->
         # A seal is mandatory, not optional: a date nothing can ever check is
         # the state this whole sidecar exists to eliminate.
         raise ValueError(f"{path}: {name}.{half} is missing {' and '.join(missing)}")
+    pr = entry.get("approved_by_pr")
     value = entry.get("value_at_signing")
     if half == "data":
         if value is None:
@@ -158,6 +170,7 @@ def _read_half(path: Path, name: str, half: str, entry: object, sha_key: str) ->
         approved=str(entry["approved"]),
         sha=_read_sha(path, name, f"{half}.{sha_key}", entry[sha_key]),
         value=value if half == "data" else None,
+        pr=pr,
     )
 
 
@@ -206,11 +219,11 @@ def load(path: Path | None = None) -> dict[str, Ratification]:
                 )
             out[name] = _read_legacy(path, name, entry)
             continue
-        unknown = sorted(set(entry) - {"business", "data", "approved_by_pr"})
+        unknown = sorted(set(entry) - {"business", "data"})
         if unknown:
             raise ValueError(
                 f"{path}: {name} has unknown key(s) {', '.join(unknown)}. An entry is a "
-                "'business' half, a 'data' half, and approved_by_pr."
+                "'business' half and a 'data' half; the PR goes inside each half."
             )
         rule = _read_half(path, name, "business", entry.get("business"), "rule_sha")
         data = _read_half(path, name, "data", entry.get("data"), "build_sha")
@@ -219,7 +232,7 @@ def load(path: Path | None = None) -> dict[str, Ratification]:
                 f"{path}: {name} has neither half. Absence of the whole entry is how a "
                 "metric reads pending; an empty entry says nothing."
             )
-        out[name] = Ratification(rule=rule, data=data, approved_by_pr=entry.get("approved_by_pr"))
+        out[name] = Ratification(rule=rule, data=data)
     return out
 
 
@@ -293,16 +306,16 @@ def earned_by_merge(
             and not (rec.rule_approved and not rec.rule_stale)
             and (old is None or rule_sha(old) != rule_sha(rec))
         ):
-            rule = SignOff(approved=business_date, sha=rule_sha(rec))
+            rule = SignOff(approved=business_date, sha=rule_sha(rec), pr=pr_number)
         if (
             data_date
             and not (rec.build_approved and not rec.build_stale)
             and (old is None or build_sha(old) != build_sha(rec))
             and rec.name in values
         ):
-            data = SignOff(approved=data_date, sha=build_sha(rec), value=values[rec.name])
+            data = SignOff(approved=data_date, sha=build_sha(rec), value=values[rec.name], pr=pr_number)
         if rule or data:
-            earned[rec.name] = Ratification(rule=rule, data=data, approved_by_pr=pr_number)
+            earned[rec.name] = Ratification(rule=rule, data=data)
     return earned
 
 
@@ -320,12 +333,20 @@ def render_entry(name: str, sign_off: Ratification, note: str = "") -> str:
     lines = [f"{name}:\n"]
     if note:
         lines.append(f"  # {AUTO_NOTE_PREFIX}{note}\n")
+
+    # `null`, not the bare word None: PyYAML has no notion of Python's None
+    # literal, so `approved_by_pr: None` would read back as the STRING "None"
+    # rather than as a missing PR number.
+    def _pr(half):
+        return half.pr if half.pr is not None else "null"
+
     if sign_off.rule is not None:
         lines += [
             "  business:\n",
             f"    approved: {sign_off.rule.approved}\n",
             # Always quoted: an all-digit hash left bare reads back as an integer.
             f"    rule_sha: '{sign_off.rule.sha}'\n",
+            f"    approved_by_pr: {_pr(sign_off.rule)}\n",
         ]
     if sign_off.data is not None:
         lines += [
@@ -333,12 +354,8 @@ def render_entry(name: str, sign_off: Ratification, note: str = "") -> str:
             f"    approved: {sign_off.data.approved}\n",
             f"    build_sha: '{sign_off.data.sha}'\n",
             f"    value_at_signing: {sign_off.data.value}\n",
+            f"    approved_by_pr: {_pr(sign_off.data)}\n",
         ]
-    # `null`, not the bare word None: PyYAML has no notion of Python's None
-    # literal, so `approved_by_pr: None` would read back as the STRING "None"
-    # rather than as a missing PR number.
-    pr = sign_off.approved_by_pr if sign_off.approved_by_pr is not None else "null"
-    lines.append(f"  approved_by_pr: {pr}\n")
     return "".join(lines)
 
 
@@ -348,17 +365,9 @@ def _merge_halves(existing: Ratification, earned: Ratification) -> Ratification:
     A data-only merge must not silently restate or drop the business half that
     someone gave on a different PR months earlier.
     """
-    return Ratification(
-        rule=earned.rule or existing.rule,
-        data=earned.data or existing.data,
-        # `is not None`, not `or`: a falsy PR number would silently inherit the
-        # prior entry's, attributing this sign-off to whatever PR happened to be
-        # recorded before it. Wrong provenance that reads as right is worse than
-        # none, and nothing downstream would ever flag it.
-        approved_by_pr=(
-            earned.approved_by_pr if earned.approved_by_pr is not None else existing.approved_by_pr
-        ),
-    )
+    # Nothing to reconcile any more: each half carries its own PR, so an
+    # unearned half keeps its own provenance untouched.
+    return Ratification(rule=earned.rule or existing.rule, data=earned.data or existing.data)
 
 
 def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
@@ -428,7 +437,7 @@ def load_entry_text(block: str, name: str) -> Ratification | None:
     data = _read_half(Path(name), name, "data", entry.get("data"), "build_sha")
     if rule is None and data is None:
         return None
-    return Ratification(rule=rule, data=data, approved_by_pr=entry.get("approved_by_pr"))
+    return Ratification(rule=rule, data=data)
 
 
 def orphaned_keys(records: list[MetricRecord], sign_offs: dict[str, Ratification]) -> list[str]:

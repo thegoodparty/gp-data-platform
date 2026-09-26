@@ -174,8 +174,12 @@ def _record(args, records: list[MetricRecord]) -> int:
             # quietly unrecorded and reads as nobody having approved it.
             if dates.get("data"):
                 classified = lanes.classify(before, after)
-                skipped = recording.unvalued(classified[lanes.DATA], values)
-                skipped = [n for n in skipped if not (earned.get(n) and earned[n].data)]
+                skipped = recording.unvalued(
+                    classified[lanes.DATA],
+                    values,
+                    retired={rec.name for rec in after if rec.retired},
+                    recorded={n for n, s in earned.items() if s.data},
+                )
                 for name in skipped:
                     print(
                         f"{name}: build approved but the PR body declared no value, so "

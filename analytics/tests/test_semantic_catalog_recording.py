@@ -10,11 +10,12 @@ win_users:
   business:
     approved: 2026-07-29
     rule_sha: '865d003'
+    approved_by_pr: 749
   data:
     approved: 2026-08-04
     build_sha: '1213bea'
     value_at_signing: 63744
-  approved_by_pr: 749
+    approved_by_pr: 749
 """
 
 
@@ -38,9 +39,8 @@ def _rec(name, definition="def", label=None):
 def _earned(name="serve_users", pr=800, rule=True, data=True):
     return {
         name: ratifications.Ratification(
-            rule=ratifications.SignOff("2026-08-07", "abc1234") if rule else None,
-            data=ratifications.SignOff("2026-08-09", "def5678", 1878) if data else None,
-            approved_by_pr=pr,
+            rule=ratifications.SignOff("2026-08-07", "abc1234", pr=pr) if rule else None,
+            data=ratifications.SignOff("2026-08-09", "def5678", 1878, pr=pr) if data else None,
         )
     }
 
@@ -52,7 +52,7 @@ def test_apply_writes_each_earned_entry_with_a_provenance_note(tmp_path):
     loaded = ratifications.load(path)["serve_users"]
     assert loaded.rule.approved == "2026-08-07" and loaded.rule.sha == "abc1234"
     assert loaded.data.approved == "2026-08-09" and loaded.data.value == 1878
-    assert loaded.approved_by_pr == 800
+    assert loaded.rule.pr == 800 and loaded.data.pr == 800
     assert "#800" in out, "the entry must say where the sign-off came from"
 
 
@@ -62,7 +62,7 @@ def test_apply_preserves_existing_comments_and_entries(tmp_path):
     assert "A human's note about this sign-off" in out
     path = tmp_path / "r.yml"
     path.write_text(out)
-    assert ratifications.load(path)["win_users"].approved_by_pr == 749
+    assert ratifications.load(path)["win_users"].rule.pr == 749
 
 
 def test_recording_one_half_leaves_the_other_alone(tmp_path):
@@ -75,6 +75,9 @@ def test_recording_one_half_leaves_the_other_alone(tmp_path):
     entry = ratifications.load(path)["win_users"]
     assert entry.rule.approved == "2026-07-29" and entry.rule.sha == "865d003"
     assert entry.data.approved == "2026-08-09" and entry.data.value == 1878
+    # The PR that gave the BUSINESS approval must survive a data-only upsert.
+    # One entry-level field could not hold both, and silently restated it.
+    assert entry.rule.pr == 749 and entry.data.pr == 800
 
 
 def test_apply_writes_entries_in_a_stable_order():
@@ -118,11 +121,22 @@ def test_unvalued_names_the_build_halves_that_cannot_be_recorded():
     assert recording.unvalued(["a"], {"a": 5}) == []
 
 
+def test_a_retired_metric_is_not_warned_about_a_value_it_never_needed():
+    # The lane classifier does not filter retired metrics but earned_by_merge
+    # skips them outright, so this would demand a number nobody was ever going
+    # to record.
+    assert recording.unvalued(["gone"], {}, retired={"gone"}) == []
+
+
+def test_a_half_that_was_recorded_is_not_warned_about():
+    assert recording.unvalued(["a"], {}, recorded={"a"}) == []
+
+
 def test_manifest_carries_both_halves():
     got = recording.manifest(_earned(), [_rec("serve_users", label="Serve Users")], 800)
     assert got["pr"] == 800
     assert got["metrics"][0]["label"] == "Serve Users"
-    assert got["metrics"][0]["rule"] == {"approved": "2026-08-07", "sha": "abc1234"}
+    assert got["metrics"][0]["rule"] == {"approved": "2026-08-07", "sha": "abc1234", "pr": 800}
     assert got["metrics"][0]["data"]["value_at_signing"] == 1878
 
 

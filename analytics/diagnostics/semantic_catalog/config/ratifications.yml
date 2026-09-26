@@ -26,7 +26,9 @@
 #                           someone looked; it never proves the number is right.
 #                           Read it as a snapshot carrying the date it sits with.
 #
-#   approved_by_pr          The PR whose approvals this records. Human provenance.
+#     approved_by_pr        The PR that gave THIS half's approval. Human
+#                           provenance, and per half because the two halves are
+#                           routinely approved on different PRs.
 #
 # Get both fingerprints from `uv run python -m semantic_catalog.cli --fingerprints`
 # (run from analytics/ with PYTHONPATH=diagnostics). Copy one deliberately when
@@ -58,7 +60,7 @@ activated_serve_users:
     approved: 2026-08-05
     build_sha: '33429b6'
     value_at_signing: 1026
-  approved_by_pr: 765
+    approved_by_pr: 765
 
 serve_users:
   # Ratified on #801, which exists to carry this sign-off: the definition merged
@@ -73,7 +75,7 @@ serve_users:
     approved: 2026-08-11
     build_sha: 'ea39ab1'
     value_at_signing: 1878
-  approved_by_pr: 801
+    approved_by_pr: 801
 
 win_activated_users:
   # The build CHANGED on #1073: the outreach terminal union dropped the robocall
@@ -103,7 +105,7 @@ win_activated_users:
     approved: 2026-09-25
     build_sha: 'c60317a'
     value_at_signing: 1264
-  approved_by_pr: 1073
+    approved_by_pr: 1073
 
 win_active_candidates_30d:
   # Re-fingerprinted for a prose edit, not a build change. #1046 replaced a
@@ -129,7 +131,7 @@ win_active_candidates_30d:
     approved: 2026-09-21
     build_sha: '1eedc0c'
     value_at_signing: 919
-  approved_by_pr: 1046
+    approved_by_pr: 1046
 
 win_users:
   # Was recorded as 2026-08-03, the date the line was typed. Coverage actually
@@ -141,7 +143,7 @@ win_users:
     approved: 2026-08-04
     build_sha: '7d5c217'
     value_at_signing: 63744
-  approved_by_pr: 749
+    approved_by_pr: 749
 
 # Every rule half is deliberately absent. `business_rule` is drafted for the five
 # metrics above in the same change that introduced this scheme, so the words have

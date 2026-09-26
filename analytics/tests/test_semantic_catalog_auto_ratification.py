@@ -188,7 +188,7 @@ def test_new_metric_earns_both_halves():
     assert earned.rule.sha == ratifications.rule_sha(_rec("m"))
     assert earned.data.sha == ratifications.build_sha(_rec("m"))
     assert earned.data.value == 100
-    assert earned.approved_by_pr == 800
+    assert earned.data.pr == 800
 
 
 def test_a_data_only_approval_earns_the_build_half_alone():
@@ -283,11 +283,12 @@ activated_serve_users:
   business:
     approved: 2026-08-05
     rule_sha: '5e87555'
+    approved_by_pr: 765
   data:
     approved: 2026-08-05
     build_sha: '33429b6'
     value_at_signing: 1026
-  approved_by_pr: 765
+    approved_by_pr: 765
 
 # win_activated_users is deliberately absent, so it reads pending.
 # win_activated_users:
@@ -297,9 +298,8 @@ activated_serve_users:
 
 def _sign_off(date="2026-08-07", sha="abc1234", pr=800, rule=True, data=True, value=941):
     return ratifications.Ratification(
-        rule=ratifications.SignOff(date, sha) if rule else None,
-        data=ratifications.SignOff(date, sha, value) if data else None,
-        approved_by_pr=pr,
+        rule=ratifications.SignOff(date, sha, pr=pr) if rule else None,
+        data=ratifications.SignOff(date, sha, value, pr=pr) if data else None,
     )
 
 
@@ -322,7 +322,7 @@ def test_upsert_appends_a_new_entry_and_preserves_every_comment(tmp_path):
     loaded = _loaded(tmp_path, out)
     assert loaded["win_users"].rule.approved == "2026-08-07"
     assert loaded["win_users"].data.value == 941
-    assert loaded["activated_serve_users"].approved_by_pr == 765
+    assert loaded["activated_serve_users"].data.pr == 765
 
 
 def test_upsert_edits_an_existing_entry_in_place_without_duplicating_the_key(tmp_path):
@@ -331,7 +331,7 @@ def test_upsert_edits_an_existing_entry_in_place_without_duplicating_the_key(tmp
     out = ratifications.upsert(EXISTING, "activated_serve_users", _sign_off(pr=900))
     assert out.count("activated_serve_users:") == 1
     assert "Both groups approved #765" in out, "the human's note must survive a re-date"
-    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr == 900
+    assert _loaded(tmp_path, out)["activated_serve_users"].data.pr == 900
 
 
 def test_upsert_of_one_half_leaves_the_other_half_as_it_was(tmp_path):
@@ -362,7 +362,7 @@ def test_upsert_never_matches_a_commented_out_key(tmp_path):
     text = "# win_activated_users:\n#   business:\n"
     out = ratifications.upsert(text, "win_activated_users", _sign_off())
     assert out.startswith("# win_activated_users:"), "the commented block stays commented"
-    assert _loaded(tmp_path, out)["win_activated_users"].approved_by_pr == 800
+    assert _loaded(tmp_path, out)["win_activated_users"].data.pr == 800
 
 
 def test_upsert_writes_an_all_digit_hash_quoted(tmp_path):
@@ -383,7 +383,7 @@ def test_upsert_with_a_note_adds_a_comment_that_survives_the_round_trip(tmp_path
     # find and replace its own notes later, and not break parsing.
     out = ratifications.upsert(EXISTING, "win_users", _sign_off(), note="Approved in #800.")
     assert f"# {ratifications.AUTO_NOTE_PREFIX}Approved in #800." in out
-    assert _loaded(tmp_path, out)["win_users"].approved_by_pr == 800
+    assert _loaded(tmp_path, out)["win_users"].data.pr == 800
 
 
 def test_upsert_with_a_note_lands_on_an_edit(tmp_path):
@@ -393,7 +393,7 @@ def test_upsert_with_a_note_lands_on_an_edit(tmp_path):
         EXISTING, "activated_serve_users", _sign_off(pr=200), note="Re-earned in #900."
     )
     assert f"# {ratifications.AUTO_NOTE_PREFIX}Re-earned in #900." in out
-    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr == 200
+    assert _loaded(tmp_path, out)["activated_serve_users"].data.pr == 200
 
 
 def test_upsert_with_a_note_replaces_the_prior_auto_note_on_re_edit(tmp_path):
@@ -408,7 +408,7 @@ def test_upsert_with_a_note_replaces_the_prior_auto_note_on_re_edit(tmp_path):
     assert twice.count(ratifications.AUTO_NOTE_PREFIX) == 1
     assert "First re-earn" not in twice
     assert f"# {ratifications.AUTO_NOTE_PREFIX}Second re-earn, PR #901." in twice
-    assert _loaded(tmp_path, twice)["activated_serve_users"].approved_by_pr == 300
+    assert _loaded(tmp_path, twice)["activated_serve_users"].data.pr == 300
 
 
 def test_upsert_with_a_note_leaves_a_human_comment_in_the_same_block_untouched(tmp_path):
@@ -419,7 +419,7 @@ def test_upsert_with_a_note_leaves_a_human_comment_in_the_same_block_untouched(t
     )
     assert "Both groups approved #765" in out
     assert f"# {ratifications.AUTO_NOTE_PREFIX}Re-earned in #900." in out
-    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr == 900
+    assert _loaded(tmp_path, out)["activated_serve_users"].data.pr == 900
 
 
 def test_upsert_writes_a_missing_pr_number_as_yaml_null(tmp_path):
@@ -427,7 +427,7 @@ def test_upsert_writes_a_missing_pr_number_as_yaml_null(tmp_path):
     # the bare word `None` would round-trip through load() as the STRING
     # "None", silently corrupting the type the rest of the code expects.
     out = ratifications.upsert("", "m", _sign_off(pr=None))
-    assert _loaded(tmp_path, out)["m"].approved_by_pr is None
+    assert _loaded(tmp_path, out)["m"].data.pr is None
 
 
 def test_upsert_is_idempotent_on_the_edit_path(tmp_path):
@@ -473,11 +473,11 @@ def test_a_missing_pr_number_does_not_inherit_the_prior_entrys(tmp_path):
     # whatever PR was recorded before it. Wrong provenance that reads as right
     # is worse than none, because nothing downstream would ever flag it.
     out = ratifications.upsert(EXISTING, "activated_serve_users", _sign_off(pr=0))
-    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr != 765
+    assert _loaded(tmp_path, out)["activated_serve_users"].data.pr != 765
 
 
 def test_a_zero_pr_number_records_as_no_pr_rather_than_pr_zero():
     # argparse defaults --pr-number to 0, so an invocation that forgets it must
     # not write a PR number nobody can look up.
     earned = ratifications.earned_by_merge([], [_rec("m")], BOTH, 0, VALUES)
-    assert earned["m"].approved_by_pr is None
+    assert earned["m"].data.pr is None and earned["m"].rule.pr is None

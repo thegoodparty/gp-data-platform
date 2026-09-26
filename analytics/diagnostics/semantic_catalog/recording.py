@@ -44,9 +44,23 @@ def declared_values(pr_body: str) -> dict[str, int]:
     return {name: int(digits.replace(",", "")) for name, digits in VALUE_MARKER_RE.findall(pr_body or "")}
 
 
-def unvalued(earned_build: list[str], values: dict[str, int]) -> list[str]:
-    """Metrics whose build half was otherwise earned but declared no value."""
-    return sorted(name for name in earned_build if name not in values)
+def unvalued(
+    earned_build: list[str],
+    values: dict[str, int],
+    retired: set[str] = frozenset(),  # type: ignore[assignment]
+    recorded: set[str] = frozenset(),  # type: ignore[assignment]
+) -> list[str]:
+    """Metrics whose build half needed a value, had none declared, and so went
+    unrecorded — the ones worth warning about.
+
+    `retired` is excluded because the lane classifier does not filter retired
+    metrics but `earned_by_merge` skips them outright, so warning about a
+    missing value there demands a number nobody was ever going to record.
+    `recorded` is excluded because a half that did land needs no warning.
+    """
+    return sorted(
+        name for name in earned_build if name not in values and name not in retired and name not in recorded
+    )
 
 
 def apply(sidecar_text: str, earned: dict[str, Ratification], pr_number: int) -> str:
@@ -76,9 +90,14 @@ def manifest(earned: dict[str, Ratification], records: list[MetricRecord], pr_nu
             {
                 "name": name,
                 "label": labels.get(name, name),
-                "rule": {"approved": rule.approved, "sha": rule.sha} if rule else None,
+                "rule": {"approved": rule.approved, "sha": rule.sha, "pr": rule.pr} if rule else None,
                 "data": (
-                    {"approved": data.approved, "sha": data.sha, "value_at_signing": data.value}
+                    {
+                        "approved": data.approved,
+                        "sha": data.sha,
+                        "value_at_signing": data.value,
+                        "pr": data.pr,
+                    }
                     if data
                     else None
                 ),
