@@ -36,8 +36,8 @@ def test_absent_optional_lists_render_as_empty_not_as_missing():
 
 
 def test_no_rule_is_none_not_an_error():
+    # Absent only. An empty block is a different thing and is rejected below.
     assert layers.render_business_rule(None, "m") is None
-    assert layers.render_business_rule({}, "m") is None
 
 
 def test_a_rule_without_counts_is_rejected():
@@ -124,3 +124,24 @@ def test_a_rule_naming_a_declared_event_is_caught():
 def test_a_rule_naming_no_event_is_clean():
     assert layers.rule_names_an_implementation(layers.render_business_rule(RULE, "m"), ANCHORS) == []
     assert layers.rule_names_an_implementation(None, ANCHORS) == []
+
+
+def test_an_empty_rule_block_is_rejected_not_read_as_absent():
+    # `business_rule: {}` is a block someone started and left empty. Read as
+    # "no rule at all" it would skip business-group routing and the rule half,
+    # and the author would get no feedback that anything was wrong.
+    with pytest.raises(ValueError, match="counts"):
+        layers.render_business_rule({}, "m")
+
+
+def test_an_empty_anchor_list_is_rejected_not_read_as_absent():
+    # Same shape. Left falsy it would render as "" and seal identically to no
+    # anchor, so a metric could declare an instrument, name none, and read as
+    # though it had never claimed one.
+    with pytest.raises(ValueError, match="empty"):
+        layers.render_anchored_on([], "m")
+
+
+def test_an_absent_declaration_is_still_none():
+    assert layers.render_business_rule(None, "m") is None
+    assert layers.render_anchored_on(None, "m") is None

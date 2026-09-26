@@ -32,7 +32,11 @@ def render_business_rule(declared: Any, metric: str) -> str | None:
     Raises on a shape that cannot be reviewed as a rule: a missing `counts`, an
     unknown key, or a list item that is not text.
     """
-    if not declared:
+    # `is None`, not falsy: `business_rule: {}` is a block someone started and
+    # left empty, and reading it as "no rule at all" would skip business-group
+    # routing and the rule half with no feedback to the author. It falls through
+    # to the `counts` check below, which raises the right error.
+    if declared is None:
         return None
     if not isinstance(declared, dict):
         raise ValueError(f"{metric}: business_rule must be a mapping with a 'counts' key")
@@ -64,10 +68,16 @@ def render_anchored_on(declared: Any, metric: str) -> str | None:
     decoration: removing one changes which rows the compiled predicate matches
     for past dates, so it belongs inside the build seal like any other leg.
     """
-    if not declared:
+    # Same reasoning as the rule above: `anchored_on: []` is a started-and-left
+    # declaration, not an absent one. Left falsy it would render as "" and seal
+    # identically to no anchor at all, so a metric could declare an instrument,
+    # name none, and read as though it had never claimed one.
+    if declared is None:
         return None
     if not isinstance(declared, list | tuple):
         raise ValueError(f"{metric}: anchored_on must be a list of legs")
+    if not declared:
+        raise ValueError(f"{metric}: anchored_on is empty. Remove the key, or name a leg.")
     legs = []
     for leg in declared:
         if not isinstance(leg, dict) or not leg.get("event"):
