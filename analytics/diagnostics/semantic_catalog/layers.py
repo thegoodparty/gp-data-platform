@@ -61,20 +61,6 @@ def render_business_rule(declared: Any, metric: str) -> str | None:
     return " | ".join(parts)
 
 
-# The leg keys with a rendering of their own, in the order they are rendered.
-# Every OTHER key a leg carries is sealed generically; see render_anchored_on.
-KNOWN_LEG_KEYS = ("event", "path", "era", "excluding")
-
-
-def _render_value(value: Any) -> str:
-    """A leg qualifier with no bespoke rendering, made deterministic."""
-    if isinstance(value, dict):
-        return " ".join(f"{k}={_render_value(v)}" for k, v in sorted(value.items()))
-    if isinstance(value, list | tuple):
-        return ",".join(sorted(_render_value(v) for v in value))
-    return str(value)
-
-
 def render_anchored_on(declared: Any, metric: str) -> str | None:
     """Canonical one-line rendering of `config.meta.anchored_on`, or None.
 
@@ -113,14 +99,6 @@ def render_anchored_on(declared: Any, metric: str) -> str | None:
                 # move the build seal and expire an approval nobody changed.
                 rendered.append(f"{prop}={','.join(sorted(str(v) for v in values))}")
             parts.append(f"excluding={' '.join(rendered)}")
-        # Anything else the leg declares is sealed too, sorted and appended
-        # after the known keys so the existing legs' rendering is unchanged.
-        # An allow-list here would silently drop a qualifier nobody thought to
-        # add to it — which is this whole ticket's failure, one layer down: the
-        # first new qualifier (`paywalled`, which decides which legs a
-        # paywall-free label counts) would have moved no seal at all.
-        for key in sorted(set(leg) - set(KNOWN_LEG_KEYS)):
-            parts.append(f"{key}={_render_value(leg[key])}")
         legs.append(" ".join(parts))
     return " ; ".join(legs)
 

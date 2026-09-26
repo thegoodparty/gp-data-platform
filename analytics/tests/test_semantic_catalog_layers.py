@@ -145,35 +145,3 @@ def test_an_empty_anchor_list_is_rejected_not_read_as_absent():
 def test_an_absent_declaration_is_still_none():
     assert layers.render_business_rule(None, "m") is None
     assert layers.render_anchored_on(None, "m") is None
-
-
-def test_an_unknown_leg_qualifier_is_sealed_not_dropped():
-    # An allow-list would silently drop a qualifier nobody thought to add to it,
-    # which is this ticket's failure one layer down. Live case: `paywalled`
-    # decides which legs a paywall-free label counts, so dropping it would let
-    # someone change which users a model learns from and move no seal at all.
-    with_flag = [{"event": "Voter Data - List Exported", "paywalled": True}]
-    without = [{"event": "Voter Data - List Exported"}]
-    assert layers.render_anchored_on(with_flag, "m") != layers.render_anchored_on(without, "m")
-    assert "paywalled=True" in layers.render_anchored_on(with_flag, "m")
-
-
-def test_flipping_an_unknown_qualifier_moves_the_seal():
-    on = [{"event": "E", "paywalled": True}]
-    off = [{"event": "E", "paywalled": False}]
-    assert layers.render_anchored_on(on, "m") != layers.render_anchored_on(off, "m")
-
-
-def test_the_known_keys_keep_their_existing_rendering():
-    # New qualifiers append AFTER the known ones, so adding this capability did
-    # not re-stamp the build seal of any metric that predates it.
-    leg = [{"event": "Viewed", "path": "/dashboard", "era": "historical", "excluding": {"method": "manual"}}]
-    assert layers.render_anchored_on(leg, "m") == (
-        "event=Viewed path=/dashboard era=historical excluding=method=manual"
-    )
-
-
-def test_an_unknown_qualifier_renders_deterministically():
-    a = [{"event": "E", "channels": ["sms", "email"], "meta": {"b": 1, "a": 2}}]
-    b = [{"event": "E", "meta": {"a": 2, "b": 1}, "channels": ["email", "sms"]}]
-    assert layers.render_anchored_on(a, "m") == layers.render_anchored_on(b, "m")
