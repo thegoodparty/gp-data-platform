@@ -433,6 +433,12 @@ def load_entry_text(block: str, name: str) -> Ratification | None:
         return None
     if not isinstance(entry, dict):
         raise ValueError(f"{name}: existing sidecar block is not a mapping")
+    if "definition_sha" in entry or "ratified" in entry:
+        # A legacy block has neither half key, so reading it with _read_half
+        # would return None, upsert would treat it as absent, and the old
+        # approval would be replaced by whichever half this merge earned. Route
+        # it the way `load` already does so upsert merges into it instead.
+        return _read_legacy(Path(name), name, entry)
     rule = _read_half(Path(name), name, "business", entry.get("business"), "rule_sha")
     data = _read_half(Path(name), name, "data", entry.get("data"), "build_sha")
     if rule is None and data is None:

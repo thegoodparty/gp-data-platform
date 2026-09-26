@@ -481,3 +481,18 @@ def test_a_zero_pr_number_records_as_no_pr_rather_than_pr_zero():
     # not write a PR number nobody can look up.
     earned = ratifications.earned_by_merge([], [_rec("m")], BOTH, 0, VALUES)
     assert earned["m"].data.pr is None and earned["m"].rule.pr is None
+
+
+def test_upsert_merges_into_a_legacy_block_rather_than_replacing_it(tmp_path):
+    # A legacy entry carries neither half key, so it read as absent and the old
+    # approval was replaced by whichever half this merge earned. `load` already
+    # routed it correctly; upsert was the odd one out.
+    legacy = "m:\n  ratified: 2026-08-05\n  definition_sha: 'abc1234'\n  approved_by_pr: 760\n"
+    out = ratifications.upsert(legacy, "m", _sign_off(rule=False))
+    entry = _loaded(tmp_path, out)["m"]
+    assert entry.rule is not None, "the prior approval must survive a data-only upsert"
+    assert entry.rule.approved == "2026-08-05"
+    # It reads stale, which is accurate: nothing under the two-seal scheme has
+    # signed that rule. Stale and visible beats silently gone.
+    assert entry.rule.sha == "abc1234"
+    assert entry.data.approved == "2026-08-07" and entry.data.value == 941
