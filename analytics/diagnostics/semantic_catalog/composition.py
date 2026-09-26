@@ -1,4 +1,4 @@
-"""Evaluate whether a PR's approvals cover both review groups.
+"""Evaluate which review groups approved a PR, and when.
 
 Pure and side-effect free: the workflow supplies the approver logins and each
 team's membership (from the GitHub API). Result feeds the merge-time Slack post.
@@ -45,6 +45,30 @@ def _latest_per_reviewer(reviews: list[dict]) -> list[dict]:
         if login not in latest or review["submitted_at"] > latest[login]["submitted_at"]:
             latest[login] = review
     return list(latest.values())
+
+
+def group_dates(
+    reviews: list[dict],
+    data_members: Iterable[str],
+    business_members: Iterable[str],
+) -> dict[str, str | None]:
+    """The date each group's FIRST approval landed, independently.
+
+    `completion_date` below answers "when did BOTH groups approve", which is the
+    right question only while every change needs both. Once the lane classifier
+    decides which groups a change needs, a data-only change approved by the data
+    group has to be recordable without waiting on a business approval nobody
+    asked for — otherwise a correctly routed change sits pending forever.
+    """
+    approvals = [
+        r for r in _latest_per_reviewer(reviews) if r["state"] == "APPROVED" and not is_bot(r["login"])
+    ]
+    out: dict[str, str | None] = {}
+    for lane, members in (("data", data_members), ("business", business_members)):
+        lowered = _lower(members)
+        stamps = sorted(r["submitted_at"] for r in approvals if r["login"].lower() in lowered)
+        out[lane] = stamps[0][:10] if stamps else None
+    return out
 
 
 def completed_at(

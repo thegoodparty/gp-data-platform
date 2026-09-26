@@ -1,28 +1,50 @@
 """Ratification sign-offs, authored outside the CODEOWNERS-covered YAML.
 
-`ratified` deliberately does NOT live in `sem_*.yml` (DATA-2249). CODEOWNERS
-covers those files, so recording an approval there re-requests the very
-reviewers whose approval is being recorded: you would have to write the date
-before the thing it records exists. This sidecar sits outside that glob, so a
-sign-off is recorded without re-tagging anyone, and the date can be the real one
-rather than a guess made at authoring time.
+Sign-offs deliberately do NOT live in `sem_*.yml` (DATA-2249). Routing covers
+those files, so recording an approval there re-requests the very reviewers whose
+approval is being recorded: you would have to write the date before the thing it
+records exists. This sidecar sits outside that scope, so a sign-off is recorded
+without re-tagging anyone, and the date can be the real one rather than a guess
+made at authoring time.
 
 The cost of splitting a definition from its sign-off is silent decoupling: the
-definition is edited while the sidecar still asserts the old approval.
-`definition_sha` closes that. It fingerprints the semantic content the reviewer
-signed off on; the generator recomputes it on every run and renders the date as
-stale on mismatch. This happens offline, with no API call and no token, so it is
-safe inside the blocking catalog-freshness gate.
+definition is edited while the sidecar still asserts the old approval. A seal
+closes that. It fingerprints the content the reviewer signed off on; the
+generator recomputes it on every run and renders the date as stale on mismatch.
+This happens offline, with no API call and no token, so it is safe inside the
+blocking catalog-freshness gate.
 
-`approved_by_pr` is human provenance only. It is deliberately NOT carried on
-MetricRecord: records are compared whole to build the Slack change diff, so a
-provenance-only edit would report the metric as changed with no diff line able
-to explain why.
+TWO seals, not one (DATA-2422). The single `definition_sha` was wrong in both
+directions at once: it covered the prose paragraph, so rewording expired an
+approval nobody had changed, and it did not cover the list of raw events, so
+changing which users a metric counts expired nothing.
+
+  rule_sha   over `business_rule` alone. The business group rules on what we
+             mean, and only a change to that should ask them again.
+  build_sha  over `anchored_on`, `filter`, `measure`, `metric_type` and
+             `source`. The data group and product analytics own how the number
+             is computed and which events satisfy the rule.
+
+The data half additionally carries `value_at_signing` and it is REQUIRED, the
+same way a seal is: you cannot record that a build was signed off without saying
+what it counted the day you signed it. It is enforced here, in the loader behind
+the blocking freshness gate, and never as a PR check — CI cannot compute a
+metric's value, so a PR check could only prove that some number is present. The
+number is a snapshot and takes the date of the entry it sits in. It proves
+someone looked, never that the number is right.
+
+`approved_by_pr` is human provenance only, and it lives on each HALF rather than
+on the entry, because the two halves are routinely approved on different PRs —
+that is the point of splitting them. One entry-level field could hold only one
+of the two, so recording a build sign-off would silently restate the business
+half's provenance as its own. It is deliberately NOT carried on MetricRecord:
+records are compared whole to build the Slack change diff, so a provenance-only
+edit would report the metric as changed with no diff line able to explain why.
 
 `upsert`'s optional `note` is written as a comment line prefixed with
 `AUTO_NOTE_PREFIX` ("auto-recorded: "), so the hook's own provenance note can
 be told apart from a human's hand-written reasoning in the same block. On the
-edit path (a metric whose sign-off went stale and is being re-earned) `upsert`
+edit path (a half whose sign-off went stale and is being re-earned) `upsert`
 strips any prior line carrying that prefix before writing the fresh one, so
 re-recording replaces the note instead of accumulating a second one; a human
 comment lacking the prefix is left untouched. A later module, `recording.py`,
@@ -38,17 +60,21 @@ from pathlib import Path
 
 import yaml
 
-from semantic_catalog.records import MetricRecord
+from semantic_catalog.records import SCHEME_LEGACY, MetricRecord
 
 DEFAULT_PATH = Path(__file__).parent / "config" / "ratifications.yml"
 
-# The semantic content a reviewer actually signs off on. `dimensions` is
-# excluded on purpose: it is a file-level union, so adding one dimension to a
-# semantic model would falsely un-ratify every metric in that file. `label` is
-# display text, and the governance fields are not the definition. The parser
-# whitespace-collapses `definition`, so re-wrapping a YAML block scalar leaves
-# the fingerprint unchanged.
-FINGERPRINT_FIELDS = ("definition", "metric_type", "source", "filter")
+# What the business group signs: the rule, and nothing else. A wording fix to
+# the prose `description` moves nothing here, which is the whole point.
+RULE_FIELDS = ("business_rule",)
+
+# What the data group signs. `anchored_on` is in here rather than under the rule
+# because which events satisfy a rule is implementation, owned by product
+# analytics, and it is also what the build compiles from. `dimensions` stays out
+# on purpose: it is a file-level union, so adding one dimension to a semantic
+# model would falsely un-ratify every metric in that file. `label` is display
+# text, and the governance fields are not the definition.
+BUILD_FIELDS = ("anchored_on", "filter", "measure", "metric_type", "source")
 
 # Short enough to read and retype, far past collision risk at this catalog size.
 SHA_LEN = 7
@@ -56,33 +82,118 @@ _SHA_RE = re.compile(rf"^[0-9a-f]{{{SHA_LEN}}}$")
 
 
 @dataclass(frozen=True)
+class SignOff:
+    """One half of a sign-off. `value` is set on the data half only: a business
+    approval signs the rule and carries no number.
+
+    `pr` is per half, not per entry, because the two halves are routinely
+    approved on different PRs — that is the point of splitting them. One
+    entry-level field could only hold one of the two, so recording a build
+    sign-off would silently restate the business half's provenance as its own.
+    """
+
+    approved: str
+    sha: str
+    value: int | None = None
+    pr: int | None = None
+
+
+@dataclass(frozen=True)
 class Ratification:
-    ratified: str
-    definition_sha: str
+    """Both halves of a metric's sign-off. Either may be absent (pending)."""
+
+    rule: SignOff | None = None
+    data: SignOff | None = None
+    # Legacy single-seal entries only; new entries carry the PR on each half.
     approved_by_pr: int | None = None
+    scheme: str | None = None
 
 
-def definition_sha(rec: MetricRecord) -> str:
-    """Fingerprint of the definition fields, as of the record passed in."""
-    payload = "\n".join(f"{field}={getattr(rec, field) or ''}" for field in FINGERPRINT_FIELDS)
+def _sha_over(rec: MetricRecord, fields: tuple[str, ...]) -> str:
+    payload = "\n".join(f"{field}={getattr(rec, field) or ''}" for field in fields)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:SHA_LEN]
 
 
-def _read_sha(path: Path, name: str, raw: object) -> str:
+def rule_sha(rec: MetricRecord) -> str:
+    """Fingerprint of what the metric means, as of the record passed in."""
+    return _sha_over(rec, RULE_FIELDS)
+
+
+def build_sha(rec: MetricRecord) -> str:
+    """Fingerprint of how the metric is computed, as of the record passed in."""
+    return _sha_over(rec, BUILD_FIELDS)
+
+
+def _read_sha(path: Path, name: str, key: str, raw: object) -> str:
     if not isinstance(raw, str):
         # An unquoted hash that happens to be all digits (roughly one in
         # twenty-five) is read as an integer, and any leading zero is then gone
         # for good. Demand the quotes rather than silently comparing a mangled
         # value and reporting a healthy metric as stale.
         raise ValueError(
-            f"{path}: {name} definition_sha must be quoted. YAML read {raw!r} as "
+            f"{path}: {name} {key} must be quoted. YAML read {raw!r} as "
             f"{type(raw).__name__}, which would drop any leading zero."
         )
     if not _SHA_RE.match(raw):
-        raise ValueError(
-            f"{path}: {name} definition_sha must be {SHA_LEN} lowercase hex characters, got {raw!r}"
-        )
+        raise ValueError(f"{path}: {name} {key} must be {SHA_LEN} lowercase hex characters, got {raw!r}")
     return raw
+
+
+def _read_half(path: Path, name: str, half: str, entry: object, sha_key: str) -> SignOff | None:
+    """One half of an entry. Absent is legal and means that half is pending."""
+    if entry is None:
+        return None
+    if not isinstance(entry, dict):
+        raise ValueError(f"{path}: {name}.{half} must be a mapping with approved and {sha_key}")
+    missing = [key for key in ("approved", sha_key) if entry.get(key) is None]
+    if missing:
+        # A seal is mandatory, not optional: a date nothing can ever check is
+        # the state this whole sidecar exists to eliminate.
+        raise ValueError(f"{path}: {name}.{half} is missing {' and '.join(missing)}")
+    pr = entry.get("approved_by_pr")
+    value = entry.get("value_at_signing")
+    if half == "data":
+        if value is None:
+            raise ValueError(
+                f"{path}: {name}.data is missing value_at_signing. A build sign-off must "
+                "say what the metric counted on the day it was signed; a date with no "
+                "number cannot be checked by anyone later."
+            )
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{path}: {name}.data.value_at_signing must be a whole number, got {value!r}")
+    elif value is not None:
+        raise ValueError(
+            f"{path}: {name}.business carries value_at_signing. A business approval signs "
+            "the rule and has no value attached; the number belongs on the data half."
+        )
+    return SignOff(
+        approved=str(entry["approved"]),
+        sha=_read_sha(path, name, f"{half}.{sha_key}", entry[sha_key]),
+        value=value if half == "data" else None,
+        pr=pr,
+    )
+
+
+def _read_legacy(path: Path, name: str, entry: dict) -> Ratification:
+    """A pre-two-seal entry: one date, one `definition_sha` over both layers.
+
+    Only the BEFORE side of a diff against old history reaches this. It is read
+    onto both halves so the dates stay truthful, and marked `legacy` so a diff
+    can say "re-sealed" rather than reporting five metrics as newly stale. The
+    legacy sha can never match either replacement, so both halves read stale —
+    which is accurate: nothing under the new scheme has been signed yet.
+    """
+    sha = _read_sha(path, name, "definition_sha", entry["definition_sha"])
+    date = str(entry["ratified"])
+    return Ratification(
+        rule=SignOff(approved=date, sha=sha),
+        # No value was ever recorded under the old scheme, and inventing one
+        # here would be a number nobody looked at. The requirement binds new
+        # entries; history is read as it was written.
+        data=SignOff(approved=date, sha=sha, value=None),
+        approved_by_pr=entry.get("approved_by_pr"),
+        scheme=SCHEME_LEGACY,
+    )
 
 
 def load(path: Path | None = None) -> dict[str, Ratification]:
@@ -98,76 +209,115 @@ def load(path: Path | None = None) -> dict[str, Ratification]:
     out: dict[str, Ratification] = {}
     for name, entry in doc.items():
         if not isinstance(entry, dict):
-            raise ValueError(f"{path}: {name} must be a mapping with ratified and definition_sha")
-        missing = [key for key in ("ratified", "definition_sha") if entry.get(key) is None]
-        if missing:
-            # definition_sha is mandatory, not optional: an entry without one
-            # is a date nothing can ever check, which is the state this whole
-            # sidecar exists to eliminate.
-            raise ValueError(f"{path}: {name} is missing {' and '.join(missing)}")
-        out[name] = Ratification(
-            ratified=str(entry["ratified"]),
-            definition_sha=_read_sha(path, name, entry["definition_sha"]),
-            approved_by_pr=entry.get("approved_by_pr"),
-        )
+            raise ValueError(f"{path}: {name} must be a mapping with a business or data half")
+        if "definition_sha" in entry or "ratified" in entry:
+            if "definition_sha" not in entry or "ratified" not in entry:
+                raise ValueError(
+                    f"{path}: {name} mixes the single-seal shape with the two-seal one. "
+                    "Write it as business/data halves, or as ratified + definition_sha, "
+                    "never half of each."
+                )
+            out[name] = _read_legacy(path, name, entry)
+            continue
+        unknown = sorted(set(entry) - {"business", "data"})
+        if unknown:
+            raise ValueError(
+                f"{path}: {name} has unknown key(s) {', '.join(unknown)}. An entry is a "
+                "'business' half and a 'data' half; the PR goes inside each half."
+            )
+        rule = _read_half(path, name, "business", entry.get("business"), "rule_sha")
+        data = _read_half(path, name, "data", entry.get("data"), "build_sha")
+        if rule is None and data is None:
+            raise ValueError(
+                f"{path}: {name} has neither half. Absence of the whole entry is how a "
+                "metric reads pending; an empty entry says nothing."
+            )
+        out[name] = Ratification(rule=rule, data=data)
     return out
 
 
 def apply(records: list[MetricRecord], sign_offs: dict[str, Ratification]) -> list[MetricRecord]:
-    """Attach each record's sign-off, flagging one whose definition has moved since."""
+    """Attach each record's sign-offs, flagging a half whose content has moved since."""
     out: list[MetricRecord] = []
     for rec in records:
         sign_off = sign_offs.get(rec.name)
         if sign_off is None:
             out.append(rec)
             continue
-        out.append(
-            replace(
-                rec,
-                ratified=sign_off.ratified,
-                ratified_stale=definition_sha(rec) != sign_off.definition_sha,
-            )
-        )
+        fields: dict = {}
+        if sign_off.rule is not None:
+            fields["rule_approved"] = sign_off.rule.approved
+            fields["rule_stale"] = rule_sha(rec) != sign_off.rule.sha
+        if sign_off.data is not None:
+            fields["build_approved"] = sign_off.data.approved
+            fields["build_stale"] = build_sha(rec) != sign_off.data.sha
+            fields["value_at_signing"] = sign_off.data.value
+        if sign_off.scheme:
+            fields["seal_scheme"] = sign_off.scheme
+        out.append(replace(rec, **fields))
     return out
 
 
-def ratified_by_merge(
+def earned_by_merge(
     before: list[MetricRecord],
     after: list[MetricRecord],
-    date: str,
-    pr_number: int,
+    group_dates: dict[str, str | None],
+    pr_number: int | None,
+    values: dict[str, int] | None = None,
 ) -> dict[str, Ratification]:
-    """Sign-offs a merge earns, given that both review groups approved its PR.
+    """Sign-offs a merge earns, half by half.
 
-    A metric qualifies only when it has no trustworthy sign-off already (pending
-    or stale) AND its definition actually moved in this merge, judged by
-    fingerprint against the base, or it is new. Without the second condition a
-    PR editing one metric would ratify every other pending metric that happens
-    to live in the same file, which reviewers never looked at.
+    Each half is earned on its own terms, which is what lane routing requires: a
+    data-only change approved by the data group records a build half and does
+    not wait for a business approval that was never asked for. Under the single
+    seal this needed BOTH groups, so a correctly routed change would have sat
+    pending forever.
 
-    Deliberately conservative: a PR that changes only `owner` or `detail_doc` on
-    a pending metric earns nothing, because no definition was put in front of
-    anyone.
+    A half qualifies only when it has no trustworthy sign-off already (pending
+    or stale) AND its own seal actually moved in this merge, or the metric is
+    new. Without the second condition a PR editing one metric would ratify every
+    other pending metric that happens to live in the same file, which reviewers
+    never looked at.
+
+    `values` carries the counts the PR body declared. A build half with no
+    declared value is NOT recorded: the loader requires one, so writing the
+    entry anyway would produce a sidecar that fails to load and take the
+    blocking freshness gate down with it.
     """
     prev = {r.name: r for r in before}
+    values = values or {}
+    # A PR number is 1 or more. Anything else means it was not supplied, and
+    # recording it as `0` would read back as a real PR nobody can look up.
+    pr_number = pr_number if pr_number and pr_number > 0 else None
+    business_date, data_date = group_dates.get("business"), group_dates.get("data")
     earned: dict[str, Ratification] = {}
     for rec in after:
         if rec.retired:
             continue
-        if rec.ratified and not rec.ratified_stale:
-            continue
         old = prev.get(rec.name)
-        if old is not None and definition_sha(old) == definition_sha(rec):
-            continue
-        earned[rec.name] = Ratification(
-            ratified=date,
-            definition_sha=definition_sha(rec),
-            approved_by_pr=pr_number,
-        )
+        rule = data = None
+        if (
+            business_date
+            # A metric with no `business_rule` has nothing for that group to
+            # rule on, and every such metric seals identically over emptiness.
+            # Recording one would assert an approval of nothing, and would do it
+            # for every ruleless metric at once.
+            and rec.business_rule
+            and not (rec.rule_approved and not rec.rule_stale)
+            and (old is None or rule_sha(old) != rule_sha(rec))
+        ):
+            rule = SignOff(approved=business_date, sha=rule_sha(rec), pr=pr_number)
+        if (
+            data_date
+            and not (rec.build_approved and not rec.build_stale)
+            and (old is None or build_sha(old) != build_sha(rec))
+            and rec.name in values
+        ):
+            data = SignOff(approved=data_date, sha=build_sha(rec), value=values[rec.name], pr=pr_number)
+        if rule or data:
+            earned[rec.name] = Ratification(rule=rule, data=data)
     return earned
 
-
-_WRITTEN_FIELDS = ("ratified", "definition_sha", "approved_by_pr")
 
 # Marks a comment line `upsert` wrote itself, as opposed to a human's reasoning
 # typed into the same block. Greppable and stable on purpose: `recording.py`
@@ -178,17 +328,65 @@ AUTO_NOTE_PREFIX = "auto-recorded: "
 _AUTO_NOTE_RE = re.compile(rf"^\s{{2}}#\s*{re.escape(AUTO_NOTE_PREFIX)}")
 
 
-def _field_line(key: str, sign_off: Ratification) -> str:
-    if key == "ratified":
-        return f"  ratified: {sign_off.ratified}\n"
-    if key == "definition_sha":
-        # Always quoted: an all-digit hash left bare reads back as an integer.
-        return f"  definition_sha: '{sign_off.definition_sha}'\n"
+def render_entry(name: str, sign_off: Ratification, note: str = "") -> str:
+    """One whole sidecar block, halves and all."""
+    lines = [f"{name}:\n"]
+    if note:
+        lines.append(f"  # {AUTO_NOTE_PREFIX}{note}\n")
+
     # `null`, not the bare word None: PyYAML has no notion of Python's None
     # literal, so `approved_by_pr: None` would read back as the STRING "None"
     # rather than as a missing PR number.
-    pr = sign_off.approved_by_pr if sign_off.approved_by_pr is not None else "null"
-    return f"  approved_by_pr: {pr}\n"
+    def _pr(half):
+        return half.pr if half.pr is not None else "null"
+
+    if sign_off.rule is not None:
+        lines += [
+            "  business:\n",
+            f"    approved: {sign_off.rule.approved}\n",
+            # Always quoted: an all-digit hash left bare reads back as an integer.
+            f"    rule_sha: '{sign_off.rule.sha}'\n",
+            f"    approved_by_pr: {_pr(sign_off.rule)}\n",
+        ]
+    if sign_off.data is not None:
+        if sign_off.data.value is None:
+            # A legacy data half carries no number, and the two-seal schema
+            # requires one. Writing it as `None` produces a file that will not
+            # load; writing `null` produces one the loader rejects for the same
+            # reason. Neither is a fix, and dropping the half is the silent loss
+            # this whole write path keeps being caught on. So refuse, and say
+            # what a human has to do.
+            raise ValueError(
+                f"{name}: this entry's build approval predates value_at_signing, which the "
+                "two-seal scheme requires. Convert the entry by hand, recording what the "
+                "metric counted when it was signed, before a merge can add to it."
+            )
+        lines += [
+            "  data:\n",
+            f"    approved: {sign_off.data.approved}\n",
+            f"    build_sha: '{sign_off.data.sha}'\n",
+            f"    value_at_signing: {sign_off.data.value}\n",
+            f"    approved_by_pr: {_pr(sign_off.data)}\n",
+        ]
+    return "".join(lines)
+
+
+def _merge_halves(existing: Ratification, earned: Ratification) -> Ratification:
+    """An earned half replaces its counterpart; an unearned one is left alone.
+
+    A data-only merge must not silently restate or drop the business half that
+    someone gave on a different PR months earlier.
+    """
+    # Nothing to reconcile any more: each half carries its own PR, so an
+    # unearned half keeps its own provenance untouched. `scheme` comes from the
+    # existing entry because an earned one never carries it, and losing it would
+    # make a legacy half that can never match indistinguishable from one that
+    # went stale in this merge.
+    return Ratification(
+        rule=earned.rule or existing.rule,
+        data=earned.data or existing.data,
+        scheme=existing.scheme,
+    )
 
 
 def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
@@ -196,60 +394,75 @@ def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
 
     Deliberately not a YAML round-trip. This file carries the reasoning behind
     each sign-off in comments, and dumping the parsed document would delete all
-    of it. An existing entry is edited field by field, which matters because a
-    metric whose sign-off went stale already has a block here; appending a
-    second one would produce a duplicate key that YAML resolves silently to the
-    last occurrence.
+    of it. An existing entry is replaced block for block rather than appended
+    to, which matters because appending a second block would produce a duplicate
+    key that YAML resolves silently to the last occurrence. The block's
+    human-written comments are carried across; only the auto-note is replaced.
     """
     lines = text.splitlines(keepends=True)
     start = next((i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}:\s*$", line)), None)
 
     if start is None:
-        block = f"{name}:\n"
-        if note:
-            block += f"  # {AUTO_NOTE_PREFIX}{note}\n"
-        block += "".join(_field_line(k, sign_off) for k in _WRITTEN_FIELDS)
+        block = render_entry(name, sign_off, note)
         separator = "" if text.endswith("\n\n") or not text else "\n"
         return text + separator + block
 
     # The block runs to the next top-level key, ignoring comments and indented lines.
     end = next((j for j in range(start + 1, len(lines)) if re.match(r"^[^\s#]", lines[j])), len(lines))
 
-    rewritten: list[str] = []
-    seen: set[str] = set()
-    for line in lines[start:end]:
-        match = re.match(r"^\s{2}(\w+):", line)
-        key = match.group(1) if match else None
-        if key in _WRITTEN_FIELDS:
-            if key in seen:
-                continue
-            seen.add(key)
-            rewritten.append(_field_line(key, sign_off))
-        elif _AUTO_NOTE_RE.match(line):
-            # Drop a prior auto-note so re-recording replaces it rather than
-            # accumulating a second one. A human's comment doesn't carry this
-            # prefix, so it never matches here and is left in `rewritten` as-is.
-            continue
-        else:
-            rewritten.append(line)
+    existing = load_entry_text("".join(lines[start:end]), name)
+    merged = _merge_halves(existing, sign_off) if existing else sign_off
 
-    if note:
-        # rewritten[0] is always the block's own header line (`lines[start]`
-        # copied verbatim, since the loop above runs over lines[start:end]),
-        # so the note goes right after it -- inside the block, not above it.
-        rewritten.insert(1, f"  # {AUTO_NOTE_PREFIX}{note}\n")
-
-    missing = [k for k in _WRITTEN_FIELDS if k not in seen]
-    if missing:
-        # Insert after the last field written, so new keys land inside the block
-        # rather than after any trailing blank line. A block carrying only
-        # comments has no field line to anchor on, so fall back to index 0,
-        # which is always this block's own header.
-        field_lines = [i for i, line in enumerate(rewritten) if re.match(r"^\s{2}\w+:", line)]
-        last = max(field_lines) if field_lines else 0
-        rewritten[last + 1 : last + 1] = [_field_line(k, sign_off) for k in missing]
-
+    # Human reasoning is kept; the auto-note is rewritten rather than stacked.
+    # Comments keep their side of the fields, because block-end detection
+    # sweeps up trailing comments that belong to whatever comes next — moving
+    # them above the fields would silently reorder someone else's note.
+    body = lines[start + 1 : end]
+    fields = [i for i, line in enumerate(body) if re.match(r"^\s{2,}\S", line)]
+    split = fields[-1] + 1 if fields else 0
+    before_fields = [
+        line for line in body[:split] if line.lstrip().startswith("#") and not _AUTO_NOTE_RE.match(line)
+    ]
+    # Everything after the last field is copied verbatim, blank lines included:
+    # it is whatever followed this entry, not part of it.
+    after_fields = [line for line in body[split:] if not _AUTO_NOTE_RE.match(line)]
+    rendered = render_entry(name, merged, note).splitlines(keepends=True)
+    rewritten = [rendered[0]] + before_fields + rendered[1:] + after_fields
     return "".join(lines[:start] + rewritten + lines[end:])
+
+
+def load_entry_text(block: str, name: str) -> Ratification | None:
+    """Parse one already-isolated block.
+
+    Returns None when the block holds no sign-off to preserve — it is absent, or
+    it is a header with only comments. RAISES when a block is there but does not
+    parse, because the two cases must not be confused: `upsert` writes only the
+    half a merge earned, so treating an unreadable block as absent would replace
+    it with a structurally valid one-half entry and destroy whichever half WAS
+    readable alongside the corrupt one. `load` would then accept the result
+    without complaint and the evidence would be gone. Failing the publish job is
+    the cheaper outcome; the sidecar is small and a human fixes it by hand.
+    """
+    try:
+        doc = yaml.safe_load(block) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{name}: existing sidecar block is not valid YAML ({exc})") from exc
+    entry = doc.get(name)
+    if entry is None:
+        return None
+    if not isinstance(entry, dict):
+        raise ValueError(f"{name}: existing sidecar block is not a mapping")
+    if "definition_sha" in entry or "ratified" in entry:
+        # A legacy block has neither half key, so reading it with _read_half
+        # would return None, upsert would treat it as absent, and the old
+        # approval would be replaced by whichever half this merge earned. Route
+        # it the way `load` already does so upsert merges into it instead.
+        return _read_legacy(Path(name), name, entry)
+    rule = _read_half(Path(name), name, "business", entry.get("business"), "rule_sha")
+    data = _read_half(Path(name), name, "data", entry.get("data"), "build_sha")
+    if rule is None and data is None:
+        return None
+    return Ratification(rule=rule, data=data)
 
 
 def orphaned_keys(records: list[MetricRecord], sign_offs: dict[str, Ratification]) -> list[str]:
