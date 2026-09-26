@@ -261,6 +261,20 @@ models:
         data_tests:
           - not_null
 
+      - name: free_product_output_at
+        description: >
+          When the user first produced output through a leg that is not
+          paywalled. Owned by int__user_product_activity.
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output. Use THIS as the label
+          for any model predicting engagement: most output legs sit behind Pro,
+          so a model trained on the full column learns who paid and reports it
+          as who engaged. It ships beside the full column so the safe choice is
+          one column away rather than one model away.
+        data_tests:
+          - not_null
+
       - name: total_campaigns_sent
         description: >
           Count of 'Voter Outreach - Campaign Completed' events for this user.

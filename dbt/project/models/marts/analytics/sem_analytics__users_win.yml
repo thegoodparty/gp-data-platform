@@ -31,6 +31,13 @@ semantic_models:
           Has made something with the product that left it. Broader than
           is_activated and a different question; see win_product_output_users.
         type: categorical
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output, and the one a model
+          predicting engagement must use as its label. Surfaced as a dimension
+          rather than a second metric: it exists to keep a label honest, not to
+          be reported.
+        type: categorical
       - name: is_pro
         description: Has at least one pro campaign.
         type: categorical

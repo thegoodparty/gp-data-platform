@@ -25,7 +25,12 @@ with
     ),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
     product_activity as (
-        select user_id, product_output_at, has_product_output
+        select
+            user_id,
+            product_output_at,
+            has_product_output,
+            free_product_output_at,
+            has_free_product_output
         from {{ ref("int__user_product_activity") }}
     ),
 
@@ -142,7 +147,13 @@ with
             -- is_activated and a different question, so the two sit together here
             -- rather than one replacing the other.
             pa.product_output_at,
-            coalesce(pa.has_product_output, false) as has_product_output
+            coalesce(pa.has_product_output, false) as has_product_output,
+            -- The free variant ships beside the full one deliberately. Most output
+            -- legs are paywalled, so a model that trains on has_product_output
+            -- learns who paid; keeping the safe label one column away is what
+            -- makes that easy to avoid rather than easy to miss.
+            pa.free_product_output_at,
+            coalesce(pa.has_free_product_output, false) as has_free_product_output
         from users u
         left join milestones m on u.user_id = m.user_id
         left join campaign_elections ce on u.user_id = ce.user_id
