@@ -466,3 +466,18 @@ def test_a_block_with_only_comments_is_still_fillable():
     # only comments has nothing to lose, so it must stay writable.
     out = ratifications.upsert("m:\n  # a note, no fields yet\n", "m", _sign_off())
     assert "a note, no fields yet" in out
+
+
+def test_a_missing_pr_number_does_not_inherit_the_prior_entrys(tmp_path):
+    # `or` would fall through on a falsy 0 and attribute this sign-off to
+    # whatever PR was recorded before it. Wrong provenance that reads as right
+    # is worse than none, because nothing downstream would ever flag it.
+    out = ratifications.upsert(EXISTING, "activated_serve_users", _sign_off(pr=0))
+    assert _loaded(tmp_path, out)["activated_serve_users"].approved_by_pr != 765
+
+
+def test_a_zero_pr_number_records_as_no_pr_rather_than_pr_zero():
+    # argparse defaults --pr-number to 0, so an invocation that forgets it must
+    # not write a PR number nobody can look up.
+    earned = ratifications.earned_by_merge([], [_rec("m")], BOTH, 0, VALUES)
+    assert earned["m"].approved_by_pr is None

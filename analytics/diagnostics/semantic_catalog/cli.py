@@ -330,7 +330,14 @@ def main(argv: list[str] | None = None) -> int:
         before, after = _before_after(args.base_dir)
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
         # The merge summary warns only about a lane the change actually needed.
-        required = [lane for lane in ("data", "business") if lanes.classify(before, after)[lane]]
+        # With no base tree there is nothing to classify against, so say so with
+        # None rather than handing render_message a lane list derived from an
+        # empty before-set. It renders the same either way — None already means
+        # both lanes — but a classification computed from a diff that does not
+        # exist is a claim to knowledge this branch does not have.
+        required = (
+            [lane for lane in ("data", "business") if lanes.classify(before, after)[lane]] if before else None
+        )
         msg = render_message(before, after, args.pr_url, coverage, required=required)
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")

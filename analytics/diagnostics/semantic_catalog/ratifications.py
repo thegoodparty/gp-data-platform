@@ -249,7 +249,7 @@ def earned_by_merge(
     before: list[MetricRecord],
     after: list[MetricRecord],
     group_dates: dict[str, str | None],
-    pr_number: int,
+    pr_number: int | None,
     values: dict[str, int] | None = None,
 ) -> dict[str, Ratification]:
     """Sign-offs a merge earns, half by half.
@@ -273,6 +273,9 @@ def earned_by_merge(
     """
     prev = {r.name: r for r in before}
     values = values or {}
+    # A PR number is 1 or more. Anything else means it was not supplied, and
+    # recording it as `0` would read back as a real PR nobody can look up.
+    pr_number = pr_number if pr_number and pr_number > 0 else None
     business_date, data_date = group_dates.get("business"), group_dates.get("data")
     earned: dict[str, Ratification] = {}
     for rec in after:
@@ -348,7 +351,13 @@ def _merge_halves(existing: Ratification, earned: Ratification) -> Ratification:
     return Ratification(
         rule=earned.rule or existing.rule,
         data=earned.data or existing.data,
-        approved_by_pr=earned.approved_by_pr or existing.approved_by_pr,
+        # `is not None`, not `or`: a falsy PR number would silently inherit the
+        # prior entry's, attributing this sign-off to whatever PR happened to be
+        # recorded before it. Wrong provenance that reads as right is worse than
+        # none, and nothing downstream would ever flag it.
+        approved_by_pr=(
+            earned.approved_by_pr if earned.approved_by_pr is not None else existing.approved_by_pr
+        ),
     )
 
 
