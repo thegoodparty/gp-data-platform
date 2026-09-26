@@ -496,3 +496,23 @@ def test_upsert_merges_into_a_legacy_block_rather_than_replacing_it(tmp_path):
     # signed that rule. Stale and visible beats silently gone.
     assert entry.rule.sha == "abc1234"
     assert entry.data.approved == "2026-08-07" and entry.data.value == 941
+
+
+def test_a_rule_only_upsert_onto_a_legacy_block_refuses_rather_than_writing_junk():
+    # A legacy data half carries no number and the two-seal schema requires one.
+    # Writing it as `None` produces a file that will not load; writing `null`
+    # produces one the loader rejects for the same reason. Dropping the half is
+    # the silent loss this write path keeps being caught on. So it refuses.
+    legacy = "m:\n  ratified: 2026-08-05\n  definition_sha: 'abc1234'\n  approved_by_pr: 760\n"
+    with pytest.raises(ValueError, match="predates value_at_signing"):
+        ratifications.upsert(legacy, "m", _sign_off(data=False))
+
+
+def test_a_legacy_entry_keeps_its_scheme_through_a_merge(tmp_path):
+    # Losing the marker would make a legacy half that can never match
+    # indistinguishable from one that went stale in this merge, which is the
+    # whole reason the marker exists.
+    legacy = "m:\n  ratified: 2026-08-05\n  definition_sha: 'abc1234'\n"
+    existing = ratifications.load_entry_text(legacy, "m")
+    merged = ratifications._merge_halves(existing, _sign_off(rule=False))
+    assert merged.scheme == "legacy"

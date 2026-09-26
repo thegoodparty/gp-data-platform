@@ -349,6 +349,18 @@ def render_entry(name: str, sign_off: Ratification, note: str = "") -> str:
             f"    approved_by_pr: {_pr(sign_off.rule)}\n",
         ]
     if sign_off.data is not None:
+        if sign_off.data.value is None:
+            # A legacy data half carries no number, and the two-seal schema
+            # requires one. Writing it as `None` produces a file that will not
+            # load; writing `null` produces one the loader rejects for the same
+            # reason. Neither is a fix, and dropping the half is the silent loss
+            # this whole write path keeps being caught on. So refuse, and say
+            # what a human has to do.
+            raise ValueError(
+                f"{name}: this entry's build approval predates value_at_signing, which the "
+                "two-seal scheme requires. Convert the entry by hand, recording what the "
+                "metric counted when it was signed, before a merge can add to it."
+            )
         lines += [
             "  data:\n",
             f"    approved: {sign_off.data.approved}\n",
@@ -366,8 +378,15 @@ def _merge_halves(existing: Ratification, earned: Ratification) -> Ratification:
     someone gave on a different PR months earlier.
     """
     # Nothing to reconcile any more: each half carries its own PR, so an
-    # unearned half keeps its own provenance untouched.
-    return Ratification(rule=earned.rule or existing.rule, data=earned.data or existing.data)
+    # unearned half keeps its own provenance untouched. `scheme` comes from the
+    # existing entry because an earned one never carries it, and losing it would
+    # make a legacy half that can never match indistinguishable from one that
+    # went stale in this merge.
+    return Ratification(
+        rule=earned.rule or existing.rule,
+        data=earned.data or existing.data,
+        scheme=existing.scheme,
+    )
 
 
 def upsert(text: str, name: str, sign_off: Ratification, note: str = "") -> str:
