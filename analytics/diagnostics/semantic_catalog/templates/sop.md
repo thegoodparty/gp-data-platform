@@ -69,7 +69,10 @@ than they are:
 - **Dimensions.** They are declared once per semantic model, so sealing them
   naively would expire every metric in a file whenever one dimension was added
   anywhere. Sealing them properly means resolving which ones a given metric
-  actually references, and that is not built.
+  actually references, and that is not built. This covers anchor qualifiers
+  that exist to compute a dimension rather than the metric's own number, such
+  as `paywalled`: sealing one would expire a metric whose count never moved,
+  which is the false staleness the two seals were split to remove.
 - **Anything upstream of the sem file.** A change to how a mart column is
   computed moves no seal at all. This is the gap that let an OKR be signed off
   against an instrument that had been broken for five days, and go on reading
