@@ -153,6 +153,21 @@ def test_features_sql_excludes_voters_without_a_precinct_key():
     assert "IS NOT NULL" in sql.split("WHERE")[-1]
 
 
+def test_residence_code_is_floored_without_swallowing_nulls():
+    # Backfill: the offset is positive, and the raw code reaches 0 in L2, so the
+    # projected value must be floored to stay in the model's training range.
+    sql = _build_voter_features_sql(_L2_COLS, _ELECTION_COLS, 2024, 2026)
+    marker = "ConsumerData_Length_Of_Residence_Code"
+    residence = [line for line in sql.splitlines() if marker in line]
+    assert residence, "residence-code projection missing from the feature SQL"
+    expr = " ".join(residence)
+    assert "GREATEST" in expr
+    # The null branch must survive any future simplification: Databricks GREATEST
+    # skips nulls, so a bare GREATEST(code - offset, 0) silently rewrites every
+    # missing code to a real 0 -- a shortest-tenure value the model would trust.
+    assert "IS NULL THEN NULL" in expr
+
+
 # ── misc helpers ─────────────────────────────────────────────────────────────
 def test_parse_state_allowlist():
     assert _parse_state_allowlist(None) is None

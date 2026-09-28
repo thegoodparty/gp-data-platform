@@ -444,14 +444,18 @@ models:
           rescore existing voters, so the year only advances on a full refresh.
         tests:
           - not_null
-          # A mixed-year table is the silent failure mode of the annual refresh --
-          # the year rolls over only on a full refresh, and a missed one leaves new
-          # voters scored for a later year than everyone else, with no error. Nothing
-          # else catches it, so assert the single-year invariant directly.
+          # A mixed-year table means the annual full refresh has not happened yet:
+          # the derived year advances on Jan 1, so any incremental run before that
+          # refresh scores new voters a year ahead of everyone else. Warn rather than
+          # error, because that transitional window is normal operation and erroring
+          # would block the whole downstream chain every January; the scheduled
+          # refresh, not this test, is what keeps the window short.
           - dbt_expectations.expect_column_unique_value_count_to_be_between:
               arguments:
                 min_value: 1
                 max_value: 1
+              config:
+                severity: warn
           # Separately, warn when the table has fallen behind the calendar: legal
           # during a deliberate backfill override, which is why this is not an error.
           - dbt_utils.expression_is_true:
@@ -479,10 +483,9 @@ models:
           retrain leaves the table spanning two versions until the next full refresh.
         tests:
           - not_null
-          # Warn, not error, and deliberately unlike election_year: a table spanning
-          # two model versions is the documented consequence of retraining between
-          # full refreshes, not a defect. It is still worth surfacing, because it says
-          # the table is no longer scored by a single booster.
+          # Warn for the same reason as election_year: an incremental run scores
+          # only new voters, so a retrain between full refreshes legitimately leaves
+          # the table spanning two boosters. Worth surfacing, not worth failing.
           - dbt_expectations.expect_column_unique_value_count_to_be_between:
               arguments:
                 min_value: 1

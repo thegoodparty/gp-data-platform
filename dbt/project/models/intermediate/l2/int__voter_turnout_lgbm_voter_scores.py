@@ -289,9 +289,17 @@ def _build_voter_features_sql(l2_col_set, election_cols, inference_year, l2_coll
             "AS FECDonors_NumberOfDonations"
         ),
         f"CAST({inference_year} AS DOUBLE) AS target_year",
+        # Length of residence projected back to the inference year. On a backfill the
+        # offset is positive and the raw code reaches 0, so the difference can go
+        # negative -- out-of-distribution for a model trained on non-negative codes.
+        # Floor it at 0. The NULL branch is load-bearing: Databricks GREATEST SKIPS
+        # nulls rather than propagating them, so a bare GREATEST(code - offset, 0)
+        # would turn every missing code into a real 0 and feed the model a shortest-
+        # tenure value where it currently, correctly, sees a missing one.
         (
-            f"CAST(ConsumerData_Length_Of_Residence_Code "
-            f"- ({l2_collection_year} - {inference_year}) AS DOUBLE) "
+            f"CAST(CASE WHEN ConsumerData_Length_Of_Residence_Code IS NULL THEN NULL "
+            f"ELSE GREATEST(ConsumerData_Length_Of_Residence_Code "
+            f"- ({l2_collection_year} - {inference_year}), 0) END AS DOUBLE) "
             f"AS ConsumerData_Length_Of_Residence_Code"
         ),
     ]
