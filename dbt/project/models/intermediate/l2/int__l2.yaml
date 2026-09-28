@@ -459,7 +459,6 @@ models:
                 expression: "= year(current_date())"
               config:
                 severity: warn
-                error_if: ">0"
       - name: election_code
         description: "Election stage scored (General for the shipped grain)."
         tests:
