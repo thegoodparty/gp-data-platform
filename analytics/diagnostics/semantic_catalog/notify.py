@@ -87,20 +87,25 @@ def notify(
     text = render(problems)
     if not token:
         return f"no {TOKEN_ENV}; degrade notice not delivered"
-    tried_dm = bool(owner)
-    if tried_dm and post(token, owner, text):
-        return "degrade notice sent to the owner"
-    # A DM can be refused for a reason a channel post would not hit, a missing
-    # im:write being the obvious one. Reroute rather than drop it. Only claim a
-    # refusal when one happened: with no owner configured, saying the DM was
-    # refused sends a reader hunting a Slack permission problem that is really a
-    # missing env var.
-    if channel:
-        note = "\n(DM to the owner was refused, so this went to the channel instead.)" if tried_dm else ""
-        if post(token, channel, text + note):
-            if tried_dm:
-                return "owner DM refused; degrade notice sent to the channel instead"
-            return f"no {OWNER_ENV} set; degrade notice sent to the channel"
-    if tried_dm:
-        return "Slack refused both the owner DM and the channel fallback; degrade notice not delivered"
-    return f"no {OWNER_ENV} set and the channel post failed; degrade notice not delivered"
+    # Report only what was actually attempted. Every outcome here is read by a
+    # person deciding what to fix, and each wrong guess sends them somewhere
+    # different: a refused DM means a Slack permission, an unset owner means an
+    # env var, an untried channel means neither. Claiming a refusal that never
+    # happened is the same class of lie as a guard reporting green while it did
+    # not run, which is the bug this whole module exists to remove.
+    if owner:
+        if post(token, owner, text):
+            return "degrade notice sent to the owner"
+        failed = "the owner DM was refused"
+        # A DM can be refused for a reason a channel post would not hit, a
+        # missing im:write being the obvious one. Reroute rather than drop it.
+        note = "\n(DM to the owner was refused, so this went to the channel instead.)"
+    else:
+        failed = f"no {OWNER_ENV} is set"
+        note = ""
+
+    if not channel:
+        return f"{failed} and no {CHANNEL_ENV} to fall back to; degrade notice not delivered"
+    if post(token, channel, text + note):
+        return f"{failed}; degrade notice sent to the channel"
+    return f"{failed} and the channel post failed; degrade notice not delivered"

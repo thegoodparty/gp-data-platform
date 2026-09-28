@@ -143,3 +143,62 @@ def test_re_verification_is_not_a_change_to_the_definition():
     after = evidence.apply([_rec()], latches)
     assert changed_metric_names(before, after) == []
     assert diff_records(before, after) == []
+
+
+def test_a_latches_block_that_is_not_a_mapping_is_rejected():
+    # Caught rather than iterated: load_latches turns it into a stated reason,
+    # and silently treating a malformed file as "no latches" would read as green.
+    with pytest.raises(ValueError, match="not a mapping"):
+        evidence.parse_latches(json.dumps({"latches": ["not", "a", "mapping"]}))
+
+
+class _Response:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self):
+        return self._payload.encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_the_token_read_returns_the_raw_file(monkeypatch):
+    seen = {}
+
+    def urlopen(request, timeout=None):
+        seen["url"] = request.full_url
+        seen["auth"] = request.get_header("Authorization")
+        return _Response('{"latches": {}}')
+
+    monkeypatch.setattr(evidence.urllib.request, "urlopen", urlopen)
+    assert evidence._fetch("tok") == '{"latches": {}}'
+    assert evidence.STATE_PATH in seen["url"] and evidence.REPO in seen["url"]
+    assert seen["auth"] == "Bearer tok"
+
+
+def test_the_gh_fallback_surfaces_its_own_failure(monkeypatch):
+    # The laptop path. A nonzero exit has to become a RuntimeError, because
+    # load_latches only turns exceptions into a stated reason; a silent empty
+    # string would read as a healthy file with no latches.
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "gh: not authenticated"
+
+    monkeypatch.setattr(evidence.subprocess, "run", lambda *a, **kw: _Proc())
+    with pytest.raises(RuntimeError, match="not authenticated"):
+        evidence._fetch_via_gh()
+
+
+def test_the_gh_fallback_returns_stdout_on_success(monkeypatch):
+    class _Proc:
+        returncode = 0
+        stdout = '{"latches": {}}'
+        stderr = ""
+
+    monkeypatch.setattr(evidence.subprocess, "run", lambda *a, **kw: _Proc())
+    assert evidence._fetch_via_gh() == '{"latches": {}}'
