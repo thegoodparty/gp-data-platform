@@ -14,6 +14,17 @@ For OAuth M2M (production):
     DATABRICKS_CLIENT_ID     — service principal application (client) ID
     DATABRICKS_CLIENT_SECRET — service principal secret
 
+Optional:
+    DATABRICKS_SCOPES        — OAuth scopes to request, comma or space
+                               separated. The SDK does NOT read this itself
+                               (its `scopes` config attribute has no env
+                               binding), so it is passed explicitly below.
+                               Unset falls back to the SDK default of
+                               `all-apis`, which a service principal has to be
+                               granted; where it is not, the token request
+                               fails with "Scopes 'all-apis' are not assigned
+                               to the client".
+
 For CLI auth (local dev):
     Run `databricks configure` or `databricks auth login` first.
     DATABRICKS_HOST is optional — will be read from CLI profile if not set.
@@ -32,6 +43,8 @@ from databricks import sql as databricks_sql
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
+
+from scripts.serialization import json_fallback
 
 
 @dataclass(frozen=True)
@@ -68,18 +81,32 @@ def is_databricks_fqn(value: str) -> bool:
         return False
 
 
+def _scoped_config() -> Config | None:
+    """Config carrying DATABRICKS_SCOPES, or None when unset.
+
+    The SDK gives `scopes` no env binding, so it must be passed explicitly; a
+    path that does not asks for `all-apis`, which the service principal lacks.
+    """
+    scopes = os.environ.get("DATABRICKS_SCOPES", "").strip()
+    return Config(scopes=scopes) if scopes else None
+
+
 def _build_connect_kwargs() -> dict:
     """Return kwargs for databricks_sql.connect().
 
     Auth is resolved by the Databricks SDK Config, which reads env vars
     (DATABRICKS_HOST, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET)
-    and CLI profiles automatically.
+    and CLI profiles automatically. Scopes are the exception — passed
+    explicitly, since the SDK gives its `scopes` attribute no env binding.
     """
     http_path = os.environ.get("DATABRICKS_HTTP_PATH", "")
     if not http_path:
         raise ValueError("DATABRICKS_HTTP_PATH env var is required")
 
-    config = Config()
+    config = _scoped_config() or Config()
+    # Printed because the token request either succeeds or fails on exactly this
+    # value, and the failure names the client rather than the scope it refused.
+    print(f"OAuth scopes requested: {config.get_scopes_as_string()}")
     hostname = config.host.removeprefix("https://").removeprefix("http://")
 
     if config.client_id and config.client_secret:
@@ -159,12 +186,16 @@ def _coerce_to_string_df(df: pd.DataFrame) -> pd.DataFrame:
     def _to_str(v):
         if v is None:
             return None
-        if isinstance(v, float) and pd.isna(v):
-            return None
+        # Containers first: pd.isna() on a list or array returns an array, so it
+        # cannot be used as a condition until those are out of the way.
         if isinstance(v, list):
-            return json.dumps(v)
+            return json.dumps(v, default=json_fallback)
         if isinstance(v, np.ndarray):
-            return json.dumps(v.tolist())
+            return json.dumps(v.tolist(), default=json_fallback)
+        # Every scalar null, not just float NaN -- pd.NaT and pd.NA are neither
+        # None nor float, and would otherwise land as the text "NaT" / "<NA>".
+        if pd.isna(v):
+            return None
         s = str(v)
         # Drop trailing ".0" for whole-number floats so 5.0 -> "5"; mirrors
         # cli._normalize_to_strings on the read side.
@@ -198,7 +229,8 @@ def write_table(
     t = TableFQN.parse(fqn)
     df = _coerce_to_string_df(df)
     schema_spec = _df_to_databricks_schema(df)
-    w = WorkspaceClient()
+    scoped = _scoped_config()
+    w = WorkspaceClient(config=scoped) if scoped else WorkspaceClient()
 
     conn = get_connection()
     try:

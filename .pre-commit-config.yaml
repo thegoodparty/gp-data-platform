@@ -7,7 +7,11 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
+        # gold-match/shared/ is omni's client copies carrying upstream's
+        # lint-excluded whitespace debt; the rewriting hooks must not touch it.
+        exclude: ^gold-match/shared/
     -   id: end-of-file-fixer
+        exclude: ^gold-match/shared/
     -   id: check-yaml
     -   id: mixed-line-ending
         args: ['--fix=lf']
@@ -25,7 +29,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
+        exclude: ^(matcha|gold-match|analytics|airflow|dbt|reverse-etl)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -39,7 +43,6 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
-        exclude: ^people-api-loader/src/loader/people_api/schema/data/
 
 -   repo: local
     hooks:
@@ -50,18 +53,18 @@ repos:
     # directory's environment, so that env must be set up locally first
     # (`uv sync`, or `pip install ...` for `airflow/astro`). `files:` means a push
     # only runs the suites for directories it actually touched.
-    -   id: pytest-people-api-loader
-        name: people-api-loader tests (pre-push)
-        entry: bash -c 'cd people-api-loader && uv run pytest'
-        language: system
-        files: ^people-api-loader/
-        pass_filenames: false
-        stages: [pre-push]
     -   id: pytest-matcha
         name: matcha tests (pre-push)
         entry: bash -c 'cd matcha && uv run pytest'
         language: system
         files: ^matcha/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-gold-match
+        name: gold-match tests (pre-push)
+        entry: bash -c 'cd gold-match && uv run pytest'
+        language: system
+        files: ^gold-match/
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-airflow
@@ -82,21 +85,22 @@ repos:
         name: analytics tests (pre-push)
         entry: bash -c 'cd analytics && uv run pytest'
         language: system
-        files: ^analytics/
+        # The anchor guard lives here but reads the dbt macro, the semantic files and
+        # the milestone model, so those have to trigger it too.
+        files: >
+            (?x)^(
+              analytics/
+              |dbt/project/macros/
+              |dbt/project/models/marts/analytics/sem_analytics__
+              |dbt/project/models/intermediate/amplitude/int__amplitude_user_milestones\.sql
+            )
         pass_filenames: false
         stages: [pre-push]
-    -   id: pytest-genie-tools
-        name: genie-tools tests (pre-push)
-        entry: bash -c 'cd apps/genie-tools && uv run pytest'
+    -   id: pytest-reverse-etl
+        name: reverse-etl tests (pre-push)
+        entry: bash -c 'cd reverse-etl && uv run pytest'
         language: system
-        files: ^apps/genie-tools/
-        pass_filenames: false
-        stages: [pre-push]
-    -   id: pytest-genie-slack-bot
-        name: genie-slack-bot tests (pre-push)
-        entry: bash -c 'cd apps/genie-slack-bot && uv run pytest'
-        language: system
-        files: ^apps/genie-slack-bot/
+        files: ^reverse-etl/
         pass_filenames: false
         stages: [pre-push]
     # Governance guard: semantic_models:/metrics: content must live in a

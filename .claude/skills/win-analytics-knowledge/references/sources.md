@@ -71,6 +71,48 @@ lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-
 some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
 flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`. When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)). For the filing-deadline arm, use `election_stage.filing_period_end_on` joined via `candidacy_stage.gp_election_stage_id`; this column is 2026+ only (NULL for <=2025 — use the election-date arm alone for the archive half).
 
+**Historical filing deadlines (pre-2026).** `election_stage.filing_period_end_on` is 2026+ only, but
+the general filing deadline for earlier cycles is recoverable from BR raw staging:
+`stg_airbyte_source__ballotready_api_race` (filter `NOT is_primary AND NOT is_runoff AND NOT is_recall`),
+explode `filing_periods`, join `int__ballotready_filing_period.end_on`, election via
+`race.election.databaseId`, keyed by `race.position.databaseid × election_day`. Coverage at the
+general-race grain is partial and cycle-dependent (as of 2026-08: 72% of 2024 races, 50% of 2025, 40% of
+2026) — always carry a deadline-missing flag. (Recipe from DATA-2202, promoted via DATA-2225.) These
+figures predate DATA-2235 (`int__ballotready_filing_period` ingestion widened, merged 2026-08-12,
++39,797 ids recovered) — re-measure before citing; ~75% is a hard ceiling per that ticket (~7pp of the
+gap is a position+election_day join failure, not an ingestion gap).
+
+### Race-structure fields: opponents, seats, districting
+
+**Opponent counts come from BallotReady rosters, continuously.** The column literally named
+`number_of_opponents` on the provider election models is TechSpeed-only (BallotReady and DDHQ are
+NULL on every row, verified 2026-08-20), but that is the legacy path, not the live one. Two
+BR-roster-derived models carry the current counts:
+
+- `int__civics_election_estimated_opponents` — election-grain, a count of active `candidacy_stage`
+  records per stage (general preferred). **One-directional:** a roster of <= 1 means BallotReady has
+  not loaded the field yet, so it never asserts 0 opponents. Carries no viability inputs, so it is
+  safe under the viability-never-in-lead-scoring constraint.
+- `int__civics_viability_opponents_fallback` — candidacy-grain, selected by roster **membership**
+  (the candidacy's own BR candidacy ids found inside exactly one clean race), never by
+  `matched_br_race_id`, which is a position+date min-pick and is not roster-verified. **Fail-closed:**
+  membership in more than one clean race, an office-type contradiction against the roster race's
+  position, or a roster under two members yields no row rather than a guess. Count and seats come
+  from the same race row so the pair never mixes grains.
+
+Because both track BallotReady ingest, opponent counts and the viability scores built on them
+**update continuously as races fill in** — a count read today may differ tomorrow. Anchor any
+quoted figure to a date rather than treating it as settled.
+
+**TechSpeed's column is late-arriving.** Of scoped 2026 city-council/school-board leads that ever
+received a TS count, only ~23% had it in the warehouse before user signup (~14% of all scoped 2026
+leads; both lower bounds — `created_at` is Airbyte arrival time). Do not build at-signup features
+on it.
+
+**Seats and districting coverage is period-gated:** ~99% seats on 2026 city-council/school-board
+candidacies, and **0% on the 2025 archive**, which is HubSpot-only with no election-stage structure.
+A 2025-vs-2026 comparison on either field is not available, not merely thin.
+
 ## Event-lifecycle assets (omni repo)
 
 For when an event was added or retired in code, its current lifecycle status, or what

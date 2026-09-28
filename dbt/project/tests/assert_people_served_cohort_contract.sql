@@ -1,4 +1,4 @@
--- People Served cohort contract (epic DATA-1359). Guards three invariants that the
+-- People Served cohort contract. Guards three invariants that the
 -- ordering test and the warn-severity sanity bands cannot:
 -- (1) PRESENCE: each cohort ('all', 'active') must publish all four metric variants
 -- at office_type='all' (the North Star headline). A broken active join would
@@ -10,11 +10,11 @@
 -- future data drift.
 -- (3) ENGINE ALIGNMENT: within each cohort, the office_type set carried by count_once
 -- (the int__serve_block_coverage L2 voter-scan engine) must equal the set carried
--- by the count-multiple variants (the district_census_stats substrate engine). The
+-- by the count-multiple variants (the district_census_stats allocation engine). The
 -- two gate office_type independently (a served voter of that type vs a census
 -- district match), so in principle a type could land on one side only. They share
--- one L2-unpivot lineage (block-coverage and the substrate both unpivot
--- int__l2_nationwide_uniform via get_l2_major_district_columns +
+-- one L2-unpivot lineage (block-coverage and the allocation both unpivot
+-- int__l2_nationwide_uniform via get_l2_district_columns (scope='allocated') +
 -- normalize_l2_district_name),
 -- so this cannot occur on correct data; this arm FAILS CLOSED and names the
 -- direction if an upstream regression ever forks that lineage, replacing the

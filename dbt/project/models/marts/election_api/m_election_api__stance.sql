@@ -1,11 +1,3 @@
-{{
-    config(
-        materialized="table",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
 with
     exploded_stances as (
         select

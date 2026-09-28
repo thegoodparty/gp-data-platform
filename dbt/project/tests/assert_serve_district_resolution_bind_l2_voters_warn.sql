@@ -1,6 +1,6 @@
 {{ config(severity="warn") }}
 
--- Name-drift guard for the serve cohort (DATA-1988). Every resolved,
+-- Name-drift guard for the serve cohort. Every resolved,
 -- non-statewide cohort district must match at least one row in
 -- int__l2_district_aggregations on the normalized
 -- (state, district_type, district_name) key - normalized on BOTH sides,

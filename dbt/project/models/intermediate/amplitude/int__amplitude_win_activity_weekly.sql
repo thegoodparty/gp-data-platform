@@ -8,6 +8,13 @@ with
             cast(date_trunc('week', event_time) as date) as week_start_date,
             event_type,
             event_time,
+            event_properties:path::string as page_path,
+            -- Distinguishes the three moments that share the Campaign Completed
+            -- name; see is_outreach_activation_event.
+            event_properties:method::string as outreach_method,
+            -- Dedup key for the shared send terminal, which is once per committed
+            -- payment rather than once per outreach.
+            event_properties:outreachid::string as outreach_id,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -24,15 +31,44 @@ with
             user_id is not null
             and try_cast(user_id as bigint) is not null
             -- Recurrent-activity events come from the single-source catalog
-            -- instead of a hardcoded list. Resolves to 3 events:
-            -- 'Voter Outreach - Campaign Completed', plus both the legacy
-            -- and live dashboard-view events (unioned below via
-            -- is_dashboard_view_event).
-            and event_type in (
-                select event_type
-                from {{ ref("int__amplitude_event_catalog") }}
-                where is_recurrent
+            -- instead of a hardcoded list. That allowlist is itself derived from
+            -- the anchor declarations of the metrics this model feeds, so a leg
+            -- added to a metric cannot be dropped by this intake filter.
+            and (
+                event_type in (
+                    select event_type
+                    from {{ ref("int__amplitude_event_catalog") }}
+                    where is_recurrent
+                )
+                -- Page-path leg of the dashboard-view union, which an event_type
+                -- allowlist cannot express: 'Viewed' is site-wide and only its
+                -- '/dashboard' rows are dashboard views. Keeps this model's intake
+                -- aligned with is_dashboard_view_event below.
+                or (
+                    event_type = 'Viewed'
+                    and event_properties:path::string = '/dashboard'
+                )
             )
+    ),
+
+    send_commits as (
+        select
+            *,
+            -- A lapsed robocall hold can be re-authorized and commits a second time
+            -- under the same outreach id, days later and past Segment's dedup
+            -- window. That is one send retried, so only the first commit counts.
+            -- Legs that carry no outreach id cannot re-fire this way and always
+            -- count; they must not be collapsed into a single null partition.
+            case
+                when outreach_id is null
+                then true
+                else
+                    row_number() over (
+                        partition by user_id, outreach_id order by event_time
+                    )
+                    = 1
+            end as is_first_commit
+        from win_events
     ),
 
     dashboard_view_flags as (
@@ -41,7 +77,7 @@ with
             event_time,
             {{ dashboard_view_is_new("event_time", "user_id") }} as is_new_view
         from win_events
-        where {{ is_dashboard_view_event("event_type") }}
+        where {{ is_dashboard_view_event("event_type", "page_path") }}
     ),
 
     dashboard_views_dedup as (
@@ -61,23 +97,46 @@ with
 
             -- Campaign activity
             count(
-                case when event_type = 'Voter Outreach - Campaign Completed' then 1 end
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
+                    then 1
+                end
             ) as campaigns_sent,
             sum(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
                     then recipient_count
                 end
             ) as recipient_count,
             min(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
                     then event_time
                 end
             ) as first_campaign_sent_at,
             max(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
                     then event_time
                 end
             ) as last_campaign_sent_at,
@@ -86,18 +145,20 @@ with
             coalesce(max(dv.dashboard_views), 0) as dashboard_views,
             count(
                 distinct case
-                    when {{ is_dashboard_view_event("event_type") }}
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
                     then date(event_time)
                 end
             ) as dashboard_view_days,
             min(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as first_dashboard_viewed_at,
             max(
                 case
-                    when {{ is_dashboard_view_event("event_type") }} then event_time
+                    when {{ is_dashboard_view_event("event_type", "page_path") }}
+                    then event_time
                 end
             ) as last_dashboard_viewed_at,
 
@@ -106,7 +167,7 @@ with
             count(distinct date(event_time)) as activity_days,
             min(event_time) as first_activity_at,
             max(event_time) as last_activity_at
-        from win_events we
+        from send_commits we
         left join
             dashboard_views_dedup dv
             on we.user_id = dv.user_id

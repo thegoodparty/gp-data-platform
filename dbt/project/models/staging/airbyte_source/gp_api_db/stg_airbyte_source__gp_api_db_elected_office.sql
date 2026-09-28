@@ -14,7 +14,8 @@ with
             updated_at,
             campaign_id,
             sworn_in_date,
-            organization_slug
+            organization_slug,
+            pledged_at
         from source
     )
 select *

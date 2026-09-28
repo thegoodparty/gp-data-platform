@@ -5,17 +5,43 @@ models:
       cleans phone numbers, normalizes date separators (slash to dash), trims
       text fields, and casts boolean columns via cast_to_boolean. Invalid rows
       (null name/state) are filtered via anti-join to the _invalid model.
+      Election dates and filing deadlines are parsed with the component order
+      detected per delivery file, since some files write day-first.
     columns:
       - name: _airbyte_raw_id
         data_tests:
           - not_null
           - unique
+      - name: is_day_first_file
+        description: >
+          Whether this delivery file writes two-component dates day-first
+          (25-08-2026) rather than month-first (11-3-2026). Detected per file
+          from dates whose first component exceeds 12.
+        data_tests:
+          - not_null
       - name: first_name
         data_tests:
           - not_null
       - name: last_name
         data_tests:
           - not_null
+      - name: br_race_id
+        description: >
+          BallotReady race id. The suppression filter resolves a candidate through it,
+          so a row without one cannot be suppressed.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: name_suffix
+        description: >
+          Generational suffix (JR, SR, II...) captured from the raw surname
+          before suffix stripping; identity gates treat a mismatch as two
+          people.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [JR, SR, II, III, IV, V]
       - name: state
         data_tests:
           - not_null
@@ -54,8 +80,9 @@ models:
 
   - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
     description: >
-      TechSpeed candidate rows that fail data quality checks.
-      Currently catches rows with null/empty first_name, last_name, or state.
+      TechSpeed candidate rows that fail data quality checks: null/empty
+      first_name, last_name, or state, or a state that, after the clean_states
+      mapping, is not a postal code the candidate mart's state test accepts.
     columns:
       - name: _airbyte_raw_id
         data_tests:
@@ -65,7 +92,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["null_name_or_state"]
+                values: ["null_name_or_state", "unrecognized_state"]
 
   - name: stg_airbyte_source__techspeed_gdrive_officeholders
     description: Officeholders data load from TechSpeed Google Drive

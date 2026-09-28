@@ -86,8 +86,9 @@ df = wa.build_win_working_set(run_query, cohorts)
   different cutoff. ⚠ `Dashboard - Campaign Plan Viewed` is no longer incidental
   drift: it is the successor dashboard event (the legacy `Dashboard - Candidate
   Dashboard Viewed` died in-data 2026-06-13, DATA-2173), so dashboard-view metrics
-  touching 2026-05+ must include it (2-event union) rather than letting the default
-  cutoff drop it — see `references/engagement.md`, Dashboard surface migration.
+  touching 2026-05+ must include the dashboard-view union declared in `sem_analytics__users_win.yml`
+  (`win_active_candidates_30d`, `config.meta.anchored_on`) rather than letting the default cutoff
+  drop it — see `references/engagement.md`, Dashboard surface migration.
 - Reads `goodparty_data_catalog.dbt.int__amplitude_event_catalog` (prod). That table
   must exist (a prod dbt run of the model); it does as of DATA-1945.
 - `build_win_working_set` is **election-anchored with a backward window** (it joins

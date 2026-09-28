@@ -1,4 +1,4 @@
-"""Tests for election-api sync utilities (bulk_insert_from_databricks)."""
+"""Tests for election-api sync utilities (bulk insert and quality gates)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -6,11 +6,169 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from include.custom_functions import election_api_utils
-from include.custom_functions.election_api_utils import bulk_insert_from_databricks
+from include.custom_functions.election_api_utils import (
+    ForeignKey,
+    QualityGate,
+    TableSyncSpec,
+    apply_constraints,
+    bulk_insert_from_databricks,
+    check_counts,
+    check_id_overlap,
+    check_nulls,
+    run_quality_checks,
+)
 
 
 def _spec():
     return SimpleNamespace(staging_schema="staging", new_table="ZipToPosition_new")
+
+
+class TestQualityGates:
+    """Pure pre-swap gate logic (the swap is destructive; these fail it closed)."""
+
+    GATE = QualityGate(cold_start_floor=100_000)
+
+    def test_counts_pass_on_healthy_ratio(self):
+        check_counts(950_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_refuse_coverage_collapse(self):
+        with pytest.raises(ValueError, match="ratio"):
+            check_counts(400_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_boundary_ratio_passes(self):
+        check_counts(500_000, 1_000_000, self.GATE, "Race")
+
+    def test_counts_cold_start_floor(self):
+        with pytest.raises(ValueError, match="cold-start"):
+            check_counts(99_999, 0, self.GATE, "Race")
+        check_counts(100_000, 0, self.GATE, "Race")
+
+    def test_id_overlap_refuses_wholesale_rekey(self):
+        gate = QualityGate(cold_start_floor=100_000, min_id_overlap=0.90)
+        check_id_overlap(900, 1_000, gate, "Person")  # exactly at the floor passes
+        with pytest.raises(ValueError, match="re-key"):
+            check_id_overlap(899, 1_000, gate, "Person")
+
+    def test_id_overlap_skipped_where_ids_re_mint(self):
+        """ZipToPosition and Projected_Turnout declare no floor because their
+        ids legitimately re-mint, so even zero overlap must pass. A floor added
+        there would refuse every run."""
+        check_id_overlap(0, 1_000, QualityGate(cold_start_floor=1_000), "ZipToPosition")
+
+    def test_nulls_refuse_when_probe_finds_any(self):
+        gate = QualityGate(cold_start_floor=100_000, not_null_columns=("is_local",))
+        check_nulls(0, gate, "DistrictTopIssue")
+        with pytest.raises(ValueError, match="is_local"):
+            check_nulls(1, gate, "DistrictTopIssue")
+
+
+class TestCompositePrimaryKey:
+    """The density tables key on (district_id, resolution, h3_index) and
+    (district_id, resolution); every other synced table keys on a single id."""
+
+    def test_single_column_pk_ddl_unchanged(self):
+        (pk_ddl,) = TableSyncSpec(target_table="Race").constraint_ddl()
+        assert 'PRIMARY KEY ("id")' in pk_ddl
+
+    def test_composite_pk_emits_every_column_in_key_order(self):
+        spec = TableSyncSpec(
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
+        )
+        (pk_ddl,) = spec.constraint_ddl()
+        assert 'PRIMARY KEY ("district_id", "resolution", "h3_index")' in pk_ddl
+
+    def test_id_overlap_join_uses_every_pk_column(self):
+        """Joining on only the first column would overcount overlap on a key
+        whose first column repeats."""
+        spec = TableSyncSpec(
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
+        )
+        cur = MagicMock()
+        # to_regclass -> exists, COUNT(*) -> prior rows, then the overlap count.
+        cur.fetchone.side_effect = [("live",), (1_000,), (1_000,)]
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+
+        run_quality_checks(
+            conn,
+            spec,
+            QualityGate(cold_start_floor=10, min_id_overlap=0.90),
+            1_000,
+        )
+
+        overlap_sql = cur.execute.call_args.args[0]
+        for column in ("district_id", "resolution", "h3_index"):
+            assert f'live."{column}" = stg."{column}"' in overlap_sql
+
+
+class TestPruneMissingParents:
+    """`on_missing_parent="skip"` exists so a stale child vintage cannot fail
+    the FK add and take the whole swap set down. What it must not do is hide
+    how much it removed."""
+
+    def _spec(self, share=0.01):
+        return TableSyncSpec(
+            target_table="District_Voter_Density",
+            pk_columns=("district_id", "resolution", "h3_index"),
+            fkeys=(
+                ForeignKey(
+                    "District_Voter_Density_district_id_fkey",
+                    "district_id",
+                    "District",
+                    on_missing_parent="skip",
+                    max_missing_share=share,
+                ),
+            ),
+        )
+
+    def _conn(self, rowcounts):
+        cur = MagicMock()
+        cur.rowcount = 0
+        counts = iter(rowcounts)
+
+        def execute(_stmt):
+            cur.rowcount = next(counts, 0)
+
+        cur.execute.side_effect = execute
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+        return conn
+
+    def test_the_gate_is_given_the_count_that_survived_the_prune(self):
+        """quality_checks reads this, not the load's XCom. Handed the pre-prune
+        count it compares 59.3M against a prior 59.3M and passes while the
+        table it is about to publish holds far fewer rows."""
+        # prune deletes 300k, then the PK and FK statements report 0.
+        staged = apply_constraints(self._conn([300_000, 0, 0]), self._spec(), 59_300_000)
+        assert staged == 59_000_000
+
+    def test_a_wholesale_prune_refuses_the_swap(self):
+        """The degenerate case is a re-keyed mart: every parent lookup misses,
+        the prune empties the table, and every other gate reads zero rows as
+        zero problems."""
+        with pytest.raises(ValueError, match="have no District"):
+            apply_constraints(self._conn([59_300_000, 0, 0]), self._spec(), 59_300_000)
+
+    def test_a_handful_of_late_districts_pass(self):
+        with pytest.raises(ValueError):
+            apply_constraints(self._conn([600_000, 0, 0]), self._spec(), 59_300_000)
+        assert apply_constraints(self._conn([500_000, 0, 0]), self._spec(), 59_300_000)
+
+    def test_the_prune_leaves_rows_whose_fk_column_is_null(self):
+        """NOT EXISTS is true for a NULL column, so an unguarded predicate
+        deletes every unparented row. Harmless where the FK column is in the
+        PK, but `skip` on a nullable FK would delete every root row."""
+        (delete_sql, *_) = self._spec().constraint_ddl()
+        assert delete_sql.startswith("DELETE FROM")
+        assert 'stg."district_id" IS NOT NULL' in delete_sql
+
+    def test_an_unrecognised_policy_is_rejected_at_declaration(self):
+        """Silently degrading to "fail" produces exactly the swap-wide outage
+        the flag exists to prevent."""
+        with pytest.raises(ValueError, match="on_missing_parent"):
+            ForeignKey("x_fkey", "x_id", "X", on_missing_parent="SKIP")
 
 
 def _gen(batches):

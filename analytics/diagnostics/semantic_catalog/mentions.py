@@ -1,6 +1,6 @@
 """GitHub-team -> Slack mention rendering for the governance thread anchor.
 
-Config is a non-secret YAML next to sigma_tasks.yml. Empty or missing config
+Config is a non-secret YAML next to owners.yml. Empty or missing config
 degrades to no mentions; a missing courtesy ping must never fail the thread.
 """
 

@@ -1,4 +1,4 @@
--- Statewide completeness (DATA-1994): one statewide row per US state + DC, matching
+-- Statewide completeness: one statewide row per US state + DC, matching
 -- the fips_codes state seed (50 + DC = 51; no Puerto Rico -- no L2 coverage).
 -- Self-references the seed rather than hardcoding 51. Returns a row (fails) iff the
 -- statewide count differs from the seed's state count.

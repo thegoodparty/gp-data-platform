@@ -8,7 +8,7 @@ epic.
 
 from __future__ import annotations
 
-from semantic_catalog.records import MetricRecord
+from semantic_catalog.records import MetricRecord, ratified_cell
 
 BEGIN_MARK = "<!-- semantic-catalog:begin -->"
 END_MARK = "<!-- semantic-catalog:end -->"
@@ -25,11 +25,11 @@ def _cell(text: str | None) -> str:
 
 def _row(rec: MetricRecord) -> str:
     detail = f"[{_cell(rec.detail_doc)}]({_cell(rec.detail_doc)})" if rec.detail_doc else ""
-    ratified = rec.ratified or "pending"
-    if rec.retired:
-        ratified = f"{ratified} (retired {rec.retired})"
     concept = f"**{_cell(rec.label)}**"
-    return f"| {concept} | {_cell(rec.definition)} | {_cell(rec.source)} " f"| {detail} | {_cell(ratified)} |"
+    return (
+        f"| {concept} | {_cell(rec.definition)} | {_cell(rec.source)} "
+        f"| {detail} | {_cell(ratified_cell(rec))} |"
+    )
 
 
 def render_rows(records: list[MetricRecord]) -> str:

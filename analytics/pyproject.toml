@@ -4,16 +4,19 @@ version = "0.1.0"
 description = "GoodParty analytics (win analysis, churn)"
 requires-python = ">=3.14"
 dependencies = [
-    "pandas>=2.3.1,<3.0.0",
+    "pandas>=3.0.6,<4.0.0",
     "pyyaml>=6.0",
-    "databricks-sql-connector>=3",
-    "databricks-sdk>=0.20",
+    "databricks-sql-connector>=4.6.0",
+    "databricks-sdk>=0.142.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "mypy>=2.3.0",
+    "mypy>=2.3.1",
+    # The anchor guard renders dbt's own macro source with Jinja stubs, so it can
+    # check the emitted predicate against the declaration without dbt or a warehouse.
+    "jinja2>=3.1",
 ]
 
 [tool.uv]

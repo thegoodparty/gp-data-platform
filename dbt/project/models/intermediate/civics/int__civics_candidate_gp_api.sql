@@ -1,11 +1,9 @@
 -- Product DB users -> Civics mart candidate schema.
--- Grain: one row per user with campaign_count > 0. Schema aligns with
--- int__civics_candidate_ballotready / _techspeed for the downstream union.
+-- Grain: one row per user with at least one valid candidacy. Schema aligns
+-- with int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
     latest_campaigns as (
-        -- 2026+ / non-demo / BR-anchored scope: matches
-        -- int__civics_candidacy_gp_api so both models cover the same user
-        -- universe (the candidacy model inner-joins valid candidates).
+        -- Scope for the state rollup; membership comes from the candidacy model.
         select *
         from {{ ref("campaigns") }}
         where
@@ -15,7 +13,14 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    users_with_real_campaign as (select distinct user_id from latest_campaigns),
+    -- No valid candidacy means not a candidate.
+    users_with_valid_candidacy as (
+        select distinct c.user_id
+        from latest_campaigns as c
+        inner join
+            {{ ref("int__civics_candidacy_gp_api") }} as cy
+            on c.campaign_id = cy.product_campaign_id
+    ),
 
     users_filtered as (
         select
@@ -27,8 +32,7 @@ with
             u.created_at,
             u.updated_at
         from {{ ref("users") }} as u
-        inner join users_with_real_campaign as uw on u.user_id = uw.user_id
-        where u.campaign_count > 0
+        inner join users_with_valid_candidacy as uw on u.user_id = uw.user_id
     ),
 
     user_state as (
@@ -42,9 +46,8 @@ with
         from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
-    -- hubspotid lives in the user's meta_data JSON, not on the users mart.
     user_hubspot as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 

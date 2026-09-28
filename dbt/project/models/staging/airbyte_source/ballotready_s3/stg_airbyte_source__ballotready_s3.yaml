@@ -14,6 +14,13 @@ models:
       - name: br_race_id
         data_tests:
           - not_null
+      - name: candidacy_created_at
+        description: One half of the candidacy worklist's freshness signal in extract_ballotready, which takes greatest(candidacy_created_at, candidacy_updated_at). Must stay populated, or affected candidacies never enter the worklist.
+        data_tests:
+          - not_null
+      - name: candidacy_updated_at
+        data_tests:
+          - not_null
       - name: election_result
         data_tests:
           - accepted_values:
@@ -67,6 +74,13 @@ models:
           - unique:
               config:
                 severity: warn
+      - name: office_holder_created_at
+        description: BallotReady office holder record creation timestamp. A null value signals a data integrity issue in the feed or staging layer.
+        data_tests:
+          - not_null
+      - name: office_holder_updated_at
+        data_tests:
+          - not_null
       - name: br_position_tier
         description: >
           BallotReady's research-tier classification (integer 1-5) for the

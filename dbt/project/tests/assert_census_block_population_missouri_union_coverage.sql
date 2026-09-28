@@ -4,7 +4,7 @@
 -- state, so a union that silently drops either source corrupts Missouri
 -- first. The 2020 decennial frame is static, which makes the exact official
 -- block count a stable regression target (validated against the official
--- 2020 census tally; DATA-1359 TDD, appendix D.1).
+-- 2020 census tally).
 with
     missouri as (
         select count(*) as mo_blocks

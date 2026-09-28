@@ -3,25 +3,25 @@
 -- block's total voters. people_served reads it: count-once for a set =
 -- sum(served_voters / total_voters * block_population) over served blocks.
 --
--- WHY a voter scan (and not the substrate): count-once is a distinct-PERSON union
+-- WHY a voter scan (and not the allocation): count-once is a distinct-PERSON union
 -- across overlapping district types. Within one type the cohort districts partition a
 -- block's voters, but a voter served by BOTH their city and their county cannot be
 -- de-duplicated across types from counts alone -- that cross-type overlap is exactly
 -- the "represented by 2+ officials" gap. So the union needs voter IDs, which the
--- counts-only substrate (and int__l2_block_district_map) dropped at the
+-- counts-only allocation (and int__l2_block_district_map) dropped at the
 -- count(distinct lalvoterid) step. This model scans int__l2_nationwide_uniform once
 -- and emits ONLY block-grain counts (PII-free). It is a model, not an inline CTE,
 -- because the ~230M-row unpivot is heavy.
 --
--- Scoped to the SAME district types as the substrate
--- (get_l2_major_district_columns),
--- so count-once <= count-multiple holds for the substrate's curated type set. state is
--- derived from the block's geoid FIPS prefix (the substrate's rule), matching the
--- substrate block-for-block; the '06'=6 numeric coercion is proven (the merged
--- substrate
+-- Scoped to the SAME district types as the allocation
+-- (get_l2_district_columns, scope='allocated'),
+-- so count-once <= count-multiple holds for the allocation's curated type set. state is
+-- derived from the block's geoid FIPS prefix (the allocation's rule), matching the
+-- allocation block-for-block; the '06'=6 numeric coercion is proven (the merged
+-- allocation
 -- has all 51 states, 0 null state). served_set: 'all' (any cohort district) or one of
 -- the
--- substrate l2 types. Statewide officials are NOT here -- they are read from the
+-- allocation l2 types. Statewide officials are NOT here -- they are read from the
 -- exact T5
 -- 'State'
 -- rows in people_served and reported separately, avoiding a basis mix.
@@ -60,7 +60,11 @@ with
                 cast(residence_addresses_complete_census_geocode as string), 15, '0'
             ) as block_geoid,
             lalvoterid,
-            {{ get_l2_major_district_columns(use_backticks=true, cast_to_string=true) }}
+            {{
+                get_l2_district_columns(
+                    scope="allocated", use_backticks=true, cast_to_string=true
+                )
+            }}
         from {{ ref("int__l2_nationwide_uniform") }}
         where residence_addresses_complete_census_geocode is not null
     ),
@@ -73,15 +77,21 @@ with
             {{ normalize_l2_district_name("district_value") }} as district_name
         from
             l2 unpivot (
-                district_value for district_column_name
-                in ({{ get_l2_major_district_columns(use_backticks=false) }})
+                district_value for district_column_name in (
+                    {{
+                        get_l2_district_columns(
+                            scope="allocated", use_backticks=false
+                        )
+                    }}
+                )
             )
         where
             district_value is not null
             and trim(district_value) != ''
             -- drop values that normalize to empty (e.g. a bare "(EST.)"), mirroring
             -- int__l2_block_district_map so the voter grain (and thus total_voters)
-            -- stays identical to the substrate across refreshes (verified 0-diff today)
+            -- stays identical to the allocation across refreshes (verified 0-diff
+            -- today)
             and trim({{ normalize_l2_district_name("district_value") }}) != ''
     ),
 

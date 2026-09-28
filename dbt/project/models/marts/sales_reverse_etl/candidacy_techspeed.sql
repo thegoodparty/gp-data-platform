@@ -8,9 +8,17 @@
 -- Appended: match-back key (candidate_code), reverse-ETL tracking-key inputs
 -- (election_year, election_stage), gp_candidacy_id, is_keyable, last_activity_at.
 --
--- WINDOW: 16-day rolling on greatest(created_at, updated_at) -- interim/manual-era
--- dedup; the reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap
--- point below).
+-- WINDOW: 16-day rolling on feed_activity_at -- interim/manual-era dedup; the
+-- reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap point
+-- below). feed_activity_at is the latest real provider EVENT time: for vendor-sourced
+-- rows created_at/updated_at are pipeline extract stamps, so a vendor re-delivering
+-- its whole file re-stamps its entire universe as active today and floods this feed.
+-- The BallotReady intermediate's additive vendor_activity_at column carries the event
+-- time instead; gp_api rows already carry real product timestamps. There is no
+-- TechSpeed leg -- the ALREADY-SENT filter below excludes exactly the candidacies one
+-- could match -- so this feed's recency is BallotReady's event time or the canonical
+-- fallback. The window is bounded above as well, since the non-vendor legs are not
+-- clamped and one future-dated value would otherwise never leave the window.
 with
     civics_base as (
         select
@@ -34,7 +42,27 @@ with
             e.seats_available,
             br_int.br_candidacy_id,
             br_int.br_race_id,
-            br_int.br_position_database_id
+            br_int.br_position_database_id,
+            -- Destination-facing recency: greatest available provider EVENT time,
+            -- falling back to the extract-stamped canonical timestamps only where
+            -- no provider supplies one. greatest() skips nulls, so the fallback
+            -- fires only when every leg is null, which keeps this non-null.
+            --
+            -- No TechSpeed leg here, deliberately: the ALREADY-SENT filter below
+            -- keeps only candidacies with no 'techspeed' in source_systems, and
+            -- the candidacy mart sets that flag exactly when a row exists in the
+            -- TechSpeed intermediate -- so a join to it can never match. Add the
+            -- leg back when that filter becomes the sent_log anti-join.
+            coalesce(
+                greatest(
+                    br_int.vendor_activity_at,
+                    case
+                        when cy.candidate_id_source = 'gp_api'
+                        then greatest(cy.created_at, cy.updated_at)
+                    end
+                ),
+                greatest(cy.created_at, cy.updated_at)
+            ) as feed_activity_at
         from {{ ref("candidacy") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
@@ -60,9 +88,6 @@ with
                 cy.general_election_date > current_date() + interval 3 day
                 or cy.primary_election_date > current_date() + interval 3 day
             )
-            -- 16-day rolling window
-            and greatest(cy.created_at, cy.updated_at)
-            >= current_date() - interval 16 day
             -- belt-and-suspenders not-already-in-HubSpot
             and cy.hubspot_contact_id is null
             and not exists (
@@ -93,6 +118,21 @@ with
             -- has already touched -- the most current source signal that they hold
             -- the data.
             and not array_contains(cy.source_systems, 'techspeed')
+    ),
+
+    -- Recency filter lives here rather than in civics_base's WHERE so the window
+    -- basis is defined exactly once: the same expression is filtered on and
+    -- emitted, and the two cannot drift apart.
+    in_window as (
+        select *
+        from civics_base
+        where
+            feed_activity_at >= current_date() - interval 16 day
+            -- Bounded above as well: gp_api product timestamps and the canonical
+            -- fallback are not clamped the way the vendor legs are, and a single
+            -- future-dated value would otherwise satisfy the lower bound forever,
+            -- putting one row on every export indefinitely.
+            and feed_activity_at <= current_date() + interval 1 day
     )
 
 select
@@ -180,5 +220,7 @@ select
     end as election_stage,
     b.gp_candidacy_id,
     b.gp_candidate_id,
-    greatest(b.created_at, b.updated_at) as last_activity_at
-from civics_base as b
+    -- Name kept: ops sorts and filters on it. Only the basis improves -- it is now
+    -- the provider event time rather than the pipeline extract stamp.
+    b.feed_activity_at as last_activity_at
+from in_window as b

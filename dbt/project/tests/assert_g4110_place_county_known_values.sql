@@ -1,5 +1,5 @@
 -- dbt/project/tests/assert_g4110_place_county_known_values.sql
--- DATA-1950: fails if a known incorporated place is MISSING from the model or
+-- Fails if a known incorporated place is MISSING from the model or
 -- assigned the wrong county. Keyed on geo_id (the stable, unique place
 -- identifier) — NOT name+state, which can match multiple rows (a G4110 place and
 -- a same-name county-equivalent). LEFT JOIN from the fixtures so a regression that

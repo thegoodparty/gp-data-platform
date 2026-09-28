@@ -1,6 +1,6 @@
 name: semantic-layer-file-placement
 # Blocking gate: a semantic_models:/metrics: block outside a governed sem_*.yml
-# would bypass CODEOWNERS, the composition check, catalog-freshness, and the
+# would bypass review routing, the composition check, catalog-freshness, and the
 # catalog itself all at once. This job fails the PR so the sem_*.yml naming
 # convention is an enforced invariant, not just a convention.
 #

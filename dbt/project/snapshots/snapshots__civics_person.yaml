@@ -14,6 +14,10 @@ snapshots:
       strategy: check
       # Records that churn out of the universe should show up in the diff.
       hard_deletes: invalidate
+      # 90 days of Delta history: predictive optimization vacuums this schema on
+      # the default 7-day retention, and the forwarding table depends on this
+      # history, which cannot be rebuilt.
+      post_hook: "alter table {{ this }} set tblproperties ('delta.deletedFileRetentionDuration' = 'interval 90 days', 'delta.logRetentionDuration' = 'interval 90 days')"
       check_cols:
         - person_group_key
         - gp_person_id

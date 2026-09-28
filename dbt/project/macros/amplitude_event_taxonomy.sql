@@ -34,7 +34,20 @@
         then 'win_onboarding'
         when {{ event_type_col }} like 'Dashboard -%'
         then 'win_dashboard'
-        when {{ event_type_col }} like 'Voter Outreach -%'
+        -- Third-generation dashboard-view event. Named 'Campaign Plan -%' by the
+        -- product, so it would otherwise fall to win_compliance_or_planning and
+        -- drop out of every family-based dashboard read. The sibling
+        -- 'Campaign Plan - Weekly Tasks Digest' deliberately stays in
+        -- compliance_or_planning: it is a server-emitted weekly digest
+        -- (session_id = -1, ~1.3k recipients per batch), not a surface view.
+        when {{ event_type_col }} = 'Campaign Plan - Campaign Tracker Viewed'
+        then 'win_dashboard'
+        when
+            {{ event_type_col }} like 'Voter Outreach -%'
+            -- Robocall is a voter-outreach channel that the product named
+            -- without the prefix, so it fell through to 'other' and was
+            -- invisible to every family-based Win read.
+            or {{ event_type_col }} like 'Robocall -%'
         then 'win_voter_outreach'
         when {{ event_type_col }} like 'Outreach -%'
         then 'win_outreach_planning'
@@ -139,18 +152,19 @@
     {#
         Flag recurrent-activity events vs one-off lifecycle milestones.
 
-        Recurrence is an event-level property (not a family property), so this
-        is a short explicit allowlist rather than a pattern. The set matches
-        exactly the events modeled by the Win activity rollups
-        (int__amplitude_win_activity and its weekly variant). Extend this list
-        when a genuinely recurrent activity event is added to those rollups.
+        Recurrence is an event-level property (not a family property), so this is
+        an allowlist rather than a pattern. The set is the union of the anchor
+        declarations of the two governed metrics the Win activity rollups serve,
+        read from the semantic layer rather than restated here. That direction
+        matters: this allowlist is the rollups' intake gate, so a leg added to a
+        metric but missing here never reaches the model that computes it, and the
+        metric reads as unchanged while looking correctly declared.
 
-        The allowlist now carries 3 events total (1 campaign-outreach event
-        plus 2 dashboard-view events): the legacy
-        'Dashboard - Candidate Dashboard Viewed' and its live replacement
-        'Dashboard - Campaign Plan Viewed' co-fired Apr-Jun 2026 during the
-        dashboard-surface migration (see is_dashboard_view_event /
-        dashboard_view_is_new for the union and co-fire dedup).
+        Pathed legs are deliberately dropped. A pathed leg is a slice of a
+        site-wide event ('Viewed' at '/dashboard'), and an event-name allowlist
+        admitting the bare name would pull in every row of a 4.5M-row event.
+        Consumers that intake by is_recurrent must therefore admit the page-path
+        leg explicitly alongside it, which is what the rollups do.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
@@ -158,38 +172,529 @@
         Usage:
             {{ amplitude_event_is_recurrent('event_type') }} as is_recurrent
     #}
-    {{ event_type_col }} in (
-        'Voter Outreach - Campaign Completed',
-        'Dashboard - Candidate Dashboard Viewed',
-        'Dashboard - Campaign Plan Viewed'
-    )
+    {%- set anchored_metrics = ["win_active_candidates_30d", "win_activated_users"] -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty name list, which must raise at execute time. -#}
+        (false)
+    {%- else -%}
+        {%- set names = [] -%}
+        {%- for metric_name in anchored_metrics -%}
+            {%- for leg in metric_anchored_events(metric_name) -%}
+                {%- if not leg["path"] and leg["event"] not in names -%}
+                    {%- do names.append(leg["event"]) -%}
+                {%- endif -%}
+            {%- endfor -%}
+        {%- endfor -%}
+        {%- if names | length == 0 -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "amplitude_event_is_recurrent: the anchored metrics resolved to zero "
+                    "name-based legs at execute time. Refusing to emit a predicate that "
+                    "would empty the Win activity rollups."
+                )
+            }}
+        {%- endif -%}
+        {{ event_type_col }} in (
+            {%- for event in names | sort %}'{{ event }}'{{ "," if not loop.last }}
+            {%- endfor %}
+        )
+    {%- endif -%}
 {% endmacro %}
 
-{% macro is_dashboard_view_event(event_type_col) %}
+{% macro amplitude_event_is_machine_emitted(event_type_col) %}
     {#
-        Membership test for a candidate-dashboard view, spanning the 2026-05/06
-        dashboard-surface migration. The legacy event
-        'Dashboard - Candidate Dashboard Viewed' died in-data 2026-06-13 when the
-        rebuild replaced the surface with the Campaign Plan view, which fires
-        'Dashboard - Campaign Plan Viewed' (live 2026-04-09). The two co-fired
-        2026-04-09 -> 2026-06-13, so raw counts over this union double-count that
-        window (use dashboard_view_is_new for counts); MIN/MAX/EXISTS and
-        COUNT(DISTINCT date) over the union are co-fire-safe.
+        Flag events the system emitted on its own behalf, so an activity read can
+        exclude them.
+
+        The test is not "did a server send it". More than half of
+        'Candidate Website - Published' arrives with session_id = -1 and it is
+        plainly a candidate publishing a website, so a session filter classifies
+        that as machine and drops a real action. The test is whether a person did
+        something at the moment the event fired.
+
+        Two shapes qualify, and only the first is visible in the data. Schedulers,
+        broadcasts and pollers run on a clock and name a user only because the job
+        concerned them: a real-session event from the same user lands within five
+        minutes of these 0.0% to 3.5% of the time, against 89% to 91% for the
+        server-emitted generation events a candidate actually clicked. That gap is
+        what separates 'Briefing Assistant - Agenda Created' from
+        'Content Builder: Generation Started', which look alike and are not.
+        Instrumentation bookkeeping is the second shape: experiment assignment,
+        autotrack and page lifecycle sit inside a real session by construction, so
+        co-occurrence cannot find them and they are named here instead.
+
+        The weekly digest alone moved one month's active users by 20%, which is the
+        size of the error this flag exists to stop.
+
+        Deliberately NOT machine: signup, magic link, password reset, Pro
+        confirmation and the 10DLC compliance submissions. Every one is
+        server-emitted and every one records something the user did. Carrier
+        verdicts ('10DLC Compliance Rejected', 'Campaign Approved') are genuinely
+        not user actions, but they reach 11 and 53 users and who emits them is
+        unverified, so they are left in rather than guessed at.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
+
+        Usage:
+            {{ amplitude_event_is_machine_emitted('event_type') }} as is_machine_emitted
     #}
-    {{ event_type_col }}
-    in ('Dashboard - Candidate Dashboard Viewed', 'Dashboard - Campaign Plan Viewed')
+    (
+        -- Instrumentation bookkeeping: fires in a real session, records no action.
+        {{ event_type_col }} like '[Experiment]%'
+        or {{ event_type_col }} = 'Experiment Viewed'
+        or {{ event_type_col }} like '[Amplitude]%'
+        or {{ event_type_col }} like 'Segment Consent%'
+        or {{ event_type_col }} in (
+            'Scroll Depth',
+            'session_start',
+            'session_end',
+            'page_view',
+            'Page Viewed',
+            'Page',
+            'usersnap_submission'
+        )
+        -- Schedulers deciding whether to dispatch, and the digest they send.
+        or {{ event_type_col }} like '%Dispatch Skipped'
+        or {{ event_type_col }} = 'Campaign Plan - Weekly Tasks Digest'
+        -- A status poller: 71k events across 546 users.
+        or {{ event_type_col }} = 'Campaign Verify Token Status Update'
+        -- Generation with no user in the loop. The Content Builder and Campaign
+        -- Plan V2 generation events are the opposite case and stay activity.
+        or {{ event_type_col }} = 'Poll - Results Synthesis Complete'
+        or {{ event_type_col }} like 'Briefing Assistant - Agenda %Created'
+        or {{ event_type_col }} in (
+            'Community Issues - Initial Issues Generated',
+            'Community Issues - Top Issues Refreshed',
+            'Community Issues - Trending Issues Refreshed',
+            'Community Issues - High Priority Trending Issue Created',
+            'Community Issues - Top Issue Priority Changed'
+        )
+    )
+{% endmacro %}
+
+{% macro metric_anchored_events(metric_name) %}
+    {#
+        Legs of a governed metric's `config.meta.anchored_on`, as dicts with keys
+        event / path / era / excluding / paywalled. The semantic layer is the
+        kernel: this reads the declaration rather than restating it, so the macro
+        cannot drift from the metric it serves.
+
+        `path` narrows a leg to one page-path slice of a site-wide event.
+        `excluding` narrows a leg by an event property, as {property: value};
+        each consuming macro decides which property keys it can compile and must
+        raise on one it cannot, so an exclusion can never be silently ignored.
+        `era` is documentation, not a filter: dead legs stay in the predicate so
+        history is preserved. `paywalled` marks a leg only a paying user can
+        reach, so a consumer building a model label can drop those legs and
+        avoid learning who paid.
+
+        Empty at parse time (execute=false), same as the seed accessors in
+        hubspot_contact_property_columns.sql. Callers building a predicate MUST emit a
+        parse-safe fallback for the empty case — see is_dashboard_view_event.
+
+        The metric lives downstream of the models calling this. Reading `graph` creates
+        no ref edge, so there is no cycle, but the direction is deliberate and worth
+        knowing about before you move it.
+    #}
+    {%- set legs = [] -%}
+    {%- if execute -%}
+        {%- set matches = (
+            graph.metrics.values()
+            | selectattr("name", "equalto", metric_name)
+            | list
+        ) -%}
+        {%- if matches | length == 0 -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "metric_anchored_events: no metric named '" ~ metric_name ~ "'"
+                )
+            }}
+        {%- endif -%}
+        {%- set declared = matches[0].config.meta.get("anchored_on") -%}
+        {%- if not declared -%}
+            {{
+                exceptions.raise_compiler_error(
+                    "metric_anchored_events: '"
+                    ~ metric_name
+                    ~ "' declares no anchored_on"
+                )
+            }}
+        {%- endif -%}
+        {%- for leg in declared -%}
+            {%- do legs.append(
+                {
+                    "event": leg["event"],
+                    "path": leg.get("path"),
+                    "era": leg.get("era"),
+                    "excluding": leg.get("excluding") or {},
+                    "paywalled": leg.get("paywalled") or false,
+                }
+            ) -%}
+        {%- endfor -%}
+    {%- endif -%}
+    {{ return(legs) }}
+{% endmacro %}
+
+{% macro is_dashboard_view_event(event_type_col, page_path_col) %}
+    {#
+        Membership test for a candidate-dashboard view.
+
+        Anchored on the page path, not on the surface event name. The product has
+        renamed the dashboard-view event on every rebuild of the surface, and each
+        rename silently zeroed every metric built on it:
+          - 'Dashboard - Candidate Dashboard Viewed'  died in-data 2026-06-13
+          - 'Dashboard - Campaign Plan Viewed'        died in-data 2026-07-31
+          - 'Campaign Plan - Campaign Tracker Viewed' live from 2026-08-07
+        The site-wide 'Viewed' page event with path '/dashboard' has run
+        continuously since 2025-04-21, predating the first named event, and passes
+        through both deaths with no discontinuity. Over a window where the legacy
+        event was healthy (2025-08 -> 2025-10) the two agree on 98.6% of users
+        (5,232 of 5,306 legacy users; 71 path-only), so the path leg is a
+        like-for-like substitute rather than a broader proxy.
+
+        The three named events are kept as an OR so the definition is additive and
+        no history is lost. They contribute ~1.4% of users beyond the path leg.
+        Only path '/dashboard' counts, not '/dashboard%': the sub-pages are
+        distinct surfaces (the 2026-08 successor fires mainly on
+        '/dashboard/campaign-plan'), and admitting them would silently widen this
+        from "viewed the dashboard" to "used the app".
+
+        Because the legs co-fire on a single visit, raw counts over this predicate
+        over-count (use dashboard_view_is_new for counts); MIN/MAX/EXISTS and
+        COUNT(DISTINCT date) are co-fire-safe.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            page_path_col: SQL expression producing the page path
+                (event_properties:path::string).
+    #}
+    {%- set legs = metric_anchored_events("win_active_candidates_30d") -%}
+    {%- if not execute -%}
+        {#-
+            Parse time only: graph is empty, and this SQL is validated but never run.
+            Gate on `not execute`, NEVER on `legs | length == 0`. An empty leg list while
+            execute is true must raise, because emitting (false) there would mark every
+            user inactive and read Active Candidates as zero — which is exactly the
+            2026-06-13 failure this whole ticket exists to prevent, reintroduced by its
+            own fix.
+        -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                "is_dashboard_view_event: win_active_candidates_30d resolved to zero legs at "
+                "execute time. Refusing to emit a predicate that would zero the metric."
+            )
+        }}
+    {%- else -%}
+        {%- set named = legs | rejectattr("path") | map(attribute="event") | list -%}
+        {%- set pathed = legs | selectattr("path") | list -%}
+        (
+            {%- for leg in pathed %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and {{ page_path_col }} = '{{ leg["path"] }}'
+                )
+                {%- if not loop.last or named | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if named | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in named %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
+{% endmacro %}
+
+{% macro is_outreach_activation_event(event_type_col, method_col) %}
+    {#
+        Membership test for a voter-outreach send that the product observed.
+
+        Anchored on the same declaration the metric publishes, for the same reason
+        is_dashboard_view_event is: the outreach surface has been rebuilt twice and
+        each rebuild silently retired the event the number was computed from. The
+        legacy in-product send leg stopped firing on 2026-09-08 when the flow moved
+        to outreach/v2/, and the count did not visibly fall, because the self-report
+        modal shares the event name and absorbed it.
+
+        Which is why the `method` property matters here. One event name covers three
+        different moments: no `method` was the legacy product-executed send,
+        'native' is a completed door-knocking walk, and 'manual' is a candidate
+        typing in something they did elsewhere. Only the first two are outreach this
+        product performed, so 'manual' is excluded by declaration. A null method
+        passes, because the leg that predates the property is a real send.
+
+        Excluding by property is narrow on purpose: this macro compiles a `method`
+        exclusion and raises on any other key, so a declared exclusion this macro
+        cannot express fails the build instead of quietly widening the metric.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property
+                (event_properties:method::string).
+    #}
+    {%- set legs = metric_anchored_events("win_activated_users") -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty leg list, which must raise at execute time. -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                "is_outreach_activation_event: win_activated_users resolved to zero legs "
+                "at execute time. Refusing to emit a predicate that would read activation "
+                "as zero."
+            )
+        }}
+    {%- else -%}
+        {%- set plain = [] -%}
+        {%- set qualified = [] -%}
+        {%- for leg in legs -%}
+            {%- if leg["path"] -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        "is_outreach_activation_event: leg '"
+                        ~ leg["event"]
+                        ~ "' declares a page path, which this macro cannot compile."
+                    )
+                }}
+            {%- elif leg["excluding"] -%}
+                {%- for property_key in leg["excluding"] -%}
+                    {%- if property_key != "method" -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                "is_outreach_activation_event: leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but this macro only compiles a 'method' exclusion."
+                            )
+                        }}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- set excluded = leg["excluding"]["method"] -%}
+                {%- do qualified.append(
+                    {
+                        "event": leg["event"],
+                        "methods": (
+                            excluded
+                            if excluded is sequence
+                            and excluded is not string
+                            else [excluded]
+                        ),
+                    }
+                ) -%}
+            {%- else -%} {%- do plain.append(leg["event"]) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        (
+            {%- for leg in qualified %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and coalesce({{ method_col }}, '') not in (
+                        {%- for method in leg["methods"] %}
+                            '{{ method }}'{{ "," if not loop.last }}
+                        {%- endfor %}
+                    )
+                )
+                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if plain | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in plain | sort %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
+{% endmacro %}
+
+{% macro is_product_output_event(event_type_col, method_col) %}
+    {#
+        Membership test for Product Output: the candidate made something with the
+        product that left it.
+
+        A broader concept than activation and a different one. `win_activated_users`
+        asks whether we reached voters for them; this asks whether they got value
+        out. A published website is not voter outreach, which is why the two are
+        separate metrics rather than one widened metric, and why nothing may report
+        one as the other.
+
+        Where the outreach metric has already settled a question, this follows it
+        rather than diverging. Self-reported outreach is excluded by the same
+        `method` qualifier, because a candidate recording what they did elsewhere
+        produced no output here. The robocall draft event is not a leg for the same
+        reason it stopped being one for outreach: it fires at draft-create on an
+        unpaid row, and an unpaid draft never left the product.
+
+        Two caveats ride on any series over this: three legs went live between July
+        and September 2026, so a pre-2026-07 series carries an instrumentation step
+        and not growth; and some legs sit behind a paywall, so a model using this as
+        a label must use the free-action variant instead or it learns who paid.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property
+                (event_properties:method::string).
+    #}
+    {{
+        product_output_predicate(
+            event_type_col, method_col, "is_product_output_event"
+        )
+    }}
+{% endmacro %}
+
+{% macro is_product_output_free_event(event_type_col, method_col) %}
+    {#
+        Product Output restricted to the legs a non-paying user can reach.
+
+        Use this, never the full predicate, as the label for any model predicting
+        who engages. Most Product Output legs sit behind Pro, so a model trained on
+        the full definition learns who paid and reports it as who engaged. Which
+        legs are paywalled is declared on the metric rather than listed here, so
+        adding a leg forces the question to be answered once, in the declaration.
+
+        The gating behind this is code-verified: the voter-contact channels and the
+        voter file require Pro, and the website builder does not. Worth knowing that
+        current Pro state disagrees — only 8.8% of list-export users and none of the
+        call-sheet users hold Pro today — which is either churn plus undatable Pro
+        or a gate that has moved. Marking a leg paywalled is the conservative
+        direction for a label, so the disagreement does not block it.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property.
+    #}
+    {{
+        product_output_predicate(
+            event_type_col, method_col, "is_product_output_free_event", free_only=true
+        )
+    }}
+{% endmacro %}
+
+{% macro product_output_predicate(
+    event_type_col, method_col, caller_macro, free_only=false
+) %}
+    {#
+        Compile the product-output legs into an event-membership predicate,
+        honouring a `method` exclusion on any leg that declares one.
+
+        Shared by the full and free-subset macros above, which differ only in
+        whether they drop the paywalled legs. It deliberately does NOT serve
+        is_outreach_activation_event: that macro is the OKR's compile path and is
+        pinned by its own source-level guards, so it keeps its own body rather
+        than depending on this one.
+
+        Raises on a leg this cannot express — a page path, or an exclusion on any
+        property other than `method` — so a declaration that outruns the compiler
+        fails the build instead of quietly widening the metric.
+
+        Args:
+            event_type_col / method_col: SQL expressions for the event name and its
+                `method` property.
+            caller_macro: the calling macro's name, for error messages.
+            free_only: drop legs the declaration marks `paywalled`, for a label that
+                must not encode who paid.
+    #}
+    {%- set declared = metric_anchored_events("win_product_output_users") -%}
+    {%- set legs = (
+        declared | rejectattr("paywalled") | list if free_only else declared
+    ) -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty leg list, which must raise at execute time. -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                caller_macro
+                ~ ": win_product_output_users resolved to zero legs at execute "
+                "time. Refusing to emit a predicate that would read product "
+                "output as zero."
+            )
+        }}
+    {%- else -%}
+        {%- set plain = [] -%}
+        {%- set qualified = [] -%}
+        {%- for leg in legs -%}
+            {%- if leg["path"] -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        caller_macro
+                        ~ ": leg '"
+                        ~ leg["event"]
+                        ~ "' declares a page path, which this macro cannot compile."
+                    )
+                }}
+            {%- elif leg["excluding"] -%}
+                {%- for property_key in leg["excluding"] -%}
+                    {%- if property_key != "method" -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                caller_macro
+                                ~ ": leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but this macro only compiles a 'method' exclusion."
+                            )
+                        }}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- set excluded = leg["excluding"]["method"] -%}
+                {%- do qualified.append(
+                    {
+                        "event": leg["event"],
+                        "methods": (
+                            excluded
+                            if excluded is sequence
+                            and excluded is not string
+                            else [excluded]
+                        ),
+                    }
+                ) -%}
+            {%- else -%} {%- do plain.append(leg["event"]) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        (
+            {%- for leg in qualified %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    and coalesce({{ method_col }}, '') not in (
+                        {%- for method in leg["methods"] %}
+                            '{{ method }}'{{ "," if not loop.last }}
+                        {%- endfor %}
+                    )
+                )
+                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if plain | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in plain | sort %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
 {% endmacro %}
 
 {% macro dashboard_view_is_new(event_time_col, partition_col, gap_seconds=30) %}
     {#
-        Time-gap sessionization for de-duplicating dashboard-view counts across
-        the 2026-04-09 -> 2026-06-13 co-fire window, where a single visit fired
-        both dashboard events. TRUE for a user's first dashboard view and for any
+        Time-gap sessionization for de-duplicating dashboard-view counts where a
+        single visit fires more than one member of the union: the page event plus
+        whichever named surface event is live, and during 2026-04-09 -> 2026-06-13
+        two named events as well. TRUE for a user's first dashboard view and for any
         view whose gap from the prior dashboard event exceeds gap_seconds; co-fired
-        pairs collapse to one, genuine re-visits still count. Apply only to rows
+        events collapse to one regardless of how many legs fire, genuine re-visits
+        still count. The 30s gap is unchanged: the 2026-08 successor does not
+        co-fire with its predecessor (1 of 19 consecutive pairs inside 30s), so the
+        third era gave no reason to move it. Apply only to rows
         already filtered to is_dashboard_view_event, materialize the result as a
         boolean column in a CTE/subquery, then count_if that column in an outer
         query (a window function cannot be nested directly inside count_if).

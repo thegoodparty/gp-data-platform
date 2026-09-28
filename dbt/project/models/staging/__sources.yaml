@@ -29,6 +29,52 @@ sources:
           (GET /api/2/taxonomy/event, showDeleted=true). one row per event_type
           with human-curated metadata (category, description, is_active,
           is_hidden_*, tags, owner).
+      # Claude Enterprise Analytics API via a custom Airbyte Builder source, synced
+      # daily at 20:00 UTC; tighter freshness than the block default to match.
+      # Amounts land as the API's fractional-cent decimal strings.
+      - name: anthropic_api_cost_report
+        description: >
+          One row per daily bucket of org-wide Claude cost from
+          `/v1/organizations/analytics/cost_report`; `results` is a JSON array with
+          one entry per product, model, cost_type and token_type.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_usage_report
+        description: >
+          One row per daily bucket of org-wide Claude token usage from
+          `/v1/organizations/analytics/usage_report`; `results` is a JSON array with
+          one entry per product and model.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_user_cost_report
+        description: >
+          One row per seat user per day of Claude cost from
+          `/v1/organizations/analytics/user_cost_report` (bucket_width=1d, ungrouped).
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_users
+        description: >
+          One row per seat user per day of Claude activity from
+          `/v1/organizations/analytics/users`; the connector stamps the requested
+          day onto each row as `activity_date`. Metric blocks are nested JSON.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
+      - name: anthropic_api_summaries
+        description: >
+          One row per day of org-wide active-user and seat counts from
+          `/v1/organizations/analytics/summaries`.
+        config:
+          freshness:
+            warn_after: { count: 2, period: day }
+            error_after: { count: 5, period: day }
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue
@@ -121,6 +167,8 @@ sources:
           freshness: null
       - name: gp_api_db_annotation_review
         description: raw data load from gp_api_db postgres db from table `annotation_review`
+        config:
+          freshness: null
       - name: gp_api_db_artifact_feedback
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
@@ -271,10 +319,12 @@ sources:
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
         description: Stripe invoice line items and billing details
+        # Rewritten in bursts, with observed gaps between writes of up to 99
+        # days, so the previous 60/90 bound tripped on normal cadence.
         config:
           freshness:
-            warn_after: { count: 60, period: day }
-            error_after: { count: 90, period: day }
+            warn_after: { count: 120, period: day }
+            error_after: { count: 180, period: day }
       - name: stripe_api_invoice_line_items
         description: Stripe invoice line items and detailed billing breakdowns
       - name: stripe_api_invoices
@@ -327,10 +377,13 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        # Loaded once, on 2026-03-02, while the sibling candidates feed keeps
+        # syncing. Left warning rather than nulled so the gap stays visible to
+        # the civics models that read it.
         config:
           freshness:
-            warn_after: { count: 90, period: day }
-            error_after: { count: 180, period: day }
+            warn_after: { count: 180, period: day }
+            error_after: { count: 365, period: day }
         columns:
           - name: is_incumbent
             data_tests:
@@ -352,13 +405,9 @@ sources:
 
   - name: dbt_source
     schema: dbt_source
-    description: Raw data loaded from dbt models
+    description: Raw data staged in S3 and loaded into Databricks by the load_l2_voter_files DAG
 
     tables:
-      - name: l2_s3_ak_demographic
-        description: raw data load for Alaska starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ak_demographic_data_dictionary
-        description: raw data load for Alaska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ak_uniform
         description: raw data load for Alaska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ak_uniform_data_dictionary
@@ -367,10 +416,6 @@ sources:
         description: raw data load for Alaska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ak_vote_history_data_dictionary
         description: raw data load for Alaska starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_al_demographic
-        description: raw data load for Alabama starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_al_demographic_data_dictionary
-        description: raw data load for Alabama starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_al_uniform
         description: raw data load for Alabama starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_al_uniform_data_dictionary
@@ -379,10 +424,6 @@ sources:
         description: raw data load for Alabama starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_al_vote_history_data_dictionary
         description: raw data load for Alabama starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ar_demographic
-        description: raw data load for Arkansas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ar_demographic_data_dictionary
-        description: raw data load for Arkansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ar_uniform
         description: raw data load for Arkansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ar_uniform_data_dictionary
@@ -391,10 +432,6 @@ sources:
         description: raw data load for Arkansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ar_vote_history_data_dictionary
         description: raw data load for Arkansas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_az_demographic
-        description: raw data load for Arizona starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_az_demographic_data_dictionary
-        description: raw data load for Arizona starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_az_uniform
         description: raw data load for Arizona starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_az_uniform_data_dictionary
@@ -403,10 +440,6 @@ sources:
         description: raw data load for Arizona starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_az_vote_history_data_dictionary
         description: raw data load for Arizona starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ca_demographic
-        description: raw data load for California starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ca_demographic_data_dictionary
-        description: raw data load for California starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ca_uniform
         description: raw data load for California starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ca_uniform_data_dictionary
@@ -415,10 +448,6 @@ sources:
         description: raw data load for California starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ca_vote_history_data_dictionary
         description: raw data load for California starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_co_demographic
-        description: raw data load for Colorado starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_co_demographic_data_dictionary
-        description: raw data load for Colorado starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_co_uniform
         description: raw data load for Colorado starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_co_uniform_data_dictionary
@@ -427,10 +456,6 @@ sources:
         description: raw data load for Colorado starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_co_vote_history_data_dictionary
         description: raw data load for Colorado starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ct_demographic
-        description: raw data load for Connecticut starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ct_demographic_data_dictionary
-        description: raw data load for Connecticut starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ct_uniform
         description: raw data load for Connecticut starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ct_uniform_data_dictionary
@@ -439,10 +464,6 @@ sources:
         description: raw data load for Connecticut starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ct_vote_history_data_dictionary
         description: raw data load for Connecticut starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_dc_demographic
-        description: raw data load for District of Columbia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_dc_demographic_data_dictionary
-        description: raw data load for District of Columbia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_dc_uniform
         description: raw data load for District of Columbia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_dc_uniform_data_dictionary
@@ -451,10 +472,6 @@ sources:
         description: raw data load for District of Columbia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_dc_vote_history_data_dictionary
         description: raw data load for District of Columbia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_de_demographic
-        description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_de_demographic_data_dictionary
-        description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_de_uniform
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_de_uniform_data_dictionary
@@ -463,10 +480,8 @@ sources:
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_de_vote_history_data_dictionary
         description: raw data load for Delaware starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_fl_demographic
-        description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_fl_demographic_data_dictionary
-        description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
+      - name: l2_s3_expired_voters
+        description: raw nationwide load of the L2 voter IDs flagged as expired, from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_uniform
         description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_uniform_data_dictionary
@@ -475,10 +490,6 @@ sources:
         description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_fl_vote_history_data_dictionary
         description: raw data load for Florida starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ga_demographic
-        description: raw data load for Georgia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ga_demographic_data_dictionary
-        description: raw data load for Georgia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ga_uniform
         description: raw data load for Georgia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ga_uniform_data_dictionary
@@ -487,10 +498,6 @@ sources:
         description: raw data load for Georgia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ga_vote_history_data_dictionary
         description: raw data load for Georgia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_hi_demographic
-        description: raw data load for Hawaii starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_hi_demographic_data_dictionary
-        description: raw data load for Hawaii starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_hi_uniform
         description: raw data load for Hawaii starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_hi_uniform_data_dictionary
@@ -499,10 +506,6 @@ sources:
         description: raw data load for Hawaii starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_hi_vote_history_data_dictionary
         description: raw data load for Hawaii starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ia_demographic
-        description: raw data load for Iowa starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ia_demographic_data_dictionary
-        description: raw data load for Iowa starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ia_uniform
         description: raw data load for Iowa starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ia_uniform_data_dictionary
@@ -511,10 +514,6 @@ sources:
         description: raw data load for Iowa starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ia_vote_history_data_dictionary
         description: raw data load for Iowa starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_id_demographic
-        description: raw data load for Idaho starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_id_demographic_data_dictionary
-        description: raw data load for Idaho starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_id_uniform
         description: raw data load for Idaho starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_id_uniform_data_dictionary
@@ -523,10 +522,6 @@ sources:
         description: raw data load for Idaho starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_id_vote_history_data_dictionary
         description: raw data load for Idaho starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_il_demographic
-        description: raw data load for Illinois starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_il_demographic_data_dictionary
-        description: raw data load for Illinois starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_il_uniform
         description: raw data load for Illinois starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_il_uniform_data_dictionary
@@ -535,10 +530,6 @@ sources:
         description: raw data load for Illinois starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_il_vote_history_data_dictionary
         description: raw data load for Illinois starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_in_demographic
-        description: raw data load for Indiana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_in_demographic_data_dictionary
-        description: raw data load for Indiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_in_uniform
         description: raw data load for Indiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_in_uniform_data_dictionary
@@ -547,10 +538,6 @@ sources:
         description: raw data load for Indiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_in_vote_history_data_dictionary
         description: raw data load for Indiana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ks_demographic
-        description: raw data load for Kansas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ks_demographic_data_dictionary
-        description: raw data load for Kansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ks_uniform
         description: raw data load for Kansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ks_uniform_data_dictionary
@@ -559,10 +546,6 @@ sources:
         description: raw data load for Kansas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ks_vote_history_data_dictionary
         description: raw data load for Kansas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ky_demographic
-        description: raw data load for Kentucky starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ky_demographic_data_dictionary
-        description: raw data load for Kentucky starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ky_uniform
         description: raw data load for Kentucky starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ky_uniform_data_dictionary
@@ -571,10 +554,6 @@ sources:
         description: raw data load for Kentucky starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ky_vote_history_data_dictionary
         description: raw data load for Kentucky starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_la_demographic
-        description: raw data load for Louisiana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_la_demographic_data_dictionary
-        description: raw data load for Louisiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_la_uniform
         description: raw data load for Louisiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_la_uniform_data_dictionary
@@ -583,10 +562,6 @@ sources:
         description: raw data load for Louisiana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_la_vote_history_data_dictionary
         description: raw data load for Louisiana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ma_demographic
-        description: raw data load for Massachusetts starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ma_demographic_data_dictionary
-        description: raw data load for Massachusetts starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ma_uniform
         description: raw data load for Massachusetts starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ma_uniform_data_dictionary
@@ -595,10 +570,6 @@ sources:
         description: raw data load for Massachusetts starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ma_vote_history_data_dictionary
         description: raw data load for Massachusetts starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_md_demographic
-        description: raw data load for Maryland starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_md_demographic_data_dictionary
-        description: raw data load for Maryland starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_md_uniform
         description: raw data load for Maryland starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_md_uniform_data_dictionary
@@ -607,10 +578,6 @@ sources:
         description: raw data load for Maryland starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_md_vote_history_data_dictionary
         description: raw data load for Maryland starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_me_demographic
-        description: raw data load for Maine starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_me_demographic_data_dictionary
-        description: raw data load for Maine starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_me_uniform
         description: raw data load for Maine starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_me_uniform_data_dictionary
@@ -619,10 +586,6 @@ sources:
         description: raw data load for Maine starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_me_vote_history_data_dictionary
         description: raw data load for Maine starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mi_demographic
-        description: raw data load for Michigan starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mi_demographic_data_dictionary
-        description: raw data load for Michigan starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mi_uniform
         description: raw data load for Michigan starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mi_uniform_data_dictionary
@@ -631,10 +594,6 @@ sources:
         description: raw data load for Michigan starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mi_vote_history_data_dictionary
         description: raw data load for Michigan starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mn_demographic
-        description: raw data load for Minnesota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mn_demographic_data_dictionary
-        description: raw data load for Minnesota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mn_uniform
         description: raw data load for Minnesota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mn_uniform_data_dictionary
@@ -643,10 +602,6 @@ sources:
         description: raw data load for Minnesota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mn_vote_history_data_dictionary
         description: raw data load for Minnesota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mo_demographic
-        description: raw data load for Missouri starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mo_demographic_data_dictionary
-        description: raw data load for Missouri starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mo_uniform
         description: raw data load for Missouri starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mo_uniform_data_dictionary
@@ -655,10 +610,6 @@ sources:
         description: raw data load for Missouri starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mo_vote_history_data_dictionary
         description: raw data load for Missouri starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ms_demographic
-        description: raw data load for Mississippi starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ms_demographic_data_dictionary
-        description: raw data load for Mississippi starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ms_uniform
         description: raw data load for Mississippi starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ms_uniform_data_dictionary
@@ -667,10 +618,6 @@ sources:
         description: raw data load for Mississippi starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ms_vote_history_data_dictionary
         description: raw data load for Mississippi starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mt_demographic
-        description: raw data load for Montana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_mt_demographic_data_dictionary
-        description: raw data load for Montana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mt_uniform
         description: raw data load for Montana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mt_uniform_data_dictionary
@@ -679,10 +626,6 @@ sources:
         description: raw data load for Montana starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_mt_vote_history_data_dictionary
         description: raw data load for Montana starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nc_demographic
-        description: raw data load for North Carolina starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nc_demographic_data_dictionary
-        description: raw data load for North Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nc_uniform
         description: raw data load for North Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nc_uniform_data_dictionary
@@ -691,10 +634,6 @@ sources:
         description: raw data load for North Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nc_vote_history_data_dictionary
         description: raw data load for North Carolina starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nd_demographic
-        description: raw data load for North Dakota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nd_demographic_data_dictionary
-        description: raw data load for North Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nd_uniform
         description: raw data load for North Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nd_uniform_data_dictionary
@@ -703,10 +642,6 @@ sources:
         description: raw data load for North Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nd_vote_history_data_dictionary
         description: raw data load for North Dakota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ne_demographic
-        description: raw data load for Nebraska starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ne_demographic_data_dictionary
-        description: raw data load for Nebraska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ne_uniform
         description: raw data load for Nebraska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ne_uniform_data_dictionary
@@ -715,10 +650,6 @@ sources:
         description: raw data load for Nebraska starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ne_vote_history_data_dictionary
         description: raw data load for Nebraska starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nh_demographic
-        description: raw data load for New Hampshire starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nh_demographic_data_dictionary
-        description: raw data load for New Hampshire starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nh_uniform
         description: raw data load for New Hampshire starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nh_uniform_data_dictionary
@@ -727,10 +658,6 @@ sources:
         description: raw data load for New Hampshire starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nh_vote_history_data_dictionary
         description: raw data load for New Hampshire starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nj_demographic
-        description: raw data load for New Jersey starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nj_demographic_data_dictionary
-        description: raw data load for New Jersey starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nj_uniform
         description: raw data load for New Jersey starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nj_uniform_data_dictionary
@@ -739,10 +666,6 @@ sources:
         description: raw data load for New Jersey starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nj_vote_history_data_dictionary
         description: raw data load for New Jersey starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nm_demographic
-        description: raw data load for New Mexico starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nm_demographic_data_dictionary
-        description: raw data load for New Mexico starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nm_uniform
         description: raw data load for New Mexico starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nm_uniform_data_dictionary
@@ -751,10 +674,6 @@ sources:
         description: raw data load for New Mexico starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nm_vote_history_data_dictionary
         description: raw data load for New Mexico starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nv_demographic
-        description: raw data load for Nevada starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_nv_demographic_data_dictionary
-        description: raw data load for Nevada starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nv_uniform
         description: raw data load for Nevada starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nv_uniform_data_dictionary
@@ -763,10 +682,6 @@ sources:
         description: raw data load for Nevada starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_nv_vote_history_data_dictionary
         description: raw data load for Nevada starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ny_demographic
-        description: raw data load for New York starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ny_demographic_data_dictionary
-        description: raw data load for New York starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ny_uniform
         description: raw data load for New York starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ny_uniform_data_dictionary
@@ -775,10 +690,6 @@ sources:
         description: raw data load for New York starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ny_vote_history_data_dictionary
         description: raw data load for New York starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_oh_demographic
-        description: raw data load for Ohio starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_oh_demographic_data_dictionary
-        description: raw data load for Ohio starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_oh_uniform
         description: raw data load for Ohio starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_oh_uniform_data_dictionary
@@ -787,10 +698,6 @@ sources:
         description: raw data load for Ohio starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_oh_vote_history_data_dictionary
         description: raw data load for Ohio starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ok_demographic
-        description: raw data load for Oklahoma starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ok_demographic_data_dictionary
-        description: raw data load for Oklahoma starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ok_uniform
         description: raw data load for Oklahoma starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ok_uniform_data_dictionary
@@ -799,10 +706,6 @@ sources:
         description: raw data load for Oklahoma starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ok_vote_history_data_dictionary
         description: raw data load for Oklahoma starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_or_demographic
-        description: raw data load for Oregon starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_or_demographic_data_dictionary
-        description: raw data load for Oregon starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_or_uniform
         description: raw data load for Oregon starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_or_uniform_data_dictionary
@@ -811,10 +714,6 @@ sources:
         description: raw data load for Oregon starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_or_vote_history_data_dictionary
         description: raw data load for Oregon starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_pa_demographic
-        description: raw data load for Pennsylvania starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_pa_demographic_data_dictionary
-        description: raw data load for Pennsylvania starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_pa_uniform
         description: raw data load for Pennsylvania starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_pa_uniform_data_dictionary
@@ -823,10 +722,6 @@ sources:
         description: raw data load for Pennsylvania starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_pa_vote_history_data_dictionary
         description: raw data load for Pennsylvania starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ri_demographic
-        description: raw data load for Rhode Island starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ri_demographic_data_dictionary
-        description: raw data load for Rhode Island starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ri_uniform
         description: raw data load for Rhode Island starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ri_uniform_data_dictionary
@@ -835,10 +730,6 @@ sources:
         description: raw data load for Rhode Island starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ri_vote_history_data_dictionary
         description: raw data load for Rhode Island starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_sc_demographic
-        description: raw data load for South Carolina starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_sc_demographic_data_dictionary
-        description: raw data load for South Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sc_uniform
         description: raw data load for South Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sc_uniform_data_dictionary
@@ -847,10 +738,6 @@ sources:
         description: raw data load for South Carolina starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sc_vote_history_data_dictionary
         description: raw data load for South Carolina starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_sd_demographic
-        description: raw data load for South Dakota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_sd_demographic_data_dictionary
-        description: raw data load for South Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sd_uniform
         description: raw data load for South Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sd_uniform_data_dictionary
@@ -859,10 +746,6 @@ sources:
         description: raw data load for South Dakota starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_sd_vote_history_data_dictionary
         description: raw data load for South Dakota starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_tn_demographic
-        description: raw data load for Tennessee starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_tn_demographic_data_dictionary
-        description: raw data load for Tennessee starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tn_uniform
         description: raw data load for Tennessee starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tn_uniform_data_dictionary
@@ -871,10 +754,6 @@ sources:
         description: raw data load for Tennessee starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tn_vote_history_data_dictionary
         description: raw data load for Tennessee starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_tx_demographic
-        description: raw data load for Texas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_tx_demographic_data_dictionary
-        description: raw data load for Texas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tx_uniform
         description: raw data load for Texas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tx_uniform_data_dictionary
@@ -883,10 +762,6 @@ sources:
         description: raw data load for Texas starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_tx_vote_history_data_dictionary
         description: raw data load for Texas starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ut_demographic
-        description: raw data load for Utah starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_ut_demographic_data_dictionary
-        description: raw data load for Utah starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ut_uniform
         description: raw data load for Utah starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ut_uniform_data_dictionary
@@ -895,10 +770,6 @@ sources:
         description: raw data load for Utah starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_ut_vote_history_data_dictionary
         description: raw data load for Utah starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_va_demographic
-        description: raw data load for Virginia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_va_demographic_data_dictionary
-        description: raw data load for Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_va_uniform
         description: raw data load for Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_va_uniform_data_dictionary
@@ -907,10 +778,6 @@ sources:
         description: raw data load for Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_va_vote_history_data_dictionary
         description: raw data load for Virginia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_vt_demographic
-        description: raw data load for Vermont starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_vt_demographic_data_dictionary
-        description: raw data load for Vermont starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_vt_uniform
         description: raw data load for Vermont starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_vt_uniform_data_dictionary
@@ -919,10 +786,6 @@ sources:
         description: raw data load for Vermont starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_vt_vote_history_data_dictionary
         description: raw data load for Vermont starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wa_demographic
-        description: raw data load for Washington starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wa_demographic_data_dictionary
-        description: raw data load for Washington starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wa_uniform
         description: raw data load for Washington starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wa_uniform_data_dictionary
@@ -931,10 +794,6 @@ sources:
         description: raw data load for Washington starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wa_vote_history_data_dictionary
         description: raw data load for Washington starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wi_demographic
-        description: raw data load for Wisconsin starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wi_demographic_data_dictionary
-        description: raw data load for Wisconsin starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wi_uniform
         description: raw data load for Wisconsin starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wi_uniform_data_dictionary
@@ -943,10 +802,6 @@ sources:
         description: raw data load for Wisconsin starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wi_vote_history_data_dictionary
         description: raw data load for Wisconsin starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wv_demographic
-        description: raw data load for West Virginia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wv_demographic_data_dictionary
-        description: raw data load for West Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wv_uniform
         description: raw data load for West Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wv_uniform_data_dictionary
@@ -955,10 +810,6 @@ sources:
         description: raw data load for West Virginia starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wv_vote_history_data_dictionary
         description: raw data load for West Virginia starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wy_demographic
-        description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
-      - name: l2_s3_wy_demographic_data_dictionary
-        description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_uniform
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_uniform_data_dictionary
@@ -969,8 +820,8 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
   - name: dbt_source_haystaq
-    schema: "{{ var('l2_haystaq_databricks_schema', 'dbt_source') }}"
-    description: Raw Haystaq issue model tables loaded by dbt from S3 into Databricks
+    schema: dbt_source
+    description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
     tables:
       - name: l2_s3_al_haystaq_dna_flags
@@ -1178,42 +1029,96 @@ sources:
       - name: l2_s3_wy_haystaq_dna_scores
         description: raw data load for Wyoming Haystaq DNA scores
 
-
   - name: airflow_source
-    schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA') }}"
-    description: Raw data loaded by Airflow DAGs into Databricks
+    schema: airflow_source
+    description: Raw tables landed by the extract_ballotready DAG
+    config:
+      loaded_at_field: loaded_at
+      # These tables only gain rows when something changes upstream at BallotReady;
+      # a quiet day with zero new rows is normal, not a pipeline failure. Freshness
+      # here is a dead-pipeline backstop, not a daily heartbeat.
+      freshness:
+        warn_after: { count: 14, period: day }
+        error_after: { count: 30, period: day }
 
     tables:
-      - name: l2_expired_voters
-        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
-      - name: l2_expired_voters_loads
-        description: Load metadata for the l2_expired_voters DAG. One row per successful DAG run, written only after all batch inserts complete. Used by the DAG for idempotency checks.
-
+      - name: ballotready_candidacy_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG
+        columns: &ballotready_raw_columns
+          - name: requested_id
+            description: The BallotReady integer id this row was fetched for
+          - name: payload
+            description: Raw JSON of the returned node; null when the API returned no node
+      - name: ballotready_endorsement_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `endorsements` array on each Candidacy (there is no standalone Endorsement node)
+        columns: *ballotready_raw_columns
+      - name: ballotready_filing_period_raw
+        description: Raw CivicEngine GraphQL FilingPeriod nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_geofence_raw
+        description: Raw CivicEngine GraphQL Geofence nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_measure_raw
+        description: Raw CivicEngine GraphQL Measure nodes landed by the extract_ballotready DAG, listed whole (upcoming measures) each run rather than fetched by id
+        columns: *ballotready_raw_columns
+      - name: ballotready_issue_raw
+        description: Raw CivicEngine GraphQL Issue nodes landed by the extract_ballotready DAG
+        # issue has no cursor: the worklist is an anti-join of issue ids referenced
+        # by landed stances but not yet landed, so it can legitimately return zero
+        # rows for months once the issue universe is captured. No threshold fits.
+        config:
+          freshness: null
+        columns: *ballotready_raw_columns
+      - name: ballotready_normalized_position_raw
+        description: Raw CivicEngine GraphQL NormalizedPosition nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_party_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `parties` array on each Candidacy (there is no standalone Party node)
+        columns: *ballotready_raw_columns
+      - name: ballotready_person_raw
+        description: Raw CivicEngine GraphQL Person nodes landed by the extract_ballotready DAG, fetched by the Candidate id carried on each landed Candidacy
+        columns: *ballotready_raw_columns
+      - name: ballotready_position_election_frequency_raw
+        description: Raw CivicEngine GraphQL PositionElectionFrequency nodes landed by the extract_ballotready DAG
+        columns: *ballotready_raw_columns
+      - name: ballotready_stance_raw
+        description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
+        columns: *ballotready_raw_columns
 
   - name: model_predictions
     schema: model_predictions
     description: Raw data loaded from model predictions
     tables:
-      - name: candidacy_br_matches_20251204
-        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
-      - name: candidacy_br_matches_prenov2025_20251205
-        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250826
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20250909
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20250916
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251016
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251112
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
       - name: candidacy_ddhq_matches_20251202
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
-      - name: llm_l2_br_match_20260126
-        description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: manual_llm_election_results_20251208
-        description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
+        description: output of gemini string matching between DDHQ election results and candidacies
+      - name: llm_l2_br_match_results
+        description: >
+          One row per attempt and office, append-only. A populated district
+          means matched; an empty one means the attempt found nothing. The
+          matcher creates and writes this table; dbt only reads it.
+        columns:
+          # The schema of record now lives with the matcher, so the two columns
+          # nothing downstream can work without are pinned from this side.
+          - name: br_database_id
+            description: BallotReady office database id.
+            data_tests:
+              - not_null
+          - name: attempted_at
+            description: >
+              When the attempt was made, and the run key: one run stamps one
+              value across every row it writes.
+            data_tests:
+              - not_null
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd
@@ -1226,6 +1131,12 @@ sources:
         description: raw data load from voter turnout projections for 2027
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+      - name: web_verify_verdicts_20260813
+        description: >
+          Web verification of uncorroborated Win signups against official election sources,
+          as of 2026-08-13. Label evidence, not model input: every verdict was established
+          by looking up what happened at or after the election. The four waves are separate
+          sampling frames and must not be pooled into a rate.
 
   - name: segment_storage_source
     database: segment_storage
@@ -1585,18 +1496,18 @@ sources:
       - name: voter_outreach_campaign_completed
         description: Segment web app event - voter outreach campaign completed
 
-  - name: airbyte_internal
-    schema: airbyte_internal
+  - name: archives
+    schema: archives
     description: >
-      Airbyte internal raw data tables. These are insert-only tables that
-      contain every record Airbyte has ever extracted, preserving historical
-      snapshots even when source rows are updated or overwritten.
+      Point-in-time copies of tables that are no longer written, kept under a
+      dated name so the original can be dropped. No freshness check on purpose.
     tables:
-      - name: airbyte_source_raw__stream_gp_api_db_campaign
+      - name: airbyte_internal__airbyte_source_raw__stream_gp_api_db_campaign_20260918
         description: >
-          Insert-only raw stream for the gp_api_db campaign table. Contains
-          all historical snapshots including overwritten campaign data from
-          users who reused their campaign for a new election.
+          Archive of Airbyte's insert-only raw stream for the gp_api_db campaign
+          table, copied after the Databricks destination's Direct-Load upgrade
+          froze it. Holds every state Airbyte extracted until then, including
+          campaign versions the product later overwrote in place.
 
   - name: er_source
     schema: er_source
@@ -1615,6 +1526,21 @@ sources:
           records believed to represent the same real-world candidacy-stage. Clusters that
           span both sources form the BR↔TS crosswalk; single-record clusters indicate
           unmatched records.
+
+      - name: clustered_people
+        description: >
+          Person-level cluster assignments (threshold: 0.95 match probability).
+          One row per person record from BallotReady, gp_api, HubSpot or
+          TechSpeed. Published for audit only: canonical person identity is
+          resolved in int__civics_person_groups, which unions these edges with
+          the deterministic graph rather than adopting Splink's clustering.
+
+      - name: pairwise_people
+        description: >
+          Scored person pairs from Splink prediction (threshold: 0.01 match
+          probability), after the post-prediction filters. This, not the
+          clustered table, is what the person graph consumes, so that an edge
+          can be dropped on its own evidence before propagation.
 
       - name: pairwise_candidacy_stages
         description: >

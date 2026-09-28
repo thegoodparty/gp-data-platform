@@ -26,6 +26,11 @@ airflow/astro/
 
 Infrastructure for both deployments is managed in [gp-terraform-dataplatform](https://github.com/thegoodparty/gp-terraform-dataplatform).
 
+Worker queues are part of that infrastructure, declared per environment in `locals.tf`. A task that
+sets `queue=` to a queue no environment declares is never picked up: the executor fails it after a
+few minutes with no logs, no retry, and a zero duration. Add the queue to Terraform before merging
+the DAG that uses it, and add it to both environments so the DAG runs the same way in dev.
+
 ## Deployment
 
 Deployments are handled automatically via **Astronomer Git Deploys** (configured in Astro UI > Workspace Settings > Git Deploys). The `airflow/astro` subdirectory is the Astro Project Path.

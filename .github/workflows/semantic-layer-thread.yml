@@ -1,7 +1,7 @@
 name: semantic-layer-thread
 # DATA-2218: keep the #data-alignment governance thread in sync with the PR
 # lifecycle (anchor at open, approval/dismissal replies, closed/reopened).
-# The merge + Sigma replies stay in semantic-layer-publish.yml.
+# The merge reply stays in semantic-layer-publish.yml.
 #
 # pull_request_review does NOT support paths: filtering, so the cheap gate
 # step below checks the PR's changed files before installing anything. The
@@ -32,6 +32,12 @@ jobs:
       SLACK_CHANNEL_ID: C08K22X9ZNH
     steps:
       - name: Gate on governed files (cheap, before any setup)
+        # Deliberately NOT widened to the ratification sidecar (DATA-2249),
+        # unlike the publish and composition-check workflows. The anchor
+        # @-mentions both review groups, so threading a bookkeeping PR would
+        # move to Slack exactly the reviewer noise the sidecar removes from
+        # GitHub. A sidecar-only merge posts its summary top-level, which is
+        # the documented permanent fallback.
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,113 +1,53 @@
-{% macro slugify(column_name, keep_hyphens=true) %}
+{% macro slugify(column_name) %}
     {#-
-        Matches npm (slugify package)[https://www.npmjs.com/package/slugify] behavior with lower=true and defaults:
-        - replacement: '-'
-        - lower: true
-        - strict: false
-        - trim: true
+        Slugify one or more column/string expressions into a single lowercase,
+        hyphen-joined slug. Extra positional args are joined with '-'; empty or
+        null fields drop out, so there are no leading, trailing, or doubled
+        hyphens. Matches npm (slugify)[https://www.npmjs.com/package/slugify]
+        with lower=true, replacement='-', strict=false, trim=true.
 
-        Args:
-            column_name: The column or string expression to slugify
-            keep_hyphens: Boolean to keep existing hyphens (default: true)
+        transliterate=true romanizes non-ASCII before the strip ('josé' ->
+        'jose', 'محمد' -> 'mhmd'). single_segment=true turns '/' into '-' for a
+        one-segment slug ('n/a' -> 'n-a'). Both opt-in: they rewrite existing
+        slugs, and place/race slugs are path-shaped routing keys
+        ('ca/los-angeles/mayor') that int__geo_id_attributes re-slugifies.
+
+        Flags come from kwargs, not declared params, which would swallow the
+        second positional column. Transliteration precedes lower(): unidecode
+        marks some letters by case (H for ح against h for ه).
 
         Example:
             {{ slugify('title') }}
-            {{ slugify('title', keep_hyphens=false) }}
+            {{ slugify('first', 'last', "left(id, 8)", transliterate=true, single_segment=true) }}
     -#}
-    {% if keep_hyphens %}
-        trim(
-            both '-/'
-            from  -- trim leading/trailing hyphens and forward slashes
+    {%- set transliterate = kwargs.get("transliterate", false) -%}
+    {%- set single_segment = kwargs.get("single_segment", false) -%}
+    {%- set cols = [column_name] + (varargs | list) -%}
+    {%- set joined = "trim(concat_ws('-', " ~ (cols | join(", ")) ~ "))" -%}
+    {%- if transliterate -%}
+        {%- set joined = ref("transliterate_to_ascii") ~ "(" ~ joined ~ ")" -%}
+    {%- endif -%}
+    {#- After transliteration, which turns ½ into '1/2'. -#}
+    {%- if single_segment -%}
+        {%- set joined = "replace(" ~ joined ~ ", '/', '-')" -%}
+    {%- endif -%}
+    trim(
+        both '-/'
+        from  -- trim leading/trailing hyphens and forward slashes
+            regexp_replace(
                 regexp_replace(
                     regexp_replace(
                         regexp_replace(
-                            regexp_replace(
-                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
-                            ),
-                            '\\s+',
-                            '-'  -- replace spaces with single hyphen
+                            lower({{ joined }}), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
                         ),
-                        '-{2,}',
-                        '-'  -- collapse multiple hyphens
+                        '\\s+',
+                        '-'  -- replace spaces with single hyphen
                     ),
-                    '/{2,}',
-                    '-'  -- collapse multiple forward slashes (can use '/' instead)
-                )
-        )
-    {% else %}
-        trim(
-            both '-/'
-            from  -- trim leading/trailing hyphens and forward slashes
-                regexp_replace(
-                    regexp_replace(
-                        regexp_replace(
-                            regexp_replace(
-                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
-                            ),
-                            '\\s+',
-                            '-'  -- replace spaces with single hyphen
-                        ),
-                        '-{2,}',
-                        '-'  -- collapse multiple hyphens
-                    ),
-                    '/{2,}',
-                    '-'  -- collapse multiple forward slashes (can use '/' instead)
-                )
-        )
-    {% endif %}
-{% endmacro %}
-
-{% macro generate_candidate_slug(first_name_col, last_name_col, office_name_col=none) %}
-    {#-
-        Generates a candidate slug from first name, last name, and optional office name.
-        This macro creates slugified identifiers for candidates that can be used across models.
-
-        Args:
-            first_name_col: The first name column or expression
-            last_name_col: The last name column or expression
-            office_name_col: Optional office name column for additional context
-
-        Example:
-            {{ generate_candidate_slug('first_name', 'last_name') }}
-            {{ generate_candidate_slug('first_name', 'last_name', 'official_office_name') }}
-    -#}
-    {% if office_name_col %}
-        case
-            when {{ office_name_col }} is not null and {{ office_name_col }} != ''
-            then
-                concat(
-                    {{
-                        slugify(
-                            "concat(coalesce("
-                            + first_name_col
-                            + ", ''), '-', coalesce("
-                            + last_name_col
-                            + ", ''))"
-                        )
-                    }},
-                    '/',
-                    {{ slugify(office_name_col) }}
-                )
-            else
-                {{
-                    slugify(
-                        "concat(coalesce("
-                        + first_name_col
-                        + ", ''), '-', coalesce("
-                        + last_name_col
-                        + ", ''))"
-                    )
-                }}
-        end
-    {% else %}
-        {{
-            slugify(
-                "concat(coalesce("
-                + first_name_col
-                + ", ''), '-', coalesce("
-                + last_name_col
-                + ", ''))"
+                    '-{2,}',
+                    '-'  -- collapse multiple hyphens
+                ),
+                '/{2,}',
+                '-'  -- collapse multiple forward slashes
             )
-        }}
-    {% endif %}
+    )
 {% endmacro %}

@@ -523,6 +523,26 @@ models:
         data_tests:
           - not_null
 
+      - name: vendor_activity_at
+        description: >
+          Latest TechSpeed event time for the candidacy: the max across its stages of
+          the form's date_processed, taken only where it is not implausibly later than
+          the extract that carried it (a day of slack for clock skew, matching the
+          BallotReady leg). DAY
+          RESOLUTION ONLY -- the form captures a date, not a time, so values land at
+          midnight and consumers sorting on this will see ties within a day.
+          NULLABLE BY DESIGN: null means the form date is missing, unparseable, or
+          implausibly future, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted -- as a non-null value it would
+          outrank a correctly-dated sibling provider wherever consumers take the
+          greatest across providers, and because it advances with every delivery the
+          row would tick forward forever, sweeping the whole affected cohort back into
+          a recency window on each re-delivery. Parse failures are not rare: the staging rule
+          accepts slash-separated US dates but not hyphen-separated ones, which is a
+          known follow-up. Additive and destination-facing -- created_at/updated_at
+          stay extract stamps for the provider precedence chain, so consumers that
+          need real candidate activity (the sales export windows) read this instead.
+
     tests:
       - dbt_utils.expression_is_true:
           name: techspeed_candidacy_has_general_or_primary_date
@@ -686,7 +706,7 @@ models:
           Opponent count for the race (number_of_candidates - 1 from the
           TechSpeed source), stored as a string to match the BR/DDHQ/2025
           election models and the scorer's parsing. Null when the source count
-          is missing, non-numeric, or < 1. DATA-1938: previously hardcoded
+          is missing, non-numeric, or < 1. Previously hardcoded
           null, which forced solo-ingested TechSpeed candidacies onto the
           weaker viabilitynoopponentdata fallback in
           int__civics_viability_scoring.
@@ -709,7 +729,7 @@ models:
           - not_null
 
     data_tests:
-      # Well-formedness of the DATA-1938 opponent count: null or a non-negative
+      # Well-formedness of the opponent count: null or a non-negative
       # integer string (opponents = number_of_candidates - 1, so >= 0). Model
       # level rather than column level so the expression can reference the
       # column by name without the column-test macro prepending the column.
@@ -766,9 +786,9 @@ models:
           cluster, the mart's dedup keeps one and drops the other's natural
           keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               # Warn-severity: multi-TS-record Splink clusters keep one
               # ts_source_candidate_id in the mart row by design (cluster
@@ -1146,9 +1166,9 @@ models:
           candidate_ids into the same cluster, the mart's dedup keeps one
           and drops the other's natural keys. Investigate when count grows.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1166,9 +1186,9 @@ models:
           as source_candidate_id, paired with it as DDHQ's compound natural
           key. Same warn-vs-error thresholds for the same reason.
         data_tests:
-          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
-          # would let these thresholds tighten back to default).
-          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          # Threshold rationale tracked with the ER cluster-quality work
+          # (tightening these thresholds back to default is expected once
+          # that work lands).
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1211,12 +1231,9 @@ models:
 
   - name: int__ballotready_candidate_identity
     description: >
-      Canonical BallotReady candidate identity inputs, one deterministic row per
-      br_candidate_id. int__civics_candidate_ballotready and
-      int__civics_candidacy_ballotready both hash these columns for
-      gp_candidate_id, so a person resolves to the same id in both models
-      (previously they picked divergent per-row vs rolled-up contact values and
-      orphaned candidates whose email varied across candidacy rows).
+      Canonical BallotReady candidate name/contact/party per br_candidate_id: one
+      deterministic representative row, since S3 email/name/phone vary across a
+      person's candidacy rows. Feeds the person mart's display attributes only.
 
       Grain: One row per br_candidate_id.
     columns:
@@ -1360,6 +1377,24 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+      - name: vendor_activity_at
+        description: >
+          Latest BallotReady event time for the candidacy: the max across its stages
+          of the vendor's own candidacy_updated_at, or -- where that sits implausibly
+          later than the row's extract stamp -- the vendor's candidacy_created_at,
+          with a day of slack for ordinary clock skew between the vendor's clock and
+          ours. Both values are vendor-owned, so a re-delivery of an unchanged record
+          does not move them; anchoring to the extract stamp instead would drag the
+          value forward on every weekly full-file re-delivery and keep the row
+          perpetually fresh. NULLABLE BY DESIGN: null means this provider supplied no
+          usable event time, and consumers coalesce that to the canonical timestamps.
+          Extract time is deliberately NOT substituted here -- as a non-null value it
+          would outrank a correctly-dated sibling provider wherever consumers take
+          the greatest across providers. Additive and destination-facing:
+          created_at/updated_at stay extract stamps for the provider precedence
+          chain, so consumers that need real candidate activity (the sales export
+          windows) read this instead.
 
   - name: int__civics_elected_official_ballotready
     description: >
@@ -2058,7 +2093,8 @@ models:
         description: >
           Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
           DDHQ: candidate_id_race_id; GP API: campaign_id (one row per
-          latest-version campaign).
+          latest-version campaign). TS rows whose candidate code is null
+          (a blank component) are dropped, since they cannot be keyed.
         data_tests:
           - not_null
 
@@ -2118,14 +2154,16 @@ models:
       - name: office_level
         description: >
           Normalized office level matching BallotReady's 7-bucket PositionLevel
-          taxonomy (City/Local/County/Township/State/Regional/Federal). BR and
-          TS sources emit initcap(level) directly. The gp-api source prefers
-          initcap(br_position_level) when available (deterministic left-join
-          on ballotready_position_id to BR's position table; coverage is
-          near-100% since gp-api rows carry that FK natively). Otherwise
-          falls back to campaigns.election_level which collapses to a
-          4-bucket subset (Local/County/State/Federal — City/Town/Township
-          are not distinguishable at gp-api granularity). DDHQ emits a
+          taxonomy (City/Local/County/Township/State/Regional/Federal). BR
+          emits initcap(level) directly; TS trims and initcaps its raw value
+          and nulls anything outside the vocabulary, since delivery files
+          occasionally shift a date or race id into the level column. The
+          gp-api source prefers initcap(br_position_level) when available
+          (deterministic left-join on ballotready_position_id to BR's position
+          table; coverage is near-100% since gp-api rows carry that FK
+          natively). Otherwise falls back to campaigns.election_level which
+          collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity). DDHQ emits a
           3-value subset (Local/County/State) from race_name parsing. Null
           is permitted for sources that cannot resolve a level.
         data_tests:
@@ -2349,6 +2387,17 @@ models:
           Lowercased + trimmed race_name from each upstream model. Each
           source constructs race_name with a 2-letter state prefix, so the
           prefix is left intact for cross-source comparability.
+
+      - name: seat_name
+        description: >
+          Seat identifier for multi-seat bodies, where district_identifier is
+          NULL. Only BR carries a source column, and it misses the
+          "(surname seat)" naming, so the value is parsed out of
+          official_office_name for every source: "(surname seat)", "seat N",
+          "position N" / "office no. N", "group N", "place N", "division N".
+          Lowercased, and numbers are de-zero-padded so a parsed "01" matches
+          BR's "1". "at large" is not parsed: it marks the absence of a
+          district and identifies no particular seat.
 
       - name: ballotready_position_id
         description: >
@@ -2619,7 +2668,7 @@ models:
   - name: int__civics_position_office_type
     description: >
       One row per BallotReady position with the canonical office_type, derived
-      from the normalized position name (DATA-1972). Source of office_type for
+      from the normalized position name. Source of office_type for
       positioned candidacies in the civics marts.
     columns:
       - name: br_position_database_id
@@ -2671,7 +2720,9 @@ models:
   - name: int__civics_candidate_gp_api
     description: >
       Product Database (gp_api_db) users transformed into the civics mart
-      candidate schema. Grain: one row per user with campaign_count > 0.
+      candidate schema. Grain: one row per user with at least one candidacy in
+      int__civics_candidacy_gp_api. Users without one stay in the people mart
+      but get no candidate, candidacy, or candidacy_stage rows.
 
       gp_candidate_id is the person id from int__civics_person_canonical_ids
       (record_key gp_api|user_id), with a deterministic self-mint guard.
@@ -2744,7 +2795,9 @@ models:
     description: >
       Product Database campaigns transformed into the civics mart candidacy
       schema. Grain: one row per latest-version campaign with a non-null
-      election_date.
+      election_date that outside evidence backs: either a BallotReady,
+      TechSpeed, or DDHQ candidacy in the same entity-resolution cluster, or a
+      HubSpot contact with verified_candidate_status = 'Yes'.
 
       gp_candidate_id uses the user's derived state (most recent non-demo
       campaign), not the per-campaign state, so users with campaigns in
@@ -3383,6 +3436,87 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_internal_persons
+    description: >
+      Persons that must never reach a public-facing feed: GoodParty staff and
+      test accounts. One row per person, so a public mart can anti-join it and a
+      test can assert the same set is absent, from one definition.
+
+      Matched on the email domain, never the whole address: a substring match
+      on the address silently hard-excludes real candidates who put "goodparty"
+      in the local part. Matching the domain also covers every GoodParty
+      spelling without enumerating them, including the legacy thegoodparty.org
+      and typos. mailinator is a disposable-address service used for test
+      signups. The admin and sales roles additionally catch internal users who
+      signed up with a personal address; campaignManager is a product role held
+      by a candidate's own staff and is deliberately not internal.
+
+      Resolved through every gp_api member of the person group rather than the
+      scalar people.gp_api_user_id, which is null whenever a group holds more
+      than one account, so a staff member with two logins is still covered.
+
+      Demo campaigns are handled at their own grain, not here: a demo-only
+      account is not a candidate, so the is_demo filters on the gp_api candidacy
+      feeds keep it out of the role flags and out of any mart scoped to them.
+
+      Known tradeoff: the domain match also hides a staff member who genuinely
+      runs for office. Rare, and the Serve models accept the same tradeoff.
+    tests:
+      # A floor, because every other guard here passes vacuously on an empty
+      # relation: not_null and unique hold, and the mart's exclusion test is an
+      # inner join that finds no leaks because there is nothing to leak. A
+      # schema change upstream could empty this model and silently republish
+      # every internal account instead of failing.
+      - dbt_utils.expression_is_true:
+          name: internal_persons_not_silently_empty
+          arguments:
+            expression: "(select count(*) from {{ ref('int__civics_internal_persons') }}) >= 500"
+    columns:
+      - name: gp_person_id
+        description: Person excluded from public-facing feeds.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: int__civics_person_edges_probabilistic
+    description: >
+      Splink person-matcher edges, one row per undirected record-key pair at or
+      above a 0.95 match probability. Held apart from int__civics_person_edges
+      so the deterministic pregroups cannot read matcher output: the pregroup
+      model sits upstream of the matcher, so the separation is enforced by DAG
+      topology rather than by convention.
+
+      Pairs whose first names agree only through the nickname alias arrays, with
+      no shared email or phone, are dropped. That class was measured at six
+      false positives in fifty sampled pairs while every other class read clean,
+      and a wrong person merge is destructive once it reaches HubSpot.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: person_probabilistic_edges_are_ordered
+          arguments:
+            expression: "record_key_1 < record_key_2"
+    columns:
+      - name: record_key_1
+        description: Lexically smaller record key of the pair.
+        data_tests:
+          - not_null
+      - name: record_key_2
+        description: Lexically larger record key of the pair.
+        data_tests:
+          - not_null
+      - name: edge_type
+        description: Always `e10_splink_person`; named to sit alongside E1-E7.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["e10_splink_person"]
+      - name: match_probability
+        description: >
+          Highest Splink posterior among the prematch pairs that produced this
+          record-key pair. Audit only; propagation treats every edge alike.
+        data_tests:
+          - not_null
+
   - name: int__civics_person_groups
     description: >
       Person groups. One row per int__civics_person_nodes record_key with its
@@ -3425,6 +3559,140 @@ models:
           - not_null
       - name: had_conflict
         description: true when the group is touched by an E7 conflict edge.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_groups_deterministic
+    description: >
+      Deterministic-only person groups: the same min-label propagation as
+      int__civics_person_groups, but structurally restricted to the
+      deterministic edge model. This is the pregroup source for the Splink
+      person entity, so a published probabilistic person match can never feed
+      back into the next run's pregroups.
+    tests:
+      - dbt_utils.expression_is_true:
+          name: person_groups_deterministic_converged
+          arguments:
+            expression: "deterministic_group_key = pass_penultimate_key"
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: deterministic_group_key
+        description: >
+          Min record_key reachable over non-conflicting deterministic edges.
+        data_tests:
+          - not_null
+
+  - name: int__er_prematch_people
+    description: >
+      Entity resolution prematch for the person entity: HubSpot contacts,
+      gp_api users, BallotReady people, TechSpeed candidates (person grain via
+      the stage-stripped candidate code), and TechSpeed officeholders in one
+      standardized schema for Splink probabilistic matching. DDHQ has no person
+      id or contact fields and attaches via candidacy clusters; voter records
+      are out of scope.
+
+      Hygiene happens here so blocking cannot chain unrelated people. Records
+      that are not people are dropped: role inboxes and signup-form test
+      fixtures, identified by surname. Contact keys are then cleaned:
+      internal/test email domains and placeholder phones are nulled,
+      plus-addressing is stripped, phones must be 10 digits (or 11 with a
+      leading country code), and any contact key on more than 25 records
+      (institutional inboxes, switchboards) is nulled.
+    data_tests:
+      # Model level so the expression can name the column without the
+      # column-test macro prepending it. Guards the tokenizer silently
+      # emptying every array, which would cost blocking coverage with no
+      # other symptom. The ASCII class keeps the predicate free of regex
+      # escapes, which do not survive the yaml-to-Jinja-to-SQL round trip.
+      - dbt_utils.expression_is_true:
+          name: prematch_people_last_name_tokens_cover_the_surname
+          arguments:
+            expression: "size(last_name_tokens) > 0"
+          config:
+            where: "last_name rlike '[a-z][a-z]'"
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink: source_name || '|' || source_id. For
+          techspeed rows the source_id is the stage-stripped candidate code
+          (person grain), so unlike other sources it is not a person-graph
+          record key.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+      - name: first_name
+        description: Alpha-only normalized first name.
+        data_tests:
+          - not_null
+      - name: last_name
+        description: Lowercased surname with generational suffixes stripped.
+        data_tests:
+          - not_null
+      - name: last_name_tokens
+        description: >
+          Surname split on non-letter characters, single-character tokens
+          dropped. Splink blocks on an overlap in this array so a hyphenated
+          surname written as one part, or a middle name packed into the surname
+          field, still reaches the pair: blocking on the whole surname reaches
+          neither.
+      - name: suffix_token
+        description: >
+          Generational suffix ('' when none) from explicit source columns
+          where they exist (BR carries roman numerals up to XIV), else
+          extracted from the raw surname. Carried for audit, not as a
+          cannot-link: father and son share a family phone and differ only by
+          Jr/Sr, but of five hand-verified suffix-conflict pairs three were the
+          same person, so refusing the link would cost more than it buys.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              name: prematch_people_suffix_token_shape
+              arguments:
+                expression: "rlike '^(JR|SR|[IVX]*)$'"
+      - name: br_candidate_id
+        description: >
+          BallotReady person id, ballotready rows only. Carried so the matcher
+          can refuse to link two distinct BR people directly.
+      - name: first_seen_at
+        description: >
+          Source-native creation timestamp, same constructions as the person
+          mint. Feeds earliest-member id minting.
+        data_tests:
+          - not_null
+      - name: pregroup_id
+        description: >
+          Deterministic person group of the record (falls back to unique_id
+          for records not yet in the graph). Splink blocks on it to score those
+          pairs, but does not assert them. Canonical identity is settled
+          downstream in int__civics_person_groups, which unions these groups
+          with the Splink clusters.
         data_tests:
           - not_null
 
@@ -3562,7 +3830,7 @@ models:
   - name: int__serve_active_user
     description: >
       The single source of truth for the "active serve user" behavioral
-      definition (epic DATA-1359), one row per user. A user is an active serve
+      definition, one row per user. A user is an active serve
       user when they completed Serve onboarding by sending an SMS poll AND have
       pledged. This is the behavioral half of the People Served cohort; the office
       half (Serve-ICP) and the internal-email exclusion are applied at
@@ -3606,10 +3874,9 @@ models:
   - name: int__serve_district_resolution
     description: >
       Resolves each serve org to its L2 district: the serve-cohort entry point
-      onto the District/Census substrate (a downstream consumer; election-api
-      quarantined here, not in the substrate). Part of the Constituents Served
-      pipeline
-      (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
+      onto the district population allocation (a downstream consumer; election-api
+      quarantined here, not in the allocation). Part of the Constituents Served
+      pipeline. One row per serve org (organizations mart,
       organization_type = 'serve'), resolved to the L2 district the official
       serves: override-first through the org's election-api district record
       (coalesce(override_district_id, district_id), which bakes in the manual
@@ -3621,7 +3888,7 @@ models:
       is_statewide (reported separately downstream), and is_internal_email.
       Rows are never excluded here; pending cohort decisions are var-driven
       filters plus flags, and flagged rows flow through for downstream review.
-      Carries in_people_served_cohort (epic DATA-1359): the active People Served
+      Carries in_people_served_cohort: the active People Served
       cohort gate -- active serve user (int__serve_active_user) AND Serve-ICP
       office (int__icp_offices, a unique join) AND not internal email -- as a flag,
       never a row exclusion.
@@ -3789,7 +4056,7 @@ models:
 
   - name: int__district_census_allocation
     description: >
-      THE SUBSTRATE (DATA-1992, epic DATA-1359). One row per (census block,
+      THE DISTRICT POPULATION ALLOCATION. One row per (census block,
       district_type, normalized district_name) with the 2020 decennial
       population allocated to that district in that block: allocated_population
       = pct_of_geo * block_population, where pct_of_geo is the within-(block,
@@ -3817,7 +4084,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (the curated substrate subset)
+        description: L2 district column name (the curated allocated type set)
         data_tests:
           - not_null
       - name: district_name
@@ -3894,19 +4161,72 @@ models:
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
 
+  - name: int__district_population
+    description: >
+      The local-district rollup of the allocation: one row per
+      (state_postal_code, district_type, district_name), a pure GROUP BY over
+      int__district_census_allocation. Because the allocation conserves mass per
+      (block, district_type), district_population is the
+      block-population-weighted district total, and it is fractional by design.
+      Local (curated allocated) types only; statewide rows use a different
+      population basis (exact whole-state census including zero-voter blocks)
+      and live in district_census_stats, which unions this rollup with that
+      branch. Extracted out of that mart so district-grain consumers in the
+      intermediate layer can join population without an intermediate model
+      reading a mart. Read one district_type at a time: each type independently
+      tiles the country, so summing across types double-counts.
+    columns:
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: L2 district column name (the curated allocated type set)
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name
+        data_tests:
+          - not_null
+      - name: district_population
+        description: >
+          Census population allocated to the district (fractional by design;
+          round for display). Voter-block allocated, so it carries the
+          allocation's documented zero-voter-block undercount.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: n_census_blocks
+        description: Distinct census blocks contributing to the district
+        data_tests:
+          - not_null
+      - name: registered_voters
+        description: L2 registered voters in the district, summed over its blocks
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_population_unique_key
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
   - name: int__serve_block_coverage
     description: >
-      The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
+      The count-once engine. One row per (census block,
       served_set) with the count of DISTINCT cohort-served voters and the block's total
       voters; people_served reads it as count-once(set) = sum(served_voters /
       total_voters * block_population) over served blocks. Count-once is a
       distinct-PERSON union across overlapping district types, which the counts-only
-      substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
+      allocation cannot produce (cross-type voter dedup needs voter IDs), so this model
       scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
       TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
-      district types as the substrate (get_l2_major_district_columns), so count-once <=
+      district types as the allocation (get_l2_district_columns, scope='allocated'), so count-once <=
       count-multiple holds. served_set is 'all' (served by any cohort district) or one
-      of the substrate's L2 district types; statewide officials are read from the exact T5
+      of the allocation's L2 district types; statewide officials are read from the exact T5
       'State' rows in people_served, not here. served_voters_active is the same count
       restricted to the active cohort (in_people_served_cohort on the resolver); active
       <= all block-for-block.
@@ -3942,7 +4262,7 @@ models:
                 inclusive: true
       - name: total_voters
         description: >
-          Distinct voters in this block carrying >=1 of the substrate's district values
+          Distinct voters in this block carrying >=1 of the allocation's district values
           (the count-once denominator; ~= the block's total voters since County covers
           essentially all)
         data_tests:
@@ -3964,6 +4284,121 @@ models:
           name: serve_block_coverage_active_le_served
           arguments:
             expression: "served_voters_active <= served_voters"
+
+  - name: int__civics_viability_seats_fallback
+    description: >
+      BallotReady-derived seat counts keyed on the candidacy's
+      br_position_database_id, holding a row for every keyed candidacy that
+      passes the trust gates. int__civics_viability_scoring consumes it only
+      where the candidacy's civics election link cannot supply seats_available
+      (no election row, or an election row without seats), so most rows here are
+      shadowed by native election seats and never read. Fail-closed: curated
+      archive nullouts, office-type contradictions against the position
+      crosswalk, and same-date races that disagree on seats yield no row rather
+      than a guess. Grain: zero or one row per gp_candidacy_id.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_seats
+        description: >
+          Seat count for the candidacy's race. Positive by construction: a zero
+          here would manufacture a single-seat feature downstream instead of
+          blocking the score.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: seats_source
+        description: >
+          Which BallotReady source supplied the count — race_exact (a clean race
+          on the candidacy's general election date, same-cycle data) or position
+          (the position's standing office capacity, not a count for any one
+          cycle). Both tiers are consumed for multi_seat only.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - race_exact
+                  - position
+      - name: matched_br_race_id
+        description: >
+          BallotReady race database id evidencing a race_exact count: one race of
+          the seats-agreeing set for the candidacy's position and general
+          election date (the min database id where several agree), and null on
+          the position tier. Provenance evidence, not a roster-safe race link —
+          it is NOT verified against the race's candidacy membership, so the
+          candidacy need not appear on this race.
+    data_tests:
+      # Provenance well-formedness: a matched race id appears exactly when the
+      # count came from the race tier. Model level so the expression can name
+      # both columns without the column-test macro prepending one.
+      - dbt_utils.expression_is_true:
+          name: viability_seats_fallback_race_id_iff_race_tier
+          arguments:
+            expression: "(seats_source = 'race_exact') = (matched_br_race_id is not null)"
+
+  - name: int__civics_viability_opponents_fallback
+    description: >
+      Opponent-count inputs for the viability scorer, selected by roster
+      membership: the candidacy's own BR candidacy ids (via candidacy_stage)
+      found inside the candidacies array of exactly one clean BallotReady
+      race (latest race version). Unlike the seats fallback's
+      matched_br_race_id (a position+date min-pick, not roster-verified),
+      roster_br_race_id is a race the candidacy provably belongs to.
+      Fail-closed: multi-race membership, office-type contradictions against
+      the roster race's position, and rosters smaller than two members yield
+      no row. The scorer consumes the count and seats as a same-race-row pair
+      for log_n_losers where the native computation is missing, and the seats
+      as the last multi_seat coalesce arm. Grain: zero or one row per
+      gp_candidacy_id. Town Council and City Council are treated as one
+      compatible municipal category in that gate.
+    columns:
+      - name: gp_candidacy_id
+        description: Foreign key to the candidacy mart (zero or one row each).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: fallback_n_candidates
+        description: >
+          Member count of the roster (the candidacy itself included). At
+          least 2 by construction: a one-member roster is not evidence of an
+          uncontested race while BallotReady is still discovering the field.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2
+      - name: fallback_race_seats
+        description: >
+          Seat count of the same race row; pairs with fallback_n_candidates
+          so log_n_losers never mixes grains. Positive by construction via
+          the clean-race predicate.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: roster_br_race_id
+        description: >
+          The single clean race whose roster contains the candidacy.
+          Roster-verified provenance, safe to join for audits.
+        data_tests:
+          - not_null
 
   - name: int__civics_viability_scoring
     description: >
@@ -4018,7 +4453,120 @@ models:
           Resolved model_predictions registered version of scoring_model for this
           row. Latest-version load is a moving pointer, so this records the exact
           version that scored the row for traceability and a code-pin rollback target.
+      - name: log_n_losers_source
+        description: >
+          Which source computed log_n_losers for this row -- the native
+          per-election pair or the roster fallback's same-race pair. Internal
+          provenance; null when the feature is unavailable; not surfaced on
+          candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - roster
+      - name: multi_seat_source
+        description: >
+          Which seat source won the multi_seat coalesce -- native election
+          seats, the position+date seats fallback, or the roster fallback's
+          race seats. Internal provenance; not surfaced on candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - native
+                  - seats_fallback
+                  - roster
       - name: updated_at
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
           - not_null
+  - name: int__civics_campaign_versions
+    description: >
+      One row per campaign version. The product database overwrites a campaign
+      in place when a user reuses it for a new election; a version is a distinct
+      combination of campaign id and election context (election date, position,
+      office, state).
+
+      History is the frozen Airbyte raw stream, which recorded every overwrite
+      until the Databricks destination's Direct-Load upgrade stopped writing raw
+      tables. Current state comes from the live campaign table, so the latest
+      version is always fresh. Versions overwritten after the upgrade are not
+      recorded; recording them is a known follow-up.
+    columns:
+      - name: campaign_version_id
+        description: >
+          Surrogate key for a campaign version, from the campaign id and the
+          election context fields (election date, position, office, state).
+          Changing those fields re-mints every id downstream.
+        data_tests:
+          - unique
+          - not_null
+      - name: id
+        description: Campaign id from the product database. Repeats across versions.
+        data_tests:
+          - not_null
+
+  - name: int__civics_campaign_incumbency
+    description: >
+      Office-first incumbency for product campaigns: on election day, does this
+      signup already hold the seat they are running for?
+
+      Grain: one row per latest-version, non-demo campaign that has a
+      BallotReady position and an election date.
+
+      Exists because candidacy.is_incumbent only covers campaigns that clear the
+      candidacy mart's vendor-corroboration gate, which is 27% of 2026 Win
+      campaigns. Anchoring on the campaign's own ballotready_position_id reaches
+      88%, and asks nothing of third-party confirmation that the person is on a
+      ballot. Semantics are identical to candidacy.is_incumbent so the two can
+      be coalesced.
+    columns:
+      - name: campaign_id
+        description: Campaign id from the product database. One row per campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: >
+          The campaign's own election date, carried so consumers can join
+          version-aware and a version cannot inherit another cycle's answer.
+        data_tests:
+          - not_null
+      - name: is_incumbent
+        description: >
+          Three-valued, matching candidacy.is_incumbent. TRUE when a term
+          covering election day on this seat belongs to this person, matched on
+          canonical person id or first plus last name. FALSE when a covering
+          term exists but is held by someone else or is vacant. NULL when no
+          term covers election day, which is unknown rather than challenger.
+
+          Either leg can establish TRUE, combined with greatest() rather than
+          coalesce() so that an exact-position FALSE cannot mask a genuine
+          holder found under an earlier cycle's position id.
+
+          Incumbent counts are a floor: the BallotReady office-holder method
+          runs near 100% precision and roughly 80% recall, so misses land in the
+          FALSE bucket, never the reverse.
+      - name: n_covering_terms
+        description: >
+          How many office-holder terms covered election day on the matched seat,
+          for whichever leg produced is_incumbent. A precision diagnostic for
+          the bare-name match arm: the higher this is, the more holders a shared
+          name could collide with.
+      - name: seat_key_source
+        description: >
+          Which leg produced is_incumbent. 'br_position_id' is the campaign's
+          exact declared position, and it decides on its own wherever it finds a
+          covering term. 'normalized_position' is the recovery leg for seats
+          whose holder was elected under a different, cycle-specific position id.
+
+          Because the normalized key spans every seat of that type in the geo,
+          the recovery leg can only assert TRUE when the two position names
+          match; without that guard it flags candidates running for a different
+          ward, post or seat of the same body. NULL when no term covered
+          election day.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_position_id", "normalized_position"]

@@ -1,7 +1,7 @@
 -- Resolves each serve org to its L2 district (override-first via election-api,
--- LLM crosswalk fallback). The serve-cohort entry point onto the District/Census
--- substrate: a downstream consumer, so the election-api dependency is quarantined
--- here and never pulls into the substrate build.
+-- LLM crosswalk fallback). The serve-cohort entry point onto the district
+-- population allocation: a downstream consumer, so the election-api dependency is
+-- quarantined here and never pulls into the allocation build.
 --
 -- One row per serve org (organizations mart, organization_type = 'serve'):
 -- downstream models join the resolved (state, l2_district_type,
@@ -30,7 +30,7 @@ with
 
     crosswalk as (
         select *
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
         where is_matched
     ),
 
@@ -66,7 +66,7 @@ with
             -- override-only orgs have no position, hence a null
             -- position_state: the district row is the authoritative state
             -- source on both paths
-            coalesce(d.state, x.state) as state,
+            coalesce(d.state, x.l2_state) as state,
             coalesce(d.l2_district_type, x.l2_district_type) as l2_district_type,
             coalesce(d.l2_district_name, x.l2_district_name) as l2_district_name,
             -- combined searchable office title for the deterministic flag

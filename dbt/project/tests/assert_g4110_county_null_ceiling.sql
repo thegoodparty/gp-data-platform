@@ -1,5 +1,5 @@
 -- dbt/project/tests/assert_g4110_county_null_ceiling.sql
--- DATA-1950: G4110 places with no resolvable county should stay near the measured 247.
+-- G4110 places with no resolvable county should stay near the measured 247.
 select count(*) as g4110_null_county
 from {{ ref("int__place_fast_facts") }} as f
 join

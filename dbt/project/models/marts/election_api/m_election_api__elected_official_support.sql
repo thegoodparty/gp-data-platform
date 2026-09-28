@@ -160,10 +160,13 @@ with
             {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
         left join terms_votes as tv on tv.elected_office_id = eo.id
         left join gp_only_votes as gv on gv.elected_office_id = eo.id
-        left join per_position as pp on pp.br_position_id = pos.br_database_id
+        -- casts back to numeric: the election-api mart publishes br_database_id
+        -- as string
+        left join
+            per_position as pp on pp.br_position_id = cast(pos.br_database_id as bigint)
         left join
             {{ ref("positions") }} as pos_l2
-            on pos_l2.br_position_database_id = pos.br_database_id
+            on pos_l2.br_position_database_id = cast(pos.br_database_id as bigint)
         where
             coalesce(tv.votes_received, gv.votes_received, pp.votes_received) > 0
             and pos_l2.icp_voter_count > 0

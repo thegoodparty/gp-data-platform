@@ -1,13 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="id",
-        on_schema_change="append_new_columns",
-        auto_liquid_cluster=true,
-    )
-}}
-
 with
     place_ids_in_races as (
         select distinct place_id from {{ ref("int__enhanced_race") }}
@@ -27,10 +17,6 @@ with
         from {{ ref("int__enhanced_place_w_parent") }} as tbl_parent
         where tbl_parent.id in (select grandparent_id from grandparent_ids)
     ),
-    -- The full place universe, deliberately not incremental-sliced: slug
-    -- ownership below is a global property of the universe, so it must be
-    -- recomputed over all rows every run. The incremental filter is applied
-    -- to the outcome instead (see the final select).
     enriched_place_and_lineage as (
         select
             tbl_place.id,
@@ -105,19 +91,7 @@ with
 select
     tbl_place.id,
     tbl_place.created_at,
-    -- Bump updated_at when a row is new to the mart or its slug changed, so
-    -- the election-api write model's incremental filter (updated_at greater
-    -- than the postgres max) actually publishes it: recovered collision
-    -- losers and re-slugged rows keep a source updated_at that predates the
-    -- watermark and would otherwise never land.
-    {% if is_incremental() %}
-        case
-            when tbl_prev.id is null or tbl_place.slug <> tbl_prev.slug
-            then current_timestamp()
-            else tbl_place.updated_at
-        end as updated_at,
-    {% else %} tbl_place.updated_at,
-    {% endif %}
+    tbl_place.updated_at,
     tbl_place.br_database_id,
     tbl_place.name,
     tbl_place.slug,
@@ -131,23 +105,5 @@ select
     tbl_place.income_household_median,
     tbl_place.unemployment_rate,
     tbl_place.home_value,
-    tbl_place.parent_id,
-    -- The un-bumped source timestamp, kept separate so the incremental
-    -- watermark below stays in the source-time domain: bumped updated_at
-    -- values are wall-clock (ahead of BallotReady's event-time stamps by
-    -- days), and gating on them would silently skip later source updates
-    -- whose stamps land inside that gap. Not published: the election-api
-    -- writer's Place upsert selects its columns explicitly.
-    tbl_place.updated_at as source_updated_at
+    tbl_place.parent_id
 from slug_disambiguated as tbl_place
-{% if is_incremental() %}
-    left join {{ this }} as tbl_prev on tbl_place.id = tbl_prev.id
-    where
-        tbl_prev.id is null
-        or tbl_place.slug <> tbl_prev.slug
-        -- Per-row coalesce: rows written before source_updated_at existed
-        -- carry their (never-bumped) updated_at; bumped rows contribute
-        -- their source stamp, not the wall-clock bump.
-        or tbl_place.updated_at
-        > (select max(coalesce(source_updated_at, updated_at)) from {{ this }})
-{% endif %}

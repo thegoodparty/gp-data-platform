@@ -4,7 +4,7 @@
 -- total population (including Puerto Rico) are exact, stable targets, so a
 -- fixed-count test is appropriate here, and only here; do not copy this
 -- pattern to refreshing sources. Validated against official 2020 census
--- tallies (DATA-1359 TDD, appendix D.1).
+-- tallies.
 with
     totals as (
         select count(*) as total_blocks, sum(population) as total_population

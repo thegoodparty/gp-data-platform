@@ -1,6 +1,6 @@
 -- people_served: the People Served metrics, one row per (cohort, metric_variant,
 -- office_type). count-once is the distinct-person union from int__serve_block_coverage;
--- count-multiple variants are pure sums off the substrate via district_census_stats.
+-- count-multiple variants are pure sums off the allocation via district_census_stats.
 -- Invariant (by construction):
 -- count-once <= count_multiple_per_district <= per_seat <= per_org.
 --

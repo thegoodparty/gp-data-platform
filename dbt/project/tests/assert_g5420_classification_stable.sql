@@ -1,4 +1,4 @@
--- DATA-1950 (G5420): every staging G5420 place appears in the model exactly once
+-- (G5420): every staging G5420 place appears in the model exactly once
 -- (anti-join per database_id so a missing row cannot be masked by a duplicate).
 with
     staging_g5420 as (

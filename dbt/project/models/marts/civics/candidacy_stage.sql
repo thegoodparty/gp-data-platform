@@ -88,8 +88,10 @@ with
         where c.br_candidacy_id is not null
     ),
 
-    -- Stage-stripped TS code -> person. E7 collapses a vendor person's
-    -- primary/general split, so a code maps to one person (min guards residue).
+    -- Stage-stripped TS code -> person, only where the code resolves to exactly
+    -- one. E7 normally collapses a vendor person's primary/general split, but a
+    -- mis-clustered stage record can split a code across two people; dropping
+    -- the ambiguous code lets the row fall back to its own BR / gp_api / DDHQ key.
     ts_code_person as (
         select
             {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
@@ -98,6 +100,7 @@ with
         from person_ids
         where record_key like 'techspeed|%'
         group by 1
+        having count(distinct gp_person_id) = 1
     ),
 
     -- gp_api campaign -> user -> person.

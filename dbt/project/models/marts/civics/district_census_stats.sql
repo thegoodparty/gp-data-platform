@@ -1,9 +1,11 @@
 -- Civics mart district_census_stats: the universal district population reference.
 -- One row per district -- (state_postal_code, district_type,
--- district_name) -- for every district of the substrate's curated office-bearing types
+-- district_name) -- for every district of the allocation's curated office-bearing types
 -- nationwide, PLUS one clearly-flagged statewide row per state (50 + DC).
 --
--- Rolls up int__district_census_allocation (THE SUBSTRATE). The substrate already
+-- Local rows come from int__district_population, the rollup of
+-- int__district_census_allocation (THE DISTRICT POPULATION ALLOCATION). The
+-- allocation already
 -- conserves mass (allocations sum to block population per (block, type)), so
 -- district_population = sum(allocated_population) is the block-population-weighted
 -- district total. It is FRACTIONAL by design (exact mass conservation; round for
@@ -19,7 +21,7 @@
 -- census -- a genuinely statewide official represents the whole state.
 -- Reproduces the official 2020 frame to the person.
 -- Consumers wanting only local districts filter WHERE district_type <> 'State'
--- (people_served excludes statewide from the North Star; the substrate-binding
+-- (people_served excludes statewide from the North Star; the allocation-binding
 -- test is likewise scoped to non-statewide rows).
 --
 -- This table is read ONE district_type at a time: summing district_population
@@ -30,28 +32,16 @@
 -- v1 = population columns only. ACS demographics + the validated (block-group)
 -- non-exact-assignment share land in the demographic layer (phase 2).
 with
-    substrate as (select * from {{ ref("int__district_census_allocation") }}),
+    allocation as (select * from {{ ref("int__district_census_allocation") }}),
 
-    -- the local (substrate-type) districts: a pure rollup of the substrate.
-    -- Exact-binds to
-    -- the substrate (assert_district_census_stats_binds_substrate).
-    local_districts as (
-        select
-            state_postal_code,
-            district_type,
-            district_name,
-            cast(sum(allocated_population) as double) as district_population,
-            -- count(distinct): unambiguously "distinct census blocks". The
-            -- substrate's tested (block, type, name) key makes this == count(*),
-            -- but distinct is self-documenting.
-            count(distinct block_geoid) as n_census_blocks,
-            sum(voters_in_block_district) as registered_voters
-        from substrate
-        group by state_postal_code, district_type, district_name
-    ),
+    -- the local (allocated-type) districts: a pure rollup of the allocation, which
+    -- lives in int__district_population so district-grain consumers in the
+    -- intermediate layer can join population without reading a mart. Exact-binds
+    -- to the allocation (assert_district_census_stats_binds_allocation).
+    local_districts as (select * from {{ ref("int__district_population") }}),
 
     -- statewide population: EXACT whole-state 2020 census total via the SAME
-    -- geoid-FIPS -> fips_codes derivation the substrate uses for state_postal_code,
+    -- geoid-FIPS -> fips_codes derivation the allocation uses for state_postal_code,
     -- so the postal-code domain matches the local rows exactly. The inner join to
     -- the (50 + DC) fips_codes state seed excludes Puerto Rico (no L2 coverage)
     -- and every territory.
@@ -69,7 +59,7 @@ with
     ),
 
     -- state registered-voter total: per block take the max voter count across the
-    -- substrate types, then sum per state. Verified to equal the universal-County voter
+    -- allocated types, then sum per state. Verified to equal the universal-County voter
     -- total to the voter (County covers every voter block), so this is the state's
     -- L2 voter count, robust for DC / independent cities that lack a County row.
     statewide_voters as (
@@ -78,7 +68,7 @@ with
             (
                 select
                     state_postal_code, block_geoid, max(voters_in_block) as block_voters
-                from substrate
+                from allocation
                 group by state_postal_code, block_geoid
             )
         group by state_postal_code

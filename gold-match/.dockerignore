@@ -1,0 +1,6 @@
+.venv
+**/__pycache__
+**/tests
+logs
+.env*
+conftest.py

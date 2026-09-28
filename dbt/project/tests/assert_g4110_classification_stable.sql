@@ -1,5 +1,5 @@
 -- dbt/project/tests/assert_g4110_classification_stable.sql
--- DATA-1950: every staging G4110 place must appear EXACTLY ONCE in the model.
+-- Every staging G4110 place must appear EXACTLY ONCE in the model.
 -- Uses an anti-join + per-id count rather than comparing aggregate totals, so a
 -- missing G4110 row cannot be masked by a duplicate elsewhere (a count-only test
 -- can stay green when one row is dropped and another duplicated). Returns a row

@@ -60,6 +60,10 @@ class PRContext:
     merged: bool
     # (name, one-line definition) per changed metric; definition may be "".
     metrics: tuple[tuple[str, str], ...] = ()
+    # Review lanes the diff needs, from the lane classifier. Empty means it could
+    # not be computed (no base tree), and the anchor then names both groups —
+    # the pre-routing behavior, and the safe direction to fail in.
+    lanes: tuple[str, ...] = ()
 
 
 @dataclass
@@ -70,14 +74,21 @@ class Plan:
 
 
 def render_anchor(ctx: PRContext, mention_by_team: dict[str, str]) -> str:
-    # One bullet per metric with its one-line definition, matching the merge
-    # message's "name — definition" copy so the thread reads consistently.
+    # Names only, no definition text: definitions run long and made the anchor
+    # hard to scan. Reviewers read the wording in the PR diff. Matches the merge
+    # message, which also names metrics without quoting them.
     if ctx.metrics:
-        metric_lines = [f"• `{n}` — {d}" if d else f"• `{n}`" for n, d in ctx.metrics]
+        metric_lines = [f"• `{n}`" for n, _ in ctx.metrics]
         metrics_block = "Metrics:\n" + "\n".join(metric_lines)
     else:
         metrics_block = "Metrics: (see PR diff)"
-    reviewers = " · ".join(f"{team} {mention_by_team.get(team, '')}".strip() for team in ("data", "business"))
+    # Only the lanes the change actually needs. The anchor is the second place
+    # both groups used to be pulled onto a typo fix, and a ping you have no say
+    # over teaches you to ignore the next one.
+    needed = ctx.lanes or ("data", "business")
+    reviewers = " · ".join(
+        f"{team} {mention_by_team.get(team, '')}".strip() for team in ("data", "business") if team in needed
+    )
     return "\n".join(
         [
             f":scroll: Governed metric PR ready for review: *{ctx.title}*",
@@ -152,6 +163,7 @@ import os  # noqa: E402
 import sys  # noqa: E402
 import urllib.request  # noqa: E402
 
+from semantic_catalog import lanes as lanes_mod  # noqa: E402
 from semantic_catalog import mentions as mentions_mod  # noqa: E402
 from semantic_catalog import pr_marker, slack_diff, slack_reply  # noqa: E402
 from semantic_catalog.github_client import GitHubClient  # noqa: E402
@@ -159,6 +171,7 @@ from semantic_catalog.parser import parse_semantic_tree  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DBT_MODELS = REPO_ROOT / "dbt" / "project" / "models"
+RATIFICATIONS_RELPATH = Path("analytics/diagnostics/semantic_catalog/config/ratifications.yml")
 PKG = Path(__file__).parent
 TEAM_SLUG = {"data": "semantic-layer-data", "business": "semantic-layer-business"}
 
@@ -185,7 +198,16 @@ def _changed_metrics(
     narrow by, so the fallback below would otherwise name the whole catalog.
     """
     after = parse_semantic_tree([DBT_MODELS])
-    before = parse_semantic_tree([base_dir / "dbt/project/models"]) if base_dir else []
+    # The before side reads the base tree's OWN sidecar; see cli._before_after.
+    before = (
+        parse_semantic_tree(
+            [base_dir / "dbt/project/models"],
+            ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+            legacy_ratified=True,
+        )
+        if base_dir
+        else []
+    )
     definitions = {r.name: r.definition for r in before}
     definitions.update({r.name: r.definition for r in after})
 
@@ -197,6 +219,21 @@ def _changed_metrics(
         owned = {r.name for r in (*before, *after) if Path(r.yaml_file).name in scope}
         names = [n for n in names if n in owned]
     return tuple((n, definitions.get(n, "")) for n in names)
+
+
+def _lanes(base_dir: Path | None) -> tuple[str, ...]:
+    """Review lanes this PR needs, or () when there is no base tree to diff."""
+    if base_dir is None:
+        return ()
+    before = parse_semantic_tree(
+        [base_dir / "dbt/project/models"],
+        ratifications_path=base_dir / RATIFICATIONS_RELPATH,
+        legacy_ratified=True,
+    )
+    if not before:
+        return ()
+    classified = lanes_mod.classify(before, parse_semantic_tree([DBT_MODELS]))
+    return tuple(lane for lane in ("data", "business") if classified[lane])
 
 
 # ts as rendered by pr_marker: a bare "<seconds>.<fraction>" Slack timestamp.
@@ -323,6 +360,7 @@ def _cmd_reconcile(event_path: Path, base_dir: Path | None) -> int:
         # merged PR doesn't misread it as merged=False.
         merged=bool(pr.get("merged") or pr.get("merged_at")),
         metrics=(_changed_metrics(base_dir, governed_sem_files(pr_files)) if state is None else ()),
+        lanes=(_lanes(base_dir) if state is None else ()),
     )
     teams = mentions_mod.load(PKG / "config" / "slack_mentions.yml")
     mention_by_team = {t: mentions_mod.render_team(teams.get(t)) for t in ("data", "business")}

@@ -18,6 +18,7 @@ import pandas as pd
 from scripts.databricks_io import is_databricks_fqn, read_table, write_table
 from scripts.entity_config import ENTITY_TYPES, EntityConfig, get_config
 from scripts.pipeline import run
+from scripts.serialization import json_fallback
 
 _PROJECT_DIR = Path(__file__).resolve().parent.parent
 _DEFAULT_RESULTS = _PROJECT_DIR / "results"
@@ -34,9 +35,9 @@ _ENTITY_TYPE_OPTION = click.option(
 def _serialize_array_value(v):
     """Convert array/ndarray cell to a JSON string, passing through nulls."""
     if isinstance(v, np.ndarray):
-        return json.dumps(v.tolist())
+        return json.dumps(v.tolist(), default=json_fallback)
     if isinstance(v, list):
-        return json.dumps(v)
+        return json.dumps(v, default=json_fallback)
     return v
 
 
@@ -164,7 +165,7 @@ def match(
         from scripts.audit_summary import run_summary
 
         for label, fn, args in [
-            ("summary", run_summary, (input_df, pairwise_df, clustered_df, output_dir)),
+            ("summary", run_summary, (input_df, pairwise_df, clustered_df, output_dir, config)),
             ("low-confidence", run_low_confidence, (pairwise_df, output_dir, config)),
             (
                 "false-negatives",
@@ -208,7 +209,7 @@ def audit_summary(entity_type: str, results_dir: Path | None) -> None:
     config = get_config(entity_type)
     results_dir = _resolve_results_dir(results_dir, config)
     input_df, pairwise_df, clustered_df = _load_results(results_dir, config)
-    run_summary(input_df, pairwise_df, clustered_df, results_dir)
+    run_summary(input_df, pairwise_df, clustered_df, results_dir, config)
 
 
 @audit.command("low-confidence")

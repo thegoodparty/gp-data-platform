@@ -1,4 +1,4 @@
--- DATA-1950 (G5420): pins the suffix-strip contract so an edit that mangles place
+-- (G5420): pins the suffix-strip contract so an edit that mangles place
 -- names (e.g.
 -- eats interior "Union", or breaks coded "X County R-V") fails loudly. MUST mirror
 -- the model's

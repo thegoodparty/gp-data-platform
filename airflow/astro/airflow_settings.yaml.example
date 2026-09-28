@@ -40,3 +40,11 @@ airflow:
     # this Variable defaults to "gp_bastion_host".
     - variable_name: election_api_bastion_conn_id
       variable_value: ""
+
+    # extract_ballotready. databricks_conn_id and databricks_catalog above are shared with it.
+    - variable_name: civicengine_api_token
+      variable_value: <CivicEngine GraphQL bearer token>
+    - variable_name: databricks_dbt_schema
+      variable_value: <schema holding the stg_airbyte_source__ballotready_* dbt models>
+    - variable_name: databricks_source_schema
+      variable_value: <schema the ballotready_*_raw landing tables are written to>

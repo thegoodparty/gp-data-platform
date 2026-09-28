@@ -1,0 +1,24 @@
+select
+    bio_text,
+    candidacies,
+    contacts,
+    created_at,
+    database_id,
+    degrees,
+    experiences,
+    first_name,
+    full_name,
+    id,
+    images,
+    last_name,
+    middle_name,
+    nickname,
+    office_holders,
+    slug,
+    suffix,
+    updated_at,
+    urls,
+    feed_extracted_at
+from {{ ref("stg_airflow_source__ballotready_person_raw") }}
+-- Staging is an incremental merge that keeps already-materialized rows; this rebuilds.
+where {{ dsar_not_suppressed("database_id", "br_person_id") }}

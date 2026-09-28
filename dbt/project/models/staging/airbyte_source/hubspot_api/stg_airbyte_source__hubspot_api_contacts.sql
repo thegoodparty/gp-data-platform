@@ -16,3 +16,12 @@ select
         }} as {{ prop.column_name }}
     {%- endfor %}
 from {{ source("airbyte_source", "hubspot_api_contacts") }}
+where
+    {{
+        dsar_first_party_not_suppressed(
+            "id",
+            "hs_contact_id",
+            "get_json_object(properties, '$.email')",
+            "get_json_object(properties, '$.phone')",
+        )
+    }}

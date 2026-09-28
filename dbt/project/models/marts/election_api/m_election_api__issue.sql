@@ -1,13 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
-
 with
     new_issues as (
         select
@@ -21,9 +11,6 @@ with
             tbl_new_issue.name
         -- tbl_all_issues.parent_id
         from {{ ref("int__ballotready_issue") }} as tbl_new_issue
-        {% if is_incremental() %}
-            where tbl_new_issue.updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
     )
 
 select

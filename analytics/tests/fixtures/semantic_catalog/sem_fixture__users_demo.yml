@@ -32,7 +32,6 @@ metrics:
     config:
       meta:
         owner: semantic-layer-business
-        ratified: '2026-07-24'
         detail_doc: engagement.md
   - name: demo_users
     label: Demo Users
@@ -53,6 +52,5 @@ exposures:
     config:
       meta:
         owner: semantic-layer-business
-        ratified: '2026-07-20'
         detail_doc: engagement.md
         definition: Share of activated users returning in week one.

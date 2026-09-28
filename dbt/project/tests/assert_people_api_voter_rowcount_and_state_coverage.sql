@@ -1,4 +1,4 @@
--- DATA-1906 pre-unload gate: the people-api voter mart must have a plausible total
+-- Pre-unload gate: the people-api voter mart must have a plausible total
 -- row count
 -- and cover every state the loader unloads (50 states + DC). Returns one row per
 -- violation,

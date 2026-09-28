@@ -2,19 +2,25 @@
 
 Short, non-obvious context for `gp-data-platform`. The repo overview is in `README.md`; dbt-specific guidance is in `dbt/project/CLAUDE.md`.
 
-## Multi-venv reality
+## General instructions
+- Use terse comments that explain "why" not "what", and only when it's not obvious. Most comments should be a sentence or two at most
+- Don't use the following phrases:
+  - load-bearing
+  - seam
+  - substrate
 
-There is no single root venv. Each subproject manages its own deps. `cd` into the right one before you install or run anything.
+## Subproject
+
+Each subproject manages its own deps. `cd` into the right one before you install or run anything.
 
 | Subproject | Tool | Python | Notes |
 |---|---|---|---|
-| `people-api-loader/` | uv | 3.14 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
 | `dbt/` | uv | 3.14 | `cd dbt && uv sync`, `uv run ...`. `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via uv. |
 | `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
-| `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
-| `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
+| `gold-match/` | uv | 3.14 | L2-to-BallotReady district matcher, moved from omni @ `766137e50` and owned here — edit via normal PRs. `cd gold-match && uv sync`, `uv run pytest`. `bedrock_clients/` is the live model stack; the two Gemini modules in `shared/` are dormant until the evaluation gate passes, and `shared/` stays excluded from ruff (omni's inherited lint debt). |
+| `reverse-etl/` | uv | 3.14 | Daily diff of a Databricks desired-state model against a destination (HubSpot contacts, CSV), keyed on a stable person id. `cd reverse-etl && uv sync`, `uv run ...`. Console script `retl`. Imports no Airflow code; the DAG passes credentials through the environment. |
 
 Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
@@ -32,7 +38,7 @@ When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or
 
 ## pre-commit
 
-Two layers, both driven by `pre-commit`:
+Driven by `pre-commit`:
 
 - **Repo-wide lint/format** (ruff, ruff-format, sqlfmt, and the generic hooks) run on the default `pre-commit` stage and in CI (`pre-commit run --all-files` on every PR). A failing hook blocks the merge.
 - **Per-directory tests** run on the `pre-push` stage only. Each directory has a `pytest-<dir>` hook gated by `files:`, so a push runs only the suites for the directories it touched, in that directory's own environment. These are local only: the `pre-push` stage keeps them out of the CI `pre-commit run --all-files` job, and CI test coverage is each directory's own workflow.
@@ -46,7 +52,7 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `dbt/`, `airflow/`, `analytics/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
 ## Never
 

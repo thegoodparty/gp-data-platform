@@ -1,4 +1,4 @@
--- Regression guard on the TechSpeed opponent count (DATA-1938).
+-- Regression guard on the TechSpeed opponent count.
 -- int__civics_election_techspeed must CARRY the opponent count derived from
 -- the TechSpeed source (number_candidates - 1), not hardcode number_of_opponents
 -- to null. The hardcoded null starved int__civics_viability_scoring of the

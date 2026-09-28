@@ -1,4 +1,4 @@
--- DATA-1950 (G5420): fails if a known school district gets the wrong county, OR an
+-- (G5420): fails if a known school district gets the wrong county, OR an
 -- anchor row
 -- is dropped from the model. Ground truth independent of the suffix-strip match.
 -- geo_id-keyed.

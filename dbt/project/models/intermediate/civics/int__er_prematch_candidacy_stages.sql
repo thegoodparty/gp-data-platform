@@ -147,6 +147,11 @@ with
         where
             year(coalesce(primary_election_date_parsed, general_election_date_parsed))
             between 1900 and 2050
+            -- generate_candidate_code returns null when any component is blank
+            -- (a handful of TS rows carry no normalized_location). A null code
+            -- makes source_id null and puts every such row in one partition of
+            -- the dedupe below, collapsing them into a single all-null key.
+            and techspeed_candidate_code is not null
     ),
 
     techspeed_stages as (
@@ -162,10 +167,25 @@ with
             ts.party,
             ts.candidate_office,
             -- TS staging emits mixed-case values (e.g. 'COUNTY', 'LOCAL', 'local')
-            -- alongside the dominant initcap form. Normalize here to mirror
-            -- initcap(br.level) on ballotready_stages above and keep the unioned
-            -- prematch column on a single canonical vocabulary.
-            initcap(ts.office_level) as office_level,
+            -- alongside the dominant initcap form, plus padded values and junk
+            -- from delivery files that shifted a column (a date, a race id).
+            -- Trim and initcap to mirror initcap(br.level) on ballotready_stages
+            -- above, then keep only BR's PositionLevel vocabulary so the unioned
+            -- prematch column stays canonical; anything else is null, which the
+            -- column already permits.
+            case
+                when
+                    initcap(trim(ts.office_level)) in (
+                        'City',
+                        'Local',
+                        'County',
+                        'Township',
+                        'State',
+                        'Regional',
+                        'Federal'
+                    )
+                then initcap(trim(ts.office_level))
+            end as office_level,
             ts.office_type,
             ts.district as district_raw,
             try_cast(

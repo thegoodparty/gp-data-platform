@@ -1,9 +1,9 @@
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady
-    district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-    scoped to a single election cycle — districts with off-cycle offices are
-    included as well.
+    district match (`stg_model_predictions__llm_l2_br_match`). Not scoped to
+    a single election cycle — districts with off-cycle offices are included
+    as well.
 
     Grain: up to one row per (district, issue) where the district has at
     least one voter with a non-null score for that issue. Spark UNPIVOT
@@ -29,11 +29,10 @@
 
     Column-name constraint: every value in this list must be a live column on
     int__l2_nationwide_uniform_w_haystaq; the Jinja loops below render
-    `AVG(<issue>)` against those identifiers directly. Two known L2 typos are
-    preserved verbatim (`hs_aliens_governenment_hiding_much`,
-    `hs_mass_deporations_support`) — do not "fix" the spelling here without a
-    matching upstream rename. See the haystaq_issue_tags seed description in
-    seeds_schema.yaml for the full rule.
+    `AVG(<issue>)` against those identifiers directly. L2 typos are preserved
+    verbatim — do not "fix" a spelling here without a matching upstream
+    rename. See the haystaq_issue_tags seed description in seeds_schema.yaml
+    for the full rule.
 
     Downstream consumers (election-api) filter by jurisdictional flag and
     re-rank within the filtered set. The mart emits the overall `issue_rank`
@@ -43,17 +42,13 @@
     "hs_abortion_pro_choice",
     "hs_affordable_housing_gov_has_role",
     "hs_age_limit_support",
-    "hs_aliens_governenment_hiding_much",
     "hs_amazon_exploitative",
     "hs_artificial_intelligence_excited",
-    "hs_autonomous_vehicles_allow",
     "hs_casino_support",
     "hs_charter_schools_support",
     "hs_china_foreign_policy_advesarial",
-    "hs_civil_liberties_support",
     "hs_climate_change_believer",
     "hs_college_admissions_consider_race",
-    "hs_community_college_free_support",
     "hs_critical_race_theory_books_ban",
     "hs_crypto_increase_restrictions",
     "hs_death_penalty_support",
@@ -61,7 +56,6 @@
     "hs_dei_support",
     "hs_doge_support",
     "hs_econ_anxiety_very_worried",
-    "hs_family_medical_leave_support",
     "hs_felon_voting_support",
     "hs_gas_tax_support",
     "hs_general_anti_vax_pro_vax",
@@ -69,22 +63,18 @@
     "hs_gig_work_make_employees",
     "hs_green_new_deal_support",
     "hs_gun_control_support",
-    "hs_immigration_undesirable",
+    "hs_illegal_imm_undesirable",
     "hs_income_inequality_serious",
     "hs_infrastructure_funding_fund_more",
-    "hs_insurance_of_last_resort_government_should_provide",
     "hs_israel_military_actions_support",
     "hs_jan_6th_pardons_support",
-    "hs_jobs_guarantee_support",
     "hs_marijuana_legal_support",
-    "hs_mass_deporations_support",
+    "hs_mass_deportations_support",
     "hs_medicaid_expansion_support",
     "hs_medicare_for_all_support",
     "hs_mexican_wall_support",
-    "hs_min_wage_15_increase_support",
     "hs_obamacare_aca_protect",
     "hs_online_gambling_more_legal",
-    "hs_opioid_crisis_treat",
     "hs_pipeline_fracking_support",
     "hs_police_trust_yes",
     "hs_public_transit_support",
@@ -94,27 +84,52 @@
     "hs_same_sex_marriage_support",
     "hs_school_choice_support",
     "hs_school_funding_more",
-    "hs_sell_federal_lands_support",
-    "hs_social_media_truth_vs_speech_truth",
-    "hs_social_security_tax_increase_support",
     "hs_stadium_public_financing_approve",
-    "hs_state_level_fema_support",
     "hs_tax_cuts_support",
     "hs_teachers_union_positive",
     "hs_trans_athlete_yes",
     "hs_trump_tariffs_support",
     "hs_trump_ukraine_policy_support",
     "hs_unions_beneficial",
-    "hs_united_healthcare_at_fault",
-    "hs_violent_crime_very_worried",
     "hs_voting_fraud_concern_fraud",
 ] -%}
 
 with
+    resolved_districts as ({{ l2_district_spelling_resolution() }}),
+
     target_districts as (
-        select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
+        select distinct m.l2_state, m.l2_district_type, m.l2_district_name
+        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as m
         where m.is_matched
+        union
+        -- The match layer structurally cannot produce a proposed-map district:
+        -- its menu is int__l2_district_universe, which carries no minted
+        -- 2026-map types (an owner decision). So without this union, adopted-map
+        -- districts score nothing and the onboarding voter-issues endpoint comes
+        -- back empty for every campaign on the new map. No gate needed here:
+        -- only districts the adoption seed cleared exist in that model at all.
+        select state_postal_code, district_type, district_name
+        from {{ ref("int__l2_proposed_district_aggregations") }}
+        union
+        -- An override can point a position at a district no matched row names:
+        -- one minted by l2_manual_district_assignments, or one the matcher
+        -- abstained on. The position serves it, so it must score here too, or
+        -- the voter-issues endpoint comes back empty for that campaign. Resolved
+        -- through the same spelling map as the position mart, so an override
+        -- naming a stale L2 spelling scores the district that carries voters.
+        select distinct
+            tbl_district.state,
+            tbl_district.l2_district_type,
+            tbl_district.l2_district_name
+        from {{ ref("l2_br_match_overrides") }} as tbl_override
+        inner join
+            resolved_districts as tbl_resolved
+            on tbl_override.state = tbl_resolved.state
+            and tbl_override.l2_district_type = tbl_resolved.l2_district_type
+            and tbl_override.l2_district_name = tbl_resolved.l2_district_name
+        inner join
+            {{ ref("m_election_api__district") }} as tbl_district
+            on tbl_resolved.district_id = tbl_district.id
     ),
 
     l2_voter_data as (
@@ -144,6 +159,19 @@ with
             state_postal_code as l2_district_name,
             {{ issue_columns | join(",\n            ") }}
         from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        union all
+        -- Proposed-map districts. The unpivot above is driven by column name and
+        -- so cannot reach these: one vendor column carries both handled types, so
+        -- the type has to come from parsing the value. The join to
+        -- target_districts is what restricts these to adopted districts.
+        select
+            state_postal_code as l2_state,
+            {{ proposed_district_minted_type("proposed_district") }}
+            as l2_district_type,
+            {{ proposed_district_number("proposed_district") }} as l2_district_name,
+            {{ issue_columns | join(",\n            ") }}
+        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
+        where {{ is_proposed_handled_district("proposed_district") }}
     ),
 
     district_avg_scores as (

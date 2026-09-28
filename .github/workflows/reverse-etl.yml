@@ -1,0 +1,13 @@
+name: reverse-etl
+on:
+  pull_request:
+    paths: ['reverse-etl/**', '.github/workflows/reverse-etl.yml', '.github/workflows/uv-subproject.yml']
+  push:
+    branches: [main]
+    paths: ['reverse-etl/**', '.github/workflows/reverse-etl.yml', '.github/workflows/uv-subproject.yml']
+jobs:
+  test:
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: reverse-etl
+      mypy-targets: src

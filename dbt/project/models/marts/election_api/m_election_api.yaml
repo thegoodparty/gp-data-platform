@@ -46,6 +46,16 @@ models:
               config:
                 warn_if: ">10"
                 error_if: ">1000"
+      - name: person_id
+        description: >
+          Person UUID for the election-api Candidacy.person_id FK. Equal to
+          gp_candidate_id when that person is served by
+          m_election_api__person, else null, so the FK always resolves.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
@@ -182,17 +192,6 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_updated_at
-        description: >
-          Un-bumped source updated_at, carried separately from updated_at so
-          the model's incremental watermark stays in the source-time domain.
-          updated_at is bumped to wall-clock when a row is new to the mart or
-          its slug changed (the election-api write model's publish gate);
-          gating ingestion on those bumped values would skip later source
-          updates whose BallotReady stamps lag wall-clock. Not published to
-          election-api (the writer's Place upsert selects explicit columns).
-        tests:
-          - not_null
 
   - name: m_election_api__position
     description: "Mart model that serves the Election API"
@@ -285,7 +284,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral", "Primary"]
+                values: ["General", "LocalOrMunicipal", "Primary"]
       - name: model_version
         description: The model version
         tests:
@@ -310,7 +309,7 @@ models:
               - election_year
               - election_code
               - model_version
-      # API invariant (DATA-2015): the election-api consumer (projectedTurnout.service.ts
+      # API invariant: the election-api consumer (projectedTurnout.service.ts
       # findFirst/getMany) does NOT disambiguate model_version, so there must be exactly one
       # row per (district_id, election_year, election_code). The table materialization
       # rebuilds from int__model_prediction_voter_turnout every run, so this only fails if
@@ -376,7 +375,8 @@ models:
       - name: number_of_seats
         description: >
           Number of seats this election fills, from mart_civics.election_stage
-          (br_race_id match). Null when civics has no matching stage row.
+          (br_race_id match), preferring the BallotReady stage row. Null when
+          civics has no matching stage row.
         tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -411,7 +411,9 @@ models:
           mart_civics.candidacy. The existing position_names[] array carries
           the BR position name(s) for the race; official_office_name is the
           civics-standardized single string. Null when civics has no
-          matching candidacy rows.
+          matching candidacy rows, and also null when those candidacies
+          disagree on the name and none of them matches this race's own
+          position name (a vendor row matched to the wrong race).
       - name: office_level
         description: >
           Civics (HubSpot-sourced) office level. Distinct from the BR
@@ -419,6 +421,57 @@ models:
           STATE / TOWNSHIP); office_level uses the civics taxonomy and can
           be null even when positionLevel is populated. Aggregated from
           mart_civics.candidacy by gp_election_id.
+      - name: election_code
+        description: >
+          Day type of the race's own election date: the even-year November
+          rule (Tuesday after the first Monday in November) says General; a
+          date matching the state's derived primary day says Primary;
+          everything else is LocalOrMunicipal. Provenance for the projection
+          join; spelled in the API's ElectionCode enum vocabulary.
+          ConsolidatedGeneral is deliberately never emitted: the frozen
+          consolidated rows are a legacy serving-path concept.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary", "LocalOrMunicipal"]
+      - name: projected_turnout
+        description: >
+          Projected ballots for this race's (district, year, day type) from
+          the turnout model output, integer-cast for the Postgres delivery
+          contract. NULL when the race's year is outside the model horizon or
+          its district has no model coverage: no fallback, nothing invented.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_lower
+        description: >
+          Lower prediction bound (p25) from the same model row as the point.
+          NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: projected_turnout_upper
+        description: >
+          Upper prediction bound (p95), the risk-relevant band for win-number
+          planning. NULL exactly when projected_turnout is NULL.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3
+                inclusive: true
+      - name: inference_at
+        description: >
+          When the joined projection was produced (freshness stamp; staleness
+          is detectable on the row rather than only in pipeline logs). NULL
+          exactly when projected_turnout is NULL. Accepted skew: race
+          attributes and projections are joined from the same nightly build,
+          but BallotReady race edits land next-build; that skew is bounded to
+          one build and matches the legacy serving path's behavior.
 
   - name: m_election_api__zip_to_position
     description: >
@@ -430,6 +483,15 @@ models:
       Grain: One row per (zip_code, position_id, election_date). Positions
       without zip coverage will have a null zip_code.
     columns:
+      - name: id
+        description: >
+          Deterministic UUID on the natural key (zip_code, position_id,
+          election_date); primary key in the election-api ZipToPosition
+          table, stable across daily rebuilds.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
       - name: position_id
         description: >
           Election API position UUID. Foreign key to m_election_api__position.
@@ -524,9 +586,9 @@ models:
     description: >
       District-level Haystaq issue scores per L2 district, covering every L2
       district with an `is_matched = true` row in the LLM L2-to-BallotReady
-      district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
-      scoped to a single election cycle — districts with off-cycle offices
-      are included as well.
+      district match (`stg_model_predictions__llm_l2_br_match`). Not scoped
+      to a single election cycle — districts with off-cycle offices are
+      included as well.
 
       Each row carries four jurisdictional flags (is_local, is_regional,
       is_state, is_federal) indicating where the issue is actionable.
@@ -767,12 +829,107 @@ models:
           - is_uuid
       - name: slug
         description: >
-          slugify(first_name-last_name). Cosmetic URL prefix; NOT NULL but not
-          unique in the API (the trailing UUID disambiguates).
+          slugify(first_name-last_name) with an 8-hex suffix from the person id.
+          The /people/<slug> URL resolves on slug alone, so it is globally
+          unique. If uniqueness ever fails, widen the suffix beyond 8 hex.
+          Names are romanized before the strip, so 'josé' keeps its 'e' and a
+          non-Latin name keeps a readable stem instead of being deleted. A name
+          with no letters at all still leaves the id suffix as the whole slug.
         tests:
           - not_null
+          - unique
       - name: br_person_id
         description: "BallotReady person databaseId; null for GP-native people."
+      - name: email
+        description: >
+          Best-known personal email, carried from people.email. Consumers
+          resolve a HubSpot Contact by it, where email is the unique key.
+          Coverage splits by cohort: everyone with a gp-api user has an address
+          and 96% match an existing Contact, against 49% and 31% for those
+          without. A non-matching address mints a Contact rather than resolving
+          one, and 14.1k addresses are shared by two or more people. PII: the
+          API omits it from every response and rejects it in ?columns=, so
+          reading it needs a purpose-built path like campaign-strategy-context.
+      - name: is_pledged
+        description: >
+          Whether the person took the GoodParty pledge on any of their product
+          records: a gp-api campaign with details.pledged, or a gp-api elected
+          office with pledged_at. Read from those records rather than from
+          candidacy, which drops an uncorroborated gp_api campaign and never
+          carried the elected-office pledge at all. The API column is NOT NULL
+          DEFAULT false, so the unpledged must be false, never null.
+        tests:
+          - not_null
+      - name: gp_api_user_id
+        description: >
+          gp-api User.id for this person, carried from people.gp_api_user_id.
+          A digit string, not a uuid (the gp-api id is a numeric autoincrement).
+          gp-api reads it to set its own User.person_id, which is what unlocks
+          the public profile editor. Null when the person has no gp-api user, or
+          when the person's cluster maps to more than one gp-api user (people
+          only makes the id scalar when it is unambiguous).
+    tests:
+      # Signup collects an email, so a gp-api user must have one. The coalesce
+      # keeps a vanished linkage failing rather than passing on 0/0.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is not null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
+          name: person_gp_api_user_email_coverage
+          config:
+            severity: error
+      # Vendor-fed, so the rate drifts (49% now). Warn on drift; a collapse
+      # means the coalesce broke.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('m_election_api__person') }} where gp_api_user_id is null and email is not null) / nullif((select count(*) from {{ ref('m_election_api__person') }} where gp_api_user_id is null), 0), 0) >= 0.40"
+          name: person_no_gp_api_user_email_coverage
+          config:
+            severity: warn
+
+  - name: m_election_api__person_merge
+    description: >
+      Forwarding addresses for retired person ids (election-api "PersonMerge"
+      table). One row per gp_person_id that was minted at some point since
+      Person went live and is no longer anyone's id, pointing at the id its
+      minting record carries today, which is the terminal survivor by
+      construction. Limited to survivors that are live public profiles and,
+      for ids minted after the slug snapshot began, to retired ids that were
+      themselves published. Ids minted before it are kept when they retire and
+      forward with a null slug if the snapshot never saw them. The API consults
+      this table on a slug miss and redirects to the survivor; gp-api drains it
+      to repoint its own person ids. Lands in Postgres in the same swap as
+      Person. Contract and derivation: PERSON_ID_RETIREMENT_HANDOFF.md under
+      marts/civics.
+    columns:
+      - name: retired_id
+        description: >
+          The retired person UUID. Primary key. Never an FK: the Person row it
+          names is gone by design.
+        tests:
+          - not_null
+          - unique
+      - name: surviving_id
+        description: "The terminal survivor's UUID, live in m_election_api__person."
+        tests:
+          - not_null
+      - name: retired_slug
+        description: >
+          The retired person's slug as last published, from the person slug
+          snapshot. Null for ids retired before that snapshot began; the API
+          then loses an 8-hex prefix collision instead of winning it.
+      - name: retired_at
+        description: >
+          The later of the slug snapshot run that closed the id's Person row
+          and the canonical-ids snapshot run that closed its last mint, so an
+          id that left the public mart before it retired is not stamped with
+          that earlier exit. Ids retired before slug history began carry only
+          the second. One batch shares a timestamp. Descriptive, not an event
+          time: a row held back for an unpublished survivor appears later with
+          an older value, and a rewritten survivor does not advance it.
+        tests:
+          - not_null
+      - name: created_at
+        description: "Build timestamp; the table is swap-replaced wholesale each run."
 
   - name: m_election_api__office_holder
     description: >

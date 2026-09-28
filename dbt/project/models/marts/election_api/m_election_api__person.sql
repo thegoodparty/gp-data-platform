@@ -7,11 +7,16 @@
 -- follow-up).
 with
     public_people as (
-        select *, try_cast(br_person_id as int) as br_person_id_int
-        from {{ ref("people") }}
+        select p.*, try_cast(p.br_person_id as int) as br_person_id_int
+        from {{ ref("people") }} as p
+        left join
+            {{ ref("int__civics_internal_persons") }} as internal
+            on internal.gp_person_id = p.gp_person_id
         where
-            (is_candidate or is_elected_official)
-            and (first_name is not null or last_name is not null)
+            (p.is_candidate or p.is_elected_official)
+            and (p.first_name is not null or p.last_name is not null)
+            -- staff and test accounts must never get a public profile
+            and internal.gp_person_id is null
     ),
 
     br_person as (
@@ -92,12 +97,54 @@ with
                 partition by br_candidate_id order by office_holder_updated_at desc
             )
             = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- The pledge is taken on a product record, so read it from the two records
+    -- that hold it rather than from candidacy. Candidacy drops a gp_api
+    -- campaign with no outside corroboration, which leaves 2.1k pledged
+    -- sign-ups reading as unpledged, and it never carried the elected-office
+    -- pledge that serve onboarding writes for holders who never ran with us.
+    -- The union keeps this one row per person.
+    pledged as (
+        select person.gp_person_id
+        from {{ ref("campaigns") }} as campaign
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(campaign.user_id as string)
+        where campaign.is_latest_version and campaign.is_pledged
+        union
+        select person.gp_person_id
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as office
+        inner join
+            person_ids as person
+            on person.record_key = 'gp_api|' || cast(office.user_id as string)
+        where office.pledged_at is not null
     )
 
 select
     people.gp_person_id as id,
+    -- build timestamps: the table is swap-replaced wholesale each run
+    current_timestamp() as created_at,
+    current_timestamp() as updated_at,
     people.br_person_id_int as br_person_id,
-    {{ slugify("concat_ws('-', people.first_name, people.last_name)") }} as slug,
+    -- Globally unique: the /people/<slug> URL resolves on slug alone (no
+    -- trailing UUID), so every slug carries an 8-hex suffix from the person id.
+    -- Romanizing is safe to enable here because that suffix keeps an old slug
+    -- resolving, and the profile then redirects it to the current one.
+    {{
+        slugify(
+            "people.first_name",
+            "people.last_name",
+            "left(people.gp_person_id, 8)",
+            transliterate=true,
+            single_segment=true,
+        )
+    }} as slug,
     people.first_name,
     coalesce(br_person.middle_name, office_holder.middle_name) as middle_name,
     people.last_name,
@@ -117,9 +164,14 @@ select
     people.phone,
     br_person.degrees,
     br_person.experiences,
-    people.state
+    people.state,
+    -- NOT NULL in the API, so emit false rather than null for the unpledged.
+    pledged.gp_person_id is not null as is_pledged,
+    -- Digit string, not a uuid: the gp-api User.id is a numeric autoincrement.
+    people.gp_api_user_id
 from public_people as people
 left join br_person on people.br_person_id_int = br_person.database_id
 left join
     office_holder_person as office_holder
     on people.br_person_id_int = office_holder.br_candidate_id
+left join pledged on people.gp_person_id = pledged.gp_person_id

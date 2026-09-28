@@ -1,4 +1,4 @@
--- Mass conservation (spec invariant, DATA-1992): within each represented
+-- Mass conservation: within each represented
 -- (block, district_type), the voter-share split sums to 1 and the allocated
 -- population sums to the block's census population. A structural, spec-derived
 -- test (no drifting count). Scope: this proves conservation for every group

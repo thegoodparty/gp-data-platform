@@ -41,7 +41,9 @@ with
             s.survey_additional_notes,
 
             -- respondent info
-            s.hs_contact_id,
+            -- Same unattributed-submission handling as the PMF survey mart:
+            -- HubSpot emits '' for a response with no associated contact.
+            nullif(s.hs_contact_id, '') as hs_contact_id,
             s.contact_email,
             s.contact_first_name,
             s.contact_last_name,

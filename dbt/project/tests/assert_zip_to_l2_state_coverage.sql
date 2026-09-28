@@ -1,4 +1,4 @@
--- DATA-1986: every (zip, state) in int__zip_code_to_l2_district must have a
+-- Every (zip, state) in int__zip_code_to_l2_district must have a
 -- synthetic 'State' district row. Statewide positions (Governor, U.S. Senate,
 -- etc.) are matched to l2_district_type='State' by the LLM BR Office <-> L2
 -- District matcher, so without a (zip, 'State', <state>) bridge row per

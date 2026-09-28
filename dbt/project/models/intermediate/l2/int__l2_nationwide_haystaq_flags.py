@@ -33,8 +33,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     - per-state incremental filtering by `loaded_at`
     """
     dbt.config(
-        submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",

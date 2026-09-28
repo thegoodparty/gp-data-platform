@@ -1,0 +1,842 @@
+---
+name: gold-match-run-audit
+description: Audit one run key of the gold-match pipeline (llm_l2_br_match_results) before publication or as a post-hoc review — run shape and confidence, the geography rule-class mirror with prior-answer transitions, the override suite, the ratified holdout gate via score_holdout.py, a web spot-check, and a sign-off checklist. Use after a supervised or automated gold-match run lands rows under a new attempted_at, before the nightly swap publishes them, or when reviewing a completed run's abstain/withdrawal counts.
+---
+
+# Gold-match run audit
+
+`goodparty_data_catalog.model_predictions.llm_l2_br_match_results` is append-only;
+a run is identified by its single `attempted_at` timestamp (the run key). The
+baseline run key is `2026-01-26` (the January seed). The staging model
+`dbt.stg_model_predictions__llm_l2_br_match` serves the newest row per office.
+This skill audits ONE run key at a time: the supervised cutover run first, the
+automated daily runs later.
+
+## Setup
+
+Pick a scratch directory (the session scratchpad works). Each step's SQL below
+carries a `__RUN_KEY__` placeholder standing for the run's `attempted_at`, written
+as a bare timestamp body (`2026-08-27 14:00:00` — no quotes, no `timestamp` cast;
+the SQL already wraps it as `timestamp'__RUN_KEY__'`). Copy a step's SQL to a
+scratch file, substitute, then run it through the databricks-query helper
+(`.claude/skills/databricks-query/SKILL.md`), which takes one statement per call
+— every fenced block below is exactly one statement for that reason:
+
+```bash
+RUN_KEY='2026-08-27 14:00:00'
+sed "s/__RUN_KEY__/$RUN_KEY/g" step1.sql > "$SCRATCH/step1.sql"
+python .claude/skills/databricks-query/scripts/dbsql.py -f "$SCRATCH/step1.sql"
+```
+
+Run each step in order, read the printed rows, interpret them against the lines
+under that step, then move on.
+
+## Step 0 — Identify the run
+
+```sql
+select distinct attempted_at
+from goodparty_data_catalog.model_predictions.llm_l2_br_match_results
+order by 1 desc
+```
+
+Confirm the candidate `attempted_at` with the operator, alongside the batch size
+their own run summary reports. The writer contract counts what it wrote; this
+audit re-counts independently, starting in Step 1. Set `__RUN_KEY__` to the
+confirmed value for every step below, copied VERBATIM from this output —
+fractional seconds included, if present — because every step filters on exact
+timestamp equality.
+
+## Step 1 — Run shape
+
+One statement, `union all` branches over the results table, the staging model,
+the district universe, and the two election-api marts.
+
+```sql
+with
+    run_rows as (
+        select br_database_id, l2_state, l2_district_type, l2_district_name, confidence
+        from goodparty_data_catalog.model_predictions.llm_l2_br_match_results
+        where attempted_at = timestamp'__RUN_KEY__'
+    ),
+
+    br_feed_check as (
+        select run_rows.br_database_id
+        from run_rows
+        left join
+            goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position as br
+            on br.database_id = run_rows.br_database_id
+        where br.database_id is null
+    ),
+
+    -- Mirrors the warn-severity l2_district_tuple_exists test's row_condition on
+    -- stg_model_predictions__llm_l2_br_match (dbt/project/models/staging/
+    -- model_predictions_source/stg_model_predictions.yaml). "Matched" is the
+    -- generic test's own `district_name is not null` filter
+    -- (dbt/project/tests/generic/test_l2_district_tuple_exists.sql), not a
+    -- separate predicate restated here.
+    -- Offices a quarantine row currently SUPPRESSES are parked on purpose (a
+    -- hand-written hold, or a response-shape failure inside its 30-day
+    -- backoff); their labels are nobody's action item, so they leave the
+    -- serving-state count. An auto row past its backoff suppresses nothing:
+    -- the office is back in the cohort and its label counts again.
+    label_check_tuples as (
+        select distinct staging.l2_state, staging.l2_district_type, staging.l2_district_name
+        from goodparty_data_catalog.dbt.stg_model_predictions__llm_l2_br_match as staging
+        left join
+            goodparty_data_catalog.model_predictions.llm_l2_br_match_quarantine as quarantine
+            on quarantine.br_database_id = staging.br_database_id
+            and quarantine.released_at is null
+            and (
+                quarantine.retry_class = 'held'
+                or quarantine.last_failed_at > current_timestamp() - interval 30 days
+            )
+        where
+            staging.l2_district_name is not null
+            and staging.attempted_at <> timestamp'2026-01-26'
+            and quarantine.br_database_id is null
+    ),
+
+    -- Mirrors the l2_normalized_district_keys macro int__l2_br_match_pending_offices
+    -- uses (normalize_l2_district_name + the spellings = 1 rule + the blank-key
+    -- guard: a name that normalizes to nothing must never make every
+    -- blank-normalizing label resolvable): a label the vendor merely respelled
+    -- still resolves in the mart, so it is not dead.
+    universe_normalized as (
+        select
+            state_postal_code,
+            district_type,
+            upper(regexp_replace(trim(regexp_replace(district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', ''))
+                as normalized_district_name,
+            count(distinct district_name) as spellings
+        from goodparty_data_catalog.dbt.int__l2_district_universe
+        where upper(regexp_replace(trim(regexp_replace(district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', '')) != ''
+        group by 1, 2, 3
+    ),
+
+    label_check_missing as (
+        select label_check_tuples.*
+        from label_check_tuples
+        left join
+            goodparty_data_catalog.dbt.int__l2_district_universe as universe
+            on universe.state_postal_code = label_check_tuples.l2_state
+            and universe.district_type = label_check_tuples.l2_district_type
+            and universe.district_name = label_check_tuples.l2_district_name
+        left join
+            universe_normalized
+            on universe_normalized.state_postal_code = label_check_tuples.l2_state
+            and universe_normalized.district_type = label_check_tuples.l2_district_type
+            and universe_normalized.normalized_district_name = upper(
+                regexp_replace(
+                    trim(regexp_replace(label_check_tuples.l2_district_name, '\\s+', ' ')),
+                    '\\s*\\(EST\\.\\)$',
+                    ''
+                )
+            )
+            and universe_normalized.spellings = 1
+        where universe.state_postal_code is null and universe_normalized.state_postal_code is null
+    ),
+
+    -- The run-scoped variant: THIS run's own matched tuples against the
+    -- current universe, under the same normalized-name rule. The staging-wide
+    -- count above describes the serving state; only this one attributes a
+    -- dead label to the audited run.
+    run_label_missing as (
+        select distinct run_rows.l2_state, run_rows.l2_district_type, run_rows.l2_district_name
+        from run_rows
+        left join
+            goodparty_data_catalog.dbt.int__l2_district_universe as universe
+            on universe.state_postal_code = run_rows.l2_state
+            and universe.district_type = run_rows.l2_district_type
+            and universe.district_name = run_rows.l2_district_name
+        left join
+            universe_normalized
+            on universe_normalized.state_postal_code = run_rows.l2_state
+            and universe_normalized.district_type = run_rows.l2_district_type
+            and universe_normalized.normalized_district_name = upper(
+                regexp_replace(
+                    trim(regexp_replace(run_rows.l2_district_name, '\\s+', ' ')), '\\s*\\(EST\\.\\)$', ''
+                )
+            )
+            and universe_normalized.spellings = 1
+        where
+            run_rows.l2_district_name is not null
+            and universe.state_postal_code is null
+            and universe_normalized.state_postal_code is null
+    ),
+
+    -- Same join as dbt/project/tests/assert_position_district_voter_coverage_floor.sql;
+    -- the floor itself lives there and is not reproduced here.
+    coverage as (
+        select
+            count(*) as positions_with_district,
+            count(district.registered_voters) as positions_on_populated_district
+        from goodparty_data_catalog.dbt.m_election_api__position as position
+        join
+            goodparty_data_catalog.dbt.m_election_api__district as district
+            on position.district_id = district.id
+    )
+
+select 'rows_under_key' as metric, cast(count(*) as double) as value, '' as detail
+from run_rows
+
+union all
+
+select 'rows_matched', cast(count(*) as double), ''
+from run_rows
+where l2_district_name is not null
+
+union all
+
+select 'rows_abstained', cast(count(*) as double), ''
+from run_rows
+where l2_district_name is null
+
+union all
+
+select 'matched_confidence_min', cast(min(confidence) as double), ''
+from run_rows
+where l2_district_name is not null
+
+union all
+
+select 'matched_confidence_median', percentile(confidence, 0.5), ''
+from run_rows
+where l2_district_name is not null
+
+union all
+
+select 'matched_confidence_max', cast(max(confidence) as double), ''
+from run_rows
+where l2_district_name is not null
+
+union all
+
+select
+    'rows_absent_from_br_feed',
+    cast(count(*) as double),
+    'feed churn between batch generation and audit, informational'
+from br_feed_check
+
+union all
+
+select
+    'label_check_warn_count',
+    cast(count(*) as double),
+    'distinct dead tuples in the CURRENT serving state since the baseline'
+from label_check_missing
+
+union all
+
+select
+    'run_label_check_missing',
+    cast(count(*) as double),
+    'distinct dead tuples matched by THIS run'
+from run_label_missing
+
+union all
+
+select
+    'coverage_ratio_positions_on_populated_over_with_district',
+    positions_on_populated_district * 1.0 / nullif(positions_with_district, 0),
+    concat(positions_on_populated_district, ' / ', positions_with_district)
+from coverage
+```
+
+Read the printed rows, then interpret against these lines:
+
+- Publication is next-day (the daily DAG triggers no rebuild; the 00:02 UTC
+  scheduled build lands a run's rows in the internal marts and the 12:02 build
+  feeds the 22:00 election-api sync), so Step 1 is read in two phases. SAME
+  DAY, minutes after the write: `rows_under_key`, `rows_matched`,
+  `run_label_check_missing` (this run's labels against the current universe;
+  the pod's menu is drawn from that same table, so a nonzero here means the
+  universe moved after the write), the feed-absence and rule-class reads below,
+  and the spot-check. The staging-wide `label_check_warn_count` and the coverage ratio
+  read a MIXED snapshot same-day: the staging model is a view over live rows,
+  so it already includes the appended run, while the marts are still the last
+  build. Read those two the NEXT MORNING, after the 00:02 build and before the
+  12:02 product backstop, by re-running this Step 1 SQL with the same run key.
+  Never gate on the same-day reading of either.
+- A nonzero `run_label_check_missing` is a HARD STOP before the 00:02 build:
+  THIS run shipped labels the current universe does not carry — delete the
+  run's rows by key, quarantine the offices, and let the next scheduled build
+  drop them from the marts; stop.
+- `label_check_warn_count` nonzero while `run_label_check_missing` is zero
+  means the dead tuple belongs to a DIFFERENT run — an earlier run's answer, or
+  a later relabel wave when auditing post hoc. Deleting this run's rows cannot
+  clear it; repair it at its source before publication. The count already
+  ignores labels the mart resolves by normalized name (a respelling is not
+  dead) and offices under an active quarantine hold (parked on purpose), so
+  what remains is actionable: a served office whose label vanished. For a post-hoc audit of
+  a superseded run, only the run-scoped metric speaks for the audited run.
+  The January baseline stratum is deliberately OUT OF SCOPE for both metrics'
+  staging-wide reading, mirroring the warn test's own scoping: a January-origin
+  dead label is the pre-existing backlog (the pending list's dead-label rule
+  has already reopened those offices), and a dead label joins nothing — the
+  office shows no number, not a wrong one — so counting them would red every
+  audit until the whole backlog is re-matched.
+- `rows_under_key` must equal the operator's reported batch count. ZERO rows
+  means a mistranscribed run key far more often than a missing run — re-copy it
+  verbatim from Step 0 before concluding anything. A genuine short write is
+  repaired by deleting the run's rows and re-running.
+- `coverage_ratio_positions_on_populated_over_with_district` must clear the
+  floor `dbt/project/tests/assert_position_district_voter_coverage_floor.sql`
+  states, with this run's labels in place (see the as-built line above).
+
+## Step 2 — Rule classes, outcomes, and prior-answer transitions
+
+The classification below is recomputed at audit time from BallotReady's own
+fields — there is no persisted rule column anywhere, by design, so this is the
+only way to know which path an office's match took.
+
+### The classification mirror
+
+Mirror of `_classify_office_geography` in
+`gold-match/stitch_golden_data/prod_gold_data/l2_br_matcher.py`, which
+itself enumerates its family vocabulary from `get_l2_district_types(scope="all")`
+in `dbt/project/macros/l2_district_columns.sql`. A type added to that macro
+needs this block and the matcher's own constants re-checked together. Parent
+(whole-jurisdiction) type sets are the matcher's menu-DENIAL concern (which
+candidates it hides), never the classification label itself, for county,
+place, and county subdivision. School is the one exception: the flagged-
+school arm reads parent presence too, as part of its any-school-row test, so
+`state_vocab` below carries a parent-type check for school alone.
+
+```sql
+with
+    run_rows as (
+        select br_database_id, l2_state, l2_district_type, l2_district_name, confidence
+        from goodparty_data_catalog.model_predictions.llm_l2_br_match_results
+        where attempted_at = timestamp'__RUN_KEY__'
+    ),
+
+    -- Same partition/order as stg_model_predictions__llm_l2_br_match's
+    -- `latest_attempt`, capped before the run key so it reads the office's
+    -- answer walking INTO this run.
+    prior_answer as (
+        select br_database_id, l2_state, l2_district_type, l2_district_name
+        from goodparty_data_catalog.model_predictions.llm_l2_br_match_results
+        where attempted_at < timestamp'__RUN_KEY__'
+        qualify
+            row_number() over (
+                partition by br_database_id order by attempted_at desc, l2_district_name nulls first
+            )
+            = 1
+    ),
+
+    -- CURRENT BallotReady fields for every office under the key. Feed absence
+    -- is witnessed by the JOIN KEY (the same churn Step 1's
+    -- rows_absent_from_br_feed counts), never by a null field, because the
+    -- matcher classifies null-field offices normally. Normalization mirrors the
+    -- matcher's load boundary exactly: empty and any-case "null" sentinels
+    -- become absent, and kept values stay UNMODIFIED — no trimming, so a padded
+    -- geo_id is malformed to the format check on both sides.
+    office_geo as (
+        select
+            run_rows.br_database_id,
+            br.database_id is null as absent_from_br_feed,
+            upper(trim(br.state)) as office_state,
+            coalesce(case when lower(trim(br.mtfcc)) in ('', 'null') then null else br.mtfcc end, '')
+                as mtfcc,
+            coalesce(br.is_judicial, false) as is_judicial,
+            coalesce(br.has_unknown_boundaries, false) as has_unknown_boundaries,
+            case when lower(trim(br.geo_id)) in ('', 'null') then null else br.geo_id end as geo_id,
+            case
+                when lower(trim(br.sub_area_name)) in ('', 'null') then null else br.sub_area_name
+            end as sub_area_name,
+            case
+                when lower(trim(br.sub_area_value)) in ('', 'null') then null else br.sub_area_value
+            end as sub_area_value
+        from run_rows
+        left join
+            goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position as br
+            on br.database_id = run_rows.br_database_id
+    ),
+
+    family_geo as (
+        select
+            office_geo.*,
+            case office_geo.mtfcc
+                when 'G4020' then 'county'
+                when 'X0005' then 'county'
+                when 'G4110' then 'place'
+                when 'G4210' then 'place'
+                when 'X0001' then 'place'
+                when 'G5420' then 'school'
+                when 'G5400' then 'school'
+                when 'G5410' then 'school'
+                when 'X0102' then 'school'
+                when 'G4040' then 'county_subdivision'
+            end as family,
+            (office_geo.sub_area_name is not null or office_geo.sub_area_value is not null) as has_sub_area
+        from office_geo
+    ),
+
+    leveled as (
+        select
+            family_geo.*,
+            case family_geo.family
+                when 'county' then 5
+                when 'place' then 7
+                when 'school' then 7
+                when 'county_subdivision' then 10
+            end as family_parent_geoid_length
+        from family_geo
+    ),
+
+    -- geo_id classified against the family's parent (whole-jurisdiction) Census
+    -- id length: only the first family_parent_geoid_length characters must be
+    -- digits, since a real slice id's own suffix need not be.
+    geo_level as (
+        select
+            leveled.*,
+            case
+                when has_unknown_boundaries then 'slice'
+                when geo_id is null or length(geo_id) < family_parent_geoid_length then 'malformed'
+                when not substring(geo_id, 1, family_parent_geoid_length) rlike '^[0-9]+$' then 'malformed'
+                when length(geo_id) = family_parent_geoid_length then 'whole'
+                else 'slice'
+            end as level
+        from leveled
+    ),
+
+    -- Per-state vocabulary the classifier reads. SUB types answer the slice
+    -- zero-subtype abstain check for every family. PARENT types shape menu
+    -- denial only, per the note above -- except school, where the flagged-
+    -- school arm's any-school-row test reads a PRESENCE list: the parent
+    -- types plus office-bearing school types the denial sets omit
+    -- (mirrors _SCHOOL_FAMILY_PRESENCE_TYPES; subs are counted separately
+    -- via has_school_subtype).
+    state_vocab as (
+        select
+            upper(trim(state_postal_code)) as state_postal_code,
+            max(case when district_type rlike '^Judicial_' then 1 else 0 end) = 1 as has_judicial_vocab,
+            sum(
+                case
+                    when district_type rlike '^Judicial_'
+                        and district_type <> 'Judicial_Supreme_Court_District'
+                        then 1
+                    else 0
+                end
+            )
+            = 0 as only_judicial_type_is_sole_supreme,
+            max(
+                case
+                    when
+                        district_type in (
+                            'County_Commissioner_District',
+                            'County_Supervisorial_District',
+                            'County_Legislative_District'
+                        )
+                        then 1
+                    else 0
+                end
+            )
+            = 1 as has_county_subtype,
+            max(
+                case
+                    when
+                        district_type
+                        in ('City_Ward', 'City_Council_Commissioner_District', 'Village_Ward', 'Borough_Ward')
+                        then 1
+                    else 0
+                end
+            )
+            = 1 as has_place_subtype,
+            max(
+                case
+                    when
+                        district_type in (
+                            'School_District',
+                            'Unified_School_District',
+                            'City_School_District',
+                            'County_Unified_School_District',
+                            'Elementary_School_District',
+                            'High_School_District',
+                            'Middle_School_District',
+                            'Exempted_Village_School_District',
+                            'Board_of_Education_District',
+                            'County_Board_of_Education_District',
+                            'School_District_Vocational',
+                            'County_Superintendent_of_Schools_District',
+                            'Superintendent_of_Schools_District'
+                        )
+                        then 1
+                    else 0
+                end
+            )
+            = 1 as has_school_presence_type,
+            max(
+                case
+                    when
+                        district_type in (
+                            'School_Subdistrict',
+                            'Unified_School_SubDistrict',
+                            'Elementary_School_SubDistrict',
+                            'High_School_SubDistrict',
+                            'Board_of_Education_SubDistrict',
+                            'County_Board_of_Education_SubDistrict',
+                            'School_Board_District'
+                        )
+                        then 1
+                    else 0
+                end
+            )
+            = 1 as has_school_subtype,
+            max(case when district_type in ('Township_Ward', 'Town_Ward') then 1 else 0 end) = 1
+                as has_county_subdivision_subtype
+        from goodparty_data_catalog.dbt.int__l2_district_universe
+        group by upper(trim(state_postal_code))
+    ),
+
+    labeled as (
+        select
+            geo_level.br_database_id,
+            geo_level.office_state,
+            run_rows.l2_state,
+            run_rows.l2_district_type,
+            run_rows.l2_district_name,
+            case when run_rows.l2_district_name is not null then 'matched' else 'abstained' end as outcome,
+            case
+                when geo_level.absent_from_br_feed then null  -- office gone from BR staging; see Step 1
+                when geo_level.mtfcc = 'X0024' then 'R0_party_committee'
+                when
+                    geo_level.is_judicial
+                    and geo_level.mtfcc <> 'G4000'
+                    and (
+                        not coalesce(sv.has_judicial_vocab, false)
+                        or coalesce(sv.only_judicial_type_is_sole_supreme, false)
+                    )
+                    then 'R1_judicial_abstain'
+                when geo_level.is_judicial then 'R1_judicial_menu'
+                when not geo_level.has_sub_area or geo_level.family is null then 'pass_through'
+                when geo_level.level = 'malformed' then 'pass_through'
+                when
+                    geo_level.family = 'school'
+                    and geo_level.has_unknown_boundaries
+                    and not (coalesce(sv.has_school_presence_type, false) or coalesce(sv.has_school_subtype, false))
+                    then 'school_flag_no_school_rows'
+                -- RETIRED by DATA-2415 candidate 2: the matcher no longer passes a flagged school
+                -- sub-area through unrestricted, so a current run should never legitimately land
+                -- here. Kept only so this SQL mirror still labels runs from before candidate 2
+                -- shipped; use the Python mirror below for any run at or after it.
+                when
+                    geo_level.family = 'school'
+                    and geo_level.has_unknown_boundaries
+                    then 'R2_school_flagged_passthrough'
+                when
+                    geo_level.level = 'slice'
+                    and not (
+                        (geo_level.family = 'county' and coalesce(sv.has_county_subtype, false))
+                        or (geo_level.family = 'place' and coalesce(sv.has_place_subtype, false))
+                        or (geo_level.family = 'school' and coalesce(sv.has_school_subtype, false))
+                        or (
+                            geo_level.family = 'county_subdivision'
+                            and coalesce(sv.has_county_subdivision_subtype, false)
+                        )
+                    )
+                    then 'R2_slice_zero_subtype_abstain'
+                when geo_level.level = 'slice' then 'R2_slice_asserted'
+                when geo_level.level = 'whole' and geo_level.family = 'school' then 'R2_whole_school_gated'
+                when geo_level.level = 'whole' then 'R2_whole_asserted'
+            end as rule_class,
+            case
+                when
+                    run_rows.l2_district_name is not null
+                    and (prior_answer.br_database_id is null or prior_answer.l2_district_name is null)
+                    then 'new_match'
+                when
+                    run_rows.l2_district_name is not null
+                    and prior_answer.l2_district_name is not null
+                    and run_rows.l2_state = prior_answer.l2_state
+                    and run_rows.l2_district_type = prior_answer.l2_district_type
+                    and run_rows.l2_district_name = prior_answer.l2_district_name
+                    then 'same_tuple'
+                when run_rows.l2_district_name is not null and prior_answer.l2_district_name is not null
+                    then 'moved'
+                when run_rows.l2_district_name is null and prior_answer.l2_district_name is not null
+                    then 'withdrawal'
+                when run_rows.l2_district_name is null and prior_answer.br_database_id is not null
+                    then 'still_abstained'
+                else 'first_abstain'
+            end as transition
+        from run_rows
+        left join geo_level on geo_level.br_database_id = run_rows.br_database_id
+        left join state_vocab as sv on sv.state_postal_code = geo_level.office_state
+        left join prior_answer on prior_answer.br_database_id = run_rows.br_database_id
+    )
+
+select rule_class, outcome, transition, count(*) as n
+from labeled
+group by rule_class, outcome, transition
+order by rule_class, outcome, transition
+```
+
+### The body-level mirror (Python)
+
+The SQL mirror cannot express candidate 2's body test (DATA-2415), so Step 2 labels the run's offices with the
+matcher's own classifier. Export the run's offices from BR position staging with `dbsql.py --csv`:
+
+```sql
+select database_id as br_database_id, name, state, mtfcc, geo_id, sub_area_name, sub_area_value, is_judicial,
+    has_unknown_boundaries
+from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position
+where database_id in (<the run's ids>)
+```
+
+and the universe the run saw:
+
+```sql
+select state_postal_code, district_type, district_name
+from goodparty_data_catalog.dbt.int__l2_district_universe
+```
+
+(the live table may have drifted since the run -- prefer a universe snapshot taken at run time when one exists).
+Then:
+
+    cd gold-match && uv run python ../.claude/skills/gold-match-run-audit/classify_run_offices.py \
+        offices.csv universe.csv rule-classes.csv
+
+Join `rule-classes.csv` to the run rows on br_database_id and report the same
+`rule_class, outcome, transition` table. Where the SQL and Python labels disagree on an in-class office, the
+Python label wins (it ran the code); a disagreement on an out-of-class office is a bug to report.
+
+Three labels only the Python mirror can produce, because they depend on the body test:
+
+- `R2_school_flagged_slice_asserted`: flagged school office with a sub-area whose body has sub-level rows; whole-district types denied.
+- `R2_school_flagged_body_absent_abstain`: flagged school office with a sub-area whose body has no sub-level rows; abstained.
+- `R2_slice_body_absent_abstain`: sliced office whose state carries the family's sub-types but whose body has no sub-level rows; abstained.
+
+Not a rule class: `UNIVERSE_STATE_MISSING` means the CLI found zero universe rows for that office's state (an
+incomplete or drifted export, warned to stderr) and skipped classifying it rather than mislabeling it against an
+empty universe.
+
+`R2_slice_asserted` now means: sliced office whose body has sub-level rows; the family's whole-body types denied.
+Both mirrors can emit it, but only the Python mirror's body test earns it correctly post-candidate-2 -- the SQL
+mirror's `R2_slice_asserted` branch predates the body test and does not check for one. The SQL mirror's
+`R2_school_flagged_passthrough` branch is RETIRED by DATA-2415 candidate 2 (see the comment at that branch); read
+its output only for runs from before candidate 2 shipped.
+
+Row-level drill-down: the identical statement above, with the final `select`
+replaced by a filter to one `(rule_class, transition)` pair:
+
+```sql
+-- ... same `with` block as above ...
+select br_database_id, office_state, l2_state, l2_district_type, l2_district_name, outcome
+from labeled
+where rule_class = '__RULE_CLASS__' and transition = '__TRANSITION__'
+```
+
+Read the printed rows, then interpret against these lines:
+
+- The four abstain classes (`R0_party_committee`, `R1_judicial_abstain`,
+  `R2_slice_zero_subtype_abstain`, `school_flag_no_school_rows`) must show
+  ZERO matched rows: the code abstains before the LLM on those paths, so a
+  match there means the run was made with different code than reviewed. Hard
+  stop — but rule out input drift first: the classes are recomputed from
+  TODAY's BR fields and universe, and a rebuild between the run and the audit
+  (the cutover's own rebuild step) can legitimately reclassify an office.
+  Check the drill-down rows' fields and their state's vocabulary against the
+  run window before deleting anything; a post-hoc rule class is evidence of
+  which branch ran, never a replay of it.
+- `R2_whole_school_gated` offices matched to a school SUB-level type indicate
+  the run had `--enable-school-whole-assertion` OFF (allowed only if that is
+  what the operator intended; the flag is run config, not persisted, so this is
+  how the audit infers the arm).
+- Withdrawals concentrated in `R1_judicial_abstain`,
+  `R2_slice_zero_subtype_abstain`, and `school_flag_no_school_rows` are the
+  filter design working as intended.
+  Withdrawals in `pass_through` or a matched `R2_*` class are the ones to read
+  row-by-row with the drill-down query above. The supervised cutover's review
+  step counts served matches flipping to abstain — this is that count.
+
+### Supervised monitoring of a matcher rule
+
+When a matcher rule ships under supervision instead of a blind gate, record what it did per office per run and judge it from
+the record. The table is the owner's scratch table `goodparty_data_catalog.dbt_sroberts.gm_body_rule_shadow` (DDL below; never swept). One row per (run_key, office): the mirror's rule class, what
+production wrote, a `divergent` flag (the rule abstains AND production wrote a district), and hand audit columns.
+
+```sql
+create table if not exists goodparty_data_catalog.dbt_sroberts.gm_body_rule_shadow (
+  run_key timestamp not null comment 'llm_l2_br_match_results.attempted_at of the run (= llm_l2_br_match_run_log.run_key)',
+  image_git_sha string not null comment 'llm_l2_br_match_run_log.git_sha for that run',
+  shape string not null comment 'A_shadow or B_live',
+  br_database_id int not null,
+  name string, state string, mtfcc string, geo_id string, sub_area_name string, sub_area_value string,
+  is_judicial boolean, has_unknown_boundaries boolean,
+  rule_class string not null comment 'classify_run_offices.py label under the universe the run saw',
+  universe_loaded_at timestamp comment 'int__l2_district_universe.loaded_at used for the classification',
+  prod_l2_district_type string, prod_l2_district_name string, prod_confidence bigint comment 'what production wrote this run; null = abstain',
+  divergent boolean not null comment 'rule abstains AND production wrote a district',
+  audit_verdict string comment 'FIXED | LOST | UNDETERMINABLE | null = not audited',
+  prod_row_correct string comment 'yes | no | undeterminable | null',
+  audit_note string,
+  audited_at timestamp,
+  audited_by string
+)
+comment 'Supervised monitoring of the body-level sub-row rule (matcher quality lane). NEVER SWEEP.'
+```
+
+Daily, after Step 2, from `gold-match/` (all paths relative to it; `<dir>` is wherever the day's exports live):
+
+1. Export with `dbsql.py --csv`: the run's offices with production's outcome to `<dir>/run-<date>-offices.csv`
+   ```sql
+   select p.database_id as br_database_id, p.name, p.state, p.mtfcc, p.geo_id, p.sub_area_name, p.sub_area_value,
+       p.is_judicial, p.has_unknown_boundaries, r.l2_district_type, r.l2_district_name, r.confidence
+   from goodparty_data_catalog.model_predictions.llm_l2_br_match_results r
+   join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_position p on p.database_id = r.br_database_id
+   where r.attempted_at = timestamp'<run_key>'
+   ```
+   and the universe with its per-state version to `<dir>/universe-<date>.csv`
+   ```sql
+   select state_postal_code, district_type, district_name, loaded_at from goodparty_data_catalog.dbt.int__l2_district_universe
+   ```
+   then the mirror over those two files to `<dir>/classes-<date>.csv` (the body-level mirror above).
+2. `uv run python ../.claude/skills/gold-match-run-audit/build_shadow_rows.py <dir>/run-<date>-offices.csv <dir>/classes-<date>.csv
+   <dir>/universe-<date>.csv --run-key '<run_key>' --image-git-sha <run_log.git_sha> --shape B_live --out <dir>/shadow-<date>` writes
+   `shadow-<date>.csv` and `shadow-<date>-partNN.sql` (INSERTs under 100 KB each; a whole wave in one statement exceeds the CLI's
+   argument limit, and Linux caps one argument at 128 KiB); run each part with `dbsql.py -f` in name order. Regenerating a prefix
+   removes its earlier parts first. One append per run key; redoing a day is a delete on `run_key`
+   then the inserts. Shape is `A_shadow` when production ran a build without the rule, `B_live` when it ran the rule.
+3. `uv run python ../.claude/skills/gold-match-run-audit/find_body_rows.py <dir>/shadow-<date>.csv <dir>/universe-<date>.csv
+   <dir>/hits-<date>.csv` asks, for every in-class abstain, whether ANY row of ANY type in the state carries the body's anchor tokens
+   (the matcher's own `body_presence` logic, widened past the family). Zero hits: the body has no row. Hits: hand review against the
+   rows in `anchor_hit_rows` (every row that carried all the anchors, up to five) and the `top_candidates` list, and check
+   whether a candidate carries the seat number too (a same-body row with the number is a real loss; a row of another body sharing
+   the name and number is a lookalike the rule was right to refuse). `anchor_hits` of -1 means the body is role words only
+   (nothing to test): review by hand, never count it as zero-hit.
+4. Verdicts by UPDATE keyed on (run_key, br_database_id): `audit_verdict` FIXED (no correct row exists), LOST (a correct row exists),
+   UNDETERMINABLE; plus `prod_row_correct`, `audit_note`, `audited_at`, `audited_by`. Correct means the electorate's own row: the parent
+   row of a sub-district seat is wrong; an at-large numbered seat's parent row is right. Ten sampled asserted rows per run get
+   `prod_row_correct` too.
+5. Report cumulative FIXED / LOST / UNDETERMINABLE and `lost / (fixed + lost)` against the bar the owner set, plus the run log's
+   `withdrawals_held`. Split the zero-subtype rows at report time with `has_unknown_boundaries and mtfcc in the school set`: the
+   flagged-school ones are the rule's own behavior, the rest are the older family-scoped zero-subtype path, and their loss rates
+   differ. The ratio comes from the table, never from a preview file.
+
+Never widen the audit question to whether production's row "looked reasonable", and never audit against a universe export older than
+the run: the classes move when the universe moves.
+
+## Step 3 — Override suite (outside the gate)
+
+```sql
+with
+    run_rows as (
+        select br_database_id, l2_state, l2_district_type, l2_district_name
+        from goodparty_data_catalog.model_predictions.llm_l2_br_match_results
+        where attempted_at = timestamp'__RUN_KEY__'
+    ),
+
+    -- Minted 2026-map rows exist to compensate for a class the universe
+    -- structurally cannot express, not to record a matcher disagreement;
+    -- excluded before joining.
+    active_overrides as (
+        select br_database_id, state, l2_district_type, l2_district_name
+        from goodparty_data_catalog.dbt.l2_br_match_overrides
+        where l2_district_type not like '%\\_2026'
+    ),
+
+    joined as (
+        select
+            run_rows.br_database_id,
+            run_rows.l2_state,
+            run_rows.l2_district_type,
+            run_rows.l2_district_name,
+            active_overrides.state as override_state,
+            active_overrides.l2_district_type as override_district_type,
+            active_overrides.l2_district_name as override_district_name,
+            case
+                when run_rows.l2_district_name is null then 'abstained'
+                when
+                    lower(run_rows.l2_state) = lower(active_overrides.state)
+                    and lower(run_rows.l2_district_type) = lower(active_overrides.l2_district_type)
+                    and lower(run_rows.l2_district_name) = lower(active_overrides.l2_district_name)
+                    then 'agree'
+                else 'disagree'
+            end as verdict
+        from active_overrides
+        inner join run_rows on run_rows.br_database_id = active_overrides.br_database_id
+    )
+
+select verdict, count(*) as n
+from joined
+group by verdict
+order by verdict
+```
+
+Disagreement drill-down (identical statement, filtered):
+
+```sql
+-- ... same `with` block as above ...
+select *
+from joined
+where verdict = 'disagree'
+```
+
+The suite is known-hard offices scored automatically and reported alongside the
+holdout but OUTSIDE the gate: the serving path bypasses the matcher for every
+one of them, so a disagreement is signal for review, never a stop.
+
+## Step 4 — The holdout gate — PRE-GATE-ONLY, do not run against this run's truth
+
+The frozen 120-office instrument spent its one adjudication on 2026-08-27;
+truth columns are locked and never read again. For Run B and every run
+audited after it, read the archived verdict instead of re-scoring:
+`research/2026-08-27-gate-run-report.md` (dispositions in
+`research/review-decisions.md`, HOLDOUT GATE section) — PASS, both arms,
+backlog 46 vs January 22, served net regression 1 of a budget of 2.
+
+`score_holdout.py` remains the tool for a FUTURE gate only, if a semantics
+change (matcher, prompt, model, filters, flag) forces a fresh holdout and a
+fresh adjudication — never a re-score of the spent instrument:
+
+```bash
+python .claude/skills/gold-match-run-audit/score_holdout.py \
+  --truth <a freshly adjudicated holdout packet.csv> \
+  --answers <that gate's arm answers.json> \
+  --meta <that gate's arm meta.json> \
+  --label "<run key>, <arm>"
+```
+
+## Step 5 — Web spot-check
+
+No code. Sample ~15 matched rows under the key from Step 2, stratified by rule
+class, with at least 3 from `R2_whole_school_gated` when the run produced any.
+Verify each the way the holdout was adjudicated — establish the office's real
+electorate first (statute, charter, municipal code, the jurisdiction's own site;
+a residency requirement is not an electorate), then check the matched tuple is
+that electorate's row (the full method contract lives in the holdout owner's
+working directory) — using the ddhq-miss-audit fan-out pattern and its cost rule
+(`.claude/skills/ddhq-miss-audit/SKILL.md` Step 3): small model by default for
+the fan-out, escalate only a batch a spot-check shows wrong, never the
+orchestrator's own model. A confirmed wrong match is evidence for the owner's
+review, not an automatic stop.
+
+## Step 6 — Sign-off checklist
+
+Restate only the hard conditions, each naming where it was measured:
+
+- [ ] Batch count reconciles (Step 0's operator count vs Step 1's `rows_under_key`).
+- [ ] `run_label_check_missing` is zero (Step 1, read same day before the 00:02
+  build) — a nonzero here is THIS run's hard stop.
+- [ ] `label_check_warn_count` is zero before release (Step 1, read after the
+  00:02 build lands the run and before the 12:02 product backstop) — zero POST-baseline dead tuples, the warn test's own scope. January-origin dead labels are the
+  pending backlog, deliberately out of scope, and join nothing while they wait.
+  A nonzero with a zero run-scoped count is repaired at its SOURCE run, never
+  by deleting this one.
+- [ ] Zero CONFIRMED matched-row violations in `R0_party_committee`,
+  `R1_judicial_abstain`, `R2_slice_zero_subtype_abstain`, and
+  `school_flag_no_school_rows` after Step 2's input-drift review (a
+  reclassification caused by BR/universe drift between run and audit is not a
+  violation).
+- [ ] Coverage ratio clears `assert_position_district_voter_coverage_floor.sql`'s
+  floor (Step 1, read after the 00:02 build lands the run and before the 12:02
+  product backstop; same-day the mart is still the prior build, so never gate on
+  that reading).
+- [ ] Withdrawal count in `pass_through` and matched `R2_*` classes reviewed by
+  the owner (Step 2).
+- [ ] Holdout gate verdict is PASS **for the arm this run actually used**
+  (operator-confirmed `--enable-school-whole-assertion` state; the flag is not
+  persisted) — the other arm's PASS does not transfer, and a FAIL stops the
+  cutover rather than being satisfied by recording it; supervised cutover only
+  (Step 4).

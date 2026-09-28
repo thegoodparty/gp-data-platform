@@ -1,12 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="id",
-        auto_liquid_cluster=true,
-    )
-}}
-
 with
     election_frequencies as (
         select tbl_pos.database_id, e.databaseid as pe_frequency_database_id
@@ -15,14 +6,33 @@ with
     ),
     election_frequency as (
         select
-            tbl_pos.database_id as position_database_id,
-            last(tbl_freq.frequency) as frequency
+            tbl_pos.database_id as position_database_id, tbl_freq.frequency as frequency
         from election_frequencies as tbl_pos
         left join
             {{ ref("int__ballotready_position_election_frequency") }} as tbl_freq
             on tbl_pos.pe_frequency_database_id = tbl_freq.database_id
-        where tbl_freq.valid_to is null
-        group by position_database_id
+        -- Only rows that actually resolved compete below. A join miss carries a null
+        -- valid_to, which the ordering would otherwise rank alongside a current version
+        -- and let it beat a real superseded one. Unlike the valid_to filter this
+        -- replaced, dropping a miss loses nothing: the sole consumer left-joins this
+        -- CTE, so a position with no resolvable version still lands with a null.
+        where tbl_freq.database_id is not null
+        -- Prefer a version BallotReady still marks current, but fall back to the most
+        -- recently valid one rather than dropping the position: ~3,500 positions have
+        -- only superseded versions, and their last known frequency beats a null.
+        -- Filtering valid_to in the WHERE clause also silently made this an inner join.
+        qualify
+            row_number() over (
+                partition by tbl_pos.database_id
+                order by
+                    case when tbl_freq.valid_to is null then 0 else 1 end asc,
+                    tbl_freq.valid_to desc nulls last,
+                    tbl_freq.valid_from desc nulls last,
+                    -- final tiebreak so two versions sharing a validity window
+                    -- cannot pick differently between runs.
+                    tbl_freq.database_id desc
+            )
+            = 1
     ),
     filing_period_ids as (
         select
@@ -66,35 +76,46 @@ with
             tbl_filing_period.end_on as filing_date_end,
             tbl_position.database_id as br_position_database_id,
             tbl_position.geo_id as position_geo_id,
-            -- For some MTFCCs, need to roll up to parent geo_id of the position to
-            -- get the correct place by geo_id
+            -- The seeded override wins, for geographies BallotReady puts on a
+            -- position but publishes no Place for. Otherwise, for some MTFCCs,
+            -- need to roll up to parent geo_id of the position to get the
+            -- correct place by geo_id
             -- see:
             -- https://docs.google.com/spreadsheets/d/1t1U2oECqFRKPUVO7HYI2me-YzDgtvjbPzp5h9BqKHcU/edit?gid=0#gid=0
-            case
-                when tbl_position.mtfcc = 'X0005'
-                then left(tbl_position.geo_id, 5)  -- County Legislative District
-                when tbl_position.mtfcc = 'G5220'
-                then left(tbl_position.geo_id, 2)  -- State Legislative District (lower)
-                when tbl_position.mtfcc = 'X0001'
-                then left(tbl_position.geo_id, 7)  -- City Council District
-                when tbl_position.mtfcc = 'G5210'
-                then left(tbl_position.geo_id, 2)  -- State Legistlative District (upper)
-                when tbl_position.mtfcc = 'X0102'
-                then left(tbl_position.geo_id, 7)  -- Unified School District Subdistrict
-                when tbl_position.mtfcc = 'X0010'
-                then left(tbl_position.geo_id, 2)  -- Circuit Court
-                when tbl_position.mtfcc = 'G5200'
-                then left(tbl_position.geo_id, 2)  -- Congressional District
-                when tbl_position.mtfcc = 'X0014'
-                then left(tbl_position.geo_id, 2)  -- District Court
-                when tbl_position.mtfcc = 'X0027'
-                then left(tbl_position.geo_id, 5)  -- Fire District
-                when tbl_position.mtfcc = 'X0026'
-                then left(tbl_position.geo_id, 5)  -- Justice Precinct
-                when tbl_position.mtfcc = 'X0025'
-                then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
-                else tbl_position.geo_id
-            end as position_to_place_geo_id,
+            coalesce(
+                tbl_place_override.place_geo_id,
+                case
+                    when tbl_position.mtfcc = 'X0005'
+                    then left(tbl_position.geo_id, 5)  -- County Legislative District
+                    when tbl_position.mtfcc = 'G5220'
+                    then left(tbl_position.geo_id, 2)  -- State Legislative District (lower)
+                    when tbl_position.mtfcc = 'X0001'
+                    then left(tbl_position.geo_id, 7)  -- City Council District
+                    when tbl_position.mtfcc = 'G5210'
+                    then left(tbl_position.geo_id, 2)  -- State Legistlative District (upper)
+                    when tbl_position.mtfcc = 'X0102'
+                    then left(tbl_position.geo_id, 7)  -- Unified School District Subdistrict
+                    when tbl_position.mtfcc = 'X0010'
+                    then left(tbl_position.geo_id, 2)  -- Circuit Court
+                    when tbl_position.mtfcc = 'G5200'
+                    then left(tbl_position.geo_id, 2)  -- Congressional District
+                    when tbl_position.mtfcc = 'X0014'
+                    then left(tbl_position.geo_id, 2)  -- District Court
+                    when tbl_position.mtfcc = 'X0027'
+                    then left(tbl_position.geo_id, 5)  -- Fire District
+                    when tbl_position.mtfcc = 'X0026'
+                    then left(tbl_position.geo_id, 5)  -- Justice Precinct
+                    -- Community College District. BallotReady hand-builds these
+                    -- geo_ids as county FIPS + a district slug for most districts;
+                    -- the few carrying a state-level code roll to nothing and stay
+                    -- placeless, as before.
+                    when tbl_position.mtfcc = 'X0028'
+                    then left(tbl_position.geo_id, 5)
+                    when tbl_position.mtfcc = 'X0025'
+                    then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
+                    else tbl_position.geo_id
+                end
+            ) as position_to_place_geo_id,
             tbl_position.mtfcc as position_mtfcc,
             tbl_race_to_positions.position_names
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
@@ -120,9 +141,10 @@ with
         left join
             {{ ref("int__race_to_positions") }} as tbl_race_to_positions
             on tbl_race.database_id = tbl_race_to_positions.race_database_id
-        {% if is_incremental() %}
-            where tbl_race.updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
+        left join
+            {{ ref("br_position_place_overrides") }} as tbl_place_override
+            on tbl_position.geo_id = tbl_place_override.position_geo_id
+            and tbl_position.mtfcc = tbl_place_override.position_mtfcc
     ),
     race_w_place as (
         select

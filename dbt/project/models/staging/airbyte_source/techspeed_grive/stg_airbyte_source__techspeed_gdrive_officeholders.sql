@@ -92,3 +92,6 @@ with
     )
 select *
 from renamed
+where
+    -- Resolves through BallotReady's office holder id.
+    {{ dsar_not_suppressed_via_br_office_holder("ts_officeholder_id") }}

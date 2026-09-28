@@ -27,7 +27,8 @@ with
             -- Position data (via organization -> election-api)
             o.position_id,
             p.name as position_name,
-            p.br_database_id as ballotready_position_id,
+            -- back to numeric: the election-api mart publishes it as string
+            cast(p.br_database_id as bigint) as ballotready_position_id,
             p.state as position_state,
             o.custom_position_name,
 

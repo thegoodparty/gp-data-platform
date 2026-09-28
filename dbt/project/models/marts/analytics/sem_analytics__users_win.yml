@@ -26,6 +26,18 @@ semantic_models:
       - name: is_activated
         description: Has sent at least one voter outreach campaign.
         type: categorical
+      - name: has_product_output
+        description: >
+          Has made something with the product that left it. Broader than
+          is_activated and a different question; see win_product_output_users.
+        type: categorical
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output, and the one a model
+          predicting engagement must use as its label. Surfaced as a dimension
+          rather than a second metric: it exists to keep a label honest, not to
+          be reported.
+        type: categorical
       - name: is_pro
         description: Has at least one pro campaign.
         type: categorical
@@ -55,14 +67,98 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
-        ratified: 2026-08-03
+        # What this number MEANS, in words a non-engineer can rule on. It names
+        # no event, no surface and no table: which signals satisfy the rule is
+        # the implementation layer, and it lives in anchored_on.
+        business_rule:
+          counts: >
+            Anyone holding an account in the Win product, whether or not they
+            have done anything with it.
+          excludes:
+            - >
+              Nothing. This is the whole account population, and it is the
+              denominator the engagement numbers are read against.
+          known_gaps:
+            - >
+              Internal staff accounts are counted here, unlike the Serve
+              population, which excludes them.
+
+  - name: win_active_candidates_30d
+    label: Win Active Candidates 30d
+    description: >
+      Count of Win-product users who viewed the candidate dashboard in the
+      trailing 30 days: the Active Candidates OKR. Definition owned by
+      users_win_base.is_active_candidate_30d, which is anchored on the
+      dashboard-view union declared in this metric's config.meta.anchored_on:
+      the site-wide page event at path '/dashboard' plus the named surface
+      events, which the product has renamed three times. The window is
+      evaluated against current_date() in the mart, so this metric is
+      as-of-run-time and cannot be sliced historically by registered_at.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__is_active_candidate_30d') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md
+        business_rule:
+          counts: >
+            A candidate counts once they have come back to their campaign
+            dashboard at least once in the trailing 30 days.
+          excludes:
+            - >
+              Visits to the marketing site or any page outside a candidate's
+              own campaign.
+            - >
+              Work done elsewhere in the product without coming back to the
+              dashboard. This is a return measure, not a work measure.
+          known_gaps:
+            - >
+              A view by a staff member acting on a candidate's behalf counts as
+              that candidate being active. The product records when that
+              happened, but this number does not use it.
+            - >
+              The window is evaluated when the table is built, so the number
+              cannot be re-read as of a past date.
+        # DATA-2421: the raw events that count as a dashboard view. This is the
+        # kernel — macros/amplitude_event_taxonomy.sql derives its SQL from this
+        # list, and omni's health monitor watches these for dormancy. Adding or
+        # removing a leg is a governed change, not an implementation detail.
+        anchored_on:
+          - event: Viewed
+            path: /dashboard
+          - event: Dashboard - Candidate Dashboard Viewed
+            era: historical   # died in-data 2026-06-13
+          - event: Dashboard - Campaign Plan Viewed
+            era: historical   # died in-data 2026-07-31
+          - event: Campaign Plan - Campaign Tracker Viewed
 
   - name: win_activated_users
     label: Win Activated Users
     description: >
-      Count of Win-product users who have activated: sent at least one voter
-      outreach campaign (first_campaign_sent_at is not null). The activated
-      slice of win_users; the Activated Candidates OKR.
+      Count of Win-product users who have activated: the product has performed
+      at least one voter-outreach send for them (first_campaign_sent_at is not
+      null). The activated slice of win_users; the Activated Candidates OKR.
+      Definition owned by users_win_base.is_activated, which is anchored on the
+      outreach-terminal union declared in this metric's config.meta.anchored_on
+      and compiled by is_outreach_activation_event.
+
+      Two things this deliberately does NOT count. Self-reported outreach, where
+      a candidate records something they did off-platform, is excluded by the
+      method qualifier below: it is a real signal but it is not a send this
+      product made, and counting it let the OKR hold steady through a month in
+      which the in-product leg had stopped firing entirely. And preparation to
+      reach voters (creating a call list, downloading a call sheet, building an
+      audience) is not outreach, so no preparation event is a leg.
+
+      SMS, robocall and social share one send terminal, emitted where the
+      payment commits. Phone banking has none and never will: there is no
+      in-product send, the candidate dials from their own phone, and call-list
+      creation and call-sheet download are preparation, so neither may be
+      borrowed as a proxy. That channel is a declared gap, not a missing
+      instrument. Because the legs went live at different dates, a series over
+      this metric carries instrumentation steps and must not be read as growth.
     type: simple
     type_params:
       measure: win_user_count
@@ -71,4 +167,109 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
-        ratified: 2026-07-28
+        business_rule:
+          counts: >
+            A user counts once the product has performed at least one outreach
+            send on their behalf.
+          excludes:
+            - Outreach the candidate did off-platform and self-reported.
+            - >
+              Preparation to reach voters: building a list, downloading a call
+              sheet, assembling an audience.
+            - >
+              A send that was drafted but never paid for. The commitment is the
+              payment, not the draft.
+          known_gaps:
+            - >
+              Phone banking has no in-product send — the candidate dials from
+              their own phone — so that channel is not counted and never will
+              be under this rule.
+            - >
+              The channels became countable at different dates, so a series
+              over this number carries steps that are not growth.
+        # The raw events that count as a product-performed outreach send. This is
+        # the kernel: is_outreach_activation_event derives its SQL from this list
+        # and the Win activity rollups gate their intake on it, so adding or
+        # removing a leg is a governed change, not an implementation detail.
+        anchored_on:
+          - event: Voter Outreach - Campaign Completed
+            # One event name, three moments. An absent method is the legacy
+            # in-product send (stopped firing 2026-09-08 when the flow moved to
+            # outreach/v2/); 'native' is a completed door-knocking walk; 'manual'
+            # is a candidate self-reporting outreach done elsewhere.
+            excluding:
+              method: manual
+          # Fires where the payment commits, one terminal for sms, robocall and
+          # social, told apart by its `channel` property. It replaced
+          # 'Robocall - Scheduled', which is still emitted but fires at
+          # draft-create on an unpaid row: a candidate who builds a draft and
+          # never pays is not a send. Count distinct outreachId, not rows, for
+          # anything measuring sends; a lapsed robocall hold can be
+          # re-authorized and commits again under the same messageId.
+          - event: Voter Outreach - Campaign Scheduled
+          # The live phone-banking event is per-call, not per-campaign, so it is
+          # not a leg: it would read as ~26 campaigns for one caller and hide the
+          # fact that the channel has no campaign-grain terminal any more.
+          - event: "Outreach - Phone Banking: Complete"
+            era: historical   # died in-data 2026-08-28, its call site removed
+
+  - name: win_product_output_users
+    label: Win Users With Product Output
+    description: >
+      Count of Win-product users who have made something with the product that
+      left it: a published website, a completed voter-outreach send, an exported
+      voter list, a downloaded call sheet. Definition owned by
+      users_win_base.has_product_output and compiled by is_product_output_event
+      from this metric's config.meta.anchored_on.
+
+      Read this as "did they get value out of the product", and read
+      win_activated_users as "did we reach voters for them". They are not two
+      measurements of one thing and must never be reported as each other or
+      compared in one series. The gap between them is mostly website publishing,
+      which is not voter outreach, and that is exactly why the OKR was not simply
+      widened to the larger number.
+
+      Where the outreach OKR has settled a question this follows it rather than
+      diverging. Self-reported outreach is excluded by the same method qualifier,
+      because a candidate recording what they did elsewhere produced no output
+      here. The robocall draft event is not a leg for the reason it stopped being
+      one for outreach: it fires at draft-create on an unpaid row, and an unpaid
+      draft never left the product.
+
+      Two caveats travel with any series over this. Three legs went live between
+      July and September 2026, so a series reaching back before 2026-07 has an
+      instrumentation step in it that is not growth. And most legs are marked
+      paywalled below, so a model using this as a label must read the free subset
+      through is_product_output_free_event or it will learn who paid and report it
+      as who engaged.
+    type: simple
+    type_params:
+      measure: win_user_count
+    filter: "{{ Dimension('user__has_product_output') }}"
+    config:
+      meta:
+        owner: semantic-layer-business
+        detail_doc: engagement.md
+        # The raw events that count as output leaving the product. Same kernel
+        # role as the outreach anchor above: the compiling macros derive their SQL
+        # from this list, so adding or removing a leg is a governed change.
+        #
+        # `paywalled` marks a leg only a paying user can reach, per the
+        # code-verified product gating: the voter-contact channels and the voter
+        # file require Pro, the website builder does not.
+        anchored_on:
+          - event: Candidate Website - Published
+          - event: Voter Outreach - Campaign Completed
+            # Same three moments as the outreach anchor, same exclusion.
+            excluding:
+              method: manual
+            paywalled: true
+          - event: Voter Data - List Exported
+            paywalled: true
+          # Preparation for the outreach OKR, which asks whether a send happened.
+          # Output for this metric, which asks whether anything left: the sheet is
+          # a file in the candidate's hands.
+          - event: Voter Outreach - Phone Banking Call Sheet Downloaded
+            paywalled: true
+          - event: Voter Outreach - Campaign Scheduled
+            paywalled: true

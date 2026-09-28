@@ -1,7 +1,7 @@
 -- A4: warn-only signal for same-(ts_code, election_date) mixed-cluster
 -- collisions in the matcha output.
 --
--- DATA-1523 Phase 3 tactical trade-off: when matcha produces multiple
+-- Phase 3 tactical trade-off: when matcha produces multiple
 -- clusters for the same stripped ts_source_candidate_id on the same
 -- election_date (e.g. a TS person filed for two different specialty
 -- districts in the same town on the same day), int__civics_er_canonical_ids's

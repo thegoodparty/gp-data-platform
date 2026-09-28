@@ -129,9 +129,10 @@ with
             gp_api.is_pledged,
             gp_api.is_verified,
             gp_api.verification_status_reason,
-            -- TS wins for is_incumbent (TS: 51k populated, BR: 0); gp_api/DDHQ
-            -- excluded.
-            coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
+            -- TS is the only provider carrying is_incumbent (BR's candidacy
+            -- feed has none; gp_api/DDHQ excluded). Precedence against the
+            -- office-holder derivation is settled in the final select.
+            ts.is_incumbent,
             -- office_type: BR > gp_api > DDHQ. BR derives office_type from
             -- BallotReady's normalized position name (low Other rate); gp_api
             -- derives it from raw onboarding free-text (high Other rate), so
@@ -264,6 +265,16 @@ with
     -- otherwise let us pick a stage outcome that doesn't belong to this
     -- mart row. The equality predicates are NULL-tolerant: when either side
     -- lacks context (common for 2025 archive rows), the stage row is kept.
+    --
+    -- Also drops stage rows backed ONLY by gp_api (source_systems exactly
+    -- ['gp_api']): those record the campaign's pledged (intended) race, not
+    -- ballot evidence, so counting them as stage advancement would show
+    -- product signups as live general-election candidates even after a lost
+    -- primary. Any other source keeps counting, and the null-safe equality
+    -- keeps NULL source_systems rows -- fail open, like the context
+    -- predicates above. The rows stay in candidacy_stage itself (product
+    -- linkage, person resolution); they are only excluded from stage
+    -- derivation here.
     candidacy_stages_in_context as (
         select
             cs.gp_candidacy_id,
@@ -288,7 +299,9 @@ with
                 or d.br_position_database_id is null
                 or es.br_position_id = d.br_position_database_id
             )
-        where cs.election_stage is not null
+        where
+            cs.election_stage is not null
+            and not (cs.source_systems <=> array('gp_api'))
     ),
 
     -- Deepest stage the candidacy has REACHED. Unlike the decided rollup below,
@@ -427,13 +440,93 @@ with
         from {{ ref("candidacy_stage") }}
         where gp_person_id is not null
         group by gp_candidacy_id
+    ),
+
+    -- gp_person_id: min over the person reached by HubSpot contact, product
+    -- campaign -> user, and the candidacy's stage rows. Carries the contest
+    -- date and position alongside it for the incumbency test below.
+    candidacy_person as (
+        select
+            d.gp_candidacy_id,
+            d.br_position_database_id,
+            coalesce(
+                d.general_election_date,
+                d.primary_election_date,
+                d.general_runoff_election_date,
+                d.primary_runoff_election_date
+            ) as election_day,
+            least(hp.gp_person_id, gpp.gp_person_id, sp.gp_person_id) as gp_person_id
+        from deduplicated as d
+        left join
+            person_ids as hp
+            on hp.record_key = 'hubspot|' || cast(d.hubspot_contact_id as string)
+        left join
+            campaign_user as cu
+            on cu.campaign_id = cast(d.product_campaign_id as string)
+        left join person_ids as gpp on gpp.record_key = 'gp_api|' || cu.user_id
+        left join stage_person as sp on sp.gp_candidacy_id = d.gp_candidacy_id
+    ),
+
+    -- Incumbency reconstructed from BR office-holder terms: does this candidate
+    -- already hold the position they are running for on election day? The BR
+    -- candidacy feed carries no incumbency field, and TS's flag covers only
+    -- the candidacies it enriched and marks some sitting incumbents as
+    -- challengers, so this is both the fallback and the check on TS.
+    --
+    -- Matched on the canonical person id, or on first+last name. The name arm
+    -- compensates for a person-resolution gap: product sign-ups are routinely
+    -- not linked to their BR office-holder record, and it supplies 30% of the
+    -- incumbent flags on the 2026 product base. Position and term window pin
+    -- the comparison to that seat's few holders, which is what makes bare name
+    -- equality safe here; a 10-case audit found no collisions. Drop the name
+    -- arm once person resolution links these records.
+    --
+    -- FALSE means BR shows the seat on election day in someone else's hands,
+    -- or vacant (a vacancy term carries no person, and nobody is the incumbent
+    -- of an empty seat). Either way this candidate does not hold it. It is only
+    -- assertable once we know who the candidate is, so a candidacy with no
+    -- resolved person, like a position with no covering term, stays NULL:
+    -- unknown, not challenger.
+    --
+    -- A NULL term_end_date reads as "no scheduled end, still serving" and so
+    -- covers election day. A NULL term_start_date carries no such reading -
+    -- assuming the term began before every election day would backdate the
+    -- holder over cycles they may not have served - so those terms are dropped.
+    incumbency as (
+        select
+            cp.gp_candidacy_id,
+            max(
+                case
+                    -- Vacancy terms keep the prior holder's name, so they must
+                    -- never satisfy the name arm. They still count as coverage
+                    -- below, which is what makes an empty seat read FALSE.
+                    when t.is_vacant
+                    then 0
+                    when
+                        t.gp_person_id = cp.gp_person_id
+                        or (
+                            lower(trim(t.first_name)) = lower(trim(p.first_name))
+                            and lower(trim(t.last_name)) = lower(trim(p.last_name))
+                        )
+                    then 1
+                    else 0
+                end
+            )
+            = 1 as is_incumbent
+        from candidacy_person as cp
+        left join {{ ref("people") }} as p on cp.gp_person_id = p.gp_person_id
+        join
+            {{ ref("elected_official_terms") }} as t
+            on cp.br_position_database_id = t.br_position_id
+            and t.term_start_date <= cp.election_day
+            and (t.term_end_date is null or t.term_end_date >= cp.election_day)
+        where cp.gp_person_id is not null
+        group by cp.gp_candidacy_id
     )
 
 select
     deduplicated.gp_candidacy_id,
-    -- gp_person_id: min over the person reached by HubSpot contact, product
-    -- campaign -> user, and the candidacy's stage rows.
-    least(hp.gp_person_id, gpp.gp_person_id, sp.gp_person_id) as gp_person_id,
+    cp.gp_person_id,
     deduplicated.gp_candidate_id,
     deduplicated.gp_election_id,
     deduplicated.product_campaign_id,
@@ -441,7 +534,18 @@ select
     deduplicated.hubspot_company_ids,
     deduplicated.candidate_id_source,
     deduplicated.party_affiliation,
-    deduplicated.is_incumbent,
+    -- A BR term placing this person in the seat on election day is positive
+    -- proof and beats TS, which has marked sitting incumbents as challengers.
+    -- TS still beats BR's "someone else holds it" verdict: a web audit of
+    -- those disagreements found BR's holder file lagging mid-term
+    -- resignations, appointments and seat renumbering more often than TS was
+    -- wrong, and the name arm above misses middle names and initials. The
+    -- negative verdict fills in where TS is silent.
+    case
+        when inc.is_incumbent
+        then true
+        else coalesce(deduplicated.is_incumbent, inc.is_incumbent)
+    end as is_incumbent,
     deduplicated.is_open_seat,
     deduplicated.candidate_office,
     deduplicated.official_office_name,
@@ -616,11 +720,5 @@ left join
     last_decided_stage_per_candidacy as decided
     on deduplicated.gp_candidacy_id = decided.gp_candidacy_id
 left join race_context as race on deduplicated.gp_candidacy_id = race.gp_candidacy_id
-left join
-    person_ids as hp
-    on hp.record_key = 'hubspot|' || cast(deduplicated.hubspot_contact_id as string)
-left join
-    campaign_user as cu
-    on cu.campaign_id = cast(deduplicated.product_campaign_id as string)
-left join person_ids as gpp on gpp.record_key = 'gp_api|' || cu.user_id
-left join stage_person as sp on sp.gp_candidacy_id = deduplicated.gp_candidacy_id
+left join candidacy_person as cp on cp.gp_candidacy_id = deduplicated.gp_candidacy_id
+left join incumbency as inc on inc.gp_candidacy_id = deduplicated.gp_candidacy_id

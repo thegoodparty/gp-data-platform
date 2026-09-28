@@ -1,5 +1,5 @@
 -- dbt/project/tests/assert_place_mtfcc_present.sql
--- DATA-1950: int__place_fast_facts routes each place into the G4110 vs non-G4110
+-- int__place_fast_facts routes each place into the G4110 vs non-G4110
 -- branch by mtfcc. mtfcc is the only branch signal and is non-null for every place
 -- today. A null mtfcc would fall into the non-G4110 (substring) path and, if the
 -- place is actually an incorporated city, inherit a coincidental wrong county that
