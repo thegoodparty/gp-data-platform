@@ -28,6 +28,9 @@ jobs:
     # channels (which would break threading).
     env:
       SLACK_CHANNEL_ID: C08K22X9ZNH
+      # DATA-2558: where a summary goes when it is mechanics rather than metric
+      # news. Same owner the token-health check DMs its routine warnings to.
+      SLACK_OWNER_DM: U085CFQ96BG
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,6 +108,40 @@ jobs:
           else
             uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
           fi
+      - name: Decide who hears about this merge
+        # DATA-2558: mechanics merges (seals, sidecar schema, routing, the
+        # catalog generator) posted summaries shaped like metric news, which
+        # teaches the channel it is noise. Route by what actually moved.
+        id: route
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Only a real classification can justify suppressing a post, so with
+          # no base tree LANES stays empty and the route falls back to the
+          # channel rather than reading "cannot tell" as "nothing moved".
+          LANES=""
+          if [ -d /tmp/base ]; then
+            LANES=$(uv run python -m semantic_catalog.cli --classify-lanes --base-dir /tmp/base)
+          fi
+          # PR_NUM is only exported when ORG_READ_TOKEN is provisioned, so
+          # re-derive it here off the workflow's own token; the label read must
+          # not depend on a secret that may be absent.
+          PR="${PR_NUM:-$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')}"
+          MECHANICS_LABEL=false
+          if [ -n "$PR" ] && gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name' | grep -qx 'governance:mechanics'; then
+            MECHANICS_LABEL=true
+          fi
+          ROUTE=$(LANES="$LANES" MECHANICS_LABEL="$MECHANICS_LABEL" uv run python -m semantic_catalog.notices)
+          echo "route: $ROUTE"
+          {
+            echo "target=$(echo "$ROUTE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target"])')"
+            echo "reason=$(echo "$ROUTE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])')"
+          } >> "$GITHUB_OUTPUT"
       - name: Read governance thread marker
         # DATA-2218: recover the anchor ts written at PR-open so the merge
         # summary lands as a threaded reply. Empty marker => top-level post
@@ -130,8 +167,13 @@ jobs:
             echo "SLACK_CHANNEL_ID=$MARKER_CHANNEL" >> "$GITHUB_ENV"
           fi
       - name: Post Slack change summary
+        # DATA-2558: `skip` means the merge moved no metric's rule and no
+        # metric's build, so there is nothing to tell anyone.
+        if: ${{ steps.route.outputs.target != 'skip' }}
         env:
           SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+          ROUTE_TARGET: ${{ steps.route.outputs.target }}
+          ROUTE_REASON: ${{ steps.route.outputs.reason }}
         run: |
           set -euo pipefail
           # SLACK_APP_BOT_TOKEN was provisioned and live-verified 2026-07-28.
@@ -152,10 +194,20 @@ jobs:
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(python3 -c '
           import json, os
-          p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": open("/tmp/slack.txt").read()}
-          t = os.environ.get("SLACK_THREAD_TS")
-          if t:
-              p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
+          text = open("/tmp/slack.txt").read()
+          if os.environ.get("ROUTE_TARGET") == "owner":
+              # DATA-2558: the label downgrades the summary to a DM rather than
+              # deleting it, so a mechanics claim stays checkable. No thread_ts:
+              # the anchor ts belongs to the channel, not to this DM.
+              p = {
+                  "channel": os.environ["SLACK_OWNER_DM"],
+                  "text": "(Not posted to the channel: %s.)\n\n%s" % (os.environ["ROUTE_REASON"], text),
+              }
+          else:
+              p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": text}
+              t = os.environ.get("SLACK_THREAD_TS")
+              if t:
+                  p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
           print(json.dumps(p))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.

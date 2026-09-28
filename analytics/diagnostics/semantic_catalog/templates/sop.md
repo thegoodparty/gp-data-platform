@@ -120,6 +120,23 @@ To change a definition:
    notification channel. **The business group is told about build changes there,
    not asked about them in review.**
 
+### Changing the machinery, not a metric
+
+Work on the layer's plumbing — the seals, the sidecar schema, review routing,
+the catalog generator — changes no metric's meaning, so the notification channel
+should not hear about it.
+
+- Open the pull request as a **draft**. A draft posts no thread anchor and asks
+  no review group. Mark it ready only once a metric's rule or build has moved.
+- On merge, a summary is posted only when a metric's rule or build actually
+  moved. A merge that moved neither tells nobody.
+- A migration that re-stamps every definition without changing any meaning still
+  reads as a real diff. Label that pull request `governance:mechanics` and its
+  summary goes to the owner as a direct message instead of the channel.
+
+The label redirects the summary; it never deletes it. Nothing can quietly
+suppress the announcement of a real metric change.
+
 Why sign-offs live in a separate file: review routing covers the `sem_*.yml`, so
 writing the date there re-requests the very reviewers whose approval it records,
 and forces you to write it before the approval exists. The sidecar is outside
