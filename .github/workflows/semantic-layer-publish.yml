@@ -102,11 +102,11 @@ jobs:
         env:
           PYTHONPATH: diagnostics
           # Lets the summary say when a metric is merging while its declared
-          # instrument is dormant. ORG_READ_TOKEN is the fallback because it is
-          # the only cross-repo read this repo already holds; if it carries
-          # contents read on omni the check simply works and no dedicated secret
-          # is needed. If it does not, the read degrades into the owner DM
-          # below, which is where we would have been anyway.
+          # instrument is dormant. ORG_READ_TOKEN is the fallback and, verified
+          # 2026-09-28, already carries contents read on omni — so no dedicated
+          # OMNI_READ_TOKEN is needed. The named secret stays first so one can
+          # be provisioned later (a narrower token, or after a rotation) without
+          # touching this file. If both fail, the read degrades to the owner DM.
           OMNI_READ_TOKEN: ${{ secrets.OMNI_READ_TOKEN || secrets.ORG_READ_TOKEN }}
           # The gh fallback is for a laptop run. In Actions gh is authed to this
           # repo only, so attempting it would fail slower and report a murkier
