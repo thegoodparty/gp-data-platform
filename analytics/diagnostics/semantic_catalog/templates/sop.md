@@ -162,8 +162,11 @@ Work on the layer's plumbing — the seals, the sidecar schema, review routing,
 the catalog generator — changes no metric's meaning, so the notification channel
 should not hear about it.
 
-- Open the pull request as a **draft**. A draft posts no thread anchor and asks
-  no review group. Mark it ready only once a metric's rule or build has moved.
+- Open the pull request as a **draft** while it touches a governed `sem_*.yml`.
+  A draft posts no thread anchor and asks no review group. A pull request that
+  touches no `sem_*.yml` cannot post at all, so open that one ready for review —
+  the review bot will not look at a draft, and leaving it in draft only strands
+  it.
 - On merge, a summary is skipped only when no metric's record moved at all.
   That is narrower than it sounds: re-stamping or reformatting a definition
   still moves the record, and so does recording a sign-off.
