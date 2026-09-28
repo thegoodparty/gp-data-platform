@@ -128,11 +128,13 @@ should not hear about it.
 
 - Open the pull request as a **draft**. A draft posts no thread anchor and asks
   no review group. Mark it ready only once a metric's rule or build has moved.
-- On merge, a summary is posted only when a metric's rule or build actually
-  moved. A merge that moved neither tells nobody.
-- A migration that re-stamps every definition without changing any meaning still
-  reads as a real diff. Label that pull request `governance:mechanics` and its
-  summary goes to the owner as a direct message instead of the channel.
+- On merge, a summary is skipped only when no metric's record moved at all.
+  That is narrower than it sounds: re-stamping or reformatting a definition
+  still moves the record, and so does recording a sign-off.
+- So for a migration that re-stamps definitions without changing any meaning,
+  label the pull request `governance:mechanics` and its summary goes to the
+  owner as a direct message instead of the channel. The label does most of the
+  work here; the automatic skip is the cheap half.
 
 The label redirects the summary; it never deletes it. Nothing can quietly
 suppress the announcement of a real metric change.

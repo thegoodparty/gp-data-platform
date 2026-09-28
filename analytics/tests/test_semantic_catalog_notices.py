@@ -37,10 +37,23 @@ def test_mechanics_label_on_an_empty_diff_still_skips():
     assert route(_classified(), mechanics_label=True)["target"] == SKIP
 
 
-def test_display_prose_only_goes_to_the_owner():
-    # Asks nobody for review, but a metric's description did move, so it is not
-    # dev work either.
-    assert route(_classified(unreviewed=["win_users"]))["target"] == OWNER
+def test_a_sign_off_recording_still_reaches_the_channel():
+    # A sign-off moves rule_approved/build_approved and no reviewed field, so it
+    # lands in `unreviewed`. The publish workflow watches the ratification
+    # sidecar precisely so the pending-to-dated edge cannot merge unannounced;
+    # routing it anywhere but the channel would defeat that.
+    assert route(_classified(unreviewed=["win_users"]))["target"] == CHANNEL
+
+
+def test_display_prose_reaches_the_channel():
+    # Same bucket as a sign-off, and `classify` does not say which of the two it
+    # was, so prose rides along rather than risk suppressing a sign-off.
+    assert route(_classified(unreviewed=["win_users"]))["target"] == CHANNEL
+
+
+def test_mechanics_label_downgrades_an_unreviewed_move_too():
+    verdict = route(_classified(unreviewed=["win_users"]), mechanics_label=True)
+    assert verdict["target"] == OWNER
 
 
 def test_no_base_tree_posts_to_the_channel():

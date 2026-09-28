@@ -8,12 +8,19 @@ real post gets scrolled past.
 The target is decided from the lanes the diff moved, the same classification the
 review routing uses, plus one explicit escape hatch:
 
-  channel   a metric's rule or build moved and nobody claimed the merge as
-            mechanics. This is the news the channel is for.
-  owner     something moved, but only prose — or the author labelled the PR
-            mechanics. Routed to the owner's DM, not dropped: a mechanics claim
-            has to stay checkable by the person who would catch a false one.
-  skip      nothing moved at all. There is nothing to tell anyone.
+  channel   a metric's record moved and nobody claimed the merge as mechanics.
+            This is the news the channel is for.
+  owner     a metric's record moved but the author labelled the PR mechanics.
+            Routed to the owner's DM, not dropped: a mechanics claim has to stay
+            checkable by the person who would catch a false one.
+  skip      no metric's record moved at all. There is nothing to tell anyone.
+
+Deliberately keyed on the WHOLE record rather than on the two review lanes. A
+sign-off being recorded moves `rule_approved`/`build_approved` and no reviewed
+field, so it lands in `unreviewed` — and the publish workflow lists the
+ratification sidecar in its path filter precisely so that pending-to-dated edge
+cannot merge unannounced. Skipping (or DM-ing) an empty-lane merge would defeat
+the reason that path is watched at all.
 
 The label DOWNGRADES rather than silences on purpose. A marker that can delete a
 metric announcement outright is a hole in the thing the governance channel
@@ -47,19 +54,13 @@ def route(lanes: dict[str, list[str]] | None, mechanics_label: bool = False) -> 
     if "summary" not in lanes:
         return {"target": CHANNEL, "reason": "no base tree to classify against"}
 
-    governed = bool(lanes.get("business")) or bool(lanes.get("data"))
-    if governed:
-        if mechanics_label:
-            return {"target": OWNER, "reason": "labelled a mechanics change"}
-        return {"target": CHANNEL, "reason": "a metric's rule or build moved"}
+    if not any(lanes.get(bucket) for bucket in ("business", "data", "unreviewed")):
+        return {"target": SKIP, "reason": "no metric's record moved"}
 
-    if lanes.get("unreviewed"):
-        # Display prose on a real metric, which asks nobody for review but is
-        # not dev work either. The owner hears it; the company does not need a
-        # channel post about a description fix.
-        return {"target": OWNER, "reason": "only display prose moved"}
+    if mechanics_label:
+        return {"target": OWNER, "reason": "labelled a mechanics change"}
 
-    return {"target": SKIP, "reason": "no metric's rule or build moved"}
+    return {"target": CHANNEL, "reason": "a metric's record moved"}
 
 
 def main(argv: list[str] | None = None) -> int:
