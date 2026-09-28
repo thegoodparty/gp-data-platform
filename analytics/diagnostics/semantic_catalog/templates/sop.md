@@ -20,21 +20,10 @@ get counted slipping through unreviewed.
 | The build | Source table, measure, aggregation, type, filter | The data group | the metric's own fields |
 
 The rule is a structured field, not a paragraph, because prose cannot be
-reviewed or sealed mechanically:
-
-```yaml
-config:
-  meta:
-    business_rule:
-      counts: >
-        A user counts once the product has performed at least one outreach
-        send on their behalf.
-      excludes:
-        - Outreach the candidate did off-platform and self-reported.
-        - Preparation to reach voters: building a list, downloading a call sheet.
-      known_gaps:
-        - Phone banking has no in-product send, so that channel is not counted.
-```
+reviewed or sealed mechanically. It is authored under `config.meta.business_rule`
+with three keys: `counts` (one sentence on who is included), `excludes` (a list
+of what deliberately does not count), and `known_gaps` (a list of what we accept
+we cannot measure yet).
 
 **The test for whether a line belongs in the rule: it names no event, no surface
 and no table.** The business group can say "outreach that leaves the product
@@ -84,15 +73,9 @@ A seal compares a file against a record. Both are documents, and neither can see
 that the events a metric declares have stopped arriving. So the catalog also
 reads the instrument-health monitor's latched dormant anchors, and a metric whose
 declared event has gone quiet renders its build approval as **needs
-re-verification**, with the reason under the catalog:
-
-```
-win_active_candidates_30d
-  rule approved 2026-07-29 by business, unchanged
-  build approved 2026-08-05, NEEDS RE-VERIFICATION
-    reason: declared event 'Dashboard - Campaign Plan Viewed' has not fired
-            since 2026-07-31 (instrument health monitor, latched)
-```
+re-verification**, with the reason shown under the catalog: the metric name, the
+rule half unchanged, the build half marked NEEDS RE-VERIFICATION, and a reason
+line naming the declared event and the date it last fired.
 
 It clears the way the monitor's own latch clears: the event recovers, or
 `anchored_on` adopts the successor. **There is deliberately no dismissal.** This
