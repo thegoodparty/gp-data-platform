@@ -892,6 +892,12 @@ models:
           Foreign key to the frozen phone banking call list. Non-null only on
           nativePhoneBanking rows, which is how an in-product call list joins
           back to its campaign.
+      - name: door_knocking_turf_id
+        description: >
+          Foreign key to the drawn door knocking turf. Stops hang off the turf
+          rather than the route, and a turf can exist before a route is
+          generated, so this is the more complete anchor for door knocking
+          activity than door_knocking_route_id.
       - name: campaign_plan_due_date
         description: "Due date for the associated campaign plan, stored as text"
       - name: door_knocking_route_id
