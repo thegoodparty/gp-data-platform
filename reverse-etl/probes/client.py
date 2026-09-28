@@ -54,11 +54,14 @@ class Response:
 
 @dataclass
 class SandboxClient:
-    token: str
+    # Kept out of the repr so a traceback or a debug print of the client cannot put the
+    # service key into probe output that gets pasted into a doc.
+    token: str = field(repr=False)
     base_url: str = DEFAULT_BASE_URL
     expected_portal_id: int = CLAUDE_TEST_ZONE_PORTAL_ID
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     created_contact_ids: list[str] = field(default_factory=list)
+    created_company_ids: list[str] = field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> SandboxClient:
@@ -111,6 +114,22 @@ class SandboxClient:
         self.created_contact_ids.append(contact_id)
         return contact_id
 
+    def create_company(self, properties: dict[str, Any], *, label: str = "x") -> str:
+        """Create a company and remember it for cleanup. Returns its HubSpot id."""
+        props = {"name": self.tag(label), **properties}
+        response = self.request("POST", "/crm/v3/objects/companies", json={"properties": props})
+        if response.status_code >= 300:
+            raise RuntimeError(f"fixture create failed ({response.status_code}): {response.body}")
+        company_id = str(response.body["id"])
+        self.created_company_ids.append(company_id)
+        return company_id
+
+    def associate_company(self, contact_id: str, company_id: str) -> Response:
+        return self.request(
+            "PUT",
+            f"/crm/v4/objects/contacts/{contact_id}/associations/default/companies/{company_id}",
+        )
+
     def get_contact(self, contact_id: str, properties: list[str]) -> dict[str, Any]:
         query = ",".join(properties)
         response = self.request("GET", f"/crm/v3/objects/contacts/{contact_id}?properties={query}")
@@ -129,6 +148,11 @@ class SandboxClient:
             if response.status_code < 300:
                 removed += 1
         self.created_contact_ids.clear()
+        for company_id in reversed(self.created_company_ids):
+            response = self.request("DELETE", f"/crm/v3/objects/companies/{company_id}")
+            if response.status_code < 300:
+                removed += 1
+        self.created_company_ids.clear()
         return removed
 
 

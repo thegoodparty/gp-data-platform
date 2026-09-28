@@ -68,6 +68,7 @@ def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> An
 
 
 MERGE_PATH = f"/crm/objects/{HUBSPOT_API_VERSION}/contacts/merge"
+V3_MERGE_PATH = "/crm/v3/objects/contacts/merge"
 
 
 def check_01_merged_contact_ids(client: SandboxClient) -> Finding:
@@ -185,9 +186,11 @@ def check_03_identical_value_writes(client: SandboxClient) -> Finding:
             "history_len_after": len(history_second),
         },
         manual_followup=(
-            "Workflow re-triggering is not covered here. Sandboxes do not inherit production "
-            "workflows; build a contact workflow in the sandbox by hand and re-run, or record "
-            "that the sandbox had none and the question stays open."
+            "Workflow re-triggering is not covered here. It was answered by hand against a "
+            "throwaway workflow: the identical write did not re-enroll, and the control, "
+            "changing the value away and back, did. Do not enable an inherited workflow to "
+            "re-test. The sandbox carries 50+ disabled clones of production's, including SMS "
+            "and Slack sends that could fire for real."
         ),
     )
 
@@ -407,6 +410,113 @@ def check_10_dated_api_version(client: SandboxClient) -> Finding:
     )
 
 
+@dataclass(frozen=True)
+class MergeTrial:
+    label: str
+    merge_path: str
+    with_emails: bool
+    with_company: bool = False
+
+
+# The rework TDD records a merge producing a NEW record id (24 Aug 2026); check 1 and the
+# findings doc record the survivor keeping the primary's id (24 Sept). These are the three
+# differences between the two tests, run as a matrix so the disagreement has one answer
+# per variable rather than one answer overall.
+MERGE_TRIALS = (
+    MergeTrial("dated-bare", MERGE_PATH, with_emails=False),
+    MergeTrial("dated-emails", MERGE_PATH, with_emails=True),
+    MergeTrial("v3-bare", V3_MERGE_PATH, with_emails=False),
+    MergeTrial("v3-emails", V3_MERGE_PATH, with_emails=True),
+    MergeTrial("v3-emails-company", V3_MERGE_PATH, with_emails=True, with_company=True),
+)
+
+
+def _run_merge_trial(client: SandboxClient, trial: MergeTrial) -> dict[str, Any]:
+    """One merge, recorded against the two ids that went into it."""
+    key_a, key_b = client.tag(f"{trial.label}-a"), client.tag(f"{trial.label}-b")
+    props_a: dict[str, Any] = {HUBSPOT_ID_PROPERTY: key_a}
+    props_b: dict[str, Any] = {HUBSPOT_ID_PROPERTY: key_b}
+    if trial.with_emails:
+        props_a["email"] = f"{key_a}@example.com"
+        props_b["email"] = f"{key_b}@example.com"
+
+    id_a = client.create_contact(props_a, label=f"{trial.label}-a")
+    id_b = client.create_contact(props_b, label=f"{trial.label}-b")
+
+    company_id = None
+    if trial.with_company:
+        company_id = client.create_company({}, label=f"{trial.label}-co")
+        client.associate_company(id_a, company_id)
+        client.associate_company(id_b, company_id)
+        settle()
+
+    merge = client.request("POST", trial.merge_path, json={"primaryObjectId": id_a, "objectIdToMerge": id_b})
+    settle()
+
+    survivor_id = str(merge.body.get("id") or "")
+    # A survivor id that is neither input is a contact nothing else is tracking, so it has
+    # to be registered or the run leaves it behind.
+    if survivor_id and survivor_id not in (id_a, id_b):
+        client.created_contact_ids.append(survivor_id)
+
+    survivor = (
+        client.get_contact(
+            survivor_id,
+            [HUBSPOT_ID_PROPERTY, "email", "hs_additional_emails", *MERGE_HISTORY_PROPERTIES],
+        )
+        if survivor_id
+        else {}
+    )
+    return {
+        "trial": trial.label,
+        "merge_path": trial.merge_path,
+        "with_emails": trial.with_emails,
+        "with_company": trial.with_company,
+        "merge_status": merge.status_code,
+        "primary_id": id_a,
+        "secondary_id": id_b,
+        "survivor_id": survivor_id,
+        "survivor_is_primary": survivor_id == id_a,
+        "survivor_is_secondary": survivor_id == id_b,
+        "survivor_is_new_record": bool(survivor_id) and survivor_id not in (id_a, id_b),
+        "survivor_person_id": survivor.get(HUBSPOT_ID_PROPERTY),
+        "survivor_keeps_primary_person_id": survivor.get(HUBSPOT_ID_PROPERTY) == key_a,
+        "survivor_email": survivor.get("email"),
+        "survivor_additional_emails": survivor.get("hs_additional_emails"),
+        "merge_history": {prop: merged_contact_ids(survivor.get(prop)) for prop in MERGE_HISTORY_PROPERTIES},
+        "merge_error": merge.body.get("message") if merge.status_code >= 300 else None,
+    }
+
+
+def check_11_merge_record_id_stability(client: SandboxClient) -> Finding:
+    """Does a merge ever return a record id that is neither input? Across both merge
+    endpoints, with and without emails, and with a shared company association.
+
+    Check 1 answers this once, on the dated endpoint with bare contacts. This varies the
+    three things that differ between the two conflicting tests, so a disagreement points
+    at a variable instead of at a date.
+    """
+    trials = [_run_merge_trial(client, trial) for trial in MERGE_TRIALS]
+    new_record = [t["trial"] for t in trials if t["survivor_is_new_record"]]
+    failed = [t["trial"] for t in trials if t["merge_status"] >= 300]
+    return Finding(
+        check=11,
+        title="Merge record-id stability across endpoints and payload shapes",
+        verdict=(
+            f"{len(trials)} trials; a new record id appeared in {new_record or 'NONE'}"
+            + (f"; merge call failed in {failed}" if failed else "")
+        ),
+        implication=(
+            "Rework TDD Workstream B items 2 and 6 assume a merge hands back a new contact id. "
+            "If no trial reproduces that, those items are built on a behavior that no longer "
+            "happens, and the merge fix can rely on the survivor keeping the primary's id. "
+            "If one trial does reproduce it, that variable is the answer and check 1's single "
+            "trial is too narrow to have settled it."
+        ),
+        evidence={"trials": trials},
+    )
+
+
 CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     1: check_01_merged_contact_ids,
     2: check_02_omitted_properties_untouched,
@@ -417,6 +527,7 @@ CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     7: check_07_batch_rate_limit_accounting,
     8: check_08_email_collision,
     10: check_10_dated_api_version,
+    11: check_11_merge_record_id_stability,
 }
 
 
