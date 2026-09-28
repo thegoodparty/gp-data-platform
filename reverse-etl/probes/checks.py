@@ -51,6 +51,17 @@ class Finding:
     manual_followup: str = ""
 
 
+def _register_created(client: SandboxClient, response: Any) -> None:
+    """Track for cleanup the contacts one upsert response reports as created.
+
+    Only the `new` rows: an update names a contact the run already owns, and adding it twice
+    would archive it out from under whichever check is still using it.
+    """
+    client.created_contact_ids.extend(
+        str(r["id"]) for r in response.body.get("results", []) if r.get("new") and r.get("id")
+    )
+
+
 def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> Any:
     """Send one batch through retl's own body builder, so the checks exercise the real
     request shape rather than a hand-rolled one.
@@ -61,9 +72,7 @@ def _upsert(client: SandboxClient, rows: list[tuple[str, dict[str, Any]]]) -> An
     """
     serialized = [(key, json.dumps(props)) for key, props in rows]
     response = client.request("POST", UPSERT_PATH, json=build_batch_body(serialized))
-    client.created_contact_ids.extend(
-        str(r["id"]) for r in response.body.get("results", []) if r.get("new") and r.get("id")
-    )
+    _register_created(client, response)
     return response
 
 
@@ -381,10 +390,12 @@ def check_10_dated_api_version(client: SandboxClient) -> Finding:
     body = build_batch_body([(key, json.dumps({"jobtitle": "dated"}))])
 
     configured = client.request("POST", UPSERT_PATH, json=body)
-    client.created_contact_ids.extend(
-        str(r["id"]) for r in configured.body.get("results", []) if r.get("new") and r.get("id")
-    )
+    _register_created(client, configured)
+    # Registered from both calls, not just the first: when the configured path fails, which is
+    # the case this check exists to catch, it creates nothing and the legacy call is what
+    # creates the contact. Registering only the first would orphan it on exactly that path.
     legacy = client.request("POST", LEGACY_V3_UPSERT_PATH, json=body)
+    _register_created(client, legacy)
 
     configured_keys, legacy_keys = sorted(configured.body), sorted(legacy.body)
     return Finding(
