@@ -474,13 +474,21 @@ models:
         description: >
           Numeric registry version the @production alias resolved to for this build.
           model_version names the family, not the booster, so this is the only column
-          that identifies which artifact produced a row. Constant across the table.
+          that identifies which artifact produced a row. Single-valued only right
+          after a full refresh: an incremental run scores just the new voters, so a
+          retrain leaves the table spanning two versions until the next full refresh.
         tests:
           - not_null
+          # Warn, not error, and deliberately unlike election_year: a table spanning
+          # two model versions is the documented consequence of retraining between
+          # full refreshes, not a defect. It is still worth surfacing, because it says
+          # the table is no longer scored by a single booster.
           - dbt_expectations.expect_column_unique_value_count_to_be_between:
               arguments:
                 min_value: 1
                 max_value: 1
+              config:
+                severity: warn
       - name: state
         description: >
           State postal code. The full-nationwide set is asserted so a partial
