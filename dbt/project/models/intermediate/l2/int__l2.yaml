@@ -439,9 +439,27 @@ models:
               arguments:
                 values: [0, 1]
       - name: election_year
-        description: "Election year scored."
+        description: >
+          Election year scored. Constant across the table: incremental runs never
+          rescore existing voters, so the year only advances on a full refresh.
         tests:
           - not_null
+          # A mixed-year table is the silent failure mode of the annual refresh --
+          # the year rolls over only on a full refresh, and a missed one leaves new
+          # voters scored for a later year than everyone else, with no error. Nothing
+          # else catches it, so assert the single-year invariant directly.
+          - dbt_expectations.expect_column_unique_value_count_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 1
+          # Separately, warn when the table has fallen behind the calendar: legal
+          # during a deliberate backfill override, which is why this is not an error.
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "= year(current_date())"
+              config:
+                severity: warn
+                error_if: ">0"
       - name: election_code
         description: "Election stage scored (General for the shipped grain)."
         tests:
@@ -453,6 +471,17 @@ models:
         description: "model_family value read from the @production registered-model tag."
         tests:
           - not_null
+      - name: mlflow_model_version
+        description: >
+          Numeric registry version the @production alias resolved to for this build.
+          model_version names the family, not the booster, so this is the only column
+          that identifies which artifact produced a row. Constant across the table.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_unique_value_count_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 1
       - name: state
         description: >
           State postal code. The full-nationwide set is asserted so a partial

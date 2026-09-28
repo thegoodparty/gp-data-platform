@@ -544,11 +544,26 @@ def model(dbt, session):
     _check_lgbm_version(full_name, client)
     model_family = _read_model_family_tag(client.get_registered_model(full_name).tags, full_name)
 
+    # Resolve the alias to a numeric version once, and log it: the run log is the
+    # durable record of exactly which booster scored this table, since no output
+    # column carries the MLflow version. Downloading the resolved number rather
+    # than the alias also keeps a mid-run promotion from swapping the booster
+    # underneath a scoring pass that takes hours.
+    prod_version = client.get_model_version_by_alias(full_name, "production")
+    print(f"resolved {full_name}@production -> version {prod_version.version}")
+    # The projection year and model are derived unless overridden, and a missed
+    # annual full refresh shows up as an unchanged year here rather than an error.
+    print(
+        f"scoring inference_year={inference_year} election_code={election_code} "
+        f"model_slug={model_slug} model_family={model_family} "
+        f"max_vote_history_year={max_vote_history_year}"
+    )
+
     # TemporaryDirectory (not mkdtemp): this runs on a long-lived all-purpose
     # cluster, so an unremoved dir leaks ~150 MB of artifacts per run.
     with tempfile.TemporaryDirectory() as tmp:
         model_dir = mlflow.artifacts.download_artifacts(
-            artifact_uri=f"models:/{full_name}@production", dst_path=tmp
+            artifact_uri=f"models:/{full_name}/{prod_version.version}", dst_path=tmp
         )
         sk_model = mlflow.lightgbm.load_model(model_dir)
         feat_names = list(sk_model.feature_name_)
@@ -568,6 +583,7 @@ def model(dbt, session):
         # cluster cannot serve a stale booster.
         booster_digest = _file_digest(local_booster)
         model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster_{booster_digest}.txt"
+        print(f"staged booster -> {model_file}")
         shutil.copyfile(local_booster, model_file)
 
     l2 = dbt.ref("int__l2_nationwide_uniform")
@@ -601,7 +617,11 @@ def model(dbt, session):
 
     # Stamp the fixed dimensional columns once, in SQL, to match the promoted
     # snapshot schema (LALVOTERID, prob_vote, prediction, election_year,
-    # election_code, model_version, state).
+    # election_code, model_version, state). mlflow_model_version is additive:
+    # model_version carries the model FAMILY (same convention as the district
+    # table), which does not identify the booster, so the resolved registry
+    # version is stamped alongside it. Constant per run, so it costs almost
+    # nothing on disk and is the only in-data record of what scored a row.
     return session.sql(
         f"""
         SELECT
@@ -611,6 +631,7 @@ def model(dbt, session):
             CAST({inference_year} AS INT) AS election_year,
             '{election_code}'             AS election_code,
             '{model_family}'              AS model_version,
+            '{prod_version.version}'      AS mlflow_model_version,
             state
         FROM _scored
         """
