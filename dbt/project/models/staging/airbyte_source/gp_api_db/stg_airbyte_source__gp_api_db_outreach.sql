@@ -45,6 +45,7 @@ with
             {{ adapter.quote("scheduled_local_date") }},
             {{ adapter.quote("scheduled_local_time") }},
             {{ adapter.quote("phone_banking_list_id") }},
+            {{ adapter.quote("door_knocking_turf_id") }},
             {{ adapter.quote("campaign_plan_due_date") }},
             {{ adapter.quote("door_knocking_route_id") }},
             {{ adapter.quote("stripe_checkout_session_id") }}
