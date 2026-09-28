@@ -420,7 +420,10 @@ models:
           - not_null
           - unique
       - name: prob_vote
-        description: "Modeled turnout probability in [0, 1] for the 2026 General."
+        description: >
+          Modeled turnout probability in [0, 1] for the November election of the
+          year the table was last fully refreshed. Not pinned to a year: the
+          inference year derives at run time, so a full refresh advances it.
         tests:
           - not_null
           - dbt_utils.accepted_range:
