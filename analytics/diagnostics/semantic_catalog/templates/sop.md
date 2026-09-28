@@ -78,6 +78,42 @@ than they are:
   against an instrument that had been broken for five days, and go on reading
   approved for five weeks while under-counting by more than half.
 
+## When the instrument stops firing
+
+A seal compares a file against a record. Both are documents, and neither can see
+that the events a metric declares have stopped arriving. So the catalog also
+reads the instrument-health monitor's latched dormant anchors, and a metric whose
+declared event has gone quiet renders its build approval as **needs
+re-verification**, with the reason under the catalog:
+
+```
+win_active_candidates_30d
+  rule approved 2026-07-29 by business, unchanged
+  build approved 2026-08-05, NEEDS RE-VERIFICATION
+    reason: declared event 'Dashboard - Campaign Plan Viewed' has not fired
+            since 2026-07-31 (instrument health monitor, latched)
+```
+
+It clears the way the monitor's own latch clears: the event recovers, or
+`anchored_on` adopts the successor. **There is deliberately no dismissal.** This
+is evidence, not an opinion, and silencing it should mean fixing the instrument
+or changing what the metric is anchored on.
+
+Two things to know about where this runs. It is a cross-repo network read, so it
+applies on the catalog page and in the merge summary, **not** in the blocking
+catalog-freshness gate, which stays offline and deterministic. And when the read
+fails, the page says the check did not run rather than rendering everything as
+healthy — a guard that disables itself quietly is the failure this exists to
+remove, rebuilt one layer up.
+
+When the read fails, the merge summary does **not** carry that. The notification
+channel is for metric news, and a cross-repo token the review groups cannot
+provision is not something they can act on; it goes to the metric owner as a
+direct message instead, falling back to the channel only if the DM is refused.
+What does reach the channel is the metric-level warning itself: a metric merging
+while its declared instrument is latched dormant says so there, because that is
+metric news.
+
 ## How the semantic layer is updated
 
 Governed metric definitions are authored in one place: the dbt semantic YAML

@@ -510,3 +510,82 @@ def test_classify_lanes_requests_both_groups_when_it_cannot_diff(tmp_path, capsy
     got = json.loads(capsys.readouterr().out)
     assert got["teams"] == ["semantic-layer-data", "semantic-layer-business"]
     assert "no base tree" in got["reason"]
+
+
+def test_emit_clickup_says_so_when_the_evidence_check_could_not_run(tmp_path):
+    # The page must never read green because a cross-repo read failed. The
+    # conftest guard leaves the check disabled, which is the condition under test.
+    out = tmp_path / "page.md"
+    assert cli.main(["--emit-clickup", str(out)]) == 0
+    text = out.read_text()
+    assert "Instrument evidence" in text
+    assert "NOT being checked against instrument health" in text
+
+
+def test_emit_slack_keeps_the_degrade_notice_out_of_the_channel(tmp_path):
+    # The conftest guard leaves the evidence read disabled, so this run is
+    # exactly the degraded one. #data-alignment is for metric news: a standing
+    # line about a token the review groups cannot provision is what teaches
+    # people to scroll past the alerts they can act on.
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    assert "NOT being checked against instrument health" not in out.read_text()
+
+
+def test_emit_slack_hands_the_degrade_notice_to_the_owner_notifier(tmp_path, monkeypatch):
+    # Out of the channel must not mean nowhere. Losing it here would rebuild the
+    # silent-green bug one layer up, which is the point of the evidence link.
+    sent = []
+
+    def fake_notify(problems):
+        sent.append(problems)
+        return "sent"
+
+    monkeypatch.setattr(cli.notify, "notify", fake_notify)
+    assert cli.main(["--emit-slack", str(tmp_path / "slack.txt"), "--pr-url", "http://pr/1"]) == 0
+    assert any("NOT being checked against instrument health" in p for p in sent[0])
+
+
+def test_emit_slack_carries_a_latched_metric_into_the_channel_message(tmp_path, monkeypatch):
+    # The wiring, not just the pieces: a latch read from omni has to survive
+    # evidence.apply and reach the rendered message. Mocking only the network
+    # boundary leaves the rest of the path real, so a break anywhere in it fails
+    # here rather than restoring the green-when-broken state silently.
+    name = "win_active_candidates_30d"
+    leg = cli.evidence.Latch(leg_key="Dashboard - Campaign Plan Viewed", metric=name, since="2026-07-31")
+    monkeypatch.setattr(cli.evidence, "load_latches", lambda: ({name: [leg]}, []))
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    text = out.read_text()
+    assert ":rotating_light:" in text and "2026-07-31" in text
+
+
+def test_both_surfaces_share_one_instrument_health_read(tmp_path, monkeypatch):
+    # Read per-surface, a blip on the second call would let the page and the
+    # merge summary disagree about the same merge — one naming a dormant
+    # instrument, the other silently clean — with no way to tell which is
+    # current. Evidence that contradicts itself is worse than none.
+    calls = []
+
+    def counted():
+        calls.append(1)
+        return {}, []
+
+    monkeypatch.setattr(cli.evidence, "load_latches", counted)
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    rc = cli.main(
+        ["--emit-clickup", str(tmp_path / "p.md"), "--emit-slack", str(tmp_path / "s.txt"), "--pr-url", "u"]
+    )
+    assert rc == 0
+    assert len(calls) == 1
+
+
+def test_no_instrument_read_happens_when_neither_surface_is_emitted(tmp_path, monkeypatch):
+    # --check is the blocking catalog-freshness gate and must stay offline and
+    # deterministic; hoisting the read must not have dragged it onto the network.
+    def boom():
+        raise AssertionError("load_latches must not run for --check")
+
+    monkeypatch.setattr(cli.evidence, "load_latches", boom)
+    assert cli.main(["--check"]) in (0, 1)

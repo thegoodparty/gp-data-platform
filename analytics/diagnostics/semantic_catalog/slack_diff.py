@@ -108,6 +108,17 @@ def render_message(
     body.extend(changes if changes else ["(no metric-level changes detected)"])
     body.append("")
 
+    # A metric merging while its declared instrument is latched dormant IS metric
+    # news, so it stays in the channel. Why the check could not run is plumbing
+    # addressed to whoever maintains it, and the publish job DMs that instead —
+    # a standing warning nobody in the channel can act on is what teaches people
+    # to scroll past the ones they can.
+    reverify = [rec for rec in after if rec.needs_reverification]
+    for rec in reverify:
+        body.append(f":rotating_light: {rec.name} — {rec.needs_reverification}")
+    if reverify:
+        body.append("")
+
     needed = set(required) if required is not None else {"data", "business"}
     marks = []
     missing = False

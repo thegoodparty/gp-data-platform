@@ -33,4 +33,8 @@ not by blocking.
 - **You're a data reviewer?** Confirm the build, the conventions, and
   value-for-value parity with the prior definition, and check the value stated
   in the PR body against what you would expect.
+- **See "needs re-verification" on a build?** The events that metric declares
+  have stopped firing, so the number is being produced by an instrument nobody
+  has confirmed still works. Treat the number as unreliable until the instrument
+  recovers or the metric is re-anchored. It is not something anyone can dismiss.
 - **Questions?** Post in #data-alignment.
