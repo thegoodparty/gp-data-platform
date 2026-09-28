@@ -67,6 +67,21 @@ metrics:
       meta:
         owner: semantic-layer-data
         detail_doc: engagement.md
+        # What this number MEANS, in words a non-engineer can rule on. It names
+        # no event, no surface and no table: which signals satisfy the rule is
+        # the implementation layer, and it lives in anchored_on.
+        business_rule:
+          counts: >
+            Anyone holding an account in the Win product, whether or not they
+            have done anything with it.
+          excludes:
+            - >
+              Nothing. This is the whole account population, and it is the
+              denominator the engagement numbers are read against.
+          known_gaps:
+            - >
+              Internal staff accounts are counted here, unlike the Serve
+              population, which excludes them.
 
   - name: win_active_candidates_30d
     label: Win Active Candidates 30d
@@ -87,6 +102,25 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
+        business_rule:
+          counts: >
+            A candidate counts once they have come back to their campaign
+            dashboard at least once in the trailing 30 days.
+          excludes:
+            - >
+              Visits to the marketing site or any page outside a candidate's
+              own campaign.
+            - >
+              Work done elsewhere in the product without coming back to the
+              dashboard. This is a return measure, not a work measure.
+          known_gaps:
+            - >
+              A view by a staff member acting on a candidate's behalf counts as
+              that candidate being active. The product records when that
+              happened, but this number does not use it.
+            - >
+              The window is evaluated when the table is built, so the number
+              cannot be re-read as of a past date.
         # DATA-2421: the raw events that count as a dashboard view. This is the
         # kernel — macros/amplitude_event_taxonomy.sql derives its SQL from this
         # list, and omni's health monitor watches these for dormancy. Adding or
@@ -133,6 +167,26 @@ metrics:
       meta:
         owner: semantic-layer-business
         detail_doc: engagement.md
+        business_rule:
+          counts: >
+            A user counts once the product has performed at least one outreach
+            send on their behalf.
+          excludes:
+            - Outreach the candidate did off-platform and self-reported.
+            - >
+              Preparation to reach voters: building a list, downloading a call
+              sheet, assembling an audience.
+            - >
+              A send that was drafted but never paid for. The commitment is the
+              payment, not the draft.
+          known_gaps:
+            - >
+              Phone banking has no in-product send — the candidate dials from
+              their own phone — so that channel is not counted and never will
+              be under this rule.
+            - >
+              The channels became countable at different dates, so a series
+              over this number carries steps that are not growth.
         # The raw events that count as a product-performed outreach send. This is
         # the kernel: is_outreach_activation_event derives its SQL from this list
         # and the Win activity rollups gate their intake on it, so adding or
