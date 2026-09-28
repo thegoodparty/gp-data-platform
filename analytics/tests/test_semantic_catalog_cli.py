@@ -544,3 +544,18 @@ def test_emit_slack_hands_the_degrade_notice_to_the_owner_notifier(tmp_path, mon
     monkeypatch.setattr(cli.notify, "notify", fake_notify)
     assert cli.main(["--emit-slack", str(tmp_path / "slack.txt"), "--pr-url", "http://pr/1"]) == 0
     assert any("NOT being checked against instrument health" in p for p in sent[0])
+
+
+def test_emit_slack_carries_a_latched_metric_into_the_channel_message(tmp_path, monkeypatch):
+    # The wiring, not just the pieces: a latch read from omni has to survive
+    # evidence.apply and reach the rendered message. Mocking only the network
+    # boundary leaves the rest of the path real, so a break anywhere in it fails
+    # here rather than restoring the green-when-broken state silently.
+    name = "win_active_candidates_30d"
+    leg = cli.evidence.Latch(leg_key="Dashboard - Campaign Plan Viewed", metric=name, since="2026-07-31")
+    monkeypatch.setattr(cli.evidence, "load_latches", lambda: ({name: [leg]}, []))
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    text = out.read_text()
+    assert ":rotating_light:" in text and "2026-07-31" in text

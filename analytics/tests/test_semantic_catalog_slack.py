@@ -166,3 +166,19 @@ def test_changed_metric_names_still_flags_a_move_between_sem_files():
     before = [_rec("a", yaml_file="/tmp/base/dbt/project/models/marts/analytics/sem_x.yml")]
     after = [_rec("a", yaml_file="/checkout/dbt/project/models/marts/analytics/sem_y.yml")]
     assert changed_metric_names(before, after) == ["a"]
+
+
+def test_message_flags_a_metric_merging_over_a_dormant_instrument():
+    # The channel's half of the evidence link. A metric merging while its
+    # declared event is latched dormant IS metric news, so unlike the "could not
+    # check" plumbing notice this one stays here rather than going to the owner.
+    reason = "declared event has not fired since 2026-07-31: 'Dashboard - Campaign Plan Viewed'"
+    msg = render_message([], [_rec("m", needs_reverification=reason)], "http://pr/1", {"data": True})
+    assert f":rotating_light: m — {reason}" in msg
+
+
+def test_a_healthy_metric_adds_no_reverification_line():
+    # The separator is only earned when there is something to separate; an empty
+    # alert block would train people to skim past the filled one.
+    msg = render_message([], [_rec("m")], "http://pr/1", {"data": True})
+    assert ":rotating_light:" not in msg
