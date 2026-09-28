@@ -5,6 +5,7 @@ from tenacity import stop_after_attempt, wait_none
 
 from retl.destinations import DeliveryResult, RowError
 from retl.hubspot_destination import (
+    UPSERT_PATH,
     HttpResponse,
     HubSpotDestination,
     HubSpotDestinationConfig,
@@ -357,3 +358,17 @@ def test_hubspot_destination_never_puts_the_token_in_the_request_body() -> None:
 
     assert "super-secret" not in str(transport.calls[0]["json"])
     assert transport.calls[0]["headers"]["Authorization"] == "Bearer super-secret"
+
+
+def test_hubspot_destination_posts_to_the_dated_api_path() -> None:
+    """Catches: a typo or stale value in HUBSPOT_API_VERSION shipping unnoticed. Until now the
+    only check on the URL was check 10, a hand-run sandbox probe that CI never executes."""
+    transport = FakeHttpTransport(responses=[HttpResponse(200, {"results": [{"objectWriteTraceId": "p1"}]})])
+    destination = HubSpotDestination(
+        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="t"), transport=transport
+    )
+
+    destination.deliver("hubspot_leads", [("p1", '{"a":1}')], on_batch_confirmed=lambda _confirmed: None)
+
+    assert transport.calls[0]["url"] == f"https://api.hubapi.com{UPSERT_PATH}"
+    assert UPSERT_PATH == "/crm/objects/2026-09/contacts/batch/upsert"
