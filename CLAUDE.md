@@ -54,9 +54,39 @@ If `pre-commit` is not on your PATH, install it once with `pipx install pre-comm
 
 For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `dbt/`, `airflow/`, `analytics/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
+## The semantic layer is OKR metrics only
+
+`dbt/project/models/**/sem_*.yml` is not a registry of every metric we compute. It holds the
+numbers the business group actually rules on. Everything declared there enters the
+ratification queue, so a metric nobody outside the data team reports on costs a real
+person's attention for nothing.
+
+**Before editing any `sem_*.yml`, say this to the person you are working with and wait for an
+explicit yes:**
+
+> This will change the semantic layer and notify people. Are you sure?
+
+Its own question, answered on its own — not bundled into a list of others.
+
+Why it has to be asked up front: a PR touching `sem_*.yml` posts a thread anchor to
+#data-alignment that @-mentions both review groups, and `lanes.classify` routes an added
+**or removed** metric to the business lane whether or not it was ever ratified. So a
+mis-placed metric cannot be quietly withdrawn — the cleanup notifies too. There is no cheap
+undo.
+
+For a derived measure that is not an OKR, use a plain model column plus a self-contained
+classifier macro (the shape of `amplitude_event_family`). "Should these two concepts stay
+separate?" is a different question from "should the second become a governed metric"; do not
+read approval of the first as approval of the second.
+
+When changing the layer's **machinery** rather than a metric — seals, sidecar schema,
+routing, the catalog generator — open the PR as a **draft**. `semantic-layer-thread.yml` is
+draft-gated, so that keeps dev work out of a channel whose job is to announce metric changes.
+
 ## Never
 
 - Don't add a root-level command that assumes one venv. State which subproject to `cd` into.
 - Don't invoke `dbt` via `uv`. dbt Cloud CLI is system-installed.
 - Don't disable pre-commit hooks to make a commit go through. CI runs `pre-commit run --all-files` and will catch a skipped lint/format hook.
 - Don't commit secrets. `.env.example` is the only env file in git.
+- Don't add a metric to a `sem_*.yml` without explicit confirmation. See above — it notifies both review groups and cannot be withdrawn quietly.
