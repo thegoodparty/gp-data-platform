@@ -16,9 +16,10 @@ export RETL_PROBE_TOKEN=pat-na1-...   # a service key on the sandbox portal
 uv run python -m probes.checks --all
 ```
 
-`RETL_HUBSPOT_TOKEN`, retl's own variable, is accepted as a fallback, so a `.env` already
-configured to run the app against the sandbox runs the checks too. The portal guard below, not
-the variable name, is what keeps a production credential out.
+`RETL_HUBSPOT_TOKEN`, retl's own variable, is accepted as a fallback. Nothing here loads a
+`.env` file, so a sandbox `.env` already configured for the app needs `uv run --env-file .env
+python -m probes.checks --all` rather than a bare `uv run`. The portal guard below, not the
+variable name, is what keeps a production credential out.
 
 One check at a time: `uv run python -m probes.checks --check 4`.
 
@@ -38,25 +39,29 @@ The expected portal defaults to the sandbox. Overriding it is deliberate:
 RETL_PROBE_EXPECTED_PORTAL_ID=<id> uv run python -m probes.checks --all
 ```
 
-Every contact a check creates is tagged `probe-<run id>-<label>` in `firstname` and archived at
-the end of the run, so a crashed run leaves debris you can find and remove by hand.
+Every contact a check creates is tagged `probe-<run id>-<label>` in `firstname`, every company
+carries the same tag in `name`, and both are archived at the end of the run, so a crashed run
+leaves debris you can find and remove by hand.
 
 ## Credential
 
 Use a service key dedicated to this work, not a shared one. HubSpot's per-key API log is the only
 record of what the checks did, and a shared key interleaves another integration's traffic into it.
 Scopes needed: `crm.objects.contacts.read`, `crm.objects.contacts.write`,
-`crm.schemas.contacts.read`, `crm.schemas.contacts.write`.
+`crm.schemas.contacts.read`, `crm.schemas.contacts.write`, plus
+`crm.objects.companies.read` and `crm.objects.companies.write` for check 11's association trial.
 
 Service keys replace legacy private apps, which can no longer be created after 26 Oct 2026 and
 lose support in Sept 2027. The auth header is identical, so retl itself needs no change.
 
 ## What is here, and what is not
 
-Checks 1 to 8 and 10 are API-only and live in `checks.py`. Check 9 (sales-owned omission end to
-end) is not here: it needs the sandbox contact mirror and the desired-state model, so it is run
+Checks 1 to 8, 10 and 11 are API-only and live in `checks.py`. Check 9 (sales-owned omission end
+to end) is not here: it needs the sandbox contact mirror and the desired-state model, so it is run
 through `retl` itself rather than as a probe.
 
-Check 3 covers `lastmodifieddate` and property history but not workflow re-triggering. Sandboxes
-do not inherit production workflows, so that part needs a workflow built in the sandbox by hand,
-or an explicit note that the sandbox had none.
+Check 3 covers `lastmodifieddate` and property history. Its workflow half was answered by hand and
+is not automated here, because it needs a throwaway contact workflow built in the sandbox. Build
+one rather than enabling an inherited workflow: the sandbox carries 50+ contact workflows cloned
+from production, disabled, and the set includes SMS sends and Slack notifications that could fire
+for real.
