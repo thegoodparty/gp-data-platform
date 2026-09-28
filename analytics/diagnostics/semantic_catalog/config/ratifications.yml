@@ -39,9 +39,12 @@
 # are: dimensions (declared once per file, so sealing them would expire every
 # metric in a file whenever one dimension was added anywhere), and anything
 # UPSTREAM of the sem file. A change to how a mart column is computed moves no
-# seal at all. The evidence link — a dormant declared event marking a build
-# approval as needing re-verification — is the answer to the second one and is
-# not built yet.
+# seal at all.
+#
+# The evidence link — a dormant declared event marking a build approval as
+# needing re-verification — closes the dormant-event half of that and is built
+# (#1088). The upstream-SQL half stays open and is an accepted limit of this
+# scheme: a change to how a mart column is computed still moves no seal.
 
 activated_serve_users:
   # Both groups approved #765, which contained the restatement to the 1,026
@@ -145,13 +148,21 @@ win_users:
     value_at_signing: 63744
     approved_by_pr: 749
 
-# Every rule half is deliberately absent. `business_rule` is drafted for the five
-# metrics above in the same change that introduced this scheme, so the words have
-# been written but never ruled on. Drafting is not approval, and backdating a
-# rule half to the date the old single seal was signed would assert that someone
-# approved text that did not exist. They read pending until the business group
-# rules on them, which is what that column is for.
+# The five rule halves above were ratified on 2026-09-27 by a real two-group
+# review on #1081, the change that introduced `business_rule` and drafted those
+# words. The business group's approval came from a member of
+# semantic-layer-business; the data group's landed eight minutes earlier. The
+# auto-ratification hook recorded both, which is what that hook is for.
 #
-# goodparty_win_rate and goodparty_cumulative_wins are absent for the older
-# reason: both were added pre-epic in #471 with a data-group approval only, and
-# no business-group approval exists for either definition.
+# Worth knowing when reading those five dates: the approvals were given on a PR
+# titled "Split a metric definition into three layers and two seals", which reads
+# as machinery. Whether the approver was ruling on five drafted rule statements
+# or waving through infrastructure is not recoverable from the record. That is an
+# argument for putting a rule change on its own PR, not a reason to doubt these.
+#
+# goodparty_win_rate and goodparty_cumulative_wins remain absent for the older,
+# different reason: both were added pre-epic in #471 with a data-group approval
+# only, and no business-group approval exists for either definition.
+#
+# win_product_output_users has no entry at all, and DATA-2556 owns withdrawing it
+# from the layer.
