@@ -205,6 +205,35 @@ sources:
         description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
         config:
           freshness: null
+      # The in-product outreach apps that replace the ecanvasser integration. The
+      # door-knocking channel is still behind a feature flag, so its streams go
+      # legitimately quiet for days and opt out of the freshness default.
+      - name: gp_api_db_contact_interaction_door_knock
+        description: raw data load from gp_api_db postgres db from table `contact_interaction_door_knock`
+        config:
+          freshness: null
+      - name: gp_api_db_contact_interaction_phone_banking
+        description: raw data load from gp_api_db postgres db from table `contact_interaction_phone_banking`
+      - name: gp_api_db_contact_status_event
+        description: raw data load from gp_api_db postgres db from table `contact_status_event`
+      - name: gp_api_db_door_knocking_turf
+        description: raw data load from gp_api_db postgres db from table `door_knocking_turf`
+        config:
+          freshness: null
+      - name: gp_api_db_door_knocking_stop
+        description: raw data load from gp_api_db postgres db from table `door_knocking_stop`
+        config:
+          freshness: null
+      - name: gp_api_db_door_knocking_stop_target
+        description: raw data load from gp_api_db postgres db from table `door_knocking_stop_target`
+        config:
+          freshness: null
+      - name: gp_api_db_phone_banking_list
+        description: raw data load from gp_api_db postgres db from table `phone_banking_list`
+      - name: gp_api_db_phone_banking_list_entry
+        description: raw data load from gp_api_db postgres db from table `phone_banking_list_entry`
+      - name: gp_api_db_phone_banking_list_entry_person
+        description: raw data load from gp_api_db postgres db from table `phone_banking_list_entry_person`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         config:
