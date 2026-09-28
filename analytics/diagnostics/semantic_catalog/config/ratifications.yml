@@ -56,6 +56,11 @@ activated_serve_users:
   # value_at_signing was measured 2026-09-25, when the seal changed, not on the
   # approval date above. No number was recorded then, because nothing required
   # one. Every later entry's number will carry its own date.
+  # auto-recorded: Sign-off landed on the merge of #1081, from the group whose lane the change was in. Each date is when that group's first approval landed.
+  business:
+    approved: 2026-09-27
+    rule_sha: '3704ec4'
+    approved_by_pr: 1081
   data:
     approved: 2026-08-05
     build_sha: '33429b6'
@@ -71,6 +76,11 @@ serve_users:
   # Re-sealed under the two-seal scheme; recomputation, not a new approval. Rule
   # half absent for the same reason as above. value_at_signing measured
   # 2026-09-25.
+  # auto-recorded: Sign-off landed on the merge of #1081, from the group whose lane the change was in. Each date is when that group's first approval landed.
+  business:
+    approved: 2026-09-27
+    rule_sha: '690ebfe'
+    approved_by_pr: 1081
   data:
     approved: 2026-08-11
     build_sha: 'ea39ab1'
@@ -101,6 +111,11 @@ win_activated_users:
   # business group approved #708 on 2026-07-29 with no data-group approval, so
   # DATA-2249 dropped that unbacked date to pending; the data group approved
   # #776 on 2026-08-07, which is what the prior record carried.
+  # auto-recorded: Sign-off landed on the merge of #1081, from the group whose lane the change was in. Each date is when that group's first approval landed.
+  business:
+    approved: 2026-09-27
+    rule_sha: '2fbecaa'
+    approved_by_pr: 1081
   data:
     approved: 2026-09-25
     build_sha: 'c60317a'
@@ -127,6 +142,11 @@ win_active_candidates_30d:
   #
   # Original coverage: approved by both groups on #760 and merged but never
   # recorded, which is the failure that prompted DATA-2249.
+  # auto-recorded: Sign-off landed on the merge of #1081, from the group whose lane the change was in. Each date is when that group's first approval landed.
+  business:
+    approved: 2026-09-27
+    rule_sha: 'd531dd4'
+    approved_by_pr: 1081
   data:
     approved: 2026-09-21
     build_sha: '1eedc0c'
@@ -139,6 +159,11 @@ win_users:
   #
   # Re-sealed; recomputation, not a new approval. value_at_signing measured
   # 2026-09-25.
+  # auto-recorded: Sign-off landed on the merge of #1081, from the group whose lane the change was in. Each date is when that group's first approval landed.
+  business:
+    approved: 2026-09-27
+    rule_sha: '0754dcc'
+    approved_by_pr: 1081
   data:
     approved: 2026-08-04
     build_sha: '7d5c217'
