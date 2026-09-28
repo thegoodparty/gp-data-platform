@@ -892,6 +892,12 @@ models:
           Foreign key to the frozen phone banking call list. Non-null only on
           nativePhoneBanking rows, which is how an in-product call list joins
           back to its campaign.
+      - name: door_knocking_turf_id
+        description: >
+          Foreign key to the drawn door knocking turf. Stops hang off the turf
+          rather than the route, and a turf can exist before a route is
+          generated, so this is the more complete anchor for door knocking
+          activity than door_knocking_route_id.
       - name: campaign_plan_due_date
         description: "Due date for the associated campaign plan, stored as text"
       - name: door_knocking_route_id
@@ -1409,3 +1415,360 @@ models:
         description: "Timestamp when the summary was created"
       - name: updated_at
         description: "Timestamp when the summary was last updated"
+
+  - name: stg_airbyte_source__gp_api_db_contact_interaction_door_knock
+    description: >
+      One row per person per door knock logged by the in-product door-knocking
+      app. Org-scoped, not campaign-scoped. Has no updated_at column, and the
+      app's sync path upserts on (organization_slug, source_id) overwriting the
+      outcome fields, so a correction arriving after a row has been replicated
+      cannot be detected downstream.
+    columns:
+      - name: id
+        description: "Primary key - app-generated UUIDv7 for the interaction"
+        data_tests:
+          - not_null
+          - unique
+      - name: note
+        description: "Free-text note typed by the canvasser. Unstructured text about an identifiable voter"
+      - name: manual
+        description: "True when logged by hand in the CRM rather than synced from the door-knocking app"
+        data_tests:
+          - not_null
+      - name: outcome
+        description: "How the knock ended"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["answered", "not_home", "refused_to_engage", "inaccessible", "not_a_voter"]
+      - name: follow_up
+        description: "Whether the voter asked for follow-up. Non-null only when the conversation happened"
+      - name: person_id
+        description: "The voter contacted, as a people-api person id derived from the voter file"
+        data_tests:
+          - not_null
+      - name: source_id
+        description: >
+          Opaque client-generated id from the canvasser's device, used with
+          organization_slug as the app's idempotency key. Null on manual logs.
+      - name: will_vote
+        description: "The voter's stated voting intent. Non-null only when the conversation happened"
+      - name: created_at
+        description: "Timestamp the row was written"
+      - name: occurred_at
+        description: "Timestamp the knock actually happened, which can precede created_at for offline syncs"
+        data_tests:
+          - not_null
+      - name: actor_user_id
+        description: >
+          The user who logged the knock, often a volunteer rather than the
+          candidate. Null on rows written before this column existed.
+      - name: support_answer
+        description: "The voter's stated support. Non-null only when the conversation happened"
+      - name: organization_slug
+        description: "The organization that owns the interaction. The only owner column; there is no campaign id"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_contact_interaction_phone_banking
+    description: >
+      One row per person per phone-banking call outcome. Upserted on
+      (phone_banking_list_id, person_id), so a corrected answer replaces the row
+      rather than appending. A number-level outcome such as no_answer fans out to
+      one row per household member on the entry, sharing occurred_at.
+    columns:
+      - name: id
+        description: "Primary key - app-generated UUIDv7 for the interaction"
+        data_tests:
+          - not_null
+          - unique
+      - name: note
+        description: "Free-text note typed by the caller. Unstructured text about an identifiable voter"
+      - name: manual
+        description: "True when logged by hand in the CRM rather than through the in-app caller"
+        data_tests:
+          - not_null
+      - name: outcome
+        description: "How the call ended. The vocabulary has grown since launch, so treat the set as open"
+      - name: follow_up
+        description: "Whether the voter asked for follow-up. Non-null only when the call was answered"
+      - name: person_id
+        description: "The voter called, as a people-api person id derived from the voter file"
+        data_tests:
+          - not_null
+      - name: will_vote
+        description: "The voter's stated voting intent. Non-null only when the call was answered"
+      - name: created_at
+        description: "Timestamp the row was first written"
+      - name: updated_at
+        description: "Timestamp the row was last replaced, which is the only signal that an answer was corrected"
+      - name: occurred_at
+        description: "Timestamp the call happened"
+        data_tests:
+          - not_null
+      - name: actor_user_id
+        description: "The user who logged the call, often a volunteer rather than the candidate"
+      - name: support_answer
+        description: "The voter's stated support. Non-null only when the call was answered"
+      - name: organization_slug
+        description: "The organization that owns the interaction. The only owner column; there is no campaign id"
+        data_tests:
+          - not_null
+      - name: phone_banking_list_id
+        description: >
+          The frozen call list this outcome came from, and the clean join to the
+          targeted universe. Null for calls logged manually outside a list.
+
+  - name: stg_airbyte_source__gp_api_db_contact_status_event
+    description: >
+      Append-only log of every change to a voter's CRM status for an
+      organization. The product's current-value projection is derivable from this
+      as the latest event per organization, person and field.
+    columns:
+      - name: id
+        description: "Primary key - app-generated UUIDv7 for the status event"
+        data_tests:
+          - not_null
+          - unique
+      - name: field
+        description: "Which status changed"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["voter_likelihood", "support_status", "do_not_knock", "not_a_voter", "follow_up"]
+      - name: source
+        description: "What caused the change"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["manual", "door_knock", "phone_banking"]
+      - name: to_value
+        description: >
+          The new value. Plain text rather than an enum in the source, and the
+          valid vocabulary depends on field, so validate per field rather than
+          globally.
+        data_tests:
+          - not_null
+      - name: person_id
+        description: "The voter whose status changed, as a people-api person id derived from the voter file"
+        data_tests:
+          - not_null
+      - name: source_id
+        description: >
+          Idempotency key tying the event back to its cause. Holds the
+          door-knock source_id for door_knock events and an interaction id with
+          its update timestamp for phone_banking events.
+      - name: created_at
+        description: "Timestamp the status changed"
+        data_tests:
+          - not_null
+      - name: from_value
+        description: "The previous value, null when no override existed before"
+      - name: actor_user_id
+        description: "The user who made the change, null for system-emitted events"
+      - name: organization_slug
+        description: "The organization whose view of the voter changed"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_door_knocking_turf
+    description: >
+      One row per turf a campaign has drawn for door knocking. The anchor of the
+      door-knocking audience: stops hang off the turf, not off the optimized
+      route, and a turf can exist before any route is generated. Carries no
+      organization column, so attribution runs through the outreach envelope's
+      door_knocking_turf_id.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the turf"
+        data_tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Name the campaign gave the turf"
+      - name: color
+        description: "Display colour for the turf on the map"
+      - name: purpose
+        description: "Why the turf was drawn, sharing its vocabulary with phone banking. Nullable"
+      - name: geo_poly
+        description: "The drawn polygon, as JSON"
+      - name: created_at
+        description: "Timestamp the turf was drawn"
+      - name: deleted_at
+        description: "Soft-delete timestamp. Non-null means the campaign removed the turf"
+      - name: updated_at
+        description: "Timestamp the turf was last changed"
+      - name: voter_file_filter_id
+        description: "The saved audience the turf was drawn over, and the join to the list that produced it"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_door_knocking_stop
+    description: >
+      One row per address on a turf, frozen at generation time. Holds a resident
+      address, so treat as voter PII.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the stop"
+        data_tests:
+          - not_null
+          - unique
+      - name: lat
+        description: "Latitude of the address"
+      - name: lng
+        description: "Longitude of the address"
+      - name: seq
+        description: >
+          Walking order within the turf, assigned by route optimization. Null
+          when the turf has no generated route yet.
+      - name: created_at
+        description: "Timestamp the stop was frozen onto the turf"
+      - name: leg_meters
+        description: "Distance from the previous stop on the optimized route"
+      - name: updated_at
+        description: "Timestamp the stop was last changed"
+      - name: leg_seconds
+        description: "Travel time from the previous stop on the optimized route"
+      - name: display_address
+        description: "The street address as printed on the walk list. Voter PII"
+        data_tests:
+          - not_null
+      - name: door_knocking_turf_id
+        description: "The turf this stop belongs to"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_door_knocking_stop_target
+    description: >
+      One row per resident at a stop, frozen at generation time. This is the
+      door-knocking denominator: the people a campaign intended to reach, against
+      which logged knocks give a contact rate. Holds names and an address key, so
+      treat as voter PII.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the target"
+        data_tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Resident name as frozen onto the walk list. Voter PII, and nullable"
+      - name: person_id
+        description: >
+          The voter, as a people-api person id derived from the voter file. Joins
+          to the door-knock interaction table on person_id, which is the only
+          path from a knock back to its turf and is fuzzy: someone appearing on
+          two turfs matches both.
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp the target was frozen onto the stop"
+      - name: updated_at
+        description: "Timestamp the target was last changed"
+      - name: address_key
+        description: "Normalized address the resident was matched at. Voter PII"
+      - name: door_knocking_stop_id
+        description: "The stop, and therefore the address, this resident lives at"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_phone_banking_list
+    description: >
+      One row per call list a campaign has generated. The only place the phone
+      banking audience carries an organization and the saved filter it was built
+      from, so it is required to attribute a call list to a campaign or to the
+      recommended list behind it.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the call list"
+        data_tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Name the campaign gave the list"
+      - name: script
+        description: "The volunteer-read script, resolved and frozen when the list was created"
+      - name: purpose
+        description: "Why the list was built, sharing its vocabulary with door knocking"
+      - name: created_at
+        description: "Timestamp the list was generated"
+      - name: updated_at
+        description: "Timestamp the list was last changed"
+      - name: sheet_count
+        description: "How many printable sheets the entries were split across, at 60 numbers per sheet"
+      - name: organization_slug
+        description: "The organization that owns the list"
+        data_tests:
+          - not_null
+      - name: voter_file_filter_id
+        description: "The saved audience the list was built from, and the join to the recommended list"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_phone_banking_list_entry
+    description: >
+      One row per dialable number on a call list, frozen at generation time.
+      Household members sharing a number group onto one entry, so this is the
+      number grain rather than the person grain. Holds phone numbers, so treat as
+      voter PII.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the entry"
+        data_tests:
+          - not_null
+          - unique
+      - name: seq
+        description: >
+          Dial order within the list, and not a priority ranking. The build pages
+          the audience ordered by the person id, which is a hash, so the order is
+          arbitrary with respect to every voter attribute. Volunteers do work a
+          list from the top, so treat this as the exposure measure when analysing
+          which targets actually got contacted, but do not read it as the product
+          ranking anyone.
+        data_tests:
+          - not_null
+      - name: phone
+        description: "The number to dial, frozen so a printed sheet stays usable. Voter PII"
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp the entry was frozen onto the list"
+      - name: sheet_index
+        description: "Which printed sheet the entry lands on"
+      - name: phone_banking_list_id
+        description: "The call list this number belongs to"
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source__gp_api_db_phone_banking_list_entry_person
+    description: >
+      One row per person reachable at a frozen number. This is the phone banking
+      denominator: the people a campaign intended to call, against which logged
+      call outcomes give a contact rate. Holds names, so treat as voter PII.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the entry person"
+        data_tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Person's name as frozen onto the call sheet. Voter PII"
+        data_tests:
+          - not_null
+      - name: person_id
+        description: >
+          The voter, as a people-api person id derived from the voter file. Joins
+          to the phone-banking interaction table on (list, person).
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp the person was frozen onto the entry"
+      - name: first_name
+        description: "Person's first name, held separately for script personalization. Voter PII"
+      - name: updated_at
+        description: "Timestamp the row was last changed"
+      - name: phone_banking_list_entry_id
+        description: "The frozen number this person is reachable at"
+        data_tests:
+          - not_null
