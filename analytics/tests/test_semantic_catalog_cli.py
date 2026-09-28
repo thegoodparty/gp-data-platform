@@ -520,3 +520,27 @@ def test_emit_clickup_says_so_when_the_evidence_check_could_not_run(tmp_path):
     text = out.read_text()
     assert "Instrument evidence" in text
     assert "NOT being checked against instrument health" in text
+
+
+def test_emit_slack_keeps_the_degrade_notice_out_of_the_channel(tmp_path):
+    # The conftest guard leaves the evidence read disabled, so this run is
+    # exactly the degraded one. #data-alignment is for metric news: a standing
+    # line about a token the review groups cannot provision is what teaches
+    # people to scroll past the alerts they can act on.
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    assert "NOT being checked against instrument health" not in out.read_text()
+
+
+def test_emit_slack_hands_the_degrade_notice_to_the_owner_notifier(tmp_path, monkeypatch):
+    # Out of the channel must not mean nowhere. Losing it here would rebuild the
+    # silent-green bug one layer up, which is the point of the evidence link.
+    sent = []
+
+    def fake_notify(problems):
+        sent.append(problems)
+        return "sent"
+
+    monkeypatch.setattr(cli.notify, "notify", fake_notify)
+    assert cli.main(["--emit-slack", str(tmp_path / "slack.txt"), "--pr-url", "http://pr/1"]) == 0
+    assert any("NOT being checked against instrument health" in p for p in sent[0])

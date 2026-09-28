@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from semantic_catalog import composition, evidence, lanes, ratifications, recording
+from semantic_catalog import composition, evidence, lanes, notify, ratifications, recording
 from semantic_catalog import lifecycle as lc_mod
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
@@ -364,10 +364,13 @@ def main(argv: list[str] | None = None) -> int:
             args.pr_url,
             coverage,
             required=required,
-            evidence_problems=evidence_problems,
         )
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
+        # Why the check could not run goes to the owner by DM, not into the
+        # channel summary above. Never raises: a Slack hiccup says nothing about
+        # whether the merge was sound, and this job also opens the ratification PR.
+        print(notify.notify(evidence_problems))
 
     return 0
 

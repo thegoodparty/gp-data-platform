@@ -106,6 +106,14 @@ fails, the page says the check did not run rather than rendering everything as
 healthy — a guard that disables itself quietly is the failure this exists to
 remove, rebuilt one layer up.
 
+When the read fails, the merge summary does **not** carry that. The notification
+channel is for metric news, and a cross-repo token the review groups cannot
+provision is not something they can act on; it goes to the metric owner as a
+direct message instead, falling back to the channel only if the DM is refused.
+What does reach the channel is the metric-level warning itself: a metric merging
+while its declared instrument is latched dormant says so there, because that is
+metric news.
+
 ## How the semantic layer is updated
 
 Governed metric definitions are authored in one place: the dbt semantic YAML

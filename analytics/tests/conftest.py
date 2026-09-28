@@ -11,10 +11,13 @@ which is a real branch with its own tests, so nothing here hides a failure.
 """
 
 import pytest
-from semantic_catalog import evidence
+from semantic_catalog import evidence, notify
 
 
 @pytest.fixture(autouse=True)
 def _no_cross_repo_reads(monkeypatch):
     monkeypatch.delenv(evidence.TOKEN_ENV, raising=False)
     monkeypatch.setenv(evidence.GH_FALLBACK_ENV, "1")
+    # The degraded branch now tries to DM the owner. A machine that happens to
+    # hold a real bot token would post to Slack from a test run.
+    monkeypatch.delenv(notify.TOKEN_ENV, raising=False)

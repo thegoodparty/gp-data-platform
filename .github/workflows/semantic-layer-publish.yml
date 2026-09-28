@@ -28,6 +28,9 @@ jobs:
     # channels (which would break threading).
     env:
       SLACK_CHANNEL_ID: C08K22X9ZNH
+      # Same owner the token-health check DMs its routine warnings to (#1076).
+      # Plumbing the channel cannot act on leaves by this door instead.
+      SLACK_OWNER_DM: U085CFQ96BG
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,14 +102,20 @@ jobs:
         env:
           PYTHONPATH: diagnostics
           # Lets the summary say when a metric is merging while its declared
-          # instrument is dormant. Until this secret exists the summary carries a
-          # standing "not being checked" line instead, which is the loud degrade
-          # rather than a silent green.
-          OMNI_READ_TOKEN: ${{ secrets.OMNI_READ_TOKEN }}
+          # instrument is dormant. ORG_READ_TOKEN is the fallback because it is
+          # the only cross-repo read this repo already holds; if it carries
+          # contents read on omni the check simply works and no dedicated secret
+          # is needed. If it does not, the read degrades into the owner DM
+          # below, which is where we would have been anyway.
+          OMNI_READ_TOKEN: ${{ secrets.OMNI_READ_TOKEN || secrets.ORG_READ_TOKEN }}
           # The gh fallback is for a laptop run. In Actions gh is authed to this
           # repo only, so attempting it would fail slower and report a murkier
           # reason than "the token is not set".
           OMNI_EVIDENCE_NO_GH: '1'
+          # When that read cannot run, the summary stays silent about it and the
+          # owner is DM'd instead (SLACK_OWNER_DM, job env). The channel is for
+          # metric news; a token the review groups cannot provision is not that.
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
         run: |
           set -euo pipefail
           if [ -d /tmp/base ]; then

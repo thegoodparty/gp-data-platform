@@ -95,7 +95,6 @@ def render_message(
     pr_url: str,
     coverage: dict,
     required: list[str] | None = None,
-    evidence_problems: list[str] | None = None,
 ) -> str:
     """`required` is the lanes this diff actually needed (see `lanes.classify`).
 
@@ -109,12 +108,15 @@ def render_message(
     body.extend(changes if changes else ["(no metric-level changes detected)"])
     body.append("")
 
-    for rec in after:
-        if rec.needs_reverification:
-            body.append(f":rotating_light: {rec.name} — {rec.needs_reverification}")
-    for problem in evidence_problems or []:
-        body.append(f":warning: {problem}")
-    if after and (any(r.needs_reverification for r in after) or evidence_problems):
+    # A metric merging while its declared instrument is latched dormant IS metric
+    # news, so it stays in the channel. Why the check could not run is plumbing
+    # addressed to whoever maintains it, and the publish job DMs that instead —
+    # a standing warning nobody in the channel can act on is what teaches people
+    # to scroll past the ones they can.
+    reverify = [rec for rec in after if rec.needs_reverification]
+    for rec in reverify:
+        body.append(f":rotating_light: {rec.name} — {rec.needs_reverification}")
+    if reverify:
         body.append("")
 
     needed = set(required) if required is not None else {"data", "business"}
