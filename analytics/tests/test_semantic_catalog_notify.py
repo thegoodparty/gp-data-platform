@@ -58,3 +58,27 @@ def test_the_notice_carries_every_problem_and_how_it_clears():
     text = notify.render(["first thing", "second thing"])
     assert "- first thing" in text and "- second thing" in text
     assert "ORG_READ_TOKEN" in text
+
+
+def test_a_connection_dropped_mid_body_does_not_escape(monkeypatch):
+    # IncompleteRead descends from HTTPException, not OSError, so it slipped the
+    # old except clause and broke the never-raises contract — failing a publish
+    # that also opens the ratification PR, over a blip that says nothing about
+    # whether the merge was sound. Patched at urlopen so the real _post runs.
+    import http.client
+
+    def dropped(request, timeout=None):
+        raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr(notify.urllib.request, "urlopen", dropped)
+    assert notify._post("t", "C1", "text") is False
+
+
+def test_no_owner_configured_is_not_reported_as_a_refused_dm():
+    # Saying the DM was refused when none was attempted sends a reader hunting a
+    # Slack permission problem that is really a missing env var.
+    sent, post = _recorder()
+    outcome = notify.notify(PROBLEMS, token="t", owner="", channel="C1", post=post)
+    assert [channel for channel, _ in sent] == ["C1"]
+    assert "refused" not in sent[0][1] and "refused" not in outcome
+    assert notify.OWNER_ENV in outcome
