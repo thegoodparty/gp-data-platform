@@ -82,3 +82,14 @@ def test_no_owner_configured_is_not_reported_as_a_refused_dm():
     assert [channel for channel, _ in sent] == ["C1"]
     assert "refused" not in sent[0][1] and "refused" not in outcome
     assert notify.OWNER_ENV in outcome
+
+
+def test_no_owner_and_a_failing_channel_still_returns_a_reason():
+    # The last branch of the never-raises contract: nothing was delivered and
+    # nobody was DM'd. It must still say which of the two it was, because "no
+    # owner set" and "Slack refused the DM" send a reader to different fixes.
+    sent, post = _recorder(refuse={"C1"})
+    outcome = notify.notify(PROBLEMS, token="t", owner="", channel="C1", post=post)
+    assert "not delivered" in outcome
+    assert notify.OWNER_ENV in outcome and "refused" not in outcome
+    assert [channel for channel, _ in sent] == ["C1"]
