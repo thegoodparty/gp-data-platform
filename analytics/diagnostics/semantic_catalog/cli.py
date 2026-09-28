@@ -316,6 +316,16 @@ def main(argv: list[str] | None = None) -> int:
             write_region(t, recs)
             print(f"wrote {t}")
 
+    # One read for both surfaces. Called per-surface, a blip on the second call
+    # would let the page and the merge summary disagree about the same merge —
+    # one naming a dormant instrument, the other silently clean — and a reader
+    # has no way to tell which is current. Evidence that contradicts itself is
+    # worse than evidence that says it could not be gathered.
+    latches: dict[str, list[evidence.Latch]] = {}
+    evidence_problems: list[str] = []
+    if args.emit_clickup or args.emit_slack:
+        latches, evidence_problems = evidence.load_latches()
+
     if args.emit_clickup:
         owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
         sop_md = (PKG / "templates" / "sop.md").read_text()
@@ -325,7 +335,6 @@ def main(argv: list[str] | None = None) -> int:
         # offline and deterministic. This page is the one the company reads to
         # decide whether a number can be trusted, so it is where the evidence
         # belongs.
-        latches, evidence_problems = evidence.load_latches()
         page = render_page(
             evidence.apply(records, latches),
             _lifecycles(records),
@@ -357,7 +366,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         # A metric merging while its instrument is latched dormant should say so
         # in the same message, not only on the catalog page a week later.
-        latches, evidence_problems = evidence.load_latches()
         msg = render_message(
             before,
             evidence.apply(after, latches),

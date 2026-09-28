@@ -559,3 +559,33 @@ def test_emit_slack_carries_a_latched_metric_into_the_channel_message(tmp_path, 
     assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
     text = out.read_text()
     assert ":rotating_light:" in text and "2026-07-31" in text
+
+
+def test_both_surfaces_share_one_instrument_health_read(tmp_path, monkeypatch):
+    # Read per-surface, a blip on the second call would let the page and the
+    # merge summary disagree about the same merge — one naming a dormant
+    # instrument, the other silently clean — with no way to tell which is
+    # current. Evidence that contradicts itself is worse than none.
+    calls = []
+
+    def counted():
+        calls.append(1)
+        return {}, []
+
+    monkeypatch.setattr(cli.evidence, "load_latches", counted)
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    rc = cli.main(
+        ["--emit-clickup", str(tmp_path / "p.md"), "--emit-slack", str(tmp_path / "s.txt"), "--pr-url", "u"]
+    )
+    assert rc == 0
+    assert len(calls) == 1
+
+
+def test_no_instrument_read_happens_when_neither_surface_is_emitted(tmp_path, monkeypatch):
+    # --check is the blocking catalog-freshness gate and must stay offline and
+    # deterministic; hoisting the read must not have dragged it onto the network.
+    def boom():
+        raise AssertionError("load_latches must not run for --check")
+
+    monkeypatch.setattr(cli.evidence, "load_latches", boom)
+    assert cli.main(["--check"]) in (0, 1)
