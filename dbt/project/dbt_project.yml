@@ -116,6 +116,13 @@ models:
       airbyte_source:
         stripe_api:
           +schema: dbt_stripe
+      airbyte_source_finance:
+        # Ephemeral, not view: these streams carry the general ledger plus vendor
+        # and customer PII, and a materialized staging layer would copy that into
+        # a schema every catalog-level SELECT holder can read. As CTEs the data
+        # never leaves the Airbyte-owned schema until a mart selects from it.
+        +materialized: ephemeral
+        +tags: ["staging", "finance"]
       dbt_source:
         l2_s3:
           # There are about 400 static view models in this folder, so we need to add a tag to exclude them from recurring dbt jobs.

@@ -1,0 +1,341 @@
+version: 2
+
+models:
+  - name: stg_airbyte_source_finance__quickbooks_accounts
+    description: >
+      Ephemeral staging for QuickBooks Online chart-of-accounts entries. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: account_id
+        description: QuickBooks Online identifier for the account, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_bills
+    description: >
+      Ephemeral staging for QuickBooks Online vendor bills (accounts payable). Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: bill_id
+        description: QuickBooks Online identifier for the bill, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_classes
+    description: >
+      Ephemeral staging for QuickBooks Online classes used for allocation. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: class_id
+        description: QuickBooks Online identifier for the class, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_credit_memos
+    description: >
+      Ephemeral staging for QuickBooks Online customer credit memos. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse. The stream synced empty on first load, so the key tests are
+      vacuous until rows arrive.
+    columns:
+      - name: credit_memo_id
+        description: QuickBooks Online identifier for the credit memo, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_customers
+    description: >
+      Ephemeral staging for QuickBooks Online customers. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: customer_id
+        description: QuickBooks Online identifier for the customer, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_departments
+    description: >
+      Ephemeral staging for QuickBooks Online departments used for allocation. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: department_id
+        description: QuickBooks Online identifier for the department, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_deposits
+    description: >
+      Ephemeral staging for QuickBooks Online bank deposits. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: deposit_id
+        description: QuickBooks Online identifier for the deposit, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_items
+    description: >
+      Ephemeral staging for QuickBooks Online products and services. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: item_id
+        description: QuickBooks Online identifier for the item, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_journal_entries
+    description: >
+      Ephemeral staging for QuickBooks Online journal entries. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: journal_entry_id
+        description: QuickBooks Online identifier for the journal entry, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_payment_methods
+    description: >
+      Ephemeral staging for QuickBooks Online payment methods. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: payment_method_id
+        description: QuickBooks Online identifier for the payment method, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_payments
+    description: >
+      Ephemeral staging for QuickBooks Online customer payments received. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: payment_id
+        description: QuickBooks Online identifier for the payment, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_purchases
+    description: >
+      Ephemeral staging for QuickBooks Online purchases (expenses). Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: purchase_id
+        description: QuickBooks Online identifier for the purchase, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_time_activities
+    description: >
+      Ephemeral staging for QuickBooks Online time activities. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse. The stream synced empty on first load, so the key tests are
+      vacuous until rows arrive.
+    columns:
+      - name: time_activity_id
+        description: QuickBooks Online identifier for the time activity, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_transfers
+    description: >
+      Ephemeral staging for QuickBooks Online transfers between accounts. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse. The stream synced empty on first load, so the key tests are
+      vacuous until rows arrive.
+    columns:
+      - name: transfer_id
+        description: QuickBooks Online identifier for the transfer, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_vendor_credits
+    description: >
+      Ephemeral staging for QuickBooks Online vendor credits. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: vendor_credit_id
+        description: QuickBooks Online identifier for the vendor credit, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
+
+  - name: stg_airbyte_source_finance__quickbooks_vendors
+    description: >
+      Ephemeral staging for QuickBooks Online vendors. Renames the source's
+      PascalCase columns to snake_case and passes types through; nested
+      QuickBooks objects stay JSON strings for the mart to parse.
+    columns:
+      - name: vendor_id
+        description: QuickBooks Online identifier for the vendor, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_raw_id
+        description: Airbyte's per-record identifier for this row.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte extracted the record from the QuickBooks API.
+        data_tests:
+          - not_null
