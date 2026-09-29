@@ -974,6 +974,12 @@ models:
           weeks into their six months has a low count because the window is
           young, not because they are quiet, and nothing about the count itself
           says so.
+
+          False, never null, for a user with no window at all. Not having an
+          open window is a fact rather than an unknown, and a null would drop
+          all 29k of them out of `where not outreach_window_is_open`.
+        data_tests:
+          - not_null
       - name: outreach_window_days_total
         description: Length of the window in days. 181 to 184, depending on which months it spans.
       - name: outreach_window_days_elapsed
@@ -988,14 +994,26 @@ models:
             expression: outreach_window_end > outreach_window_start
           config:
             where: outreach_window_start is not null
-      # A window exists for exactly the two statuses that have one. A failure
-      # means the status and the bounds have drifted apart, which is what makes
-      # a null count downstream ambiguous.
+      # A window exists for exactly the two statuses that have one, and every
+      # window-derived column agrees about it. Covered as one expression rather
+      # than per column because the failure is always the same: a windowless
+      # user picking up a value, which then reads as a real zero downstream.
+      #
+      # days_elapsed is the one that has already gone wrong. greatest() skips
+      # nulls in Spark rather than propagating them, so the guard in the model
+      # is the only thing standing between 29k users and a spurious zero, and
+      # the guard is easy to drop by accident.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
               (election_date_status in ('upcoming', 'past'))
-              = (outreach_window_start is not null)
+              = (
+                election_date is not null
+                and outreach_window_start is not null
+                and outreach_window_end is not null
+                and outreach_window_days_total is not null
+                and outreach_window_days_elapsed is not null
+              )
 
   - name: int__user_outreach_sends
     description: >
@@ -1220,11 +1238,27 @@ models:
       # when there is no window, and a zero otherwise. Getting this backwards
       # reports 29k users with no election date as candidates who did nothing,
       # which is the single most likely way to misread the column.
+      #
+      # Every guarded count, not just the headline: they share one guard, so
+      # they fail together, and a per-column test would only ever catch
+      # whichever one someone edited.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
               (election_date_status in ('upcoming', 'past'))
-              = (outreach_sent_count is not null)
+              = (
+                outreach_sent_count is not null
+                and outreach_requested_count is not null
+                and outreach_channel_count is not null
+                and outreach_texting_count is not null
+                and outreach_robocall_count is not null
+                and outreach_social_count is not null
+                and outreach_door_knocking_count is not null
+                and outreach_phone_banking_count is not null
+                and outreach_unattributed_count is not null
+                and outreach_before_window_count is not null
+                and outreach_after_election_count is not null
+              )
       # A channel breakdown that does not sum to the headline means a channel
       # was added to the send model and never given a column here.
       - dbt_utils.expression_is_true:

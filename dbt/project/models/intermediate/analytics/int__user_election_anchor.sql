@@ -116,7 +116,13 @@ select
     -- An open window is the trap this model exists to flag. A candidate two
     -- weeks into their six months has a low count because the window is young,
     -- not because they are quiet, and nothing about the count itself says so.
-    a.election_date >= current_date() as outreach_window_is_open,
+    --
+    -- Never null, unlike the dates and counts around it. A user with no window
+    -- does not have an open one, which is a fact rather than an unknown, and a
+    -- null here would drop all 29k of them out of `where not
+    -- outreach_window_is_open`.
+    a.election_date is not null
+    and a.election_date >= current_date() as outreach_window_is_open,
 
     datediff(
         a.election_date, add_months(a.election_date, -{{ window_months }})
