@@ -1,6 +1,6 @@
 /*
-Voter-density coverage bookkeeping — loaded to people-api Postgres
-green."DistrictVoterDensityMeta". One row per (district_id, resolution).
+Voter-density coverage bookkeeping — loaded to election-api Postgres by the
+sync_election_api DAG. One row per (district_id, resolution).
 
 The app uses `coverage` to decide whether the map is trustworthy enough to render
 (it hides the map below a threshold) and to draw the legend. Suppressed voters

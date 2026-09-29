@@ -1,6 +1,7 @@
 select
     id,
     archived,
+    properties_hs_gdpr_deleted as is_gdpr_deleted,
     createdat as created_at,
     updatedat as updated_at,
     contacts,
@@ -25,3 +26,6 @@ select
     properties_hubspot_owner_id as hubspot_owner_id,
     _airbyte_extracted_at
 from {{ source("airbyte_source", "hubspot_api_engagements_calls") }}
+where
+    {{ dsar_not_suppressed("properties_hs_call_from_number", "phone") }}
+    and {{ dsar_not_suppressed("properties_hs_call_to_number", "phone") }}

@@ -95,3 +95,4 @@ from with_derived_fields
 where
     _airbyte_raw_id
     not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)
+    and {{ dsar_not_suppressed("candidate_id", "ddhq_candidate_id") }}

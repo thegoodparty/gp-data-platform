@@ -1,24 +1,29 @@
 {#
-    Parse a slash-or-dash TechSpeed date, choosing the component order from the
-    delivery file's detected convention. ISO values are unambiguous and parse
-    first in both branches; only the two-component forms need the order. The
-    single-letter M and d tokens accept one or two digits, so both padded
-    (06-02-2026) and non-padded (6-2-2026) values parse.
+    Parse a slash-or-dash TechSpeed date. ISO values parse first. A two-component
+    value tries the delivery file's detected order first, then the other order: a
+    value whose day exceeds 12 only parses one way, so it lands correctly whatever
+    the file-level call, and only a genuinely ambiguous value follows the file. The
+    single-letter M and d tokens accept one or two digits.
 #}
 {% macro parse_techspeed_date(column, is_day_first) %}
+    {%- set normalized = "replace(" ~ column ~ ", '/', '-')" -%}
     case
         when {{ is_day_first }}
         then
             coalesce(
-                try_cast(replace({{ column }}, '/', '-') as date),
-                try_to_date(replace({{ column }}, '/', '-'), 'd-M-yyyy'),
-                try_to_date(replace({{ column }}, '/', '-'), 'd-M-yy')
+                try_cast({{ normalized }} as date),
+                try_to_date({{ normalized }}, 'd-M-yyyy'),
+                try_to_date({{ normalized }}, 'd-M-yy'),
+                try_to_date({{ normalized }}, 'M-d-yyyy'),
+                try_to_date({{ normalized }}, 'M-d-yy')
             )
         else
             coalesce(
-                try_cast(replace({{ column }}, '/', '-') as date),
-                try_to_date(replace({{ column }}, '/', '-'), 'M-d-yyyy'),
-                try_to_date(replace({{ column }}, '/', '-'), 'M-d-yy')
+                try_cast({{ normalized }} as date),
+                try_to_date({{ normalized }}, 'M-d-yyyy'),
+                try_to_date({{ normalized }}, 'M-d-yy'),
+                try_to_date({{ normalized }}, 'd-M-yyyy'),
+                try_to_date({{ normalized }}, 'd-M-yy')
             )
     end
 {% endmacro %}

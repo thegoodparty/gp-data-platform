@@ -52,7 +52,7 @@ def test_config_from_env_requires_host_and_http_path() -> None:
 
 
 def test_config_from_env_reads_token_and_client_credentials() -> None:
-    """Catches: the client id/secret OAuth M2M path (load_people_api.py's own pattern) being dropped."""
+    """Catches: the client id/secret OAuth M2M path being dropped."""
     config = config_from_env(
         {
             "DATABRICKS_HOST": "dbc-example.cloud.databricks.com",

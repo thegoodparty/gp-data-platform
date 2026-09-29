@@ -3,6 +3,11 @@
 -- the matcher abstained on) still gets voter issues. Every override district
 -- that L2 populates must appear; Haystaq scores every state, so an absence is
 -- the override leg or its spelling resolution failing, not missing scores.
+--
+-- Tagged with the Haystaq voter model the mart scores from: a district minted
+-- since that model's last build has no scorable voters yet, so where the model
+-- is excluded (CI, the nightly) this can only false-fail on a new seed row.
+{{ config(tags=["monthly"]) }}
 with
     resolved_districts as ({{ l2_district_spelling_resolution() }}),
     override_districts as (

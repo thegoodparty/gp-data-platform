@@ -10,6 +10,12 @@ with
             event_time,
             country,
             event_properties:path::string as page_path,
+            -- Distinguishes the three moments that share the Campaign Completed
+            -- name; see is_outreach_activation_event.
+            event_properties:method::string as outreach_method,
+            -- Dedup key for the shared send terminal, which is once per committed
+            -- payment rather than once per outreach.
+            event_properties:outreachid::string as outreach_id,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)
@@ -37,7 +43,6 @@ with
                     'Onboarding - Registration Completed',
                     'onboarding_complete',
                     'pro_upgrade_complete',
-                    'Voter Outreach - Campaign Completed',
                     'Serve Onboarding - Getting Started Viewed',
                     'Serve Onboarding - Constituency Profile Viewed',
                     'Serve Onboarding - Poll Value Props Viewed',
@@ -57,7 +62,34 @@ with
                         "event_type", "event_properties:path::string"
                     )
                 }}
+                -- Outreach terminals, read from their metric's declaration for the
+                -- same reason. Select aliases are not in scope in a WHERE clause.
+                or {{
+                    is_outreach_activation_event(
+                        "event_type", "event_properties:method::string"
+                    )
+                }}
             )
+    ),
+
+    send_commits as (
+        select
+            *,
+            -- A lapsed robocall hold can be re-authorized and commits a second time
+            -- under the same outreach id, days later and past Segment's dedup
+            -- window. That is one send retried, so only the first commit counts.
+            -- Legs that carry no outreach id cannot re-fire this way and always
+            -- count; they must not be collapsed into a single null partition.
+            case
+                when outreach_id is null
+                then true
+                else
+                    row_number() over (
+                        partition by user_id, outreach_id order by event_time
+                    )
+                    = 1
+            end as is_first_commit
+        from milestone_events
     ),
 
     dashboard_view_flags as (
@@ -106,16 +138,34 @@ with
             -- Activated Candidates
             min(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
                     then event_time
                 end
             ) as first_campaign_sent_at,
             count(
-                case when event_type = 'Voter Outreach - Campaign Completed' then 1 end
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
+                    then 1
+                end
             ) as total_campaigns_sent,
             sum(
                 case
-                    when event_type = 'Voter Outreach - Campaign Completed'
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method"
+                            )
+                        }} and is_first_commit
                     then recipient_count
                 end
             ) as total_recipient_count,
@@ -176,7 +226,7 @@ with
                     then event_time
                 end
             ) as serve_poll_preview_at
-        from milestone_events me
+        from send_commits me
         left join dashboard_views_dedup dv on me.user_id = dv.user_id
         group by me.user_id
     )

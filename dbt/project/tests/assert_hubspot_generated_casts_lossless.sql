@@ -44,6 +44,13 @@
                     ) as {{ p.column_name }}{{ "," if not loop.last }}
                 {%- endfor %}
             from {{ source("airbyte_source", "hubspot_api_contacts") }}
+            -- Only rows the model emits, so any filter it applies is honored here.
+            where
+                id in (
+                    select id
+                    from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+                    where id is not null
+                )
         ),
         model_counts as (
             select

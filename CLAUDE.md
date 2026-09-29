@@ -15,7 +15,6 @@ Each subproject manages its own deps. `cd` into the right one before you install
 
 | Subproject | Tool | Python | Notes |
 |---|---|---|---|
-| `people-api-loader/` | uv | 3.14 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
 | `dbt/` | uv | 3.14 | `cd dbt && uv sync`, `uv run ...`. `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via uv. |
 | `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
@@ -53,7 +52,7 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `dbt/`, `airflow/`, `analytics/`, and `reverse-etl/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
 ## Never
 

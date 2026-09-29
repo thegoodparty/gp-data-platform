@@ -1,7 +1,7 @@
 # Repo-wide ruff config. Conservative lint set (E,F,I) only; the opinionated
 # rules (UP,B,SIM,RUF) are ratcheted in per-directory as each gets its CI
-# workflow. people-api-loader/ overrides this with its own fuller [tool.ruff]
-# in pyproject.toml (ruff applies the nearest config per file).
+# workflow. A subproject may override this with its own [tool.ruff] in
+# pyproject.toml (ruff applies the nearest config per file).
 line-length = 110
 target-version = "py312"
 

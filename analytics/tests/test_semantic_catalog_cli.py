@@ -50,9 +50,11 @@ def test_before_side_reads_the_base_trees_own_sidecar(tmp_path):
     # CURRENT sidecar instead would make every ratification compare equal to
     # itself, erasing the pending-to-dated edge from the Slack summary and
     # firing no Sigma build task.
-    base = _base_worktree(tmp_path, "activated_users:\n  ratified: 2026-01-01\n  definition_sha: '0000000'\n")
+    base = _base_worktree(
+        tmp_path, "activated_users:\n  business:\n    approved: 2026-01-01\n    rule_sha: '0000000'\n"
+    )
     before, _ = cli._before_after(base)
-    assert {r.name: r.ratified for r in before}["activated_users"] == "2026-01-01"
+    assert {r.name: r.rule_approved for r in before}["activated_users"] == "2026-01-01"
 
 
 def test_before_side_is_all_pending_when_the_base_predates_the_sidecar(tmp_path):
@@ -61,25 +63,29 @@ def test_before_side_is_all_pending_when_the_base_predates_the_sidecar(tmp_path)
     base = _base_worktree(tmp_path, "")
     (base / cli.RATIFICATIONS_RELPATH).unlink()
     before, _ = cli._before_after(base)
-    assert before and all(r.ratified is None for r in before)
+    assert before and all(r.rule_approved is None and r.build_approved is None for r in before)
 
 
 def test_check_reports_a_bad_sidecar_as_a_config_error(tmp_path, monkeypatch, capsys):
     bad = tmp_path / "ratifications.yml"
-    bad.write_text("no_such_metric:\n  ratified: 2026-08-05\n  definition_sha: '0000000'\n")
+    bad.write_text("no_such_metric:\n  business:\n    approved: 2026-08-05\n    rule_sha: '0000000'\n")
     monkeypatch.setattr(cli.ratifications, "DEFAULT_PATH", bad)
     rc = cli.main(["--check"])
     assert rc == 1
     assert "config error" in capsys.readouterr().err
 
 
-def test_fingerprints_prints_quoted_hashes(capsys):
+def test_fingerprints_prints_both_seals_quoted(capsys):
     # Quoted because the sidecar demands quotes: an all-digit hash left bare
-    # would be read back as an integer.
+    # would be read back as an integer. Both seals, because an author recording
+    # one half needs to know which hash belongs to it.
     rc = cli.main(["--fingerprints"])
     assert rc == 0
     lines = capsys.readouterr().out.splitlines()
-    assert any(line.startswith("win_users: '") and line.endswith("'") for line in lines)
+    assert any(
+        line.startswith("win_users: rule_sha '") and "build_sha '" in line and line.endswith("'")
+        for line in lines
+    )
 
 
 def test_emit_slack_writes_rendered_message(tmp_path):
@@ -97,7 +103,7 @@ def test_emit_slack_writes_rendered_message(tmp_path):
     assert rc == 0
     text = out.read_text()
     assert "http://pr/1" in text
-    assert ":warning: review coverage: data ✓ · business ✗" in text
+    assert "review coverage: data ✓" in text
 
 
 def test_emit_clickup_strips_catalog_markers(tmp_path):
@@ -137,6 +143,7 @@ def test_records_by_target_routes_each_metric_to_its_skill():
     assert win_names == {
         "win_users",
         "win_activated_users",
+        "win_product_output_users",
         "win_active_candidates_30d",
         "goodparty_win_rate",
         "goodparty_cumulative_wins",
@@ -158,7 +165,6 @@ def test_records_by_target_raises_on_unmapped_sem_file():
         dimensions=(),
         filter=None,
         owner=None,
-        ratified=None,
         detail_doc=None,
         retired=None,
         yaml_file="sem_unmapped__thing.yml",
@@ -166,98 +172,6 @@ def test_records_by_target_raises_on_unmapped_sem_file():
     )
     with pytest.raises(ValueError):
         cli.records_by_target([stray])
-
-
-def test_sync_sigma_tasks_skips_cleanly_without_token(capsys, monkeypatch):
-    monkeypatch.delenv("CLICKUP_TASK_TOKEN", raising=False)
-    rc = cli.main(["--sync-sigma-tasks"])
-    assert rc == 0
-    assert "skipping" in capsys.readouterr().out.lower()
-
-
-def test_sync_sigma_tasks_invokes_sync_when_token_present(capsys, monkeypatch):
-    monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
-    seen = {}
-
-    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
-        seen["list_id"] = list_id
-        seen["field_id"] = field_id
-        seen["assignee_ids"] = assignee_ids
-        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
-
-        return SyncResult(
-            created=(CreatedTask(metric_name="m", task_id="id-1", url="https://app.clickup.com/t/id-1"),),
-            skipped=(),
-        )
-
-    monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
-    rc = cli.main(["--sync-sigma-tasks"])
-    assert rc == 0
-    # list_id comes from the committed config, not a hardcoded literal in cli.py
-    assert seen["list_id"] == "901326391561"
-    # default assignee (Audrey) is read from the committed config, not hardcoded in cli.py
-    assert seen["assignee_ids"] == (111975138,)
-    assert "created 1" in capsys.readouterr().out.lower()
-
-
-def test_sync_sigma_tasks_emits_created_json(tmp_path, monkeypatch):
-    monkeypatch.setenv("CLICKUP_TASK_TOKEN", "tok")
-
-    def fake_sync(client, list_id, field_id, before, after, assignee_ids=()):
-        from semantic_catalog.sigma_tasks import CreatedTask, SyncResult
-
-        return SyncResult(
-            created=(
-                CreatedTask(
-                    metric_name="win_users",
-                    task_id="abc123",
-                    url="https://app.clickup.com/t/abc123",
-                ),
-            ),
-            skipped=(),
-        )
-
-    monkeypatch.setattr(cli.sigma_tasks, "sync", fake_sync)
-    out = tmp_path / "created_tasks.json"
-    rc = cli.main(["--sync-sigma-tasks", "--emit-created", str(out)])
-    assert rc == 0
-    import json
-
-    payload = json.loads(out.read_text())
-    assert payload == [
-        {"metric": "win_users", "task_id": "abc123", "url": "https://app.clickup.com/t/abc123"}
-    ]
-
-
-def test_reply_created_skips_cleanly_without_token(capsys, monkeypatch):
-    monkeypatch.delenv("SLACK_APP_BOT_TOKEN", raising=False)
-    monkeypatch.setenv("SLACK_TS", "1699.1")
-    monkeypatch.setenv("SLACK_CHANNEL_ID", "C999")
-    rc = cli.main(["--reply-created", "/does/not/exist.json"])
-    assert rc == 0
-    assert "skipping" in capsys.readouterr().out.lower()
-
-
-def test_reply_created_invokes_reply_in_thread(tmp_path, monkeypatch):
-    monkeypatch.setenv("SLACK_APP_BOT_TOKEN", "tok")
-    monkeypatch.setenv("SLACK_TS", "1699.1")
-    monkeypatch.setenv("SLACK_CHANNEL_ID", "C999")
-    seen = {}
-
-    def fake_reply(token, channel, thread_ts, tasks):
-        seen.update(token=token, channel=channel, thread_ts=thread_ts, tasks=tasks)
-
-    monkeypatch.setattr(cli.slack_reply, "reply_in_thread", fake_reply)
-    import json
-
-    p = tmp_path / "created.json"
-    p.write_text(json.dumps([{"metric": "win_users", "task_id": "a", "url": "https://app.clickup.com/t/a"}]))
-    rc = cli.main(["--reply-created", str(p)])
-    assert rc == 0
-    assert seen["token"] == "tok"
-    assert seen["channel"] == "C999"
-    assert seen["thread_ts"] == "1699.1"
-    assert seen["tasks"][0]["metric"] == "win_users"
 
 
 def _reviews_file(tmp_path, reviews):
@@ -274,11 +188,11 @@ def _isolated_sidecar(tmp_path, monkeypatch, body=""):
     return sidecar
 
 
-def test_record_writes_nothing_when_a_review_group_is_missing(tmp_path, monkeypatch, capsys):
+def test_record_writes_nothing_when_no_group_approved(tmp_path, monkeypatch, capsys):
     sidecar = _isolated_sidecar(tmp_path, monkeypatch)
     reviews = _reviews_file(
         tmp_path,
-        [{"login": "amanda847", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"}],
+        [{"login": "delegate-reviewer[bot]", "state": "APPROVED", "submitted_at": "2026-08-07T10:00:00Z"}],
     )
     out = tmp_path / "recorded.json"
     rc = cli.main(
@@ -297,18 +211,22 @@ def test_record_writes_nothing_when_a_review_group_is_missing(tmp_path, monkeypa
         ]
     )
     assert rc == 0
-    assert sidecar.read_text() == "", "an uncovered merge must record nothing"
+    assert sidecar.read_text() == "", "an unapproved merge must record nothing"
     assert json.loads(out.read_text())["metrics"] == []
-    assert "coverage incomplete" in capsys.readouterr().out.lower()
+    assert "no group approved" in capsys.readouterr().out.lower()
 
 
-def _base_tree_with_moved_definition(tmp_path, metric: str):
-    """A base worktree identical to HEAD except that `metric`'s definition moved.
+def _base_tree_with_moved_build(tmp_path, metric: str):
+    """A base worktree identical to HEAD except that `metric`'s BUILD moved.
 
     Copies only the sem_*.yml files, preserving their paths under the base, which
     is all `parse_semantic_tree` walks. The point is a base where exactly one
-    metric's fingerprint differs, so `ratified_by_merge` earns exactly that one
-    and every other pending metric is correctly left alone.
+    metric's build seal differs, so `earned_by_merge` earns exactly that one and
+    every other pending metric is correctly left alone.
+
+    The filter, not the description: description is in neither seal now, which is
+    the fix for a wording edit expiring an approval. A base that differs only in
+    prose earns nothing, correctly, and would make this test assert nothing.
     """
     base = tmp_path / "base"
     moved = False
@@ -319,15 +237,17 @@ def _base_tree_with_moved_definition(tmp_path, metric: str):
             doc = yaml.safe_load(src.read_text())
             for entry in (doc or {}).get("metrics", []) or []:
                 if entry.get("name") == metric:
-                    # `description` is a fingerprint field. A YAML comment would
-                    # not do: the fingerprint is computed from parsed values.
-                    entry["description"] = (
-                        f"{entry.get('description', '')} Base-tree wording, since superseded."
-                    )
+                    entry["filter"] = "{{ Dimension('user__base_tree_only') }}"
                     moved = True
             dest.write_text(yaml.safe_dump(doc, sort_keys=False))
     assert moved, f"{metric} not found in any sem_*.yml, so the base tree is not actually different"
     return base
+
+
+def _pr_body(tmp_path, metric, value=42):
+    path = tmp_path / "pr-body.md"
+    path.write_text(f"<!-- semantic-value: {metric} = {value} -->\n")
+    return path
 
 
 def _both_groups_approved(tmp_path):
@@ -347,7 +267,7 @@ def test_record_writes_the_earned_sign_off_and_self_verifies(tmp_path, monkeypat
     sidecar = _isolated_sidecar(tmp_path, monkeypatch)
     written_targets = []
     monkeypatch.setattr(cli, "write_region", lambda target, recs: written_targets.append(target))
-    base = _base_tree_with_moved_definition(tmp_path, "goodparty_win_rate")
+    base = _base_tree_with_moved_build(tmp_path, "goodparty_win_rate")
     out = tmp_path / "recorded.json"
     body = tmp_path / "body.md"
 
@@ -364,6 +284,8 @@ def test_record_writes_the_earned_sign_off_and_self_verifies(tmp_path, monkeypat
             "800",
             "--base-dir",
             str(base),
+            "--pr-body",
+            str(_pr_body(tmp_path, "goodparty_win_rate", 1234)),
             "--emit-recorded",
             str(out),
             "--emit-pr-body",
@@ -374,7 +296,8 @@ def test_record_writes_the_earned_sign_off_and_self_verifies(tmp_path, monkeypat
     assert rc == 0, "a clean record must not red-fail the publish job"
     text = sidecar.read_text()
     assert "goodparty_win_rate:" in text
-    assert "ratified: 2026-08-07" in text, "the date is when the SECOND group approved"
+    assert "approved: 2026-08-07" in text, "the date is when that group approved"
+    assert "value_at_signing: 1234" in text, "the number the PR body declared"
     assert "approved_by_pr: 800" in text
     assert "goodparty_cumulative_wins" not in text, "a bystander in the same file must not be signed off"
     manifest = json.loads(out.read_text())
@@ -392,7 +315,7 @@ def test_record_fails_loudly_when_its_own_write_does_not_read_back(tmp_path, mon
     # Silently drop the write: the sidecar keeps its old contents, so the metric
     # still reads pending on the re-parse.
     monkeypatch.setattr(cli.recording, "apply", lambda text, earned, pr: text)
-    base = _base_tree_with_moved_definition(tmp_path, "goodparty_win_rate")
+    base = _base_tree_with_moved_build(tmp_path, "goodparty_win_rate")
 
     rc = cli.main(
         [
@@ -407,11 +330,13 @@ def test_record_fails_loudly_when_its_own_write_does_not_read_back(tmp_path, mon
             "800",
             "--base-dir",
             str(base),
+            "--pr-body",
+            str(_pr_body(tmp_path, "goodparty_win_rate")),
         ]
     )
 
     assert rc == 1
-    assert "does not read as freshly ratified" in capsys.readouterr().err
+    assert "does not read as fresh" in capsys.readouterr().err
 
 
 def test_record_writes_nothing_when_the_base_tree_parses_no_metrics(tmp_path, monkeypatch, capsys):
@@ -566,3 +491,101 @@ def test_record_emits_the_pr_body_only_when_something_was_earned(tmp_path, monke
         ]
     )
     assert not body.exists(), "no PR body when there is no PR to open"
+
+
+def test_classify_lanes_emits_the_teams_the_diff_needs(tmp_path, capsys):
+    # A build-only change: the base tree's filter differs, nothing else does.
+    base = _base_tree_with_moved_build(tmp_path, "goodparty_win_rate")
+    assert cli.main(["--classify-lanes", "--base-dir", str(base)]) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["data"] == ["goodparty_win_rate"]
+    assert got["business"] == []
+    assert got["teams"] == ["semantic-layer-data"]
+
+
+def test_classify_lanes_requests_both_groups_when_it_cannot_diff(tmp_path, capsys):
+    # No base means no diff. Guessing would either spam both groups or ask
+    # nobody; asking both is the pre-routing behavior and the safe failure.
+    assert cli.main(["--classify-lanes"]) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["teams"] == ["semantic-layer-data", "semantic-layer-business"]
+    assert "no base tree" in got["reason"]
+
+
+def test_emit_clickup_says_so_when_the_evidence_check_could_not_run(tmp_path):
+    # The page must never read green because a cross-repo read failed. The
+    # conftest guard leaves the check disabled, which is the condition under test.
+    out = tmp_path / "page.md"
+    assert cli.main(["--emit-clickup", str(out)]) == 0
+    text = out.read_text()
+    assert "Instrument evidence" in text
+    assert "NOT being checked against instrument health" in text
+
+
+def test_emit_slack_keeps_the_degrade_notice_out_of_the_channel(tmp_path):
+    # The conftest guard leaves the evidence read disabled, so this run is
+    # exactly the degraded one. #data-alignment is for metric news: a standing
+    # line about a token the review groups cannot provision is what teaches
+    # people to scroll past the alerts they can act on.
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    assert "NOT being checked against instrument health" not in out.read_text()
+
+
+def test_emit_slack_hands_the_degrade_notice_to_the_owner_notifier(tmp_path, monkeypatch):
+    # Out of the channel must not mean nowhere. Losing it here would rebuild the
+    # silent-green bug one layer up, which is the point of the evidence link.
+    sent = []
+
+    def fake_notify(problems):
+        sent.append(problems)
+        return "sent"
+
+    monkeypatch.setattr(cli.notify, "notify", fake_notify)
+    assert cli.main(["--emit-slack", str(tmp_path / "slack.txt"), "--pr-url", "http://pr/1"]) == 0
+    assert any("NOT being checked against instrument health" in p for p in sent[0])
+
+
+def test_emit_slack_carries_a_latched_metric_into_the_channel_message(tmp_path, monkeypatch):
+    # The wiring, not just the pieces: a latch read from omni has to survive
+    # evidence.apply and reach the rendered message. Mocking only the network
+    # boundary leaves the rest of the path real, so a break anywhere in it fails
+    # here rather than restoring the green-when-broken state silently.
+    name = "win_active_candidates_30d"
+    leg = cli.evidence.Latch(leg_key="Dashboard - Campaign Plan Viewed", metric=name, since="2026-07-31")
+    monkeypatch.setattr(cli.evidence, "load_latches", lambda: ({name: [leg]}, []))
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    out = tmp_path / "slack.txt"
+    assert cli.main(["--emit-slack", str(out), "--pr-url", "http://pr/1"]) == 0
+    text = out.read_text()
+    assert ":rotating_light:" in text and "2026-07-31" in text
+
+
+def test_both_surfaces_share_one_instrument_health_read(tmp_path, monkeypatch):
+    # Read per-surface, a blip on the second call would let the page and the
+    # merge summary disagree about the same merge — one naming a dormant
+    # instrument, the other silently clean — with no way to tell which is
+    # current. Evidence that contradicts itself is worse than none.
+    calls = []
+
+    def counted():
+        calls.append(1)
+        return {}, []
+
+    monkeypatch.setattr(cli.evidence, "load_latches", counted)
+    monkeypatch.setattr(cli.notify, "notify", lambda problems: "")
+    rc = cli.main(
+        ["--emit-clickup", str(tmp_path / "p.md"), "--emit-slack", str(tmp_path / "s.txt"), "--pr-url", "u"]
+    )
+    assert rc == 0
+    assert len(calls) == 1
+
+
+def test_no_instrument_read_happens_when_neither_surface_is_emitted(tmp_path, monkeypatch):
+    # --check is the blocking catalog-freshness gate and must stay offline and
+    # deterministic; hoisting the read must not have dragged it onto the network.
+    def boom():
+        raise AssertionError("load_latches must not run for --check")
+
+    monkeypatch.setattr(cli.evidence, "load_latches", boom)
+    assert cli.main(["--check"]) in (0, 1)

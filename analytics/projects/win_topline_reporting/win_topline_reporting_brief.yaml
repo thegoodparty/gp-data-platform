@@ -129,8 +129,8 @@ population:
     email); mart_analytics.users_win_base (is_activated: sent >=1 voter
     outreach campaign - governed OKR definition);
     dbt.stg_airbyte_source__stripe_api_subscriptions + _customers (Pro tenure
-    intervals, joined by lowercased email, livemode only, status !=
-    incomplete_expired); dbt.int__amplitude_user_milestones
+    intervals, joined by lowercased email, live mode only, excluding
+    incomplete_expired subscriptions); dbt.int__amplitude_user_milestones
     .pro_upgrade_completed_at (secondary Pro-upgrade timing evidence);
     dbt.stg_airbyte_source__amplitude_api_events, event_types 'Account - Pro
     Subscription Confirmed' (4th upgrade-signal channel, incl. admin/comped

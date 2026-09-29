@@ -129,10 +129,10 @@ with
             gp_api.is_pledged,
             gp_api.is_verified,
             gp_api.verification_status_reason,
-            -- TS wins for is_incumbent (TS: 51k populated, BR: 0); gp_api/DDHQ
-            -- excluded. Rows still NULL here fall back to the office-holder
-            -- derivation in the `incumbency` CTE below.
-            coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
+            -- TS is the only provider carrying is_incumbent (BR's candidacy
+            -- feed has none; gp_api/DDHQ excluded). Precedence against the
+            -- office-holder derivation is settled in the final select.
+            ts.is_incumbent,
             -- office_type: BR > gp_api > DDHQ. BR derives office_type from
             -- BallotReady's normalized position name (low Other rate); gp_api
             -- derives it from raw onboarding free-text (high Other rate), so
@@ -469,8 +469,9 @@ with
 
     -- Incumbency reconstructed from BR office-holder terms: does this candidate
     -- already hold the position they are running for on election day? The BR
-    -- candidacy feed carries no incumbency field and TS (the only source that
-    -- ever did) is retired, so without this 2026 is almost entirely unlabeled.
+    -- candidacy feed carries no incumbency field, and TS's flag covers only
+    -- the candidacies it enriched and marks some sitting incumbents as
+    -- challengers, so this is both the fallback and the check on TS.
     --
     -- Matched on the canonical person id, or on first+last name. The name arm
     -- compensates for a person-resolution gap: product sign-ups are routinely
@@ -533,8 +534,18 @@ select
     deduplicated.hubspot_company_ids,
     deduplicated.candidate_id_source,
     deduplicated.party_affiliation,
-    -- TS where it enriched the candidacy, else the office-holder derivation.
-    coalesce(deduplicated.is_incumbent, inc.is_incumbent) as is_incumbent,
+    -- A BR term placing this person in the seat on election day is positive
+    -- proof and beats TS, which has marked sitting incumbents as challengers.
+    -- TS still beats BR's "someone else holds it" verdict: a web audit of
+    -- those disagreements found BR's holder file lagging mid-term
+    -- resignations, appointments and seat renumbering more often than TS was
+    -- wrong, and the name arm above misses middle names and initials. The
+    -- negative verdict fills in where TS is silent.
+    case
+        when inc.is_incumbent
+        then true
+        else coalesce(deduplicated.is_incumbent, inc.is_incumbent)
+    end as is_incumbent,
     deduplicated.is_open_seat,
     deduplicated.candidate_office,
     deduplicated.official_office_name,

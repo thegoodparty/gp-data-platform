@@ -183,7 +183,6 @@ def _mrec(name, yaml_name, definition="d"):
         dimensions=(),
         filter=None,
         owner="semantic-layer-business",
-        ratified=None,
         detail_doc="engagement.md",
         retired=None,
         yaml_file=f"/checkout/dbt/project/models/marts/analytics/{yaml_name}",
@@ -215,3 +214,17 @@ def test_changed_metrics_without_base_tree_is_bounded_by_scope(monkeypatch):
 
     got = thread_mod._changed_metrics(None, frozenset({"sem_win.yml"}))
     assert got == (("win_a", "d"),)
+
+
+def test_anchor_names_only_the_lanes_the_change_needs():
+    # The anchor is the second place both groups were pulled onto a typo fix.
+    # A ping you have no say over teaches you to ignore the next one.
+    text = render_anchor(_ctx(lanes=("data",)), MENTIONS)
+    assert "data" in text and "business" not in text
+
+
+def test_anchor_names_both_lanes_when_they_could_not_be_computed():
+    # No base tree to diff means no lane. Asking both is the pre-routing
+    # behavior and the safe direction to fail in.
+    text = render_anchor(_ctx(lanes=()), MENTIONS)
+    assert "data" in text and "business" in text

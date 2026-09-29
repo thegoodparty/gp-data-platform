@@ -86,63 +86,115 @@ models:
           - not_null
 
   - name: stg_airbyte_source__stripe_api_charges
-    description: "Staging model for Stripe Charges stream - contains payment charge transactions with Incremental sync"
+    description: >
+      Every payment attempt against the Stripe account, successful or not.
+
+      This is the only stream that sees all the money. Stripe raises an invoice
+      for the recurring subscription and for nothing else, so one-off purchases
+      (domain registrations, text outreach, sales-led checkout) arrive here as
+      a bare charge and never appear in the invoice stream at all.
+
+      Times arrive as epoch seconds and amounts as integer cents; both are
+      converted here. Internal only.
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
+      - name: charge_id
+        description: Stripe charge id. Primary key.
+        data_tests:
           - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Stripe API"
-        tests:
           - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
+      - name: stripe_customer_id
+        description: >
+          Customer the charge was taken against. Null on a small number of
+          charges taken with no customer, where product_user_id is the only
+          route back to a person.
+      - name: invoice_id
+        description: >
+          Invoice this charge settled, if any. Present only for subscription
+          billing, and unreliable after 2026-02-16 even there.
+      - name: payment_intent_id
+        description: >
+          Payment intent behind the charge. Not ingested as its own stream,
+          which is why the product metadata below goes dark once checkout moved
+          behind it.
+      - name: balance_transaction_id
+        description: Ledger entry for the charge.
+      - name: charge_status
+        description: Stripe charge status. Money moved only on succeeded.
+        data_tests:
           - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
-      - name: id
-        description: "Unique identifier for the charge"
-        tests:
-          - not_null
-          - unique
-      - name: amount
-        description: "Amount charged in smallest currency unit (e.g., cents for USD)"
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 0
-                max_value: 99999999
-                inclusive: true
-              config:
-                where: "amount is not null"
+      - name: is_paid
+        description: Stripe's own paid flag for the charge.
+      - name: is_captured
+        description: >
+          Funds were captured. An authorised but uncaptured charge took no
+          money, so revenue reads succeeded and captured together.
+      - name: is_fully_refunded
+        description: The whole charge was refunded.
+      - name: is_disputed
+        description: The charge is under dispute.
+      - name: is_livemode
+        description: >
+          The charge was taken in live mode. A couple of hundred test-mode
+          charges exist and are excluded from any revenue figure.
       - name: currency
-        description: "Three-letter ISO currency code"
-        tests:
+        description: Currency of the charge. Every row to date is usd.
+      - name: amount_usd
+        description: Amount of the charge.
+      - name: amount_captured_usd
+        description: Amount actually captured, which is what was collected.
+      - name: amount_refunded_usd
+        description: How much of the capture has since been refunded.
+      - name: created_at
+        description: When the charge was created.
+        data_tests:
           - not_null
-      - name: created
-        description: "Unix timestamp when the charge was created"
-        tests:
+      - name: updated_at
+        description: When the charge record last changed.
+      - name: description
+        description: >
+          Stripe's own description. Localised for a handful of rows, so it is a
+          weak classifier on its own.
+      - name: receipt_email
+        description: Address the receipt was sent to.
+      - name: failure_code
+        description: Stripe decline code on a failed charge.
+      - name: failure_message
+        description: Human-readable decline reason on a failed charge.
+      - name: payment_method_type
+        description: Card, link, cashapp, bank account and so on.
+      - name: payment_type
+        description: >
+          What the product says was bought: outreach_purchase,
+          domain_registration, poll. Null on every charge after 2026-02-16,
+          when checkout moved behind a payment intent and the metadata went
+          with it.
+      - name: purchase_type
+        description: The product's coarser label for the same purchase.
+      - name: product_user_id
+        description: >
+          gp-api user the product stamped on the charge. The only link to a
+          person for charges taken with no Stripe customer.
+      - name: product_campaign_id
+        description: Campaign the purchase was made for.
+      - name: product_website_id
+        description: Website a domain registration belongs to.
+      - name: domain_name
+        description: Domain bought, on a domain registration.
+      - name: outreach_type
+        description: Channel bought, on an outreach purchase.
+      - name: outreach_contact_count
+        description: Contacts bought, on an outreach purchase.
+      - name: hs_checkout_session_id
+        description: >
+          HubSpot commerce checkout session behind the charge. These keep their
+          metadata throughout and are how sales-led purchases are told apart
+          from self-serve ones.
+      - name: hs_portal_id
+        description: HubSpot portal that took the payment.
+      - name: _airbyte_extracted_at
+        description: When the record was extracted from the Stripe API.
+        data_tests:
           - not_null
-      - name: customer
-        description: "ID of the customer who was charged"
-      - name: paid
-        description: "Whether the charge was paid successfully"
-      - name: status
-        description: "Status of the charge"
-        tests:
-          - accepted_values:
-              arguments:
-                values: ['succeeded', 'pending', 'failed', 'canceled']
-              config:
-                where: "status is not null"
-      - name: livemode
-        description: "Whether this charge was created in live mode"
 
   - name: stg_airbyte_source__stripe_api_customers
     description: "Staging model for Stripe Customers stream - contains customer records and account information with Incremental sync"
@@ -312,24 +364,73 @@ models:
           - not_null
 
   - name: stg_airbyte_source__stripe_api_invoices
-    description: "Staging model for Stripe Invoices stream - contains invoice records and billing information with Incremental sync"
+    description: >
+      Stripe invoices, which for this account means the recurring subscription
+      and nothing else. One-off purchases never raise one, so an invoice-only
+      revenue figure is subscription revenue rather than total revenue. Times
+      arrive as epoch seconds and amounts as integer cents; both are converted
+      here. Internal only.
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
+      - name: invoice_id
+        description: Stripe invoice id. Primary key.
+        data_tests:
           - unique
+          - not_null
+      - name: stripe_customer_id
+        description: Customer the invoice was raised against.
+      - name: subscription_id
+        description: Subscription the invoice bills.
+      - name: charge_id
+        description: Charge that settled the invoice.
+      - name: invoice_number
+        description: Human-facing invoice number.
+      - name: invoice_status
+        description: >
+          draft, open, paid, void or uncollectible. Only paid moved money;
+          open is an unpaid attempt and void a cancelled one.
+        data_tests:
+          - not_null
+      - name: is_paid
+        description: The invoice was paid in full.
+      - name: billing_reason
+        description: >
+          Why the invoice was raised: subscription_create for the first period,
+          subscription_cycle for each renewal.
+      - name: is_deleted
+        description: Airbyte's deletion marker for the record.
+      - name: is_livemode
+        description: The invoice was raised in live mode.
+      - name: currency
+        description: Currency of the invoice. Every row to date is usd.
+      - name: total_usd
+        description: Invoice total.
+      - name: amount_due_usd
+        description: Amount billed.
+      - name: amount_paid_usd
+        description: Amount collected.
+      - name: amount_remaining_usd
+        description: Amount still outstanding.
+      - name: created_at
+        description: When the invoice was created.
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: When the invoice record last changed.
+      - name: effective_at
+        description: Date the invoice takes accounting effect.
+      - name: period_start_at
+        description: Start of the billing period covered.
+      - name: period_end_at
+        description: End of the billing period covered.
+      - name: paid_at
+        description: >
+          When the money actually arrived, as against when the invoice was
+          raised. The two differ whenever a payment retried.
+      - name: voided_at
+        description: When the invoice was voided, if it was.
       - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Stripe API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
+        description: When the record was extracted from the Stripe API.
+        data_tests:
           - not_null
 
   - name: stg_airbyte_source__stripe_api_payouts
@@ -563,58 +664,82 @@ models:
           - not_null
 
   - name: stg_airbyte_source__stripe_api_subscriptions
-    description: "Staging model for Stripe Subscriptions stream - contains subscription records and recurring billing information with Incremental sync"
+    description: >
+      Stripe subscriptions for the Pro plan, one row per subscription.
+
+      Two traps this layer does not paper over. is_deleted marks a cancellation
+      event rather than a row to drop: it is true for well under half the
+      cancelled subscriptions, so filtering on it silently loses the rest. And
+      a subscription set to cancel at period end is still active while already
+      carrying a cancellation date, so churn keys on subscription_status and
+      never on canceled_at. Internal only.
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
+      - name: subscription_id
+        description: Stripe subscription id. Primary key.
+        data_tests:
           - unique
+          - not_null
+      - name: stripe_customer_id
+        description: Customer the subscription belongs to.
+      - name: schedule_id
+        description: Subscription schedule, where one drives the subscription.
+      - name: latest_invoice_id
+        description: Most recent invoice raised against the subscription.
+      - name: subscription_status
+        description: >
+          Stripe subscription status. incomplete_expired means a checkout that
+          was never active, so counting it as churn overstates churn.
+        data_tests:
+          - not_null
+      - name: will_cancel_at_period_end
+        description: >
+          Cancellation is scheduled for the end of the current period. The
+          subscription is still active until then.
+      - name: is_deleted
+        description: >
+          Airbyte's deletion marker. Set on some cancelled subscriptions and
+          not others, so it is not a filter.
+      - name: is_livemode
+        description: The subscription was created in live mode.
+      - name: currency
+        description: Currency of the subscription. Every row to date is usd.
+      - name: quantity
+        description: Units of the plan subscribed to.
+      - name: plan_id
+        description: Stripe plan the subscription bills.
+      - name: plan_nickname
+        description: Human-facing plan name.
+      - name: plan_interval
+        description: Billing interval of the plan.
+      - name: plan_amount_usd
+        description: Recurring amount of the plan.
+      - name: created_at
+        description: When the subscription record was created.
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: When the subscription record last changed.
+      - name: started_at
+        description: When the subscription began billing.
+      - name: trial_started_at
+        description: Start of the trial, where there was one.
+      - name: trial_ends_at
+        description: End of the trial, where there was one.
+      - name: current_period_start_at
+        description: Start of the current billing period.
+      - name: current_period_end_at
+        description: End of the current billing period.
+      - name: cancel_at
+        description: Scheduled cancellation date, where one is set.
+      - name: canceled_at
+        description: >
+          When cancellation was requested. Present on active subscriptions set
+          to cancel at period end, which is why it does not define churn.
+      - name: ended_at
+        description: When the subscription actually ended.
       - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Stripe API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
-      - name: id
-        description: "Unique identifier for the subscription"
-        tests:
-          - not_null
-          - unique
-      - name: status
-        description: "Status of the subscription"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['incomplete', 'incomplete_expired', 'trialing', 'active', 'past_due', 'canceled', 'unpaid']
-              config:
-                where: "status is not null"
-      - name: customer
-        description: "ID of the customer who owns the subscription"
-        tests:
-          - not_null
-      - name: created
-        description: "Unix timestamp when the subscription was created"
-        tests:
-          - not_null
-      - name: current_period_start
-        description: "Unix timestamp for the start of the current period"
-        tests:
-          - not_null
-      - name: current_period_end
-        description: "Unix timestamp for the end of the current period"
-        tests:
-          - not_null
-      - name: livemode
-        description: "Whether this subscription was created in live mode"
-        tests:
+        description: When the record was extracted from the Stripe API.
+        data_tests:
           - not_null
 
   - name: stg_airbyte_source__stripe_api_transactions

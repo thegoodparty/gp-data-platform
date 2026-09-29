@@ -24,20 +24,26 @@ BASE = "VM2--MO--2026-08-03"
 MODIFIED = datetime(2026, 8, 3, 20, 0, tzinfo=UTC)
 MODIFIED_TS = MODIFIED.timestamp()
 STAGED = MODIFIED + timedelta(minutes=30)
-UNIFORM = "VM2Uniform--MO--2026-08-03.tab"
+UNIFORM_BASE = "VM2Uniform--MO--2026-08-03"
+UNIFORM = f"{UNIFORM_BASE}.tab"
+UNIFORM_MEMBERS = [UNIFORM, f"{UNIFORM_BASE}_DataDictionary.csv"]
 
-DEMOGRAPHIC_ROWS = b"LALVOTERID\tZip\nLALMO1\t01854\nLALMO2\t07001\n"
+VOTE_HISTORY_ROWS = b"LALVOTERID\tGeneral_2024\nLALMO1\tY\n"
 MEMBERS = [
-    f"{BASE}-DEMOGRAPHIC.tab",
-    f"{BASE}-DEMOGRAPHIC_DataDictionary.csv",
     f"{BASE}-VOTEHISTORY.tab",
     f"{BASE}-VOTEHISTORY_DataDictionary.csv",
+]
+# L2 keeps shipping these inside the VM2 archive. None of them may reach S3.
+UNSTAGED = [
+    f"{BASE}-DEMOGRAPHIC.tab",
+    f"{BASE}-DEMOGRAPHIC_DataDictionary.csv",
+    f"{BASE}-DEMOGRAPHIC-FillRate.tab",
 ]
 
 # One real archive name per group. A group added without one fails the grammar test below.
 ARCHIVE_SAMPLES = {
     "VM2": f"{BASE}.zip",
-    "VM2Uniform": "VM2Uniform--MO--2026-08-03.zip",
+    "VM2Uniform": f"{UNIFORM_BASE}.zip",
     "HaystaqFlags": "mo_haystaqdnaflags_20260520.tab.zip",
     "HaystaqScores": "mo_haystaqdnascores_20260520.tab.zip",
 }
@@ -54,11 +60,20 @@ def _data_dictionary(footer_rows: int) -> bytes:
 def vm2_archive() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(MEMBERS[0], DEMOGRAPHIC_ROWS)
-        archive.writestr(MEMBERS[1], _data_dictionary(24))
-        archive.writestr(f"{BASE}-DEMOGRAPHIC-FillRate.tab", b"ignored\n")
-        archive.writestr(MEMBERS[2], b"LALVOTERID\tGeneral_2024\nLALMO1\tY\n")
-        archive.writestr(MEMBERS[3], _data_dictionary(4))
+        archive.writestr(UNSTAGED[0], b"LALVOTERID\tZip\nLALMO1\t01854\n")
+        archive.writestr(UNSTAGED[1], _data_dictionary(24))
+        archive.writestr(UNSTAGED[2], b"ignored\n")
+        archive.writestr(MEMBERS[0], VOTE_HISTORY_ROWS)
+        archive.writestr(MEMBERS[1], _data_dictionary(4))
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def uniform_archive() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(UNIFORM_MEMBERS[0], b"LALVOTERID\tZip\nLALMO1\t01854\n")
+        archive.writestr(UNIFORM_MEMBERS[1], _data_dictionary(24))
     return buffer.getvalue()
 
 
@@ -122,11 +137,13 @@ class FakeConnection:
         return self.cursor_obj
 
 
-def _source(members=None, file_name=f"{BASE}.zip", folder="MO", size=1024):
+def _source(
+    members=None, file_name=f"{BASE}.zip", folder="MO", size=1024, group="VM2", remote_dir="/VMFiles"
+):
     return {
-        "group": "VM2",
+        "group": group,
         "folder": folder,
-        "remote_path": f"/VMFiles/{file_name}",
+        "remote_path": f"{remote_dir}/{file_name}",
         "members": members,
         "size_bytes": size,
         "modified_at": MODIFIED.isoformat(),
@@ -163,7 +180,7 @@ class TestListRemoteSources:
         assert plan_transfers(sources, {f"{EXPIRED_FOLDER}/Manual_ID_Omits.tab": STAGED}) == sources
 
     def test_every_group_classifies_its_members_to_their_declared_type(self):
-        """SOURCE_GROUPS names 300-odd tables. A member we stage but cannot classify never loads."""
+        """SOURCE_GROUPS names every table we load. A member we stage but cannot classify never loads."""
         listings: dict[str, list] = {}
         for group, file_name in ARCHIVE_SAMPLES.items():
             listings.setdefault(SOURCE_GROUPS[group]["remote_dir"], []).append(FakeAttributes(file_name))
@@ -176,8 +193,9 @@ class TestListRemoteSources:
             declared = list(SOURCE_GROUPS[source["group"]]["members"].values())
             assert [source_file_type(member) for member in source["members"]] == declared
 
-    def test_fillrate_is_not_a_voter_file(self):
-        assert source_file_type("VM2--AL--2025-05-10-DEMOGRAPHIC-FillRate.tab") is None
+    def test_archive_extras_are_not_voter_files(self):
+        """The VM2 archive also carries the demographic family and a FillRate report."""
+        assert [source_file_type(name) for name in UNSTAGED] == [None, None, None]
 
 
 class TestPlanTransfers:
@@ -213,14 +231,23 @@ class TestSyncSource:
         )
 
     def test_uploads_expected_members_and_trims_the_dictionaries(self, vm2_archive, tmp_path):
-        """FillRate is in the zip and must not be staged; the dictionaries carry L2's legend."""
+        """Demographic and FillRate are in the zip and must not be staged; the dictionary carries L2's legend."""
         s3_client, keys = self._sync(vm2_archive, _source(MEMBERS), tmp_path)
 
         assert keys == [f"staging/prod/MO/{member}" for member in MEMBERS]
-        assert s3_client.objects[f"staging/prod/MO/{MEMBERS[0]}"] == DEMOGRAPHIC_ROWS
-        for member in (MEMBERS[1], MEMBERS[3]):
-            written = s3_client.objects[f"staging/prod/MO/{member}"].decode()
-            assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
+        assert s3_client.objects[f"staging/prod/MO/{MEMBERS[0]}"] == VOTE_HISTORY_ROWS
+        assert [name for name in UNSTAGED if f"staging/prod/MO/{name}" in s3_client.objects] == []
+        written = s3_client.objects[f"staging/prod/MO/{MEMBERS[1]}"].decode()
+        assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
+
+    def test_trims_the_uniform_dictionary(self, uniform_archive, tmp_path):
+        """Uniform's is the only 24-row legend we still stage, and it ships in its own archive."""
+        source = _source(UNIFORM_MEMBERS, f"{UNIFORM_BASE}.zip", group="VM2Uniform", remote_dir="/VM2Uniform")
+        s3_client, keys = self._sync(uniform_archive, source, tmp_path)
+
+        assert keys == [f"staging/prod/MO/{member}" for member in UNIFORM_MEMBERS]
+        written = s3_client.objects[f"staging/prod/MO/{UNIFORM_MEMBERS[1]}"].decode()
+        assert written.splitlines() == ["Field,Description", "LALVOTERID,Voter id", "Zip,ZIP code"]
 
     def test_refuses_an_archive_larger_than_the_free_space(self, monkeypatch, tmp_path):
         """The precheck is what makes download-to-disk viable on a fixed 10 GiB worker."""
@@ -233,17 +260,17 @@ class TestSyncSource:
         """A partial L2 publication must fail loudly, and not leak GBs on a fixed 10 GiB worker."""
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(MEMBERS[0], DEMOGRAPHIC_ROWS)
+            archive.writestr(MEMBERS[0], VOTE_HISTORY_ROWS)
         with pytest.raises(ValueError, match="did not contain"):
             self._sync(buffer.getvalue(), _source(MEMBERS), tmp_path)
         assert not list(tmp_path.iterdir())
 
     def test_plain_file_is_copied_as_is(self, tmp_path):
         source = _source(["Manual_ID_Omits.tab"], "Manual_ID_Omits.tab", folder=EXPIRED_FOLDER)
-        s3_client, keys = self._sync(DEMOGRAPHIC_ROWS, source, tmp_path)
+        s3_client, keys = self._sync(VOTE_HISTORY_ROWS, source, tmp_path)
 
         assert keys == [f"staging/prod/{EXPIRED_FOLDER}/Manual_ID_Omits.tab"]
-        assert s3_client.objects[keys[0]] == DEMOGRAPHIC_ROWS
+        assert s3_client.objects[keys[0]] == VOTE_HISTORY_ROWS
 
 
 class TestPlanLoads:
@@ -276,7 +303,7 @@ class TestPlanLoads:
 class TestLoadTable:
     def _load(self, source_file_name):
         connection = FakeConnection()
-        load = {"folder": "MO", "source_file_name": source_file_name, "table_name": "l2_s3_mo_demographic"}
+        load = {"folder": "MO", "source_file_name": source_file_name, "table_name": "l2_s3_mo_vote_history"}
         name = load_table(connection, "cat", "schema", "bucket", "staging/prod", load)
         return name, connection.cursor_obj.executed[0]
 
@@ -284,8 +311,8 @@ class TestLoadTable:
         """Leading zeros in ZIPs and similar codes only survive with inference off."""
         name, (sql, parameters) = self._load(MEMBERS[0])
 
-        assert name == "cat.schema.l2_s3_mo_demographic"
-        assert "CREATE OR REPLACE TABLE `cat`.`schema`.`l2_s3_mo_demographic`" in sql
+        assert name == "cat.schema.l2_s3_mo_vote_history"
+        assert "CREATE OR REPLACE TABLE `cat`.`schema`.`l2_s3_mo_vote_history`" in sql
         assert "inferColumnTypes => false" in sql
         # read_files appends a rescued-data column the source tables have never carried.
         assert "EXCEPT (_rescued_data)" in sql

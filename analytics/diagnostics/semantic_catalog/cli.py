@@ -15,9 +15,8 @@ from pathlib import Path
 
 import yaml
 
-from semantic_catalog import composition, ratifications, recording, sigma_tasks, slack_reply
+from semantic_catalog import composition, evidence, lanes, notify, ratifications, recording
 from semantic_catalog import lifecycle as lc_mod
-from semantic_catalog.clickup_client import ClickUpClient
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.md_catalog import render_region, splice_region
@@ -115,9 +114,9 @@ def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[Metri
 
     The before side reads the base tree's OWN sidecar. Letting it fall back to
     the current one would make every ratification compare equal to itself, so a
-    pending to dated change would vanish from the Slack summary and fire no
-    Sigma build task. A base commit predating the sidecar simply has no file,
-    which loads as "nothing ratified yet".
+    pending to dated change would vanish from the Slack summary. A base commit
+    predating the sidecar simply has no file, which loads as "nothing ratified
+    yet".
     """
     after = parse_semantic_tree(SEM_ROOTS)
     before = (
@@ -133,27 +132,29 @@ def _before_after(base_dir: Path | None) -> tuple[list[MetricRecord], list[Metri
 
 
 def _record(args, records: list[MetricRecord]) -> int:
-    """Record the sign-offs this merge earned, if both groups approved it.
+    """Record the sign-offs this merge earned, half by half.
 
     Writes into the WORKING TREE only. The publish workflow commits the result
-    to a branch and opens a PR; nothing here pushes to main. The Sigma step runs
-    after this one and re-parses the same working tree, which is how a build
-    task gets created on the definition PR's merge instead of waiting for the
-    ratification PR to land.
+    to a branch and opens a PR; nothing here pushes to main.
+
+    Each half is earned on its own group's approval, not on both. Requiring both
+    would mean a correctly routed data-only change never records and sits
+    pending forever, which is the failure lane routing would otherwise create.
     """
     reviews = json.loads(args.reviews.read_text()) if args.reviews else []
-    date = composition.completion_date(
+    dates = composition.group_dates(
         reviews,
         [m for m in args.data_members.split(",") if m],
         [m for m in args.business_members.split(",") if m],
     )
+    values = recording.declared_values(args.pr_body.read_text() if args.pr_body else "")
     earned: dict[str, ratifications.Ratification] = {}
 
-    if date is None:
-        print("review coverage incomplete; recording nothing.")
+    if not any(dates.values()):
+        print("no group approved this PR; recording nothing.")
     elif args.base_dir is None or not args.base_dir.is_dir():
-        # Without a base tree there is nothing to compare fingerprints against,
-        # so `before` is empty and EVERY pending metric looks newly earned:
+        # Without a base tree there is nothing to compare seals against, so
+        # `before` is empty and EVERY pending metric looks newly earned:
         # bystanders sharing a file with the reviewed metric would collect a
         # sign-off nobody gave. A missing base is not evidence of approval, so
         # record nothing. The workflow only passes --base-dir when /tmp/base
@@ -168,9 +169,25 @@ def _record(args, records: list[MetricRecord]) -> int:
             # at all, so refuse here too rather than trust an empty diff.
             print("base tree parsed no metrics; recording nothing.")
         else:
-            earned = ratifications.ratified_by_merge(before, after, date, args.pr_number)
+            earned = ratifications.earned_by_merge(before, after, dates, args.pr_number, values)
+            # Say what was skipped for want of a number, or the build half goes
+            # quietly unrecorded and reads as nobody having approved it.
+            if dates.get("data"):
+                classified = lanes.classify(before, after)
+                skipped = recording.unvalued(
+                    classified[lanes.DATA],
+                    values,
+                    retired={rec.name for rec in after if rec.retired},
+                    recorded={n for n, s in earned.items() if s.data},
+                )
+                for name in skipped:
+                    print(
+                        f"{name}: build approved but the PR body declared no value, so "
+                        f"nothing was recorded. Add {recording.VALUE_MARKER_EXAMPLE} to "
+                        "the PR body and re-run."
+                    )
             if not earned:
-                print("no metric was newly ratified by this merge.")
+                print("no metric was newly signed off by this merge.")
 
     if earned:
         sidecar = ratifications.DEFAULT_PATH
@@ -182,22 +199,57 @@ def _record(args, records: list[MetricRecord]) -> int:
         # Self-verify. catalog-freshness cannot run on a PR opened with the
         # default token, so this is the only check the bot's own output gets.
         by_name = {r.name: r for r in records}
-        for name in earned:
+        for name, sign_off in earned.items():
             rec = by_name.get(name)
-            if rec is None or rec.ratified != date or rec.ratified_stale:
-                print(f"recorded {name} but it does not read as freshly ratified; aborting.", file=sys.stderr)
+            if rec is None:
+                print(f"recorded {name} but it does not parse back; aborting.", file=sys.stderr)
+                return 1
+            if sign_off.rule and (rec.rule_approved != sign_off.rule.approved or rec.rule_stale):
+                print(f"recorded {name} rule half but it does not read as fresh; aborting.", file=sys.stderr)
+                return 1
+            if sign_off.data and (rec.build_approved != sign_off.data.approved or rec.build_stale):
+                print(f"recorded {name} build half but it does not read as fresh; aborting.", file=sys.stderr)
                 return 1
         print(f"recorded {len(earned)}: {', '.join(sorted(earned))}")
 
     if args.emit_recorded:
-        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, date, args.pr_number)))
+        args.emit_recorded.write_text(json.dumps(recording.manifest(earned, records, args.pr_number)))
     if args.emit_pr_body and earned:
         args.emit_pr_body.write_text(
             recording.pr_body(
-                recording.manifest(earned, records, date, args.pr_number),
+                recording.manifest(earned, records, args.pr_number),
                 repo=os.environ.get("GITHUB_REPOSITORY", "thegoodparty/gp-data-platform"),
             )
         )
+    return 0
+
+
+def _classify_lanes(args) -> int:
+    """Print the review lanes this PR's diff needs, as JSON for the workflow.
+
+    Replaces the CODEOWNERS line. CODEOWNERS matches a path, and a sem_*.yml
+    holds all three layers plus display prose, so it asked both groups for a
+    typo fix. This asks the group whose layer actually moved.
+    """
+    if args.base_dir is None or not args.base_dir.is_dir():
+        # No base means no diff, and a routing step that guesses would either
+        # spam both groups or ask nobody. Say so and request both, which is the
+        # pre-routing behavior and the safe direction to fail in.
+        print(
+            json.dumps(
+                {
+                    "business": [],
+                    "data": [],
+                    "unreviewed": [],
+                    "teams": ["semantic-layer-data", "semantic-layer-business"],
+                    "reason": "no base tree to diff against; requesting both groups",
+                }
+            )
+        )
+        return 0
+    before, after = _before_after(args.base_dir)
+    classified = lanes.classify(before, after)
+    print(json.dumps({**classified, "teams": lanes.teams(classified), "summary": lanes.summary(classified)}))
     return 0
 
 
@@ -208,9 +260,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--emit-clickup", type=Path)
     parser.add_argument("--emit-slack", type=Path)
     parser.add_argument("--fingerprints", action="store_true")
-    parser.add_argument("--sync-sigma-tasks", action="store_true")
-    parser.add_argument("--emit-created", type=Path)
-    parser.add_argument("--reply-created", type=Path)
     parser.add_argument("--base-dir", type=Path, default=None)
     parser.add_argument("--pr-url", type=str, default="")
     parser.add_argument("--coverage", type=str, default="")
@@ -220,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--business-members", type=str, default="")
     parser.add_argument("--pr-number", type=int, default=0)
     parser.add_argument("--emit-recorded", type=Path)
+    parser.add_argument("--pr-body", type=Path)
+    parser.add_argument("--classify-lanes", action="store_true")
     parser.add_argument("--emit-pr-body", type=Path)
     args = parser.parse_args(argv)
 
@@ -237,8 +288,14 @@ def main(argv: list[str] | None = None) -> int:
         # Printed quoted, because the sidecar requires quotes: an all-digit
         # hash left bare would be read back as an integer.
         for rec in records:
-            print(f"{rec.name}: '{ratifications.definition_sha(rec)}'")
+            print(
+                f"{rec.name}: rule_sha '{ratifications.rule_sha(rec)}' "
+                f"build_sha '{ratifications.build_sha(rec)}'"
+            )
         return 0
+
+    if args.classify_lanes:
+        return _classify_lanes(args)
 
     if args.record_ratifications:
         return _record(args, records)
@@ -259,11 +316,33 @@ def main(argv: list[str] | None = None) -> int:
             write_region(t, recs)
             print(f"wrote {t}")
 
+    # One read for both surfaces. Called per-surface, a blip on the second call
+    # would let the page and the merge summary disagree about the same merge —
+    # one naming a dormant instrument, the other silently clean — and a reader
+    # has no way to tell which is current. Evidence that contradicts itself is
+    # worse than evidence that says it could not be gathered.
+    latches: dict[str, list[evidence.Latch]] = {}
+    evidence_problems: list[str] = []
+    if args.emit_clickup or args.emit_slack:
+        latches, evidence_problems = evidence.load_latches()
+
     if args.emit_clickup:
         owners = yaml.safe_load((PKG / "config" / "owners.yml").read_text())
         sop_md = (PKG / "templates" / "sop.md").read_text()
         footer_md = (PKG / "templates" / "footer.md").read_text()
-        page = render_page(records, _lifecycles(records), sop_md, owners, footer_md=footer_md)
+        # Instrument evidence applies HERE and not in --check. It is a cross-repo
+        # network read, and the catalog-freshness gate is blocking and must stay
+        # offline and deterministic. This page is the one the company reads to
+        # decide whether a number can be trusted, so it is where the evidence
+        # belongs.
+        page = render_page(
+            evidence.apply(records, latches),
+            _lifecycles(records),
+            sop_md,
+            owners,
+            footer_md=footer_md,
+            evidence_problems=evidence_problems,
+        )
         # The catalog markers exist for splice-based updates; the ClickUp publish
         # is a full-page replace, and ClickUp's markdown parser glues a trailing
         # HTML comment onto the next heading. Drop the markers from the emitted page.
@@ -276,51 +355,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.emit_slack:
         before, after = _before_after(args.base_dir)
         coverage = json.loads(args.coverage) if args.coverage else {"data": False, "business": False}
-        msg = render_message(before, after, args.pr_url, coverage)
+        # The merge summary warns only about a lane the change actually needed.
+        # With no base tree there is nothing to classify against, so say so with
+        # None rather than handing render_message a lane list derived from an
+        # empty before-set. It renders the same either way — None already means
+        # both lanes — but a classification computed from a diff that does not
+        # exist is a claim to knowledge this branch does not have.
+        required = (
+            [lane for lane in ("data", "business") if lanes.classify(before, after)[lane]] if before else None
+        )
+        # A metric merging while its instrument is latched dormant should say so
+        # in the same message, not only on the catalog page a week later.
+        msg = render_message(
+            before,
+            evidence.apply(after, latches),
+            args.pr_url,
+            coverage,
+            required=required,
+        )
         args.emit_slack.write_text(msg)
         print(f"wrote {args.emit_slack}")
-
-    if args.sync_sigma_tasks:
-        token = os.environ.get("CLICKUP_TASK_TOKEN")
-        if not token:
-            print("CLICKUP_TASK_TOKEN not set; skipping Sigma build-task creation.")
-            return 0
-        cfg = yaml.safe_load((PKG / "config" / "sigma_tasks.yml").read_text())
-        assignee_id = cfg.get("default_assignee_id")
-        assignee_ids = (int(assignee_id),) if assignee_id else ()
-        # No base dir (e.g. zero-sha before) => before is empty, so all currently-ratified metrics look new; ClickUp dedupe absorbs this. Matches the Slack step.
-        before, after = _before_after(args.base_dir)
-        client = ClickUpClient(token)
-        result = sigma_tasks.sync(
-            client, cfg["list_id"], cfg["build_key_field_id"], before, after, assignee_ids=assignee_ids
-        )
-        created_names = [c.metric_name for c in result.created]
-        print(f"created {len(created_names)}: {', '.join(created_names) or '(none)'}")
-        print(f"skipped {len(result.skipped)}: {', '.join(result.skipped) or '(none)'}")
-        if args.emit_created:
-            # The workflow reads this to post one threaded Slack reply per created task.
-            args.emit_created.write_text(
-                json.dumps(
-                    [{"metric": c.metric_name, "task_id": c.task_id, "url": c.url} for c in result.created]
-                )
-            )
-        return 0
-
-    if args.reply_created:
-        # Secrets stay in the environment, never on the command line.
-        token = os.environ.get("SLACK_APP_BOT_TOKEN")
-        thread_ts = os.environ.get("SLACK_TS")
-        channel = os.environ.get("SLACK_CHANNEL_ID")
-        if not token or not thread_ts or not channel:
-            print("SLACK_APP_BOT_TOKEN/SLACK_TS/SLACK_CHANNEL_ID not all set; skipping thread replies.")
-            return 0
-        if not args.reply_created.exists():
-            print(f"{args.reply_created} not found; skipping thread replies.")
-            return 0
-        tasks = json.loads(args.reply_created.read_text())
-        slack_reply.reply_in_thread(token, channel, thread_ts, tasks)
-        print(f"posted {len(tasks)} thread repl{'y' if len(tasks) == 1 else 'ies'}")
-        return 0
+        # Why the check could not run goes to the owner by DM, not into the
+        # channel summary above. Never raises: a Slack hiccup says nothing about
+        # whether the merge was sound, and this job also opens the ratification PR.
+        print(notify.notify(evidence_problems))
 
     return 0
 

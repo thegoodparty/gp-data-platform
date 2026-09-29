@@ -30,8 +30,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "databricks-sdk", specifier = ">=0.139.0" },
-    { name = "databricks-sql-connector", specifier = ">=4.5.0" },
+    { name = "databricks-sdk", specifier = ">=0.142.0" },
+    { name = "databricks-sql-connector", specifier = ">=4.6.0" },
     { name = "pandas", specifier = ">=3.0.6,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
@@ -248,7 +248,7 @@ wheels = [
 
 [[package]]
 name = "databricks-sdk"
-version = "0.139.0"
+version = "0.142.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-auth" },
@@ -256,14 +256,14 @@ dependencies = [
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/72/74a547b6a3b9b048ad348df5042a832560c2c673ff16f1fd1138b97eedaf/databricks_sdk-0.139.0.tar.gz", hash = "sha256:a1c1e1ca5db02fa13a3b40d78794b411ea33cb6b78e24905328a4e24d25b21af", size = 1098889, upload-time = "2026-09-13T05:27:40.383Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/76/4edfbbe21307f3bbf702333a1c8f2476ad0ac175dd670d09771fe758dd31/databricks_sdk-0.142.0.tar.gz", hash = "sha256:2ffe26269a1eb5de4bcdf0bed5fda120a03962ef86d37e45da37a741b7b116c4", size = 1120420, upload-time = "2026-09-25T04:34:16.461Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/fc/245d6a55c1c7933ed1a2349ab92f2173b7c80fee12400176bb9af5930280/databricks_sdk-0.139.0-py3-none-any.whl", hash = "sha256:ac1ede8bdd69edba12b93e3102b248cd26cced4d2e6c22cd3e7dac8c0aef9ceb", size = 1043276, upload-time = "2026-09-13T05:27:38.782Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/c6/53e272461642e373807b73593aac9f964d0bc3d1980b14b4e3c13bd928d1/databricks_sdk-0.142.0-py3-none-any.whl", hash = "sha256:bf278168e76a60f0918617682db653734b697cda1f623962f2e02c797d43d5f2", size = 1065416, upload-time = "2026-09-25T04:34:14.657Z" },
 ]
 
 [[package]]
 name = "databricks-sql-connector"
-version = "4.5.0"
+version = "4.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lz4" },
@@ -277,9 +277,9 @@ dependencies = [
     { name = "thrift" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/01/7cc496468e38485b5577eec978a72572d9631b15945912cb9f51fd9db241/databricks_sql_connector-4.5.0.tar.gz", hash = "sha256:69f7ac2cc35f77f78c62ffb1aa09dda3aeec3c5037b9d7eddca78ee2e81f046e", size = 239485, upload-time = "2026-09-01T20:08:50.816Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/48/13691ccdf268aaddea0d981563616ad5f0811d8626a45a3d061de50a9174/databricks_sql_connector-4.6.0.tar.gz", hash = "sha256:2c3fdb28a08b7e9d4c10775f88aa7d6cf8212a1f88f5baacb05f294ee148c1e5", size = 244176, upload-time = "2026-09-24T18:30:55.003Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/a2/7bd3b6f494fc68d4b54bc7ca41061efee078dc4d0ecbadcee2b05dfbfd1c/databricks_sql_connector-4.5.0-py3-none-any.whl", hash = "sha256:2b73a5e3688621873cec90ef27ca367ad30a28a8c03c65472638003440a5408c", size = 265151, upload-time = "2026-09-01T20:08:49.419Z" },
+    { url = "https://files.pythonhosted.org/packages/27/4f/198110284fca731db1b7876b206138ee81b92bbf8d10f4c024cfd00e8b7d/databricks_sql_connector-4.6.0-py3-none-any.whl", hash = "sha256:9f2128592052d3aadb7a3c46df0a8ef414402ec6ea7a0fdb8490da737fe43cdc", size = 270341, upload-time = "2026-09-24T18:30:53.306Z" },
 ]
 
 [[package]]

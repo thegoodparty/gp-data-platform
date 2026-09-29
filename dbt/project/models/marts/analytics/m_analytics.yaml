@@ -240,7 +240,38 @@ models:
       - name: is_activated
         description: >
           TRUE if user has completed at least one voter outreach campaign.
-          This is the OKR "Activated Candidates" metric.
+          This is the OKR "Activated Candidates" metric. Asks whether we reached
+          voters for them; for whether they got value out of the product, use
+          has_product_output, which is a different question and a larger number.
+        data_tests:
+          - not_null
+
+      - name: product_output_at
+        description: >
+          When the user first made something with the product that left it.
+          Owned by int__user_product_activity.
+      - name: has_product_output
+        description: >
+          TRUE if the user has made something with the product that left it: a
+          published website, a completed outreach send, an exported voter list,
+          a downloaded call sheet. Broader than is_activated and a different
+          question, not a better version of the same one — the gap between them
+          is mostly website publishing, which is not voter outreach. Never
+          report one as the other or compare them in one series.
+        data_tests:
+          - not_null
+
+      - name: free_product_output_at
+        description: >
+          When the user first produced output through a leg that is not
+          paywalled. Owned by int__user_product_activity.
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output. Use THIS as the label
+          for any model predicting engagement: most output legs sit behind Pro,
+          so a model trained on the full column learns who paid and reports it
+          as who engaged. It ships beside the full column so the safe choice is
+          one column away rather than one model away.
         data_tests:
           - not_null
 
@@ -3122,3 +3153,45 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, reason_code]
+
+  - name: user_hubspot_touches
+    description: >
+      Sales and marketing contact history at gp-api user grain. One row per
+      user per HubSpot engagement, so a per-user touch count can be audited
+      back to the calls, emails, meetings and SMS behind it.
+
+      Grain is user and engagement: a single engagement appears twice when it
+      reaches two users. Count distinct touch_id for a volume figure that spans
+      users.
+
+      Per-column meaning lives on int__user_hubspot_touches; this is a
+      passthrough exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user this touch reaches.
+        data_tests:
+          - not_null
+      - name: touch_id
+        description: HubSpot engagement id.
+        data_tests:
+          - not_null
+      - name: channel
+        description: >
+          Normalized engagement type. Filter on is_outbound_touch rather than
+          on this, unless you want a specific channel.
+        data_tests:
+          - not_null
+      - name: is_outbound_touch
+        description: >
+          We reached out to the person. Tasks, notes, inbound mail and chat
+          sessions are false: they are history, not contact made.
+        data_tests:
+          - not_null
+      - name: touch_at
+        description: When the activity happened. Meetings and tasks can be in the future.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, touch_id]

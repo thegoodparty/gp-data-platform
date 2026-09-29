@@ -101,8 +101,8 @@ models:
                 values: ["own_live_id", "person_group", "none"]
       - name: stripe_customer_id
         description: >
-          Stripe customer for this account, read from the user record's own
-          meta_data.customerId. A native foreign key our product writes at
+          Stripe customer for this account, the user staging model's
+          stripe_customer_id. A native foreign key our product writes at
           checkout, so this is a join rather than a match, and Stripe is
           deliberately not a person-graph source. Null for the large majority
           of users, who have never paid.
@@ -175,7 +175,7 @@ models:
         description: >
           Source-native created timestamp for the record. Converted from the
           Stripe epoch-seconds integer, which the connector lands unmodified and
-          the staging layer passes through without casting.
+          the customers staging model passes through without casting.
       - name: has_subscription
         description: The customer holds any Stripe subscription.
         data_tests:
@@ -187,7 +187,723 @@ models:
           worth acting on rather than merely counting.
         data_tests:
           - not_null
+      - name: lifetime_paid_usd
+        description: >
+          Everything this unreachable customer has paid, over succeeded and
+          captured charges. Roughly a quarter of all money the account has
+          collected sits on rows here, which is the measure of what a revenue
+          column at user grain cannot see.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: payment_count
+        description: Succeeded, captured charges against the customer.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: email_match_available
+        description: >
+          The customer's Stripe email exactly matches a gp-api user's, which
+          holds for about three quarters of these rows and most of the stranded
+          money. Measured, not acted on: closing it is entity resolution work.
+        data_tests:
+          - not_null
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, source_id]
+
+  - name: int__user_hubspot_touches
+    description: >
+      Sales and marketing contact history at gp-api user grain. One row per
+      user per HubSpot engagement, across calls, emails, meetings, SMS, tasks,
+      notes and chat sessions.
+
+      Grain: one row per user_id and touch_id. A single engagement appears
+      more than once when it reaches two users, which is what happens when one
+      human holds two accounts or when a thread names two people. It is
+      deliberately not duplicated when two contacts in the same person group
+      share it.
+
+      Touch history follows every HubSpot contact the user's person group
+      reaches, not only the contact named on user_resolved_keys. Following the
+      named contact alone leaves 665 users with no history at all and drops
+      13% of touches, while the extra contacts are overwhelmingly the same
+      human under a second email address.
+
+      Calls are read from int__hubspot_calls, which dedupes the call stream and
+      attaches the disposition. The generic engagement stream carries the same
+      call ids without it and is filtered to exclude them, so a call is never
+      counted twice.
+    columns:
+      - name: user_id
+        description: gp-api user this touch reaches.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: touch_id
+        description: HubSpot engagement id.
+        data_tests:
+          - not_null
+      - name: contact_id
+        description: >
+          The HubSpot contact the touch was reached through. Where two contacts
+          in the person group share an engagement, the lower id is kept so the
+          touch counts once.
+        data_tests:
+          - not_null
+      - name: channel
+        description: >
+          Normalized engagement type. A HubSpot type we have not mapped lands
+          as other rather than disappearing.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "call",
+                    "email",
+                    "inbound_email",
+                    "meeting",
+                    "sms",
+                    "task",
+                    "note",
+                    "conversation",
+                    "other",
+                  ]
+      - name: is_outbound_touch
+        description: >
+          We reached out to the person: a call, email, meeting or SMS. Tasks,
+          notes, inbound mail and chat sessions are carried as history and are
+          never counted as contact made, which is what touch_count_total sums.
+        data_tests:
+          - not_null
+      - name: is_connected_call
+        description: >
+          The call reached a human, from the disposition's outcome family. Null
+          for every channel but calls.
+      - name: touch_at
+        description: >
+          When the activity happened, not when HubSpot recorded it. Meetings
+          and tasks can be in the future: a booked meeting and a task due date
+          are both legitimate rows here.
+        data_tests:
+          - not_null
+      - name: hubspot_owner_id
+        description: >
+          Owner on the engagement, which is the rep who made the touch. Null on
+          activity logged without one.
+      - name: call_outcome_family
+        description: >
+          Disposition family from the hubspot_call_dispositions seed. Null for
+          every channel but calls.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, touch_id]
+
+  - name: int__user_hubspot_profile
+    description: >
+      The HubSpot slice of the end-to-end user view: how we acquired a user and
+      how much sales contact they have had, at gp-api user grain. One row per
+      user whether or not they reach a HubSpot contact.
+
+      Only facts HubSpot originates are read here. A field being present in
+      HubSpot does not make HubSpot its system of record: the contact's
+      utm_source is populated on 60 of 362k contacts while product telemetry
+      carries the real thing for everyone, so UTMs are deliberately absent.
+
+      Counts are zero where we can see HubSpot and nothing happened, and null
+      where we cannot see it at all. Reading one as the other reports an
+      unresolved user as an uncontacted one.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: has_hubspot_contact
+        description: >
+          The user reaches a live HubSpot contact. False for about 8,400
+          users, whose every other column here is null by construction rather
+          than zero.
+        data_tests:
+          - not_null
+      - name: hubspot_unmatched_reason
+        description: >
+          Why the user reaches no contact. Null when they do. A native id that
+          no longer resolves is kept apart from never having had one, because
+          the first is a broken link and the second is an absent record.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  ["dangling_contact_id", "email_match_unresolved", "no_contact_found"]
+      - name: hubspot_email_match_available
+        description: >
+          An exact email edge would reach a live contact for this unmatched
+          user, which is true for about 4,100 of them. Null for users who
+          already resolve. Closing the gap is entity resolution work, not this
+          model's.
+      - name: hubspot_contact_count
+        description: Live HubSpot contacts in the user's person group.
+      - name: hs_owner_id
+        description: HubSpot owner assigned to the contact, which is the salesperson.
+      - name: hs_lifecycle_stage
+        description: HubSpot's own lifecycle stage for the contact.
+      - name: hs_win_lifecycle_stage
+        description: Win-specific lifecycle stage, maintained separately in HubSpot.
+      - name: hs_serve_lifecycle_stage
+        description: Serve-specific lifecycle stage, maintained separately in HubSpot.
+      - name: hs_analytics_source
+        description: >
+          HubSpot's account of how the contact arrived. OFFLINE means the
+          contact was put into HubSpot by an import or integration rather than
+          arriving through its own web session.
+      - name: hs_analytics_source_detail
+        description: >
+          The drill-down under that source: the landing page for a web source,
+          IMPORT or INTEGRATION for an offline one.
+      - name: hs_conversion_source
+        description: Source of the session in which the contact converted.
+      - name: hs_contact_created_at
+        description: When the HubSpot contact record was created.
+      - name: hs_first_analytics_at
+        description: First web session HubSpot attributes to the contact.
+      - name: hs_last_contacted_at
+        description: HubSpot's own last-contacted stamp, across channels.
+      - name: first_touch_at
+        description: >
+          Earliest moment of contact we know of, from HubSpot contact creation,
+          HubSpot's first analytics timestamp or signup, whichever is first.
+          Falls back to signup for a user with no contact.
+        data_tests:
+          - not_null
+      - name: first_touch_is_signup
+        description: >
+          The first touch is the signup itself, so there was no earlier
+          marketing contact. True for roughly two thirds of the table, which
+          is why no lead-time average should be computed without filtering on
+          it: the population it means anything for is about 25,000, not the
+          64,000 who reach a contact.
+        data_tests:
+          - not_null
+      - name: acquisition_motion
+        description: >
+          Whether sales or marketing sourced the user. Sales-sourced is an
+          OFFLINE analytics source, meaning we put the contact into HubSpot;
+          all but a few hundred of those are list imports. Two independent
+          signals agree with the split, and neither is an input to it: 91% of
+          offline-sourced contacts predate signup by a day or more against 12%
+          of web-sourced ones, and 93% of them have been contacted against
+          29%. Owner assignment is deliberately not part of the rule, since
+          91% of matched users carry an owner and it separates nothing.
+
+          Unknown covers two states, and the second is defensive: a user who
+          reaches no contact, and a resolved contact carrying no analytics
+          source. No matched contact is in the second state today, so unknown
+          is in practice the no-contact population. If that changes, the split
+          is worth a fourth value rather than a silent merge.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["marketing_sourced", "sales_sourced", "unknown"]
+      - name: call_count
+        description: Calls logged against the user.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: connected_call_count
+        description: Of those, the ones that reached a human.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: email_count
+        description: Sales emails sent to the user. Inbound replies are counted separately.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: meeting_count
+        description: >
+          Meetings booked with the user, which includes meetings still in the
+          future.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_count
+        description: SMS sent to the user.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: inbound_email_count
+        description: >
+          Emails the user sent us. A reply is engagement, not contact made, so
+          this stays out of touch_count_total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: task_count
+        description: >
+          Internal tasks logged against the contact. Work we planned rather
+          than contact the person received, so it stays out of
+          touch_count_total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: note_count
+        description: Internal notes on the contact. Also not contact made.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: touch_count_total
+        description: Calls plus emails plus meetings plus SMS.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: first_call_at
+        description: First logged call.
+      - name: last_call_at
+        description: Most recent logged call.
+      - name: first_email_at
+        description: First sales email.
+      - name: last_email_at
+        description: Most recent sales email.
+      - name: first_meeting_at
+        description: First meeting booked.
+      - name: last_meeting_at
+        description: Most recent meeting booked, which can be in the future.
+      - name: first_sms_at
+        description: First SMS.
+      - name: last_sms_at
+        description: Most recent SMS.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              touch_count_total = call_count + email_count + meeting_count
+              + sms_count
+          config:
+            where: has_hubspot_contact
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: connected_call_count <= call_count
+          config:
+            where: has_hubspot_contact
+
+  - name: int__user_revenue_profile
+    description: >
+      The revenue slice of the end-to-end user view: what a user has paid us
+      and what state their subscription is in, at gp-api user grain. One row
+      per user whether or not they ever paid.
+
+      Money is read from charges, not invoices. Stripe raises an invoice for
+      the Pro subscription and for nothing else, so an invoice-only total
+      reports a user who bought a domain, a text-outreach package or a
+      sales-led plan as having paid nothing. Subscription revenue is about a
+      third of what this account has collected from users who reach a row here.
+
+      Amounts are gross of refunds unless the column says otherwise, and are
+      zero rather than null for a user who never paid: no Stripe customer means
+      they paid us nothing, which is a fact and not an absence. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: is_pro
+        description: >
+          The user holds Pro on at least one campaign. Campaign state, which is
+          a different question from whether they paid: the flag and the Stripe
+          customer disagree in both directions and neither corrects the other.
+        data_tests:
+          - not_null
+      - name: pro_campaign_count
+        description: How many of the user's campaigns carry the Pro flag.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: pro_since
+        description: >
+          When the user became Pro, as best it can be dated. Null for a user
+          who is not Pro, and null for a Pro user neither route reaches.
+      - name: pro_since_source
+        description: >
+          Which route dated it. The first Stripe subscription payment covers
+          about half the Pro population. It is deliberately the subscription
+          payment and not the first payment of any kind: a Pro user who bought
+          a domain months earlier would otherwise be dated to that purchase,
+          and a domain purchase is not a Pro signal. The campaign archive begins 2026-04-13, so it only
+          contributes users who flipped while under observation; a user already
+          Pro at first sighting would otherwise be dated to the day the archive
+          opened. The rest are undated, and the column says so rather than
+          leaving the reason to be guessed from a null.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "stripe_first_subscription_payment",
+                    "campaign_version_change",
+                    "undated",
+                  ]
+      - name: has_stripe_customer
+        description: The user row carries a Stripe customer id.
+        data_tests:
+          - not_null
+      - name: shared_stripe_customer_user_count
+        description: >
+          How many user rows share this Stripe customer id. A handful sit on
+          two.
+      - name: is_primary_stripe_customer_row
+        description: >
+          True for a user whose Stripe customer is theirs alone, and for one of
+          each shared pair. Both rows of a shared pair carry the customer's
+          real total, because both accounts belong to the payer who made the
+          charge; what that breaks is a sum across the table. Filter on this
+          when totalling any money column, or the total overstates collections
+          by about 1%.
+        data_tests:
+          - not_null
+      - name: payment_count
+        description: Succeeded, captured charges reaching the user.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_paid_usd
+        description: Everything the user has paid us, gross of refunds.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_refunded_usd
+        description: How much of that has been refunded.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lifetime_net_usd
+        description: Paid less refunded. The figure finance recognises.
+        data_tests:
+          - not_null
+      - name: subscription_paid_usd
+        description: The Pro subscription leg, charges that raised an invoice.
+        data_tests:
+          - not_null
+      - name: one_off_paid_usd
+        description: >
+          Named one-off purchases: domain registrations, text outreach, polls.
+          Only charges carrying the product's own checkout metadata land here.
+        data_tests:
+          - not_null
+      - name: sales_led_paid_usd
+        description: >
+          Purchases taken through HubSpot commerce rather than the product.
+          The largest single revenue line and almost invisible from the Pro
+          flag, since most of these buyers never held it.
+        data_tests:
+          - not_null
+      - name: unclassified_paid_usd
+        description: >
+          Own-product one-offs taken after 2026-02-16, when checkout moved
+          behind a payment intent this connector does not ingest and its
+          metadata went with it. The dollars are the user's and are counted in
+          the lifetime total; only the purchase line is unknown. Kept as its
+          own column so the gap is visible rather than folded into a named
+          line.
+        data_tests:
+          - not_null
+      - name: first_payment_at
+        description: The user's first succeeded payment. Null if they never paid.
+      - name: last_payment_at
+        description: Their most recent succeeded payment.
+      - name: first_subscription_payment_at
+        description: >
+          Their first succeeded subscription payment, which is what dates Pro.
+          Null for a payer who only ever bought one-offs or bought through
+          sales, of whom there are a few dozen.
+      - name: subscription_status
+        description: >
+          Stripe status of the user's current subscription, which is the live
+          one where there is one and otherwise the most recent, so a churned
+          user keeps the subscription they churned out of. Churn keys on this,
+          never on subscription_canceled_at, because a subscription set to
+          cancel at period end is still active and already carries a date.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "active",
+                    "past_due",
+                    "unpaid",
+                    "canceled",
+                    "incomplete",
+                    "incomplete_expired",
+                    "trialing",
+                    "paused",
+                  ]
+      - name: subscription_count
+        description: Subscriptions ever held against the user's Stripe customer.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: has_active_subscription
+        description: >
+          The current subscription is active, trialing or past_due. False, not
+          null, for a user who never had one.
+        data_tests:
+          - not_null
+      - name: subscription_started_at
+        description: When the current subscription began.
+      - name: subscription_canceled_at
+        description: >
+          When cancellation was requested. Present on some active
+          subscriptions, which is why it does not define churn.
+      - name: subscription_ended_at
+        description: When the subscription actually ended.
+      - name: subscription_period_end_at
+        description: End of the current billing period.
+      - name: subscription_will_cancel_at_period_end
+        description: Cancellation is scheduled for the end of the current period.
+      - name: subscription_plan_amount_usd
+        description: Recurring amount of the plan on the current subscription.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              subscription_paid_usd + one_off_paid_usd + sales_led_paid_usd
+              + unclassified_paid_usd = lifetime_paid_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: lifetime_net_usd <= lifetime_paid_usd
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: last_payment_at >= first_payment_at
+          config:
+            where: first_payment_at is not null
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: payment_count > 0
+          config:
+            where: lifetime_paid_usd > 0
+
+  - name: int__user_product_activity
+    description: >
+      The product slice of the end-to-end user view: when a user first and last
+      used the product, whether they ever made anything with it, and whether
+      they were active in each of the last three calendar months. One row per
+      user whether or not they ever appeared in Amplitude.
+
+      Machine-emitted events are excluded from every activity read here, and the
+      exclusion is not cosmetic: the dispatch schedulers alone name roughly 1,800
+      users a month who did nothing, which was more than doubling the monthly
+      active count.
+
+      Activity columns are null, not zero, for a user with no telemetry. Product
+      instrumentation starts in April 2025 and most of this table registered
+      before that or never used the product; reading a null as a zero reports
+      about half our users as inactive when we simply cannot see them.
+      has_amplitude_data is the column that tells the two apart. The rolling
+      window is the exception and is zero rather than null, because anyone active
+      in the last three months is instrumented, so a zero there is a real zero.
+
+      Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: has_amplitude_data
+        description: >
+          Any non-machine product event was recorded for this user. False means
+          we cannot see them, not that they were inactive. Roughly half the
+          table.
+        data_tests:
+          - not_null
+      - name: first_activity_at
+        description: Their first recorded product event. Null where we have no telemetry.
+      - name: last_activity_at
+        description: Their most recent product event.
+      - name: total_events
+        description: All non-machine product events, all time.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: active_days_total
+        description: Distinct days with product activity, all time.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: dashboard_view_count
+        description: >
+          Dashboard views across all three instrumentation eras, de-duplicated
+          for the co-fire between the page event and whichever named surface
+          event was live. An era-three-only read recovers about two thirds of
+          this.
+      - name: first_dashboard_viewed_at
+        description: First candidate-dashboard view.
+      - name: last_dashboard_viewed_at
+        description: Most recent candidate-dashboard view.
+      - name: onboarding_completed_at
+        description: >
+          When the onboarding flow fired its own completion event. Not the same
+          question as users_win_base.is_onboarded, which is a US-registration
+          plus dashboard-view-within-14-days construction under a similar name.
+      - name: is_onboarded
+        description: They finished the onboarding flow.
+        data_tests:
+          - not_null
+      - name: product_output_at
+        description: >
+          When they first made something with the product that left it. Null for
+          a user who never has.
+      - name: has_product_output
+        description: >
+          They made something with the product that left it: a published
+          website, a completed outreach send, an exported voter list, a
+          downloaded call sheet. Broader than users_win_base.is_activated, which
+          asks only whether we reached voters for them, and a different question
+          rather than a better version of the same one. Never report one as the
+          other. Definition owned by the win_product_output_users metric's
+          anchored_on declaration.
+
+          Three of its legs went live between July and September 2026, so any
+          series reaching back before 2026-07 carries an instrumentation step
+          that must not be read as growth.
+        data_tests:
+          - not_null
+      - name: free_product_output_at
+        description: When they first produced output through a leg that is not paywalled.
+      - name: has_free_product_output
+        description: >
+          The paywall-free subset of has_product_output. Any model predicting
+          engagement must use this as its label: most output legs sit behind Pro,
+          so a model trained on the full column learns who paid and reports it as
+          who engaged.
+        data_tests:
+          - not_null
+      - name: serve_first_activity_at
+        description: >
+          First Serve product event, machine events excluded. Directional until
+          the Serve activity spine is rebuilt.
+      - name: serve_last_activity_at
+        description: Most recent Serve product event, machine events excluded.
+      - name: active_m0
+        description: >
+          At least one non-machine product event in the current calendar month.
+          A deliberately low bar, chosen so this agrees with the MAU figures
+          already in circulation rather than introducing a quieter second
+          definition of the same word.
+        data_tests:
+          - not_null
+      - name: active_m1
+        description: The same, for the previous calendar month.
+        data_tests:
+          - not_null
+      - name: active_m2
+        description: The same, for the month before that.
+        data_tests:
+          - not_null
+      - name: activity_days_m0
+        description: Distinct active days in the current calendar month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: activity_days_m1
+        description: Distinct active days in the previous calendar month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: activity_days_m2
+        description: Distinct active days in the month before that.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: growth_state
+        description: >
+          The new / retained / resurrected / churned bucket diagram as a column,
+          read off the three rolling flags. Null where we have no telemetry at
+          all, because an unseen user belongs in no bucket.
+
+          'dormant' is the fourth live value and covers most rows: active in none
+          of the three months and not active in either of the two most recent.
+          It is kept apart from 'churned' because calling an unseen signup
+          churned claims we lost someone we may never have had.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["new", "retained", "resurrected", "churned", "dormant"]
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: last_activity_at >= first_activity_at
+      # Free output is a subset of output, so it can never reach a user the
+      # broader column does not. A failure here means the paywalled markers and
+      # the leg list have drifted apart.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: has_product_output
+          config:
+            where: has_free_product_output
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: has_amplitude_data
+          config:
+            where: active_m0 or active_m1 or active_m2

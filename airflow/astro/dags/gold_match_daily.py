@@ -14,7 +14,10 @@ product at the following election-api sync (22:00 UTC), and a wrong row found
 in the daily audit is deleted by key and its office quarantined by the
 operator before that build. Every alert-worthy state is a failed DAG run on
 the existing failed-DAG Slack alert, and the failing TASK's name carries the
-story — see `docs/gold_match_daily.md`.
+story — see `docs/gold_match_daily.md`. A declined day is not alert-worthy:
+the pod and the signal are skipped, the DagRun ends without a failure, and
+the red build behind it already has dbt Cloud's own alert (the loop simply
+retries tomorrow; the reason is admission's log line and XCom).
 
 Schedule contract (in place of any dependency wiring, by design): 14:30 UTC
 sits after the day's two universe-moving events (08:00 L2 load, 12:02 build);
@@ -173,18 +176,17 @@ def gold_match_daily():
 
     # retries=0: both checks are snapshots, so a retry minutes later could
     # admit a day the first attempt declined; a declined day is declined.
-    @task.short_circuit(
-        ignore_downstream_trigger_rules=False, retries=0, execution_timeout=duration(minutes=10)
-    )
+    @task.short_circuit(retries=0, execution_timeout=duration(minutes=10))
     def admission(ti=None) -> bool:
         """Decline the day cleanly, before anything is written, unless the
         latest SCHEDULED prod build succeeded (a red nightly means the
         universe and the marts are yesterday's, and if the matcher's own rows
         made it red the operator must remove them first) and no prod build is
         in flight (two builds on the same tables lost a mart write on
-        2026-09-17). Fails CLOSED when dbt Cloud cannot be asked. Skips only
-        its direct downstream and lets trigger rules propagate, so
-        operator_signal still runs and reports the declined day."""
+        2026-09-17). Fails CLOSED when dbt Cloud cannot be asked. Skips
+        everything downstream, so a declined day ends as a DagRun with skipped
+        tasks and no alert: the red build that caused it already pages through
+        dbt Cloud, and a second alert here was noise (2026-09-23/24)."""
         reasons = []
         try:
             hook = DbtCloudHook("dbt_cloud")
@@ -203,20 +205,13 @@ def gold_match_daily():
             return False
         return True
 
-    @task(trigger_rule="all_done", execution_timeout=duration(minutes=15))
-    def operator_signal(dag_run=None, ti=None) -> None:
+    @task(execution_timeout=duration(minutes=15))
+    def operator_signal(dag_run=None) -> None:
         """Notification-only leaf: fails (so the DAG fails and the alert
-        fires) on what a human must see. Runs on all_done so a declined day
-        still signals; on a declined day nothing was written, so the reason is
-        the whole story and the warehouse is not asked. Otherwise it reads the
+        fires) on what a human must see after a run that wrote. It reads the
         quarantine table, which the pod appends to for response-shape failures
-        (the operator's own adjudication holds are excluded by their reason)."""
-        declined = ti.xcom_pull(task_ids="admission", key="declined_reason")
-        if declined:
-            raise AirflowException(
-                f"needs a human, nothing deleted: publication declined at admission ({declined}); "
-                "nothing was written, tomorrow retries"
-            )
+        (the operator's own adjudication holds are excluded by their reason).
+        A declined day skips this task with the pod."""
         run_key = run_key_of(dag_run)
         conn = connect_from_conn_id()
         try:

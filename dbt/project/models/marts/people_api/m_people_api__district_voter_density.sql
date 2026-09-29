@@ -1,5 +1,5 @@
 /*
-Voter-density heat map mart — loaded to people-api Postgres green."DistrictVoterDensity".
+Voter-density heat map mart — loaded to election-api Postgres by the sync_election_api DAG.
 
 Aggregated, K-anonymized, H3-binned voter *residence density* per district. Each
 row is an H3 cell with a voter count and the deterministic H3 cell centroid —

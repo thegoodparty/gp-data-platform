@@ -18,7 +18,8 @@ def _rec(**kw):
         dimensions=("is_activated",),
         filter=None,
         owner="semantic-layer-business",
-        ratified="2026-07-24",
+        rule_approved="2026-07-24",
+        build_approved="2026-07-24",
         detail_doc="engagement.md",
         retired=None,
         yaml_file="sem_analytics__users_win.yml",
@@ -37,7 +38,7 @@ def test_render_rows_has_header_and_row():
 
 
 def test_pending_renders_pending():
-    out = render_rows([_rec(ratified=None, owner=None)])
+    out = render_rows([_rec(rule_approved=None, build_approved=None, owner=None)])
     assert "pending" in out
 
 

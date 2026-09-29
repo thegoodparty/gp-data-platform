@@ -99,7 +99,7 @@ with
     -- voter's City, so L2 carries the county's satellite cities in Town_District.
     -- A satellite that also spans a neighboring county is split between the two
     -- columns; giving the neighbor's voters the same Town_District reunites it.
-    assigned as (
+    town_assigned as (
         select
             voters.* except (`Town_District`),
             coalesce(
@@ -113,6 +113,29 @@ with
             and (assignments.county is null or assignments.county = voters.county)
             and (assignments.city is null or assignments.city = voters.city)
             and (assignments.precinct is null or assignments.precinct = voters.precinct)
+    ),
+
+    -- A trustee area subdivides one school district, but a county precinct can
+    -- straddle two districts, so an assigned sub-district only applies to
+    -- voters of the parent it names (L2 spells them '<parent> TA <n>').
+    assigned as (
+        select
+            voters.* except (`Unified_School_SubDistrict`),
+            coalesce(
+                nullif(voters.`Unified_School_SubDistrict`, ''),
+                assignments.l2_district_name
+            ) as `Unified_School_SubDistrict`
+        from town_assigned as voters
+        left join
+            {{ ref("l2_manual_district_assignments") }} as assignments
+            on assignments.l2_district_type = 'Unified_School_SubDistrict'
+            and assignments.state = voters.state_postal_code
+            and (assignments.county is null or assignments.county = voters.county)
+            and (assignments.city is null or assignments.city = voters.city)
+            and (assignments.precinct is null or assignments.precinct = voters.precinct)
+            and startswith(
+                assignments.l2_district_name, voters.`Unified_School_District` || ' '
+            )
     )
 
 -- Strip L2's padding here so every consumer agrees on a district's name and id.

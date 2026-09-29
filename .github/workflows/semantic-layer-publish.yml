@@ -11,7 +11,7 @@ on:
     branches: [main]
     # The ratification sidecar is included: since DATA-2249 a sign-off is
     # recorded there, not in the sem_*.yml, so a sem-only filter would let the
-    # pending-to-dated edge merge unannounced and fire no Sigma build task.
+    # pending-to-dated edge merge unannounced.
     paths:
       - 'dbt/project/models/**/sem_*.yml'
       - 'analytics/diagnostics/semantic_catalog/config/ratifications.yml'
@@ -28,6 +28,10 @@ jobs:
     # channels (which would break threading).
     env:
       SLACK_CHANNEL_ID: C08K22X9ZNH
+      # DATA-2558: where a summary goes when it is mechanics rather than metric
+      # news. Same owner the token-health check DMs its routine warnings to, and
+      # where DATA-2422 sends a degrade notice the channel cannot act on.
+      SLACK_OWNER_DM: U085CFQ96BG
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +102,21 @@ jobs:
         working-directory: analytics
         env:
           PYTHONPATH: diagnostics
+          # Lets the summary say when a metric is merging while its declared
+          # instrument is dormant. ORG_READ_TOKEN is the fallback and, verified
+          # 2026-09-28, already carries contents read on omni — so no dedicated
+          # OMNI_READ_TOKEN is needed. The named secret stays first so one can
+          # be provisioned later (a narrower token, or after a rotation) without
+          # touching this file. If both fail, the read degrades to the owner DM.
+          OMNI_READ_TOKEN: ${{ secrets.OMNI_READ_TOKEN || secrets.ORG_READ_TOKEN }}
+          # The gh fallback is for a laptop run. In Actions gh is authed to this
+          # repo only, so attempting it would fail slower and report a murkier
+          # reason than "the token is not set".
+          OMNI_EVIDENCE_NO_GH: '1'
+          # When that read cannot run, the summary stays silent about it and the
+          # owner is DM'd instead (SLACK_OWNER_DM, job env). The channel is for
+          # metric news; a token the review groups cannot provision is not that.
+          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
         run: |
           set -euo pipefail
           if [ -d /tmp/base ]; then
@@ -105,6 +124,40 @@ jobs:
           else
             uv run python -m semantic_catalog.cli --emit-slack /tmp/slack.txt --pr-url "$PR_URL" --coverage "$COV"
           fi
+      - name: Decide who hears about this merge
+        # DATA-2558: mechanics merges (seals, sidecar schema, routing, the
+        # catalog generator) posted summaries shaped like metric news, which
+        # teaches the channel it is noise. Route by what actually moved.
+        id: route
+        working-directory: analytics
+        env:
+          PYTHONPATH: diagnostics
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Only a real classification can justify suppressing a post, so with
+          # no base tree LANES stays empty and the route falls back to the
+          # channel rather than reading "cannot tell" as "nothing moved".
+          LANES=""
+          if [ -d /tmp/base ]; then
+            LANES=$(uv run python -m semantic_catalog.cli --classify-lanes --base-dir /tmp/base)
+          fi
+          # PR_NUM is only exported when ORG_READ_TOKEN is provisioned, so
+          # re-derive it here off the workflow's own token; the label read must
+          # not depend on a secret that may be absent.
+          PR="${PR_NUM:-$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // ""')}"
+          MECHANICS_LABEL=false
+          if [ -n "$PR" ] && gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name' | grep -qx 'governance:mechanics'; then
+            MECHANICS_LABEL=true
+          fi
+          ROUTE=$(LANES="$LANES" MECHANICS_LABEL="$MECHANICS_LABEL" uv run python -m semantic_catalog.notices)
+          echo "route: $ROUTE"
+          {
+            echo "target=$(echo "$ROUTE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target"])')"
+            echo "reason=$(echo "$ROUTE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])')"
+          } >> "$GITHUB_OUTPUT"
       - name: Read governance thread marker
         # DATA-2218: recover the anchor ts written at PR-open so the merge
         # summary lands as a threaded reply. Empty marker => top-level post
@@ -130,8 +183,13 @@ jobs:
             echo "SLACK_CHANNEL_ID=$MARKER_CHANNEL" >> "$GITHUB_ENV"
           fi
       - name: Post Slack change summary
+        # DATA-2558: `skip` means the merge moved no metric's rule and no
+        # metric's build, so there is nothing to tell anyone.
+        if: ${{ steps.route.outputs.target != 'skip' }}
         env:
           SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
+          ROUTE_TARGET: ${{ steps.route.outputs.target }}
+          ROUTE_REASON: ${{ steps.route.outputs.reason }}
         run: |
           set -euo pipefail
           # SLACK_APP_BOT_TOKEN was provisioned and live-verified 2026-07-28.
@@ -152,16 +210,26 @@ jobs:
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(python3 -c '
           import json, os
-          p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": open("/tmp/slack.txt").read()}
-          t = os.environ.get("SLACK_THREAD_TS")
-          if t:
-              p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
+          text = open("/tmp/slack.txt").read()
+          if os.environ.get("ROUTE_TARGET") == "owner":
+              # DATA-2558: the label downgrades the summary to a DM rather than
+              # deleting it, so a mechanics claim stays checkable. No thread_ts:
+              # the anchor ts belongs to the channel, not to this DM.
+              p = {
+                  "channel": os.environ["SLACK_OWNER_DM"],
+                  "text": "(Not posted to the channel: %s.)\n\n%s" % (os.environ["ROUTE_REASON"], text),
+              }
+          else:
+              p = {"channel": os.environ["SLACK_CHANNEL_ID"], "text": text}
+              t = os.environ.get("SLACK_THREAD_TS")
+              if t:
+                  p["thread_ts"] = t  # DATA-2218: merge summary is a reply under the anchor
           print(json.dumps(p))')")
           # chat.postMessage returns HTTP 200 with {"ok":false} on errors (bad
           # channel, missing scope, auth), so check the body, not just status.
           TS=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.get("ok") or sys.exit("Slack API error: %s" % d.get("error","unknown")); print(d["ts"])')
-          # Sigma replies thread under the anchor when it exists, else under
-          # this post (pre-thread behavior).
+          # The merged marker reads this: the anchor's ts when a thread exists,
+          # else this post's (pre-thread behavior).
           echo "SLACK_TS=${SLACK_THREAD_TS:-$TS}" >> "$GITHUB_ENV"
       - name: Mark governance thread merged
         # SLACK_TS is only exported once "Post Slack change summary" actually
@@ -182,8 +250,6 @@ jobs:
           uv run python -m semantic_catalog.thread --mark-merged --pr "$PR_NUM"
       - name: Record the ratifications this merge earned
         # Writes the sidecar + regenerated catalog into the WORKING TREE only.
-        # The next step's Sigma sync re-parses that tree, so a build task is
-        # created on THIS merge rather than waiting on the ratification PR.
         # Placed after the thread marker update, not straight after the Slack
         # post: this step exits 1 on a self-verification failure, and between
         # those two steps that would leave the thread unmarked and make a re-run
@@ -212,42 +278,17 @@ jobs:
             # an approver, and coverage would read as incomplete forever.
             DATA=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-data/members --jq '.[].login' | paste -sd, -)
             BIZ=$(gh api --paginate orgs/thegoodparty/teams/semantic-layer-business/members --jq '.[].login' | paste -sd, -)
+            # The PR body is where a build sign-off's value_at_signing comes
+            # from. CI cannot compute a metric's value, so the author declares
+            # it in the body and the recorder reads it back out; a build half
+            # with no declared value is skipped and says so.
+            gh api "repos/$REPO/pulls/$PR_NUM" --jq '.body // ""' > /tmp/pr-body.md
             ARGS=(--record-ratifications --reviews /tmp/reviews.json \
                   --data-members "$DATA" --business-members "$BIZ" \
-                  --pr-number "$PR_NUM" \
+                  --pr-number "$PR_NUM" --pr-body /tmp/pr-body.md \
                   --emit-recorded /tmp/recorded.json --emit-pr-body /tmp/ratify-body.md)
             if [ -d /tmp/base ]; then ARGS+=(--base-dir /tmp/base); fi
             uv run python -m semantic_catalog.cli "${ARGS[@]}"
-      - name: Create Sigma build tasks for newly ratified metrics
-        working-directory: analytics
-        env:
-          PYTHONPATH: diagnostics
-          CLICKUP_TASK_TOKEN: ${{ secrets.CLICKUP_TASK_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CLICKUP_TASK_TOKEN:-}" ]; then
-            echo "CLICKUP_TASK_TOKEN not provisioned; skipping Sigma build-task creation."
-            exit 0
-          fi
-          if [ -d /tmp/base ]; then
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks --base-dir /tmp/base --emit-created /tmp/created_tasks.json
-          else
-            uv run python -m semantic_catalog.cli --sync-sigma-tasks --emit-created /tmp/created_tasks.json
-          fi
-      - name: Reply in the Slack thread with created Sigma task links
-        # Only when the summary posted (SLACK_TS set). No created tasks => the
-        # emitted JSON is an empty list and reply_in_thread posts nothing, so a
-        # workflow re-run (dedupe skips creation) never double-posts the thread.
-        # The bot token stays in env (never on the command line) and the reply
-        # logic lives in semantic_catalog.slack_reply so it is unit-tested.
-        if: ${{ env.SLACK_TS != '' }}
-        working-directory: analytics
-        env:
-          PYTHONPATH: diagnostics
-          SLACK_APP_BOT_TOKEN: ${{ secrets.SLACK_APP_BOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          uv run python -m semantic_catalog.cli --reply-created /tmp/created_tasks.json
       - name: Open the ratification PR
         # Branch is keyed on the source PR so a workflow re-run updates the same
         # branch in place instead of opening a rival PR. Never pushes to main.

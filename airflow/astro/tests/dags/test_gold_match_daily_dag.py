@@ -6,6 +6,7 @@ and building the DagBag at collection time keeps this on real Airflow with no
 metastore dependency.
 """
 
+import inspect
 import logging
 import sys
 from contextlib import contextmanager
@@ -77,14 +78,17 @@ def test_single_attempt_tasks():
         assert _DAG.get_task(task_id).retries == 0, task_id
 
 
-def test_pipeline_order_and_signal_runs_regardless():
-    """admission gates the pod; operator_signal runs on all_done so a declined
-    day (pod skipped) still signals its reason."""
+def test_pipeline_order_and_a_declined_day_skips_the_signal():
+    """admission gates the pod; a declined day skips the pod AND the signal, so
+    the DagRun ends without a failure and the Slack alert stays quiet. The
+    reason is admission's log line, and the red build that caused it has its
+    own dbt Cloud alert (two alerts for one dependency was the 09-23/09-24
+    noise). A signal on all_done would turn every declined day into a page."""
     assert {t.task_id for t in _DAG.get_task("match_pod").upstream_list} == {"admission"}
     signal = _DAG.get_task("operator_signal")
-    assert signal.trigger_rule == "all_done"
+    assert signal.trigger_rule == "all_success"
     assert {t.task_id for t in signal.upstream_list} == {"match_pod"}
-    assert _DAG.get_task("admission").ignore_downstream_trigger_rules is False
+    assert _DAG.get_task("admission").ignore_downstream_trigger_rules is True
 
 
 def test_pod_runs_the_daily_module_with_the_dagrun_key():
@@ -219,41 +223,31 @@ def test_admission_fails_closed_when_dbt_cloud_cannot_be_asked():
     assert "unreachable" in pushed
 
 
-def _signal(module, *, fresh, declined=None):
-    """Runs operator_signal; returns the fake ti, the warehouse-connect mock, and
-    the AirflowException it raised (None when it signalled nothing)."""
+def _signal(module, *, fresh):
+    """Runs operator_signal; returns the warehouse-connect mock and the
+    AirflowException it raised (None when it signalled nothing)."""
     signal_fn = _DAG.get_task("operator_signal").python_callable
-    ti = MagicMock()
-    # Dispatch on (task_ids, key): a typo in the DAG's key would read None and
-    # make a declined day look healthy, so the key is part of the contract.
-    ti.xcom_pull.side_effect = lambda task_ids, key=None: {("admission", "declined_reason"): declined}.get(
-        (task_ids, key)
-    )
     raised = None
     with (
         patch.object(module, "connect_from_conn_id", autospec=True, return_value=MagicMock()) as connect,
         patch.object(module, "new_quarantine_count", autospec=True, return_value=fresh),
     ):
         try:
-            signal_fn(dag_run=_FAKE_DAG_RUN, ti=ti)
+            signal_fn(dag_run=_FAKE_DAG_RUN)
         except AirflowException as exc:
             raised = exc
-    return ti, connect, raised
+    return connect, raised
 
 
-def test_signal_raises_for_first_quarantines_and_declined_days_only():
-    """Each story a human must see, without deleting anything: offices that
+def test_signal_raises_for_first_quarantines_only():
+    """The one story a human must see, without deleting anything: offices that
     first entered quarantine this run (the operator's own adjudication holds
-    are excluded in the helper), or a day declined at admission. On a declined
-    day nothing was written, so the warehouse is not asked."""
+    are excluded in the helper). A declined day never reaches this task, so it
+    reads nothing from admission: a declined-reason branch here would be dead
+    code that could only fire by re-widening the trigger rule."""
     module = _dag_module()
-    _, connect, raised = _signal(module, fresh=1)
+    connect, raised = _signal(module, fresh=1)
     assert "first entered quarantine" in str(raised) and connect.called
-    _, connect, raised = _signal(
-        module, fresh=0, declined="another prod build is in flight: job 70471823431463 run 9 (RUNNING)"
-    )
-    assert "declined at admission" in str(raised) and "in flight" in str(raised)
-    assert not connect.called
-    ti, connect, raised = _signal(module, fresh=0)  # nothing to signal
+    connect, raised = _signal(module, fresh=0)  # nothing to signal
     assert raised is None and connect.called
-    ti.xcom_pull.assert_any_call(task_ids="admission", key="declined_reason")
+    assert "ti" not in inspect.signature(_DAG.get_task("operator_signal").python_callable).parameters

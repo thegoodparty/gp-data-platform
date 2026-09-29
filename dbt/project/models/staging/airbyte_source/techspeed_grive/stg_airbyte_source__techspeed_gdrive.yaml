@@ -25,6 +25,14 @@ models:
       - name: last_name
         data_tests:
           - not_null
+      - name: br_race_id
+        description: >
+          BallotReady race id. The suppression filter resolves a candidate through it,
+          so a row without one cannot be suppressed.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
       - name: name_suffix
         description: >
           Generational suffix (JR, SR, II...) captured from the raw surname

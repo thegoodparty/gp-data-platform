@@ -1,3 +1,5 @@
+import dataclasses
+
 from semantic_catalog.clickup_page import CATALOG_BEGIN, CATALOG_END, render_page
 from semantic_catalog.lifecycle import Lifecycle
 from semantic_catalog.records import MetricRecord
@@ -20,7 +22,8 @@ def _rec():
         dimensions=("is_activated",),
         filter=None,
         owner="semantic-layer-business",
-        ratified="2026-07-24",
+        rule_approved="2026-07-24",
+        build_approved="2026-07-24",
         detail_doc="engagement.md",
         retired=None,
         yaml_file="sem_analytics__users_win.yml",
@@ -88,7 +91,8 @@ def test_catalog_escapes_pipes_in_cells():
         dimensions=("dim1",),
         filter=None,
         owner="semantic-layer-data | backup",
-        ratified="2026-07-24",
+        rule_approved="2026-07-24",
+        build_approved="2026-07-24",
         detail_doc="test.md | backup.md",
         retired=None,
         yaml_file="test.yml",
@@ -100,3 +104,20 @@ def test_catalog_escapes_pipes_in_cells():
     assert "With Pipe" in page  # label should still be readable (escaped internally)
     # Ensure catalog markers are present (table not corrupted)
     assert CATALOG_BEGIN in page and CATALOG_END in page
+
+
+def test_page_flags_a_metric_whose_instrument_went_dormant():
+    # The page's half of the evidence link, and the half a reader consults to
+    # decide whether a number can be trusted. The degrade path is covered
+    # elsewhere; this is the one where a latch actually landed.
+    reason = "declared event has not fired since 2026-07-31: 'Dashboard - Campaign Plan Viewed'"
+    rec = dataclasses.replace(_rec(), needs_reverification=reason)
+    page = render_page([rec], {}, "sop", OWNERS)
+    assert "Instrument evidence" in page
+    assert "build approval needs re-verification" in page and reason in page
+
+
+def test_a_page_with_nothing_wrong_carries_no_evidence_section():
+    # An always-present heading with nothing under it reads as noise and trains
+    # people to skip the section on the day it matters.
+    assert "Instrument evidence" not in render_page([_rec()], {}, "sop", OWNERS)

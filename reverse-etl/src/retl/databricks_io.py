@@ -59,8 +59,8 @@ def connect(config: DatabricksConnConfig) -> Any:
     """Open a connection. Only its config assembly is unit tested; the connection
     itself is the one call that must reach a real warehouse.
 
-    Two auth shapes, matching the two forms this repo already passes through env
-    (people-api-loader's `load_people_api.py` DAG): a token, used directly by the
+    Two auth shapes, matching the two forms this repo already passes through env:
+    a token, used directly by the
     connector's own `access_token` path, or a client id/secret pair, which needs the
     Databricks SDK's OAuth M2M credentials provider -- the sql connector has no
     native (non-Azure) client-id/secret kwarg, only `credentials_provider`.
