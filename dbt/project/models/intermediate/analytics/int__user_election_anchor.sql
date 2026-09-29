@@ -124,12 +124,21 @@ select
     -- Clamped at both ends: zero before the window opens, full length once the
     -- election has passed. An unclamped datediff goes negative for an election
     -- more than six months out, which would divide the wrong way in any rate.
-    greatest(
-        datediff(
-            least(current_date(), a.election_date),
-            add_months(a.election_date, -{{ window_months }})
-        ),
-        0
-    ) as outreach_window_days_elapsed
+    --
+    -- The outer guard is not redundant. greatest() skips nulls in Spark rather
+    -- than propagating them, so without it every user who has no window at all
+    -- reads as zero days elapsed while days_total stays null, and a consumer
+    -- following this column's own advice to divide by it hits a zero.
+    case
+        when a.election_date is not null
+        then
+            greatest(
+                datediff(
+                    least(current_date(), a.election_date),
+                    add_months(a.election_date, -{{ window_months }})
+                ),
+                0
+            )
+    end as outreach_window_days_elapsed
 from keys as k
 left join anchored as a using (user_id)

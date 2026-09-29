@@ -240,9 +240,36 @@ with
         where i.outreach_id is null and d.user_id is null
     ),
 
+    -- The reverse direction, for the one case the anti-join above cannot see.
+    -- A 2025 request and a legacy send event on the same day are the same
+    -- send: the row records what the candidate asked for and the event records
+    -- the product doing it. That is 165 pairs over 72 users.
+    --
+    -- Here Amplitude wins, which is the opposite of the rule above, because
+    -- the question is different. gp-api wins on channel and volume because it
+    -- records them and Amplitude does not. Amplitude wins on whether a send
+    -- actually went out, because a request whose status was never written back
+    -- is silent on that and the event is not. Dropping the event instead would
+    -- keep the weaker evidence and discard the confirmation.
+    amplitude_confirmations as (
+        select distinct user_id, date(send_at) as send_date
+        from amplitude_kept
+        where basis = 'committed' and channel = 'unattributed'
+    ),
+
+    gp_api_kept as (
+        select g.*
+        from gp_api_sends as g
+        left join
+            amplitude_confirmations as c
+            on c.user_id = g.user_id
+            and c.send_date = date(g.send_at)
+        where g.basis = 'committed' or c.user_id is null
+    ),
+
     unioned as (
         select user_id, channel, send_at, source, basis, recipient_count, send_key
-        from gp_api_sends
+        from gp_api_kept
         union all
         select user_id, channel, send_at, source, basis, recipient_count, send_key
         from amplitude_kept
