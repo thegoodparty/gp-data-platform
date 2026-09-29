@@ -46,6 +46,13 @@ def test_build_parser_rejects_init_log_and_destination_together() -> None:
         build_parser().parse_args(["--source", "hubspot_leads", "--destination", "csv", "--init-log"])
 
 
+def test_parse_args_rejects_dry_run_with_init_log() -> None:
+    """Catches: --dry-run accepted alongside --init-log, where the caller would expect no
+    table to be created and one would be anyway."""
+    with pytest.raises(SystemExit):
+        cli.parse_args(["--source", "hubspot_leads", "--init-log", "--dry-run"])
+
+
 def test_parse_args_rejects_accept_empty_log_with_init_log() -> None:
     """Catches: --accept-empty-log accepted alongside --init-log, where it means nothing --
     --init-log never reads the log's row count at all."""
@@ -53,14 +60,13 @@ def test_parse_args_rejects_accept_empty_log_with_init_log() -> None:
         cli.parse_args(["--source", "hubspot_leads", "--init-log", "--accept-empty-log"])
 
 
-def test_main_runs_a_csv_preview_end_to_end(
+def test_main_runs_a_csv_export_end_to_end(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Catches: a break anywhere in the source-to-destination wiring for the simplest real
     path -- a destination that returned without writing anything would still pass a
     stdout-only assertion, so this checks the file the run was actually supposed to produce."""
-    csv_path = tmp_path / "preview.csv"
-    env = {**CSV_ENV, "RETL_CSV_OUTPUT_PATH": str(csv_path)}
+    env = {**CSV_ENV, "RETL_CSV_OUTPUT_DIR": str(tmp_path)}
     monkeypatch.setattr(os, "environ", env)
     fake_connection = FakeConnection(
         source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}],
@@ -82,7 +88,8 @@ def test_main_runs_a_csv_preview_end_to_end(
     captured = capsys.readouterr()
     assert "retl flow=hubspot_leads" in captured.out
     assert captured.err == ""  # a clean run has no error detail to print
-    assert csv_path.read_text().splitlines() == [
+    [output] = tmp_path.glob("hubspot_leads_*.csv")
+    assert output.read_text().splitlines() == [
         "tracking_key,payload",
         'p1,"{""firstname"":""Jane"",""gp_person_id"":""p1""}"',
     ]
@@ -93,7 +100,7 @@ def test_main_prints_error_codes_to_stderr_when_rows_are_rejected(
 ) -> None:
     """Catches: row-level error codes never reaching process output, so a wrapping DAG
     task's failure alert would carry only a bare exit code."""
-    env = {**CSV_ENV, "RETL_CSV_OUTPUT_PATH": str(tmp_path / "preview.csv")}
+    env = {**CSV_ENV, "RETL_CSV_OUTPUT_DIR": str(tmp_path)}
     monkeypatch.setattr(os, "environ", env)
     monkeypatch.setattr(databricks_io, "connect", lambda _config: FakeConnection())
     summary = RunSummary(
@@ -163,12 +170,12 @@ def test_main_init_log_is_idempotent_on_an_existing_table(
     assert "initialized" in capsys.readouterr().out
 
 
-def test_main_csv_export_sends_each_change_once_across_runs(
+def test_main_csv_sends_each_change_once_across_runs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Catches: a rerun resending rows already exported (even after the file is deleted),
     or an added/updated row not being exported on the next run."""
-    env = {**CSV_ENV, "RETL_CSV_EXPORT_DIR": str(tmp_path)}
+    env = {**CSV_ENV, "RETL_CSV_OUTPUT_DIR": str(tmp_path)}
     monkeypatch.setattr(os, "environ", env)
     fake_connection = FakeConnection(
         source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}, {"gp_person_id": "p2", "firstname": "Sam"}],
@@ -178,7 +185,7 @@ def test_main_csv_export_sends_each_change_once_across_runs(
 
     def run_export(*extra: str) -> list[str]:
         before = set(tmp_path.glob("*.csv"))
-        assert main(["--source", "hubspot_leads", "--destination", "csv_export", *extra]) == 0
+        assert main(["--source", "hubspot_leads", "--destination", "csv", *extra]) == 0
         new_files = sorted(set(tmp_path.glob("*.csv")) - before)
         return [line for f in new_files for line in f.read_text().splitlines()[1:]]
 
@@ -195,3 +202,26 @@ def test_main_csv_export_sends_each_change_once_across_runs(
     ]
     assert [line.split(",", 1)[0] for line in run_export()] == ["p1", "p3"]
     assert "sent=2" in capsys.readouterr().out.splitlines()[-1]
+
+
+def test_main_dry_run_sends_and_logs_nothing_and_needs_no_destination_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Catches: a dry run writing a file or a log row (marking people as sent who never
+    were), or refusing to run without the destination's own config, e.g. a HubSpot token."""
+    monkeypatch.setattr(os, "environ", dict(CSV_ENV))  # no RETL_CSV_OUTPUT_DIR, no token
+    fake_connection = FakeConnection(
+        source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}],
+        tables={LOG_TABLE: stamped_table("hubspot_leads")},
+    )
+    monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
+
+    for destination in ("csv", "hubspot_contacts"):
+        argv = ["--source", "hubspot_leads", "--destination", destination, "--dry-run", "--accept-empty-log"]
+        assert main(argv) == 0
+        assert (
+            capsys.readouterr().out.strip().endswith("to_send=1 sent=0 errors=0 orphaned_keys=0 dry_run=true")
+        )
+
+    assert fake_connection.tables[LOG_TABLE].rows == []
+    assert list(tmp_path.iterdir()) == []

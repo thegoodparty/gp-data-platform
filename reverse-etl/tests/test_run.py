@@ -318,3 +318,33 @@ def test_execute_run_logs_every_confirmed_batch_when_delivery_raises_mid_run() -
         execute_run(connection=connection, flow=flow, destination=_BatchingDestination(fail_after=3))
 
     assert len(connection.tables[LOG_TABLE].rows) == 1 + 300
+
+
+def test_execute_run_dry_run_reports_the_diff_but_sends_and_logs_nothing() -> None:
+    """Catches: a dry run reaching the destination or the log, or reporting a different
+    diff than the real run would send."""
+    connection = _connection_with_log(source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}])
+    destination = _FakeDestination()
+
+    summary = execute_run(connection=connection, flow=FLOW, destination=destination, dry_run=True)
+
+    assert (summary.to_send_count, summary.sent_count, summary.dry_run) == (1, 0, True)
+    assert destination.delivered == []
+    assert connection.tables[LOG_TABLE].rows == [_EXISTING_ROW]
+
+
+def test_execute_run_dry_run_still_enforces_the_guards() -> None:
+    """Catches: a dry run skipping the cap or empty-log guards, so it reports success for a
+    run that would in fact be refused."""
+    rows = [{"gp_person_id": f"p{i}"} for i in range(FLOW.cap + 1)]
+    with pytest.raises(SendCapExceededError):
+        execute_run(
+            connection=_connection_with_log(source_rows=rows), flow=FLOW, destination=None, dry_run=True
+        )
+    with pytest.raises(EmptyLogError):
+        execute_run(
+            connection=_connection_with_log(rows=[], source_rows=rows[:1]),
+            flow=FLOW,
+            destination=None,
+            dry_run=True,
+        )

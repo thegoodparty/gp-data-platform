@@ -69,7 +69,7 @@ class EmptyLogError(RuntimeError):
     "most of the population moved" is not itself a signal of a problem. This guard
     covers all three amnesia shapes with zero false alarms on any day the log
     genuinely has rows for this flow. Zero sends on failure, as with the other
-    guards; applies to every destination, including a CSV preview.
+    guards; applies to every destination, and to a dry run.
     """
 
     def __init__(self, flow_id: str, log_table: str):
@@ -90,12 +90,14 @@ class RunSummary:
     error_count: int
     orphaned_key_count: int
     errors: list[RowError] = field(default_factory=list)
+    dry_run: bool = False
 
     def as_line(self) -> str:
         """One deterministic line: what a wrapping DAG task should carry into its failure alert."""
         return (
             f"retl flow={self.flow_id} source={self.source_count} to_send={self.to_send_count} "
             f"sent={self.sent_count} errors={self.error_count} orphaned_keys={self.orphaned_key_count}"
+            + (" dry_run=true" if self.dry_run else "")
         )
 
 
@@ -166,9 +168,16 @@ def execute_run(
     *,
     connection: Any,
     flow: FlowConfig,
-    destination: Destination,
+    destination: Destination | None,
     accept_empty_log: bool = False,
+    dry_run: bool = False,
 ) -> RunSummary:
+    """One run. `dry_run` reads and diffs exactly as a real run does, guards included,
+    then stops before delivery: nothing is sent and nothing is logged, so a rehearsal
+    never marks anyone as sent. A dry run needs no destination at all.
+    """
+    if destination is None and not dry_run:
+        raise ValueError("a destination is required unless dry_run is set")
     desired = read_source_payloads(connection, flow)
     if not desired:
         raise EmptySourceError(flow.flow_id)
@@ -191,6 +200,17 @@ def execute_run(
         raise SendCapExceededError(flow.flow_id, cap=flow.cap, actual=len(buffered))
 
     orphaned = orphaned_keys(latest_sent, desired)
+
+    if dry_run or destination is None:
+        return RunSummary(
+            flow_id=flow.flow_id,
+            source_count=len(desired),
+            to_send_count=len(buffered),
+            sent_count=0,
+            error_count=0,
+            orphaned_key_count=len(orphaned),
+            dry_run=True,
+        )
 
     unlogged: dict[str, str] = {}
 

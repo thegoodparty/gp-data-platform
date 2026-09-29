@@ -146,7 +146,7 @@ def test_dag_supplies_nothing_retl_will_not_read():
 
 def test_dag_omits_exactly_the_three_vars_this_deployment_does_not_need():
     """DATABRICKS_TOKEN (the OAuth client id/secret pair is used instead),
-    RETL_HUBSPOT_BASE_URL (defaults to the production portal), RETL_CSV_OUTPUT_PATH
+    RETL_HUBSPOT_BASE_URL (defaults to the production portal), RETL_CSV_OUTPUT_DIR
     (the other destination). Failure caught: retl adds a FOURTH required env var and
     the DAG never supplies it, so the pod dies at config load on the first run after
     deploy."""
@@ -156,7 +156,7 @@ def test_dag_omits_exactly_the_three_vars_this_deployment_does_not_need():
     assert _declared_env_vars() - set(env) == {
         "DATABRICKS_TOKEN",
         "RETL_HUBSPOT_BASE_URL",
-        "RETL_CSV_OUTPUT_PATH",
+        "RETL_CSV_OUTPUT_DIR",
     }
 
 

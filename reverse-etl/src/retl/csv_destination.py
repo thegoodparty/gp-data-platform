@@ -1,13 +1,10 @@
-"""The CSV destinations: a preview that is never logged, and an export that is.
+"""The CSV destination: each run's diff, written to a new file, and logged.
 
-`CsvDestination` (`--destination csv`) is the rehearsal: a preview run must not mark
-anyone as sent, so it never writes any log row. That guarantee holds because its
-`deliver` never calls `on_batch_confirmed` -- there is no config flag to get wrong.
-
-`CsvExportDestination` (`--destination csv_export`) is a real delivery: each run writes
-only its diff to a new timestamped file and logs every row it wrote, so a rerun sends
-nothing new even if an earlier file was deleted. The file is the delivery; keeping or
-importing it is the consumer's job.
+A real delivery like any other: each run writes only its diff to a new timestamped
+file and logs every row it wrote, so a rerun sends nothing new even if an earlier
+file was deleted. The file is the delivery; keeping or importing it is the
+consumer's job. A rehearsal that must not mark anyone as sent is `--dry-run`, which
+applies to every destination alike.
 """
 
 from __future__ import annotations
@@ -17,63 +14,28 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
 
 from .destinations import DeliveryResult, OnBatchConfirmed
 
 
 @dataclass(frozen=True)
 class CsvDestinationConfig:
-    output_path: Path
+    output_dir: Path
 
 
 def config_from_env(env: Mapping[str, str]) -> CsvDestinationConfig:
-    raw_path = env.get("RETL_CSV_OUTPUT_PATH", "")
-    if not raw_path:
-        raise ValueError("RETL_CSV_OUTPUT_PATH is not set")
-    return CsvDestinationConfig(output_path=Path(raw_path))
-
-
-def _write_rows(handle: TextIO, rows: Sequence[tuple[str, str]]) -> None:
-    writer = csv.writer(handle)
-    writer.writerow(["tracking_key", "payload"])
-    writer.writerows(rows)
+    raw_dir = env.get("RETL_CSV_OUTPUT_DIR", "")
+    if not raw_dir:
+        raise ValueError("RETL_CSV_OUTPUT_DIR is not set")
+    output_dir = Path(raw_dir)
+    if not output_dir.is_dir():
+        # Checked up front: a missing dir would otherwise fail only after the diff ran.
+        raise ValueError(f"RETL_CSV_OUTPUT_DIR {raw_dir!r} is not an existing directory")
+    return CsvDestinationConfig(output_dir=output_dir)
 
 
 class CsvDestination:
     def __init__(self, config: CsvDestinationConfig):
-        self._config = config
-
-    def deliver(
-        self,
-        flow_id: str,  # unused: part of the Destination contract; a CSV row needs no flow label
-        rows: Sequence[tuple[str, str]],
-        *,
-        on_batch_confirmed: OnBatchConfirmed,  # unused: never called, see module docstring
-    ) -> DeliveryResult:
-        with self._config.output_path.open("w", newline="") as handle:
-            _write_rows(handle, rows)
-        return DeliveryResult(confirmed={}, errors=[])
-
-
-@dataclass(frozen=True)
-class CsvExportConfig:
-    output_dir: Path
-
-
-def export_config_from_env(env: Mapping[str, str]) -> CsvExportConfig:
-    raw_dir = env.get("RETL_CSV_EXPORT_DIR", "")
-    if not raw_dir:
-        raise ValueError("RETL_CSV_EXPORT_DIR is not set")
-    output_dir = Path(raw_dir)
-    if not output_dir.is_dir():
-        # Checked up front: a missing dir would otherwise fail only after the diff ran.
-        raise ValueError(f"RETL_CSV_EXPORT_DIR {raw_dir!r} is not an existing directory")
-    return CsvExportConfig(output_dir=output_dir)
-
-
-class CsvExportDestination:
-    def __init__(self, config: CsvExportConfig):
         self._config = config
 
     def deliver(
@@ -93,7 +55,9 @@ class CsvExportDestination:
         # Written under a hidden name, then renamed: a consumer watching the dir never
         # picks up a half-written file. "x" refuses to overwrite an earlier export.
         with partial_path.open("x", newline="") as handle:
-            _write_rows(handle, rows)
+            writer = csv.writer(handle)
+            writer.writerow(["tracking_key", "payload"])
+            writer.writerows(rows)
         partial_path.rename(final_path)
 
         # Logged only once the file is complete. If the log append then fails, the next

@@ -2,8 +2,8 @@
 
 The caller (run.py) owns the log: each destination gets an `on_batch_confirmed`
 callback that hands each confirmed batch to the log as it is confirmed (run.py
-buffers and flushes them), and the CSV preview never calls it -- "a preview never writes any log" holds by
-construction rather than by a config flag someone could get wrong.
+buffers and flushes them). A dry run never reaches a destination at all, so "a
+rehearsal never writes any log" holds by construction in run.py.
 """
 
 from __future__ import annotations

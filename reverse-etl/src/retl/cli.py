@@ -1,7 +1,7 @@
-"""retl: `retl --source <flow> --destination <hubspot_contacts|csv|csv_export>`.
+"""retl: `retl --source <flow> --destination <hubspot_contacts|csv> [--dry-run]`.
 
 Config is entirely environment-driven. The destination choice is a plain if/else
--- three destinations are not architecture. Every exit prints one summary line, plus
+-- two destinations are not architecture. Every exit prints one summary line, plus
 row-level error detail to stderr when there were any, so a DAG task wrapping this
 subprocess can carry counts and error codes into its own failure alert instead of
 a bare exit code.
@@ -11,7 +11,8 @@ log table if it does not exist yet, then exit -- the daily run never creates or
 alters a table. `--accept-empty-log` is the deliberate override for the one day a
 real run against a genuinely empty table is expected (a first run, or right after
 an admin reset); every other day, an empty log fails the run instead of silently
-re-sending the full population. Daily DAG invocations pass neither flag.
+re-sending the full population. `--dry-run` reports what a run would send, guards
+included, and sends and logs nothing. Daily DAG invocations pass none of these flags.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
         "--destination",
-        choices=["hubspot_contacts", "csv", "csv_export"],
+        choices=["hubspot_contacts", "csv"],
         help="Where to deliver the diff",
     )
     mode.add_argument(
@@ -51,6 +52,14 @@ def build_parser() -> argparse.ArgumentParser:
             "first run or post-reset run only. Valid only with --destination."
         ),
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Read and diff as a real run would, guards included, then send and log nothing. "
+            "Valid only with --destination."
+        ),
+    )
     return parser
 
 
@@ -59,14 +68,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.accept_empty_log and args.init_log:
         parser.error("--accept-empty-log is valid only with --destination, not --init-log")
+    if args.dry_run and args.init_log:
+        parser.error("--dry-run is valid only with --destination, not --init-log")
     return args
 
 
 def _build_destination(name: str, env: dict[str, str]) -> Destination:
     if name == "hubspot_contacts":
         return hubspot_destination.HubSpotDestination(hubspot_destination.config_from_env(env))
-    if name == "csv_export":
-        return csv_destination.CsvExportDestination(csv_destination.export_config_from_env(env))
     return csv_destination.CsvDestination(csv_destination.config_from_env(env))
 
 
@@ -83,12 +92,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"retl init-log flow={flow.flow_id} table={flow.log_table} initialized")
                 return 0
 
-            destination = _build_destination(args.destination, env)
+            # Not built for a dry run: a rehearsal should not need a destination's
+            # credentials, since it never reaches the destination.
+            destination = None if args.dry_run else _build_destination(args.destination, env)
             summary = execute_run(
                 connection=connection,
                 flow=flow,
                 destination=destination,
                 accept_empty_log=args.accept_empty_log,
+                dry_run=args.dry_run,
             )
         finally:
             connection.close()
