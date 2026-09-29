@@ -46,22 +46,38 @@ models:
 
       - name: first_campaign_sent_at
         description: >
-          Earliest timestamp for event_type = 'Voter Outreach - Campaign Completed'.
-          Supports activation milestones.
+          Earliest product-performed outreach send, over the whole leg union
+          compiled by is_outreach_activation_event rather than any one event
+          name. Lifetime and unwindowed. The election-anchored equivalent is
+          outreach_first_sent_at on the user outreach intensity model, which is
+          a different number on purpose.
 
       - name: total_campaigns_sent
         description: >
-          Count of event_type = 'Voter Outreach - Campaign Completed' per user.
-          Supports campaign activity metrics.
+          Lifetime count of product-performed outreach sends per user, over the
+          leg union compiled by is_outreach_activation_event, deduplicated per
+          outreach id and with self-report excluded. Not a single event name:
+          the outreach surface has been rebuilt twice and each rebuild retired
+          the event the count had been reading.
+
+          Amplitude-only, so it cannot see a texting send made before the v2
+          terminal event began firing in late September 2026; the product
+          database holds those. Unwindowed, so it is not comparable with
+          outreach_sent_count on the user outreach intensity model.
         data_tests:
           - not_null
 
       - name: total_recipient_count
         description: >
-          Sum of outreach recipient counts for
-          event_type = 'Voter Outreach - Campaign Completed' per user.
-          Uses COALESCE(recipientCount, voterContacts) and excludes values
-          above 100000 or below 0 as Amplitude instrumentation errors.
+          Sum of recipient counts over the same leg union as
+          total_campaigns_sent, excluding values above 100000 or below 0 as
+          instrumentation errors.
+
+          Caveat worth knowing before quoting it: the sum coalesces
+          recipientCount with voterContacts, and the two do not mean the same
+          thing. voterContacts is the size of the audience the candidate
+          selected, not the number a send reached, and it is the only count the
+          phone-banking event carries. A known follow-up.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
