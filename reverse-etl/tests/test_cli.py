@@ -161,3 +161,37 @@ def test_main_init_log_is_idempotent_on_an_existing_table(
     assert exit_code == 0
     assert fake_connection.tables[LOG_TABLE].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
     assert "initialized" in capsys.readouterr().out
+
+
+def test_main_csv_export_sends_each_change_once_across_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Catches: a rerun resending rows already exported (even after the file is deleted),
+    or an added/updated row not being exported on the next run."""
+    env = {**CSV_ENV, "RETL_CSV_EXPORT_DIR": str(tmp_path)}
+    monkeypatch.setattr(os, "environ", env)
+    fake_connection = FakeConnection(
+        source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}, {"gp_person_id": "p2", "firstname": "Sam"}],
+        tables={LOG_TABLE: stamped_table("hubspot_leads")},
+    )
+    monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
+
+    def run_export(*extra: str) -> list[str]:
+        before = set(tmp_path.glob("*.csv"))
+        assert main(["--source", "hubspot_leads", "--destination", "csv_export", *extra]) == 0
+        new_files = sorted(set(tmp_path.glob("*.csv")) - before)
+        return [line for f in new_files for line in f.read_text().splitlines()[1:]]
+
+    assert [line.split(",", 1)[0] for line in run_export("--accept-empty-log")] == ["p1", "p2"]
+
+    for f in tmp_path.glob("*.csv"):
+        f.unlink()
+    assert run_export() == []
+
+    fake_connection.source_rows = [
+        {"gp_person_id": "p1", "firstname": "Janet"},
+        {"gp_person_id": "p2", "firstname": "Sam"},
+        {"gp_person_id": "p3", "firstname": "Ada"},
+    ]
+    assert [line.split(",", 1)[0] for line in run_export()] == ["p1", "p3"]
+    assert "sent=2" in capsys.readouterr().out.splitlines()[-1]

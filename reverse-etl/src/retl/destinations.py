@@ -1,8 +1,8 @@
 """The shared destination contract.
 
 The caller (run.py) owns the log: each destination gets an `on_batch_confirmed`
-callback so an append happens exactly where a batch is confirmed, and the CSV
-destination never calls it -- "a preview never writes any log" holds by
+callback that hands each confirmed batch to the log as it is confirmed (run.py
+buffers and flushes them), and the CSV preview never calls it -- "a preview never writes any log" holds by
 construction rather than by a config flag someone could get wrong.
 """
 

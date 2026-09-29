@@ -9,7 +9,7 @@ that table's rows as its own latest_sent -- non-empty, so the empty-log guard al
 could never catch it -- full-resend its own population, and append its rows into
 the wrong table, corrupting both flows' histories at once.
 
-Appends are INSERTs only, one call per confirmed batch (never end-of-run): this
+Appends are INSERTs only, one call per flush of confirmed rows (see run.py): this
 module has no update/delete/merge path. With job-owned tables that is code
 discipline rather than a grant, and Delta table history is the tamper-evidence.
 
@@ -21,6 +21,7 @@ the run exactly as before.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -29,12 +30,18 @@ from .databricks_io import fetch_all_rows
 
 FLOW_ID_PROPERTY = "retl.flow_id"
 
-# The connector's own Cursor.executemany docstring says it issues one sequential
-# request per row with no batching, so appending confirmed rows one at a time would
-# be ~74k single-row round trips (and tiny Delta commits) on a first convergence, and
-# again on any viability-recompute day. A chunk of 50 rows x 3 params/row = 150 bind
-# markers, safely under Databricks' 255-parameter-marker statement limit.
-_APPEND_CHUNK_SIZE = 50
+# Every INSERT is a sequential round trip and its own Delta commit (~2.5s apiece
+# against a live warehouse), so the append packs as many rows into one statement as
+# the warehouse allows. It caps a statement's parameters at this many characters in
+# total and rejects anything larger outright.
+PARAM_CHAR_LIMIT = 1_048_576
+# Headroom under the limit for the sent_at param and anything the size estimate misses.
+_CHUNK_CHAR_BUDGET = 900_000
+
+# The rows travel as ONE JSON string parameter, decoded server-side by from_json. The
+# connector's ArrayParameter would be the obvious shape, but a live warehouse binds a
+# Python list as an empty array<void>: the insert succeeds and lands zero rows, silently.
+_ROWS_SCHEMA = "array<struct<tracking_key:string,payload:string>>"
 
 
 class _Connection(Protocol):
@@ -128,24 +135,38 @@ def read_latest_sent(connection: _Connection, *, log_table: str) -> dict[str, st
     return {row["tracking_key"]: row["payload"] for row in rows}
 
 
-def _chunked_insert_statement(
-    log_table: str, chunk: Sequence[tuple[str, str]], sent_at: datetime
-) -> tuple[str, dict[str, Any]]:
-    """One multi-row INSERT for up to `_APPEND_CHUNK_SIZE` rows, every value bound by name.
+def insert_sql(log_table: str) -> str:
+    """One INSERT that lands every row in its `:rows` JSON param, stamped with `:sent_at`.
 
-    Values are never inlined: quote-escaping SQL by hand is a known trap in this
-    repo, so every row's values get their own indexed named parameter
-    (`:tracking_key_0`, `:tracking_key_1`, ...) instead.
+    Values are never inlined: quote-escaping SQL by hand is a known trap in this repo,
+    and json.dumps plus from_json round-trips any payload byte-identically.
     """
-    value_clauses = []
-    params: dict[str, Any] = {}
-    for i, (tracking_key, payload) in enumerate(chunk):
-        value_clauses.append(f"(:tracking_key_{i}, :payload_{i}, :sent_at_{i})")
-        params[f"tracking_key_{i}"] = tracking_key
-        params[f"payload_{i}"] = payload
-        params[f"sent_at_{i}"] = sent_at
-    sql = f"insert into {log_table} (tracking_key, payload, sent_at) values " + ", ".join(value_clauses)
-    return sql, params
+    return (
+        f"insert into {log_table} (tracking_key, payload, sent_at) "
+        "select r.tracking_key, r.payload, :sent_at "
+        f"from (select explode(from_json(:rows, '{_ROWS_SCHEMA}')) as r)"
+    )
+
+
+def _chunks_under_budget(items: Sequence[tuple[str, str]]) -> list[str]:
+    """Split `items` into JSON-encoded row arrays of at most `_CHUNK_CHAR_BUDGET` characters.
+
+    A single row larger than the budget still goes alone; the warehouse then rejects
+    it loudly, which is the right outcome for a payload that size.
+    """
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 2  # the enclosing []
+    for tracking_key, payload in items:
+        encoded = json.dumps({"tracking_key": tracking_key, "payload": payload})
+        if current and size + len(encoded) + 1 > _CHUNK_CHAR_BUDGET:
+            chunks.append("[" + ",".join(current) + "]")
+            current, size = [], 2
+        current.append(encoded)
+        size += len(encoded) + 1
+    if current:
+        chunks.append("[" + ",".join(current) + "]")
+    return chunks
 
 
 def append_sent_log(
@@ -161,16 +182,14 @@ def append_sent_log(
     would mark a rejected row as delivered and never retry it, and logging before
     delivery would suppress a failed send's person forever.
 
-    Chunked into multi-row INSERTs of `_APPEND_CHUNK_SIZE` rows apiece rather than
-    one `execute` per row: this is still append-only (INSERT, never
-    update/delete/merge) and still one `sent_at` stamp for the whole call.
+    Packed into as few INSERTs as the parameter size limit allows rather than one
+    `execute` per row: this is still append-only (INSERT, never update/delete/merge)
+    and still one `sent_at` stamp for the whole call.
     """
     if not confirmed:
         return
     stamp = sent_at or datetime.now(UTC)
-    items = list(confirmed.items())
+    sql = insert_sql(log_table)
     with connection.cursor() as cursor:
-        for start in range(0, len(items), _APPEND_CHUNK_SIZE):
-            chunk = items[start : start + _APPEND_CHUNK_SIZE]
-            sql, params = _chunked_insert_statement(log_table, chunk, stamp)
-            cursor.execute(sql, params)
+        for rows_json in _chunks_under_budget(list(confirmed.items())):
+            cursor.execute(sql, {"rows": rows_json, "sent_at": stamp})

@@ -14,6 +14,9 @@ uv run retl --source=hubspot --destination=csv
 ```
 
 `--destination=csv` never writes to the send log, so it is safe to run repeatedly while iterating.
+`--destination=csv_export` is a real delivery: each run writes only its diff to a new
+`<flow>_<utc timestamp>.csv` in `RETL_CSV_EXPORT_DIR` and logs those rows, so a rerun writes nothing
+(no file at all) until a row is added or changed.
 `--destination=hubspot_contacts` requires `RETL_HUBSPOT_TOKEN` and does write the log — point
 `RETL_FLOW_<FLOW>_LOG_TABLE` at a scratch table unless you mean to send for real.
 

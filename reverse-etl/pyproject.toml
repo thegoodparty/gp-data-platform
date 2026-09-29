@@ -5,7 +5,7 @@ description = "Reverse-ETL: daily diff of a Databricks desired-state model again
 requires-python = ">=3.14"
 dependencies = [
     "databricks-sdk>=0.136.0",
-    "databricks-sql-connector>=4.5.0",
+    "databricks-sql-connector[pyarrow]>=4.5.0",
     "requests>=2.32.0",
     "tenacity>=9.0",
 ]

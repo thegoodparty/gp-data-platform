@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
 
 from retl.sent_log import (
     FLOW_ID_PROPERTY,
+    PARAM_CHAR_LIMIT,
     WrongLogTableError,
     append_sent_log,
     create_log_table_sql,
@@ -145,16 +147,45 @@ def test_append_sent_log_is_a_no_op_for_an_empty_confirmed_mapping() -> None:
     assert connection.execute_call_count == 0
 
 
-def test_append_sent_log_issues_one_execute_per_chunk_of_50_never_one_per_row() -> None:
-    """Catches: reverting to one execute (or executemany) call per row, which the connector's
-    own docs say is one sequential round trip per row -- ~74k of them on a first convergence."""
+def test_append_sent_log_packs_many_rows_into_one_execute() -> None:
+    """Catches: reverting to one execute per row (or per small fixed chunk). Every execute is
+    a sequential round trip and its own Delta commit, ~2.5s apiece against a live warehouse,
+    so 50-row chunks made logging a 5.5k-row export take over three minutes."""
     connection = FakeConnection(tables={LOG_TABLE: stamped_table("hubspot_leads")})
-    confirmed = {f"p{i}": f'{{"n":{i}}}' for i in range(120)}
+    confirmed = {f"p{i}": f'{{"n":{i}}}' for i in range(5_000)}
 
     append_sent_log(connection, log_table=LOG_TABLE, confirmed=confirmed)
 
-    assert connection.execute_call_count == 3  # ceil(120 / 50)
-    assert len(connection.tables[LOG_TABLE].rows) == 120
+    assert connection.execute_call_count == 1
     latest = read_latest_sent(connection, log_table=LOG_TABLE)
-    assert len(latest) == 120
-    assert latest["p119"] == '{"n":119}'
+    assert latest == confirmed
+
+
+def test_append_sent_log_splits_chunks_under_the_parameter_size_limit() -> None:
+    """Catches: one statement carrying more than the warehouse's per-query parameter limit
+    (1,048,576 characters in total), which it rejects outright -- so a large first
+    convergence would fail to log anything it had just delivered."""
+    connection = FakeConnection(tables={LOG_TABLE: stamped_table("hubspot_leads")})
+    payload = '{"x":"' + "y" * 900 + '"}'
+    confirmed = {f"p{i}": payload for i in range(5_000)}  # ~4.7M characters in all
+
+    append_sent_log(connection, log_table=LOG_TABLE, confirmed=confirmed)
+
+    assert connection.execute_call_count > 1
+    assert all(size <= PARAM_CHAR_LIMIT for size in connection.param_sizes)
+    assert read_latest_sent(connection, log_table=LOG_TABLE) == confirmed
+
+
+def test_append_sent_log_round_trips_payloads_that_need_escaping() -> None:
+    """Catches: a payload being altered on the way in (quotes, backslashes, non-ASCII), which
+    would make the next run's byte comparison see a change and resend it forever."""
+    connection = FakeConnection(tables={LOG_TABLE: stamped_table("hubspot_leads")})
+    confirmed = {
+        "p'1": json.dumps({"name": 'O\'Brien \\ "Jo"'}),
+        "p2": json.dumps({"name": "Zoë 🙂"}, ensure_ascii=False),
+        "p3": json.dumps({"name": "Zoë 🙂"}),  # ASCII-escaped form, as payload.py writes it
+    }
+
+    append_sent_log(connection, log_table=LOG_TABLE, confirmed=confirmed)
+
+    assert read_latest_sent(connection, log_table=LOG_TABLE) == confirmed

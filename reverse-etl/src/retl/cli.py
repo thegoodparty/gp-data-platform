@@ -1,7 +1,7 @@
-"""retl: `retl --source <flow> --destination <hubspot_contacts|csv>`.
+"""retl: `retl --source <flow> --destination <hubspot_contacts|csv|csv_export>`.
 
 Config is entirely environment-driven. The destination choice is a plain if/else
--- two destinations are not architecture. Every exit prints one summary line, plus
+-- three destinations are not architecture. Every exit prints one summary line, plus
 row-level error detail to stderr when there were any, so a DAG task wrapping this
 subprocess can carry counts and error codes into its own failure alert instead of
 a bare exit code.
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
         "--destination",
-        choices=["hubspot_contacts", "csv"],
+        choices=["hubspot_contacts", "csv", "csv_export"],
         help="Where to deliver the diff",
     )
     mode.add_argument(
@@ -65,6 +65,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def _build_destination(name: str, env: dict[str, str]) -> Destination:
     if name == "hubspot_contacts":
         return hubspot_destination.HubSpotDestination(hubspot_destination.config_from_env(env))
+    if name == "csv_export":
+        return csv_destination.CsvExportDestination(csv_destination.export_config_from_env(env))
     return csv_destination.CsvDestination(csv_destination.config_from_env(env))
 
 

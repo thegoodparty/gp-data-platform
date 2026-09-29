@@ -270,3 +270,51 @@ def test_error_report_lines_caps_individual_rows_at_20() -> None:
     assert lines[0] == "retl error_histogram code=VALIDATION_ERROR property=phone retryable=False count=25"
     individual_lines = [line for line in lines if line.startswith("retl error flow=")]
     assert len(individual_lines) == 20
+
+
+@dataclass
+class _BatchingDestination:
+    """Confirms in batches of 100, like HubSpot, optionally raising after `fail_after` batches."""
+
+    fail_after: int | None = None
+
+    def deliver(self, flow_id, rows, *, on_batch_confirmed):
+        confirmed: dict[str, str] = {}
+        for n, start in enumerate(range(0, len(rows), 100)):
+            if self.fail_after is not None and n == self.fail_after:
+                raise RuntimeError("destination went away mid-run")
+            batch = dict(rows[start : start + 100])
+            on_batch_confirmed(batch)
+            confirmed.update(batch)
+        return DeliveryResult(confirmed=confirmed, errors=[])
+
+
+def _inserts(connection: FakeConnection) -> int:
+    return sum(1 for sql in connection.executed_sql if sql.lower().startswith("insert into"))
+
+
+def test_execute_run_buffers_confirmed_batches_into_few_log_writes() -> None:
+    """Catches: one log write per 100-row destination batch. Each write is its own Delta
+    commit (~2.5s live), so a 100k-row convergence would spend ~40 minutes logging."""
+    rows = [{"gp_person_id": f"p{i}", "firstname": "Jane"} for i in range(12_000)]
+    connection = _connection_with_log(source_rows=rows)
+    flow = FlowConfig(**{**FLOW.__dict__, "cap": 20_000})
+
+    summary = execute_run(connection=connection, flow=flow, destination=_BatchingDestination())
+
+    assert summary.sent_count == 12_000
+    assert _inserts(connection) == 3  # 5,000 + 5,000 + the final 2,000
+    assert len(connection.tables[LOG_TABLE].rows) == 1 + 12_000
+
+
+def test_execute_run_logs_every_confirmed_batch_when_delivery_raises_mid_run() -> None:
+    """Catches: buffered confirmations being dropped when the destination fails partway,
+    so rows the destination already accepted would be resent on the next run."""
+    rows = [{"gp_person_id": f"p{i}", "firstname": "Jane"} for i in range(1_000)]
+    connection = _connection_with_log(source_rows=rows)
+    flow = FlowConfig(**{**FLOW.__dict__, "cap": 20_000})
+
+    with pytest.raises(RuntimeError, match="went away"):
+        execute_run(connection=connection, flow=flow, destination=_BatchingDestination(fail_after=3))
+
+    assert len(connection.tables[LOG_TABLE].rows) == 1 + 300

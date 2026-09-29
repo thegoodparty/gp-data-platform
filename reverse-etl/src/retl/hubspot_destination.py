@@ -333,7 +333,9 @@ class HubSpotDestination:
             )
             result = parse_batch_response(response, flow_id=flow_id, sent_rows=sent_rows)
             if result.confirmed:
-                on_batch_confirmed(result.confirmed)  # log THIS batch now, before the next one runs
+                on_batch_confirmed(
+                    result.confirmed
+                )  # hand THIS batch to the log buffer before the next one runs
             all_confirmed.update(result.confirmed)
             all_errors.extend(result.errors)
 

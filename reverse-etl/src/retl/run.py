@@ -2,9 +2,11 @@
 
 Reads the flow's desired-state rows and this flow's latest logged payloads, runs the
 guards, hands the buffered diff to the destination, and gives the destination a
-callback that appends a batch's confirmed rows to sent_log as soon as that batch is
-confirmed -- never end-of-run, so a later batch's failure cannot strand an earlier
-batch's confirmations unlogged.
+callback that collects each batch's confirmed rows and appends them to sent_log every
+`LOG_FLUSH_ROWS` rows, plus once more when delivery ends -- including when it raises,
+so a later batch's failure cannot strand an earlier batch's confirmations unlogged.
+Only a hard kill of the process loses the unflushed buffer, and then the next run
+resends at most that many rows, which an upserting destination absorbs.
 """
 
 from __future__ import annotations
@@ -22,6 +24,11 @@ from .payload import build_payload, serialize_payload
 # A systemically-rejected convergence day must not dump ~74k lines into the
 # process's own output; the histogram already carries the full-population shape.
 INDIVIDUAL_ERROR_LINES_CAP = 20
+
+# Each log write is its own Delta commit (~2.5s live), so logging every 100-row
+# HubSpot batch as it lands would spend ~40 minutes of a 100k-row run on commits.
+# This is also the most a hard-killed run can resend on its next run.
+LOG_FLUSH_ROWS = 5_000
 
 
 class EmptySourceError(RuntimeError):
@@ -185,10 +192,22 @@ def execute_run(
 
     orphaned = orphaned_keys(latest_sent, desired)
 
-    def _on_batch_confirmed(confirmed: dict[str, str]) -> None:
-        sent_log.append_sent_log(connection, log_table=flow.log_table, confirmed=confirmed)
+    unlogged: dict[str, str] = {}
 
-    delivery = destination.deliver(flow.flow_id, buffered, on_batch_confirmed=_on_batch_confirmed)
+    def _flush() -> None:
+        if unlogged:
+            sent_log.append_sent_log(connection, log_table=flow.log_table, confirmed=unlogged)
+            unlogged.clear()
+
+    def _on_batch_confirmed(confirmed: dict[str, str]) -> None:
+        unlogged.update(confirmed)
+        if len(unlogged) >= LOG_FLUSH_ROWS:
+            _flush()
+
+    try:
+        delivery = destination.deliver(flow.flow_id, buffered, on_batch_confirmed=_on_batch_confirmed)
+    finally:
+        _flush()
 
     return RunSummary(
         flow_id=flow.flow_id,
