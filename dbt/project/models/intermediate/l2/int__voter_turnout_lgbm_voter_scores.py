@@ -27,10 +27,7 @@ Distributed scoring: the compute is isolated, so sparkContext (broadcast /
 addFile) is unavailable and the ~150 MB booster overflows the gRPC closure limit.
 The driver stages the booster to a UC Volume; the mapInPandas closure carries only
 the Volume path (plus cat_map / feat_names), and each executor reads the model file
-directly, cached once per worker process keyed on the booster's content digest. On
-serverless the workers are ephemeral, so that cache mostly saves repeated loads
-within a run rather than across runs; the digest key stays because it is what makes
-a reused worker safe wherever workers do persist.
+directly, cached per worker process on the booster's content digest.
 
 The SQL-building helpers are pure (return SQL strings) so they are unit-tested
 without Spark/MLflow; model() executes them. `import mlflow` is deferred into
@@ -289,13 +286,10 @@ def _build_voter_features_sql(l2_col_set, election_cols, inference_year, l2_coll
             "AS FECDonors_NumberOfDonations"
         ),
         f"CAST({inference_year} AS DOUBLE) AS target_year",
-        # Length of residence projected back to the inference year. On a backfill the
-        # offset is positive and the raw code reaches 0, so the difference can go
-        # negative -- out-of-distribution for a model trained on non-negative codes.
-        # Floor it at 0. Keep the NULL branch: Databricks GREATEST SKIPS nulls rather
-        # than propagating them, so a bare GREATEST(code - offset, 0) would turn every
-        # missing code into a real 0 and feed the model a shortest-tenure value where
-        # it currently, correctly, sees a missing one.
+        # Projected back to the inference year; on a backfill the offset can drive the
+        # raw code (min 0 in L2) negative, which the model never saw in training.
+        # Keep the NULL branch: Databricks GREATEST skips nulls, so a bare GREATEST
+        # would turn every missing code into a real 0.
         (
             f"CAST(CASE WHEN ConsumerData_Length_Of_Residence_Code IS NULL THEN NULL "
             f"ELSE GREATEST(ConsumerData_Length_Of_Residence_Code "
@@ -444,10 +438,8 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
     worker process. Encode-then-predict is identical to the district model.
 
     The cache key includes booster_digest, not just the path: the per-slug Volume
-    filename is otherwise stable across runs, so keying on the path alone would let a
-    worker that outlived a retrain score with the previous booster. Serverless workers
-    are ephemeral and so rarely hit that case, but the key costs nothing and keeps the
-    scorer correct on any compute."""
+    filename is stable across runs, so keying on the path alone would let a worker
+    that outlived a retrain score with the previous booster."""
 
     def _score_partition(iterator):
         import builtins
@@ -496,17 +488,9 @@ def model(dbt, session):
     import mlflow.lightgbm
 
     dbt.config(
-        # Serverless, inheriting the project default rather than pinning an
-        # all-purpose cluster: the dbt Cloud service principal can attach to that
-        # cluster but not restart it, so a scheduled build failed outright whenever
-        # the cluster happened to be cold. Serverless ships neither mlflow nor
-        # lightgbm, so both come in as environment deps -- not `packages`, which the
-        # adapter maps to the task's `libraries` field and serverless rejects.
-        # Versions match the district model, which scores the same boosters:
-        # lightgbm is pinned to what they were promoted against
-        # (_check_lgbm_version raises on a major mismatch) and numpy to <2 because
-        # 4.3.0 predates numpy 2. Both keys must stay in `config`, not
-        # `config.meta`, despite the dbt-core deprecation warning.
+        # Serverless ships neither mlflow nor lightgbm, and rejects `packages` (the
+        # adapter maps it to the task's `libraries`), so both are declared here.
+        # Versions match the district model, which scores the same boosters.
         environment_key="voter_turnout",
         environment_dependencies=["mlflow==3.0.0", "lightgbm==4.3.0", "numpy<2"],
         materialized="incremental",
@@ -579,8 +563,7 @@ def model(dbt, session):
         f"max_vote_history_year={max_vote_history_year}"
     )
 
-    # TemporaryDirectory (not mkdtemp): an unremoved dir leaks ~150 MB of artifacts
-    # per run on any compute that reuses the driver between runs.
+    # TemporaryDirectory (not mkdtemp): an unremoved dir leaks ~150 MB per run.
     with tempfile.TemporaryDirectory() as tmp:
         model_dir = mlflow.artifacts.download_artifacts(
             artifact_uri=f"models:/{full_name}/{prod_version.version}", dst_path=tmp
@@ -597,10 +580,8 @@ def model(dbt, session):
         # directly (no sparkContext broadcast, no executor-side MLflow).
         local_booster = os.path.join(tmp, "booster.txt")
         sk_model._Booster.save_model(local_booster)
-        # The digest goes in the filename AND keys the executor cache. Content-addressed
-        # so a retrain writes a new file rather than overwriting the path a prior run's
-        # executors may still be reading, and so a worker reused across runs cannot
-        # serve a stale booster.
+        # Content-addressed so a retrain writes a new file instead of overwriting one
+        # a prior run's executors may still be reading.
         booster_digest = _file_digest(local_booster)
         model_file = f"{booster_volume}/voter_turnout_{model_slug}_booster_{booster_digest}.txt"
         print(f"staged booster -> {model_file}")
