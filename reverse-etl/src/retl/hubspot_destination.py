@@ -1,6 +1,6 @@
 """The HubSpot destination: v3 batch upsert, keyed on the `gp_person_id` property.
 
-Batches of 100. Every input carries `objectWriteTraceId` set to its own
+Batches of 100, up to `concurrency` in flight at once. Every input carries `objectWriteTraceId` set to its own
 tracking_key: HubSpot's batch `id` in a response is its OWN internal object id,
 never the idProperty value we upserted on, so objectWriteTraceId is the only way to
 attribute a result -- success or error -- back to the row that produced it. A 207
@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections import deque
 from collections.abc import Iterator, Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -27,6 +29,9 @@ from .destinations import DeliveryResult, OnBatchConfirmed, RowError
 
 HUBSPOT_ID_PROPERTY = "gp_person_id"
 BATCH_SIZE = 100
+# Each call takes ~1.9s, so one at a time made a 100k-row first load take 32 minutes.
+# Four in flight is ~2 calls/s, far under the 19/s private-app limit; 429s still retry.
+DEFAULT_CONCURRENCY = 4
 # HubSpot's date-based API version. Semantic versions (v1-v4) lose support in Sept 2027,
 # and each dated version carries an 18-month window, so this is a recurring bump rather
 # than a one-time migration -- named here so it is one token to move.
@@ -118,6 +123,7 @@ class HubSpotDestinationConfig:
     base_url: str
     token: str
     request_timeout: float = 30.0
+    concurrency: int = DEFAULT_CONCURRENCY
 
 
 def config_from_env(env: Mapping[str, str]) -> HubSpotDestinationConfig:
@@ -322,8 +328,8 @@ class HubSpotDestination:
 
         all_confirmed: dict[str, str] = {}
         all_errors: list[RowError] = []
-        for batch in chunked(rows):
-            sent_rows = dict(batch)
+
+        def send(batch: Sequence[tuple[str, str]]) -> DeliveryResult:
             response = send_batch_with_retry(
                 self._transport,
                 url=url,
@@ -331,11 +337,33 @@ class HubSpotDestination:
                 headers=headers,
                 timeout=self._config.request_timeout,
             )
-            result = parse_batch_response(response, flow_id=flow_id, sent_rows=sent_rows)
-            if result.confirmed:
-                # Handed to the log before the next batch runs, so its failure cannot strand this one.
-                on_batch_confirmed(result.confirmed)
-            all_confirmed.update(result.confirmed)
-            all_errors.extend(result.errors)
+            return parse_batch_response(response, flow_id=flow_id, sent_rows=dict(batch))
+
+        # Results are taken in send order on this thread, so on_batch_confirmed (and the
+        # log it writes) never runs concurrently. After a failure nothing new is sent, but
+        # the batches already in flight are still confirmed before the error is raised.
+        batches = iter(chunked(rows))
+        in_flight: deque[Future[DeliveryResult]] = deque()
+        first_error: Exception | None = None
+        with ThreadPoolExecutor(max_workers=self._config.concurrency) as pool:
+            while True:
+                while first_error is None and len(in_flight) < self._config.concurrency:
+                    batch = next(batches, None)
+                    if batch is None:
+                        break
+                    in_flight.append(pool.submit(send, batch))
+                if not in_flight:
+                    break
+                try:
+                    result = in_flight.popleft().result()
+                    if result.confirmed:
+                        on_batch_confirmed(result.confirmed)
+                except Exception as exc:
+                    first_error = first_error or exc
+                    continue
+                all_confirmed.update(result.confirmed)
+                all_errors.extend(result.errors)
+        if first_error is not None:
+            raise first_error
 
         return DeliveryResult(confirmed=all_confirmed, errors=all_errors)
