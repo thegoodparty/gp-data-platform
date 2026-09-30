@@ -907,3 +907,365 @@ models:
             expression: has_amplitude_data
           config:
             where: active_m0 or active_m1 or active_m2
+
+  - name: int__user_election_anchor
+    description: >
+      The one election each user's row speaks for, and the six-month window
+      running up to it. One row per user whether or not an election date
+      reaches them.
+
+      Calendar windows are the wrong frame for a candidate. Win-side activity
+      is shaped by proximity to the election, not by the month, so anything
+      measuring how hard someone campaigned has to be anchored on their own
+      election date. Six months is measured rather than assumed: across all
+      seven outreach sources the 90th percentile of days between a send and the
+      election is at or under 180 for every channel, and the medians run 15 to
+      55 days.
+
+      Anchor rule, matching the candidacy columns on the wide user row: the
+      latest non-demo campaign version, preferring the earliest election still
+      ahead of the user, falling back to the most recent one behind them. Only
+      about 70 users hold more than one campaign, so the rule is cheap, but it
+      is fully ordered so a row cannot change basis between builds.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: anchor_campaign_id
+        description: >
+          The campaign whose election date this row uses. Null for a user with
+          no non-demo campaign.
+      - name: anchor_campaign_version_id
+        description: Latest version of the anchor campaign.
+      - name: election_date
+        description: >
+          Election date of the anchor campaign, or null. Restricted to a
+          plausible range; the campaigns mart carries a few dozen rows outside
+          it, including a year 24 and a year 275760, and unguarded date
+          arithmetic on the latter overflows rather than returning a window.
+      - name: election_date_status
+        description: >
+          Why a window is or is not computable, so a null count downstream is
+          never read as a zero. About 43k of 72k users reach a usable election
+          date.
+
+          'upcoming' and 'past' are the two cases with a window. 'no_campaign'
+          is a user who never started a run, 'no_election_date' is a run whose
+          office never resolved to an election, and 'invalid_date' is a
+          campaign carrying a date outside the plausible range. The last three
+          are kept apart because they are different problems with different
+          owners.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  ["upcoming", "past", "no_campaign", "no_election_date", "invalid_date"]
+      - name: outreach_window_start
+        description: Six months before the election date. Null without a window.
+      - name: outreach_window_end
+        description: The election date itself. Null without a window.
+      - name: outreach_window_is_open
+        description: >
+          True when the election is still ahead, meaning the window is still
+          filling. This is the trap the model exists to flag: a candidate two
+          weeks into their six months has a low count because the window is
+          young, not because they are quiet, and nothing about the count itself
+          says so.
+
+          False, never null, for a user with no window at all. Not having an
+          open window is a fact rather than an unknown, and a null would drop
+          all 29k of them out of `where not outreach_window_is_open`.
+        data_tests:
+          - not_null
+      - name: outreach_window_days_total
+        description: Length of the window in days. 181 to 184, depending on which months it spans.
+      - name: outreach_window_days_elapsed
+        description: >
+          Days of the window that have already passed. Clamped at both ends:
+          zero before the window opens, full length once the election is by. An
+          unclamped difference goes negative for an election more than six
+          months out and would divide the wrong way in any rate.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: outreach_window_end > outreach_window_start
+          config:
+            where: outreach_window_start is not null
+      # A window exists for exactly the two statuses that have one, and every
+      # window-derived column agrees about it. Covered as one expression rather
+      # than per column because the failure is always the same: a windowless
+      # user picking up a value, which then reads as a real zero downstream.
+      #
+      # days_elapsed is the one that has already gone wrong. greatest() skips
+      # nulls in Spark rather than propagating them, so the guard in the model
+      # is the only thing standing between 29k users and a spurious zero, and
+      # the guard is easy to drop by accident.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (election_date_status in ('upcoming', 'past'))
+              = (
+                election_date is not null
+                and outreach_window_start is not null
+                and outreach_window_end is not null
+                and outreach_window_days_total is not null
+                and outreach_window_days_elapsed is not null
+              )
+
+  - name: int__user_outreach_sends
+    description: >
+      Every voter-outreach send we can see, one row each, tagged with the
+      channel it went out on and the source that knows about it.
+
+      Read from two systems on purpose, because each is blind where the other
+      sees. The product database holds the texting volume: half a million
+      billable texts on the peer-to-peer flow, none of which reached Amplitude
+      until the terminal event landed in late September 2026. Amplitude holds
+      the legacy product-executed sends and the phone-banking sessions, whose
+      product rows never had a terminal status written back and so sit at
+      'pending' forever. Counted from either source alone the number is short
+      by roughly the size of the other: about 1,280 users against 340,
+      overlapping on 216.
+
+      Where both sources see the same send the product database wins, since it
+      is the one that knows the channel and the volume. The v2 terminal event
+      carries an outreach id and every id it has emitted matches a product row,
+      so that leg collapses exactly; the legacy events carry no id and fall
+      back to same user, same day, matched per channel.
+
+      Grain: one row per send, unique on send_key. Not unique on user_id.
+    columns:
+      - name: user_id
+        description: gp-api user id. Not unique in this model.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: channel
+        description: >
+          The channel the send went out on.
+
+          'unattributed' is not a channel but an honest gap, and it is about
+          three quarters of the historical count. The legacy product-executed
+          send fired without naming a channel and predates the property that
+          would have, so guessing would put most of 2025 in whichever bucket we
+          picked.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "texting",
+                    "robocall",
+                    "social",
+                    "door_knocking",
+                    "phone_banking",
+                    "unattributed",
+                  ]
+      - name: send_at
+        description: >
+          When the send went out. The scheduled send date where the candidate
+          chose one, else when the row or event appeared. Legitimately in the
+          future: a scheduled campaign is dated when it will go, not when it
+          was booked.
+        data_tests:
+          - not_null
+      - name: source
+        description: Which system this row was read from.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["gp_api_outreach", "amplitude"]
+      - name: basis
+        description: >
+          'committed' is a send we know went out. 'requested' is one we only
+          know was asked for: the 2025-era text and robocall rows carry a
+          script, a message and a date but never a terminal status, because ops
+          fulfilled them through an external vendor that did not write back.
+          Dropping them loses most of the pre-2026 history and calling them
+          sends asserts a delivery nobody confirmed, so they are counted
+          separately downstream.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["committed", "requested"]
+      - name: recipient_count
+        description: >
+          How many people the send reached, where the channel counts it. Null,
+          never zero, everywhere else: a robocall to an unknown number of
+          people is not a robocall to nobody.
+
+          Reads the recipient count property only. The sibling voter-contacts
+          property is the size of the audience the candidate selected, not the
+          number reached: it is the only count the phone-banking event carries
+          and its median there is over two thousand, so coalescing the two would
+          report completing one call session as contacting a whole call list.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: send_key
+        description: >
+          Stable identity for one send. Primary key.
+
+          The legacy leg carries no outreach id and fires several times in the
+          same millisecond when a candidate commits a batch, so the fallback key
+          needs a row discriminator. Those copies are distinct sends rather than
+          echoes, and carry different recipient counts, 1,200 against 55,000 in
+          one case; without the discriminator 107 real sends collapse into 50.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: int__user_outreach_intensity
+    description: >
+      How hard a candidate campaigned in the six months running up to their own
+      election. The outreach slice of the end-to-end user view, one row per
+      user.
+
+      Every count is anchored on the user's election date, never on the
+      calendar. Two candidates who each sent four campaigns are not comparable
+      if one was six weeks out and the other eighteen months out, and a
+      calendar quarter mixes those together.
+
+      Counts are zero where we can see the window and nothing happened in it,
+      and null where there is no window to look at. About 29k of 72k users have
+      no usable election date, and a zero there would report a missing office
+      match as a candidate who did nothing.
+
+      Two names deliberately differ from columns already in circulation. The
+      lifetime total_campaigns_sent on the Win user base is an Amplitude-union
+      count with no window; outreach_sent_count is windowed and routes each
+      channel to the source that knows it. They will not match and are not
+      meant to. outreach_first_sent_at is likewise not first_campaign_sent_at.
+
+      There is no Serve equivalent, deliberately. A term is not an election, so
+      an election-anchored window has no meaning for an elected official, and
+      forcing a Serve number into one would be a quietly wrong column.
+      Constituent outreach is real and measurable, but it needs its own event
+      name and its own anchor.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: Election date of the anchor campaign. Null without one.
+      - name: election_date_status
+        description: >
+          Carried from the anchor model so a consumer can tell a real zero from
+          an unknown without a second join.
+        data_tests:
+          - not_null
+      - name: outreach_window_start
+        description: Six months before the election date.
+      - name: outreach_window_end
+        description: The election date itself.
+      - name: outreach_window_is_open
+        description: >
+          True when the election is still ahead. About 280 of the senders here
+          are counted over a window that is still filling, so their counts are
+          floors rather than totals.
+      - name: outreach_window_days_total
+        description: Length of the window in days.
+      - name: outreach_window_days_elapsed
+        description: >
+          Days of the window already passed. Divide a count by this to compare
+          an open window against a closed one, rather than comparing the raw
+          counts.
+      - name: outreach_sent_count
+        description: >
+          Committed sends inside the window. The headline intensity number.
+          Zero inside a known window, null without one.
+      - name: outreach_requested_count
+        description: >
+          Sends inside the window we only know were requested, from the 2025
+          era whose terminal status was never written back. Kept separate so
+          the headline count never asserts an unconfirmed delivery.
+      - name: outreach_recipient_count
+        description: >
+          People reached by committed sends inside the window, where the
+          channel counts them. Null even inside a window when no send carried a
+          count, since a zero would claim a send reached nobody rather than
+          that we cannot tell.
+      - name: outreach_channel_count
+        description: Distinct channels used inside the window.
+      - name: outreach_first_sent_at
+        description: First committed send inside the window. Not the lifetime first send.
+      - name: outreach_last_sent_at
+        description: Last committed send inside the window.
+      - name: outreach_texting_count
+        description: Committed texting sends inside the window.
+      - name: outreach_robocall_count
+        description: Committed robocall sends inside the window.
+      - name: outreach_social_count
+        description: Committed social sends inside the window.
+      - name: outreach_door_knocking_count
+        description: Completed door-knocking walks inside the window.
+      - name: outreach_phone_banking_count
+        description: Completed phone-banking sessions inside the window.
+      - name: outreach_unattributed_count
+        description: >
+          Committed sends inside the window whose channel the instrumentation
+          never recorded. About three quarters of the total, so it is published
+          rather than folded into a channel it might not belong to. A channel
+          breakdown that ignores this column will look far more complete than
+          it is.
+      - name: outreach_before_window_count
+        description: >
+          Committed sends earlier than six months before the election. Small by
+          construction, since the 90th percentile of send timing sits inside the
+          window.
+      - name: outreach_after_election_count
+        description: >
+          Committed sends after the election date. Non-zero for a few dozen
+          users and usually a signal about the anchor rather than the candidate:
+          it means they have moved on to a cycle the anchor has not picked up.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: outreach_last_sent_at >= outreach_first_sent_at
+          config:
+            where: outreach_first_sent_at is not null
+      # The null discipline this model turns on. A count must be null exactly
+      # when there is no window, and a zero otherwise. Getting this backwards
+      # reports 29k users with no election date as candidates who did nothing,
+      # which is the single most likely way to misread the column.
+      #
+      # Every guarded count, not just the headline: they share one guard, so
+      # they fail together, and a per-column test would only ever catch
+      # whichever one someone edited.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (election_date_status in ('upcoming', 'past'))
+              = (
+                outreach_sent_count is not null
+                and outreach_requested_count is not null
+                and outreach_channel_count is not null
+                and outreach_texting_count is not null
+                and outreach_robocall_count is not null
+                and outreach_social_count is not null
+                and outreach_door_knocking_count is not null
+                and outreach_phone_banking_count is not null
+                and outreach_unattributed_count is not null
+                and outreach_before_window_count is not null
+                and outreach_after_election_count is not null
+              )
+      # A channel breakdown that does not sum to the headline means a channel
+      # was added to the send model and never given a column here.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              outreach_sent_count = outreach_texting_count + outreach_robocall_count
+              + outreach_social_count + outreach_door_knocking_count
+              + outreach_phone_banking_count + outreach_unattributed_count
+          config:
+            where: outreach_sent_count is not null
