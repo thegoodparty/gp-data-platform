@@ -217,3 +217,273 @@ models:
           - unique
       - name: _airbyte_extracted_at
         description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: stripe_accounts
+    description: >
+      Pass-through of the Stripe accounts stream for the first cut of the finance mart. The
+      Stripe account itself.
+    columns:
+      - name: id
+        description: Stripe identifier for the account.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_application_fees
+    description: >
+      Pass-through of the Stripe application fees stream for the first cut of the finance mart.
+      Connect application fees. Synced empty.
+    columns:
+      - name: id
+        description: Stripe identifier for the application fee.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_application_fees_refunds
+    description: >
+      Pass-through of the Stripe application fees refunds stream for the first cut of the
+      finance mart. Refunds of Connect application fees. Synced empty.
+    columns:
+      - name: id
+        description: Stripe identifier for the application fees refund.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_balance_transactions
+    description: >
+      Pass-through of the Stripe balance transactions stream for the first cut of the finance
+      mart. Every movement across the Stripe balance, the reconciliation view of payouts against
+      charges and fees.
+    columns:
+      - name: id
+        description: Stripe identifier for the balance transaction.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_charges
+    description: >
+      Pass-through of the Stripe charges stream for the first cut of the finance mart. Every
+      payment attempt, successful or not. The only stream that sees all the money: one-off
+      purchases reach Stripe as a bare charge and never produce an invoice. Times and amounts
+      are already converted in staging.
+    columns:
+      - name: charge_id
+        description: Stripe identifier for the charge.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_customer_balance_transactions
+    description: >
+      Pass-through of the Stripe customer balance transactions stream for the first cut of the
+      finance mart. Credits and debits against a customer's Stripe balance.
+    columns:
+      - name: id
+        description: Stripe identifier for the customer balance transaction.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_customers
+    description: >
+      Pass-through of the Stripe customers stream for the first cut of the finance mart. Stripe
+      customers. Carries contact PII: name, email, phone and address.
+    columns:
+      - name: id
+        description: Stripe identifier for the customer.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_events
+    description: >
+      Pass-through of the Stripe events stream for the first cut of the finance mart. The Stripe
+      event log. Largest stream here by an order of magnitude; useful for audit, rarely for
+      reporting.
+    columns:
+      - name: id
+        description: Stripe identifier for the event.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_invoice_items
+    description: >
+      Pass-through of the Stripe invoice items stream for the first cut of the finance mart. Ad-
+      hoc line items staged onto a forthcoming invoice.
+    columns:
+      - name: id
+        description: Stripe identifier for the invoice item.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_invoice_line_items
+    description: >
+      Pass-through of the Stripe invoice line items stream for the first cut of the finance
+      mart. Line-level detail of issued invoices.
+    columns:
+      - name: id
+        description: Stripe identifier for the invoice line item.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_invoices
+    description: >
+      Pass-through of the Stripe invoices stream for the first cut of the finance mart. Issued
+      invoices, the subscription side of revenue. Times and amounts are already converted in
+      staging.
+    columns:
+      - name: invoice_id
+        description: Stripe identifier for the invoice.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_payouts
+    description: >
+      Pass-through of the Stripe payouts stream for the first cut of the finance mart. Transfers
+      from the Stripe balance to the bank account.
+    columns:
+      - name: id
+        description: Stripe identifier for the payout.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_persons
+    description: >
+      Pass-through of the Stripe persons stream for the first cut of the finance mart. Connect
+      account representatives. Synced empty. The SSN and ID-number fields are booleans recording
+      whether a value was provided, not the value.
+    columns:
+      - name: id
+        description: Stripe identifier for the person.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_plans
+    description: >
+      Pass-through of the Stripe plans stream for the first cut of the finance mart. Legacy
+      pricing plans, superseded by prices.
+    columns:
+      - name: id
+        description: Stripe identifier for the plan.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_prices
+    description: >
+      Pass-through of the Stripe prices stream for the first cut of the finance mart. Prices
+      attached to products.
+    columns:
+      - name: id
+        description: Stripe identifier for the price.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_products
+    description: >
+      Pass-through of the Stripe products stream for the first cut of the finance mart. Products
+      sold through Stripe.
+    columns:
+      - name: id
+        description: Stripe identifier for the product.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_promotion_codes
+    description: >
+      Pass-through of the Stripe promotion codes stream for the first cut of the finance mart.
+      Promotion codes and their redemption limits.
+    columns:
+      - name: id
+        description: Stripe identifier for the promotion code.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_refunds
+    description: >
+      Pass-through of the Stripe refunds stream for the first cut of the finance mart. Refunds
+      issued against charges.
+    columns:
+      - name: id
+        description: Stripe identifier for the refund.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_subscription_items
+    description: >
+      Pass-through of the Stripe subscription items stream for the first cut of the finance
+      mart. Per-item detail of subscriptions.
+    columns:
+      - name: id
+        description: Stripe identifier for the subscription item.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_subscription_schedule
+    description: >
+      Pass-through of the Stripe subscription schedule stream for the first cut of the finance
+      mart. Scheduled subscription phase changes.
+    columns:
+      - name: id
+        description: Stripe identifier for the subscription schedule.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_subscriptions
+    description: >
+      Pass-through of the Stripe subscriptions stream for the first cut of the finance mart.
+      Active and past subscriptions. Times and amounts are already converted in staging.
+    columns:
+      - name: subscription_id
+        description: Stripe identifier for the subscription.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_transactions
+    description: >
+      Pass-through of the Stripe transactions stream for the first cut of the finance mart.
+      Stripe Treasury transactions. Synced empty.
+    columns:
+      - name: id
+        description: Stripe identifier for the transaction.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_transfer_reversals
+    description: >
+      Pass-through of the Stripe transfer reversals stream for the first cut of the finance
+      mart. Reversals of Connect transfers. Synced empty.
+    columns:
+      - name: id
+        description: Stripe identifier for the transfer reversal.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stripe_transfers
+    description: >
+      Pass-through of the Stripe transfers stream for the first cut of the finance mart. Connect
+      transfers to connected accounts. Synced empty.
+    columns:
+      - name: id
+        description: Stripe identifier for the transfer.
+        data_tests:
+          - not_null
+          - unique
