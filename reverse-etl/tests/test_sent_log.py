@@ -8,6 +8,7 @@ import pytest
 from retl.sent_log import (
     FLOW_ID_PROPERTY,
     PARAM_CHAR_LIMIT,
+    SentLogWriter,
     WrongLogTableError,
     append_sent_log,
     create_log_table_sql,
@@ -189,3 +190,18 @@ def test_append_sent_log_round_trips_payloads_that_need_escaping() -> None:
     append_sent_log(connection, log_table=LOG_TABLE, confirmed=confirmed)
 
     assert read_latest_sent(connection, log_table=LOG_TABLE) == confirmed
+
+
+def test_sent_log_writer_keeps_the_original_error_when_the_exit_flush_also_fails() -> None:
+    """Catches: a failed flush on exit replacing delivery's own error, so the alert would
+    name a warehouse INSERT failure instead of the real cause (e.g. a HubSpot 401)."""
+    connection = FakeConnection(tables={})  # no table: any insert raises
+
+    with (
+        pytest.raises(RuntimeError, match="hubspot 401") as caught,
+        SentLogWriter(connection, LOG_TABLE) as writer,
+    ):
+        writer.add({"p1": "{}"})
+        raise RuntimeError("hubspot 401")
+
+    assert any("flush on exit also failed" in note for note in caught.value.__notes__)

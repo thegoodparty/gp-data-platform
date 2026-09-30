@@ -181,8 +181,16 @@ class SentLogWriter:
     def __enter__(self) -> SentLogWriter:
         return self
 
-    def __exit__(self, *exc_info: object) -> None:
-        self._flush()
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> None:
+        if exc is None:
+            self._flush()
+            return
+        try:
+            self._flush()
+        except Exception as flush_exc:
+            # Keep delivery's error as the one that surfaces: it is the real cause, and the
+            # unlogged rows are simply resent next run.
+            exc.add_note(f"sent-log flush on exit also failed: {flush_exc}")
 
 
 def append_sent_log(
