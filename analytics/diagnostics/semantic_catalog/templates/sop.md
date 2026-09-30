@@ -169,3 +169,74 @@ that scope, so the recorded date is the real one.
 The review gate is a soft gate. An absent approver never blocks an urgent fix.
 Accountability comes from the change being visible: a merge missing an approval
 the change needed is announced as exactly that, never silently.
+
+## When the product and a metric drift apart
+
+A metric names raw events, and the product keeps changing which events fire, so
+the two drift apart. There are three ways it happens, and each has a different
+owner. Name which one you are in before changing anything, because that decides
+who approves and in what order.
+
+| Drift | What happened | Who decides | What changes | Review lane |
+|---|---|---|---|---|
+| **A. The meaning changed** | The business group rules that the metric should count something different | The business group, first | `business_rule`, then `anchored_on` re-derived to match it | Business and data |
+| **B. The product moved, the meaning did not** | An event was renamed, a surface was rebuilt, or an event stopped firing and a successor took over | Product analytics | `anchored_on`, plus any model that names the event directly | Data |
+| **C. The product changed what could be counted** | A new surface or property would widen or narrow what a leg counts, in a way the rule does not mention | The business group, before any pull request | Nothing until they rule. Then it proceeds as A (change the rule) or B (change the implementation so the rule still holds) | Set by the ruling |
+
+These are the cases omni's alignment monitor raises (`anchor_alignment.py`). Its
+case 2, the declaration is behind the product, is drift B. Its case 3, the two
+disagree on scope, is drift C. Its case 1, omni's registry is behind the
+declaration, is the last step of A and B rather than a drift of its own.
+
+**One change can hold two drifts.** A rename (B) can carry a property change that
+quietly lets a new group in (C). Settle the C half first. The B half proceeds
+alongside only where it does not depend on the ruling.
+
+**For drift B, keep the old leg.** History before the change lives only under the
+old event, and a leg cannot be limited to a date range, so replacing the leg
+deletes that history from the metric.
+
+### Steps, for any drift
+
+1. **Name the drift.** For A or C, get the business group's ruling in writing
+   first. Nobody decides what a metric means by choosing which events to count.
+2. **Read the gotchas books before planning:** omni's
+   `packages/runbooks/books/analytics-governance-gotchas.md`, and this repo's
+   `.claude/skills/win-analytics-knowledge/references/gotchas.md` (or the Serve
+   one). Every row is a trap that has already produced a confident wrong answer.
+3. **Pin the dates from the warehouse**, not from a ticket: when the product
+   change reached prod, when the old event last fired, when the new one first
+   fired.
+4. **Prove removal before retiring a leg.** `era: historical` needs the commit or
+   pull request that removed the old event from the code. An event going quiet is
+   not proof.
+5. **Find every reader, more than one way:** the literal event name in both
+   repos, the macros that compile `anchored_on`, and any model that
+   de-duplicates or branches on the event's properties. One search that finds
+   nothing is not evidence.
+6. **Compare the old and new events' properties, in code and in data.** Every
+   `excluding` qualifier must still exclude exactly what it did, and every key a
+   model de-duplicates on must still exist. A property change that admits or
+   drops a group the rule does not name is drift C: stop and take it to the
+   business group.
+7. **Measure the gap** since the change: who is missing from the metric today.
+8. **Ship in this order:**
+   1. A preparation pull request that touches no `sem_*.yml`: the models and
+      tests that name the event directly, and any fix the new leg needs in order
+      to count correctly. Merge it first.
+   2. The `sem_*.yml` pull request: the new leg, the old leg kept with
+      `era: historical` and its date, the pin tests updated, and the metric's new
+      value in the body. Opening it starts the review routing above.
+   3. Mart documentation (`m_*.yaml`) in its own small pull request, because an
+      edit there rebuilds a large part of the project in CI.
+   4. The omni pull request that brings the monitoring registry in line
+      (`monitored_events.yaml` and its tests).
+9. **Verify after merge:** the sign-off pull request opened, the catalog
+   regenerated, the metric's prod value matches the value stated in the pull
+   request, and any dormant-instrument warning cleared. Anything predicted while
+   planning, such as "no step at the cutover", is measured here, not assumed.
+10. **Update the docs that describe the metric** in the same ticket.
+
+The procedure for an agent working a drift, with the queries and commands, is in
+omni's `triage-instrumentation-gaps` skill (Queue C). It follows this section and
+restates none of it.
