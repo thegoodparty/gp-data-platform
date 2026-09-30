@@ -12,6 +12,8 @@ with
             -- Distinguishes the three moments that share the Campaign Completed
             -- name; see is_outreach_activation_event.
             event_properties:method::string as outreach_method,
+            -- Win or Serve. Only the events named since 2026-09-29 carry it.
+            event_properties:product::string as outreach_product,
             -- Dedup key for the shared send terminal, which is once per committed
             -- payment rather than once per outreach. The completion event carries
             -- the same id as outreachCampaignId and fires seconds after the
@@ -111,7 +113,10 @@ with
                     when
                         {{
                             is_outreach_activation_event(
-                                "event_type", "outreach_method"
+                                "event_type",
+                                "outreach_method",
+                                "outreach_product",
+                                contact_legs=false,
                             )
                         }} and is_first_commit
                     then 1
@@ -122,7 +127,10 @@ with
                     when
                         {{
                             is_outreach_activation_event(
-                                "event_type", "outreach_method"
+                                "event_type",
+                                "outreach_method",
+                                "outreach_product",
+                                contact_legs=false,
                             )
                         }} and is_first_commit
                     then recipient_count
@@ -133,7 +141,7 @@ with
                     when
                         {{
                             is_outreach_activation_event(
-                                "event_type", "outreach_method"
+                                "event_type", "outreach_method", "outreach_product"
                             )
                         }} and is_first_commit
                     then event_time
@@ -144,7 +152,7 @@ with
                     when
                         {{
                             is_outreach_activation_event(
-                                "event_type", "outreach_method"
+                                "event_type", "outreach_method", "outreach_product"
                             )
                         }} and is_first_commit
                     then event_time

@@ -29,13 +29,21 @@ def test_parse_anchors_returns_only_metrics_that_declare_one():
 def test_parse_anchors_normalises_missing_qualifiers():
     legs = parse_anchors(SEM_DOC)["win_active_candidates_30d"]
     assert legs == [
-        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}, "paywalled": False},
+        {
+            "event": "Viewed",
+            "path": "/dashboard",
+            "era": None,
+            "excluding": {},
+            "paywalled": False,
+            "unit": None,
+        },
         {
             "event": "Dashboard - Campaign Plan Viewed",
             "path": None,
             "era": "historical",
             "excluding": {},
             "paywalled": False,
+            "unit": None,
         },
     ]
 
@@ -52,7 +60,14 @@ def test_parse_anchors_carries_a_property_exclusion():
         ]
     }
     assert parse_anchors(doc)["m"] == [
-        {"event": "E", "path": None, "era": None, "excluding": {"method": "manual"}, "paywalled": False}
+        {
+            "event": "E",
+            "path": None,
+            "era": None,
+            "excluding": {"method": "manual"},
+            "paywalled": False,
+            "unit": None,
+        }
     ]
 
 
@@ -87,13 +102,21 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     legs = parse_anchors(doc)["win_active_candidates_30d"]
     assert legs == [
-        {"event": "Viewed", "path": "/dashboard", "era": None, "excluding": {}, "paywalled": False},
+        {
+            "event": "Viewed",
+            "path": "/dashboard",
+            "era": None,
+            "excluding": {},
+            "paywalled": False,
+            "unit": None,
+        },
         {
             "event": "Dashboard - Candidate Dashboard Viewed",
             "path": None,
             "era": "historical",
             "excluding": {},
             "paywalled": False,
+            "unit": None,
         },
         {
             "event": "Dashboard - Campaign Plan Viewed",
@@ -101,6 +124,7 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "era": "historical",
             "excluding": {},
             "paywalled": False,
+            "unit": None,
         },
         {
             "event": "Campaign Plan - Campaign Tracker Viewed",
@@ -108,6 +132,7 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "era": None,
             "excluding": {},
             "paywalled": False,
+            "unit": None,
         },
     ]
     live = [leg for leg in legs if leg["era"] != "historical"]
