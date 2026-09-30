@@ -1,4 +1,4 @@
 {% set source_ref = source("dbt_source", "l2_s3_nh_uniform") %}
 
-select {{ dbt_utils.star(from=source_ref, except=[]) }}  -- use `except` for any columns to transform individually
+select {{ l2_uniform_columns(source_ref) }}
 from {{ source_ref }}
