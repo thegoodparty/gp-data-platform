@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -194,6 +196,38 @@ class FakeHttpTransport:
     def post(self, url: str, *, json: dict[str, Any], headers: dict[str, str], timeout: float) -> Any:
         self.calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
         return self.responses[len(self.calls) - 1]
+
+
+@dataclass
+class EchoHttpTransport:
+    """Confirms every input it is sent, answering from the request itself so concurrent
+    calls can arrive in any order. A batch whose first key is in `fail_on` gets
+    `fail_status` instead. Records the peak number of calls in flight at once."""
+
+    fail_on: frozenset[str] = frozenset()
+    fail_status: int = 401
+    delay: float = 0.01
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    peak_in_flight: int = 0
+    _in_flight: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def post(self, url: str, *, json: dict[str, Any], headers: dict[str, str], timeout: float) -> Any:
+        from retl.hubspot_destination import HttpResponse
+
+        with self._lock:
+            self.calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+            self._in_flight += 1
+            self.peak_in_flight = max(self.peak_in_flight, self._in_flight)
+        try:
+            time.sleep(self.delay)
+            keys = [i["objectWriteTraceId"] for i in json["inputs"]]
+            if keys[0] in self.fail_on:
+                return HttpResponse(self.fail_status, {})
+            return HttpResponse(200, {"results": [{"objectWriteTraceId": k} for k in keys]})
+        finally:
+            with self._lock:
+                self._in_flight -= 1
 
 
 def flow_tables(
