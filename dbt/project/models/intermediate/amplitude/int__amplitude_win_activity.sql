@@ -13,8 +13,18 @@ with
             -- name; see is_outreach_activation_event.
             event_properties:method::string as outreach_method,
             -- Dedup key for the shared send terminal, which is once per committed
-            -- payment rather than once per outreach.
-            event_properties:outreachid::string as outreach_id,
+            -- payment rather than once per outreach. The completion event carries
+            -- the same id as outreachCampaignId and fires seconds after the
+            -- terminal, so the two collapse to one send. One-to-many sends only:
+            -- door-knocking turfs share their campaign's anchor id, and each
+            -- finished turf is its own completion.
+            coalesce(
+                event_properties:outreachid::string,
+                case
+                    when event_properties:fanout::string = 'one-to-many'
+                    then event_properties:outreachcampaignid::string
+                end
+            ) as outreach_id,
             coalesce(
                 try_cast(event_properties:recipientcount as bigint),
                 try_cast(event_properties:votercontacts as bigint)

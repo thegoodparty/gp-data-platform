@@ -221,7 +221,8 @@ models:
   - name: int__amplitude_win_activity
     description: >
       User x month intermediate aggregating Win product engagement from Amplitude.
-      Captures campaign sends (Voter Outreach - Campaign Completed), and dashboard views
+      Captures campaign sends (the legs of win_activated_users, via
+      is_outreach_activation_event), and dashboard views
       (unioning the legacy and current dashboard-view event names, deduped).
 
       Grain: One row per user_id x activity_month_year.
@@ -240,7 +241,9 @@ models:
 
       - name: campaigns_sent
         description: >
-          Count of 'Voter Outreach - Campaign Completed' events in this month.
+          Count of outreach sends in this month: events matching a
+          win_activated_users leg (is_outreach_activation_event), one per
+          committed send.
           Zero if user had only dashboard views this month.
         data_tests:
           - not_null
@@ -392,7 +395,9 @@ models:
 
       - name: campaigns_sent
         description: >
-          Count of 'Voter Outreach - Campaign Completed' events in this week.
+          Count of outreach sends in this week: events matching a
+          win_activated_users leg (is_outreach_activation_event), one per
+          committed send.
           Zero if user had only dashboard views this week.
         data_tests:
           - not_null

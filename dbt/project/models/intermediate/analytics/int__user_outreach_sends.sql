@@ -107,7 +107,19 @@ with
             event_time,
             event_properties:method::string as outreach_method,
             event_properties:channel::string as channel_property,
-            event_properties:outreachid::string as outreach_id,
+            -- `medium` is the channel property going forward; `channel` is kept
+            -- beside it on the send terminal until nothing reads it.
+            event_properties:medium::string as medium_property,
+            -- The completion event names the same id outreachCampaignId, and on
+            -- a one-to-many send it is the same send as the terminal. Not on
+            -- door knocking, where every turf shares its campaign's anchor id.
+            coalesce(
+                event_properties:outreachid::string,
+                case
+                    when event_properties:fanout::string = 'one-to-many'
+                    then event_properties:outreachcampaignid::string
+                end
+            ) as outreach_id,
             -- recipientCount only. The sibling voterContacts property is the
             -- size of the audience the candidate selected, not the number of
             -- people a send reached: it is the only count the phone-banking
@@ -121,6 +133,8 @@ with
             try_cast(user_id as bigint) is not null
             and event_type in (
                 'Voter Outreach - Campaign Completed',
+                -- The same event under its name from 2026-09-29 (omni #2215).
+                'Outreach - Campaign Completed',
                 'Voter Outreach - Campaign Scheduled',
                 'Outreach - Phone Banking: Complete'
             )
@@ -153,12 +167,32 @@ with
                 when event_type = 'Voter Outreach - Campaign Scheduled'
                 then
                     case
-                        when channel_property = 'sms'
+                        when
+                            coalesce(medium_property, channel_property)
+                            in ('text', 'sms')
                         then 'texting'
-                        when channel_property = 'robocall'
+                        when coalesce(medium_property, channel_property) = 'robocall'
                         then 'robocall'
-                        when channel_property = 'social'
+                        when
+                            coalesce(medium_property, channel_property)
+                            in ('socialMedia', 'social')
                         then 'social'
+                        else 'unattributed'
+                    end
+                -- Every channel on one event since 2026-09-29, named by `medium`.
+                when event_type = 'Outreach - Campaign Completed'
+                then
+                    case
+                        when medium_property = 'text'
+                        then 'texting'
+                        when medium_property = 'robocall'
+                        then 'robocall'
+                        when medium_property = 'socialMedia'
+                        then 'social'
+                        when medium_property = 'doorKnocking'
+                        then 'door_knocking'
+                        when medium_property = 'phoneBanking'
+                        then 'phone_banking'
                         else 'unattributed'
                     end
                 when event_type = 'Outreach - Phone Banking: Complete'
