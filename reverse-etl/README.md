@@ -1,7 +1,7 @@
 # retl
 
 A small CLI that diffs a Databricks desired-state model against a destination (HubSpot contacts, or
-a CSV for a local preview), keyed on a stable person id, and logs every payload it delivers so a
+a CSV file per run), keyed on a stable person id, and logs every payload it delivers so a
 later run only ever sends what changed. `.env.example` documents the full environment surface; this
 file is the run and deploy story.
 
@@ -10,12 +10,18 @@ file is the run and deploy story.
 ```bash
 uv sync
 cp .env.example .env  # fill in the Databricks + flow values, then export them
-uv run retl --source=hubspot --destination=csv
+uv run retl --source=hubspot --destination=csv --dry-run
 ```
 
-`--destination=csv` never writes to the send log, so it is safe to run repeatedly while iterating.
-`--destination=hubspot_contacts` requires `RETL_HUBSPOT_TOKEN` and does write the log — point
-`RETL_FLOW_<FLOW>_LOG_TABLE` at a scratch table unless you mean to send for real.
+`--dry-run` reads and diffs exactly as a real run does, guards included, prints the summary line,
+and sends and logs nothing, so it is safe to run repeatedly while iterating. It needs no
+destination config (no HubSpot token, no output dir).
+
+Without it, every destination is a real delivery and writes the log. `--destination=csv` writes
+each run's diff to a new `<flow>_<utc timestamp>.csv` in `RETL_CSV_OUTPUT_DIR`, so a rerun writes
+nothing (no file at all) until a row is added or changed. `--destination=hubspot_contacts` requires
+`RETL_HUBSPOT_TOKEN`. Point `RETL_FLOW_<FLOW>_LOG_TABLE` at a scratch table unless you mean to send
+for real.
 
 A flow's log table must exist before its first non-init run:
 
@@ -34,7 +40,7 @@ The entrypoint is the `retl` console script; the default `CMD` is `--help`.
 
 ```bash
 docker build -t retl-local .
-docker run --rm --env-file .env retl-local --source=hubspot --destination=csv
+docker run --rm --env-file .env retl-local --source=hubspot --destination=csv --dry-run
 ```
 
 ## CI and deploy

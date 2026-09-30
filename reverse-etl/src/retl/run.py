@@ -1,10 +1,8 @@
 """Orchestrates one run of one flow against one destination.
 
-Reads the flow's desired-state rows and this flow's latest logged payloads, runs the
-guards, hands the buffered diff to the destination, and gives the destination a
-callback that appends a batch's confirmed rows to sent_log as soon as that batch is
-confirmed -- never end-of-run, so a later batch's failure cannot strand an earlier
-batch's confirmations unlogged.
+`plan_run` reads the flow's desired-state rows and latest logged payloads, runs the
+guards, and computes the diff; a dry run stops there. `execute_run` then hands the
+diff to the destination, with each confirmed batch going straight to a SentLogWriter.
 """
 
 from __future__ import annotations
@@ -62,7 +60,7 @@ class EmptyLogError(RuntimeError):
     "most of the population moved" is not itself a signal of a problem. This guard
     covers all three amnesia shapes with zero false alarms on any day the log
     genuinely has rows for this flow. Zero sends on failure, as with the other
-    guards; applies to every destination, including a CSV preview.
+    guards; applies to every destination, and to a dry run.
     """
 
     def __init__(self, flow_id: str, log_table: str):
@@ -83,12 +81,14 @@ class RunSummary:
     error_count: int
     orphaned_key_count: int
     errors: list[RowError] = field(default_factory=list)
+    dry_run: bool = False
 
     def as_line(self) -> str:
         """One deterministic line: what a wrapping DAG task should carry into its failure alert."""
         return (
             f"retl flow={self.flow_id} source={self.source_count} to_send={self.to_send_count} "
             f"sent={self.sent_count} errors={self.error_count} orphaned_keys={self.orphaned_key_count}"
+            + (" dry_run=true" if self.dry_run else "")
         )
 
 
@@ -155,13 +155,28 @@ def read_source_payloads(connection: Any, flow: FlowConfig) -> dict[str, str]:
     return payloads
 
 
-def execute_run(
-    *,
-    connection: Any,
-    flow: FlowConfig,
-    destination: Destination,
-    accept_empty_log: bool = False,
-) -> RunSummary:
+@dataclass(frozen=True)
+class RunPlan:
+    """What a run would send, after every guard has passed."""
+
+    flow_id: str
+    source_count: int
+    to_send: list[tuple[str, str]]
+    orphaned_key_count: int
+
+    def dry_run_summary(self) -> RunSummary:
+        return RunSummary(
+            flow_id=self.flow_id,
+            source_count=self.source_count,
+            to_send_count=len(self.to_send),
+            sent_count=0,
+            error_count=0,
+            orphaned_key_count=self.orphaned_key_count,
+            dry_run=True,
+        )
+
+
+def plan_run(*, connection: Any, flow: FlowConfig, accept_empty_log: bool = False) -> RunPlan:
     desired = read_source_payloads(connection, flow)
     if not desired:
         raise EmptySourceError(flow.flow_id)
@@ -175,27 +190,37 @@ def execute_run(
     if not latest_sent and not accept_empty_log:
         raise EmptyLogError(flow.flow_id, flow.log_table)
 
-    to_send = compute_to_send(desired, latest_sent)
-
     # Buffered before any POST: a guard failure here must mean zero sends, not a
     # partial run discovered after batches already went out.
-    buffered = list(to_send.items())
-    if len(buffered) > flow.cap:
-        raise SendCapExceededError(flow.flow_id, cap=flow.cap, actual=len(buffered))
+    to_send = list(compute_to_send(desired, latest_sent).items())
+    if len(to_send) > flow.cap:
+        raise SendCapExceededError(flow.flow_id, cap=flow.cap, actual=len(to_send))
 
-    orphaned = orphaned_keys(latest_sent, desired)
+    return RunPlan(
+        flow_id=flow.flow_id,
+        source_count=len(desired),
+        to_send=to_send,
+        orphaned_key_count=len(orphaned_keys(latest_sent, desired)),
+    )
 
-    def _on_batch_confirmed(confirmed: dict[str, str]) -> None:
-        sent_log.append_sent_log(connection, log_table=flow.log_table, confirmed=confirmed)
 
-    delivery = destination.deliver(flow.flow_id, buffered, on_batch_confirmed=_on_batch_confirmed)
+def execute_run(
+    *,
+    connection: Any,
+    flow: FlowConfig,
+    destination: Destination,
+    accept_empty_log: bool = False,
+) -> RunSummary:
+    plan = plan_run(connection=connection, flow=flow, accept_empty_log=accept_empty_log)
+    with sent_log.SentLogWriter(connection, flow.log_table) as writer:
+        delivery = destination.deliver(flow.flow_id, plan.to_send, on_batch_confirmed=writer.add)
 
     return RunSummary(
         flow_id=flow.flow_id,
-        source_count=len(desired),
-        to_send_count=len(buffered),
+        source_count=plan.source_count,
+        to_send_count=len(plan.to_send),
         sent_count=len(delivery.confirmed),
         error_count=len(delivery.errors),
-        orphaned_key_count=len(orphaned),
+        orphaned_key_count=plan.orphaned_key_count,
         errors=delivery.errors,
     )

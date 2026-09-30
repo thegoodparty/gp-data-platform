@@ -7,11 +7,12 @@ that a mock's script drifted from what the real dependency does.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from retl.sent_log import FLOW_ID_PROPERTY
+from retl.sent_log import FLOW_ID_PROPERTY, PARAM_CHAR_LIMIT
 
 _CREATE_TABLE_RE = re.compile(
     r"create table if not exists (?P<table>\S+) .*tblproperties\s*\('retl\.flow_id'\s*=\s*'(?P<flow_id>[^']*)'\)",
@@ -35,7 +36,7 @@ def stamped_table(flow_id: str, rows: list[dict[str, Any]] | None = None) -> Fak
 class FakeCursor:
     """Serves every statement shape retl issues: a flat source `select *`; sent_log's
     create-if-not-exists, tblproperties read, latest-per-key read, and chunked
-    multi-row insert; and the existence probe `init_log_table` uses for its report.
+    JSON-array insert; and the existence probe `init_log_table` uses for its report.
 
     Every statement is looked up against `connection.tables` by name: a name absent
     from that dict is exactly a missing table, and any non-create statement against
@@ -51,6 +52,12 @@ class FakeCursor:
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> None:
         params = params or {}
+        # The warehouse rejects a statement whose parameters exceed this in total, so the
+        # fake does too: a chunking bug must fail here, not only against a live warehouse.
+        param_size = sum(len(str(value)) for value in params.values())
+        if param_size > PARAM_CHAR_LIMIT:
+            raise ValueError(f"parameters too large: {param_size} > {PARAM_CHAR_LIMIT}")
+        self._connection.param_sizes.append(param_size)
         self._connection.execute_call_count += 1
         self._connection.executed_sql.append(sql)
         lowered = sql.lower()
@@ -117,20 +124,16 @@ class FakeCursor:
         ]
 
     def _execute_insert(self, sql: str, params: dict[str, Any]) -> None:
-        """Reconstructs each row from its indexed params (`tracking_key_0`, ...): the
-        real statement never inlines a value, so this fake must not assume any
-        particular row count either."""
+        """Decodes the rows from the one JSON `rows` param, as the real statement's
+        `from_json` does, and stamps each with the shared `sent_at` param."""
         table_name = sql.split("insert into", 1)[1].split("(", 1)[0].strip()
         rows = self._table(table_name)
-        row_indices = sorted(
-            {int(key.rsplit("_", 1)[1]) for key in params if key.startswith("tracking_key_")}
-        )
-        for i in row_indices:
+        for row in json.loads(params["rows"]):
             rows.append(
                 {
-                    "tracking_key": params[f"tracking_key_{i}"],
-                    "payload": params[f"payload_{i}"],
-                    "sent_at": params[f"sent_at_{i}"],
+                    "tracking_key": row["tracking_key"],
+                    "payload": row["payload"],
+                    "sent_at": params["sent_at"],
                 }
             )
 
@@ -163,6 +166,7 @@ class FakeConnection:
     tables: dict[str, FakeTable] = field(default_factory=dict)
     closed: bool = False
     execute_call_count: int = 0
+    param_sizes: list[int] = field(default_factory=list)
     executed_sql: list[str] = field(default_factory=list)
 
     def cursor(self) -> FakeCursor:

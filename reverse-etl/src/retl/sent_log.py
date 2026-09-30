@@ -9,7 +9,7 @@ that table's rows as its own latest_sent -- non-empty, so the empty-log guard al
 could never catch it -- full-resend its own population, and append its rows into
 the wrong table, corrupting both flows' histories at once.
 
-Appends are INSERTs only, one call per confirmed batch (never end-of-run): this
+Appends are INSERTs only, through `SentLogWriter`: this
 module has no update/delete/merge path. With job-owned tables that is code
 discipline rather than a grant, and Delta table history is the tamper-evidence.
 
@@ -21,7 +21,8 @@ the run exactly as before.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -29,12 +30,15 @@ from .databricks_io import fetch_all_rows
 
 FLOW_ID_PROPERTY = "retl.flow_id"
 
-# The connector's own Cursor.executemany docstring says it issues one sequential
-# request per row with no batching, so appending confirmed rows one at a time would
-# be ~74k single-row round trips (and tiny Delta commits) on a first convergence, and
-# again on any viability-recompute day. A chunk of 50 rows x 3 params/row = 150 bind
-# markers, safely under Databricks' 255-parameter-marker statement limit.
-_APPEND_CHUNK_SIZE = 50
+# Every INSERT is its own Delta commit (~2.5s live), so each packs as many rows as
+# the warehouse allows: it rejects any statement whose parameters total more than this.
+PARAM_CHAR_LIMIT = 1_048_576
+_CHUNK_CHAR_BUDGET = PARAM_CHAR_LIMIT - 100_000  # headroom for sent_at and the [] framing
+
+# The rows travel as ONE JSON string parameter, decoded server-side by from_json. The
+# connector's ArrayParameter would be the obvious shape, but a live warehouse binds a
+# Python list as an empty array<void>: the insert succeeds and lands zero rows, silently.
+_ROWS_SCHEMA = "array<struct<tracking_key:string,payload:string>>"
 
 
 class _Connection(Protocol):
@@ -128,24 +132,65 @@ def read_latest_sent(connection: _Connection, *, log_table: str) -> dict[str, st
     return {row["tracking_key"]: row["payload"] for row in rows}
 
 
-def _chunked_insert_statement(
-    log_table: str, chunk: Sequence[tuple[str, str]], sent_at: datetime
-) -> tuple[str, dict[str, Any]]:
-    """One multi-row INSERT for up to `_APPEND_CHUNK_SIZE` rows, every value bound by name.
+def insert_sql(log_table: str) -> str:
+    """One INSERT that lands every row in its `:rows` JSON param, stamped with `:sent_at`.
 
-    Values are never inlined: quote-escaping SQL by hand is a known trap in this
-    repo, so every row's values get their own indexed named parameter
-    (`:tracking_key_0`, `:tracking_key_1`, ...) instead.
+    Values are never inlined: quote-escaping SQL by hand is a known trap in this repo,
+    and json.dumps plus from_json round-trips any payload byte-identically.
     """
-    value_clauses = []
-    params: dict[str, Any] = {}
-    for i, (tracking_key, payload) in enumerate(chunk):
-        value_clauses.append(f"(:tracking_key_{i}, :payload_{i}, :sent_at_{i})")
-        params[f"tracking_key_{i}"] = tracking_key
-        params[f"payload_{i}"] = payload
-        params[f"sent_at_{i}"] = sent_at
-    sql = f"insert into {log_table} (tracking_key, payload, sent_at) values " + ", ".join(value_clauses)
-    return sql, params
+    return (
+        f"insert into {log_table} (tracking_key, payload, sent_at) "
+        "select r.tracking_key, r.payload, :sent_at "
+        f"from (select explode(from_json(:rows, '{_ROWS_SCHEMA}')) as r)"
+    )
+
+
+class SentLogWriter:
+    """Buffers confirmed rows and appends each full chunk as one INSERT the moment it fills.
+
+    Only rows a destination definitively confirmed belong here: logging an attempt would
+    mark a rejected row as delivered and never retry it. Use as a context manager: exit
+    appends the remainder, including when delivery raises, so rows a destination already
+    accepted are not left unlogged. A hard kill loses at most one partial chunk, which the
+    next run resends. Append-only: INSERT, never update/delete/merge.
+    """
+
+    def __init__(self, connection: _Connection, log_table: str, *, sent_at: datetime | None = None):
+        self._connection = connection
+        self._sql = insert_sql(log_table)
+        self._sent_at = sent_at or datetime.now(UTC)
+        self._rows: list[str] = []
+        self._size = 0
+
+    def add(self, confirmed: Mapping[str, str]) -> None:
+        for tracking_key, payload in confirmed.items():
+            encoded = json.dumps({"tracking_key": tracking_key, "payload": payload}, separators=(",", ":"))
+            # A single row over budget still goes alone, and the warehouse rejects it loudly.
+            if self._rows and self._size + len(encoded) + 1 > _CHUNK_CHAR_BUDGET:
+                self._flush()
+            self._rows.append(encoded)
+            self._size += len(encoded) + 1
+
+    def _flush(self) -> None:
+        if not self._rows:
+            return
+        with self._connection.cursor() as cursor:
+            cursor.execute(self._sql, {"rows": "[" + ",".join(self._rows) + "]", "sent_at": self._sent_at})
+        self._rows, self._size = [], 0
+
+    def __enter__(self) -> SentLogWriter:
+        return self
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> None:
+        if exc is None:
+            self._flush()
+            return
+        try:
+            self._flush()
+        except Exception as flush_exc:
+            # Keep delivery's error as the one that surfaces: it is the real cause, and the
+            # unlogged rows are simply resent next run.
+            exc.add_note(f"sent-log flush on exit also failed: {flush_exc}")
 
 
 def append_sent_log(
@@ -155,22 +200,6 @@ def append_sent_log(
     confirmed: Mapping[str, str],
     sent_at: datetime | None = None,
 ) -> None:
-    """Append one row per confirmed (tracking_key, payload), stamped with one `sent_at`.
-
-    Only rows the destination definitively confirmed belong here: logging an attempt
-    would mark a rejected row as delivered and never retry it, and logging before
-    delivery would suppress a failed send's person forever.
-
-    Chunked into multi-row INSERTs of `_APPEND_CHUNK_SIZE` rows apiece rather than
-    one `execute` per row: this is still append-only (INSERT, never
-    update/delete/merge) and still one `sent_at` stamp for the whole call.
-    """
-    if not confirmed:
-        return
-    stamp = sent_at or datetime.now(UTC)
-    items = list(confirmed.items())
-    with connection.cursor() as cursor:
-        for start in range(0, len(items), _APPEND_CHUNK_SIZE):
-            chunk = items[start : start + _APPEND_CHUNK_SIZE]
-            sql, params = _chunked_insert_statement(log_table, chunk, stamp)
-            cursor.execute(sql, params)
+    """Append one row per confirmed (tracking_key, payload), all stamped with one `sent_at`."""
+    with SentLogWriter(connection, log_table, sent_at=sent_at) as writer:
+        writer.add(confirmed)

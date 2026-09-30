@@ -121,7 +121,7 @@ def _reverse_etl_pod_env() -> dict[str, str]:
     Exactly `.env.example`'s surface minus the three variables this deployment's auth
     shape and destination make irrelevant: DATABRICKS_TOKEN (the OAuth client id/secret
     pair is used instead), RETL_HUBSPOT_BASE_URL (defaults to the production portal),
-    and RETL_CSV_OUTPUT_PATH (the other destination). Passing an env var retl ignores
+    and RETL_CSV_OUTPUT_DIR (the other destination). Passing an env var retl ignores
     would be false documentation of what this deployment needs.
     """
     fields = conn_kwargs()

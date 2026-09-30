@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,6 +8,7 @@ import pytest
 
 from retl.config import FlowConfig
 from retl.destinations import DeliveryResult, RowError
+from retl.hubspot_destination import chunked
 from retl.run import (
     EmptyLogError,
     EmptySourceError,
@@ -15,8 +16,9 @@ from retl.run import (
     SendCapExceededError,
     error_report_lines,
     execute_run,
+    plan_run,
 )
-from retl.sent_log import WrongLogTableError
+from retl.sent_log import PARAM_CHAR_LIMIT, WrongLogTableError
 from tests._fakes import FakeConnection, stamped_table
 
 LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
@@ -270,3 +272,73 @@ def test_error_report_lines_caps_individual_rows_at_20() -> None:
     assert lines[0] == "retl error_histogram code=VALIDATION_ERROR property=phone retryable=False count=25"
     individual_lines = [line for line in lines if line.startswith("retl error flow=")]
     assert len(individual_lines) == 20
+
+
+@dataclass
+class _BatchingDestination:
+    """Confirms in HubSpot-sized batches, optionally raising after `fail_after` batches."""
+
+    fail_after: int | None = None
+
+    def deliver(self, flow_id, rows, *, on_batch_confirmed):
+        confirmed: dict[str, str] = {}
+        for n, batch in enumerate(chunked(rows)):
+            if n == self.fail_after:
+                raise RuntimeError("destination went away mid-run")
+            on_batch_confirmed(dict(batch))
+            confirmed.update(batch)
+        return DeliveryResult(confirmed=confirmed, errors=[])
+
+
+def test_execute_run_packs_many_confirmed_batches_into_full_log_chunks() -> None:
+    """Catches: one log write per 100-row destination batch, or partly filled chunks. Each
+    write is its own Delta commit (~2.5s live), so a 100k-row convergence logged batch by
+    batch would spend ~40 minutes committing."""
+    rows = [{"gp_person_id": f"p{i}", "firstname": "J" * 900} for i in range(5_000)]
+    connection = _connection_with_log(source_rows=rows)
+
+    summary = execute_run(
+        connection=connection, flow=replace(FLOW, cap=20_000), destination=_BatchingDestination()
+    )
+
+    assert summary.sent_count == 5_000
+    assert len(connection.tables[LOG_TABLE].rows) == 1 + 5_000
+    inserts = [sql for sql in connection.executed_sql if sql.lower().startswith("insert into")]
+    assert 1 < len(inserts) <= 6
+    assert all(size > PARAM_CHAR_LIMIT * 0.85 for size in connection.param_sizes[-len(inserts) : -1])
+
+
+def test_execute_run_logs_every_confirmed_batch_when_delivery_raises_mid_run() -> None:
+    """Catches: buffered confirmations being dropped when the destination fails partway,
+    so rows the destination already accepted would be resent on the next run."""
+    rows = [{"gp_person_id": f"p{i}", "firstname": "Jane"} for i in range(1_000)]
+    connection = _connection_with_log(source_rows=rows)
+
+    with pytest.raises(RuntimeError, match="went away"):
+        execute_run(
+            connection=connection,
+            flow=replace(FLOW, cap=20_000),
+            destination=_BatchingDestination(fail_after=3),
+        )
+
+    assert len(connection.tables[LOG_TABLE].rows) == 1 + 300
+
+
+def test_plan_run_dry_run_summary_reports_the_diff_and_touches_nothing() -> None:
+    """Catches: a dry run writing to the log, or reporting a different diff than the real run would send."""
+    connection = _connection_with_log(source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}])
+
+    summary = plan_run(connection=connection, flow=FLOW).dry_run_summary()
+
+    assert (summary.to_send_count, summary.sent_count, summary.dry_run) == (1, 0, True)
+    assert connection.tables[LOG_TABLE].rows == [_EXISTING_ROW]
+
+
+def test_plan_run_enforces_the_guards() -> None:
+    """Catches: a dry run skipping the cap or empty-log guards, so it reports success for a
+    run that would in fact be refused."""
+    rows = [{"gp_person_id": f"p{i}"} for i in range(FLOW.cap + 1)]
+    with pytest.raises(SendCapExceededError):
+        plan_run(connection=_connection_with_log(source_rows=rows), flow=FLOW)
+    with pytest.raises(EmptyLogError):
+        plan_run(connection=_connection_with_log(rows=[], source_rows=rows[:1]), flow=FLOW)
