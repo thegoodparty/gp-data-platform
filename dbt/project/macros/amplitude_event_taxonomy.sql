@@ -48,6 +48,10 @@
             -- without the prefix, so it fell through to 'other' and was
             -- invisible to every family-based Win read.
             or {{ event_type_col }} like 'Robocall -%'
+            -- Door knocking had the same gap. Its events took the
+            -- 'Outreach -' prefix on 2026-09-29, but a logged door is an
+            -- activation leg, and its history lives under the old names.
+            or {{ event_type_col }} like 'Door Knocking -%'
         then 'win_voter_outreach'
         when {{ event_type_col }} like 'Outreach -%'
         then 'win_outreach_planning'
