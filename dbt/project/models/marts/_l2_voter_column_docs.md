@@ -5506,7 +5506,8 @@ Percentage of Minor Elections voted
 {% enddocs %}
 
 {% docs l2col_VoterTelephones_CellPhoneFormatted %}
-VoterTelephones CellPhoneFormatted
+VoterTelephones CellPhoneFormatted. Sanitized in staging: kept only when the
+digits form a 10-digit US number; otherwise null.
 {% enddocs %}
 
 {% docs l2col_VoterTelephones_CellPhoneOnly %}
@@ -5530,7 +5531,8 @@ VoterTelephones LandlineAreaCode
 {% enddocs %}
 
 {% docs l2col_VoterTelephones_LandlineFormatted %}
-VoterTelephones LandlineFormatted
+VoterTelephones LandlineFormatted. Sanitized in staging: kept only when the
+digits form a 10-digit US number; otherwise null.
 {% enddocs %}
 
 {% docs l2col_VoterTelephones_LandlineUnformatted %}
