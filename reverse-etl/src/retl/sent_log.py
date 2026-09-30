@@ -22,9 +22,9 @@ the run exactly as before.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 
 from .databricks_io import fetch_all_rows
 
@@ -33,12 +33,7 @@ FLOW_ID_PROPERTY = "retl.flow_id"
 # Every INSERT is its own Delta commit (~2.5s live), so each packs as many rows as
 # the warehouse allows: it rejects any statement whose parameters total more than this.
 PARAM_CHAR_LIMIT = 1_048_576
-_CHUNK_CHAR_BUDGET = PARAM_CHAR_LIMIT - 100_000  # headroom for sent_at and the [] framing
-
-# The rows travel as ONE JSON string parameter, decoded server-side by from_json. The
-# connector's ArrayParameter would be the obvious shape, but a live warehouse binds a
-# Python list as an empty array<void>: the insert succeeds and lands zero rows, silently.
-_ROWS_SCHEMA = "array<struct<tracking_key:string,payload:string>>"
+_CHUNK_CHAR_BUDGET = PARAM_CHAR_LIMIT - 100_000  # headroom for the stamp and the [] framing
 
 
 class _Connection(Protocol):
@@ -132,53 +127,54 @@ def read_latest_sent(connection: _Connection, *, log_table: str) -> dict[str, st
     return {row["tracking_key"]: row["payload"] for row in rows}
 
 
-def insert_sql(log_table: str) -> str:
-    """One INSERT that lands every row in its `:rows` JSON param, stamped with `:sent_at`.
+def json_rows_insert_sql(table: str, columns: Sequence[str], stamp_column: str) -> str:
+    """One INSERT that lands every row in its `:rows` JSON param, each stamped with `:stamp`.
 
-    Values are never inlined: quote-escaping SQL by hand is a known trap in this repo,
-    and json.dumps plus from_json round-trips any payload byte-identically.
+    The rows travel as ONE JSON string parameter, decoded server-side by from_json. The
+    connector's ArrayParameter would be the obvious shape, but a live warehouse binds a
+    Python list as an empty array<void>: the insert succeeds and lands zero rows,
+    silently. Values are never inlined: quote-escaping SQL by hand is a known trap in
+    this repo, and json.dumps plus from_json round-trips any string byte-identically.
     """
+    schema = "array<struct<" + ",".join(f"{c}:string" for c in columns) + ">>"
     return (
-        f"insert into {log_table} (tracking_key, payload, sent_at) "
-        "select r.tracking_key, r.payload, :sent_at "
-        f"from (select explode(from_json(:rows, '{_ROWS_SCHEMA}')) as r)"
+        f"insert into {table} ({', '.join(columns)}, {stamp_column}) "
+        f"select {', '.join(f'r.{c}' for c in columns)}, :stamp "
+        f"from (select explode(from_json(:rows, '{schema}')) as r)"
     )
 
 
-class SentLogWriter:
-    """Buffers confirmed rows and appends each full chunk as one INSERT the moment it fills.
+class JsonRowsWriter:
+    """Buffers rows and appends each full chunk as one INSERT the moment it fills.
 
-    Only rows a destination definitively confirmed belong here: logging an attempt would
-    mark a rejected row as delivered and never retry it. Use as a context manager: exit
-    appends the remainder, including when delivery raises, so rows a destination already
-    accepted are not left unlogged. A hard kill loses at most one partial chunk, which the
-    next run resends. Append-only: INSERT, never update/delete/merge.
+    Use as a context manager: exit appends the remainder, including when the caller
+    raises, so nothing already accepted is left unwritten. A hard kill loses at most one
+    partial chunk. Append-only: INSERT, never update/delete/merge.
     """
 
-    def __init__(self, connection: _Connection, log_table: str, *, sent_at: datetime | None = None):
+    def __init__(self, connection: _Connection, sql: str, *, stamp: datetime | None = None):
         self._connection = connection
-        self._sql = insert_sql(log_table)
-        self._sent_at = sent_at or datetime.now(UTC)
+        self._sql = sql
+        self._stamp = stamp or datetime.now(UTC)
         self._rows: list[str] = []
         self._size = 0
 
-    def add(self, confirmed: Mapping[str, str]) -> None:
-        for tracking_key, payload in confirmed.items():
-            encoded = json.dumps({"tracking_key": tracking_key, "payload": payload}, separators=(",", ":"))
-            # A single row over budget still goes alone, and the warehouse rejects it loudly.
-            if self._rows and self._size + len(encoded) + 1 > _CHUNK_CHAR_BUDGET:
-                self._flush()
-            self._rows.append(encoded)
-            self._size += len(encoded) + 1
+    def add_row(self, row: Mapping[str, str]) -> None:
+        encoded = json.dumps(row, separators=(",", ":"))
+        # A single row over budget still goes alone, and the warehouse rejects it loudly.
+        if self._rows and self._size + len(encoded) + 1 > _CHUNK_CHAR_BUDGET:
+            self._flush()
+        self._rows.append(encoded)
+        self._size += len(encoded) + 1
 
     def _flush(self) -> None:
         if not self._rows:
             return
         with self._connection.cursor() as cursor:
-            cursor.execute(self._sql, {"rows": "[" + ",".join(self._rows) + "]", "sent_at": self._sent_at})
+            cursor.execute(self._sql, {"rows": "[" + ",".join(self._rows) + "]", "stamp": self._stamp})
         self._rows, self._size = [], 0
 
-    def __enter__(self) -> SentLogWriter:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> None:
@@ -188,9 +184,26 @@ class SentLogWriter:
         try:
             self._flush()
         except Exception as flush_exc:
-            # Keep delivery's error as the one that surfaces: it is the real cause, and the
-            # unlogged rows are simply resent next run.
-            exc.add_note(f"sent-log flush on exit also failed: {flush_exc}")
+            # Keep the caller's error as the one that surfaces: it is the real cause, and
+            # the unwritten rows are simply redone next run.
+            exc.add_note(f"flush on exit also failed: {flush_exc}")
+
+
+class SentLogWriter(JsonRowsWriter):
+    """Appends confirmed (tracking_key, payload) rows to a flow's log table.
+
+    Only rows a destination definitively confirmed belong here: logging an attempt would
+    mark a rejected row as delivered and never retry it.
+    """
+
+    def __init__(self, connection: _Connection, log_table: str, *, sent_at: datetime | None = None):
+        super().__init__(
+            connection, json_rows_insert_sql(log_table, ("tracking_key", "payload"), "sent_at"), stamp=sent_at
+        )
+
+    def add(self, confirmed: Mapping[str, str]) -> None:
+        for tracking_key, payload in confirmed.items():
+            self.add_row({"tracking_key": tracking_key, "payload": payload})
 
 
 def append_sent_log(

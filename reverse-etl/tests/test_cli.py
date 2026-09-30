@@ -11,7 +11,7 @@ from retl.cli import build_parser, main
 from retl.destinations import RowError
 from retl.run import RunSummary
 from retl.sent_log import FLOW_ID_PROPERTY
-from tests._fakes import FakeConnection, stamped_table
+from tests._fakes import FakeConnection, flow_tables, stamped_table
 
 LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
 CSV_ENV = {
@@ -70,14 +70,11 @@ def test_main_runs_a_csv_export_end_to_end(
     monkeypatch.setattr(os, "environ", env)
     fake_connection = FakeConnection(
         source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}],
-        tables={
-            LOG_TABLE: stamped_table(
-                "hubspot_leads",
-                rows=[
-                    {"tracking_key": "existing", "payload": "{}", "sent_at": datetime(2026, 1, 1, tzinfo=UTC)}
-                ],
-            )
-        },
+        tables=flow_tables(
+            "hubspot_leads",
+            LOG_TABLE,
+            rows=[{"tracking_key": "existing", "payload": "{}", "sent_at": datetime(2026, 1, 1, tzinfo=UTC)}],
+        ),
     )
     monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
 
@@ -149,6 +146,7 @@ def test_main_init_log_creates_the_table_and_exits_zero(
     assert exit_code == 0
     assert fake_connection.closed is True
     assert fake_connection.tables[LOG_TABLE].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
+    assert fake_connection.tables[f"{LOG_TABLE}_orphans"].properties == {FLOW_ID_PROPERTY: "hubspot_leads"}
     captured = capsys.readouterr()
     assert "initialized" in captured.out
     assert captured.err == ""
@@ -179,7 +177,7 @@ def test_main_csv_sends_each_change_once_across_runs(
     monkeypatch.setattr(os, "environ", env)
     fake_connection = FakeConnection(
         source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}, {"gp_person_id": "p2", "firstname": "Sam"}],
-        tables={LOG_TABLE: stamped_table("hubspot_leads")},
+        tables=flow_tables("hubspot_leads", LOG_TABLE),
     )
     monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
 
@@ -212,7 +210,7 @@ def test_main_dry_run_sends_and_logs_nothing_and_needs_no_destination_config(
     monkeypatch.setattr(os, "environ", dict(CSV_ENV))  # no RETL_CSV_OUTPUT_DIR, no token
     fake_connection = FakeConnection(
         source_rows=[{"gp_person_id": "p1", "firstname": "Jane"}],
-        tables={LOG_TABLE: stamped_table("hubspot_leads")},
+        tables=flow_tables("hubspot_leads", LOG_TABLE),
     )
     monkeypatch.setattr(databricks_io, "connect", lambda _config: fake_connection)
 
@@ -220,7 +218,9 @@ def test_main_dry_run_sends_and_logs_nothing_and_needs_no_destination_config(
         argv = ["--source", "hubspot_leads", "--destination", destination, "--dry-run", "--accept-empty-log"]
         assert main(argv) == 0
         assert (
-            capsys.readouterr().out.strip().endswith("to_send=1 sent=0 errors=0 orphaned_keys=0 dry_run=true")
+            capsys.readouterr()
+            .out.strip()
+            .endswith("to_send=1 sent=0 errors=0 orphaned_keys=0 newly_missing=0 returned=0 dry_run=true")
         )
 
     assert fake_connection.tables[LOG_TABLE].rows == []

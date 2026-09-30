@@ -23,7 +23,7 @@ nothing (no file at all) until a row is added or changed. `--destination=hubspot
 `RETL_HUBSPOT_TOKEN`. Point `RETL_FLOW_<FLOW>_LOG_TABLE` at a scratch table unless you mean to send
 for real.
 
-A flow's log table must exist before its first non-init run:
+A flow's log table and its `<log_table>_orphans` table must exist before its first non-init run:
 
 ```bash
 uv run retl --source=hubspot --init-log
@@ -31,6 +31,21 @@ uv run retl --source=hubspot --init-log
 
 This is a one-time (or post-reset) setup ceremony, run by a human. It is never part of a scheduled
 run.
+
+## Deleted rows
+
+retl never deletes from a destination. A key that was sent before and has left the source model gets a
+`missing` event in `<log_table>_orphans`, with its last-sent payload for lookup, and a `returned`
+event if it comes back. The ones to clean up by hand:
+
+```sql
+select tracking_key, last_payload, detected_at from <log_table>_orphans
+qualify row_number() over (partition by tracking_key order by detected_at desc) = 1
+  and event = 'missing'
+```
+
+A returned key is resent once even if unchanged, since its contact may have been deleted by hand in the
+meantime.
 
 ## Container image
 
