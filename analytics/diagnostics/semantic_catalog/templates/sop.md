@@ -218,12 +218,15 @@ deletes that history from the metric.
    `excluding` qualifier must still exclude exactly what it did, and every key a
    model de-duplicates on must still exist. A property change that admits or
    drops a group the rule does not name is drift C: stop and take it to the
-   business group.
+   business group. So is a new property that separates groups the old event
+   could not tell apart, such as Win against Serve: carrying on counting both is
+   the status quo, but it is now a choice, and it is theirs.
 7. **Measure the gap** since the change: who is missing from the metric today.
 8. **Ship in this order:**
    1. A preparation pull request that touches no `sem_*.yml`: the models and
       tests that name the event directly, and any fix the new leg needs in order
-      to count correctly. Merge it first.
+      to count correctly. Run the changed models before and after against
+      production data and explain every row that moves. Merge it first.
    2. The `sem_*.yml` pull request: the new leg, the old leg kept with
       `era: historical` and its date, the pin tests updated, and the metric's new
       value in the body. Opening it starts the review routing above.
