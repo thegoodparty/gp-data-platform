@@ -1,0 +1,219 @@
+version: 2
+
+models:
+  - name: quickbooks_accounts
+    description: >
+      Pass-through of the QuickBooks accounts stream for the first cut of the finance mart. The
+      chart of accounts: every ledger account with its type, classification and current balance.
+      The spine most other finance questions join back to.
+    columns:
+      - name: account_id
+        description: QuickBooks Online identifier for the account, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_bills
+    description: >
+      Pass-through of the QuickBooks bills stream for the first cut of the finance mart. Vendor
+      bills, the accounts-payable side of the ledger. Line detail arrives as a JSON string in
+      `line`.
+    columns:
+      - name: bill_id
+        description: QuickBooks Online identifier for the bill, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_classes
+    description: >
+      Pass-through of the QuickBooks classes stream for the first cut of the finance mart.
+      Classes, the QuickBooks dimension used for cost allocation alongside departments.
+    columns:
+      - name: class_id
+        description: QuickBooks Online identifier for the class, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_credit_memos
+    description: >
+      Pass-through of the QuickBooks credit memos stream for the first cut of the finance mart.
+      Customer credit memos. This stream synced empty, so its tests hold vacuously until rows
+      arrive.
+    columns:
+      - name: credit_memo_id
+        description: QuickBooks Online identifier for the credit memo, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_customers
+    description: >
+      Pass-through of the QuickBooks customers stream for the first cut of the finance mart.
+      Carries contact PII: names, `primary_email_addr`, `primary_phone`, `mobile`, `fax` and the
+      billing and shipping addresses.
+    columns:
+      - name: customer_id
+        description: QuickBooks Online identifier for the customer, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_departments
+    description: >
+      Pass-through of the QuickBooks departments stream for the first cut of the finance mart.
+      Departments, the QuickBooks dimension BFO uses for department-level cost allocation.
+    columns:
+      - name: department_id
+        description: QuickBooks Online identifier for the department, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_deposits
+    description: >
+      Pass-through of the QuickBooks deposits stream for the first cut of the finance mart. Bank
+      deposits.
+    columns:
+      - name: deposit_id
+        description: QuickBooks Online identifier for the deposit, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_items
+    description: >
+      Pass-through of the QuickBooks items stream for the first cut of the finance mart.
+      Products and services.
+    columns:
+      - name: item_id
+        description: QuickBooks Online identifier for the item, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_journal_entries
+    description: >
+      Pass-through of the QuickBooks journal entries stream for the first cut of the finance
+      mart. The general ledger itself. The debit and credit lines arrive as a JSON string in
+      `line` and are not parsed here.
+    columns:
+      - name: journal_entry_id
+        description: QuickBooks Online identifier for the journal entry, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_payment_methods
+    description: >
+      Pass-through of the QuickBooks payment methods stream for the first cut of the finance
+      mart. Payment methods.
+    columns:
+      - name: payment_method_id
+        description: QuickBooks Online identifier for the payment method, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_payments
+    description: >
+      Pass-through of the QuickBooks payments stream for the first cut of the finance mart.
+      Customer payments received.
+    columns:
+      - name: payment_id
+        description: QuickBooks Online identifier for the payment, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_purchases
+    description: >
+      Pass-through of the QuickBooks purchases stream for the first cut of the finance mart.
+      Purchases, the expense side of the ledger.
+    columns:
+      - name: purchase_id
+        description: QuickBooks Online identifier for the purchase, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_time_activities
+    description: >
+      Pass-through of the QuickBooks time activities stream for the first cut of the finance
+      mart. Time activities. This stream synced empty, so its tests hold vacuously until rows
+      arrive.
+    columns:
+      - name: time_activity_id
+        description: QuickBooks Online identifier for the time activity, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_transfers
+    description: >
+      Pass-through of the QuickBooks transfers stream for the first cut of the finance mart.
+      Transfers between accounts. This stream synced empty, so its tests hold vacuously until
+      rows arrive.
+    columns:
+      - name: transfer_id
+        description: QuickBooks Online identifier for the transfer, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_vendor_credits
+    description: >
+      Pass-through of the QuickBooks vendor credits stream for the first cut of the finance
+      mart. Vendor credits.
+    columns:
+      - name: vendor_credit_id
+        description: QuickBooks Online identifier for the vendor credit, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
+
+  - name: quickbooks_vendors
+    description: >
+      Pass-through of the QuickBooks vendors stream for the first cut of the finance mart.
+      Carries contact PII: names, `primary_email_addr`, `primary_phone`, `mobile`, `fax` and the
+      billing address. `tax_identifier` is deliberately not passed through, since for a 1099
+      sole proprietor it is an SSN.
+    columns:
+      - name: vendor_id
+        description: QuickBooks Online identifier for the vendor, unique within the company file.
+        data_tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: When Airbyte last pulled the record from the QuickBooks API; the freshness signal for readers of this table.
