@@ -206,7 +206,7 @@ ev AS (
     MAX(CASE WHEN wt.event_type IS NOT NULL THEN 1 ELSE 0 END) AS any_core,
     MAX(CASE WHEN e.event_type = 'onboarding_complete' THEN 1 ELSE 0 END) AS onboarded,
     MAX(CASE WHEN e.event_type = 'Dashboard - Candidate Dashboard Viewed' THEN 1 ELSE 0 END) AS dash_viewed,
-    MAX(CASE WHEN e.event_type = 'Voter Outreach - Campaign Completed' THEN 1 ELSE 0 END) AS activated,
+    MAX(CASE WHEN e.event_type IN ('Voter Outreach - Campaign Completed', 'Outreach - Campaign Completed') THEN 1 ELSE 0 END) AS activated,
     SUM(CASE WHEN wt.event_type IS NOT NULL THEN 1 ELSE 0 END) AS core_all,
     COUNT(DISTINCT CASE WHEN wt.event_type IS NOT NULL THEN e.event_type END) AS core_distinct_types,
     SUM(CASE WHEN wt.event_type IS NOT NULL AND e.event_time >= co.anchor - INTERVAL {preelection_days} DAYS THEN 1 ELSE 0 END) AS core_preelection

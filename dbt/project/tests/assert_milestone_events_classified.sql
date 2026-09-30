@@ -18,6 +18,7 @@ with
             ('onboarding_complete'),
             ('pro_upgrade_complete'),
             ('Voter Outreach - Campaign Completed'),
+            ('Outreach - Campaign Completed'),
             ('Dashboard - Candidate Dashboard Viewed'),
             ('Dashboard - Campaign Plan Viewed'),
             ('Campaign Plan - Campaign Tracker Viewed'),
