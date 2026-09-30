@@ -1,11 +1,5 @@
-"""The CSV destination: each run's diff, written to a new file, and logged.
-
-A real delivery like any other: each run writes only its diff to a new timestamped
-file and logs every row it wrote, so a rerun sends nothing new even if an earlier
-file was deleted. The file is the delivery; keeping or importing it is the
-consumer's job. A rehearsal that must not mark anyone as sent is `--dry-run`, which
-applies to every destination alike.
-"""
+"""The CSV destination: each run's diff goes to a new timestamped file and is logged,
+so a rerun writes nothing until a row changes, even if an earlier file was deleted."""
 
 from __future__ import annotations
 

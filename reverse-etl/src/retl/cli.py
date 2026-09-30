@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from . import csv_destination, databricks_io, hubspot_destination, sent_log
 from .config import load_flow_config
 from .destinations import Destination
-from .run import error_report_lines, execute_run
+from .run import error_report_lines, execute_run, plan_run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,16 +92,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"retl init-log flow={flow.flow_id} table={flow.log_table} initialized")
                 return 0
 
-            # Not built for a dry run: a rehearsal should not need a destination's
-            # credentials, since it never reaches the destination.
-            destination = None if args.dry_run else _build_destination(args.destination, env)
-            summary = execute_run(
-                connection=connection,
-                flow=flow,
-                destination=destination,
-                accept_empty_log=args.accept_empty_log,
-                dry_run=args.dry_run,
-            )
+            if args.dry_run:
+                # No destination is built, so a rehearsal needs none of its credentials.
+                summary = plan_run(
+                    connection=connection, flow=flow, accept_empty_log=args.accept_empty_log
+                ).dry_run_summary()
+            else:
+                summary = execute_run(
+                    connection=connection,
+                    flow=flow,
+                    destination=_build_destination(args.destination, env),
+                    accept_empty_log=args.accept_empty_log,
+                )
         finally:
             connection.close()
     except Exception as exc:

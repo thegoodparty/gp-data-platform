@@ -1,9 +1,7 @@
 """The shared destination contract.
 
-The caller (run.py) owns the log: each destination gets an `on_batch_confirmed`
-callback that hands each confirmed batch to the log as it is confirmed (run.py
-buffers and flushes them). A dry run never reaches a destination at all, so "a
-rehearsal never writes any log" holds by construction in run.py.
+The caller (run.py) owns the log: a destination calls `on_batch_confirmed` with each
+batch the moment it is confirmed, and never logs anything itself.
 """
 
 from __future__ import annotations
