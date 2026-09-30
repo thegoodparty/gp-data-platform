@@ -1749,3 +1749,52 @@ sources:
               (15 characters); first 12 characters are the ACS-era block group.
             data_tests:
               - not_null
+
+  - name: airbyte_source_finance
+    schema: airbyte_source_finance
+    description: >
+      Raw QuickBooks Online data landed by Airbyte for the finance mart. Airbyte
+      creates and owns this schema on first sync, so unlike the mart schemas it is
+      not Terraform-managed. Held apart from the shared `airbyte_source` schema
+      because these streams carry the general ledger plus vendor and customer PII.
+      Everything downstream of here is ephemeral, so no copy of this data is
+      materialized outside the schema Airbyte owns.
+    config:
+      loaded_at_field: "_airbyte_extracted_at"
+      freshness:
+        warn_after: { count: 10, period: day }
+        error_after: { count: 31, period: day }
+
+    tables:
+      - name: quickbooks_accounts
+        description: Raw QuickBooks Online chart of accounts; one row per account.
+      - name: quickbooks_bills
+        description: Raw QuickBooks Online vendor bills (accounts payable).
+      - name: quickbooks_classes
+        description: Raw QuickBooks Online classes, used for allocation.
+      - name: quickbooks_credit_memos
+        description: Raw QuickBooks Online customer credit memos.
+      - name: quickbooks_customers
+        description: Raw QuickBooks Online customers; carries contact PII (email, phone, billing and shipping address).
+      - name: quickbooks_departments
+        description: Raw QuickBooks Online departments, used for allocation.
+      - name: quickbooks_deposits
+        description: Raw QuickBooks Online bank deposits.
+      - name: quickbooks_items
+        description: Raw QuickBooks Online products and services.
+      - name: quickbooks_journal_entries
+        description: Raw QuickBooks Online journal entries; the ledger the mart derives P&L and balance sheet from.
+      - name: quickbooks_payment_methods
+        description: Raw QuickBooks Online payment methods.
+      - name: quickbooks_payments
+        description: Raw QuickBooks Online customer payments received.
+      - name: quickbooks_purchases
+        description: Raw QuickBooks Online purchases (expenses).
+      - name: quickbooks_time_activities
+        description: Raw QuickBooks Online time activities.
+      - name: quickbooks_transfers
+        description: Raw QuickBooks Online transfers between accounts.
+      - name: quickbooks_vendor_credits
+        description: Raw QuickBooks Online vendor credits.
+      - name: quickbooks_vendors
+        description: Raw QuickBooks Online vendors; carries contact PII (email, phone, billing address).
