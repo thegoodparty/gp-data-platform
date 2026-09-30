@@ -19,7 +19,7 @@ from retl.hubspot_destination import (
     parse_batch_response,
     send_batch_with_retry,
 )
-from tests._fakes import FakeHttpTransport
+from tests._fakes import EchoHttpTransport, FakeHttpTransport
 
 
 def test_chunked_splits_into_configured_batch_size_with_a_remainder() -> None:
@@ -294,12 +294,9 @@ def test_send_batch_with_retry_raises_after_exhausting_attempts() -> None:
 
 
 def test_hubspot_destination_confirms_each_batch_before_the_next_batch_posts() -> None:
-    """Catches: per-batch confirm CALLS existing but not actually firing before the next
-    batch's POST -- asserting only call count and sizes after delivery returns cannot tell
-    that apart from an end-of-run append with per-batch granularity. This is the exact
-    invariant per-batch logging exists for: a later batch's send must never be able to
-    happen before an earlier batch's confirm does, or a later-batch failure would strand
-    the earlier batch's confirmations unlogged."""
+    """Catches: per-batch confirm calls not firing before the next batch's POST when sends
+    are sequential (concurrency=1) -- an end-of-run append with per-batch granularity would
+    pass a count-only assertion, and would strand earlier confirmations on a later failure."""
     rows = [(f"p{i}", f'{{"n":{i}}}') for i in range(150)]  # 2 batches: 100 + 50
     transport = FakeHttpTransport(
         responses=[
@@ -308,7 +305,8 @@ def test_hubspot_destination_confirms_each_batch_before_the_next_batch_posts() -
         ]
     )
     destination = HubSpotDestination(
-        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="secret"), transport=transport
+        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="secret", concurrency=1),
+        transport=transport,
     )
     confirmed_calls: list[dict[str, str]] = []
     posts_seen_at_confirm: list[int] = []
@@ -372,3 +370,43 @@ def test_hubspot_destination_posts_to_the_dated_api_path() -> None:
 
     assert transport.calls[0]["url"] == f"https://api.hubapi.com{UPSERT_PATH}"
     assert UPSERT_PATH == "/crm/objects/2026-09/contacts/batch/upsert"
+
+
+def test_hubspot_destination_sends_batches_concurrently_and_confirms_them_in_order() -> None:
+    """Catches: sends going out one at a time (a 100k-row first load took 32 minutes at
+    ~1.9s per call), more than `concurrency` calls in flight at once, or confirmations
+    arriving out of order or from a batch that was never sent."""
+    rows = [(f"p{i:04d}", f'{{"n":{i}}}') for i in range(1_000)]  # 10 batches
+    transport = EchoHttpTransport(delay=0.02)
+    destination = HubSpotDestination(
+        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="t", concurrency=4),
+        transport=transport,
+    )
+    confirmed_calls: list[dict[str, str]] = []
+
+    delivery = destination.deliver("hubspot_leads", rows, on_batch_confirmed=confirmed_calls.append)
+
+    assert transport.peak_in_flight == 4
+    assert [next(iter(c)) for c in confirmed_calls] == [f"p{i:04d}" for i in range(0, 1_000, 100)]
+    assert delivery.confirmed == dict(rows)
+
+
+def test_hubspot_destination_logs_in_flight_successes_then_raises_and_stops_sending() -> None:
+    """Catches: a failed batch stranding the batches already in flight beside it (accepted
+    by HubSpot but never logged, so resent next run), or new batches still being sent
+    after a non-retryable failure such as a revoked token."""
+    rows = [(f"p{i:04d}", f'{{"n":{i}}}') for i in range(2_000)]  # 20 batches
+    transport = EchoHttpTransport(fail_on=frozenset({"p0300"}), fail_status=401)
+    destination = HubSpotDestination(
+        HubSpotDestinationConfig(base_url="https://api.hubapi.com", token="t", concurrency=4),
+        transport=transport,
+    )
+    confirmed: dict[str, str] = {}
+
+    with pytest.raises(NonRetryableHubSpotError):
+        destination.deliver("hubspot_leads", rows, on_batch_confirmed=confirmed.update)
+
+    sent_batches = len(transport.calls)
+    assert sent_batches < 20  # stopped early
+    assert len(confirmed) == (sent_batches - 1) * 100  # every sent batch but the failed one is logged
+    assert "p0300" not in confirmed
