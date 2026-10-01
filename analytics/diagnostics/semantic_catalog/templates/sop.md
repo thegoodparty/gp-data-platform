@@ -235,6 +235,14 @@ deletes that history from the metric.
       marking it ready starts the review routing above. Then confirm the review
       groups were actually requested, and add by hand any the routing job named
       but did not request.
+
+      **If it merges before both groups approve, do not revert it.** A revert is
+      a second change to the layer and notifies the same people again. Instead,
+      open a pull request that records the sign-off by hand in `ratifications.yml`
+      (each half dated by when that group approved, `approved_by_pr` naming the
+      new pull request, and a comment saying why it is hand-authored), request both
+      groups on it, and merge it only once each human group has approved. A bot
+      approval is not a sign-off.
    3. Mart documentation (`m_*.yaml`) in its own small pull request, because an
       edit there rebuilds a large part of the project in CI.
    4. The omni pull request that brings the monitoring registry in line
