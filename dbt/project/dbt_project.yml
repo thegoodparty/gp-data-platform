@@ -112,6 +112,12 @@ models:
       gp_api:
         +schema: mart_gp_api
         +materialized: view
+      finance:
+        # The staging layer below is ephemeral, so this mart holds the first
+        # materialized copy of the ledger; read access is scoped to
+        # mart_finance_readers, not all data users.
+        +schema: mart_finance
+        +tags: ["mart", "finance"]
     staging:
       airbyte_source:
         stripe_api:
