@@ -48,6 +48,10 @@
             -- without the prefix, so it fell through to 'other' and was
             -- invisible to every family-based Win read.
             or {{ event_type_col }} like 'Robocall -%'
+            -- Door knocking had the same gap. Its events took the
+            -- 'Outreach -' prefix on 2026-09-29, but a logged door is an
+            -- activation leg, and its history lives under the old names.
+            or {{ event_type_col }} like 'Door Knocking -%'
         then 'win_voter_outreach'
         when {{ event_type_col }} like 'Outreach -%'
         then 'win_outreach_planning'
@@ -277,7 +281,7 @@
 {% macro metric_anchored_events(metric_name) %}
     {#
         Legs of a governed metric's `config.meta.anchored_on`, as dicts with keys
-        event / path / era / excluding / paywalled. The semantic layer is the
+        event / path / era / excluding / paywalled / unit. The semantic layer is the
         kernel: this reads the declaration rather than restating it, so the macro
         cannot drift from the metric it serves.
 
@@ -288,7 +292,10 @@
         `era` is documentation, not a filter: dead legs stay in the predicate so
         history is preserved. `paywalled` marks a leg only a paying user can
         reach, so a consumer building a model label can drop those legs and
-        avoid learning who paid.
+        avoid learning who paid. `unit: contact` marks a leg that fires once per
+        person reached (a door, a call) rather than once per campaign, so a
+        consumer counting campaigns can drop it while one asking whether the
+        user acted keeps it.
 
         Empty at parse time (execute=false), same as the seed accessors in
         hubspot_contact_property_columns.sql. Callers building a predicate MUST emit a
@@ -330,6 +337,7 @@
                     "era": leg.get("era"),
                     "excluding": leg.get("excluding") or {},
                     "paywalled": leg.get("paywalled") or false,
+                    "unit": leg.get("unit"),
                 }
             ) -%}
         {%- endfor -%}
@@ -410,7 +418,9 @@
     {%- endif -%}
 {% endmacro %}
 
-{% macro is_outreach_activation_event(event_type_col, method_col) %}
+{% macro is_outreach_activation_event(
+    event_type_col, method_col, product_col=none, contact_legs=true
+) %}
     {#
         Membership test for a voter-outreach send that the product observed.
 
@@ -429,15 +439,32 @@
         passes, because the leg that predates the property is a real send.
 
         Excluding by property is narrow on purpose: this macro compiles a `method`
-        exclusion and raises on any other key, so a declared exclusion this macro
-        cannot express fails the build instead of quietly widening the metric.
+        or `product` exclusion and raises on any other key, or on a `product`
+        exclusion when the caller passed no product column, so a declared exclusion
+        this macro cannot express fails the build instead of quietly widening the
+        metric.
+
+        Legs marked `unit: contact` fire once per door or call rather than once per
+        campaign. They say the user acted, so they count toward whether and when a
+        user activated, but a count of campaigns must drop them or every call reads
+        as a campaign.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
             method_col: SQL expression producing the event's `method` property
                 (event_properties:method::string).
+            product_col: SQL expression producing the event's `product` property
+                (event_properties:product::string). Required once any leg excludes
+                on `product`.
+            contact_legs: false to drop `unit: contact` legs, for campaign counts.
     #}
-    {%- set legs = metric_anchored_events("win_activated_users") -%}
+    {%- set declared = metric_anchored_events("win_activated_users") -%}
+    {%- set legs = (
+        declared | rejectattr("unit", "equalto", "contact") | list
+        if not contact_legs
+        else declared
+    ) -%}
+    {%- set columns = {"method": method_col, "product": product_col} -%}
     {%- if not execute -%}
         {#- Parse time only: graph is empty. Gate on `not execute`, never on an
             empty leg list, which must raise at execute time. -#}
@@ -462,31 +489,58 @@
                         ~ "' declares a page path, which this macro cannot compile."
                     )
                 }}
+            {%- elif leg["unit"] and leg["unit"] != "contact" -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        "is_outreach_activation_event"
+                        ~ ": leg '"
+                        ~ leg["event"]
+                        ~ "' declares unit '"
+                        ~ leg["unit"]
+                        ~ "'. The only unit this macro knows is 'contact'."
+                    )
+                }}
             {%- elif leg["excluding"] -%}
-                {%- for property_key in leg["excluding"] -%}
-                    {%- if property_key != "method" -%}
+                {%- set conditions = [] -%}
+                {%- for property_key, excluded in leg["excluding"].items() -%}
+                    {%- if property_key not in columns -%}
                         {{
                             exceptions.raise_compiler_error(
-                                "is_outreach_activation_event: leg '"
+                                "is_outreach_activation_event"
+                                ~ ": leg '"
                                 ~ leg["event"]
                                 ~ "' excludes on '"
                                 ~ property_key
-                                ~ "', but this macro only compiles a 'method' exclusion."
+                                ~ "', but this macro only compiles a 'method' or "
+                                "'product' exclusion."
+                            )
+                        }}
+                    {%- elif columns[property_key] is none -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                "is_outreach_activation_event"
+                                ~ ": leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but the caller passed no column for it."
                             )
                         }}
                     {%- endif -%}
+                    {%- do conditions.append(
+                        {
+                            "column": columns[property_key],
+                            "values": (
+                                excluded
+                                if excluded is sequence
+                                and excluded is not string
+                                else [excluded]
+                            ),
+                        }
+                    ) -%}
                 {%- endfor -%}
-                {%- set excluded = leg["excluding"]["method"] -%}
                 {%- do qualified.append(
-                    {
-                        "event": leg["event"],
-                        "methods": (
-                            excluded
-                            if excluded is sequence
-                            and excluded is not string
-                            else [excluded]
-                        ),
-                    }
+                    {"event": leg["event"], "conditions": conditions}
                 ) -%}
             {%- else -%} {%- do plain.append(leg["event"]) -%}
             {%- endif -%}
@@ -495,11 +549,13 @@
             {%- for leg in qualified %}
                 (
                     {{ event_type_col }} = '{{ leg["event"] }}'
-                    and coalesce({{ method_col }}, '') not in (
-                        {%- for method in leg["methods"] %}
-                            '{{ method }}'{{ "," if not loop.last }}
-                        {%- endfor %}
-                    )
+                    {%- for condition in leg["conditions"] %}
+                        and coalesce({{ condition["column"] }}, '') not in (
+                            {%- for value in condition["values"] %}
+                                '{{ value }}'{{ "," if not loop.last }}
+                            {%- endfor %}
+                        )
+                    {%- endfor %}
                 )
                 {%- if not loop.last or plain | length > 0 %} or {% endif -%}
             {%- endfor %}
@@ -514,7 +570,7 @@
     {%- endif -%}
 {% endmacro %}
 
-{% macro is_product_output_event(event_type_col, method_col) %}
+{% macro is_product_output_event(event_type_col, method_col, product_col=none) %}
     {#
         Membership test for Product Output: the candidate made something with the
         product that left it.
@@ -541,15 +597,19 @@
             event_type_col: SQL expression producing the event_type string.
             method_col: SQL expression producing the event's `method` property
                 (event_properties:method::string).
+            product_col: SQL expression producing the event's `product` property.
     #}
     {{
         product_output_predicate(
-            event_type_col, method_col, "is_product_output_event"
+            event_type_col,
+            method_col,
+            "is_product_output_event",
+            product_col=product_col,
         )
     }}
 {% endmacro %}
 
-{% macro is_product_output_free_event(event_type_col, method_col) %}
+{% macro is_product_output_free_event(event_type_col, method_col, product_col=none) %}
     {#
         Product Output restricted to the legs a non-paying user can reach.
 
@@ -569,20 +629,31 @@
         Args:
             event_type_col: SQL expression producing the event_type string.
             method_col: SQL expression producing the event's `method` property.
+            product_col: SQL expression producing the event's `product` property.
     #}
     {{
         product_output_predicate(
-            event_type_col, method_col, "is_product_output_free_event", free_only=true
+            event_type_col,
+            method_col,
+            "is_product_output_free_event",
+            free_only=true,
+            product_col=product_col,
         )
     }}
 {% endmacro %}
 
 {% macro product_output_predicate(
-    event_type_col, method_col, caller_macro, free_only=false
+    event_type_col,
+    method_col,
+    caller_macro,
+    free_only=false,
+    product_col=none
 ) %}
     {#
         Compile the product-output legs into an event-membership predicate,
-        honouring a `method` exclusion on any leg that declares one.
+        honouring a `method` or `product` exclusion on any leg that declares one.
+        `unit` is ignored: this predicate feeds first-output timestamps, never a
+        count of campaigns.
 
         Shared by the full and free-subset macros above, which differ only in
         whether they drop the paywalled legs. It deliberately does NOT serve
@@ -590,9 +661,10 @@
         pinned by its own source-level guards, so it keeps its own body rather
         than depending on this one.
 
-        Raises on a leg this cannot express — a page path, or an exclusion on any
-        property other than `method` — so a declaration that outruns the compiler
-        fails the build instead of quietly widening the metric.
+        Raises on a leg this cannot express — a page path, an exclusion on any
+        property other than `method` or `product`, or a `product` exclusion with no
+        product column — so a declaration that outruns the compiler fails the build
+        instead of quietly widening the metric.
 
         Args:
             event_type_col / method_col: SQL expressions for the event name and its
@@ -600,11 +672,14 @@
             caller_macro: the calling macro's name, for error messages.
             free_only: drop legs the declaration marks `paywalled`, for a label that
                 must not encode who paid.
+            product_col: SQL expression for the `product` property. Required once
+                any leg excludes on `product`.
     #}
     {%- set declared = metric_anchored_events("win_product_output_users") -%}
     {%- set legs = (
         declared | rejectattr("paywalled") | list if free_only else declared
     ) -%}
+    {%- set columns = {"method": method_col, "product": product_col} -%}
     {%- if not execute -%}
         {#- Parse time only: graph is empty. Gate on `not execute`, never on an
             empty leg list, which must raise at execute time. -#}
@@ -632,8 +707,9 @@
                     )
                 }}
             {%- elif leg["excluding"] -%}
-                {%- for property_key in leg["excluding"] -%}
-                    {%- if property_key != "method" -%}
+                {%- set conditions = [] -%}
+                {%- for property_key, excluded in leg["excluding"].items() -%}
+                    {%- if property_key not in columns -%}
                         {{
                             exceptions.raise_compiler_error(
                                 caller_macro
@@ -641,22 +717,36 @@
                                 ~ leg["event"]
                                 ~ "' excludes on '"
                                 ~ property_key
-                                ~ "', but this macro only compiles a 'method' exclusion."
+                                ~ "', but this macro only compiles a 'method' or "
+                                "'product' exclusion."
+                            )
+                        }}
+                    {%- elif columns[property_key] is none -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                caller_macro
+                                ~ ": leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but the caller passed no column for it."
                             )
                         }}
                     {%- endif -%}
+                    {%- do conditions.append(
+                        {
+                            "column": columns[property_key],
+                            "values": (
+                                excluded
+                                if excluded is sequence
+                                and excluded is not string
+                                else [excluded]
+                            ),
+                        }
+                    ) -%}
                 {%- endfor -%}
-                {%- set excluded = leg["excluding"]["method"] -%}
                 {%- do qualified.append(
-                    {
-                        "event": leg["event"],
-                        "methods": (
-                            excluded
-                            if excluded is sequence
-                            and excluded is not string
-                            else [excluded]
-                        ),
-                    }
+                    {"event": leg["event"], "conditions": conditions}
                 ) -%}
             {%- else -%} {%- do plain.append(leg["event"]) -%}
             {%- endif -%}
@@ -665,11 +755,13 @@
             {%- for leg in qualified %}
                 (
                     {{ event_type_col }} = '{{ leg["event"] }}'
-                    and coalesce({{ method_col }}, '') not in (
-                        {%- for method in leg["methods"] %}
-                            '{{ method }}'{{ "," if not loop.last }}
-                        {%- endfor %}
-                    )
+                    {%- for condition in leg["conditions"] %}
+                        and coalesce({{ condition["column"] }}, '') not in (
+                            {%- for value in condition["values"] %}
+                                '{{ value }}'{{ "," if not loop.last }}
+                            {%- endfor %}
+                        )
+                    {%- endfor %}
                 )
                 {%- if not loop.last or plain | length > 0 %} or {% endif -%}
             {%- endfor %}

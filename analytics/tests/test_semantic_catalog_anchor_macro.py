@@ -51,6 +51,7 @@ ACTIVATION_METRIC = "win_activated_users"
 EVENT_COL = "event_type"
 PATH_COL = "event_properties:path::string"
 METHOD_COL = "event_properties:method::string"
+PRODUCT_COL = "event_properties:product::string"
 
 MACRO_CALL = re.compile(r"\{\{\s*is_dashboard_view_event\([^)]*\)\s*\}\}")
 ACTIVATION_MACRO_CALL = re.compile(r"\{\{\s*is_outreach_activation_event\([^)]*\)\s*\}\}")
@@ -99,7 +100,22 @@ PREDICATE = ENV.from_string(
 
 ACTIVATION_PREDICATE = ENV.from_string(
     macro_source("is_outreach_activation_event")
+    + f"\n{{{{ is_outreach_activation_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}') }}}}"
+)
+# The campaign-count call: drops the per-door and per-call legs.
+CAMPAIGN_PREDICATE = ENV.from_string(
+    macro_source("is_outreach_activation_event")
+    + f"\n{{{{ is_outreach_activation_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}',"
+    + " contact_legs=false) }}"
+)
+# A caller that passes no product column, as every caller did before one existed.
+NO_PRODUCT_PREDICATE = ENV.from_string(
+    macro_source("is_outreach_activation_event")
     + f"\n{{{{ is_outreach_activation_event('{EVENT_COL}', '{METHOD_COL}') }}}}"
+)
+PRODUCT_OUTPUT_PREDICATE = ENV.from_string(
+    macro_source("product_output_predicate")
+    + f"\n{{{{ product_output_predicate('{EVENT_COL}', '{METHOD_COL}', 'caller', product_col='{PRODUCT_COL}') }}}}"
 )
 
 
@@ -130,10 +146,18 @@ def render(execute: bool, meta: dict) -> str:
     return " ".join(sql.split())
 
 
-def render_activation(execute: bool, meta: dict) -> str:
-    sql = ACTIVATION_PREDICATE.render(
+def render_activation(execute: bool, meta: dict, template=ACTIVATION_PREDICATE) -> str:
+    sql = template.render(
         execute=execute,
         metric_anchored_events=lambda _name: anchored_events(execute, meta, ACTIVATION_METRIC),
+    )
+    return " ".join(sql.split())
+
+
+def render_product_output(meta: dict) -> str:
+    sql = PRODUCT_OUTPUT_PREDICATE.render(
+        execute=True,
+        metric_anchored_events=lambda _name: anchored_events(True, meta, "win_product_output_users"),
     )
     return " ".join(sql.split())
 
@@ -277,6 +301,70 @@ def test_a_path_leg_on_the_activation_metric_raises():
     """This macro takes no page-path column, so a pathed leg must fail, not be dropped."""
     with pytest.raises(CompilerError):
         render_activation(True, {"anchored_on": [{"event": "E", "path": "/x"}]})
+
+
+SERVE_EXCLUDED = {"anchored_on": [{"event": "E", "excluding": {"method": "manual", "product": "serve"}}]}
+CONTACT_LEG = {"anchored_on": [{"event": "Send"}, {"event": "Door", "unit": "contact"}]}
+
+
+def test_a_product_exclusion_renders_beside_the_method_one():
+    """Serve outreach is excluded from Win by the emitted SQL, alongside self-report."""
+    sql = render_activation(True, SERVE_EXCLUDED)
+    assert (
+        f"{EVENT_COL} = 'E' and coalesce({METHOD_COL}, '') not in ( 'manual' ) "
+        f"and coalesce({PRODUCT_COL}, '') not in ( 'serve' )"
+    ) in sql
+
+
+def test_a_product_exclusion_keeps_events_that_predate_the_property():
+    """Events before 2026-09-29 carry no product, and must not drop out of the metric."""
+    assert f"coalesce({PRODUCT_COL}, '')" in render_activation(True, SERVE_EXCLUDED)
+
+
+def test_a_product_exclusion_with_no_product_column_raises():
+    """A caller that cannot filter on product must fail, not quietly count Serve."""
+    with pytest.raises(CompilerError, match="passed no column"):
+        render_activation(True, SERVE_EXCLUDED, NO_PRODUCT_PREDICATE)
+
+
+def test_contact_legs_count_toward_activation():
+    """A door knocked or a call logged is the user acting, so it activates them."""
+    assert "'Door'" in render_activation(True, CONTACT_LEG)
+
+
+def test_campaign_counts_drop_contact_legs():
+    """Every call logged would otherwise read as one campaign sent."""
+    sql = render_activation(True, CONTACT_LEG, CAMPAIGN_PREDICATE)
+    assert "'Send'" in sql
+    assert "'Door'" not in sql
+
+
+def test_an_unknown_unit_raises():
+    with pytest.raises(CompilerError, match="unit"):
+        render_activation(True, {"anchored_on": [{"event": "E", "unit": "household"}]})
+
+
+def test_every_model_counting_campaigns_drops_contact_legs():
+    """The count columns are the only callers that may drop them, and all of them must.
+
+    Timestamps keep contact legs: `users_win_base.is_activated` is
+    `first_campaign_sent_at is not null`, so dropping them there would undo the rule.
+    """
+    counts = {"campaigns_sent", "recipient_count", "total_campaigns_sent", "total_recipient_count"}
+    for name in (
+        "int__amplitude_user_milestones",
+        "int__amplitude_win_activity",
+        "int__amplitude_win_activity_weekly",
+    ):
+        src = (MODELS / "intermediate/amplitude" / f"{name}.sql").read_text()
+        for call in re.finditer(r"is_outreach_activation_event\((.*?)\)\s*\}\}.*?\) as (\w+),", src, re.S):
+            drops = "contact_legs=false" in call.group(1)
+            assert drops == (call.group(2) in counts), f"{name}.{call.group(2)}"
+
+
+def test_the_product_output_predicate_compiles_a_product_exclusion():
+    sql = render_product_output(SERVE_EXCLUDED)
+    assert f"and coalesce({PRODUCT_COL}, '') not in ( 'serve' )" in sql
 
 
 def test_the_milestone_filter_admits_every_declared_anchor_event():

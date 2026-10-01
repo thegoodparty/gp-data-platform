@@ -34,7 +34,9 @@ with
             date_trunc('month', e.event_time) as event_month,
             c.is_serve,
             e.event_properties:path::string as page_path,
-            e.event_properties:method::string as outreach_method
+            e.event_properties:method::string as outreach_method,
+            -- Win or Serve. Only the events named since 2026-09-29 carry it.
+            e.event_properties:product::string as outreach_product
         from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
         join catalog as c on c.event_type = e.event_type
         where try_cast(e.user_id as bigint) is not null and not c.is_machine_emitted
@@ -93,7 +95,12 @@ with
 
             min(
                 case
-                    when {{ is_product_output_event("event_type", "outreach_method") }}
+                    when
+                        {{
+                            is_product_output_event(
+                                "event_type", "outreach_method", "outreach_product"
+                            )
+                        }}
                     then event_time
                 end
             ) as product_output_at,
@@ -102,7 +109,7 @@ with
                     when
                         {{
                             is_product_output_free_event(
-                                "event_type", "outreach_method"
+                                "event_type", "outreach_method", "outreach_product"
                             )
                         }}
                     then event_time
