@@ -58,12 +58,12 @@ See `analytics/projects/win_outcomes_scout/INVENTORY.md` Source 3.5 for the veri
 
 ## Self-reported success signal (PMF / satisfaction)
 
-A parallel "did the product work?" measure that lives next to electoral outcomes rather than inside them. The governed KR2 definition is in [canonical_metrics.md](canonical_metrics.md): **40% of ICP activated users say they would be very disappointed if they could no longer use Win**. Reading as of 2026-05-28: 52% Option 1 (Very disappointed) on n=50 ICP respondents — exceeds target, with small-sample caveat.
+A parallel "did the product work?" measure that lives next to electoral outcomes rather than inside them. The governed KR2 definition is in [canonical_metrics.md](canonical_metrics.md): **40% of ICP activated users say they would be very disappointed if they could no longer use Win**. Point-in-time readings go stale quickly (the 2026-05-28 read was 52% on n=50 ICP respondents); re-query with the recipe below before quoting a number.
 
 **Source table:** `goodparty_data_catalog.dbt.stg_airbyte_source__hubspot_api_feedback_submissions`.
 
 Filter by `survey_name`:
-- `LIKE 'Win PMF%'` — Sean Ellis 4-option survey (started 2026-04-14; n=78 as of 2026-05-28).
+- `LIKE 'Win PMF%'` — Sean Ellis 4-option survey (started 2026-04-14).
 - `LIKE 'Win User satisfaction%'` — CSAT/stars survey (n=12, sparse).
 
 **Response columns:**
