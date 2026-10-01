@@ -232,7 +232,9 @@ deletes that history from the metric.
    2. The `sem_*.yml` pull request: the new leg, the old leg kept with
       `era: historical` and its date, the pin tests updated, and the metric's new
       value in the body, and the catalog regenerated. Open it as a draft;
-      marking it ready starts the review routing above.
+      marking it ready starts the review routing above. Then confirm the review
+      groups were actually requested, and add by hand any the routing job named
+      but did not request.
    3. Mart documentation (`m_*.yaml`) in its own small pull request, because an
       edit there rebuilds a large part of the project in CI.
    4. The omni pull request that brings the monitoring registry in line
