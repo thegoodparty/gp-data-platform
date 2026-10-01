@@ -149,13 +149,8 @@ def test_activated_metrics_declare_the_exact_event_string():
     serve_legs = parse_anchors(serve_doc)["activated_serve_users"]
     assert [leg["event"] for leg in win_legs] == [
         "Voter Outreach - Campaign Completed",
-        "Outreach - Campaign Completed",
         "Voter Outreach - Campaign Scheduled",
         "Outreach - Phone Banking: Complete",
-        "Door Knocking - Door Logged",
-        "Outreach - Door Knocking Door Logged",
-        "Outreach - Phone Banking: Call Logged",
-        "Outreach - Phone Banking Call Logged",
     ]
     assert [leg["event"] for leg in serve_legs] == ["Serve Onboarding - SMS Poll Sent"]
 
@@ -168,60 +163,24 @@ def test_win_activation_excludes_self_reported_outreach():
     legs = parse_anchors(doc)["win_activated_users"]
     by_event = {leg["event"]: leg for leg in legs}
     assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": "manual"}
-    assert by_event["Outreach - Campaign Completed"]["excluding"]["method"] == "manual"
-    # Only the two names of the completion event carry self-report, so a method
-    # exclusion anywhere else is a stray and fails loudly here.
-    assert [leg["event"] for leg in legs if "method" in leg["excluding"]] == [
-        "Voter Outreach - Campaign Completed",
-        "Outreach - Campaign Completed",
-    ]
-
-
-def test_win_activation_excludes_serve_on_every_leg_that_can_say_so():
-    # Serve outreach does not count toward Win. Only events named since 2026-09-29
-    # carry `product`, so every leg that is not historical must exclude it, except
-    # the send terminal, whose emitters are all keyed on a Win campaign.
-    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    for metric in ("win_activated_users", "win_product_output_users"):
-        for leg in parse_anchors(doc)[metric]:
-            if leg["era"] == "historical" or leg["event"] in (
-                "Voter Outreach - Campaign Scheduled",
-                "Candidate Website - Published",
-                "Voter Data - List Exported",
-            ):
-                continue
-            assert leg["excluding"].get("product") == "serve", f"{metric}: {leg['event']}"
-
-
-def test_win_activation_marks_every_per_person_leg_as_contact():
-    # A door or a call is one person reached. Unmarked, every call would count as
-    # a campaign sent.
-    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    contact = {leg["event"] for leg in parse_anchors(doc)["win_activated_users"] if leg["unit"] == "contact"}
-    assert contact == {
-        "Door Knocking - Door Logged",
-        "Outreach - Door Knocking Door Logged",
-        "Outreach - Phone Banking: Call Logged",
-        "Outreach - Phone Banking Call Logged",
-    }
+    # No other leg carries an exclusion, so a stray one fails loudly here.
+    assert [leg["event"] for leg in legs if leg["excluding"]] == ["Voter Outreach - Campaign Completed"]
 
 
 def test_win_activation_declares_no_preparation_event():
-    # Building an audience, creating a call list or a campaign, and downloading a
-    # call sheet are preparation to reach voters, not outreach. Nobody has been
-    # contacted yet, so none of them activates a user.
+    # Building an audience, creating a call list and downloading a call sheet are
+    # preparation to reach voters, not outreach. They are the tempting proxies for
+    # the three channels that still have no send terminal.
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     events = {leg["event"] for leg in parse_anchors(doc)["win_activated_users"]}
     assert events.isdisjoint(
         {
             "Voter Data - List Created",
             "Voter Outreach - Phone Banking Call List Created",
-            "Outreach - Phone Banking Call List Created",
             "Voter Outreach - Phone Banking Call Sheet Downloaded",
-            "Outreach - Phone Banking Call Sheet Downloaded",
             "Door Knocking - List Created",
-            "Outreach - Door Knocking List Created",
-            "Outreach - Campaign Created",
+            # Per-call, not per-campaign: the same predicate feeds campaigns_sent.
+            "Outreach - Phone Banking: Call Logged",
             # Fires at robocall draft-create on an unpaid row, so it counted a
             # candidate who built a draft and never paid. The shared send
             # terminal replaced it at the pay commit.
@@ -239,15 +198,9 @@ def test_product_output_declares_the_exact_event_string():
     assert [leg["event"] for leg in legs] == [
         "Candidate Website - Published",
         "Voter Outreach - Campaign Completed",
-        "Outreach - Campaign Completed",
         "Voter Data - List Exported",
         "Voter Outreach - Phone Banking Call Sheet Downloaded",
-        "Outreach - Phone Banking Call Sheet Downloaded",
         "Voter Outreach - Campaign Scheduled",
-        "Door Knocking - Door Logged",
-        "Outreach - Door Knocking Door Logged",
-        "Outreach - Phone Banking: Call Logged",
-        "Outreach - Phone Banking Call Logged",
     ]
 
 
