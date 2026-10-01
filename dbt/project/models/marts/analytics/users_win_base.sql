@@ -15,7 +15,8 @@
     - is_active_candidate_7d: user viewed candidate dashboard in trailing 7 days.
     - is_active_candidate_30d: trailing-30-day window (canonical Active Candidates OKR).
     - is_active_candidate_90d: trailing-90-day window.
-    - is_activated: user has at least one voter outreach campaign event.
+    - is_activated: user has reached voters through the product at least once
+      (an outreach campaign, a door knocked or a call logged).
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
 with
@@ -142,6 +143,7 @@ with
             (m.first_campaign_sent_at is not null) as is_activated,
             m.total_campaigns_sent,
             m.total_recipient_count,
+            m.total_outreach_contacts,
 
             -- Product Output: made something that left the product. Broader than
             -- is_activated and a different question, so the two sit together here

@@ -46,9 +46,10 @@ models:
 
       - name: first_campaign_sent_at
         description: >
-          Earliest product-performed outreach send, over the whole leg union
-          compiled by is_outreach_activation_event rather than any one event
-          name. Lifetime and unwindowed. The election-anchored equivalent is
+          Earliest outreach action through the product, over the whole leg
+          union compiled by is_outreach_activation_event rather than any one
+          event name: a campaign sent, or a door knocked or call logged.
+          Lifetime and unwindowed. The election-anchored equivalent is
           outreach_first_sent_at on the user outreach intensity model, which is
           a different number on purpose.
 
@@ -56,7 +57,9 @@ models:
         description: >
           Lifetime count of product-performed outreach sends per user, over the
           leg union compiled by is_outreach_activation_event, deduplicated per
-          outreach id and with self-report excluded. Not a single event name:
+          outreach id and with self-report excluded. Doors knocked and calls
+          logged are not campaigns and are left out; they are
+          total_outreach_contacts. Not a single event name:
           the outreach surface has been rebuilt twice and each rebuild retired
           the event the count had been reading.
 
@@ -64,6 +67,14 @@ models:
           terminal event began firing in late September 2026; the product
           database holds those. Unwindowed, so it is not comparable with
           outreach_sent_count on the user outreach intensity model.
+        data_tests:
+          - not_null
+
+      - name: total_outreach_contacts
+        description: >
+          Lifetime count of doors knocked and calls logged: the activation legs
+          declared `unit: contact`, which fire once per person reached and are
+          dropped from total_campaigns_sent.
         data_tests:
           - not_null
 
