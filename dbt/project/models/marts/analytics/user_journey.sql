@@ -61,7 +61,11 @@ with
         from {{ ref("int__amplitude_user_milestones") }}
     ),
 
-    active_eos as (select user_id from {{ ref("users_serve_active") }})
+    active_eos as (select user_id from {{ ref("users_serve_active") }}),
+
+    -- Read from the model the Activated Candidates OKR reads, so this row and
+    -- the reported figure cannot drift. Win accounts only; null elsewhere.
+    win_activation as (select user_id, is_activated from {{ ref("users_win_base") }})
 
 select
     u.user_id,
@@ -131,6 +135,8 @@ select
         )
     }},
 
+    wa.is_activated,
+
     u.is_serve_user,
     u.eo_activated_at,
     ae.user_id is not null as is_active_eo,
@@ -160,3 +166,4 @@ left join {{ ref("int__user_product_activity") }} as act using (user_id)
 left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
+left join win_activation as wa using (user_id)

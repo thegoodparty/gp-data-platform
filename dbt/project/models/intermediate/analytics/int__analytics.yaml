@@ -878,9 +878,14 @@ models:
                 min_value: 0
       - name: growth_state
         description: >
-          The new / retained / resurrected / churned bucket diagram as a column,
-          read off the three rolling flags. Null where we have no telemetry at
-          all, because an unseen user belongs in no bucket.
+          The new / retained / resurrected / churned bucket diagram as a column:
+          the current month's state from int__user_activity_monthly, which
+          defines it. Null where we have no telemetry at all, because an unseen
+          user belongs in no bucket.
+
+          The current month is partial. On the 1st it reads zero new and zero
+          retained until that day's events load, so compare it across builds
+          with care.
 
           'dormant' is the fourth live value and covers most rows: active in none
           of the three months and not active in either of the two most recent.
@@ -907,6 +912,71 @@ models:
             expression: has_amplitude_data
           config:
             where: active_m0 or active_m1 or active_m2
+
+  - name: int__user_activity_monthly
+    description: >
+      Each user's product activity month by month: one row per user per
+      calendar month, from their first active month to the current one. The
+      single monthly activity definition. int__user_product_activity reads its
+      rolling flags and growth_state from here, and the cohort history exposes
+      it, so the two cannot disagree.
+
+      Same activity rule as the profile row: at least one non-machine product
+      event in the month. Users with no telemetry have no rows. Events and
+      calendar both start at the product_telemetry_start var (2025-04).
+
+      Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: activity_month
+        description: First day of the calendar month.
+        data_tests:
+          - not_null
+      - name: activity_days
+        description: >
+          Distinct days with a non-machine product event in the month. Zero for
+          a month after the user's first in which they did nothing.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: growth_state
+        description: >
+          new: active, and this is their first active month. retained: active
+          this month and last. resurrected: active this month, not last, but
+          active at some point before. churned: inactive this month but active
+          in one of the two before. dormant: inactive for three months or more.
+
+          The current month is partial. On the 1st it reads zero new and zero
+          retained until that day's events load; filter on is_partial_month to
+          exclude it from a trend.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["new", "retained", "resurrected", "churned", "dormant"]
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ["user_id", "activity_month"]
+      # Every user's grid starts on a month they were active.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: activity_days > 0
+          config:
+            where: growth_state = 'new'
 
   - name: int__user_election_anchor
     description: >

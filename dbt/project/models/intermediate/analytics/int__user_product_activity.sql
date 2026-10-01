@@ -13,7 +13,11 @@
 -- thirds of our users as inactive when we simply cannot see them.
 -- has_amplitude_data is the column that tells the two apart.
 --
--- Table, not view: three passes over the event stream, read by the wide journey
+-- The rolling month flags and growth_state are read from
+-- int__user_activity_monthly, the one monthly definition the cohort history
+-- also uses, rather than computed here.
+--
+-- Table, not view: two passes over the event stream, read by the wide journey
 -- table and by its tests.
 {{ config(materialized="table") }}
 
@@ -31,7 +35,6 @@ with
             e.event_type,
             e.event_time,
             date(e.event_time) as event_date,
-            date_trunc('month', e.event_time) as event_month,
             c.is_serve,
             e.event_properties:path::string as page_path,
             e.event_properties:method::string as outreach_method,
@@ -39,7 +42,10 @@ with
             e.event_properties:product::string as outreach_product
         from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
         join catalog as c on c.event_type = e.event_type
-        where try_cast(e.user_id as bigint) is not null and not c.is_machine_emitted
+        where
+            try_cast(e.user_id as bigint) is not null
+            and not c.is_machine_emitted
+            and e.event_time >= '{{ var("product_telemetry_start") }}'
     ),
 
     -- Only users on the spine. An Amplitude user id with no gp-api user behind
@@ -122,35 +128,34 @@ with
         group by user_id
     ),
 
-    -- Calendar months, not trailing windows, so the three flags partition time
-    -- and growth_state can be read off them without overlap.
-    monthly as (
-        select
-            user_id,
-            event_month,
-            count(distinct event_date) as activity_days,
-            case
-                when event_month = date_trunc('month', current_date())
-                then 0
-                when event_month = add_months(date_trunc('month', current_date()), -1)
-                then 1
-                when event_month = add_months(date_trunc('month', current_date()), -2)
-                then 2
-            end as month_offset
-        from user_events
-        group by user_id, event_month
-    ),
-
+    -- Calendar months, not trailing windows, so the three flags partition time.
     rolling as (
         select
             user_id,
-            max(case when month_offset = 0 then activity_days end) as activity_days_m0,
-            max(case when month_offset = 1 then activity_days end) as activity_days_m1,
-            max(case when month_offset = 2 then activity_days end) as activity_days_m2,
-            -- Any month older than the three-month window, which is what makes
-            -- "resurrected" separable from "new".
-            count_if(month_offset is null) > 0 as active_before_window
-        from monthly
+            max(
+                case
+                    when activity_month = trunc(current_date(), 'MM') then activity_days
+                end
+            ) as activity_days_m0,
+            max(
+                case
+                    when activity_month = add_months(trunc(current_date(), 'MM'), -1)
+                    then activity_days
+                end
+            ) as activity_days_m1,
+            max(
+                case
+                    when activity_month = add_months(trunc(current_date(), 'MM'), -2)
+                    then activity_days
+                end
+            ) as activity_days_m2,
+            max(
+                case
+                    when activity_month = trunc(current_date(), 'MM') then growth_state
+                end
+            ) as growth_state
+        from {{ ref("int__user_activity_monthly") }}
+        where activity_month >= add_months(trunc(current_date(), 'MM'), -2)
         group by user_id
     )
 
@@ -192,26 +197,9 @@ select
     coalesce(r.activity_days_m1, 0) as activity_days_m1,
     coalesce(r.activity_days_m2, 0) as activity_days_m2,
 
-    -- The bucket diagram as a column. 'dormant' is the fourth bucket's honest
-    -- name: most rows are active in none of the three months, and calling them
-    -- churned would claim we lost someone we may never have had.
-    case
-        when l.user_id is null
-        then null
-        when
-            coalesce(r.activity_days_m0, 0) > 0
-            and coalesce(r.activity_days_m1, 0) = 0
-            and coalesce(r.activity_days_m2, 0) = 0
-            and not coalesce(r.active_before_window, false)
-        then 'new'
-        when coalesce(r.activity_days_m0, 0) > 0 and coalesce(r.activity_days_m1, 0) > 0
-        then 'retained'
-        when coalesce(r.activity_days_m0, 0) > 0
-        then 'resurrected'
-        when coalesce(r.activity_days_m1, 0) > 0 or coalesce(r.activity_days_m2, 0) > 0
-        then 'churned'
-        else 'dormant'
-    end as growth_state
+    -- Null where we have no telemetry, because an unseen user belongs in no
+    -- bucket. The current month is partial; see int__user_activity_monthly.
+    r.growth_state
 from keys as k
 left join lifetime as l using (user_id)
 left join rolling as r using (user_id)
