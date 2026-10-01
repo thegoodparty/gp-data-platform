@@ -1,0 +1,95 @@
+brief_id: nov3-election-cohort
+created: 2026-10-01
+author: framing routine (refined with tristan)
+ticket: DATA-2599
+decision:
+  what_action: |
+    Leadership gets a trusted count of Win users facing the 2026-11-03 election, how many are
+    Pro, how many have activated, and whether the "I'm on the ballot" onboarding answer
+    concentrates Pro and activation. Feeds pre-election focus and the tracking gap list.
+  who_acts: |
+    Product leadership (requester) and the data team (gap fixes).
+question:
+  one_sentence: |
+    Among Win users with an election on 2026-11-03 (and in early November), how many are Pro
+    and how many have activated, overall and split by the onboarding ballot-status answer?
+  type: descriptive
+  underlying_hypothesis: |
+    Pro upgrades (and activation) come almost entirely from users who answered
+    "I'm officially on the ballot" in onboarding.
+population:
+  included: |
+    Win users on users_win_candidacy with is_latest_version AND NOT is_demo whose bounded
+    election_date is 2026-11-03 (figure A) or falls in 2026-11-01..2026-11-10 (figure B).
+  excluded: |
+    Demo accounts; internal accounts (user_email ILIKE '%@goodparty.org'); corrupt election
+    dates outside [2020-01-01, 2050-01-01].
+  source_model: |
+    mart_analytics.users_win_candidacy (population, Pro), mart_analytics.users_win_base
+    (is_activated, first_campaign_sent_at), airbyte_source.gp_api_db_campaign
+    (ballot_status column coalesced with data:$.onboarding.ballotStatus archive),
+    dbt.stg_airbyte_source__gp_api_db_outreach (product-DB send reference).
+data_provenance:
+  schema_status: prod
+  coverage_start: |
+    users_win_base.first_campaign_sent_at reflects the DATA-2584 definition (prod activated
+    count 1,307 equals value_at_signing on 2026-10-01). Ballot answer exists only for users
+    who onboarded on/after 2026-05-07; Amplitude ballot-status property only from 2026-06-08.
+  coverage_end: |
+    Prod marts as of 2026-10-01 nightly; outreach staging extracted 2026-10-01 17:18 UTC.
+  post_merge_swap: N/A
+eligibility:
+  tenure_requirement: N/A (census of a live cohort)
+  reference_event: election_date
+  rationale: |
+    The ask is a point-in-time census one month before the election, not a rate.
+target:
+  definition: |
+    Counts of distinct users: total, is_pro (as-of-today campaign flag), is_activated
+    (governed win_activated_users definition, first_campaign_sent_at <= now).
+  censoring: |
+    Lifetime flags read as of today; no anchoring needed since the election is in the future.
+  absorbing_states: N/A
+comparison:
+  type: descriptive_cut
+  comparison_group: |
+    Ballot answer buckets: on-ballot / other answer / never asked (registered before
+    2026-05-07) / asked but no answer recorded.
+  notes: |
+    The hypothesis can only be tested inside the answered group; the never-asked bucket is
+    reported, not compared.
+observation_window:
+  start: N/A
+  end: now
+  anchored_to: election_date
+  boundary_semantics: |
+    election_date is a DATE column compared to date literals, inclusive both ends for the
+    early-November window. first_campaign_sent_at <= current_timestamp.
+cohorts:
+  - dimension: roster_corroboration  # amendment 2026-10-01: secondary source for on-ballot
+    values: any BR/TS/DDHQ candidacy-stage match; filing deadline passed (2026+ only)
+  - dimension: ballot_status_bucket
+    values: on-ballot, qualified-not-filed, considering, testing, never asked, no answer
+sample_size:
+  expected_n_total: ~10,000 users on 11/3; ~600 Pro; activated in the low hundreds.
+  expected_n_per_cohort: answered ballot question ~1,000-2,000 of the cohort.
+  power_concern: N/A, census.
+falsification:
+  what_would_change_belief: |
+    A material share of the cohort's Pro users having answered something other than on-ballot.
+known_concerns:
+  - Activation before 2026-09-29 is a floor: ~35% event coverage of real senders in Sept.
+  - is_pro is as-of-today and hides churned Pros (user chose as-of-today).
+  - ballot_status column is not surfaced by the staging model; read from airbyte_source.
+  - Users with no election_date on file (~29% of Win users) cannot be counted; the total is a floor.
+  - Internal exclusion uses the canonical int__civics_internal_persons rule (goodparty/mailinator domain or admin/sales role), not the @goodparty.org proxy.
+  - Serve outreach before 2026-09-29 cannot be excluded from activation.
+execution_notes:
+  preferred_format: script
+  output_location: analytics/projects/win_topline_reporting/election_cohort.py (promoted from ad_hoc 2026-10-01), numbers printed to console
+  reruns: one-off; rerunnable as the election approaches
+  steps:
+    - 1. Report internal-account exclusion count.
+    - 2. Report figure A (11/3 exact) and figure B (11/1..11/10) side by side.
+    - 3. Reference column, activation: users with a product-DB outreach row that committed.
+    - 4. Gap check: share of the cohort with an Amplitude officeElectionDate user property.
