@@ -284,6 +284,17 @@ models:
               arguments:
                 min_value: 0
 
+      - name: total_outreach_contacts
+        description: >
+          Doors knocked and calls logged by this user: the activation legs that
+          fire once per person reached. They activate a user but are never
+          counted as campaigns, so an activated user can have zero campaigns and
+          a non-zero count here.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
       - name: total_recipient_count
         description: >
           Total number of recipients across all voter outreach campaigns sent by this user.
@@ -340,7 +351,7 @@ models:
             where: "is_activated = true"
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "total_campaigns_sent > 0"
+            expression: "total_campaigns_sent > 0 or total_outreach_contacts > 0"
           config:
             where: "is_activated = true"
       - dbt_utils.expression_is_true:

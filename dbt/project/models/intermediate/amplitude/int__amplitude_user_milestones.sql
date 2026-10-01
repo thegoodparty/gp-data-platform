@@ -189,6 +189,28 @@ with
                     then recipient_count
                 end
             ) as total_recipient_count,
+            -- Doors knocked and calls logged: the activation legs that fire once
+            -- per person reached, which every campaign count above drops. An
+            -- activated user has at least one of these or one campaign.
+            count(
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method", "outreach_product"
+                            )
+                        }} and not
+                        {{
+                            is_outreach_activation_event(
+                                "event_type",
+                                "outreach_method",
+                                "outreach_product",
+                                contact_legs=false,
+                            )
+                        }}
+                    then 1
+                end
+            ) as total_outreach_contacts,
 
             -- Active Candidates
             max(
