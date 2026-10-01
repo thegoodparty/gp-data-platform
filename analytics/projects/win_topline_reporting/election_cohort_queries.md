@@ -51,7 +51,7 @@ Related, not in scope here: the governed activation metric counts pre-2026-01-09
 
 ## Appendix: exact queries (Databricks SQL, `goodparty_data_catalog`)
 
-The SQL below matches `election_cohort.py` after PR #1129 review round 2: the ballot answer is resolved by commitment rank rather than a lexicographic `max()`, and the rule-consistent activation flag treats a user with no qualifying event at all as not-a-self-report. The DATA-2603 ticket description carries the originally filed text without those two fixes; numbers on the 2026-11-03 cohort are identical either way (0 users with more than one answer, 0 activated users without event evidence). The internal-account exclusion below is also the canonical `int__civics_internal_persons` rule used by the script (231 accounts on 2026-10-01, giving 9,931 users), where the filed ticket text and the narrative above used the older `@goodparty.org` proxy (225 accounts, 9,935 users); Pro and activation counts are the same under both.
+The SQL below matches `election_cohort.py` after PR #1129 review round 2: the ballot answer is resolved by commitment rank rather than a lexicographic `max()`, and the rule-consistent activation flag treats a user with no qualifying event at all as not-a-self-report. The DATA-2603 ticket description carries the originally filed text without those two fixes; numbers on the 2026-11-03 cohort are identical either way (0 users with more than one answer, 0 activated users without event evidence). The internal-account exclusion below is also the canonical `int__civics_internal_persons` rule used by the script (231 accounts on 2026-10-01, giving 9,931 users), where the filed ticket text and the narrative above used the older `@goodparty.org` proxy (225 accounts, 9,935 users); Pro and activation counts are the same under both. Two more parity fixes from review round 4: queries B, C and F split the no-answer population the same three ways as A and D (answer / asked but no answer / registered before the question existed), and the filing-period CTEs keep every period of a race and take the latest `end_on`, where the filed text picked one period by the largest id.
 
 Script and brief: `election_cohort.py` and `election_cohort_brief.yaml` in this folder. Text above is the DATA-2603 ticket description as filed on 2026-10-01; corrections posted as comments on the ticket (the `unknown` events ran until 2026-04-28 in data, from the legacy LogTaskModal, and omni's 2026-08-25 migration did backfill `ballot_status`).
 
@@ -136,7 +136,7 @@ order by users desc
 ```sql
 -- Q1 the simple check: cohort user -> civics mart candidacy (via product campaign id) -> stage ids
 with cand as (
-    select user_id, cast(campaign_id as string) campaign_id, is_verified
+    select user_id, cast(campaign_id as string) campaign_id, is_verified, user_created_at
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
         -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
@@ -146,7 +146,9 @@ with cand as (
 ),
 ballot as (select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
 j as (
-    select c.user_id, coalesce(b.ballot_status,'never asked') bucket, max(c.is_verified) is_verified,
+    select c.user_id,
+           case when b.ballot_status is not null then b.ballot_status when min(c.user_created_at) < timestamp'2026-05-07' then 'never asked (pre-2026-05-07)' else 'asked, no answer' end bucket,
+           max(c.is_verified) is_verified,
            max(case when cd.gp_candidacy_id is not null then 1 else 0 end) in_civics_mart,
            max(case when cs.br_candidacy_id is not null then 1 else 0 end) has_br_candidacy_id,
            max(case when cs.ts_source_candidate_id is not null then 1 else 0 end) has_ts_id,
@@ -183,7 +185,7 @@ where c.is_latest_version and not c.is_demo and c.election_date = date'2026-11-0
 ```sql
 -- Q3 independent name-level match vs ER cluster, by ballot bucket (cohort users with an 11/3 race)
 with cand as (
-    select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id, lower(trim(user_first_name)) fn, lower(trim(user_last_name)) ln
+    select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id, lower(trim(user_first_name)) fn, lower(trim(user_last_name)) ln, user_created_at
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
         -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
@@ -201,7 +203,8 @@ er as (
     where g.source_name = 'gp_api' group by 1
 ),
 u as (
-    select c.user_id, coalesce(bl.ballot_status, 'never asked') bucket,
+    select c.user_id,
+           case when bl.ballot_status is not null then bl.ballot_status when min(c.user_created_at) < timestamp'2026-05-07' then 'never asked (pre-2026-05-07)' else 'asked, no answer' end bucket,
            max(rg.br_race_id) is not null race_found,
            max(case when ro.br_race_id is not null then 1 else 0 end) race_has_roster,
            max(case when ro.ln = c.ln and (ro.fn = c.fn or left(ro.fn,1) = left(c.fn,1)) then 1 else 0 end) name_match,
@@ -243,8 +246,8 @@ race_general as (
       and e.election_day = date'2026-11-03'
 ),
 fp_ids as (
-    select r.database_id race_database_id, max(fp.databaseid) filing_period_database_id
-    from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as fp group by 1
+    select r.database_id race_database_id, fp.databaseid filing_period_database_id  -- every period; the deadline is max(end_on) downstream, not the max id
+    from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as fp
 ),
 race_deadline as (
     select rg.br_position_id, max(p.end_on) filing_deadline, count(distinct rg.br_race_id) n_races
@@ -261,7 +264,7 @@ person_match as (
 ),
 u as (
     select c.user_id,
-           case when b.ballot_status is not null then b.ballot_status when min(c.user_created_at) < timestamp'2026-05-07' then 'never asked' else 'asked, no answer' end bucket,
+           case when b.ballot_status is not null then b.ballot_status when min(c.user_created_at) < timestamp'2026-05-07' then 'never asked (pre-2026-05-07)' else 'asked, no answer' end bucket,
            max(c.ballotready_position_id) is not null has_position,
            max(rd.br_position_id) is not null race_found,
            max(rd.filing_deadline) deadline,
@@ -300,7 +303,7 @@ rg as (
     join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id
     where not coalesce(r.is_primary, false) and not coalesce(r.is_runoff, false) and not coalesce(r.is_recall, false) and e.election_day = date'2026-11-03'
 ),
-fp as (select r.database_id race_database_id, max(f.databaseid) fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f group by 1),
+fp as (select r.database_id race_database_id, f.databaseid fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f),
 d as (
     select c.user_id, max(p.end_on) deadline from cand c join rg on rg.br_position_id = c.ballotready_position_id
     left join fp on fp.race_database_id = rg.br_race_id left join goodparty_data_catalog.dbt.int__ballotready_filing_period p on p.database_id = fp.fpid group by 1
@@ -314,7 +317,7 @@ select count(*) users_with_race, count_if(deadline is null) no_deadline, min(dea
 -- Q3 this cycle's BR lag: roster row creation minus the race filing deadline, cohort's 11/3 races
 with cand as (select distinct ballotready_position_id from goodparty_data_catalog.mart_analytics.users_win_candidacy where is_latest_version and not is_demo and election_date = date'2026-11-03'),
 rg as (select r.database_id br_race_id, r.position.databaseid br_position_id from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id where not coalesce(r.is_primary,false) and not coalesce(r.is_runoff,false) and not coalesce(r.is_recall,false) and e.election_day = date'2026-11-03'),
-fp as (select r.database_id race_database_id, max(f.databaseid) fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f group by 1),
+fp as (select r.database_id race_database_id, f.databaseid fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f),
 rd as (select rg.br_race_id, max(p.end_on) deadline from cand c join rg on rg.br_position_id = c.ballotready_position_id left join fp on fp.race_database_id = rg.br_race_id left join goodparty_data_catalog.dbt.int__ballotready_filing_period p on p.database_id = fp.fpid group by 1),
 rows_ as (select datediff(cast(cv.candidacy_created_at as date), rd.deadline) lag_days, rd.deadline from rd join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_s3_candidacies_v3 cv on cast(cv.br_race_id as string) = cast(rd.br_race_id as string) where rd.deadline is not null)
 select count(*) roster_rows, count_if(lag_days <= 0) by_deadline, round(100*count_if(lag_days <= 0)/count(*),1) pct_by_deadline, percentile(lag_days, 0.5) median_lag_days, percentile(lag_days, 0.9) p90_lag_days, max(lag_days) max_lag_days,
@@ -323,7 +326,7 @@ select count(*) roster_rows, count_if(lag_days <= 0) by_deadline, round(100*coun
 -- Q4 same lag, by deadline month, to see whether late deadlines are still filling
 with cand as (select distinct ballotready_position_id from goodparty_data_catalog.mart_analytics.users_win_candidacy where is_latest_version and not is_demo and election_date = date'2026-11-03'),
 rg as (select r.database_id br_race_id, r.position.databaseid br_position_id from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id where not coalesce(r.is_primary,false) and not coalesce(r.is_runoff,false) and not coalesce(r.is_recall,false) and e.election_day = date'2026-11-03'),
-fp as (select r.database_id race_database_id, max(f.databaseid) fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f group by 1),
+fp as (select r.database_id race_database_id, f.databaseid fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f),
 rd as (select rg.br_race_id, max(p.end_on) deadline from cand c join rg on rg.br_position_id = c.ballotready_position_id left join fp on fp.race_database_id = rg.br_race_id left join goodparty_data_catalog.dbt.int__ballotready_filing_period p on p.database_id = fp.fpid group by 1)
 select date_trunc('month', rd.deadline) deadline_month, count(distinct rd.br_race_id) races, count(cv.br_candidacy_id) roster_rows, percentile(datediff(cast(cv.candidacy_created_at as date), rd.deadline), 0.5) median_lag_days, count_if(cv.candidacy_created_at >= '2026-09-01') rows_added_sept
 from rd left join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_s3_candidacies_v3 cv on cast(cv.br_race_id as string) = cast(rd.br_race_id as string) where rd.deadline is not null group by 1 order by 1
@@ -347,7 +350,7 @@ from cand c join rg on rg.br_position_id = c.ballotready_position_id left join g
 ```sql
 -- On-ballot users past the 40-day lag: is the person on BR's roster, and does the race have a roster at all?
 with cand as (
-    select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id
+    select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id, user_created_at
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
         -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
@@ -365,7 +368,7 @@ rg as (
     join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id
     where not coalesce(r.is_primary, false) and not coalesce(r.is_runoff, false) and not coalesce(r.is_recall, false) and e.election_day = date'2026-11-03'
 ),
-fp as (select r.database_id race_database_id, max(f.databaseid) fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f group by 1),
+fp as (select r.database_id race_database_id, f.databaseid fpid from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r lateral view explode(r.filing_periods) as f),
 rd as (
     select rg.br_position_id, max(p.end_on) deadline, max(rg.br_race_id) br_race_id
     from rg left join fp on fp.race_database_id = rg.br_race_id left join goodparty_data_catalog.dbt.int__ballotready_filing_period p on p.database_id = fp.fpid group by 1
@@ -377,7 +380,8 @@ pm as (
     left join goodparty_data_catalog.mart_civics.candidacy_stage cs on cs.gp_candidacy_id = cd.gp_candidacy_id group by 1
 ),
 u as (
-    select c.user_id, b.ballot_status,
+    select c.user_id,
+           case when b.ballot_status is not null then b.ballot_status when min(c.user_created_at) < timestamp'2026-05-07' then 'never asked (pre-2026-05-07)' else 'asked, no answer' end bucket,
            datediff(current_date(), max(rd.deadline)) days_since,
            coalesce(max(pm.any_person_match), 0) person_match,
            coalesce(max(ro.n_br_candidacies), 0) race_roster_size
@@ -387,7 +391,7 @@ u as (
     left join pm on pm.user_id = c.user_id
     group by c.user_id, b.ballot_status
 )
-select coalesce(ballot_status, 'never asked') bucket,
+select bucket,
        count(*) past_40d_users,
        count_if(person_match = 1) person_on_roster,
        count_if(person_match = 0 and race_roster_size = 0) not_matched_race_has_no_roster,
