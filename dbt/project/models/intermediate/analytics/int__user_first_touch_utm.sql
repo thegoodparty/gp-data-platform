@@ -1,0 +1,44 @@
+-- First-touch UTM attribution per user, from Amplitude. One row per user who
+-- carries any.
+--
+-- Reads the SDK's initial_utm_* family only. Amplitude holds three
+-- overlapping UTM families (this one, the webapp's own utm_* and utm_*_first,
+-- and a space-separated set that ran for one week in May 2026), and unioning
+-- them mixes different touches. The SDK family is first-touch by construction
+-- and reaches the most users.
+--
+-- Each device captures its own initial values, so a user seen on two devices
+-- can carry two. The three columns are taken together from the user's
+-- earliest event that carries them, so source, medium and campaign always
+-- describe the same touch. Values are left raw, typos included.
+{{ config(materialized="table") }}
+
+with
+    utm_events as (
+        select
+            try_cast(user_id as bigint) as user_id,
+            event_time,
+            named_struct(
+                'source',
+                user_properties:initial_utm_source::string,
+                'medium',
+                user_properties:initial_utm_medium::string,
+                'campaign',
+                user_properties:initial_utm_campaign::string
+            ) as utm
+        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        where
+            try_cast(user_id as bigint) is not null
+            and user_properties:initial_utm_source is not null
+    ),
+
+    first_touch as (
+        select user_id, min_by(utm, event_time) as utm from utm_events group by user_id
+    )
+
+select
+    user_id,
+    utm.source as utm_source_first,
+    utm.medium as utm_medium_first,
+    utm.campaign as utm_campaign_first
+from first_touch

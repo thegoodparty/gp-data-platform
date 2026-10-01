@@ -1269,3 +1269,163 @@ models:
               + outreach_phone_banking_count + outreach_unattributed_count
           config:
             where: outreach_sent_count is not null
+
+  - name: int__user_candidacy_profile
+    description: >
+      The run each user is on now, how it ended, and what they have run before.
+      One row per user.
+
+      Every candidacy_* column reads from the single anchor campaign version
+      int__user_election_anchor picks, never assembled from several campaigns.
+      A usable election date is what makes a candidacy: anchor campaigns with
+      no date are empty shells, so their columns stay null with the prospects.
+
+      Outcome comes from the civics candidacy for the anchor run, matched on the
+      anchor date being one of its stage dates. A candidacy from another cycle
+      never supplies this run's result.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: has_candidacy
+        description: >
+          The user has an anchor campaign with a usable election date. False
+          means a prospect who never started a dated run, not missing data.
+        data_tests:
+          - not_null
+      - name: candidacy_campaign_id
+        description: The anchor campaign every candidacy_* column describes.
+      - name: candidacy_office
+        description: The office as entered in the product.
+      - name: candidacy_normalized_position_name
+        description: The office normalized against BallotReady.
+      - name: candidacy_state
+        description: State of the race.
+      - name: candidacy_party
+        description: Party as entered.
+      - name: candidacy_partisan_type
+        description: Whether the race is partisan, as entered.
+      - name: candidacy_election_date
+        description: >
+          Election date of the anchor run. Every election-anchored duration
+          measures to this.
+      - name: candidacy_election_level
+        description: City, county, state or federal.
+      - name: candidacy_filing_deadline
+        description: >
+          Filing deadline, through the BallotReady position and the election
+          date. Sparse by civics coverage, not by defect: the position, election
+          and deadline links each narrow the population.
+      - name: candidacy_position_id
+        description: BallotReady position id for the race.
+      - name: candidacy_office_level
+        description: Office level from the corroborated civics candidacy.
+      - name: candidacy_is_pledged
+        description: The anchor campaign took the GoodParty pledge.
+      - name: candidacy_is_verified
+        description: The anchor campaign passed verification.
+      - name: candidacy_is_pro
+        description: The anchor campaign is on Pro.
+      - name: candidacy_is_win_icp
+        description: >
+          The race is in the Win target market, with the ICP effective-date rule
+          already applied.
+      - name: candidacy_voter_count
+        description: Registered voters in the district.
+      - name: candidacy_result
+        description: >
+          How the run ended at the deepest stage reached, from the civics
+          candidacy's latest_stage_result. Always read with
+          candidacy_latest_stage_reached. Filter to Won and Lost for any rate.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
+      - name: candidacy_latest_stage_reached
+        description: The stage candidacy_result belongs to.
+      - name: is_still_running
+        description: >
+          The anchor election is today or later, so no outcome exists yet.
+          Never null: a user with no candidacy is not running.
+        data_tests:
+          - not_null
+      - name: never_filed
+        description: >
+          The anchor election has passed and no civics candidacy with any
+          source beyond gp-api exists for it. A gp-api-only candidacy is our
+          own campaign echoed back and is not evidence the run reached a
+          ballot. Never null.
+        data_tests:
+          - not_null
+      - name: candidacy_is_incumbent
+        description: >
+          They already hold the office, from the civics candidacy or else the
+          office-holder derivation.
+      - name: candidacy_viability_score
+        description: Modelled viability of the run, from the civics scorer.
+      - name: candidacy_win_number
+        description: Votes needed to win.
+      - name: prior_election_count
+        description: >
+          Distinct election years before the anchor's in which this person ran,
+          from both the product and the civics record. Null without a
+          candidacy.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: has_run_before
+        description: >
+          prior_election_count is above zero. Misses re-runners whose anchor is
+          their earliest run; use election_year_count for "came back to run
+          again".
+      - name: election_year_count
+        description: >
+          Distinct election years this person has run in, in either direction
+          from the anchor. The anchor is often a stale product campaign while
+          the civics record shows the same person running again later, so this
+          is the column for whether candidates come back. Null without a
+          candidacy.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: ever_won
+        description: >
+          This person won at least one race, in any cycle, on any account.
+          Person grain on purpose.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref("int__user_election_anchor")
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: not (is_still_running and never_filed)
+
+  - name: int__user_first_touch_utm
+    description: >
+      First-touch UTM attribution per user, from Amplitude's SDK initial_utm_*
+      family. One row per user who carries any.
+
+      Amplitude holds three overlapping UTM families; never union this with
+      the webapp's utm_* or utm_*_first properties. Source, medium and
+      campaign come together from the user's earliest event carrying them, so
+      they always describe one touch. Values are raw, typos included.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: utm_source_first
+        description: First-touch UTM source.
+        data_tests:
+          - not_null
+      - name: utm_medium_first
+        description: First-touch UTM medium.
+      - name: utm_campaign_first
+        description: First-touch UTM campaign.
