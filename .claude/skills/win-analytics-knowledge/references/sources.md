@@ -7,7 +7,7 @@ Part of the **win-analytics-knowledge** skill. Where Win-product data lives and 
 - **Business context:** Win analyses draw on six overlapping data domains (product DB, analytics mart, civics mart, Amplitude events, HubSpot surveys, L2 voter data).
 - **Entity grain:** varies by domain (see table). The primary working grain is one row per `campaign_version_id`.
 - **Standard hygiene filter:** on `users_win_candidacy`, `is_latest_version AND NOT is_demo`.
-- **Internal accounts:** no governed filter exists. The agreed proxy is `email ILIKE '%@goodparty.org'` (user grain). Exclude for external-facing user counts and name the exclusion as an assumption. Verified 2026-07-21 (2026 H1): domain-anchored and bare-substring forms matched identical sets; residual QA-pattern emails among remaining users ≤2/month.
+- **Internal accounts:** no governed filter on the analytics marts, but the repo's canonical rule is `int__civics_internal_persons`: email domain `ILIKE ANY ('%goodparty%', '%mailinator%')` OR a gp_api `roles` array overlapping `('admin', 'sales')`. Use that rule (join `stg_airbyte_source__gp_api_db_user` on `user_id`) rather than the older `email ILIKE '%@goodparty.org'` proxy, which misses other goodparty domains, mailinator test signups and staff on personal addresses (Nov-2026 cohort: 231 vs 225). Exclude for external-facing user counts and name the exclusion; note the governed `win_users` includes staff, so counts will not reconcile to the semantic layer. Verified 2026-07-21 (2026 H1): domain-anchored and bare-substring forms matched identical sets; residual QA-pattern emails among remaining users ≤2/month.
 
 ## Routing triggers
 
@@ -69,7 +69,7 @@ that has a BallotReady, TechSpeed, or DDHQ candidacy-stage record AND whose gene
 happened OR whose general filing deadline has passed. Reliable only on completed elections (per the
 lag above). "Not corroborated" is an **upper bound on "not real"** — BR under-covers local races, so
 some uncorroborated candidacies are real but unlisted; it is not a fake-account count. The match
-flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`. When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)). For the filing-deadline arm, use `election_stage.filing_period_end_on` joined via `candidacy_stage.gp_election_stage_id`; this column is 2026+ only (NULL for <=2025 — use the election-date arm alone for the archive half).
+flag lives on `candidacy_stage` — see [joins.md](joins.md), not `candidate_id_source`, and **not** mart presence: the product leg admits a campaign only once it is already corroborated or HubSpot-verified, so conditioning a match rate on having a `candidacy` row inflates it (joins.md has the ER-cluster and in-race name-match instruments, and the signup-race path for filing deadlines). When gating on the election date, clamp `general_election_date` to `[2020-01-01, 2050-01-01]` — corrupt out-of-range values exist ([gotchas.md](gotchas.md)). For the filing-deadline arm, use `election_stage.filing_period_end_on` joined via `candidacy_stage.gp_election_stage_id`; this column is 2026+ only (NULL for <=2025 — use the election-date arm alone for the archive half).
 
 **Historical filing deadlines (pre-2026).** `election_stage.filing_period_end_on` is 2026+ only, but
 the general filing deadline for earlier cycles is recoverable from BR raw staging:
