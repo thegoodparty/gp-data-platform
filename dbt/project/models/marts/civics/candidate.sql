@@ -67,8 +67,15 @@ with
             phone_number,
             -- 2025 HubSpot archive has no BR typed URLs.
             cast(null as array<struct<type:string, url:string>>) as urls,
+            -- 'gp_api' when the archive linked a GoodParty app user (by HubSpot
+            -- contact id), so the tag means the same thing on both sides of
+            -- the union.
             array_compact(
-                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+                array(
+                    'hubspot',
+                    case when has_ddhq_match then 'ddhq' end,
+                    case when prod_db_user_id is not null then 'gp_api' end
+                )
             ) as source_systems
         from {{ ref("int__civics_candidate_2025") }}
     ),

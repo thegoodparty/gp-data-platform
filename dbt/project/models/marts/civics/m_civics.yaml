@@ -812,6 +812,10 @@ models:
         description: |
           Array of source systems contributing to this row. Possible values:
           'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
+          'gp_api' is present exactly when product_campaign_id is set. On 2025
+          archive rows that means the archive linked a product campaign; it
+          does not imply the 2026+ gp_api eligibility gates (BR position,
+          vendor corroboration or HubSpot verification).
           See the model-level description for merge mechanics.
         data_tests:
           - not_null
@@ -830,6 +834,9 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "array_contains(source_systems, 'gp_api') = (product_campaign_id is not null)"
 
   - name: candidacy_scored
     description: >
@@ -1009,6 +1016,10 @@ models:
         description: |
           Array of source systems contributing to this row. Possible values:
           'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
+          'gp_api' is present exactly when prod_db_user_id is set. On 2025
+          archive rows that means a GoodParty app user matched the HubSpot
+          contact; it does not imply the 2026+ gp_api gates (a user with at
+          least one campaign).
           See the model-level description for merge mechanics.
         data_tests:
           - not_null
@@ -1027,6 +1038,9 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "array_contains(source_systems, 'gp_api') = (prod_db_user_id is not null)"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
