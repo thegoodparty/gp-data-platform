@@ -109,12 +109,12 @@ win_activated_users:
   business:
     approved: 2026-10-01
     rule_sha: '1170247'
-    approved_by_pr: null
+    approved_by_pr: 1123
   data:
     approved: 2026-10-01
     build_sha: '94b109f'
     value_at_signing: 1307
-    approved_by_pr: null
+    approved_by_pr: 1123
 
 win_active_candidates_30d:
   # Re-fingerprinted for a prose edit, not a build change. #1046 replaced a
@@ -160,7 +160,7 @@ win_product_output_users:
     approved: 2026-10-01
     build_sha: 'bc41c9e'
     value_at_signing: 2080
-    approved_by_pr: null
+    approved_by_pr: 1123
 
 win_users:
   # Was recorded as 2026-08-03, the date the line was typed. Coverage actually
