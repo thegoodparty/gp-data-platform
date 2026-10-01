@@ -3195,3 +3195,149 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [user_id, touch_id]
+
+  - name: user_journey
+    description: >
+      The end-to-end user view: one row per gp-api user account across
+      acquisition, sales contact, the current candidacy, product use, outreach,
+      revenue and outcome. Internal only, for product and sales.
+
+      Grain is the user account, not the person. gp_person_id, account_count
+      and is_primary_account are carried so a person view is a group by.
+
+      Read only. The scheduled build is the only writer and there is no
+      write-back path; record edits belong to product admin. A singular test
+      fails if anyone else can modify it.
+
+      Assembly only: each column is defined by the user-grain model that owns
+      it (int__user_resolved_keys, int__user_candidacy_profile,
+      int__user_hubspot_profile, int__user_first_touch_utm,
+      int__user_product_activity, int__user_outreach_intensity,
+      int__user_revenue_profile) and is not restated here. Only the columns
+      this model derives are documented below.
+
+      Nulls mean "cannot see", zeros mean "saw nothing happen". Each family has
+      its own visibility flag (has_hubspot_contact, has_amplitude_data,
+      has_candidacy, has_stripe_customer); check it before reading a null as
+      zero.
+
+      Money columns: filter on is_primary_stripe_customer_row before summing,
+      because a few Stripe customers sit on two accounts.
+
+      Columns measured against today (days_to_*, is_still_running,
+      outreach_window_*, active_m0..m2) move with the build date.
+      record_refreshed_at says when; user_journey_refresh_log has per-build
+      counts and source load times.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: gp_person_id
+        description: >
+          The human behind the account. Null only for a handful of the newest
+          signups, who fall between the person-graph rebuild and this build.
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+                warn_if: ">0"
+                error_if: ">100"
+      - name: registered_at
+        description: When the account was created. Read from the civics users mart.
+        data_tests:
+          - not_null
+      - name: registration_month
+        description: registered_at truncated to month, for cohorting.
+        data_tests:
+          - not_null
+      - name: product
+        description: >
+          win, serve or both by organization membership; none for an account
+          that never joined an organization in either product.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["win", "serve", "both", "none"]
+      - name: registration_country
+        description: >
+          Country on the registration event, from Amplitude. Null before
+          telemetry began in 2025-04.
+      - name: is_active_eo
+        description: Currently an active elected official on Serve.
+        data_tests:
+          - not_null
+      - name: days_to_candidacy_election
+        description: Days from the build date to the anchor election. Negative once passed.
+      - name: days_to_filing_deadline
+        description: Days from the build date to the filing deadline.
+      - name: first_touch_to_signup_days
+        description: >
+          Days from first known contact to signup. Zero for most rows, where
+          the signup created the contact; filter on not first_touch_is_signup
+          for a lead-time population.
+      - name: signup_to_product_output_days
+        description: Days from account creation to first product output.
+      - name: first_touch_to_election_days
+        description: Days from first known contact to the anchor election.
+      - name: first_touch_to_filing_days
+        description: Days from first known contact to the filing deadline.
+      - name: is_demo_only
+        description: The account has campaigns and every one is a demo.
+        data_tests:
+          - not_null
+      - name: record_refreshed_at
+        description: When this row was rebuilt.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref("users")
+
+  - name: user_journey_refresh_log
+    description: >
+      One row per build of user_journey: row counts, unresolved identity
+      counts and each source's latest load time. Append-only and exempt from
+      full refresh, so the history survives merges. A singular test fails the
+      build when any source is more than two days stale.
+    columns:
+      - name: dbt_invocation_id
+        description: The dbt invocation that wrote the row.
+        data_tests:
+          - unique
+          - not_null
+      - name: refreshed_at
+        description: When the build ran.
+        data_tests:
+          - not_null
+      - name: row_count
+        description: Rows in user_journey.
+      - name: user_count
+        description: Distinct users in user_journey. Equal to row_count.
+      - name: users_without_person_id
+        description: Rows the person graph has not reached yet.
+      - name: users_without_hubspot_contact
+        description: Rows reaching no live HubSpot contact.
+      - name: users_with_candidacy
+        description: Rows with an anchor candidacy.
+      - name: users_with_telemetry
+        description: Rows with any Amplitude data.
+      - name: paying_users
+        description: Rows with at least one captured payment.
+      - name: unresolved_stripe_customers
+        description: Stripe customers that reach no user row at all.
+      - name: gp_api_loaded_at
+        description: Latest gp-api user load.
+      - name: amplitude_loaded_at
+        description: Latest Amplitude event load.
+      - name: hubspot_loaded_at
+        description: Latest HubSpot engagements load.
+      - name: stripe_loaded_at
+        description: Latest Stripe charges load.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: row_count = user_count
