@@ -3224,7 +3224,7 @@ models:
       it (int__user_resolved_keys, int__user_candidacy_profile,
       int__user_hubspot_profile, int__user_first_touch_utm,
       int__user_product_activity, int__user_outreach_intensity,
-      int__user_revenue_profile) and is not restated here. Only the columns
+      int__user_revenue_profile, users_win_base) and is not restated here. Only the columns
       this model derives are documented below.
 
       Nulls mean "cannot see", zeros mean "saw nothing happen". Each family has
@@ -3236,7 +3236,9 @@ models:
       because a few Stripe customers sit on two accounts.
 
       Columns measured against today (days_to_*, is_still_running,
-      outreach_window_*, active_m0..m2) move with the build date.
+      outreach_window_*, active_m0..m2, growth_state) move with the build date.
+      growth_state is the current month's, which is partial; the month-by-month
+      history is user_growth_state_monthly.
       record_refreshed_at says when; user_journey_refresh_log has per-build
       counts and source load times.
     columns:
@@ -3276,6 +3278,12 @@ models:
         description: >
           Country on the registration event, from Amplitude. Null before
           telemetry began in 2025-04.
+      - name: is_activated
+        description: >
+          The Activated Candidates OKR flag, read from users_win_base so this
+          row agrees with the reported figure. Null for accounts that are not
+          Win users, because the OKR does not apply to them. Not the same
+          question as has_product_output.
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:
@@ -3307,6 +3315,36 @@ models:
       - dbt_utils.equal_rowcount:
           arguments:
             compare_model: ref("users")
+
+  - name: user_growth_state_monthly
+    description: >
+      Each user's growth state month by month, for the cohort view: one row per
+      user per calendar month from their first active month to the current one.
+      Internal only.
+
+      The current month is partial and reads near zero new and retained early
+      in the month. Filter on not is_partial_month for a trend.
+
+      Per-column meaning lives on int__user_activity_monthly; this is a
+      passthrough exposure and does not restate it. Its current month agrees
+      with user_journey.growth_state by test.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: activity_month
+        description: First day of the calendar month.
+        data_tests:
+          - not_null
+      - name: growth_state
+        description: new, retained, resurrected, churned or dormant.
+        data_tests:
+          - not_null
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+        data_tests:
+          - not_null
 
   - name: user_journey_refresh_log
     description: >

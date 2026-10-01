@@ -46,6 +46,10 @@ vars:
   # mirror: the mart also counts a 'Non-Partisan' registration, omni does not.
   affinity_dislike_cut: 70
   affinity_third_cut: 50
+  # First month of product instrumentation. Product activity reads no event
+  # before it: the stream holds junk timestamps (one dated 1978) that would
+  # otherwise start a user's monthly history decades early.
+  product_telemetry_start: "2025-04-01"
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
