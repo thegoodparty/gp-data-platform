@@ -29,6 +29,7 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 | `icp_office_win`, `icp_office_serve`, `icp_win_supersize` | ICP flags. **Use as slicing dimensions, NOT filters** (per DATA-1935 resolved scope). |
 | `is_judicial`, `is_appointed` | Non-traditional office flags. Often correlated with NULL ICP / NULL `election_level`. |
 | `l2_district_name`, `l2_district_type`, `voter_count` | L2 district context — already surfaced from `int__icp_offices`. Use these instead of joining L2 directly. |
+| Onboarding answers: `ballot_status`, `signup_goal` (**not on the mart**) | "Are you already on the ballot?" (`on-ballot` / `qualified-not-filed` / `considering` / `testing`) and "What do you most want help with?" are columns on the raw `airbyte_source.gp_api_db_campaign` since 2026-08-25, but `stg_airbyte_source__gp_api_db_campaign` drops them. Read the raw column coalesced with `get_json_object(data, '$.onboarding.ballotStatus')` (pre-August answers live only in that archive; 539 rows on 2026-10-01). Asked at campaign onboarding since 2026-05-07, so most older accounts were never asked: bucket them separately and do not compare their rates to answerers. Amplitude carries the same answer as user property `candidateStage` (`filed` / `qualified` / `considering` / `testing`) and event `Onboarding V2 - Ballot Status Completed`. In the Nov-2026 cohort `on-ballot` and `qualified-not-filed` ran ~24% Pro, `considering` and `testing` ~2.5%: the useful split is committed vs exploring. |
 
 ## Dimensions requiring a join to `mart_civics.candidacy`
 

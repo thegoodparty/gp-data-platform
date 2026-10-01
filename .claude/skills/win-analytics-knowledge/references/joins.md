@@ -68,6 +68,8 @@ MAX(CASE WHEN candidacy_stage.br_candidacy_id IS NOT NULL
 product-sourced (`gp_api`) candidacy still carries BR/DDHQ matches and outcomes yet reads as
 `gp_api`; using it as a match flag undercounts external corroboration massively.
 
+**Mart presence is not a match flag either.** `int__civics_candidacy_gp_api` admits a product campaign only when ER clustered it with a BallotReady / TechSpeed / DDHQ record OR HubSpot marked the contact verified, so "has a `candidacy` row" is the match *output* (DATA-2599: 2,593 of 9,931 Nov-2026 users had a row; every match rate conditioned on that read 70-80% while the true rate was ~16%). For a match rate over a product cohort, read the ER clusters directly (`stg_er_source__clustered_candidacy_stages`: a `gp_api` `source_id` of `<campaign_id>__...` sharing a `cluster_id` with a `ballotready` row) or an in-race name match against `stg_airbyte_source__ballotready_s3_candidacies_v3`; the two agreed within 3% on that cohort. For a **filing deadline**, go through the signup race, not the person: `users_win_candidacy.ballotready_position_id` × election day on `stg_airbyte_source__ballotready_api_race` (general only) → `filing_periods` → `int__ballotready_filing_period.end_on`. That path covers 97% of a live cohort where the person-match path covers a quarter.
+
 This is the match flag *only*. The **corroborated-candidate** definition also requires the
 retrospective time gate: `candidacy.general_election_date` clamped to `[2020-01-01, 2050-01-01]`
 and `< CURRENT_DATE` (election happened), OR `election_stage.filing_period_end_on < CURRENT_DATE`
