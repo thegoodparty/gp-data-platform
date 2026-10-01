@@ -51,6 +51,8 @@ Related, not in scope here: the governed activation metric counts pre-2026-01-09
 
 ## Appendix: exact queries (Databricks SQL, `goodparty_data_catalog`)
 
+The SQL below matches `election_cohort.py` after PR #1129 review round 2: the ballot answer is resolved by commitment rank rather than a lexicographic `max()`, and the rule-consistent activation flag treats a user with no qualifying event at all as not-a-self-report. The DATA-2603 ticket description carries the originally filed text without those two fixes; numbers on the 2026-11-03 cohort are identical either way (0 users with more than one answer, 0 activated users without event evidence).
+
 Script and brief: `election_cohort.py` and `election_cohort_brief.yaml` in this folder. Text above is the DATA-2603 ticket description as filed on 2026-10-01; corrections posted as comments on the ticket (the `unknown` events ran until 2026-04-28 in data, from the legacy LogTaskModal, and omni's 2026-08-25 migration did backfill `ballot_status`).
 
 ### A. Headline: cohort, Pro, activated, ballot answer
@@ -75,7 +77,8 @@ ballot as (
 users as (
     select c.user_id, min(c.user_created_at) as user_created_at,
            max(case when c.is_pro then 1 else 0 end) as is_pro,
-           max(b.ballot_status) as ballot_status
+           -- most-committed answer wins across a user's campaigns; a plain max() is lexicographic
+           case max(case b.ballot_status when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end as ballot_status
     from cand c left join ballot b on b.user_id = c.user_id
     group by c.user_id
 ),
@@ -104,7 +107,8 @@ sent as (
 final as (
     select u.user_id, u.is_pro,
            coalesce(b.is_activated, false) as is_activated,
-           coalesce(b.is_activated, false) and coalesce(e.non_legacy_ev, 0) > 0 as is_activated_strict,
+           -- NULL non_legacy_ev = no qualifying event at all (a leg mismatch, not a self-report); only an explicit 0 excludes
+           coalesce(b.is_activated, false) and (e.non_legacy_ev is null or e.non_legacy_ev > 0) as is_activated_strict,
            s.user_id is not null as has_committed_send,
            case when u.ballot_status is not null then u.ballot_status
                 when u.user_created_at < timestamp'2026-05-07' then 'never asked (pre-2026-05-07)'
@@ -132,7 +136,7 @@ with cand as (
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
 ),
-ballot as (select c.user_id, max(coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus'))) ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
+ballot as (select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
 j as (
     select c.user_id, coalesce(b.ballot_status,'never asked') bucket, max(c.is_verified) is_verified,
            max(case when cd.gp_candidacy_id is not null then 1 else 0 end) in_civics_mart,
@@ -171,7 +175,7 @@ with cand as (
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
 ),
-ballot as (select c.user_id, max(coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus'))) ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
+ballot as (select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
 rg as (select r.database_id br_race_id, r.position.databaseid br_position_id from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id where not coalesce(r.is_primary,false) and not coalesce(r.is_runoff,false) and not coalesce(r.is_recall,false) and e.election_day = date'2026-11-03'),
 roster as (select cast(br_race_id as string) br_race_id, lower(trim(first_name)) fn, lower(trim(last_name)) ln from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_s3_candidacies_v3),
 er as (
@@ -208,7 +212,7 @@ with cand as (
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
 ),
 ballot as (
-    select c.user_id, max(coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus'))) ballot_status
+    select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status
     from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1
 ),
 race_general as (
@@ -324,7 +328,7 @@ with cand as (
     where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
 ),
 ballot as (
-    select c.user_id, max(coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus'))) ballot_status
+    select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status
     from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1
 ),
 rg as (
