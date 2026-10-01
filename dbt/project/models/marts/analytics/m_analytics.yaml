@@ -234,12 +234,20 @@ models:
 
       - name: first_campaign_sent_at
         description: >
-          Timestamp of user's first 'Voter Outreach - Campaign Completed' event.
-          NULL if user has never sent a campaign.
+          When the user first reached voters through the product: their earliest
+          event among the legs that define is_activated. A door knocked or a call
+          logged counts, so this can be set while total_campaigns_sent is 0.
+          NULL if the user has never reached voters through the product.
 
       - name: is_activated
         description: >
-          TRUE if user has completed at least one voter outreach campaign.
+          TRUE if the user has reached voters through the product at least once:
+          a social post shared, an SMS or robocall campaign sent, a door knocked
+          or a call logged, or a door-knocking or phone-banking campaign
+          completed. Self-reported outreach does not count, nor does outreach from
+          Serve from 2026-09-29, when the events started saying which product
+          sent them.
+          The legs are declared on win_activated_users in the semantic layer.
           This is the OKR "Activated Candidates" metric. Asks whether we reached
           voters for them; for whether they got value out of the product, use
           has_product_output, which is a different question and a larger number.
@@ -277,7 +285,11 @@ models:
 
       - name: total_campaigns_sent
         description: >
-          Count of 'Voter Outreach - Campaign Completed' events for this user.
+          Campaigns this user sent through the product: SMS, robocall and social
+          sends, and completed door-knocking turfs and phone-banking call lists.
+          A paid send and its completion count once. Self-reported outreach,
+          Serve outreach, and the per-contact legs (see total_outreach_contacts)
+          are not campaigns.
           Note: may undercount if Airbyte sync is in progress during dbt run.
         data_tests:
           - dbt_utils.accepted_range:
@@ -298,8 +310,8 @@ models:
       - name: total_recipient_count
         description: >
           Total number of recipients across all voter outreach campaigns sent by this user.
-          Extracted from COALESCE(recipientCount, voterContacts) on
-          'Voter Outreach - Campaign Completed' Amplitude events.
+          Extracted from COALESCE(recipientCount, voterContacts) on the campaign
+          events counted in total_campaigns_sent.
           recipientCount values above 100000 or below 0 are treated as
           Amplitude instrumentation errors and excluded.
           NULL is intentional when no valid recipient count is available
@@ -543,7 +555,9 @@ models:
           NULL if no valid campaign sends.
 
       - name: first_campaign_sent_at
-        description: Earliest campaign send event in this month.
+        description: >
+          Earliest event this month among the legs that define is_activated,
+          door knocks and logged calls included.
 
       - name: last_campaign_sent_at
         description: Latest campaign send event in this month.
