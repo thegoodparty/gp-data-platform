@@ -211,9 +211,11 @@ deletes that history from the metric.
    pull request that removed the old event from the code. An event going quiet is
    not proof.
 5. **Find every reader, more than one way:** the literal event name in both
-   repos, the macros that compile `anchored_on`, and any model that
-   de-duplicates or branches on the event's properties. One search that finds
-   nothing is not evidence.
+   repos, the macros that compile `anchored_on`, any model that
+   de-duplicates or branches on the event's properties, and any test that
+   asserts something about the metric (such as "every activated user has a
+   campaign"), which encodes the old definition as surely as a literal does.
+   One search that finds nothing is not evidence.
 6. **Compare the old and new events' properties, in code and in data.** Every
    `excluding` qualifier must still exclude exactly what it did, and every key a
    model de-duplicates on must still exist. A property change that admits or
@@ -229,7 +231,8 @@ deletes that history from the metric.
       production data and explain every row that moves. Merge it first.
    2. The `sem_*.yml` pull request: the new leg, the old leg kept with
       `era: historical` and its date, the pin tests updated, and the metric's new
-      value in the body. Opening it starts the review routing above.
+      value in the body, and the catalog regenerated. Open it as a draft;
+      marking it ready starts the review routing above.
    3. Mart documentation (`m_*.yaml`) in its own small pull request, because an
       edit there rebuilds a large part of the project in CI.
    4. The omni pull request that brings the monitoring registry in line
