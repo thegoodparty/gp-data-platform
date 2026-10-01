@@ -238,11 +238,19 @@ deletes that history from the metric.
    3. Mart documentation (`m_*.yaml`) in its own small pull request, because an
       edit there rebuilds a large part of the project in CI.
    4. The omni pull request that brings the monitoring registry in line
-      (`monitored_events.yaml` and its tests).
+      (`monitored_events.yaml`, the fixture copy of the `sem_*.yml` file, and the
+      anchors for the new names). omni's alignment monitor only checks questions
+      that point at a governed metric, so a question that names the old event
+      without pointing at the metric goes stale silently. Search the registry for
+      every old name, not just the questions the monitor flagged. A ruling that
+      changes the definition also falsifies any note there that says a channel is
+      excluded by definition; rewrite it in the same pull request.
 9. **Verify after merge:** the sign-off pull request opened, the catalog
    regenerated, the metric's prod value matches the value stated in the pull
    request, and any dormant-instrument warning cleared. Anything predicted while
    planning, such as "no step at the cutover", is measured here, not assumed.
+   Check when each table last rebuilt before reading its value: a mart can rebuild
+   before a model it reads, and then it still shows the old number.
 10. **Update the docs that describe the metric** in the same ticket.
 
 The procedure for an agent working a drift, with the queries and commands, is in
