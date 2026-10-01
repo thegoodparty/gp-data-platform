@@ -51,7 +51,7 @@ Related, not in scope here: the governed activation metric counts pre-2026-01-09
 
 ## Appendix: exact queries (Databricks SQL, `goodparty_data_catalog`)
 
-The SQL below matches `election_cohort.py` after PR #1129 review round 2: the ballot answer is resolved by commitment rank rather than a lexicographic `max()`, and the rule-consistent activation flag treats a user with no qualifying event at all as not-a-self-report. The DATA-2603 ticket description carries the originally filed text without those two fixes; numbers on the 2026-11-03 cohort are identical either way (0 users with more than one answer, 0 activated users without event evidence).
+The SQL below matches `election_cohort.py` after PR #1129 review round 2: the ballot answer is resolved by commitment rank rather than a lexicographic `max()`, and the rule-consistent activation flag treats a user with no qualifying event at all as not-a-self-report. The DATA-2603 ticket description carries the originally filed text without those two fixes; numbers on the 2026-11-03 cohort are identical either way (0 users with more than one answer, 0 activated users without event evidence). The internal-account exclusion below is also the canonical `int__civics_internal_persons` rule used by the script (231 accounts on 2026-10-01, giving 9,931 users), where the filed ticket text and the narrative above used the older `@goodparty.org` proxy (225 accounts, 9,935 users); Pro and activation counts are the same under both.
 
 Script and brief: `election_cohort.py` and `election_cohort_brief.yaml` in this folder. Text above is the DATA-2603 ticket description as filed on 2026-10-01; corrections posted as comments on the ticket (the `unknown` events ran until 2026-04-28 in data, from the legacy LogTaskModal, and omni's 2026-08-25 migration did backfill `ballot_status`).
 
@@ -65,7 +65,11 @@ with cand as (
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
     where is_latest_version and not is_demo
       and election_date = date'2026-11-03'
-      and lower(user_email) not like '%@goodparty.org'
+      and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 ballot as (
     -- product column landed 2026-08-25; earlier answers live only in the JSON archive
@@ -134,7 +138,11 @@ order by users desc
 with cand as (
     select user_id, cast(campaign_id as string) campaign_id, is_verified
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
-    where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
+    where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 ballot as (select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
 j as (
@@ -163,7 +171,11 @@ left join goodparty_data_catalog.mart_analytics.user_resolved_keys k on k.user_i
 left join goodparty_data_catalog.mart_civics.candidate ca on ca.gp_person_id = k.gp_person_id
 left join goodparty_data_catalog.mart_civics.candidacy cd on cd.gp_candidate_id = ca.gp_candidate_id
 left join goodparty_data_catalog.mart_civics.candidacy_stage cs on cs.gp_candidacy_id = cd.gp_candidacy_id
-where c.is_latest_version and not c.is_demo and c.election_date = date'2026-11-03' and lower(c.user_email) not like '%@goodparty.org'
+where c.is_latest_version and not c.is_demo and c.election_date = date'2026-11-03' and cast(c.user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ```
 
 ### C. Entity-resolution clusters vs in-race name match, by ballot answer
@@ -173,7 +185,11 @@ where c.is_latest_version and not c.is_demo and c.election_date = date'2026-11-0
 with cand as (
     select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id, lower(trim(user_first_name)) fn, lower(trim(user_last_name)) ln
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
-    where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
+    where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 ballot as (select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status from cand c join goodparty_data_catalog.airbyte_source.gp_api_db_campaign rc on cast(rc.id as string) = c.campaign_id group by 1),
 rg as (select r.database_id br_race_id, r.position.databaseid br_position_id from goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_race r join goodparty_data_catalog.dbt.stg_airbyte_source__ballotready_api_election e on r.election.databaseid = e.database_id where not coalesce(r.is_primary,false) and not coalesce(r.is_runoff,false) and not coalesce(r.is_recall,false) and e.election_day = date'2026-11-03'),
@@ -209,7 +225,11 @@ from u group by grouping sets ((bucket), ()) order by users desc
 with cand as (
     select user_id, cast(campaign_id as string) campaign_id, user_created_at, ballotready_position_id
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
-    where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
+    where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 ballot as (
     select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status
@@ -268,7 +288,11 @@ from u group by grouping sets ((bucket), ()) order by users desc
 -- Q2 deadline distribution across the cohort (race-derived)
 with cand as (
     select user_id, ballotready_position_id from goodparty_data_catalog.mart_analytics.users_win_candidacy
-    where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
+    where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 rg as (
     select r.database_id br_race_id, r.position.databaseid br_position_id
@@ -325,7 +349,11 @@ from cand c join rg on rg.br_position_id = c.ballotready_position_id left join g
 with cand as (
     select user_id, cast(campaign_id as string) campaign_id, ballotready_position_id
     from goodparty_data_catalog.mart_analytics.users_win_candidacy
-    where is_latest_version and not is_demo and election_date = date'2026-11-03' and lower(user_email) not like '%@goodparty.org'
+    where is_latest_version and not is_demo and election_date = date'2026-11-03' and cast(user_id as string) not in (
+        -- canonical internal rule, same as int__civics_internal_persons and election_cohort.py
+        select cast(id as string) from goodparty_data_catalog.dbt.stg_airbyte_source__gp_api_db_user
+        where regexp_extract(lower(email), '@(.+)$', 1) ilike any ('%goodparty%', '%mailinator%')
+           or arrays_overlap(from_json(roles, 'array<string>'), array('admin', 'sales')))
 ),
 ballot as (
     select c.user_id, case max(case coalesce(rc.ballot_status, get_json_object(rc.data,'$.onboarding.ballotStatus')) when 'on-ballot' then 4 when 'qualified-not-filed' then 3 when 'considering' then 2 when 'testing' then 1 end) when 4 then 'on-ballot' when 3 then 'qualified-not-filed' when 2 then 'considering' when 1 then 'testing' end ballot_status
