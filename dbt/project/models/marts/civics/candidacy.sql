@@ -66,8 +66,15 @@ with
             office_type,
             br_position_database_id,
             score_viability_automated,
+            -- 'gp_api' when the archive linked a product campaign (HubSpot
+            -- company id, or the email backfill), so the tag means the same
+            -- thing on both sides of the union.
             array_compact(
-                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+                array(
+                    'hubspot',
+                    case when has_ddhq_match then 'ddhq' end,
+                    case when product_campaign_id is not null then 'gp_api' end
+                )
             ) as source_systems,
             true as is_archive
         from {{ ref("int__civics_candidacy_2025") }}

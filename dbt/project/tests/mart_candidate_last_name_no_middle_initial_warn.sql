@@ -9,8 +9,10 @@
 -- consolidation issues that the parser-specific test can't see.
 --
 -- Excludes hubspot-only rows (the 2025 legacy archive is addressed by
--- a separate ticket and intentionally not in scope here). Includes any
--- row whose source_systems contains at least one non-hubspot source.
+-- a separate ticket and intentionally not in scope here). Archive rows
+-- also carry 'gp_api' when a product user matched; they are still archive
+-- rows, so that tag is ignored here. Includes any row with another
+-- non-hubspot source.
 --
 -- Known cases at PR-418 time:
 -- - Paul Price (IL): BR + DDHQ + TS all contribute 'Price', gp_api
@@ -27,7 +29,7 @@ select gp_candidate_id, last_name, source_systems
 from {{ ref("candidate") }}
 where
     last_name is not null
-    and not (size(source_systems) = 1 and array_contains(source_systems, 'hubspot'))
+    and array_except(source_systems, array('gp_api')) != array('hubspot')
     and (
         last_name rlike '^[A-Z][.] ?[A-Za-z]'
         or last_name rlike '^[A-Z] [A-Za-z]'
