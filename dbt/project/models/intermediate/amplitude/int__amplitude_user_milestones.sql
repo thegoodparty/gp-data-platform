@@ -83,6 +83,13 @@ with
                         "event_properties:product::string",
                     )
                 }}
+                or {{
+                    is_serve_activation_event(
+                        "event_type",
+                        "event_properties:method::string",
+                        "event_properties:product::string",
+                    )
+                }}
             )
     ),
 
@@ -230,6 +237,20 @@ with
                     when event_type = 'Serve Onboarding - SMS Poll Sent' then event_time
                 end
             ) as first_sms_poll_sent_at,
+
+            -- Activated Serve Users: first time an elected official reached
+            -- constituents through the product, by any declared leg.
+            min(
+                case
+                    when
+                        {{
+                            is_serve_activation_event(
+                                "event_type", "outreach_method", "outreach_product"
+                            )
+                        }}
+                    then event_time
+                end
+            ) as first_serve_activated_at,
 
             -- Serve Onboarding Funnel (ordered by funnel step)
             min(

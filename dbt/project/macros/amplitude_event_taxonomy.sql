@@ -570,6 +570,120 @@
     {%- endif -%}
 {% endmacro %}
 
+{% macro is_serve_activation_event(event_type_col, method_col, product_col) %}
+    {#
+        Membership test for an elected official reaching constituents through the
+        product: the legs of `activated_serve_users`, compiled from its declaration.
+
+        The Serve counterpart of is_outreach_activation_event, kept as its own body
+        for the same reason product_output_predicate is: that macro is the Win OKR's
+        compile path and is pinned by its own source-level guards. The outreach
+        events are shared by both products and told apart by `product`, so a Serve
+        leg excludes Win the way the Win legs exclude Serve.
+
+        `unit: contact` legs are kept and the unit is otherwise ignored: Serve has no
+        campaign count, only a first-activation timestamp, so there is nothing a
+        per-door or per-call leg could inflate.
+
+        Args:
+            event_type_col: SQL expression producing the event_type string.
+            method_col: SQL expression producing the event's `method` property.
+            product_col: SQL expression producing the event's `product` property.
+    #}
+    {%- set legs = metric_anchored_events("activated_serve_users") -%}
+    {%- set columns = {"method": method_col, "product": product_col} -%}
+    {%- if not execute -%}
+        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
+            empty leg list, which must raise at execute time. -#}
+        (false)
+    {%- elif legs | length == 0 -%}
+        {{
+            exceptions.raise_compiler_error(
+                "is_serve_activation_event: activated_serve_users resolved to zero "
+                "legs at execute time. Refusing to emit a predicate that would read "
+                "Serve activation as zero."
+            )
+        }}
+    {%- else -%}
+        {%- set plain = [] -%}
+        {%- set qualified = [] -%}
+        {%- for leg in legs -%}
+            {%- if leg["path"] -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        "is_serve_activation_event: leg '"
+                        ~ leg["event"]
+                        ~ "' declares a page path, which this macro cannot compile."
+                    )
+                }}
+            {%- elif leg["unit"] and leg["unit"] != "contact" -%}
+                {{
+                    exceptions.raise_compiler_error(
+                        "is_serve_activation_event: leg '"
+                        ~ leg["event"]
+                        ~ "' declares unit '"
+                        ~ leg["unit"]
+                        ~ "'. The only unit this macro knows is 'contact'."
+                    )
+                }}
+            {%- elif leg["excluding"] -%}
+                {%- set conditions = [] -%}
+                {%- for property_key, excluded in leg["excluding"].items() -%}
+                    {%- if property_key not in columns -%}
+                        {{
+                            exceptions.raise_compiler_error(
+                                "is_serve_activation_event: leg '"
+                                ~ leg["event"]
+                                ~ "' excludes on '"
+                                ~ property_key
+                                ~ "', but this macro only compiles a 'method' or "
+                                "'product' exclusion."
+                            )
+                        }}
+                    {%- endif -%}
+                    {%- do conditions.append(
+                        {
+                            "column": columns[property_key],
+                            "values": (
+                                excluded
+                                if excluded is sequence
+                                and excluded is not string
+                                else [excluded]
+                            ),
+                        }
+                    ) -%}
+                {%- endfor -%}
+                {%- do qualified.append(
+                    {"event": leg["event"], "conditions": conditions}
+                ) -%}
+            {%- else -%} {%- do plain.append(leg["event"]) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        (
+            {%- for leg in qualified %}
+                (
+                    {{ event_type_col }} = '{{ leg["event"] }}'
+                    {%- for condition in leg["conditions"] %}
+                        and coalesce({{ condition["column"] }}, '') not in (
+                            {%- for value in condition["values"] %}
+                                '{{ value }}'{{ "," if not loop.last }}
+                            {%- endfor %}
+                        )
+                    {%- endfor %}
+                )
+                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
+            {%- endfor %}
+            {%- if plain | length > 0 %}
+                {{ event_type_col }} in (
+                    {%- for event in plain | sort %}
+                        '{{ event }}'{{ "," if not loop.last }}
+                    {%- endfor %}
+                )
+            {%- endif %}
+        )
+    {%- endif -%}
+{% endmacro %}
+
 {% macro is_product_output_event(event_type_col, method_col, product_col=none) %}
     {#
         Membership test for Product Output: the candidate made something with the
