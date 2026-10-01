@@ -71,6 +71,8 @@ class FakeCursor:
             self._execute_existence_probe(sql)
         elif lowered.startswith("select * from"):
             self._execute_select_source()
+        elif "and event = 'missing'" in lowered:
+            self._execute_open_orphans(sql)
         elif "qualify row_number()" in lowered:
             self._execute_latest_sent(sql)
         elif lowered.startswith("insert into"):
@@ -125,19 +127,25 @@ class FakeCursor:
             {"tracking_key": r["tracking_key"], "payload": r["payload"]} for r in latest.values()
         ]
 
+    def _execute_open_orphans(self, sql: str) -> None:
+        table_name = sql.split("select tracking_key from", 1)[1].split("qualify", 1)[0].strip()
+        latest: dict[str, dict[str, Any]] = {}
+        for row in self._table(table_name):
+            key = row["tracking_key"]
+            if key not in latest or row["detected_at"] >= latest[key]["detected_at"]:
+                latest[key] = row
+        self._result_columns = ["tracking_key"]
+        self._result_rows = [{"tracking_key": k} for k, r in latest.items() if r["event"] == "missing"]
+
     def _execute_insert(self, sql: str, params: dict[str, Any]) -> None:
         """Decodes the rows from the one JSON `rows` param, as the real statement's
-        `from_json` does, and stamps each with the shared `sent_at` param."""
+        `from_json` does, and stamps each with the shared `stamp` param under the
+        column list's last name."""
         table_name = sql.split("insert into", 1)[1].split("(", 1)[0].strip()
+        columns = [c.strip() for c in sql.split("(", 1)[1].split(")", 1)[0].split(",")]
         rows = self._table(table_name)
         for row in json.loads(params["rows"]):
-            rows.append(
-                {
-                    "tracking_key": row["tracking_key"],
-                    "payload": row["payload"],
-                    "sent_at": params["sent_at"],
-                }
-            )
+            rows.append({**{c: row[c] for c in columns[:-1]}, columns[-1]: params["stamp"]})
 
     @property
     def description(self) -> list[tuple[str]]:
@@ -220,3 +228,11 @@ class EchoHttpTransport:
         finally:
             with self._lock:
                 self._in_flight -= 1
+
+
+def flow_tables(
+    flow_id: str, log_table: str, rows: list[dict[str, Any]] | None = None
+) -> dict[str, FakeTable]:
+    """A flow's log table (with `rows`) and its empty orphans table, both stamped, as
+    `retl --init-log` would leave them."""
+    return {log_table: stamped_table(flow_id, rows=rows), f"{log_table}_orphans": stamped_table(flow_id)}

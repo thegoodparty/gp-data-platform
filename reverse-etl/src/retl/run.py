@@ -1,8 +1,9 @@
 """Orchestrates one run of one flow against one destination.
 
-`plan_run` reads the flow's desired-state rows and latest logged payloads, runs the
-guards, and computes the diff; a dry run stops there. `execute_run` then hands the
-diff to the destination, with each confirmed batch going straight to a SentLogWriter.
+`plan_run` reads the flow's desired-state rows, latest logged payloads and open
+orphans, runs the guards, and computes the diff; a dry run stops there. `execute_run`
+records newly missing keys, hands the diff to the destination with each confirmed
+batch going straight to a SentLogWriter, then records the returned keys it confirmed.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import databricks_io, sent_log
+from . import databricks_io, orphans, sent_log
 from .config import FlowConfig
 from .destinations import Destination, RowError
 from .diff import compute_to_send, orphaned_keys
@@ -80,6 +81,8 @@ class RunSummary:
     sent_count: int
     error_count: int
     orphaned_key_count: int
+    newly_missing_count: int = 0
+    returned_count: int = 0
     errors: list[RowError] = field(default_factory=list)
     dry_run: bool = False
 
@@ -87,7 +90,8 @@ class RunSummary:
         """One deterministic line: what a wrapping DAG task should carry into its failure alert."""
         return (
             f"retl flow={self.flow_id} source={self.source_count} to_send={self.to_send_count} "
-            f"sent={self.sent_count} errors={self.error_count} orphaned_keys={self.orphaned_key_count}"
+            f"sent={self.sent_count} errors={self.error_count} orphaned_keys={self.orphaned_key_count} "
+            f"newly_missing={self.newly_missing_count} returned={self.returned_count}"
             + (" dry_run=true" if self.dry_run else "")
         )
 
@@ -163,17 +167,32 @@ class RunPlan:
     source_count: int
     to_send: list[tuple[str, str]]
     orphaned_key_count: int
+    newly_missing: dict[str, str]  # key -> its last-sent payload
+    returned: dict[str, str]  # key -> the payload it is being resent with
 
-    def dry_run_summary(self) -> RunSummary:
+    def summary(
+        self,
+        *,
+        sent_count: int = 0,
+        errors: list[RowError] | None = None,
+        returned_count: int = 0,
+        dry_run: bool = False,
+    ) -> RunSummary:
         return RunSummary(
             flow_id=self.flow_id,
             source_count=self.source_count,
             to_send_count=len(self.to_send),
-            sent_count=0,
-            error_count=0,
+            sent_count=sent_count,
+            error_count=len(errors or []),
             orphaned_key_count=self.orphaned_key_count,
-            dry_run=True,
+            newly_missing_count=len(self.newly_missing),
+            returned_count=returned_count,
+            errors=errors or [],
+            dry_run=dry_run,
         )
+
+    def dry_run_summary(self) -> RunSummary:
+        return self.summary(returned_count=len(self.returned), dry_run=True)
 
 
 def plan_run(*, connection: Any, flow: FlowConfig, accept_empty_log: bool = False) -> RunPlan:
@@ -185,14 +204,20 @@ def plan_run(*, connection: Any, flow: FlowConfig, accept_empty_log: bool = Fals
     # different flow would otherwise read as this flow's (non-empty) latest_sent,
     # which is exactly the shape the empty-log guard below cannot see through.
     sent_log.verify_log_table_identity(connection, flow.log_table, flow.flow_id)
+    orphans_table = orphans.orphans_table(flow.log_table)
+    sent_log.verify_log_table_identity(connection, orphans_table, flow.flow_id)
 
     latest_sent = sent_log.read_latest_sent(connection, log_table=flow.log_table)
     if not latest_sent and not accept_empty_log:
         raise EmptyLogError(flow.flow_id, flow.log_table)
 
+    orphaned = orphaned_keys(latest_sent, desired)
+    open_orphans = orphans.read_open_orphans(connection, orphans_table)
+    returned = {key: desired[key] for key in open_orphans if key in desired}
+
     # Buffered before any POST: a guard failure here must mean zero sends, not a
     # partial run discovered after batches already went out.
-    to_send = list(compute_to_send(desired, latest_sent).items())
+    to_send = list({**compute_to_send(desired, latest_sent), **returned}.items())
     if len(to_send) > flow.cap:
         raise SendCapExceededError(flow.flow_id, cap=flow.cap, actual=len(to_send))
 
@@ -200,7 +225,9 @@ def plan_run(*, connection: Any, flow: FlowConfig, accept_empty_log: bool = Fals
         flow_id=flow.flow_id,
         source_count=len(desired),
         to_send=to_send,
-        orphaned_key_count=len(orphaned_keys(latest_sent, desired)),
+        orphaned_key_count=len(orphaned),
+        newly_missing={key: latest_sent[key] for key in orphaned - open_orphans},
+        returned=returned,
     )
 
 
@@ -212,15 +239,20 @@ def execute_run(
     accept_empty_log: bool = False,
 ) -> RunSummary:
     plan = plan_run(connection=connection, flow=flow, accept_empty_log=accept_empty_log)
+    orphans_table = orphans.orphans_table(flow.log_table)
+    with orphans.orphans_writer(connection, orphans_table) as events:
+        for key, payload in plan.newly_missing.items():
+            events.add_row({"tracking_key": key, "event": orphans.MISSING, "last_payload": payload})
+
     with sent_log.SentLogWriter(connection, flow.log_table) as writer:
         delivery = destination.deliver(flow.flow_id, plan.to_send, on_batch_confirmed=writer.add)
 
-    return RunSummary(
-        flow_id=flow.flow_id,
-        source_count=plan.source_count,
-        to_send_count=len(plan.to_send),
-        sent_count=len(delivery.confirmed),
-        error_count=len(delivery.errors),
-        orphaned_key_count=plan.orphaned_key_count,
-        errors=delivery.errors,
+    # Only a confirmed resend closes a return; a rejected one stays open and is retried.
+    returned = {key: payload for key, payload in plan.returned.items() if key in delivery.confirmed}
+    with orphans.orphans_writer(connection, orphans_table) as events:
+        for key, payload in returned.items():
+            events.add_row({"tracking_key": key, "event": orphans.RETURNED, "last_payload": payload})
+
+    return plan.summary(
+        sent_count=len(delivery.confirmed), errors=delivery.errors, returned_count=len(returned)
     )

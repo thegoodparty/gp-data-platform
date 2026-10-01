@@ -64,8 +64,8 @@ writer against the flow's log table (`max_active_runs=1`).
 
 ## The one-time init ceremony
 
-`retl --init-log` creates the flow's send-log table if it does not exist yet (stamped with the
-flow's identity) and exits without running a diff. It is run **by a human**, from outside this DAG,
+`retl --init-log` creates the flow's send-log table and its `<log_table>_orphans` table if they do not
+exist yet (both stamped with the flow's identity) and exits without running a diff. It is run **by a human**, from outside this DAG,
 before the flow's first-ever run and again only after a deliberate, supervised reset. The daily task
 never passes `--init-log`, and never passes `--accept-empty-log` either (the explicit override for a
 real run against a genuinely empty log — the first convergence, the sales preview, or a supervised

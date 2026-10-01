@@ -22,7 +22,7 @@ import os
 import sys
 from collections.abc import Sequence
 
-from . import csv_destination, databricks_io, hubspot_destination, sent_log
+from . import csv_destination, databricks_io, hubspot_destination, orphans, sent_log
 from .config import load_flow_config
 from .destinations import Destination
 from .run import error_report_lines, execute_run, plan_run
@@ -89,7 +89,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             if args.init_log:
                 sent_log.init_log_table(connection, flow.log_table, flow.flow_id)
-                print(f"retl init-log flow={flow.flow_id} table={flow.log_table} initialized")
+                orphans_table = orphans.orphans_table(flow.log_table)
+                orphans.init_orphans_table(connection, orphans_table, flow.flow_id)
+                print(
+                    f"retl init-log flow={flow.flow_id} table={flow.log_table} "
+                    f"orphans_table={orphans_table} initialized"
+                )
                 return 0
 
             if args.dry_run:

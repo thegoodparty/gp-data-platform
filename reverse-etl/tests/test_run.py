@@ -19,7 +19,7 @@ from retl.run import (
     plan_run,
 )
 from retl.sent_log import PARAM_CHAR_LIMIT, WrongLogTableError
-from tests._fakes import FakeConnection, stamped_table
+from tests._fakes import FakeConnection, flow_tables, stamped_table
 
 LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
 FLOW = FlowConfig(
@@ -70,7 +70,7 @@ def _connection_with_log(rows: list[dict[str, Any]] | None = None, **kwargs: Any
     tests that are pass `rows=[]` explicitly.
     """
     seeded_rows = [_EXISTING_ROW] if rows is None else rows
-    return FakeConnection(tables={LOG_TABLE: stamped_table(FLOW.flow_id, rows=seeded_rows)}, **kwargs)
+    return FakeConnection(tables=flow_tables(FLOW.flow_id, LOG_TABLE, rows=seeded_rows), **kwargs)
 
 
 def test_execute_run_sends_a_brand_new_person_and_logs_the_confirmation() -> None:
@@ -303,7 +303,7 @@ def test_execute_run_packs_many_confirmed_batches_into_full_log_chunks() -> None
 
     assert summary.sent_count == 5_000
     assert len(connection.tables[LOG_TABLE].rows) == 1 + 5_000
-    inserts = [sql for sql in connection.executed_sql if sql.lower().startswith("insert into")]
+    inserts = [sql for sql in connection.executed_sql if sql.startswith(f"insert into {LOG_TABLE} ")]
     assert 1 < len(inserts) <= 6
     assert all(size > PARAM_CHAR_LIMIT * 0.85 for size in connection.param_sizes[-len(inserts) : -1])
 
@@ -342,3 +342,93 @@ def test_plan_run_enforces_the_guards() -> None:
         plan_run(connection=_connection_with_log(source_rows=rows), flow=FLOW)
     with pytest.raises(EmptyLogError):
         plan_run(connection=_connection_with_log(rows=[], source_rows=rows[:1]), flow=FLOW)
+
+
+ORPHANS = f"{LOG_TABLE}_orphans"
+_JANE = '{"firstname":"Jane","gp_person_id":"p1"}'
+
+
+def _events(connection: FakeConnection) -> list[tuple[str, str, str]]:
+    return [(r["tracking_key"], r["event"], r["last_payload"]) for r in connection.tables[ORPHANS].rows]
+
+
+def _sent_p1_before() -> list[dict[str, Any]]:
+    return [{"tracking_key": "p1", "payload": _JANE, "sent_at": datetime(2025, 1, 1, tzinfo=UTC)}]
+
+
+def test_execute_run_records_a_key_that_left_the_source_once_with_its_last_payload() -> None:
+    """Catches: a deleted row going unrecorded (nothing to clean up by hand), a missing
+    event without the payload needed to find the contact, or a duplicate event every run."""
+    connection = _connection_with_log(
+        rows=_sent_p1_before(), source_rows=[{"gp_person_id": "p2", "firstname": "Sam"}]
+    )
+
+    first = execute_run(connection=connection, flow=FLOW, destination=_FakeDestination())
+    execute_run(connection=connection, flow=FLOW, destination=_FakeDestination())
+
+    assert (first.orphaned_key_count, first.newly_missing_count) == (1, 1)
+    assert _events(connection) == [("p1", "missing", _JANE)]
+
+
+def test_execute_run_resends_a_returned_key_once_even_when_its_payload_is_unchanged() -> None:
+    """Catches: a contact deleted by hand while its key was missing never being recreated
+    when the person comes back unchanged -- the diff alone sees the old payload in the log
+    and sends nothing."""
+    connection = _connection_with_log(
+        rows=_sent_p1_before(), source_rows=[{"gp_person_id": "p2", "firstname": "Sam"}]
+    )
+    execute_run(connection=connection, flow=FLOW, destination=_FakeDestination())
+    connection.source_rows = [
+        {"gp_person_id": "p1", "firstname": "Jane"},
+        {"gp_person_id": "p2", "firstname": "Sam"},
+    ]
+
+    destination = _FakeDestination()
+    back = execute_run(connection=connection, flow=FLOW, destination=destination)
+    again = execute_run(connection=connection, flow=FLOW, destination=_FakeDestination())
+
+    assert ("p1", _JANE) in destination.delivered[0][1]
+    assert back.returned_count == 1
+    assert _events(connection) == [("p1", "missing", _JANE), ("p1", "returned", _JANE)]
+    assert again.to_send_count == 0
+
+
+def test_execute_run_keeps_a_returned_key_open_when_its_resend_is_rejected() -> None:
+    """Catches: a return being recorded before the destination accepted the resend, so a
+    rejected resend would never be retried and the contact would stay deleted."""
+    connection = _connection_with_log(
+        rows=_sent_p1_before(), source_rows=[{"gp_person_id": "p2", "firstname": "Sam"}]
+    )
+    execute_run(connection=connection, flow=FLOW, destination=_FakeDestination())
+    connection.source_rows = [
+        {"gp_person_id": "p1", "firstname": "Jane"},
+        {"gp_person_id": "p2", "firstname": "Sam"},
+    ]
+
+    execute_run(connection=connection, flow=FLOW, destination=_RejectingDestination())
+    retry = plan_run(connection=connection, flow=FLOW)
+
+    assert [e[1] for e in _events(connection)] == ["missing"]
+    assert ("p1", _JANE) in retry.to_send
+
+
+def test_plan_run_reports_orphan_changes_without_writing_them() -> None:
+    """Catches: a dry run recording orphan events, which would mark a key as handled
+    (or as returned) on a run that sent nothing."""
+    connection = _connection_with_log(
+        rows=_sent_p1_before(), source_rows=[{"gp_person_id": "p2", "firstname": "Sam"}]
+    )
+
+    summary = plan_run(connection=connection, flow=FLOW).dry_run_summary()
+
+    assert summary.newly_missing_count == 1
+    assert connection.tables[ORPHANS].rows == []
+
+
+def test_plan_run_refuses_an_orphans_table_stamped_for_another_flow() -> None:
+    """Catches: a flow reading another flow's open orphans as its own and force-resending them."""
+    connection = _connection_with_log(source_rows=[{"gp_person_id": "p1"}])
+    connection.tables[ORPHANS] = stamped_table("techspeed_leads")
+
+    with pytest.raises(WrongLogTableError):
+        plan_run(connection=connection, flow=FLOW)
