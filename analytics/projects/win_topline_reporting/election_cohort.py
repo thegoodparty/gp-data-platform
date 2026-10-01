@@ -46,7 +46,11 @@ users as (
            max(case when c.is_active then 1 else 0 end) as is_active,
            max(case when c.is_internal then 1 else 0 end) as is_internal,
            max(case when c.election_date = date'{election_date}' then 1 else 0 end) as on_1103,
-           max(b.ballot_status) as ballot_status,
+           -- most-committed answer wins across a user's campaigns; a plain max() is lexicographic
+           case max(case b.ballot_status when 'on-ballot' then 4 when 'qualified-not-filed' then 3
+                    when 'considering' then 2 when 'testing' then 1 end)
+                when 4 then 'on-ballot' when 3 then 'qualified-not-filed'
+                when 2 then 'considering' when 1 then 'testing' end as ballot_status,
            count(distinct b.ballot_status) as n_ballot_answers
     from cand c left join ballot b on b.user_id = c.user_id
     group by c.user_id
@@ -100,7 +104,7 @@ amp as (
     group by user_id
 )
 select u.*, b.is_activated, b.first_campaign_sent_at, s.committed_rows, a.amp_election_date,
-       coalesce(l.non_legacy_ev, 0) as non_legacy_ev,
+       l.non_legacy_ev,
        coalesce(k.br_match, 0) as br_match, coalesce(k.any_match, 0) as any_match,
        coalesce(k.deadline_passed, 0) as deadline_passed, coalesce(k.deadline_known, 0) as deadline_known,
        (k.user_id is not null) as in_civics
@@ -176,13 +180,16 @@ def main():
     raw = dbc.run_query(sql)
     raw["is_activated"] = raw.is_activated.fillna(False).astype(bool)
     raw["committed_rows"] = raw.committed_rows.fillna(0)
-    raw["legacy_only"] = raw.is_activated & (raw.non_legacy_ev == 0)
+    # NULL means no qualifying event at all, which for an activated user would be a leg mismatch, not a self-report
+    raw["legacy_only"] = raw.is_activated & raw.non_legacy_ev.notna() & (raw.non_legacy_ev == 0)
+    raw["no_event_evidence"] = raw.is_activated & raw.non_legacy_ev.isna()
     raw["activated_strict"] = raw.is_activated & ~raw.legacy_only
     raw["user_created_at"] = pd.to_datetime(raw.user_created_at)
     internal = raw.is_internal == 1
     df = raw[~internal].copy()
     df["bucket"] = df.apply(bucket, axis=1)
     a = df[df.on_1103 == 1]
+    ed_label = f"{ed.month}/{ed.day}"
 
     print(
         f"\nAs of {pd.Timestamp.utcnow():%Y-%m-%d %H:%M} UTC; latest first-outreach timestamp in the mart: "
@@ -193,6 +200,9 @@ def main():
         f"(of which Pro {int(raw[internal].is_pro.sum())}, activated {int(raw[internal].is_activated.sum())})"
     )
     print(f"Users with more than one ballot answer across campaigns: {int((df.n_ballot_answers > 1).sum())}")
+    print(
+        f"Activated users with no qualifying event at all (should be 0; a leg mismatch if not): {int(df.no_event_evidence.sum())}"
+    )
 
     print("\n== Headline ==")
     print(
@@ -211,7 +221,7 @@ def main():
 
     answered = a[a.ballot_status.notna()]
     print(
-        f"\nWithin the 11/3 users who answered the question ({len(answered)}): "
+        f"\nWithin the {ed_label} users who answered the question ({len(answered)}): "
         f"on-ballot holds {int(answered[answered.bucket=='on-ballot'].is_pro.sum())} of "
         f"{int(answered.is_pro.sum())} Pro and "
         f"{int(answered[answered.bucket=='on-ballot'].is_activated.sum())} of "
@@ -219,7 +229,7 @@ def main():
     )
 
     print(
-        "\n== Secondary source: roster corroboration (BallotReady / TechSpeed / DDHQ) by ballot answer, 11/3 =="
+        f"\n== Secondary source: roster corroboration (BallotReady / TechSpeed / DDHQ) by ballot answer, {ed_label} =="
     )
     k = a.groupby("bucket").agg(
         users=("user_id", "size"),
@@ -248,23 +258,23 @@ def main():
         ).to_string()
     )
     print(
-        f"Whole 11/3 cohort: any roster match {int(a.any_match.sum())} of {len(a)} ({100*a.any_match.mean():.1f}%); "
+        f"Whole {ed_label} cohort: any roster match {int(a.any_match.sum())} of {len(a)} ({100*a.any_match.mean():.1f}%); "
         f"Pro with a match {int(a[a.is_pro==1].any_match.sum())} of {int(a.is_pro.sum())}; "
         f"activated (strict) with a match {int(a[a.activated_strict].any_match.sum())} of {int(a.activated_strict.sum())}"
     )
 
     print("\n== Robustness ==")
     print(
-        f"Legacy-tracker-only activated who are not Pro today (11/3): {int((a.legacy_only & (a.is_pro==0)).sum())} of {int(a.legacy_only.sum())}"
+        f"Legacy-tracker-only activated who are not Pro today ({ed_label}): {int((a.legacy_only & (a.is_pro==0)).sum())} of {int(a.legacy_only.sum())}"
     )
     print(
-        f"Activated but not Pro today (churned/comped Pros, 11/3): {int((a.is_activated & (a.is_pro==0)).sum())}"
+        f"Activated but not Pro today (churned/comped Pros, {ed_label}): {int((a.is_activated & (a.is_pro==0)).sum())}"
     )
     print(
-        f"Governed-activated with no product-DB committed send (11/3): {int((a.is_activated & (a.committed_rows==0)).sum())}"
+        f"Governed-activated with no product-DB committed send ({ed_label}): {int((a.is_activated & (a.committed_rows==0)).sum())}"
     )
     print(
-        f"Product-DB committed send but not governed-activated (11/3): {int((~a.is_activated & (a.committed_rows>0)).sum())}"
+        f"Product-DB committed send but not governed-activated ({ed_label}): {int((~a.is_activated & (a.committed_rows>0)).sum())}"
     )
     print(
         f"First outreach action after today (should be 0): {int((pd.to_datetime(a.first_campaign_sent_at) > pd.Timestamp.utcnow().tz_localize(None)).sum())}"
@@ -273,8 +283,8 @@ def main():
     print("\n== Gap check: election date in Amplitude (user property officeElectionDate) ==")
     has = a.amp_election_date.notna()
     print(
-        f"11/3 cohort users with the property set in Amplitude (events since 2026-01-01): {int(has.sum())} of {len(a)} "
-        f"({100*has.mean():.1f}%); of those, value = 2026-11-03 for {int((a.amp_election_date=='2026-11-03').sum())}"
+        f"{ed_label} cohort users with the property set in Amplitude (events since 2026-01-01): {int(has.sum())} of {len(a)} "
+        f"({100*has.mean():.1f}%); of those, value = {ed.date()} for {int((a.amp_election_date == str(ed.date())).sum())}"
     )
     print("Pre/post onboarding-rebuild registrants with the property:")
     print(
