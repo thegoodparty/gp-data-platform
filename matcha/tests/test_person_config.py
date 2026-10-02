@@ -44,7 +44,7 @@ def test_no_unbounded_blocking_rule():
     # Word boundaries, not substring: "first_name" occurs inside
     # "first_name_aliases", so a plain `in` passes any first_name_* column
     # without ever checking that it narrows anything.
-    narrowing = ("email", "phone", "first_name", "first_name_aliases", "birth_date", "pregroup_id")
+    narrowing = ("email", "phone", "first_name", "first_name_aliases", "birth_date")
     for rule in PERSON_CONFIG.blocking_rules_for_prediction:
         sql = _rule_sql(rule)
         assert any(

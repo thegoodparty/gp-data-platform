@@ -700,12 +700,47 @@ models:
       - name: br_race_id
         description: BallotReady race id; populated on BR rows, null on DDHQ/TS.
 
+  - name: stg_er_source__person_groups
+    description: >
+      Canonical person groups published by matcha's person lane. One row per
+      person-graph record key (source_name || '|' || source_id, TechSpeed at
+      candidacy-stage grain) with the deterministic identity it closed into
+      and the group the admitted Splink merges put it in. matcha closes over
+      int__civics_person_links across int__civics_person_nodes, then admits a
+      set of identities only when every pair inside it scored a match and the
+      result holds at most one BallotReady person. Read by
+      int__civics_person_canonical_ids, which falls back to the record's own
+      key for anything the vintage has not seen.
+    columns:
+      - name: record_key
+        description: Person-graph record key. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        data_tests:
+          - not_null
+      - name: identity_key
+        description: Min record_key of the deterministic component, or the record's own key if it dissolved.
+        data_tests:
+          - not_null
+      - name: person_group_key
+        description: Min record_key of the person group.
+        data_tests:
+          - not_null
+      - name: rejected_reason
+        description: Why a proposed merge was refused; null when admitted or nothing was proposed.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["br_cannot_link", "incomplete_support"]
+
   - name: stg_er_source__pairwise_people
     description: >
       Staged person pairs scored by the Splink person matcher. One row per
       candidate pair above a 0.01 match probability, after the post-prediction
-      filters. The person graph reads these pairs rather than the clustered
-      table so an edge can be judged on its own evidence before propagation.
+      filters. Audit input; matcha's person lane consumes the same pairs when
+      it builds er_source.person_groups.
     columns:
       - name: unique_id_l
         description: Left record key, `source_name|source_id` in prematch grain.
