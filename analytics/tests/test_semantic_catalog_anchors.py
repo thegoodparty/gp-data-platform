@@ -172,8 +172,8 @@ def test_win_activation_excludes_self_reported_outreach():
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     legs = parse_anchors(doc)["win_activated_users"]
     by_event = {leg["event"]: leg for leg in legs}
-    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": ["manual", "unknown"]}
-    assert by_event["Outreach - Campaign Completed"]["excluding"]["method"] == ["manual", "unknown"]
+    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": "manual"}
+    assert by_event["Outreach - Campaign Completed"]["excluding"]["method"] == "manual"
     # Only the two names of the completion event carry self-report, so a method
     # exclusion anywhere else is a stray and fails loudly here.
     assert [leg["event"] for leg in legs if "method" in leg["excluding"]] == [
@@ -277,25 +277,27 @@ def test_product_output_follows_the_okr_on_self_report_and_the_robocall_draft():
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
     legs = parse_anchors(doc)["win_product_output_users"]
     by_event = {leg["event"]: leg for leg in legs}
-    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": ["manual", "unknown"]}
+    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": "manual"}
     assert "Robocall - Scheduled" not in by_event
 
 
-def test_self_report_exclusion_is_one_set_across_win_and_serve():
-    # Self-report is excluded in two sem files, and the Win legs once caught only
-    # one of its two spellings. A new spelling has to land on every leg at once.
-    excluded: dict[str, list[str]] = {}
+def test_every_self_report_exclusion_names_the_live_spelling():
+    # Self-report is excluded in two sem files. 'manual' is the spelling the
+    # product still emits, so every leg that excludes self-report must name it.
+    # Legacy 'unknown' is deliberately counted on the Win legs (DATA-2610 ruling)
+    # and harmless where declared, since no live event carries it.
+    missing = []
     for name in ("sem_analytics__users_win.yml", "sem_analytics__users_serve.yml"):
         doc = yaml.safe_load((MODELS / name).read_text())
         for metric, legs in parse_anchors(doc).items():
             for leg in legs:
                 method = leg["excluding"].get("method")
-                if method is not None:
-                    values = [method] if isinstance(method, str) else method
-                    excluded[f"{metric}: {leg['event']}"] = sorted(values)
-    assert excluded
-    mismatched = {leg: values for leg, values in excluded.items() if values != ["manual", "unknown"]}
-    assert not mismatched, f"method exclusions differ from ['manual', 'unknown']: {mismatched}"
+                if method is None:
+                    continue
+                values = [method] if isinstance(method, str) else method
+                if "manual" not in values:
+                    missing.append(f"{metric}: {leg['event']}")
+    assert not missing, f"self-report exclusions missing 'manual': {missing}"
 
 
 def test_product_output_leaves_one_free_leg_for_use_as_a_label():

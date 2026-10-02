@@ -191,6 +191,11 @@ metrics:
             - >
               Before 2026-09-29, outreach from Serve cannot be told apart from
               Win outreach, so it is counted.
+            - >
+              Some self-reported outreach from before May 2026 is counted. At
+              the time it was the only record of that outreach, and the metric
+              owner ruled on 2026-10-02 to keep it. Self-report recorded since
+              then is excluded.
         # The raw events that count as reaching voters through the product. This
         # is the kernel: is_outreach_activation_event derives its SQL from this
         # list and the Win activity rollups gate their intake on it, so adding or
@@ -202,24 +207,25 @@ metrics:
         anchored_on:
           - event: Voter Outreach - Campaign Completed
             era: historical   # last fired 2026-09-29, renamed in omni #2215
-            # One event name, four moments. An absent method is the legacy
+            # One event name, three moments. An absent method is the legacy
             # in-product send (stopped firing 2026-09-08 when the flow moved to
             # outreach/v2/); 'native' is a completed door-knocking walk; 'manual'
-            # is a candidate self-reporting outreach done elsewhere. 'unknown' is
-            # the same self-report from before 'manual' existed: the legacy
-            # dashboard's log-progress and record-contacts modals (omni
-            # 703131cff), last fired 2026-04-28.
+            # is a candidate self-reporting outreach done elsewhere.
+            #
+            # 'unknown' is also self-report, from the legacy dashboard's
+            # log-progress and record-contacts modals (omni 703131cff, last fired
+            # 2026-04-28), and it is counted on purpose: it was the only record
+            # of that outreach at the time, and the metric owner ruled on
+            # 2026-10-02 to keep it (DATA-2610). Do not add it to the exclusion.
             excluding:
-              method: [manual, unknown]
+              method: manual
           # Its successor, one event for every channel, told apart by `medium`.
           # An absent method is a paid send, a social share or a finished call
           # list; 'turf' and 'campaign' are door-knocking completions; 'manual'
-          # is still self-report. `product` says Win or Serve. 'unknown' has
-          # never fired on this name; it is excluded so every self-report leg in
-          # the layer declares the same set.
+          # is still self-report. `product` says Win or Serve.
           - event: Outreach - Campaign Completed
             excluding:
-              method: [manual, unknown]
+              method: manual
               product: serve
           # Fires where the payment commits, one terminal for sms, robocall and
           # social, told apart by its `channel` property. It replaced
@@ -297,14 +303,14 @@ metrics:
           - event: Candidate Website - Published
           - event: Voter Outreach - Campaign Completed
             era: historical   # last fired 2026-09-29, renamed in omni #2215
-            # Same four moments as the outreach anchor, same exclusion.
+            # Same three moments as the outreach anchor, same exclusion.
             excluding:
-              method: [manual, unknown]
+              method: manual
             paywalled: true
           - event: Outreach - Campaign Completed
             # Same moments and exclusions as the outreach anchor's leg.
             excluding:
-              method: [manual, unknown]
+              method: manual
               product: serve
             paywalled: true
           - event: Voter Data - List Exported
