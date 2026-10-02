@@ -94,3 +94,56 @@ def test_first_name_comparison_has_token_intersect_level():
     assert any(
         "first_name_tokens" in level.get("sql_condition", "") for level in cmp["comparison_levels"]
     ), "Expected an ArrayIntersectLevel over first_name_tokens"
+
+
+def _identity_filter_sql():
+    # The first candidacy filter is BASE OR the last-name-change rescue.
+    return CANDIDACY_CONFIG.post_prediction_filters[0]
+
+
+def _eval_identity_filter(**overrides) -> bool:
+    import duckdb
+
+    row = {
+        # Same person, same race, but the surname changed ("smith" -> "smith-jones").
+        "gamma_last_name": 0,
+        "gamma_first_name": 3,
+        "gamma_email": 1,
+        "gamma_phone": -1,
+        "gamma_official_office_name": 4,
+        "gamma_election_date": 2,
+        "first_name_l": "maria",
+        "first_name_r": "maria",
+        "br_race_id_l": "1234",
+        "br_race_id_r": "1234",
+    }
+    row.update(overrides)
+    placeholders = ", ".join(f"? AS {k}" for k in row)
+    sql = f"SELECT coalesce(({_identity_filter_sql()}), false) FROM (SELECT {placeholders})"
+    return duckdb.connect().execute(sql, list(row.values())).fetchone()[0]
+
+
+def test_last_name_change_rescued_on_email_first_name_and_race():
+    assert _eval_identity_filter() is True
+
+
+def test_last_name_change_not_rescued_without_email():
+    assert _eval_identity_filter(gamma_email=0) is False
+
+
+def test_last_name_change_not_rescued_for_household_member():
+    # Shared household email, same race, different first name: a spouse, not a rename.
+    assert _eval_identity_filter(gamma_first_name=0, first_name_r="david") is False
+
+
+def test_last_name_change_not_rescued_across_races():
+    assert _eval_identity_filter(br_race_id_r="9999") is False
+
+
+def test_last_name_change_not_rescued_when_race_unknown():
+    assert _eval_identity_filter(br_race_id_l=None) is False
+
+
+def test_base_identity_path_unchanged():
+    # Last name agrees: BASE admits it regardless of the rescue's race requirement.
+    assert _eval_identity_filter(gamma_last_name=3, br_race_id_r="9999") is True

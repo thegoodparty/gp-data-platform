@@ -4516,6 +4516,58 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_campaign_br_primary_result
+    description: >
+      BallotReady primary result for product campaigns: did this signup run in
+      the primary for the seat they picked, and how did it go?
+
+      Grain: one row per latest-version, non-demo campaign with a BallotReady
+      position and an election date that has a matching BallotReady first-round
+      primary candidacy in the same year, before the campaign's election date.
+
+      Exists because a campaign's ER record carries only its own election date,
+      almost always the general, and the candidacy matcher keeps stages apart.
+      Signups eliminated in the primary never cluster with the primary record,
+      never clear the candidacy corroboration gate, and otherwise read as
+      unmatched general candidates (705 on the 2026-11-03 cohort, DATA-2603).
+      Deterministic: same ballotready_position_id, and exact email or exact last
+      name plus first name or BallotReady nickname.
+    columns:
+      - name: campaign_id
+        description: Campaign id from the product database. One row per campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: >
+          The campaign's own election date, carried so consumers can join
+          version-aware.
+        data_tests:
+          - not_null
+      - name: br_candidacy_id
+        description: The matched BallotReady primary candidacy.
+        data_tests:
+          - not_null
+      - name: br_primary_election_date
+        description: Election day of the matched BallotReady primary.
+      - name: primary_election_result
+        description: >
+          BallotReady result mapped to the civics vocabulary, as in
+          int__civics_candidacy_stage_ballotready. NULL when BallotReady has not
+          reported a result.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Won", "Lost", "Runoff"]
+      - name: match_key
+        description: >
+          'email' when the BallotReady email equals the user's, else 'name'.
+          Email wins when both legs match different candidacies.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["email", "name"]
+
   - name: int__civics_campaign_incumbency
     description: >
       Office-first incumbency for product campaigns: on election day, does this

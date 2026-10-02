@@ -7,7 +7,7 @@ from splink import block_on
 from splink.blocking_rule_library import CustomRule
 from splink.comparison_library import CustomComparison
 
-from scripts.constants import BASE_POST_PREDICTION_FILTER
+from scripts.constants import BASE_POST_PREDICTION_FILTER, CANDIDACY_LAST_NAME_CHANGE_RESCUE
 from scripts.entity_config import EntityConfig
 
 # Two sources routinely report the same election on dates that differ by a few
@@ -179,7 +179,7 @@ CANDIDACY_CONFIG = EntityConfig(
     date_columns=["election_date"],
     clustered_output_name="clustered_candidacies.csv",
     post_prediction_filters=[
-        BASE_POST_PREDICTION_FILTER,
+        f"({BASE_POST_PREDICTION_FILTER}) OR ({CANDIDACY_LAST_NAME_CHANGE_RESCUE})",
         # Race key: keep only if offices match strongly (gamma 3 == JW >= 0.88), br_race_id is shared, or br_race_id/district/office_type do not conflict (null-wildcards).
         """
           (

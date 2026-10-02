@@ -73,6 +73,23 @@ BASE_POST_PREDICTION_FILTER = """
       )
 """
 
+# Candidacy rescue for a changed last name. The BASE filter requires last-name
+# agreement, so a candidate who files under a married, hyphenated or maiden
+# name ("smith" vs "smith-jones" falls below the 0.88 JW level) is dropped even
+# when every other signal says same person, same race. Admit the pair only when
+# identity and race are both locked independently of the surname: the same
+# email AND the same first name (households share an email, so first-name
+# agreement keeps a spouse in the same race apart), AND the same BallotReady
+# race id. DATA-2603 found 21 such gp_api <-> ballotready pairs on the
+# 2026-11-03 cohort. Raw br_race_id columns, not a gamma: br_race_id is a
+# blocking key only, so Splink never builds gamma_br_race_id.
+CANDIDACY_LAST_NAME_CHANGE_RESCUE = """
+    gamma_email > 0
+      AND gamma_first_name > 0
+      AND br_race_id_l IS NOT NULL
+      AND br_race_id_l = br_race_id_r
+"""
+
 # EO-specific post-prediction filter: adds contact-info bypass and office_type
 # fallback for cross-source office title synonyms. Contact-confirmed pairs
 # (email or phone match) skip office checks entirely since identity is established.

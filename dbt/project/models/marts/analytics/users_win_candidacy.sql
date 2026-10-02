@@ -101,7 +101,19 @@ with
             cand.general_runoff_election_date,
 
             -- Election results by stage
-            pr.election_result as primary_election_result,
+            -- Primary result: the civics candidacy where it has one, else the
+            -- BallotReady primary roster for the campaign's own seat, which is
+            -- the only route for signups eliminated in the primary (their
+            -- general-date campaign never clusters with the primary record).
+            coalesce(
+                pr.election_result, bpr.primary_election_result
+            ) as primary_election_result,
+            case
+                when pr.election_result is not null
+                then 'candidacy'
+                when bpr.primary_election_result is not null
+                then 'ballotready_primary_roster'
+            end as primary_election_result_source,
             ge.election_result as general_election_result,
             pro.election_result as primary_runoff_election_result,
             gro.election_result as general_runoff_election_result
@@ -135,6 +147,12 @@ with
             {{ ref("int__civics_campaign_incumbency") }} inc
             on c.campaign_id = inc.campaign_id
             and c.election_date = inc.election_date
+
+        -- BallotReady primary result, same version-aware join as incumbency.
+        left join
+            {{ ref("int__civics_campaign_br_primary_result") }} bpr
+            on c.campaign_id = bpr.campaign_id
+            and c.election_date = bpr.election_date
 
         -- Stage results pivoted
         left join
