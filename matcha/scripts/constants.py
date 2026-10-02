@@ -90,24 +90,65 @@ CANDIDACY_LAST_NAME_CHANGE_RESCUE = """
       AND br_race_id_l = br_race_id_r
 """
 
-# Race lock for a candidacy pair whose surnames agree only through
+# Words dropped before two office token sets are compared for the surname
+# variant guard below: term and vacancy filler, spelled-out numbers, and state
+# names (a shared "florida" says nothing about the race).
+_VARIANT_GUARD_NOISE_TOKENS = (
+    "'year','years','term','terms','districted','unexpired','special','incumbent',"
+    "'non-incumbent','one','two','three','four','five','six','seven','eight','nine',"
+    "'ten','full','short','partial','vacancy','nonpartisan',"
+    "'alabama','alaska','arizona','arkansas','california','colorado','connecticut',"
+    "'delaware','florida','georgia','hawaii','idaho','illinois','indiana','iowa',"
+    "'kansas','kentucky','louisiana','maine','maryland','massachusetts','michigan',"
+    "'minnesota','mississippi','missouri','montana','nebraska','nevada','ohio',"
+    "'oklahoma','oregon','pennsylvania','tennessee','texas','utah','vermont',"
+    "'virginia','washington','wisconsin','wyoming','york','jersey','hampshire',"
+    "'mexico','carolina','dakota','rhode'"
+)
+
+
+def _cleaned_office_tokens(side: str) -> str:
+    """DuckDB expression for one side's office tokens with punctuation, codes
+    and _VARIANT_GUARD_NOISE_TOKENS removed, sorted for set comparison."""
+    return (
+        "list_sort(list_distinct(list_filter("
+        f"list_transform(official_office_name_tokens_{side}, t -> regexp_replace(t, '[^a-z/''-]', '', 'g')), "
+        "t -> length(t) >= 2 AND NOT regexp_matches(t, '[0-9]') "
+        f"AND NOT list_contains([{_VARIANT_GUARD_NOISE_TOKENS}], t))))"
+    )
+
+
+# Conflict guard for a candidacy pair whose surnames agree only through
 # last_name_variants (gamma_last_name 1, the lowest non-else level). A record
 # whose surname carries a prepended middle name can otherwise link to the same
 # person's candidacy in a second race and chain two BallotReady candidacies
 # together (a candidate who switched congressional districts; a mayor and a
-# council seat on one ballot). Require the same br_race_id, or, when one side has
-# none, a strong office match (gamma 3 == JW >= 0.88) with no district or office
-# type conflict. The race-key filter skips those conflict checks at gamma 3, so
-# they are repeated here.
+# council seat on one ballot). Reject the pair on a race conflict:
+#   - different districts or seats;
+#   - two different br_race_ids with different office names (sources often carry
+#     different ids for one race, so differing ids alone are not a conflict);
+#   - no shared br_race_id and only a weak office match (gamma < 3, JW < 0.88),
+#     unless the cleaned office token sets are identical. "taunton municipal
+#     council" vs "taunton city council" passes; "sevier county mayor" vs
+#     "sevier county register of deeds" and "north richland hills" vs "richland
+#     hills" do not.
+# A pair the last-name-change rescue admits already has the race locked.
 CANDIDACY_LAST_NAME_VARIANT_LEVEL = 1
 CANDIDACY_LAST_NAME_VARIANT_GUARD = f"""
     gamma_last_name <> {CANDIDACY_LAST_NAME_VARIANT_LEVEL}
-      OR (br_race_id_l IS NOT NULL AND br_race_id_l = br_race_id_r)
-      OR (
-        (br_race_id_l IS NULL OR br_race_id_r IS NULL)
-        AND gamma_official_office_name >= 3
-        AND (district_identifier_l IS NULL OR district_identifier_r IS NULL OR district_identifier_l = district_identifier_r)
-        AND (office_type_l IS NULL OR office_type_r IS NULL OR office_type_l = office_type_r)
+      OR ({CANDIDACY_LAST_NAME_CHANGE_RESCUE})
+      OR NOT (
+        (district_identifier_l IS NOT NULL AND district_identifier_r IS NOT NULL
+          AND district_identifier_l <> district_identifier_r)
+        OR (seat_name_l IS NOT NULL AND seat_name_r IS NOT NULL AND seat_name_l <> seat_name_r)
+        OR (br_race_id_l IS NOT NULL AND br_race_id_r IS NOT NULL AND br_race_id_l <> br_race_id_r
+          AND official_office_name_l IS DISTINCT FROM official_office_name_r)
+        OR ((br_race_id_l IS NULL OR br_race_id_r IS NULL)
+          AND gamma_official_office_name < 3
+          AND NOT coalesce(
+            len({_cleaned_office_tokens("l")}) > 0
+              AND {_cleaned_office_tokens("l")} = {_cleaned_office_tokens("r")},
+            false))
       )
 """
 

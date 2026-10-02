@@ -200,20 +200,32 @@ def _eval_variant_guard(**overrides) -> bool:
         # "andre reynolds" vs "reynolds": surnames agree only through the variants.
         "gamma_last_name": 1,
         "gamma_official_office_name": 3,
+        "gamma_email": 0,
+        "gamma_first_name": 4,
         "br_race_id_l": None,
         "br_race_id_r": "2022089",
         "district_identifier_l": "5",
         "district_identifier_r": "5",
-        "office_type_l": "Congressional",
-        "office_type_r": "Congressional",
+        "seat_name_l": None,
+        "seat_name_r": None,
+        "official_office_name_l": "u.s. house of representatives district 5",
+        "official_office_name_r": "u.s. house of representatives - tennessee 5th congressional district",
+        "official_office_name_tokens_l": ["u.s"],
+        "official_office_name_tokens_r": ["u.s", "tennessee", "5th", "congressional"],
     }
     row.update(overrides)
-    placeholders = ", ".join(f"?::VARCHAR AS {k}" if k.endswith(("_l", "_r")) else f"? AS {k}" for k in row)
+
+    def cast(k):
+        if k.endswith("tokens_l") or k.endswith("tokens_r"):
+            return "VARCHAR[]"
+        return "VARCHAR" if k.endswith(("_l", "_r")) else "INTEGER"
+
+    placeholders = ", ".join(f"?::{cast(k)} AS {k}" for k in row)
     sql = f"SELECT coalesce(({CANDIDACY_LAST_NAME_VARIANT_GUARD}), false) FROM (SELECT {placeholders})"
     return duckdb.connect().execute(sql, list(row.values())).fetchone()[0]
 
 
-def test_variant_guard_keeps_strong_office_without_race_id():
+def test_variant_guard_keeps_pair_without_conflict():
     assert _eval_variant_guard() is True
 
 
@@ -222,18 +234,49 @@ def test_variant_guard_rejects_district_conflict():
     assert _eval_variant_guard(district_identifier_r="7") is False
 
 
-def test_variant_guard_rejects_office_type_conflict():
-    assert _eval_variant_guard(office_type_l="State House") is False
+def test_variant_guard_rejects_seat_conflict():
+    assert _eval_variant_guard(seat_name_l="1", seat_name_r="3") is False
 
 
-def test_variant_guard_rejects_weak_office_without_race_id():
-    assert _eval_variant_guard(gamma_official_office_name=2) is False
-
-
-def test_variant_guard_keeps_same_race_and_rejects_different_race():
-    assert _eval_variant_guard(br_race_id_l="2022089", gamma_official_office_name=0) is True
+def test_variant_guard_race_ids_differ():
+    """Sources often carry different race ids for one race, so differing ids alone
+    are not a conflict; differing ids plus a different office name are."""
+    same_office = {"official_office_name_r": "u.s. house of representatives district 5"}
+    assert _eval_variant_guard(br_race_id_l="2022090", **same_office) is True
     assert _eval_variant_guard(br_race_id_l="2022090") is False
 
 
+def test_variant_guard_weak_office_needs_the_same_cleaned_tokens():
+    weak = {"gamma_official_office_name": 2}
+
+    def tokens(left, right):
+        return {"official_office_name_tokens_l": left, "official_office_name_tokens_r": right}
+
+    # Same place once filler, punctuation and codes are dropped.
+    assert _eval_variant_guard(**weak, **tokens(["new", "plymouth", "#372"], ["new", "plymouth"])) is True
+    assert (
+        _eval_variant_guard(**weak, **tokens(["springfield", "(mahoning"], ["mahoning", "springfield"]))
+        is True
+    )
+    # A shared place name with a different office, or only a shared state.
+    assert _eval_variant_guard(**weak, **tokens(["sevier"], ["sevier", "deeds"])) is False
+    assert (
+        _eval_variant_guard(**weak, **tokens(["north", "richland", "hills"], ["richland", "hills"])) is False
+    )
+    assert (
+        _eval_variant_guard(**weak, **tokens(["florida", "lieutenant"], ["florida", "congressional"]))
+        is False
+    )
+    assert _eval_variant_guard(**weak, **tokens(["florida"], ["florida"])) is False
+    assert _eval_variant_guard(**weak, **tokens(None, ["florida"])) is False
+    # A shared race id needs no office agreement.
+    assert _eval_variant_guard(**weak, br_race_id_l="2022089", **tokens(["sevier"], ["deeds"])) is True
+
+
+def test_variant_guard_exempts_the_last_name_change_rescue():
+    rescued = {"gamma_email": 1, "gamma_first_name": 4, "br_race_id_l": "2022089"}
+    assert _eval_variant_guard(**rescued, district_identifier_r="7") is True
+
+
 def test_variant_guard_ignores_pairs_matched_on_the_surname_itself():
-    assert _eval_variant_guard(gamma_last_name=4, br_race_id_l="2022090") is True
+    assert _eval_variant_guard(gamma_last_name=4, district_identifier_r="7") is True
