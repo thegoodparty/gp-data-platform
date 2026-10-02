@@ -720,7 +720,14 @@ models:
       - name: first_sms_poll_sent_at
         description: >
           Earliest timestamp for 'Serve Onboarding - SMS Poll Sent' from
-          int__amplitude_user_milestones.
+          int__amplitude_user_milestones. An onboarding-funnel column; activation
+          reads first_serve_activated_at.
+
+      - name: first_serve_activated_at
+        description: >
+          First time the user reached constituents through the product, by any
+          event the activated_serve_users metric counts. NULL if never. The
+          metric's time dimension.
 
       - name: has_sent_sms_poll
         description: TRUE if first_sms_poll_sent_at is not null.
@@ -730,15 +737,16 @@ models:
       - name: has_pledged
         description: >
           TRUE if the user owns at least one pledged campaign. From
-          int__serve_active_user.
+          int__serve_active_user. Reported only; not part of the activation
+          gate.
         data_tests:
           - not_null
 
       - name: is_active_serve_user
         description: >
-          TRUE if the user is an active serve user (sent an SMS poll AND pledged):
-          the behavioral gate of the People Served active cohort, shared with the
-          epic via int__serve_active_user. Combine with Serve-ICP and non-internal
+          TRUE if the user has reached constituents through the product (the
+          activated_serve_users rule): the behavioral gate of the People Served
+          active cohort, shared via int__serve_active_user. Combine with Serve-ICP and non-internal
           email (applied at the resolver) for the full cohort.
         data_tests:
           - not_null
