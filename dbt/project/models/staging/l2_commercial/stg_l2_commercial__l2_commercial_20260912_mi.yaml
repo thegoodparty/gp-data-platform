@@ -6,10 +6,10 @@ models:
       De-identified, typed copy of the Michigan L2 commercial file for internal
       evaluation. One row per individual. Column names are the L2 data dictionary
       names in lower case. Names, phone numbers, email addresses, street addresses,
-      full birth dates, IP addresses, VINs, parcel legal descriptions, raw lender
-      names and employer name, street address and contact details are removed. Person, household,
-      address, voter, device, parcel and place IDs are SHA-256 hashed and carry a
-      _hash suffix. Coordinates are rounded to three decimals. Census geography is
+      full birth dates, IP addresses, VINs, parcel numbers and legal descriptions,
+      Placekeys, raw lender names and employer name, street address and contact
+      details are removed. Person, household, address, voter and device IDs are
+      SHA-256 hashed and carry a _hash suffix. Coordinates are rounded to three decimals. Census geography is
       kept. Y-only flags are true when L2 marks them and false when blank. Outside
       prod the model holds a 100,000-row sample unless the l2_commercial_row_limit
       variable is set.

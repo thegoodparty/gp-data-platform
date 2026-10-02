@@ -1,9 +1,9 @@
 {#- Every source column must appear in exactly one list below; an unlisted
     column fails compilation so nothing reaches researchers unreviewed.
     Columns ending in _RETIRED are dropped: L2 nulls them out. -#}
-{#- Direct identifiers and the retired DMA fields, removed entirely. VINs and
-    IPs are dropped rather than hashed: their small key spaces make a hash
-    reversible. Raw lender names can be a private seller's name; the
+{#- Direct identifiers and the retired DMA fields, removed entirely. VINs, IPs,
+    parcel numbers and Placekeys are dropped rather than hashed: each can be
+    enumerated, so a hash is reversible. Raw lender names can be a private seller's name; the
     standardized lender columns are kept. -#}
 {%- set dropped = [
     "Landline_Phone_Number",
@@ -44,6 +44,8 @@
     "Legal_BriefDescription",
     "Home_Mortgage_Lender_Name",
     "Most_Recent_2nd_Lender_Name",
+    "APN",
+    "Placekey",
 ] -%}
 {#- Unsalted SHA-256, so lalvoterid_hash equals voter_key in the voter marts. -#}
 {%- set hashed_ids = [
@@ -51,8 +53,6 @@
     "Address_Id",
     "Family_Id",
     "Lalvoterid",
-    "APN",
-    "Placekey",
     "MAID1",
     "MAID2",
     "MAID3",
