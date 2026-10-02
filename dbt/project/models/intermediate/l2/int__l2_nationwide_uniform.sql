@@ -142,9 +142,16 @@ with
 -- Every district column, not just the six that pad today: a no-op on the rest,
 -- and nothing to keep in sync when L2 starts padding a new one.
 select
-    assigned.* except ({{ get_l2_district_columns() }}),
+    assigned.* except (
+        {{ get_l2_district_columns() }},
+        `VoterTelephones_CellPhoneFormatted`,
+        `VoterTelephones_LandlineFormatted`
+    ),
     {% for column in get_l2_district_types() -%}
-        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`
-        {%- if not loop.last %},{% endif %}
+        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`,
     {% endfor %}
+    {{ clean_l2_phone_number("assigned.`VoterTelephones_CellPhoneFormatted`") }}
+    as `VoterTelephones_CellPhoneFormatted`,
+    {{ clean_l2_phone_number("assigned.`VoterTelephones_LandlineFormatted`") }}
+    as `VoterTelephones_LandlineFormatted`
 from assigned
