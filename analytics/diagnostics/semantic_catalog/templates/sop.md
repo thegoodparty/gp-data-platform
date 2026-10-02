@@ -202,11 +202,11 @@ deletes that history from the metric.
    first. Nobody decides what a metric means by choosing which events to count.
 2. **Read the gotchas books before planning:** omni's
    `packages/runbooks/books/analytics-governance-gotchas.md`, and both of this
-   repo's product books, `.claude/skills/win-analytics-knowledge/references/gotchas.md`
-   and `.claude/skills/serve-analytics-knowledge/references/gotchas.md`, whichever
-   product the metric is. The outreach events are shared, so a trap recorded under
-   one product applies to the other. Every row is a trap that has already produced
-   a confident wrong answer.
+   repo's product books: `.claude/skills/win-analytics-knowledge/references/gotchas.md`
+   and `.claude/skills/serve-analytics-knowledge/references/gotchas.md`. The outreach
+   events are shared across products, so a trap recorded under one applies to the
+   other: read both, whichever product the metric is for. Every row is a trap that
+   has already produced a confident wrong answer.
 3. **Pin the dates from the warehouse**, not from a ticket: when the product
    change reached prod, when the old event last fired, when the new one first
    fired.
