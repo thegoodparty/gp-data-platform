@@ -139,6 +139,8 @@ models:
           +tags: ["staging", "dbt_source", "l2_s3", "monthly"]
       segment_storage_source:
         +tags: ["segment", "monthly"]
+      l2_commercial:
+        +materialized: table
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
