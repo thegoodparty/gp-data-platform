@@ -157,7 +157,12 @@ def test_activated_metrics_declare_the_exact_event_string():
         "Outreach - Phone Banking: Call Logged",
         "Outreach - Phone Banking Call Logged",
     ]
-    assert [leg["event"] for leg in serve_legs] == ["Serve Onboarding - SMS Poll Sent"]
+    assert [leg["event"] for leg in serve_legs] == [
+        "Serve Onboarding - SMS Poll Sent",
+        "Outreach - Campaign Completed",
+        "Outreach - Door Knocking Door Logged",
+        "Outreach - Phone Banking Call Logged",
+    ]
 
 
 def test_win_activation_excludes_self_reported_outreach():
@@ -175,6 +180,20 @@ def test_win_activation_excludes_self_reported_outreach():
         "Voter Outreach - Campaign Completed",
         "Outreach - Campaign Completed",
     ]
+
+
+def test_serve_activation_excludes_win_and_self_report():
+    # The outreach events are shared with Win, so a Serve leg that forgot the product
+    # exclusion would count an official's own campaign outreach as Serve activation.
+    # The onboarding poll carries no product and needs none: only Serve fires it.
+    doc = yaml.safe_load((MODELS / "sem_analytics__users_serve.yml").read_text())
+    for leg in parse_anchors(doc)["activated_serve_users"]:
+        if leg["event"] == "Serve Onboarding - SMS Poll Sent":
+            continue
+        assert leg["excluding"].get("product") == "win", leg["event"]
+    by_event = {leg["event"]: leg for leg in parse_anchors(doc)["activated_serve_users"]}
+    # Both spellings of self-report: 'unknown' is the legacy one.
+    assert by_event["Outreach - Campaign Completed"]["excluding"]["method"] == ["manual", "unknown"]
 
 
 def test_win_activation_excludes_serve_on_every_leg_that_can_say_so():

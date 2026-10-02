@@ -1,7 +1,7 @@
 -- int__serve_active_user: the single source of truth for the
 -- "active serve user" BEHAVIORAL definition, one row per user. A user is an
 -- active serve user when they have reached constituents through the product, by
--- any leg activated_serve_users declares, AND have pledged. This is the behavioral
+-- any leg activated_serve_users declares. This is the behavioral
 -- half of the People Served cohort; the
 -- office half (Serve-ICP) and the internal-email exclusion are applied downstream
 -- at int__serve_district_resolution, where the office and the owner email live,
@@ -11,9 +11,9 @@
 -- feeds is consumed by int__serve_block_coverage, which sits below the analytics
 -- layer, so sourcing from a mart would risk a dependency cycle.
 --
--- "Pledged" is "any pledged campaign" from source-staging campaigns. On the serve
--- cohort this is identical to the stricter "latest candidacy pledged" notion
--- (proven: zero membership delta), so the simpler source-staging read is canonical.
+-- "Pledged" is "any pledged campaign" from source-staging campaigns, carried for
+-- reporting. It is no longer part of the gate: activation follows the Win rule,
+-- which has no pledge.
 with
     activation as (
         -- int__amplitude_user_milestones is already one non-null row per user_id
@@ -50,5 +50,5 @@ select
     first_serve_activated_at,
     has_reached_constituents,
     has_pledged,
-    has_reached_constituents and has_pledged as is_active_serve_user
+    has_reached_constituents as is_active_serve_user
 from combined

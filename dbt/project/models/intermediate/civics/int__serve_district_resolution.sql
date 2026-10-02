@@ -211,7 +211,7 @@ with
             icp_office_serve_unknown,
 
             -- in_people_served_cohort: the active People Served
-            -- cohort gate -- active serve user (sent SMS poll AND pledged) AND a
+            -- cohort gate -- active serve user (reached constituents) AND a
             -- Serve-ICP office AND not an internal/test account. Flag only, never a
             -- row exclusion: out-of-cohort officials still flow through for the
             -- broad 'all' rollups and the per-official surface. A missing BallotReady
