@@ -3832,7 +3832,7 @@ models:
       The single source of truth for the "active serve user" behavioral
       definition, one row per user. A user is an active serve
       user when they have reached constituents through the product, by any leg
-      the activated_serve_users metric declares, AND have pledged. This is the behavioral half of the People Served cohort; the office
+      the activated_serve_users metric declares. This is the behavioral half of the People Served cohort; the office
       half (Serve-ICP) and the internal-email exclusion are applied at
       int__serve_district_resolution, where the office and owner email live. Reads
       staging + intermediate only (never an analytics mart) so the cohort flag it
@@ -3869,7 +3869,7 @@ models:
           - not_null
       - name: is_active_serve_user
         description: >
-          has_reached_constituents AND has_pledged: the behavioral gate of the People
+          has_reached_constituents: the behavioral gate of the People
           Served active cohort (combined with Serve-ICP and non-internal email
           downstream at the resolver).
         data_tests:
@@ -3878,7 +3878,7 @@ models:
       - dbt_utils.expression_is_true:
           name: serve_active_user_flag_matches_components
           arguments:
-            expression: "is_active_serve_user = (has_reached_constituents and has_pledged)"
+            expression: "is_active_serve_user = has_reached_constituents"
 
   - name: int__serve_district_resolution
     description: >
@@ -4023,9 +4023,9 @@ models:
           - not_null
       - name: is_active_serve_user
         description: >
-          Carried from int__serve_active_user: the owner sent an SMS poll AND
-          pledged (the behavioral half of the cohort). False when the owner has no
-          active-user row.
+          Carried from int__serve_active_user: the owner has reached
+          constituents through the product (the behavioral half of the cohort).
+          False when the owner has no active-user row.
         data_tests:
           - not_null
       - name: icp_office_serve

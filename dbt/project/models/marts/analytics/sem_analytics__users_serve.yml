@@ -9,7 +9,7 @@ semantic_models:
       the columns.
     model: ref('users_serve_base')
     defaults:
-      agg_time_dimension: first_sms_poll_sent_at
+      agg_time_dimension: first_serve_activated_at
     entities:
       - name: user
         type: primary
@@ -18,8 +18,13 @@ semantic_models:
       # Serve-native aggregation time. Not registered_at: MetricFlow requires a
       # (primary entity, dimension) pairing to be unique across semantic models,
       # and user__registered_at is already owned by users_win. Every user who
-      # contributes to the active count has this timestamp (sending the SMS poll
-      # is a component of the definition).
+      # contributes to the activated count has this timestamp, because reaching
+      # constituents is the definition.
+      - name: first_serve_activated_at
+        description: When the user first reached constituents through the product.
+        type: time
+        type_params:
+          time_granularity: day
       - name: first_sms_poll_sent_at
         description: When the user completed Serve onboarding by sending their first SMS poll.
         type: time
@@ -49,16 +54,16 @@ semantic_models:
         type: categorical
       - name: is_active_serve_user
         description: >
-          Active serve user (sent an SMS poll AND pledged) — the behavioral
-          gate of the People Served active cohort.
+          Active serve user (reached constituents through the product) — the
+          behavioral gate of the People Served active cohort.
         type: categorical
     measures:
       # Internal accounts are excluded in the measure, not left to the consumer:
       # the mart keeps all users, so any read that forgets the filter is wrong.
       - name: activated_serve_user_count
         description: >
-          Count of activated serve users (ever sent an SMS poll AND ever
-          pledged), excluding internal accounts.
+          Count of activated serve users (ever reached constituents through the
+          product), excluding internal accounts.
         agg: sum
         expr: >
           case
@@ -81,21 +86,28 @@ metrics:
   - name: activated_serve_users
     label: Activated Serve Users
     description: >
-      Count of Serve users who have passed the activation gate: ever sent an
-      SMS poll AND ever pledged. Excludes internal accounts. Definition owned
-      by int__serve_active_user, surfaced through users_serve_base; the gold
+      Count of Serve users who have reached constituents through the product
+      at least once (first_serve_activated_at is not null). Excludes internal
+      accounts. Definition owned by int__serve_active_user, which compiles the
+      legs declared in this metric's config.meta.anchored_on through
+      is_serve_activation_event, surfaced through users_serve_base; the gold
       membership view users_serve_active exposes the same population for
-      direct dashboard reads.
+      direct dashboard reads. The same flag gates the People Served cohort.
 
-      Named "activated", not "active", because both components are
-      lifetime-ever flags with no recency window. The count is monotonically
-      non-decreasing and cannot detect churn, so it does NOT answer "how many
-      Serve users are active now". Use the trailing-window Serve activity
-      metric for that.
+      What counts follows Win activation over the channels Serve offers: an
+      SMS poll sent, a text campaign paid for, a social post shared, a door
+      knocked or a call logged, or a door-knocking or phone-banking campaign
+      completed. The outreach events are shared with Win and told apart by
+      their product property, so Win outreach by an official who also runs a
+      campaign is excluded, as is self-reported outreach.
 
-      Time series bucket by onboarding-completion date (the metric's
-      aggregation time is first_sms_poll_sent_at), not by pledge or account
-      registration date.
+      Named "activated", not "active": it is a lifetime-ever flag with no
+      recency window. The count is monotonically non-decreasing and cannot
+      detect churn, so it does NOT answer "how many Serve users are active
+      now". Use the trailing-window Serve activity metric for that.
+
+      Time series bucket by first-activation date (the metric's aggregation
+      time is first_serve_activated_at), not by account registration date.
     type: simple
     type_params:
       measure: activated_serve_user_count
@@ -108,19 +120,55 @@ metrics:
         # the implementation layer, and it lives in anchored_on.
         business_rule:
           counts: >
-            An elected official counts once they have both asked their
-            constituents a question and committed to act on an answer.
+            An elected official counts once they have reached constituents
+            through the product, such as by sending a poll or a text campaign,
+            sharing a social post, knocking a door or logging a call, or
+            completing a door-knocking or phone-banking campaign.
           excludes:
             - Internal staff accounts.
+            - Outreach the official did off-platform and self-reported.
             - >
-              Anyone who has done only one of the two. Asking without
-              committing, or committing without asking, is not activation.
+              Preparation to reach constituents: building a list, downloading
+              a call sheet, or a send that was drafted but never paid for.
+            - Anything done for their own election campaign in Win.
           known_gaps:
             - >
-              Both halves are lifetime-ever with no recency window, so this
-              number never falls and cannot show anyone going quiet.
+              It is lifetime-ever with no recency window, so this number never
+              falls and cannot show anyone going quiet.
+            - >
+              Polls sent after onboarding have no outreach event of their own
+              yet, so an official whose only outreach is a later poll is not
+              counted.
+            - >
+              Before 2026-09-29, outreach other than the onboarding poll cannot
+              be told apart from Win outreach, so it is not counted.
+        # The raw events that count as reaching constituents through the
+        # product. is_serve_activation_event compiles its SQL from this list,
+        # so adding or removing a leg is a governed change.
+        #
+        # The outreach events are shared with Win and carry `product`, so these
+        # legs exclude Win the way the Win legs exclude Serve. `method` excludes
+        # both spellings of self-report, 'manual' and the legacy 'unknown'.
+        # `unit: contact` marks a leg that fires once per
+        # door or call; it counts toward whether and when an official activated.
         anchored_on:
+          # The onboarding poll. Carries no product: only Serve fires it.
           - event: Serve Onboarding - SMS Poll Sent
+          # One event for every channel's completion, told apart by `medium`:
+          # a paid text send, a social save, a finished call list, a finished
+          # door-knocking turf or campaign.
+          - event: Outreach - Campaign Completed
+            excluding:
+              method: [manual, unknown]
+              product: win
+          - event: Outreach - Door Knocking Door Logged
+            unit: contact
+            excluding:
+              product: win
+          - event: Outreach - Phone Banking Call Logged
+            unit: contact
+            excluding:
+              product: win
 
   - name: serve_users
     label: Serve Users
@@ -132,8 +180,8 @@ metrics:
       eo_activated_at being set (a data-state fact that may diverge). This is
       the broad account population, NOT an activity or engagement measure:
       it is strictly larger than activated_serve_users, which additionally
-      requires having sent an SMS poll and pledged. The two are not cleanly
-      nested (one user is flagged activated without the Serve-user flag), so
+      requires having reached constituents through the product. The two are not cleanly
+      nested (a few users are flagged activated without the Serve-user flag), so
       do not treat either as a strict subset of the other.
 
       Time series bucket by account activation date (the measure's
@@ -156,6 +204,6 @@ metrics:
               This is an account population, not an engagement or activity
               measure.
             - >
-              It is not a clean superset of the activated count: one account
-              passes the activation gate without carrying the account flag, so
+              It is not a clean superset of the activated count: a few accounts
+              pass the activation gate without carrying the account flag, so
               neither number is a strict subset of the other.
