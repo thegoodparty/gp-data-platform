@@ -201,9 +201,12 @@ deletes that history from the metric.
 1. **Name the drift.** For A or C, get the business group's ruling in writing
    first. Nobody decides what a metric means by choosing which events to count.
 2. **Read the gotchas books before planning:** omni's
-   `packages/runbooks/books/analytics-governance-gotchas.md`, and this repo's
-   `.claude/skills/win-analytics-knowledge/references/gotchas.md` (or the Serve
-   one). Every row is a trap that has already produced a confident wrong answer.
+   `packages/runbooks/books/analytics-governance-gotchas.md`, and both of this
+   repo's product books, `.claude/skills/win-analytics-knowledge/references/gotchas.md`
+   and `.claude/skills/serve-analytics-knowledge/references/gotchas.md`, whichever
+   product the metric is. The outreach events are shared, so a trap recorded under
+   one product applies to the other. Every row is a trap that has already produced
+   a confident wrong answer.
 3. **Pin the dates from the warehouse**, not from a ticket: when the product
    change reached prod, when the old event last fired, when the new one first
    fired.
