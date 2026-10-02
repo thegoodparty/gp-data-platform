@@ -90,6 +90,27 @@ CANDIDACY_LAST_NAME_CHANGE_RESCUE = """
       AND br_race_id_l = br_race_id_r
 """
 
+# Race lock for a candidacy pair whose surnames agree only through
+# last_name_variants (gamma_last_name 1, the lowest non-else level). A record
+# whose surname carries a prepended middle name can otherwise link to the same
+# person's candidacy in a second race and chain two BallotReady candidacies
+# together (a candidate who switched congressional districts; a mayor and a
+# council seat on one ballot). Require the same br_race_id, or, when one side has
+# none, a strong office match (gamma 3 == JW >= 0.88) with no district or office
+# type conflict. The race-key filter skips those conflict checks at gamma 3, so
+# they are repeated here.
+CANDIDACY_LAST_NAME_VARIANT_LEVEL = 1
+CANDIDACY_LAST_NAME_VARIANT_GUARD = f"""
+    gamma_last_name <> {CANDIDACY_LAST_NAME_VARIANT_LEVEL}
+      OR (br_race_id_l IS NOT NULL AND br_race_id_l = br_race_id_r)
+      OR (
+        (br_race_id_l IS NULL OR br_race_id_r IS NULL)
+        AND gamma_official_office_name >= 3
+        AND (district_identifier_l IS NULL OR district_identifier_r IS NULL OR district_identifier_l = district_identifier_r)
+        AND (office_type_l IS NULL OR office_type_r IS NULL OR office_type_l = office_type_r)
+      )
+"""
+
 # EO-specific post-prediction filter: adds contact-info bypass and office_type
 # fallback for cross-source office title synonyms. Contact-confirmed pairs
 # (email or phone match) skip office checks entirely since identity is established.

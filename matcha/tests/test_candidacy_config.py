@@ -147,3 +147,93 @@ def test_last_name_change_not_rescued_when_race_unknown():
 def test_base_identity_path_unchanged():
     # Last name agrees: BASE admits it regardless of the rescue's race requirement.
     assert _eval_identity_filter(gamma_last_name=3, br_race_id_r="9999") is True
+
+
+def _comparison(name):
+    c = next(c for c in CANDIDACY_CONFIG.comparisons if c.get_comparison("duckdb").output_column_name == name)
+    return c.get_comparison("duckdb").as_dict()
+
+
+def test_last_name_comparison_has_variants_level_below_jaro_winkler():
+    """The variants intersection is the last non-else level, so it only scores
+    pairs that the exact and JW levels already rejected."""
+    levels = [lvl.get("sql_condition", "") for lvl in _comparison("last_name")["comparison_levels"]]
+    variant_idx = next(i for i, sql in enumerate(levels) if "last_name_variants" in sql)
+    jw_idx = max(i for i, sql in enumerate(levels) if "jaro_winkler" in sql.lower())
+    assert variant_idx == jw_idx + 1
+    assert levels[-1].upper() == "ELSE"
+
+
+def test_last_name_keeps_term_frequency_on_exact_level():
+    exact = next(
+        lvl
+        for lvl in _comparison("last_name")["comparison_levels"]
+        if lvl.get("tf_adjustment_column") == "last_name"
+    )
+    assert "=" in exact["sql_condition"]
+
+
+def test_blocking_on_last_word_of_surname():
+    rules = [
+        r.get_blocking_rule("duckdb").blocking_rule_sql
+        for r in CANDIDACY_CONFIG.blocking_rules_for_prediction
+    ]
+    assert any("last_name_variants[-1]" in sql for sql in rules)
+
+
+def test_variant_guard_targets_the_variants_level():
+    """Splink numbers non-null levels from the top down to 0 (ElseLevel), so the
+    guard's hard-coded gamma must be the variants level's position from the end."""
+    from scripts.constants import CANDIDACY_LAST_NAME_VARIANT_LEVEL
+
+    levels = [lvl for lvl in _comparison("last_name")["comparison_levels"] if not lvl.get("is_null_level")]
+    idx = next(i for i, lvl in enumerate(levels) if "last_name_variants" in lvl.get("sql_condition", ""))
+    assert len(levels) - 1 - idx == CANDIDACY_LAST_NAME_VARIANT_LEVEL
+
+
+def _eval_variant_guard(**overrides) -> bool:
+    import duckdb
+
+    from scripts.constants import CANDIDACY_LAST_NAME_VARIANT_GUARD
+
+    row = {
+        # "andre reynolds" vs "reynolds": surnames agree only through the variants.
+        "gamma_last_name": 1,
+        "gamma_official_office_name": 3,
+        "br_race_id_l": None,
+        "br_race_id_r": "2022089",
+        "district_identifier_l": "5",
+        "district_identifier_r": "5",
+        "office_type_l": "Congressional",
+        "office_type_r": "Congressional",
+    }
+    row.update(overrides)
+    placeholders = ", ".join(f"?::VARCHAR AS {k}" if k.endswith(("_l", "_r")) else f"? AS {k}" for k in row)
+    sql = f"SELECT coalesce(({CANDIDACY_LAST_NAME_VARIANT_GUARD}), false) FROM (SELECT {placeholders})"
+    return duckdb.connect().execute(sql, list(row.values())).fetchone()[0]
+
+
+def test_variant_guard_keeps_strong_office_without_race_id():
+    assert _eval_variant_guard() is True
+
+
+def test_variant_guard_rejects_district_conflict():
+    """Same person filed in TN-5 and TN-7: the strong office JW must not bridge them."""
+    assert _eval_variant_guard(district_identifier_r="7") is False
+
+
+def test_variant_guard_rejects_office_type_conflict():
+    assert _eval_variant_guard(office_type_l="State House") is False
+
+
+def test_variant_guard_rejects_weak_office_without_race_id():
+    assert _eval_variant_guard(gamma_official_office_name=2) is False
+
+
+def test_variant_guard_keeps_same_race_and_rejects_different_race():
+    assert _eval_variant_guard(br_race_id_l="2022089", gamma_official_office_name=0) is True
+    assert _eval_variant_guard(br_race_id_l="2022090") is False
+
+
+def test_variant_guard_ignores_pairs_matched_on_the_surname_itself():
+    assert _eval_variant_guard(gamma_last_name=4, br_race_id_l="2022090") is True

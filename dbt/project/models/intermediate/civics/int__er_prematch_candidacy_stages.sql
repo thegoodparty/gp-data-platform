@@ -414,6 +414,7 @@ select
     u.source_name,
     {{ first_name_normalized("u.first_name") }} as first_name,
     u.last_name,
+    {{ last_name_variants("u.last_name") }} as last_name_variants,
     -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
     coalesce(
         na.aliases, array({{ first_name_normalized("u.first_name") }})
