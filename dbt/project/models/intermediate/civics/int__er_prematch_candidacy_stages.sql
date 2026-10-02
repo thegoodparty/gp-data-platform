@@ -290,7 +290,7 @@ with
     -- and user name.
     gp_api_campaigns as (
         select *
-        from {{ ref("campaigns") }}
+        from {{ ref("int__civics_campaign_br_resolved") }}
         where
             election_date is not null
             and nullif(trim(campaign_state), '') is not null

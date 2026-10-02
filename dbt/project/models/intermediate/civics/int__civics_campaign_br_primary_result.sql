@@ -6,7 +6,7 @@
 -- signup who lost the primary therefore never clusters with the BallotReady
 -- primary record, never clears the candidacy mart's corroboration gate, and
 -- reads as an unmatched general candidate. On the 2026-11-03 cohort that is
--- 705 campaigns (DATA-2603).
+-- 705 campaigns.
 --
 -- Deterministic, not probabilistic: the seat is the campaign's own
 -- ballotready_position_id (BR primary and general candidacies share it), and
@@ -21,7 +21,7 @@ with
             lower(trim(c.user_first_name)) as first_name,
             lower(trim(c.user_last_name)) as last_name,
             cast(c.ballotready_position_id as bigint) as br_position_id
-        from {{ ref("campaigns") }} as c
+        from {{ ref("int__civics_campaign_br_resolved") }} as c
         where
             c.is_latest_version
             and not coalesce(c.is_demo, false)

@@ -4529,7 +4529,7 @@ models:
       almost always the general, and the candidacy matcher keeps stages apart.
       Signups eliminated in the primary never cluster with the primary record,
       never clear the candidacy corroboration gate, and otherwise read as
-      unmatched general candidates (705 on the 2026-11-03 cohort, DATA-2603).
+      unmatched general candidates (705 on the 2026-11-03 cohort).
       Deterministic: same ballotready_position_id, and exact email or exact last
       name plus first name or BallotReady nickname.
     columns:
@@ -4567,6 +4567,42 @@ models:
           - accepted_values:
               arguments:
                 values: ["email", "name"]
+
+  - name: int__civics_campaign_br_resolved
+    description: >
+      The campaigns mart with ballotready_position_id, ballotready_race_id,
+      campaign_office and normalized_position_name filled in for latest-version
+      campaigns that have neither a position nor a race. Every other row passes
+      through unchanged. The candidacy prematch and the gp_api civics models read
+      campaigns through this model.
+
+      Grain: one row per campaign version, as in campaigns.
+
+      Exists because a campaign with no position or race names no race, so it
+      never reaches candidacy ER or the civics mart, even when BallotReady lists
+      the same person (86 on the 2026-11-03 cohort). Deterministic:
+      exactly one BallotReady candidacy on the campaign's election day in the
+      same state, with the same last name, the same first name or BallotReady
+      nickname, and the same email or phone. A name alone never fills a position.
+    columns:
+      - name: campaign_version_id
+        description: Primary key, as in campaigns.
+        data_tests:
+          - unique
+          - not_null
+      - name: inferred_br_candidacy_id
+        description: >
+          The BallotReady candidacy the position and race were taken from. NULL
+          when the product already had a position or race, or no single
+          candidacy matched.
+      - name: inferred_br_match_key
+        description: >
+          Contact that confirmed the inferred candidacy. Email wins when both
+          matched.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["email", "phone"]
 
   - name: int__civics_campaign_incumbency
     description: >
