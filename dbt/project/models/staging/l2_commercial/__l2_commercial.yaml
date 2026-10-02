@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: l2_commercial
+    schema: scratch_l2_commercial
+    description: >
+      L2 National Commercial File extracts under evaluation, loaded by hand. Every
+      column arrives as a string and the raw rows carry names, contact details and
+      street addresses, so read it only through the staging model.
+    tables:
+      - name: l2_commercial_20260912_mi
+        description: Michigan, September 2026 release. One row per individual.
