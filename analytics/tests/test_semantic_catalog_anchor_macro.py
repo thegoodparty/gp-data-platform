@@ -270,7 +270,12 @@ def test_the_rendered_activation_predicate_carries_no_undeclared_event():
     sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
     legs = parse_anchors(yaml.safe_load(SEM.read_text()))[ACTIVATION_METRIC]
     declared = {leg["event"] for leg in legs}
-    declared |= {value for leg in legs for value in leg["excluding"].values()}
+    declared |= {
+        value
+        for leg in legs
+        for excluded in leg["excluding"].values()
+        for value in ([excluded] if isinstance(excluded, str) else excluded)
+    }
     # The empty string is the coalesce sentinel that keeps a null method in, not an
     # event name. Pinned rather than filtered out, so losing it fails this test too.
     assert set(SQL_LITERAL.findall(sql)) == declared | {""}
@@ -285,7 +290,7 @@ def test_the_excluded_method_renders_as_a_negative_condition():
     sql = render_activation(True, declared_meta(ACTIVATION_METRIC))
     assert (
         f"{EVENT_COL} = 'Voter Outreach - Campaign Completed' "
-        f"and coalesce({METHOD_COL}, '') not in ( 'manual' )"
+        f"and coalesce({METHOD_COL}, '') not in ( 'manual', 'unknown' )"
     ) in sql
 
 
