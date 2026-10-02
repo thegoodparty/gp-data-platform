@@ -9,7 +9,7 @@
 with
     latest_campaigns as (
         select *
-        from {{ ref("campaigns") }}
+        from {{ ref("int__civics_campaign_br_resolved") }}
         where
             is_latest_version
             and (ballotready_race_id is not null or ballotready_position_id is not null)

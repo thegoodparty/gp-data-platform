@@ -7,7 +7,11 @@ from splink import block_on
 from splink.blocking_rule_library import CustomRule
 from splink.comparison_library import CustomComparison
 
-from scripts.constants import BASE_POST_PREDICTION_FILTER
+from scripts.constants import (
+    BASE_POST_PREDICTION_FILTER,
+    CANDIDACY_LAST_NAME_CHANGE_RESCUE,
+    CANDIDACY_LAST_NAME_VARIANT_GUARD,
+)
 from scripts.entity_config import EntityConfig
 
 # Two sources routinely report the same election on dates that differ by a few
@@ -34,8 +38,21 @@ CANDIDACY_CONFIG = EntityConfig(
     display_name="Candidacy Stages",
     default_input_table="goodparty_data_catalog.dbt.int__er_prematch_candidacy_stages",
     comparisons=[
-        cl.JaroWinklerAtThresholds("last_name", score_threshold_or_thresholds=[0.95, 0.88]).configure(
-            term_frequency_adjustments=True
+        CustomComparison(
+            output_column_name="last_name",
+            comparison_levels=[
+                cll.NullLevel("last_name"),
+                cll.ExactMatchLevel("last_name").configure(
+                    tf_adjustment_column="last_name",
+                ),
+                cll.JaroWinklerLevel("last_name", distance_threshold=0.95),
+                cll.JaroWinklerLevel("last_name", distance_threshold=0.88),
+                # A middle or maiden name prepended by one source ("leann french"
+                # vs "french"): the variants share the bare surname. Lowest
+                # non-else level, so it only adds pairs the JW levels missed.
+                cll.ArrayIntersectLevel("last_name_variants", min_intersection=1),
+                cll.ElseLevel(),
+            ],
         ),
         CustomComparison(
             output_column_name="first_name",
@@ -96,6 +113,15 @@ CANDIDACY_CONFIG = EntityConfig(
         # keys), so that rule is dropped as redundant.
         CustomRule(
             "l.state = r.state" " AND l.last_name = r.last_name" f" AND {_ELECTION_DATE_WITHIN_WINDOW}",
+            sql_dialect="duckdb",
+        ),
+        # Same as above on the surname's last word (last element of
+        # last_name_variants), so "leann french" meets "french" without a
+        # shared br_race_id, email or phone (DDHQ carries none of them).
+        CustomRule(
+            "l.state = r.state"
+            " AND l.last_name_variants[-1] = r.last_name_variants[-1]"
+            f" AND {_ELECTION_DATE_WITHIN_WINDOW}",
             sql_dialect="duckdb",
         ),
         CustomRule(
@@ -179,7 +205,8 @@ CANDIDACY_CONFIG = EntityConfig(
     date_columns=["election_date"],
     clustered_output_name="clustered_candidacies.csv",
     post_prediction_filters=[
-        BASE_POST_PREDICTION_FILTER,
+        f"({BASE_POST_PREDICTION_FILTER}) OR ({CANDIDACY_LAST_NAME_CHANGE_RESCUE})",
+        CANDIDACY_LAST_NAME_VARIANT_GUARD,
         # Race key: keep only if offices match strongly (gamma 3 == JW >= 0.88), br_race_id is shared, or br_race_id/district/office_type do not conflict (null-wildcards).
         """
           (

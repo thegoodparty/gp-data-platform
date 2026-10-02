@@ -9,7 +9,7 @@ with
         -- mart since the two sources hash gp_candidacy_id differently
         -- (HubSpot identity vs gp_api person+race hash).
         select *
-        from {{ ref("campaigns") }}
+        from {{ ref("int__civics_campaign_br_resolved") }}
         where
             is_latest_version
             and not coalesce(is_demo, false)
