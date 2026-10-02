@@ -191,6 +191,11 @@ metrics:
             - >
               Before 2026-09-29, outreach from Serve cannot be told apart from
               Win outreach, so it is counted.
+            - >
+              Some self-reported outreach from before May 2026 is counted. At
+              the time it was the only record of that outreach, and the metric
+              owner ruled on 2026-10-02 to keep it. Self-report recorded since
+              then is excluded.
         # The raw events that count as reaching voters through the product. This
         # is the kernel: is_outreach_activation_event derives its SQL from this
         # list and the Win activity rollups gate their intake on it, so adding or
@@ -206,6 +211,12 @@ metrics:
             # in-product send (stopped firing 2026-09-08 when the flow moved to
             # outreach/v2/); 'native' is a completed door-knocking walk; 'manual'
             # is a candidate self-reporting outreach done elsewhere.
+            #
+            # 'unknown' is also self-report, from the legacy dashboard's
+            # log-progress and record-contacts modals (omni 703131cff, last fired
+            # 2026-04-28), and it is counted on purpose: it was the only record
+            # of that outreach at the time, and the metric owner ruled on
+            # 2026-10-02 to keep it (DATA-2610). Do not add it to the exclusion.
             excluding:
               method: manual
           # Its successor, one event for every channel, told apart by `medium`.

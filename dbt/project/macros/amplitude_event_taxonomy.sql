@@ -436,7 +436,9 @@
         'native' is a completed door-knocking walk, and 'manual' is a candidate
         typing in something they did elsewhere. Only the first two are outreach this
         product performed, so 'manual' is excluded by declaration. A null method
-        passes, because the leg that predates the property is a real send.
+        passes, because the leg that predates the property is a real send. 'unknown'
+        also passes: it is legacy self-report, counted on the metric owner's
+        2026-10-02 ruling because it was the only record of that outreach then.
 
         Excluding by property is narrow on purpose: this macro compiles a `method`
         or `product` exclusion and raises on any other key, or on a `product`

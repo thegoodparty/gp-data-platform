@@ -281,6 +281,25 @@ def test_product_output_follows_the_okr_on_self_report_and_the_robocall_draft():
     assert "Robocall - Scheduled" not in by_event
 
 
+def test_every_self_report_exclusion_names_the_live_spelling():
+    # Self-report is excluded in two sem files. 'manual' is the spelling the
+    # product still emits, so every leg that excludes self-report must name it.
+    # Legacy 'unknown' is deliberately counted on the Win legs (DATA-2610 ruling)
+    # and harmless where declared, since no live event carries it.
+    missing = []
+    for name in ("sem_analytics__users_win.yml", "sem_analytics__users_serve.yml"):
+        doc = yaml.safe_load((MODELS / name).read_text())
+        for metric, legs in parse_anchors(doc).items():
+            for leg in legs:
+                method = leg["excluding"].get("method")
+                if method is None:
+                    continue
+                values = [method] if isinstance(method, str) else method
+                if "manual" not in values:
+                    missing.append(f"{metric}: {leg['event']}")
+    assert not missing, f"self-report exclusions missing 'manual': {missing}"
+
+
 def test_product_output_leaves_one_free_leg_for_use_as_a_label():
     # A label drawn from the paywalled legs teaches a model who paid and lets it
     # report that as who engaged. If every leg were marked paywalled the free

@@ -203,12 +203,11 @@ with
                         -- 'native' is a completed door-knocking walk.
                         when outreach_method = 'native'
                         then 'door_knocking'
-                        -- A null or 'unknown' method is the legacy
-                        -- product-executed send. It is a real send, but the
-                        -- event never said which channel carried it, and it
-                        -- predates the property that would have. Guessing a
-                        -- channel here would put most of 2025 in whichever
-                        -- bucket we picked.
+                        -- A null method is the legacy product-executed send.
+                        -- 'unknown' is legacy self-report, counted on the
+                        -- metric owner's 2026-10-02 ruling to match the OKR
+                        -- (see the leg in sem_analytics__users_win.yml).
+                        -- Neither names a channel this model reads.
                         else 'unattributed'
                     end
             end as channel,
