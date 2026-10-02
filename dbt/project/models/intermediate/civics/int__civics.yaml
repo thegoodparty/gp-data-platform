@@ -3831,8 +3831,8 @@ models:
     description: >
       The single source of truth for the "active serve user" behavioral
       definition, one row per user. A user is an active serve
-      user when they completed Serve onboarding by sending an SMS poll AND have
-      pledged. This is the behavioral half of the People Served cohort; the office
+      user when they have reached constituents through the product, by any leg
+      the activated_serve_users metric declares, AND have pledged. This is the behavioral half of the People Served cohort; the office
       half (Serve-ICP) and the internal-email exclusion are applied at
       int__serve_district_resolution, where the office and owner email live. Reads
       staging + intermediate only (never an analytics mart) so the cohort flag it
@@ -3849,7 +3849,16 @@ models:
       - name: has_sent_sms_poll
         description: >
           Sent at least one 'Serve Onboarding - SMS Poll Sent' event (the final
-          onboarding step), from int__amplitude_user_milestones.
+          onboarding step), from int__amplitude_user_milestones. An onboarding
+          funnel flag; activation reads has_reached_constituents.
+        data_tests:
+          - not_null
+      - name: first_serve_activated_at
+        description: >
+          First time the user reached constituents through the product, by any
+          leg activated_serve_users declares. NULL if never.
+      - name: has_reached_constituents
+        description: TRUE if first_serve_activated_at is not null.
         data_tests:
           - not_null
       - name: has_pledged
@@ -3860,7 +3869,7 @@ models:
           - not_null
       - name: is_active_serve_user
         description: >
-          has_sent_sms_poll AND has_pledged: the behavioral gate of the People
+          has_reached_constituents AND has_pledged: the behavioral gate of the People
           Served active cohort (combined with Serve-ICP and non-internal email
           downstream at the resolver).
         data_tests:
@@ -3869,7 +3878,7 @@ models:
       - dbt_utils.expression_is_true:
           name: serve_active_user_flag_matches_components
           arguments:
-            expression: "is_active_serve_user = (has_sent_sms_poll and has_pledged)"
+            expression: "is_active_serve_user = (has_reached_constituents and has_pledged)"
 
   - name: int__serve_district_resolution
     description: >

@@ -56,6 +56,7 @@ with
             -- downstream share one definition. has_sent_sms_poll above is the same
             -- value
             -- (same milestone upstream), kept on its funnel derivation.
+            au.first_serve_activated_at,
             coalesce(au.has_pledged, false) as has_pledged,
             coalesce(au.is_active_serve_user, false) as is_active_serve_user,
 

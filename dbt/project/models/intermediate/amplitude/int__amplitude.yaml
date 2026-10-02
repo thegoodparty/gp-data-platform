@@ -120,6 +120,12 @@ models:
           Earliest timestamp for event_type = 'Serve Onboarding - SMS Poll Sent'.
           Supplemental Serve milestone for future analyses.
 
+      - name: first_serve_activated_at
+        description: >
+          Earliest event among the legs the activated_serve_users metric
+          declares, compiled by is_serve_activation_event. When an elected
+          official first reached constituents through the product.
+
       - name: serve_getting_started_at
         description: >
           Earliest timestamp for 'Serve Onboarding - Getting Started Viewed'.

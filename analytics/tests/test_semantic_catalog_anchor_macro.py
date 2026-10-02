@@ -55,6 +55,8 @@ PRODUCT_COL = "event_properties:product::string"
 
 MACRO_CALL = re.compile(r"\{\{\s*is_dashboard_view_event\([^)]*\)\s*\}\}")
 ACTIVATION_MACRO_CALL = re.compile(r"\{\{\s*is_outreach_activation_event\([^)]*\)\s*\}\}")
+SERVE_MACRO_CALL = re.compile(r"\{\{\s*is_serve_activation_event\([^)]*\)\s*\}\}")
+SERVE_METRIC = "activated_serve_users"
 SQL_LITERAL = re.compile(r"'([^']*)'")
 ACCESSOR_CALL = re.compile(r"metric_anchored_events\(\s*\"([^\"]+)\"\s*\)")
 
@@ -113,15 +115,19 @@ NO_PRODUCT_PREDICATE = ENV.from_string(
     macro_source("is_outreach_activation_event")
     + f"\n{{{{ is_outreach_activation_event('{EVENT_COL}', '{METHOD_COL}') }}}}"
 )
+SERVE_PREDICATE = ENV.from_string(
+    macro_source("is_serve_activation_event")
+    + f"\n{{{{ is_serve_activation_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}') }}}}"
+)
 PRODUCT_OUTPUT_PREDICATE = ENV.from_string(
     macro_source("product_output_predicate")
     + f"\n{{{{ product_output_predicate('{EVENT_COL}', '{METHOD_COL}', 'caller', product_col='{PRODUCT_COL}') }}}}"
 )
 
 
-def declared_meta(metric: str = METRIC) -> dict:
+def declared_meta(metric: str = METRIC, sem: Path = SEM) -> dict:
     """The metric's raw `config.meta`, exactly as the macro would see it on the node."""
-    doc = yaml.safe_load(SEM.read_text())
+    doc = yaml.safe_load(sem.read_text())
     found = next(m for m in doc["metrics"] if m["name"] == metric)
     return found["config"]["meta"]
 
@@ -154,6 +160,14 @@ def render_activation(execute: bool, meta: dict, template=ACTIVATION_PREDICATE) 
     return " ".join(sql.split())
 
 
+def render_serve(execute: bool, meta: dict) -> str:
+    sql = SERVE_PREDICATE.render(
+        execute=execute,
+        metric_anchored_events=lambda _name: anchored_events(execute, meta, SERVE_METRIC),
+    )
+    return " ".join(sql.split())
+
+
 def render_product_output(meta: dict) -> str:
     sql = PRODUCT_OUTPUT_PREDICATE.render(
         execute=True,
@@ -180,6 +194,9 @@ def milestone_filter() -> str:
     activation = render_activation(True, declared_meta(ACTIVATION_METRIC))
     expanded, substitutions = ACTIVATION_MACRO_CALL.subn(lambda _match: activation, expanded)
     assert substitutions == 1, "milestone_events no longer reads the outreach terminals from the macro"
+    serve = render_serve(True, declared_meta(SERVE_METRIC, SERVE_SEM))
+    expanded, substitutions = SERVE_MACRO_CALL.subn(lambda _match: serve, expanded)
+    assert substitutions == 1, "milestone_events no longer reads the Serve activation legs from the macro"
     return " ".join(expanded.split())
 
 
@@ -413,3 +430,45 @@ def test_the_milestone_filter_keeps_the_path_leg_condition():
     admitted = milestone_filter()
     for leg in (leg for leg in declared_legs()[METRIC] if leg["path"]):
         assert f"{EVENT_COL} = '{leg['event']}' and {PATH_COL} = '{leg['path']}'" in admitted
+
+
+def test_the_serve_predicate_reads_the_serve_activation_metric():
+    """Same one-line hazard as the Win guards: a sibling metric resolves cleanly."""
+    assert ACCESSOR_CALL.findall(macro_source("is_serve_activation_event")) == [SERVE_METRIC]
+
+
+def test_every_declared_serve_leg_appears_in_the_rendered_predicate():
+    sql = render_serve(True, declared_meta(SERVE_METRIC, SERVE_SEM))
+    legs = declared_legs()[SERVE_METRIC]
+    missing = [leg["event"] for leg in legs if f"'{leg['event']}'" not in sql]
+    assert not missing, f"declared but not rendered: {missing}"
+
+
+def test_the_rendered_serve_predicate_carries_no_undeclared_event():
+    sql = render_serve(True, declared_meta(SERVE_METRIC, SERVE_SEM))
+    legs = declared_legs()[SERVE_METRIC]
+    declared = {leg["event"] for leg in legs}
+    for leg in legs:
+        for value in leg["excluding"].values():
+            declared |= set(value) if isinstance(value, list) else {value}
+    literals = set(SQL_LITERAL.findall(sql))
+    # The coalesce sentinel appears only once a leg excludes on a property.
+    assert literals - {""} == declared
+
+
+def test_the_serve_predicate_compiles_a_list_exclusion():
+    meta = {"anchored_on": [{"event": "E", "excluding": {"method": ["manual", "unknown"], "product": "win"}}]}
+    sql = render_serve(True, meta)
+    assert f"coalesce({METHOD_COL}, '') not in ( 'manual', 'unknown' )" in sql
+    assert f"coalesce({PRODUCT_COL}, '') not in ( 'win' )" in sql
+
+
+def test_the_serve_predicate_refuses_an_exclusion_it_cannot_compile():
+    with pytest.raises(CompilerError, match="medium"):
+        render_serve(True, {"anchored_on": [{"event": "E", "excluding": {"medium": "text"}}]})
+
+
+def test_the_serve_predicate_raises_rather_than_zeroing_the_metric():
+    assert render_serve(False, declared_meta(SERVE_METRIC, SERVE_SEM)) == "(false)"
+    with pytest.raises(CompilerError):
+        render_serve(True, {"anchored_on": []})
