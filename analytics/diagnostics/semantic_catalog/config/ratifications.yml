@@ -106,10 +106,11 @@ win_activated_users:
   # Earlier history: the previous halves certified the "outreach send"
   # definition (business on #1081, 2026-09-27; data on #1073, 2026-09-25,
   # value 1,264), now superseded.
+  # auto-recorded: Sign-off landed on the merge of #1139, from the group whose lane the change was in. Each date is when that group's first approval landed.
   business:
-    approved: 2026-10-01
-    rule_sha: '1170247'
-    approved_by_pr: 1123
+    approved: 2026-10-02
+    rule_sha: 'e3e6130'
+    approved_by_pr: 1139
   data:
     approved: 2026-10-01
     build_sha: '94b109f'
