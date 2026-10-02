@@ -202,19 +202,24 @@ metrics:
         anchored_on:
           - event: Voter Outreach - Campaign Completed
             era: historical   # last fired 2026-09-29, renamed in omni #2215
-            # One event name, three moments. An absent method is the legacy
+            # One event name, four moments. An absent method is the legacy
             # in-product send (stopped firing 2026-09-08 when the flow moved to
             # outreach/v2/); 'native' is a completed door-knocking walk; 'manual'
-            # is a candidate self-reporting outreach done elsewhere.
+            # is a candidate self-reporting outreach done elsewhere. 'unknown' is
+            # the same self-report from before 'manual' existed: the legacy
+            # dashboard's log-progress and record-contacts modals (omni
+            # 703131cff), last fired 2026-04-28.
             excluding:
-              method: manual
+              method: [manual, unknown]
           # Its successor, one event for every channel, told apart by `medium`.
           # An absent method is a paid send, a social share or a finished call
           # list; 'turf' and 'campaign' are door-knocking completions; 'manual'
-          # is still self-report. `product` says Win or Serve.
+          # is still self-report. `product` says Win or Serve. 'unknown' has
+          # never fired on this name; it is excluded so every self-report leg in
+          # the layer declares the same set.
           - event: Outreach - Campaign Completed
             excluding:
-              method: manual
+              method: [manual, unknown]
               product: serve
           # Fires where the payment commits, one terminal for sms, robocall and
           # social, told apart by its `channel` property. It replaced
@@ -292,14 +297,14 @@ metrics:
           - event: Candidate Website - Published
           - event: Voter Outreach - Campaign Completed
             era: historical   # last fired 2026-09-29, renamed in omni #2215
-            # Same three moments as the outreach anchor, same exclusion.
+            # Same four moments as the outreach anchor, same exclusion.
             excluding:
-              method: manual
+              method: [manual, unknown]
             paywalled: true
           - event: Outreach - Campaign Completed
             # Same moments and exclusions as the outreach anchor's leg.
             excluding:
-              method: manual
+              method: [manual, unknown]
               product: serve
             paywalled: true
           - event: Voter Data - List Exported
