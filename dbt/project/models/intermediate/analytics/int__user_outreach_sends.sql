@@ -140,10 +140,8 @@ with
             )
             -- Self-report is outreach the candidate did somewhere else.
             -- Excluded by the same qualifier the activation OKR uses, so the
-            -- two can never drift apart on this question. 'unknown' is the
-            -- same self-report from before 'manual' existed.
-            and coalesce(event_properties:method::string, '')
-            not in ('manual', 'unknown')
+            -- two can never drift apart on this question.
+            and coalesce(event_properties:method::string, '') <> 'manual'
     ),
 
     -- One row per committed send, not per event. The v2 flows elect a single
@@ -205,7 +203,7 @@ with
                         -- 'native' is a completed door-knocking walk.
                         when outreach_method = 'native'
                         then 'door_knocking'
-                        -- A null method is the legacy
+                        -- A null or 'unknown' method is the legacy
                         -- product-executed send. It is a real send, but the
                         -- event never said which channel carried it, and it
                         -- predates the property that would have. Guessing a
