@@ -66,8 +66,11 @@ models:
   - name: candidacy_hubspot
     description: >
       Civics-sourced HubSpot lead feed (reverse-ETL sendable mart; ops runs it manually now).
-      One row per gp_candidacy_id, provider-agnostic (BallotReady / TechSpeed / DDHQ / gp_api).
-      Replaces both m_ballotready_internal__records_sent_to_hubspot and
+      One row per gp_candidate_id, and so also per gp_candidacy_id, provider-agnostic
+      (BallotReady / TechSpeed / DDHQ / gp_api). Each row mints a HubSpot contact, so the
+      feed is person-grained: candidacies whose person group already holds a HubSpot contact
+      are suppressed, and a person with several live candidacies is sent once, on the most
+      recent. Replaces both m_ballotready_internal__records_sent_to_hubspot and
       m_techspeed__candidate_to_hubspot. Output is the Title-Case HubSpot import contract
       (fuzzy-match diagnostics dropped; ER replaces them); Type and the owner columns are set
       for all rows (owner via env_var); the match-back key (candidate_code), gp ids,
