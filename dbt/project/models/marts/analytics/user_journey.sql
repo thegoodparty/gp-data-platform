@@ -70,7 +70,9 @@ with
         from {{ ref("users_win_base") }}
     ),
 
-    -- Staff and test accounts, from the one definition public feeds use.
+    -- Staff and test accounts, from the one definition public feeds use. Keyed
+    -- on the person, so a signup newer than the person graph reads false until
+    -- the next rebuild; the gp_person_id test warns when any such row exists.
     internal as (select gp_person_id from {{ ref("int__civics_internal_persons") }})
 
 select
