@@ -69,7 +69,17 @@ with
             c.latest_stage_reached,
             -- A gp-api-only candidacy is our own campaign echoed back, not
             -- evidence the run reached a ballot.
-            exists (c.source_systems, s -> s <> 'gp_api') as has_ballot_evidence
+            exists (c.source_systems, s -> s <> 'gp_api') as has_ballot_evidence,
+            -- Narrower: a ballot data vendor. Vendor-sourced candidacies only
+            -- exist from 2026; earlier runs reach the civics record through
+            -- HubSpot, so this is false for them by construction. Taken over
+            -- every candidacy matching the anchor, since the tiebreak below can
+            -- pick one that lacks it.
+            max(
+                exists (
+                    c.source_systems, s -> s in ('ballotready', 'ddhq', 'techspeed')
+                )
+            ) over (partition by a.user_id) as has_external_match
         from anchor as a
         inner join
             {{ ref("candidacy") }} as c
@@ -170,6 +180,10 @@ select
     cc.office_level as candidacy_office_level,
     case when a.has_candidacy then ac.is_pledged end as candidacy_is_pledged,
     case when a.has_candidacy then ac.is_verified end as candidacy_is_verified,
+    -- Not candidacy_is_verified, which is the product's own flag.
+    case
+        when a.has_candidacy then coalesce(cc.has_external_match, false)
+    end as candidacy_has_external_match,
     case when a.has_candidacy then ac.is_pro end as candidacy_is_pro,
     case when a.has_candidacy then civ.icp_office_win end as candidacy_is_win_icp,
     case when a.has_candidacy then civ.voter_count end as candidacy_voter_count,
