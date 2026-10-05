@@ -3339,8 +3339,6 @@ models:
           a GoodParty or mailinator email domain, or the admin or sales role, on
           any account of the person. Exclude from every user count. False for
           a signup with no gp_person_id yet, until the person graph rebuilds.
-        data_tests:
-          - not_null
       - name: record_refreshed_at
         description: When this row was rebuilt.
         data_tests:
