@@ -65,7 +65,13 @@ with
 
     -- Read from the model the Activated Candidates OKR reads, so this row and
     -- the reported figure cannot drift. Win accounts only; null elsewhere.
-    win_activation as (select user_id, is_activated from {{ ref("users_win_base") }})
+    win_activation as (
+        select user_id, is_activated, first_campaign_sent_at as activated_at
+        from {{ ref("users_win_base") }}
+    ),
+
+    -- Staff and test accounts, from the one definition public feeds use.
+    internal as (select gp_person_id from {{ ref("int__civics_internal_persons") }})
 
 select
     u.user_id,
@@ -136,6 +142,7 @@ select
     }},
 
     wa.is_activated,
+    wa.activated_at,
 
     u.is_serve_user,
     u.eo_activated_at,
@@ -155,6 +162,7 @@ select
     ) as first_touch_to_filing_days,
 
     u.is_demo_only,
+    i.gp_person_id is not null as is_internal,
     current_timestamp() as record_refreshed_at
 from users as u
 left join keys as k using (user_id)
@@ -167,3 +175,4 @@ left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
 left join win_activation as wa using (user_id)
+left join internal as i on i.gp_person_id = k.gp_person_id

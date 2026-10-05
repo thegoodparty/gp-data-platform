@@ -3306,6 +3306,10 @@ models:
           row agrees with the reported figure. Null for accounts that are not
           Win users, because the OKR does not apply to them. Not the same
           question as has_product_output.
+      - name: activated_at
+        description: >
+          When is_activated became true, from users_win_base
+          first_campaign_sent_at. Null when not activated.
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:
@@ -3327,6 +3331,13 @@ models:
         description: Days from first known contact to the filing deadline.
       - name: is_demo_only
         description: The account has campaigns and every one is a demo.
+        data_tests:
+          - not_null
+      - name: is_internal
+        description: >
+          A GoodParty staff or test account, from int__civics_internal_persons:
+          a GoodParty or mailinator email domain, or the admin or sales role, on
+          any account of the person. Exclude from every user count.
         data_tests:
           - not_null
       - name: record_refreshed_at
