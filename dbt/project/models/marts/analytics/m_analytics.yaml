@@ -3348,6 +3348,51 @@ models:
           arguments:
             compare_model: ref("users")
 
+  - name: user_journey_milestones
+    description: >
+      The journey stages from user_journey, one row per user per stage reached,
+      so a chart can count users by stage. Internal only. Reshaping only: every
+      stage reads a flag user_journey already defines. Join to user_journey on
+      user_id for filters. Stages are not nested, so read each as the share of
+      users who reached it, not as drop-off from the stage before.
+    columns:
+      - name: user_id
+        description: The gp-api user account.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref("user_journey")
+                field: user_id
+      - name: stage
+        description: >
+          registered (every account), completed_onboarding (is_onboarded),
+          activated (is_activated), pro (is_pro), matched_third_party
+          (candidacy_has_external_match, 2026 races only).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - registered
+                  - completed_onboarding
+                  - activated
+                  - pro
+                  - matched_third_party
+      - name: stage_order
+        description: Display order, 1 to 5, matching stage.
+        data_tests:
+          - not_null
+      - name: reached_at
+        description: >
+          When the user reached the stage. Null where the stage has no date:
+          pro_since is undated for about half of Pro users, and third-party
+          matches carry no date.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, stage]
+
   - name: user_growth_state_monthly
     description: >
       Each user's growth state month by month, for the cohort view: one row per
