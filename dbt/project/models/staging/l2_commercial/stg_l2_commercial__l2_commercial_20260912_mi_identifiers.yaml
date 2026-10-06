@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: stg_l2_commercial__l2_commercial_20260912_mi_identifiers
+    description: >
+      The direct identifiers that the de-identified staging model removes: raw IDs,
+      names, street address parts, phone numbers and full-precision coordinates.
+      Join to the de-identified model on individual_id_hash. Ephemeral, so the
+      identified rows land only in the gp_api mart that selects them.
+    config:
+      # Not the folder's table default: a table here would copy names, addresses
+      # and phones into the staging schema that researchers read.
+      materialized: ephemeral

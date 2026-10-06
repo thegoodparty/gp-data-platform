@@ -940,3 +940,28 @@ seeds:
           - dbt_expectations.expect_column_distinct_values_to_be_in_set:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+
+  - name: l2_commercial_code_labels
+    description: >
+      Translates L2 commercial file codes into the labels the L2 voter file uses
+      for the same field, so the commercial gp_api table matches gp_api_voters.
+      field is the voter-file column the label fills. Labels were checked against
+      voter rows that share an L2 voter ID. An ethnic code with no voter-file
+      equivalent has no row and decodes to null.
+    config:
+      column_types:
+        code: string
+    columns:
+      - name: field
+        data_tests:
+          - not_null
+      - name: code
+        data_tests:
+          - not_null
+      - name: label
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [field, code]

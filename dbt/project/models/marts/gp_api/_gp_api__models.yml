@@ -4,6 +4,31 @@ models:
   - name: gp_api_voters
     description: Pass-through of m_people_api__voter
 
+  - name: gp_api_commercial_people
+    description: >
+      Michigan adults from the L2 commercial file, shaped like gp_api_voters. A
+      column that shares a name with gp_api_voters has the same type and format,
+      and coded values carry the voter file's labels. Voter-only columns (party,
+      turnout history, registration) are absent; join to gp_api_voters on
+      LALVOTERID for registered people. Commercial-only columns follow, in lower
+      case, typed as in the commercial staging model.
+    columns:
+      - name: id
+        data_tests:
+          - unique
+          - not_null
+      - name: individual_id
+        data_tests:
+          - not_null
+      - name: LALVOTERID
+        data_tests:
+          - unique
+      - name: Age_Int
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 18
+
   - name: gp_api_districts
     description: Pass-through of m_people_api__district
 
