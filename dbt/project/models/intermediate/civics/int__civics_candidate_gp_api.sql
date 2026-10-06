@@ -5,7 +5,7 @@ with
     latest_campaigns as (
         -- Scope for the state rollup; membership comes from the candidacy model.
         select *
-        from {{ ref("campaigns") }}
+        from {{ ref("int__civics_campaign_br_resolved") }}
         where
             is_latest_version
             and not coalesce(is_demo, false)

@@ -254,8 +254,10 @@ models:
         description: >
           The office name for this campaign version. For the latest version,
           this prefers the election-api position name resolved through the
-          organization entity. For historical versions, it falls back to the
-          legacy office field from campaign details. Used as the human-readable
+          organization entity, then the custom office the user typed on the
+          organization when their race was not in the position list, then the
+          legacy office field. For historical versions, it uses the legacy office
+          field from campaign details. Used as the human-readable
           label for what office the campaign is targeting.
 
       - name: ballotready_position_id

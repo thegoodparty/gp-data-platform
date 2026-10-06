@@ -73,6 +73,85 @@ BASE_POST_PREDICTION_FILTER = """
       )
 """
 
+# Candidacy rescue for a changed last name. The BASE filter requires last-name
+# agreement, so a candidate who files under a married, hyphenated or maiden
+# name ("smith" vs "smith-jones" falls below the 0.88 JW level) is dropped even
+# when every other signal says same person, same race. Admit the pair only when
+# identity and race are both locked independently of the surname: the same
+# email AND the same first name (households share an email, so first-name
+# agreement keeps a spouse in the same race apart), AND the same BallotReady
+# race id. DATA-2603 found 21 such gp_api <-> ballotready pairs on the
+# 2026-11-03 cohort. Raw br_race_id columns, not a gamma: br_race_id is a
+# blocking key only, so Splink never builds gamma_br_race_id.
+CANDIDACY_LAST_NAME_CHANGE_RESCUE = """
+    gamma_email > 0
+      AND gamma_first_name > 0
+      AND br_race_id_l IS NOT NULL
+      AND br_race_id_l = br_race_id_r
+"""
+
+# Words dropped before two office token sets are compared for the surname
+# variant guard below: term and vacancy filler, spelled-out numbers, and state
+# names (a shared "florida" says nothing about the race).
+_VARIANT_GUARD_NOISE_TOKENS = (
+    "'year','years','term','terms','districted','unexpired','special','incumbent',"
+    "'non-incumbent','one','two','three','four','five','six','seven','eight','nine',"
+    "'ten','full','short','partial','vacancy','nonpartisan',"
+    "'alabama','alaska','arizona','arkansas','california','colorado','connecticut',"
+    "'delaware','florida','georgia','hawaii','idaho','illinois','indiana','iowa',"
+    "'kansas','kentucky','louisiana','maine','maryland','massachusetts','michigan',"
+    "'minnesota','mississippi','missouri','montana','nebraska','nevada','ohio',"
+    "'oklahoma','oregon','pennsylvania','tennessee','texas','utah','vermont',"
+    "'virginia','washington','wisconsin','wyoming','york','jersey','hampshire',"
+    "'mexico','carolina','dakota','rhode'"
+)
+
+
+def _cleaned_office_tokens(side: str) -> str:
+    """DuckDB expression for one side's office tokens with punctuation, codes
+    and _VARIANT_GUARD_NOISE_TOKENS removed, sorted for set comparison."""
+    return (
+        "list_sort(list_distinct(list_filter("
+        f"list_transform(official_office_name_tokens_{side}, t -> regexp_replace(t, '[^a-z/''-]', '', 'g')), "
+        "t -> length(t) >= 2 AND NOT regexp_matches(t, '[0-9]') "
+        f"AND NOT list_contains([{_VARIANT_GUARD_NOISE_TOKENS}], t))))"
+    )
+
+
+# Conflict guard for a candidacy pair whose surnames agree only through
+# last_name_variants (gamma_last_name 1, the lowest non-else level). A record
+# whose surname carries a prepended middle name can otherwise link to the same
+# person's candidacy in a second race and chain two BallotReady candidacies
+# together (a candidate who switched congressional districts; a mayor and a
+# council seat on one ballot). Reject the pair on a race conflict:
+#   - different districts or seats;
+#   - two different br_race_ids with different office names (sources often carry
+#     different ids for one race, so differing ids alone are not a conflict);
+#   - no shared br_race_id and only a weak office match (gamma < 3, JW < 0.88),
+#     unless the cleaned office token sets are identical. "taunton municipal
+#     council" vs "taunton city council" passes; "sevier county mayor" vs
+#     "sevier county register of deeds" and "north richland hills" vs "richland
+#     hills" do not.
+# A pair the last-name-change rescue admits already has the race locked.
+CANDIDACY_LAST_NAME_VARIANT_LEVEL = 1
+CANDIDACY_LAST_NAME_VARIANT_GUARD = f"""
+    gamma_last_name <> {CANDIDACY_LAST_NAME_VARIANT_LEVEL}
+      OR ({CANDIDACY_LAST_NAME_CHANGE_RESCUE})
+      OR NOT (
+        (district_identifier_l IS NOT NULL AND district_identifier_r IS NOT NULL
+          AND district_identifier_l <> district_identifier_r)
+        OR (seat_name_l IS NOT NULL AND seat_name_r IS NOT NULL AND seat_name_l <> seat_name_r)
+        OR (br_race_id_l IS NOT NULL AND br_race_id_r IS NOT NULL AND br_race_id_l <> br_race_id_r
+          AND official_office_name_l IS DISTINCT FROM official_office_name_r)
+        OR ((br_race_id_l IS NULL OR br_race_id_r IS NULL)
+          AND gamma_official_office_name < 3
+          AND NOT coalesce(
+            len({_cleaned_office_tokens("l")}) > 0
+              AND {_cleaned_office_tokens("l")} = {_cleaned_office_tokens("r")},
+            false))
+      )
+"""
+
 # EO-specific post-prediction filter: adds contact-info bypass and office_type
 # fallback for cross-source office title synonyms. Contact-confirmed pairs
 # (email or phone match) skip office checks entirely since identity is established.

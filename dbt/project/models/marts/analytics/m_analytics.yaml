@@ -1134,11 +1134,28 @@ models:
         description: Date of the general runoff election, if applicable
 
       - name: primary_election_result
-        description: Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        description: >
+          Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not
+          on Ballot). From the civics candidacy where the campaign has one, else
+          from the BallotReady primary roster for the campaign's own seat
+          (int__civics_campaign_br_primary_result). The fallback is the only
+          route for signups eliminated in the primary, whose general-date
+          campaign never clears the candidacy corroboration gate. See
+          primary_election_result_source.
         data_tests:
           - accepted_values:
               arguments:
                 values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+      - name: primary_election_result_source
+        description: >
+          Which arm produced primary_election_result: 'candidacy'
+          (civics.candidacy_stage), 'ballotready_primary_roster' (exact email or
+          name match on the BallotReady primary for the campaign's seat), or
+          NULL when primary_election_result is NULL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["candidacy", "ballotready_primary_roster"]
 
       - name: general_election_result
         description: Result of the general election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)

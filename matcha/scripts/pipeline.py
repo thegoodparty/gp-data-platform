@@ -76,6 +76,7 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
         "first_name_aliases",
         "first_name_tokens",
         "last_name_tokens",
+        "last_name_variants",
         "official_office_name_tokens",
         "matched_candidacy_stage_clusters",
     ):

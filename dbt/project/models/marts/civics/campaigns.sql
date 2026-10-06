@@ -34,6 +34,8 @@ with
             u.zip as _user_zip,
             u.created_at as _user_created_at,
             p.name as _position_name,
+            -- Office the user typed when their race was not in the position list.
+            nullif(trim(o.custom_position_name), '') as _custom_position_name,
             -- back to numeric: the election-api mart publishes it as string
             cast(p.br_database_id as bigint) as _position_br_database_id,
             c.details:office::string as _legacy_office,
@@ -143,11 +145,12 @@ with
             ) as election_level,
             details:partisantype::string as partisan_type,
 
-            -- For latest versions: prefer org->position, fall back to legacy
-            -- For historical versions: use legacy snapshot to stay faithful
+            -- For latest versions: prefer org->position, then the org's custom
+            -- office, then legacy. For historical versions: use legacy snapshot
+            -- to stay faithful
             case
                 when is_latest_version
-                then coalesce(_position_name, _legacy_office)
+                then coalesce(_position_name, _custom_position_name, _legacy_office)
                 else _legacy_office
             end as campaign_office,
             case

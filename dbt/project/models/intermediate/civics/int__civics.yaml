@@ -2796,8 +2796,10 @@ models:
       Product Database campaigns transformed into the civics mart candidacy
       schema. Grain: one row per latest-version campaign with a non-null
       election_date that outside evidence backs: either a BallotReady,
-      TechSpeed, or DDHQ candidacy in the same entity-resolution cluster, or a
-      HubSpot contact with verified_candidate_status = 'Yes'.
+      TechSpeed, or DDHQ candidacy in the same entity-resolution cluster, a
+      HubSpot contact with verified_candidate_status = 'Yes', or a BallotReady
+      primary candidacy at the campaign's own position
+      (int__civics_campaign_br_primary_result).
 
       gp_candidate_id uses the user's derived state (most recent non-demo
       campaign), not the per-campaign state, so users with campaigns in
@@ -3299,6 +3301,13 @@ models:
       from other providers. Candidate grain is not here: gp_candidate_id is
       the person id, resolved per provider via
       int__civics_person_canonical_ids.
+
+      A product campaign with no vendor in its cluster adopts the BallotReady
+      candidacy of the primary it ran in at its own position
+      (int__civics_campaign_br_primary_result). The campaign's stage is the
+      general, which matcha keeps apart from the primary, so without this a
+      signup eliminated in the primary never shares a candidacy with the BR
+      record that holds the loss.
 
     columns:
       - name: canonical_gp_candidacy_id
@@ -4515,6 +4524,94 @@ models:
         description: Campaign id from the product database. Repeats across versions.
         data_tests:
           - not_null
+
+  - name: int__civics_campaign_br_primary_result
+    description: >
+      BallotReady primary result for product campaigns: did this signup run in
+      the primary for the seat they picked, and how did it go?
+
+      Grain: one row per latest-version, non-demo campaign with a BallotReady
+      position and an election date that has a matching BallotReady first-round
+      primary candidacy in the same year, before the campaign's election date.
+
+      Exists because a campaign's ER record carries only its own election date,
+      almost always the general, and the candidacy matcher keeps stages apart.
+      Signups eliminated in the primary never cluster with the primary record,
+      never clear the candidacy corroboration gate, and otherwise read as
+      unmatched general candidates (705 on the 2026-11-03 cohort).
+      Deterministic: same ballotready_position_id, and exact email or exact last
+      name plus first name or BallotReady nickname.
+    columns:
+      - name: campaign_id
+        description: Campaign id from the product database. One row per campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: >
+          The campaign's own election date, carried so consumers can join
+          version-aware.
+        data_tests:
+          - not_null
+      - name: br_candidacy_id
+        description: The matched BallotReady primary candidacy.
+        data_tests:
+          - not_null
+      - name: br_primary_election_date
+        description: Election day of the matched BallotReady primary.
+      - name: primary_election_result
+        description: >
+          BallotReady result mapped to the civics vocabulary, as in
+          int__civics_candidacy_stage_ballotready. NULL when BallotReady has not
+          reported a result.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Won", "Lost", "Runoff"]
+      - name: match_key
+        description: >
+          'email' when the BallotReady email equals the user's, else 'name'.
+          Email wins when both legs match different candidacies.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["email", "name"]
+
+  - name: int__civics_campaign_br_resolved
+    description: >
+      The campaigns mart with ballotready_position_id, ballotready_race_id,
+      campaign_office and normalized_position_name filled in for latest-version
+      campaigns that have neither a position nor a race. Every other row passes
+      through unchanged. The candidacy prematch and the gp_api civics models read
+      campaigns through this model.
+
+      Grain: one row per campaign version, as in campaigns.
+
+      Exists because a campaign with no position or race names no race, so it
+      never reaches candidacy ER or the civics mart, even when BallotReady lists
+      the same person (86 on the 2026-11-03 cohort). Deterministic:
+      exactly one BallotReady candidacy on the campaign's election day in the
+      same state, with the same last name, the same first name or BallotReady
+      nickname, and the same email or phone. A name alone never fills a position.
+    columns:
+      - name: campaign_version_id
+        description: Primary key, as in campaigns.
+        data_tests:
+          - unique
+          - not_null
+      - name: inferred_br_candidacy_id
+        description: >
+          The BallotReady candidacy the position and race were taken from. NULL
+          when the product already had a position or race, or no single
+          candidacy matched.
+      - name: inferred_br_match_key
+        description: >
+          Contact that confirmed the inferred candidacy. Email wins when both
+          matched.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["email", "phone"]
 
   - name: int__civics_campaign_incumbency
     description: >
