@@ -153,7 +153,12 @@ with
     -- Scored per campaign, so it attaches to the anchor like every other
     -- candidacy column.
     legitimacy as (
-        select campaign_id, legitimacy_score, legitimacy_bucket, scored_at
+        select
+            campaign_id,
+            legitimacy_score,
+            legitimacy_bucket,
+            legitimacy_label,
+            scored_at
         from {{ ref("stg_model_predictions__win_candidate_scores_latest") }}
     ),
 
@@ -214,6 +219,9 @@ select
     case
         when a.has_candidacy then lg.legitimacy_bucket
     end as candidacy_legitimacy_bucket,
+    case
+        when a.has_candidacy then lg.legitimacy_label
+    end as candidacy_legitimacy_label,
     case when a.has_candidacy then lg.scored_at end as candidacy_legitimacy_scored_at,
 
     case

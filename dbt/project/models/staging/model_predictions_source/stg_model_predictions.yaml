@@ -511,7 +511,12 @@ models:
         data_tests:
           - not_null
       - name: legitimacy_score
-        description: Expected corroboration rate from the serving model, 0 to 1.
+        description: >
+          Calibrated probability, 0 to 1: of past signups at the same model rank who
+          signed up about as far ahead of their election, the share whose race was
+          later corroborated by BallotReady, DDHQ or TechSpeed for a completed
+          election. Sharpest for signups within 90 days of their election; treat it
+          as directional for signups a year or more ahead.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -523,5 +528,19 @@ models:
           - accepted_values:
               arguments:
                 values: ["p_under_5", "p_5_15", "p_15_35", "p_35_60", "p_60_plus"]
+      - name: legitimacy_label
+        description: >
+          The bucket in words with its range, for display: [0-5%] very unlikely,
+          [5-15%] unlikely, [15-35%] possible, [35-60%] toss-up, [60-100%] likely.
+          Sort by legitimacy_score, not by this text.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "[0-5%] very unlikely"
+                  - "[5-15%] unlikely"
+                  - "[15-35%] possible"
+                  - "[35-60%] toss-up"
+                  - "[60-100%] likely"
       - name: legitimacy_model_id
         description: The serving model that produced the score.
