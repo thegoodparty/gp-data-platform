@@ -51,12 +51,21 @@ with
         where trim(hc.verified_candidate_status) = 'Yes'
     ),
 
+    -- BR lists the person in the primary for the seat they picked: evidence they
+    -- ran, even when they never reached the general BR could cluster with.
+    br_primary_campaigns as (
+        select campaign_id from {{ ref("int__civics_campaign_br_primary_result") }}
+    ),
+
     eligible_campaigns as (
         select campaign_id
         from corroborated_campaigns
         union
         select campaign_id
         from hubspot_verified_campaigns
+        union
+        select campaign_id
+        from br_primary_campaigns
     ),
 
     person_ids as (

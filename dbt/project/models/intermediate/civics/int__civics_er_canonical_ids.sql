@@ -124,6 +124,40 @@ with
         having count_if(source_name = 'ballotready') = 0
     ),
 
+    -- Clusters with no vendor member: only gp_api records, or a single one.
+    gp_only_clusters as (
+        select cluster_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        group by cluster_id
+        having count_if(source_name <> 'gp_api') = 0
+    ),
+
+    -- A campaign whose BallotReady primary at its own position was found
+    -- deterministically. Its stage is the general, which matcha keeps apart
+    -- from the primary, so a signup eliminated in the primary never shares a
+    -- cluster with BR. Adopting the BR candidacy (one id across stages) puts
+    -- the primary result on the campaign's candidacy. Only used where no vendor
+    -- clusters with the campaign: a vendor listing for the general wins.
+    gp_api_br_primary as (
+        select
+            pr.campaign_id as primary_campaign_id,
+            pr.election_date as primary_campaign_election_date,
+            br_cs.gp_candidacy_id as primary_gp_candidacy_id,
+            br_es.gp_election_id as primary_gp_election_id
+        from {{ ref("int__civics_campaign_br_primary_result") }} as pr
+        inner join
+            {{ ref("int__civics_candidacy_stage_ballotready") }} as br_cs
+            on pr.br_candidacy_id = br_cs.br_candidacy_id
+        inner join
+            {{ ref("int__civics_election_stage_ballotready") }} as br_es
+            on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
+        qualify
+            row_number() over (
+                partition by pr.campaign_id order by br_cs.gp_candidacy_id
+            )
+            = 1
+    ),
+
     non_br_cluster_matches as (
         -- Non-BR clusters (no BR member to anchor to): the candidacy canonical
         -- is the cluster's earliest-member mint, shared by every co-member, so
@@ -197,12 +231,23 @@ with
             cast(null as bigint) as ddhq_race_id,
             cast(null as string) as canonical_gp_candidacy_stage_id,
             cast(null as string) as canonical_gp_election_stage_id,
-            mint.minted_gp_candidacy_id as canonical_gp_candidacy_id,
-            cast(null as string) as canonical_gp_election_id
+            case
+                when gp_only.cluster_id is not null
+                then coalesce(prim.primary_gp_candidacy_id, mint.minted_gp_candidacy_id)
+                else mint.minted_gp_candidacy_id
+            end as canonical_gp_candidacy_id,
+            case
+                when gp_only.cluster_id is not null then prim.primary_gp_election_id
+            end as canonical_gp_election_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
         inner join
             {{ ref("int__civics_minted_candidacy_ids") }} as mint using (unique_id)
+        left join gp_only_clusters as gp_only using (cluster_id)
+        left join
+            gp_api_br_primary as prim
+            on cast(split(cw.source_id, '__')[0] as bigint) = prim.primary_campaign_id
+            and cast(cw.election_date as date) = prim.primary_campaign_election_date
         where cw.source_name = 'gp_api'
         qualify
             row_number() over (
@@ -287,3 +332,22 @@ select
     canonical_gp_candidacy_id,
     canonical_gp_election_id
 from non_br_cluster_matches
+union all
+-- Campaigns with a BR primary match that never reached matcha (no clustered
+-- record), so the gp_api models can still adopt the BR candidacy.
+select
+    cast(null as string) as ts_source_candidate_id,
+    cast(null as date) as ts_stage_election_date,
+    prim.primary_campaign_id as gp_api_campaign_id,
+    prim.primary_campaign_election_date as gp_api_stage_election_date,
+    cast(null as bigint) as ddhq_candidate_id,
+    cast(null as bigint) as ddhq_race_id,
+    cast(null as string) as canonical_gp_candidacy_stage_id,
+    cast(null as string) as canonical_gp_election_stage_id,
+    prim.primary_gp_candidacy_id as canonical_gp_candidacy_id,
+    prim.primary_gp_election_id as canonical_gp_election_id
+from gp_api_br_primary as prim
+left anti join
+    {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
+    on cw.source_name = 'gp_api'
+    and cast(split(cw.source_id, '__')[0] as bigint) = prim.primary_campaign_id
