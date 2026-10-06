@@ -208,9 +208,13 @@ select
     case when a.has_candidacy then civ.is_incumbent end as candidacy_is_incumbent,
     case when a.has_candidacy then civ.viability_score end as candidacy_viability_score,
     case when a.has_candidacy then civ.win_number end as candidacy_win_number,
-    lg.legitimacy_score as candidacy_legitimacy_score,
-    lg.legitimacy_bucket as candidacy_legitimacy_bucket,
-    lg.scored_at as candidacy_legitimacy_scored_at,
+    case
+        when a.has_candidacy then lg.legitimacy_score
+    end as candidacy_legitimacy_score,
+    case
+        when a.has_candidacy then lg.legitimacy_bucket
+    end as candidacy_legitimacy_bucket,
+    case when a.has_candidacy then lg.scored_at end as candidacy_legitimacy_scored_at,
 
     case
         when a.has_candidacy then coalesce(p.prior_election_count, 0)
