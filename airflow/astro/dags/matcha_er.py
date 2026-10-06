@@ -181,7 +181,8 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
 
 @dag(
     dag_id="matcha_er",
-    schedule="@weekly",
+    # Tuesday 15:00 UTC, after both vendor drops: BallotReady Monday ~09:10, TechSpeed Tuesday ~13:10.
+    schedule="0 15 * * 2",
     start_date=pendulum_datetime(2026, 9, 1, tz="UTC"),
     catchup=False,
     # catchup=False only suppresses historical backfill, not the current interval.
