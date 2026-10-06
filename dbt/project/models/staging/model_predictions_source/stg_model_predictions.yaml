@@ -487,3 +487,41 @@ models:
           arguments:
             expression: (score_bin is null) = (bin_population is null)
           name: web_verify_verdicts_score_bin_pairs_with_population
+
+  - name: stg_model_predictions__win_candidate_scores_latest
+    description: >
+      Legitimacy scores for Win campaigns from the candidate legitimacy predictor: the
+      expected rate at which a campaign like this one is corroborated by a ballot data
+      vendor. It measures likely confirmation on a ballot, which is close to but not the
+      same as the person being real. A snapshot, not a feed: one scoring run on
+      2026-08-14, so campaigns created after that carry no score until the model is
+      re-run. One row per scored campaign.
+    columns:
+      - name: campaign_id
+        description: The scored gp-api campaign.
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: The campaign's owner.
+        data_tests:
+          - not_null
+      - name: scored_at
+        description: The date of the scoring run. A date only; the run records no time.
+        data_tests:
+          - not_null
+      - name: legitimacy_score
+        description: Expected corroboration rate from the serving model, 0 to 1.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: legitimacy_bucket
+        description: The score's band.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["p_under_5", "p_5_15", "p_15_35", "p_35_60", "p_60_plus"]
+      - name: legitimacy_model_id
+        description: The serving model that produced the score.

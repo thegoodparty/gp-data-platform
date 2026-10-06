@@ -117,6 +117,8 @@ select
     utm.utm_source_first,
     utm.utm_medium_first,
     utm.utm_campaign_first,
+    utm.utm_source_first_normalized,
+    utm.utm_medium_first_normalized,
 
     {{
         dbt_utils.star(

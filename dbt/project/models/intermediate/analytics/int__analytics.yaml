@@ -1446,6 +1446,18 @@ models:
         description: Modelled viability of the run, from the civics scorer.
       - name: candidacy_win_number
         description: Votes needed to win.
+      - name: candidacy_legitimacy_score
+        description: >
+          The anchor campaign's legitimacy score from the candidate legitimacy
+          predictor, 0 to 1: the expected rate at which a campaign like this is
+          corroborated by a ballot data vendor. Close to but not the same as the
+          person being real. Null for campaigns the model has not scored.
+      - name: candidacy_legitimacy_bucket
+        description: The score's band, p_under_5 to p_60_plus.
+      - name: candidacy_legitimacy_scored_at
+        description: >
+          The date the score was produced. A snapshot, currently one run on
+          2026-08-14, so campaigns created after it are unscored until a re-run.
       - name: prior_election_count
         description: >
           Distinct election years before the anchor's in which this person ran,
@@ -1493,7 +1505,8 @@ models:
       Amplitude holds three overlapping UTM families; never union this with
       the webapp's utm_* or utm_*_first properties. Source, medium and
       campaign come together from the user's earliest event carrying them, so
-      they always describe one touch. Values are raw, typos included.
+      they always describe one touch. Values are raw, typos included; the
+      _normalized columns fold spellings of one channel together.
     columns:
       - name: user_id
         description: gp-api user id. Primary key.
@@ -1508,3 +1521,13 @@ models:
         description: First-touch UTM medium.
       - name: utm_campaign_first
         description: First-touch UTM campaign.
+      - name: utm_source_first_normalized
+        description: >
+          utm_source_first lowercased, cut at the first '&', and mapped through
+          the utm_source_normalization seed, so fb, facebook, meta and ig read
+          as facebook and adwords as google. Unlisted sources pass through
+          cleaned. Use this for grouping; keep the raw column for auditing.
+        data_tests:
+          - not_null
+      - name: utm_medium_first_normalized
+        description: utm_medium_first lowercased, so paid and Paid are one value.

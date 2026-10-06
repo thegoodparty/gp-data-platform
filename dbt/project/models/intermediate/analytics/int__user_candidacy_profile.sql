@@ -150,6 +150,13 @@ with
         group by a.user_id
     ),
 
+    -- Scored per campaign, so it attaches to the anchor like every other
+    -- candidacy column.
+    legitimacy as (
+        select campaign_id, legitimacy_score, legitimacy_bucket, scored_at
+        from {{ ref("stg_model_predictions__win_candidate_scores_latest") }}
+    ),
+
     -- Person grain on purpose: a win on another account or a civics-only
     -- candidacy is still this human having won.
     wins as (
@@ -201,6 +208,13 @@ select
     case when a.has_candidacy then civ.is_incumbent end as candidacy_is_incumbent,
     case when a.has_candidacy then civ.viability_score end as candidacy_viability_score,
     case when a.has_candidacy then civ.win_number end as candidacy_win_number,
+    case
+        when a.has_candidacy then lg.legitimacy_score
+    end as candidacy_legitimacy_score,
+    case
+        when a.has_candidacy then lg.legitimacy_bucket
+    end as candidacy_legitimacy_bucket,
+    case when a.has_candidacy then lg.scored_at end as candidacy_legitimacy_scored_at,
 
     case
         when a.has_candidacy then coalesce(p.prior_election_count, 0)
@@ -220,3 +234,4 @@ left join anchor_candidacy as cc on cc.user_id = a.user_id
 left join anchor_filing as f on f.user_id = a.user_id
 left join prior_runs as p on p.user_id = a.user_id
 left join wins as w on w.user_id = a.user_id
+left join legitimacy as lg on lg.campaign_id = a.anchor_campaign_id
