@@ -6,7 +6,8 @@ results into the `er_source` tables dbt reads.
 
 ## What it does
 
-Weekly, the DAG refreshes the three dbt "prematch" models via dbt Cloud, then for each entity type
+Weekly, on Tuesday at 15:00 UTC (after BallotReady's Monday export and TechSpeed's Tuesday drop), the
+DAG refreshes the three dbt "prematch" models via dbt Cloud, then for each entity type
 runs the containerized Splink matcher as a Kubernetes pod, quality-gates what it produced, and swaps
 the gated output into the live table dbt reads. Once all three entities have swapped, it rebuilds the
 downstream `er_source`-dependent dbt models, then runs a cleanup step that drops the prior run's

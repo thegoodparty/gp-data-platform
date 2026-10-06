@@ -42,9 +42,8 @@ def test_dag_loads():
 def test_weekly_and_paused_on_creation():
     """Created paused so a fresh deploy does not auto-fire the current interval
     — catchup=False only suppresses historical backfill, not the current one."""
-    # Airflow 3 expands schedule="@weekly" to a CronTriggerTimetable at parse
-    # time rather than keeping the preset string; "0 0 * * 0" is its cron form.
-    assert _DAG.timetable.expression == "0 0 * * 0"
+    # Tuesday 15:00 UTC, so a run sees both weekly vendor drops.
+    assert _DAG.timetable.expression == "0 15 * * 2"
     assert _DAG.is_paused_upon_creation is True
     assert _DAG.catchup is False
 
