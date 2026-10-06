@@ -1160,6 +1160,11 @@ sources:
         description: raw data load from voter turnout projections for 2027
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+      - name: win_candidate_scores_latest
+        description: >
+          Corroboration-model scores for Win campaigns, one row per scored campaign.
+          Written outside dbt by the legitimacy predictor; a single scoring run on
+          2026-08-14 so far.
       - name: web_verify_verdicts_20260813
         description: >
           Web verification of uncorroborated Win signups against official election sources,

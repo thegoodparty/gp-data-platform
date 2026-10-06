@@ -965,3 +965,22 @@ seeds:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [field, code]
+
+  - name: utm_source_normalization
+    description: >
+      Maps raw first-touch UTM sources to one name per channel, so fb, facebook,
+      meta and ig read as one source. Keys are lowercased and cut at the first
+      '&', which is how int__user_first_touch_utm cleans a value before the
+      lookup. A source not listed here passes through cleaned, so a new one
+      shows up rather than disappearing. unknown marks opaque ids and test
+      values that name no channel. Extend this file rather than the SQL.
+    columns:
+      - name: raw_source
+        description: A cleaned raw utm_source value.
+        data_tests:
+          - unique
+          - not_null
+      - name: normalized_source
+        description: The channel it belongs to.
+        data_tests:
+          - not_null
