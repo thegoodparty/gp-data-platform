@@ -1454,6 +1454,23 @@ models:
           person being real. Null for campaigns the model has not scored.
       - name: candidacy_legitimacy_bucket
         description: The score's band, p_under_5 to p_60_plus.
+      - name: candidacy_legitimacy_label
+        description: >
+          6. confirmed when candidacy_has_external_match is true, whether or
+          not the model scored the campaign. Otherwise the score band in words
+          with its range, from 1. [0-5%] very unlikely to 5. [60-100%] likely,
+          or null when unscored. The number prefix makes it sort in order.
+          candidacy_legitimacy_score and _bucket stay the model's raw output.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "1. [0-5%] very unlikely"
+                  - "2. [5-15%] unlikely"
+                  - "3. [15-35%] possible"
+                  - "4. [35-60%] toss-up"
+                  - "5. [60-100%] likely"
+                  - "6. confirmed"
       - name: candidacy_legitimacy_scored_at
         description: >
           The date the score was produced. A snapshot, currently one run on
