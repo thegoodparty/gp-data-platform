@@ -69,3 +69,5 @@ The daily Airflow DAG (`reverse_etl_hubspot`) pins its pod to a specific sha via
 `reverse_etl_image_tag` Variable, with no mutable-tag default — deploying a merged change is an explicit bump of that
 Variable to the new build's sha, which is the provenance gate: the DAG always runs exactly the build
 that was evaluated, never whatever `latest` happens to point at.
+
+This line was added by a gp-pi parity probe.
