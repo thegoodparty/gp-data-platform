@@ -148,6 +148,14 @@ select
     wa.is_activated,
     wa.activated_at,
 
+    {{
+        dbt_utils.star(
+            from=ref("int__user_power_user"),
+            except=["user_id"],
+            relation_alias="pu",
+        )
+    }},
+
     u.is_serve_user,
     u.eo_activated_at,
     ae.user_id is not null as is_active_eo,
@@ -179,4 +187,5 @@ left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
 left join win_activation as wa using (user_id)
+left join {{ ref("int__user_power_user") }} as pu using (user_id)
 left join internal as i on i.gp_person_id = k.gp_person_id
