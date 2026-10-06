@@ -1456,8 +1456,8 @@ models:
         description: The score's band, p_under_5 to p_60_plus.
       - name: candidacy_legitimacy_label
         description: >
-          The band in words with its range, from [0-5%] very unlikely to
-          [60-100%] likely. For display; sort by candidacy_legitimacy_score.
+          The band in words with its range, from 1. [0-5%] very unlikely to
+          5. [60-100%] likely. The number prefix makes it sort in score order.
       - name: candidacy_legitimacy_scored_at
         description: >
           The date the score was produced. A snapshot, currently one run on

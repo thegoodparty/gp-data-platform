@@ -530,17 +530,18 @@ models:
                 values: ["p_under_5", "p_5_15", "p_15_35", "p_35_60", "p_60_plus"]
       - name: legitimacy_label
         description: >
-          The bucket in words with its range, for display: [0-5%] very unlikely,
-          [5-15%] unlikely, [15-35%] possible, [35-60%] toss-up, [60-100%] likely.
-          Sort by legitimacy_score, not by this text.
+          The bucket in words with its range, for display: 1. [0-5%] very
+          unlikely, 2. [5-15%] unlikely, 3. [15-35%] possible, 4. [35-60%]
+          toss-up, 5. [60-100%] likely. The number prefix makes it sort in score
+          order as text.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - "[0-5%] very unlikely"
-                  - "[5-15%] unlikely"
-                  - "[15-35%] possible"
-                  - "[35-60%] toss-up"
-                  - "[60-100%] likely"
+                  - "1. [0-5%] very unlikely"
+                  - "2. [5-15%] unlikely"
+                  - "3. [15-35%] possible"
+                  - "4. [35-60%] toss-up"
+                  - "5. [60-100%] likely"
       - name: legitimacy_model_id
         description: The serving model that produced the score.
