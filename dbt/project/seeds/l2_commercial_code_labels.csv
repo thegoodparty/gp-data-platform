@@ -1,0 +1,449 @@
+field,code,label
+Business_Owner,1,Accountant
+Business_Owner,2,Builder
+Business_Owner,3,Contractor
+Business_Owner,4,Dealer/Retailer/Storekeeper
+Business_Owner,5,Distributor/Wholesaler
+Business_Owner,6,Funeral Director
+Business_Owner,7,Maker/Manufacturer
+Business_Owner,8,Owner
+Business_Owner,9,Partner
+Business_Owner,A,Self-Employed
+Education_Of_Person,1,Did Not Complete High School Likely
+Education_Of_Person,2,Completed High School Likely
+Education_Of_Person,3,Attended Vocational/Technical School Likely
+Education_Of_Person,4,Attended But Did Not Complete College Likely
+Education_Of_Person,5,Completed College Likely
+Education_Of_Person,6,Completed Graduate School Likely
+Estimated_Income_Amount,A,$5000
+Estimated_Income_Amount,B,$12500
+Estimated_Income_Amount,C,$17500
+Estimated_Income_Amount,D,$22500
+Estimated_Income_Amount,E,$27500
+Estimated_Income_Amount,F,$32500
+Estimated_Income_Amount,G,$37500
+Estimated_Income_Amount,H,$42500
+Estimated_Income_Amount,I,$47500
+Estimated_Income_Amount,J,$52500
+Estimated_Income_Amount,K,$57500
+Estimated_Income_Amount,L,$62500
+Estimated_Income_Amount,M,$67500
+Estimated_Income_Amount,N,$87500
+Estimated_Income_Amount,O,$125000
+Estimated_Income_Amount,P,$162500
+Estimated_Income_Amount,Q,$187500
+Estimated_Income_Amount,R,$225000
+Estimated_Income_Amount,S,$250000
+Homeowner_Probability_Model,9,Probable Home Owner
+Homeowner_Probability_Model,H,Home Owner
+Homeowner_Probability_Model,R,Renter
+Marital_Status,A,Inferred Married
+Marital_Status,B,Inferred Single
+Marital_Status,M,Married
+Marital_Status,S,Single
+Residence_Addresses_LatLongAccuracy,0,GeoMatch9Digit
+Residence_Addresses_LatLongAccuracy,1,GeoMatch5Digit
+Residence_Addresses_LatLongAccuracy,4,GeoMatchRooftop
+Residence_Addresses_LatLongAccuracy,5,GeoMatchBuilding
+Residence_Addresses_LatLongAccuracy,6,RangeInterpolation
+Residence_Addresses_LatLongAccuracy,7,StreetCenter
+Residence_Addresses_LatLongAccuracy,8,Intersection
+Residence_Addresses_LatLongAccuracy,9,ExactMatch
+Residence_Addresses_LatLongAccuracy,10,KnownAlternateName
+Residence_Addresses_LatLongAccuracy,11,DirectionPrefixRemoved
+Residence_Addresses_LatLongAccuracy,12,DirectionSuffixRemoved
+Residence_Addresses_LatLongAccuracy,13,AverageOfApartments
+Residence_Addresses_LatLongAccuracy,14,ParcelCenter
+Language_Code,A1,Afrikaans
+Language_Code,A2,Albanian
+Language_Code,A3,Amharic
+Language_Code,A4,Arabic
+Language_Code,A5,Armenian
+Language_Code,A6,Ashanti
+Language_Code,A7,Azeri
+Language_Code,B1,Bantu
+Language_Code,B2,Basque
+Language_Code,B3,Bengali
+Language_Code,B4,Bulgarian
+Language_Code,B5,Burmese
+Language_Code,C1,Chinese
+Language_Code,C2,Comorian
+Language_Code,C3,Czech
+Language_Code,D1,Danish
+Language_Code,D2,Dutch
+Language_Code,D3,Dzongha
+Language_Code,E1,English
+Language_Code,E2,Estonian
+Language_Code,F1,Farsi
+Language_Code,F2,Finnish
+Language_Code,F3,French
+Language_Code,G1,Georgian
+Language_Code,G2,German
+Language_Code,G3,Ga
+Language_Code,G4,Greek
+Language_Code,H1,Hausa
+Language_Code,H2,Hebrew
+Language_Code,H3,Hindi
+Language_Code,H4,Hungarian
+Language_Code,I1,Icelandic
+Language_Code,I2,Indonesian
+Language_Code,I3,Italian
+Language_Code,J1,Japanese
+Language_Code,K1,Kazakh
+Language_Code,K2,Khmer
+Language_Code,K3,Kirghiz
+Language_Code,K4,Korean
+Language_Code,L1,Laotian
+Language_Code,L2,Latvian
+Language_Code,L3,Lithuanian
+Language_Code,M1,Macedonian
+Language_Code,M2,Malagasy
+Language_Code,M3,Malay
+Language_Code,M4,Moldavian
+Language_Code,M5,Mongolian
+Language_Code,N1,Nepali
+Language_Code,N2,Norwegian
+Language_Code,O1,Oromo
+Language_Code,P1,Pashto
+Language_Code,P2,Polish
+Language_Code,P3,Portuguese
+Language_Code,R1,Romanian
+Language_Code,R2,Russian
+Language_Code,S1,Samoan
+Language_Code,S2,Serbo-Croatian
+Language_Code,S3,Sinhalese
+Language_Code,S4,Slovakian
+Language_Code,S5,Slovenian
+Language_Code,S6,Somali
+Language_Code,S7,Sotho
+Language_Code,S8,Spanish
+Language_Code,S9,Swahili
+Language_Code,SA,Swazi
+Language_Code,SB,Swedish
+Language_Code,T1,Tagalog
+Language_Code,T2,Tajik
+Language_Code,T3,Thai
+Language_Code,T4,Tibetan
+Language_Code,T5,Tongan
+Language_Code,T6,Turkish
+Language_Code,T7,Turkmeni
+Language_Code,T8,Tswana
+Language_Code,U1,Urdu
+Language_Code,U2,Uzbeki
+Language_Code,V1,Vietnamese
+Language_Code,X1,Xhosa
+Language_Code,Z1,Zulu
+Ethnic_Description,C1,Afghan
+EthnicGroups_EthnicGroup1Desc,C1,Other
+Ethnic_Description,C2,Bangladeshi
+EthnicGroups_EthnicGroup1Desc,C2,East and South Asian
+Ethnic_Description,C3,Indian/Hindu
+EthnicGroups_EthnicGroup1Desc,C3,East and South Asian
+Ethnic_Description,C4,Pakistani
+EthnicGroups_EthnicGroup1Desc,C4,Other
+Ethnic_Description,C5,Sri Lankan
+EthnicGroups_EthnicGroup1Desc,C5,East and South Asian
+Ethnic_Description,C6,Nepalese
+EthnicGroups_EthnicGroup1Desc,C6,East and South Asian
+Ethnic_Description,D0,Arab
+EthnicGroups_EthnicGroup1Desc,D0,Other
+Ethnic_Description,D1,Arab
+EthnicGroups_EthnicGroup1Desc,D1,Other
+Ethnic_Description,D2,Arab
+EthnicGroups_EthnicGroup1Desc,D2,Other
+Ethnic_Description,D3,Arab
+EthnicGroups_EthnicGroup1Desc,D3,Other
+Ethnic_Description,D4,Greek
+EthnicGroups_EthnicGroup1Desc,D4,European
+Ethnic_Description,D5,Arab
+EthnicGroups_EthnicGroup1Desc,D5,Other
+Ethnic_Description,D6,Kurdish
+EthnicGroups_EthnicGroup1Desc,D6,Other
+Ethnic_Description,D8,Arab
+EthnicGroups_EthnicGroup1Desc,D8,Other
+Ethnic_Description,D9,Arab
+EthnicGroups_EthnicGroup1Desc,D9,Other
+Ethnic_Description,DE,Macedonian
+EthnicGroups_EthnicGroup1Desc,DE,Other
+Ethnic_Description,DF,Arab
+EthnicGroups_EthnicGroup1Desc,DF,Other
+Ethnic_Description,DG,Arab
+EthnicGroups_EthnicGroup1Desc,DG,Other
+Ethnic_Description,DH,Persian
+EthnicGroups_EthnicGroup1Desc,DH,Other
+Ethnic_Description,DJ,Arab
+EthnicGroups_EthnicGroup1Desc,DJ,Other
+Ethnic_Description,DK,Arab
+EthnicGroups_EthnicGroup1Desc,DK,Other
+Ethnic_Description,DL,Arab
+EthnicGroups_EthnicGroup1Desc,DL,Other
+Ethnic_Description,DM,Turkish
+EthnicGroups_EthnicGroup1Desc,DM,Other
+Ethnic_Description,DN,Arab
+EthnicGroups_EthnicGroup1Desc,DN,Other
+Ethnic_Description,DS,Maltese
+EthnicGroups_EthnicGroup1Desc,DS,European
+Ethnic_Description,KS,Native American
+EthnicGroups_EthnicGroup1Desc,KS,Other
+Ethnic_Description,M0,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M0,Likely African-American
+Ethnic_Description,M1,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M1,Likely African-American
+Ethnic_Description,M2,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M2,Likely African-American
+Ethnic_Description,M3,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M3,Likely African-American
+Ethnic_Description,M4,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M4,Likely African-American
+Ethnic_Description,M5,Bhutanese
+EthnicGroups_EthnicGroup1Desc,M5,East and South Asian
+Ethnic_Description,M6,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M6,Likely African-American
+Ethnic_Description,M7,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M7,Likely African-American
+Ethnic_Description,M8,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M8,Likely African-American
+Ethnic_Description,M9,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,M9,Likely African-American
+Ethnic_Description,MA,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MA,Likely African-American
+Ethnic_Description,MB,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MB,Likely African-American
+Ethnic_Description,MC,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MC,Likely African-American
+Ethnic_Description,MD,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MD,Likely African-American
+Ethnic_Description,ME,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,ME,Likely African-American
+Ethnic_Description,MF,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MF,Likely African-American
+Ethnic_Description,MG,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MG,Likely African-American
+Ethnic_Description,MH,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MH,Likely African-American
+Ethnic_Description,MJ,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MJ,Likely African-American
+Ethnic_Description,MK,Guyana
+EthnicGroups_EthnicGroup1Desc,MK,Other
+Ethnic_Description,ML,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,ML,Likely African-American
+Ethnic_Description,MM,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MM,Likely African-American
+Ethnic_Description,MN,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MN,Likely African-American
+Ethnic_Description,MO,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MO,Likely African-American
+Ethnic_Description,MP,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MP,Likely African-American
+Ethnic_Description,MQ,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MQ,Likely African-American
+Ethnic_Description,MR,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MR,Likely African-American
+Ethnic_Description,MS,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MS,Likely African-American
+Ethnic_Description,MT,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MT,Likely African-American
+Ethnic_Description,MU,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MU,Likely African-American
+Ethnic_Description,MV,Papua New Guinea
+EthnicGroups_EthnicGroup1Desc,MV,Other
+Ethnic_Description,MW,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MW,Likely African-American
+Ethnic_Description,MX,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MX,Likely African-American
+Ethnic_Description,MY,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MY,Likely African-American
+Ethnic_Description,MZ,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,MZ,Likely African-American
+Ethnic_Description,N1,Danish
+EthnicGroups_EthnicGroup1Desc,N1,European
+Ethnic_Description,N2,Dutch (Netherlands)
+EthnicGroups_EthnicGroup1Desc,N2,European
+Ethnic_Description,N3,Finnish
+EthnicGroups_EthnicGroup1Desc,N3,European
+Ethnic_Description,N4,Icelandic
+EthnicGroups_EthnicGroup1Desc,N4,European
+Ethnic_Description,N5,Norwegian
+EthnicGroups_EthnicGroup1Desc,N5,European
+Ethnic_Description,N6,Scots
+EthnicGroups_EthnicGroup1Desc,N6,European
+Ethnic_Description,N7,Swedish
+EthnicGroups_EthnicGroup1Desc,N7,European
+Ethnic_Description,N8,English/Welsh
+EthnicGroups_EthnicGroup1Desc,N8,European
+Ethnic_Description,R1,Aleut
+EthnicGroups_EthnicGroup1Desc,R1,Other
+Ethnic_Description,R2,Myanmar (Burmese)
+EthnicGroups_EthnicGroup1Desc,R2,East and South Asian
+Ethnic_Description,R3,Chinese
+EthnicGroups_EthnicGroup1Desc,R3,East and South Asian
+Ethnic_Description,R4,Fiji
+EthnicGroups_EthnicGroup1Desc,R4,Other
+Ethnic_Description,R5,Hawaiian
+EthnicGroups_EthnicGroup1Desc,R5,Other
+Ethnic_Description,R6,Indonesian
+EthnicGroups_EthnicGroup1Desc,R6,East and South Asian
+Ethnic_Description,R7,Japanese
+EthnicGroups_EthnicGroup1Desc,R7,East and South Asian
+Ethnic_Description,R8,Khmer
+EthnicGroups_EthnicGroup1Desc,R8,East and South Asian
+Ethnic_Description,R9,Korean
+EthnicGroups_EthnicGroup1Desc,R9,East and South Asian
+Ethnic_Description,RA,Laotian
+EthnicGroups_EthnicGroup1Desc,RA,East and South Asian
+Ethnic_Description,RB,Malay
+EthnicGroups_EthnicGroup1Desc,RB,East and South Asian
+Ethnic_Description,RC,Mongolian
+EthnicGroups_EthnicGroup1Desc,RC,East and South Asian
+Ethnic_Description,RD,Unknown Asian
+EthnicGroups_EthnicGroup1Desc,RD,East and South Asian
+Ethnic_Description,RE,Filipino
+EthnicGroups_EthnicGroup1Desc,RE,Other
+Ethnic_Description,RF,Thai
+EthnicGroups_EthnicGroup1Desc,RF,East and South Asian
+Ethnic_Description,RG,Tibetan
+EthnicGroups_EthnicGroup1Desc,RG,East and South Asian
+Ethnic_Description,RH,Vietnamese
+EthnicGroups_EthnicGroup1Desc,RH,East and South Asian
+Ethnic_Description,RJ,Maldivian
+EthnicGroups_EthnicGroup1Desc,RJ,Other
+Ethnic_Description,RK,Nauruan
+EthnicGroups_EthnicGroup1Desc,RK,Other
+Ethnic_Description,RM,New Zealand
+EthnicGroups_EthnicGroup1Desc,RM,Other
+Ethnic_Description,RP,Australian
+EthnicGroups_EthnicGroup1Desc,RP,Other
+Ethnic_Description,T1,Belgian
+EthnicGroups_EthnicGroup1Desc,T1,European
+Ethnic_Description,T2,Basque
+EthnicGroups_EthnicGroup1Desc,T2,European
+Ethnic_Description,T3,English/Welsh
+EthnicGroups_EthnicGroup1Desc,T3,European
+Ethnic_Description,T4,French
+EthnicGroups_EthnicGroup1Desc,T4,European
+Ethnic_Description,T5,German
+EthnicGroups_EthnicGroup1Desc,T5,European
+Ethnic_Description,T6,Irish
+EthnicGroups_EthnicGroup1Desc,T6,European
+Ethnic_Description,T7,Italian
+EthnicGroups_EthnicGroup1Desc,T7,European
+Ethnic_Description,T8,Portuguese
+EthnicGroups_EthnicGroup1Desc,T8,Hispanic and Portuguese
+Ethnic_Description,T9,Hispanic
+EthnicGroups_EthnicGroup1Desc,T9,Hispanic and Portuguese
+Ethnic_Description,TF,Luxembourgian
+EthnicGroups_EthnicGroup1Desc,TF,European
+Ethnic_Description,TH,Swiss
+EthnicGroups_EthnicGroup1Desc,TH,European
+Ethnic_Description,TJ,Manx
+EthnicGroups_EthnicGroup1Desc,TJ,Other
+Ethnic_Description,U0,Albanian
+EthnicGroups_EthnicGroup1Desc,U0,Other
+Ethnic_Description,U1,Armenian
+EthnicGroups_EthnicGroup1Desc,U1,Other
+Ethnic_Description,U2,Austrian
+EthnicGroups_EthnicGroup1Desc,U2,European
+Ethnic_Description,U3,Azerb
+EthnicGroups_EthnicGroup1Desc,U3,Other
+Ethnic_Description,U4,Bosnian Muslim
+EthnicGroups_EthnicGroup1Desc,U4,Other
+Ethnic_Description,U5,Bulgarian
+EthnicGroups_EthnicGroup1Desc,U5,European
+Ethnic_Description,U6,Byelorussian
+EthnicGroups_EthnicGroup1Desc,U6,Other
+Ethnic_Description,U7,Chechnian
+EthnicGroups_EthnicGroup1Desc,U7,Other
+Ethnic_Description,U8,Croatian
+EthnicGroups_EthnicGroup1Desc,U8,Other
+Ethnic_Description,U9,Czech
+EthnicGroups_EthnicGroup1Desc,U9,European
+Ethnic_Description,UA,Estonian
+EthnicGroups_EthnicGroup1Desc,UA,European
+Ethnic_Description,UB,Georgian
+EthnicGroups_EthnicGroup1Desc,UB,Other
+Ethnic_Description,UC,Hungarian
+EthnicGroups_EthnicGroup1Desc,UC,European
+Ethnic_Description,UD,Kazak
+EthnicGroups_EthnicGroup1Desc,UD,Other
+Ethnic_Description,UE,Kirghiz
+EthnicGroups_EthnicGroup1Desc,UE,Other
+Ethnic_Description,UF,Kirghiz
+EthnicGroups_EthnicGroup1Desc,UF,Other
+Ethnic_Description,UG,Latvian
+EthnicGroups_EthnicGroup1Desc,UG,European
+Ethnic_Description,UH,Lithuanian
+EthnicGroups_EthnicGroup1Desc,UH,European
+Ethnic_Description,UI,Moldavian
+EthnicGroups_EthnicGroup1Desc,UI,European
+Ethnic_Description,UJ,Polish
+EthnicGroups_EthnicGroup1Desc,UJ,European
+Ethnic_Description,UK,Romanian
+EthnicGroups_EthnicGroup1Desc,UK,European
+Ethnic_Description,UL,Russian (omitting former Soviet States)
+EthnicGroups_EthnicGroup1Desc,UL,Other
+Ethnic_Description,UM,Serbian
+EthnicGroups_EthnicGroup1Desc,UM,Other
+Ethnic_Description,UN,Slovakian
+EthnicGroups_EthnicGroup1Desc,UN,European
+Ethnic_Description,UP,Slovenian
+EthnicGroups_EthnicGroup1Desc,UP,European
+Ethnic_Description,UQ,Tajik
+EthnicGroups_EthnicGroup1Desc,UQ,Other
+Ethnic_Description,UR,Tajik
+EthnicGroups_EthnicGroup1Desc,UR,Other
+Ethnic_Description,UT,Turkmenistan
+EthnicGroups_EthnicGroup1Desc,UT,Other
+Ethnic_Description,UV,Ukrainian
+EthnicGroups_EthnicGroup1Desc,UV,Other
+Ethnic_Description,UW,Uzbek
+EthnicGroups_EthnicGroup1Desc,UW,Other
+Ethnic_Description,W0,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W0,Likely African-American
+Ethnic_Description,W1,Surinam
+EthnicGroups_EthnicGroup1Desc,W1,Other
+Ethnic_Description,W2,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W2,Likely African-American
+Ethnic_Description,W3,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W3,Likely African-American
+Ethnic_Description,W4,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W4,Likely African-American
+Ethnic_Description,W5,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W5,Likely African-American
+Ethnic_Description,W6,Tonga
+EthnicGroups_EthnicGroup1Desc,W6,Other
+Ethnic_Description,W7,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W7,Likely African-American
+Ethnic_Description,W8,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W8,Likely African-American
+Ethnic_Description,W9,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,W9,Likely African-American
+Ethnic_Description,WA,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WA,Likely African-American
+Ethnic_Description,WB,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WB,Likely African-American
+Ethnic_Description,WC,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WC,Likely African-American
+Ethnic_Description,WE,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WE,Likely African-American
+Ethnic_Description,WF,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WF,Likely African-American
+Ethnic_Description,WG,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WG,Likely African-American
+Ethnic_Description,WH,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WH,Likely African-American
+Ethnic_Description,WJ,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WJ,Likely African-American
+Ethnic_Description,WK,Western Samoa
+EthnicGroups_EthnicGroup1Desc,WK,Other
+Ethnic_Description,WL,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WL,Likely African-American
+Ethnic_Description,WM,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WM,Likely African-American
+Ethnic_Description,WN,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WN,Likely African-American
+Ethnic_Description,WP,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WP,Likely African-American
+Ethnic_Description,WS,Likely Af-Am (Modeled)
+EthnicGroups_EthnicGroup1Desc,WS,Likely African-American
+Ethnic_Description,XX,Multi-Ethnic
+EthnicGroups_EthnicGroup1Desc,XX,Other

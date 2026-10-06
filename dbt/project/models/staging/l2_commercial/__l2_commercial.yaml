@@ -6,7 +6,9 @@ sources:
     description: >
       L2 National Commercial File extracts under evaluation, loaded by hand. Every
       column arrives as a string and the raw rows carry names, contact details and
-      street addresses, so read it only through the staging model.
+      street addresses, so read it only through the staging models: the
+      de-identified one for research, the ephemeral identifiers one for the gp_api
+      mart.
     tables:
       - name: l2_commercial_20260912_mi
         description: Michigan, September 2026 release. One row per individual.
