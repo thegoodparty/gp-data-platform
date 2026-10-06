@@ -219,8 +219,14 @@ select
     case
         when a.has_candidacy then lg.legitimacy_bucket
     end as candidacy_legitimacy_bucket,
+    -- A candidacy already matched to a ballot data vendor needs no prediction,
+    -- so it reads confirmed whether or not the model scored it.
     case
-        when a.has_candidacy then lg.legitimacy_label
+        when not a.has_candidacy
+        then null
+        when coalesce(cc.has_external_match, false)
+        then '6. confirmed'
+        else lg.legitimacy_label
     end as candidacy_legitimacy_label,
     case when a.has_candidacy then lg.scored_at end as candidacy_legitimacy_scored_at,
 
