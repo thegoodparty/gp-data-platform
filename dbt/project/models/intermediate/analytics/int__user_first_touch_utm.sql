@@ -57,7 +57,11 @@ select
     c.utm.source as utm_source_first,
     c.utm.medium as utm_medium_first,
     c.utm.campaign as utm_campaign_first,
-    coalesce(m.normalized_source, c.source_key) as utm_source_first_normalized,
+    -- A source that cleans to nothing (for example one starting with '&') names
+    -- no channel, the same as an opaque id.
+    coalesce(
+        m.normalized_source, nullif(c.source_key, ''), 'unknown'
+    ) as utm_source_first_normalized,
     lower(trim(c.utm.medium)) as utm_medium_first_normalized
 from cleaned as c
 left join source_map as m on m.raw_source = c.source_key
