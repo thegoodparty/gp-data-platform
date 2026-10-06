@@ -87,11 +87,10 @@ select
     ),
     coalesce(c.ballotready_position_id, i.br_position_id) as ballotready_position_id,
     coalesce(c.ballotready_race_id, i.br_race_id) as ballotready_race_id,
-    case
-        when i.campaign_id is not null and nullif(trim(c.campaign_office), '') is null
-        then i.position_name
-        else c.campaign_office
-    end as campaign_office,
+    -- BR's position name over the user's custom office: a short custom label
+    -- ("school board") fails the matcher's office checks against the BR record
+    -- the position came from.
+    coalesce(i.position_name, c.campaign_office) as campaign_office,
     coalesce(c.normalized_position_name, np.name) as normalized_position_name,
     i.br_candidacy_id as inferred_br_candidacy_id,
     i.match_key as inferred_br_match_key

@@ -292,7 +292,9 @@ with
         select *
         from {{ ref("int__civics_campaign_br_resolved") }}
         where
-            election_date is not null
+            -- Typo'd years (202407, 52025) are not elections and break the
+            -- matcha load, which cannot represent a year past 9999.
+            election_date between '1900-01-01' and '2100-12-31'
             and nullif(trim(campaign_state), '') is not null
             and not coalesce(is_demo, false)
             and is_latest_version
