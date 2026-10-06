@@ -30,7 +30,8 @@ with
         from {{ ref("stg_airbyte_source__amplitude_api_events") }}
         where
             try_cast(user_id as bigint) is not null
-            and user_properties:initial_utm_source is not null
+            -- A blank source names no channel, so it is no touch.
+            and nullif(trim(user_properties:initial_utm_source::string), '') is not null
     ),
 
     first_touch as (
