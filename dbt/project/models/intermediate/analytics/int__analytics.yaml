@@ -1514,6 +1514,96 @@ models:
           arguments:
             expression: not (is_still_running and never_filed)
 
+  - name: int__user_engagement_days
+    description: >
+      One row per user per day on which they viewed their campaign dashboard or
+      reached voters through the product. Views read the governed
+      dashboard-view union and drop staff viewing on the candidate's behalf
+      (marked from 2026-03-24). Sends read the same legs as is_activated.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: activity_date
+        description: The UTC date of the activity.
+        data_tests:
+          - not_null
+      - name: has_dashboard_view
+        description: They viewed their dashboard that day, not as staff impersonating them.
+        data_tests:
+          - not_null
+      - name: has_activation_event
+        description: They did something that counts toward is_activated that day.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, activity_date]
+
+  - name: int__power_user_bar
+    description: >
+      The power-user viewing bar at each distance from the election, 0 to 365
+      days out, measured on completed races from six months after telemetry
+      began. At each distance the raw bar is the power-user report's rule: the
+      85th percentile of view-days among users who had viewed by then, rounded
+      up. The published bar never rises with distance, and days with fewer than
+      500 viewers carry the last bar measured on enough. Reproduces the report's
+      two bars: 6 at the election and 4 at 96 days out.
+    columns:
+      - name: days_out
+        description: Days before the election, 0 to 365. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: reference_user_count
+        description: Completed-race candidates the bar is measured on.
+      - name: viewer_count
+        description: Of those, how many had viewed their dashboard by this distance.
+      - name: raw_view_day_bar
+        description: The rounded-up 85th percentile before smoothing.
+      - name: is_measured
+        description: At least 500 viewers, so this day's own percentile is used.
+      - name: view_day_bar
+        description: The bar the flag compares against.
+        data_tests:
+          - not_null
+
+  - name: int__user_power_user
+    description: >
+      Whether each candidate is a power user: reached voters through the
+      product at least once, and viewed their dashboard on at least as many
+      days as the bar for their distance from the election. Both counts run up
+      to the build date, capped at the election. One row per user with a
+      candidacy. Moves with the build date.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: power_user_days_out
+        description: Days from the build date to the anchor election, 0 once it has passed.
+        data_tests:
+          - not_null
+      - name: power_user_view_days
+        description: Days with a dashboard view, from first use up to the build date or the election, whichever is first.
+        data_tests:
+          - not_null
+      - name: power_user_view_day_bar
+        description: The bar for power_user_days_out, or for 365 when further out.
+        data_tests:
+          - not_null
+      - name: power_user_has_sent
+        description: Did something that counts toward is_activated by the same cutoff.
+        data_tests:
+          - not_null
+      - name: is_power_user
+        description: power_user_has_sent and power_user_view_days at or above the bar.
+        data_tests:
+          - not_null
+
   - name: int__user_first_touch_utm
     description: >
       First-touch UTM attribution per user, from Amplitude's SDK initial_utm_*

@@ -3385,7 +3385,8 @@ models:
         description: >
           registered (every account), completed_onboarding (is_onboarded),
           activated (is_activated), pro (is_pro), matched_third_party
-          (candidacy_has_external_match, 2026 races only).
+          (candidacy_has_external_match, 2026 races only), power_user
+          (is_power_user).
         data_tests:
           - not_null
           - accepted_values:
@@ -3396,15 +3397,16 @@ models:
                   - activated
                   - pro
                   - matched_third_party
+                  - power_user
       - name: stage_order
-        description: Display order, 1 to 5, matching stage.
+        description: Display order, 1 to 6, matching stage.
         data_tests:
           - not_null
       - name: reached_at
         description: >
           When the user reached the stage. Null where the stage has no date:
           pro_since is undated for about half of Pro users, and third-party
-          matches carry no date.
+          matches and power users carry no date.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
