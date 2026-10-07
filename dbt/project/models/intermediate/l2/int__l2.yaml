@@ -699,7 +699,7 @@ models:
       the voters there. It places people who are not in the voter file. The whole
       set comes from one group of voters, so the columns stay consistent with
       each other, and values are the voter file's raw strings, so they match
-      gp_api_voters. Carries every get_l2_district_types() column.
+      gp_api_voters. Carries every get_l2_district_types() column and Precinct.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

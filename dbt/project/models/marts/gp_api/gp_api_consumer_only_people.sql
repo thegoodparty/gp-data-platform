@@ -3,13 +3,21 @@
 {{ config(materialized="table", auto_liquid_cluster=True) }}
 
 {%- set voter_columns = adapter.get_columns_in_relation(ref("gp_api_voters")) -%}
+{%- set voter_names = voter_columns | map(attribute="name") | map("lower") | list -%}
+{%- set commercial_relation_columns = adapter.get_columns_in_relation(
+    ref("gp_api_commercial_people")
+) -%}
 {%- set commercial_columns = (
-    adapter.get_columns_in_relation(ref("gp_api_commercial_people"))
+    commercial_relation_columns
     | map(attribute="name")
     | map("lower")
     | list
 ) -%}
-{%- set district_types = get_l2_district_types() | map("lower") | list %}
+{#- Precinct is placed by area like the districts, so the precinct filter
+    reaches these people too. -#}
+{%- set district_types = (
+    (get_l2_district_types() + ["Precinct"]) | map("lower") | list
+) %}
 
 with
     voters as (select `LALVOTERID` from {{ ref("gp_api_voters") }}),
@@ -100,7 +108,10 @@ select
     {%- endfor %}
     false as `Registered_Voter`,
     area_choice.area_type as `District_Source`,
-    consumer_only.individual_id
+    {%- for column in commercial_relation_columns
+        if column.name | lower not in voter_names %}
+        consumer_only.`{{ column.name }}`{% if not loop.last %},{% endif %}
+    {%- endfor %}
 from consumer_only
 inner join area_choice on consumer_only.individual_id = area_choice.individual_id
 left join

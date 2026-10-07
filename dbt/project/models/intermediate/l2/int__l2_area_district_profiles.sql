@@ -1,12 +1,13 @@
 {{ config(materialized="table") }}
 
--- The most common full set of L2 district values among voters in each small area,
+-- The most common full set of L2 district values (and precinct) among voters in each
+-- small area,
 -- for placing people who are not in the voter file. Taking the whole set from one
 -- group of voters, rather than the most common value per column, keeps the columns
 -- consistent with each other (a ward always belongs to its city). Values are the
 -- voter file's raw strings, so they match gp_api_voters and the district table.
 -- Built only for states with a commercial file.
-{% set district_types = get_l2_district_types() %}
+{% set district_types = get_l2_district_types() + ["Precinct"] %}
 
 with
     commercial_states as (
