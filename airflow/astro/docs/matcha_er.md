@@ -221,10 +221,10 @@ re-run the entity's group after fixing whatever produced bad prematch input, or,
 legitimate (e.g. a source's row volume genuinely shifted), widen the relevant threshold on that
 entity's `TableGate` in `matcha_utils.ENTITIES`.
 
-If the fix is upstream of the three prematch models themselves (a staging model or an earlier layer),
+If the fix is upstream of the prematch models themselves (a staging model or an earlier layer),
 re-running this DAG alone will not rebuild it: `dbt_refresh_prematch` runs
-`dbt build --select int__er_prematch_candidacy_stages int__er_prematch_elected_officials int__er_prematch_election_stages`
-with no `+` prefix, so it deliberately rebuilds only those three models, not their upstreams. Fix and
+`dbt build --select int__er_prematch_candidacy_stages int__er_prematch_elected_officials int__er_prematch_election_stages int__er_prematch_people int__civics_person_links`
+with no `+` prefix, so it deliberately rebuilds only those models, not their upstreams. Fix and
 build the upstream layer separately (a manual `dbt build --select <upstream>+` or its own job) before
 re-triggering `matcha_er`.
 

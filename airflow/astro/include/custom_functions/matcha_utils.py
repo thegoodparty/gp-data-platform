@@ -61,6 +61,9 @@ class EntitySpec:
     prematch_model: str
     cluster_gate: TableGate
     pairwise_gate: TableGate
+    # dbt model of deterministic pairs the lane clusters with the scored ones,
+    # passed to matcha as --links. Only the person entity has one.
+    links_model: str | None = None
 
     @property
     def cluster_table(self) -> str:
@@ -75,9 +78,9 @@ _CLUSTER_NOT_NULL = ("cluster_id", "unique_id")
 _PAIRWISE_NOT_NULL = ("unique_id_l", "unique_id_r")
 
 # Cold-start floors sit at roughly 70% of the live counts observed when this
-# was written (563k candidacy, 554k elected official, 731k election stage) —
-# low enough not to trip on ordinary growth, high enough to catch a run that
-# produced almost nothing.
+# was written (563k candidacy, 554k elected official, 731k election stage,
+# 1.07M person) — low enough not to trip on ordinary growth, high enough to
+# catch a run that produced almost nothing.
 ENTITIES: tuple[EntitySpec, ...] = (
     EntitySpec(
         entity_type="candidacy_stage",
@@ -128,6 +131,27 @@ ENTITIES: tuple[EntitySpec, ...] = (
             id_column="unique_id",
             min_id_overlap=0.8,
             expected_sources=("ballotready", "ddhq", "techspeed"),
+        ),
+        pairwise_gate=TableGate(
+            cold_start_floor=1_000,
+            min_prior_ratio=0.5,
+            not_null_columns=_PAIRWISE_NOT_NULL,
+        ),
+    ),
+    EntitySpec(
+        entity_type="person",
+        table_stem="people",
+        prematch_model="int__er_prematch_people",
+        links_model="int__civics_person_links",
+        cluster_gate=TableGate(
+            cold_start_floor=750_000,
+            min_prior_ratio=0.8,
+            # identity_id is the component over the links alone; the mint
+            # reads both labels.
+            not_null_columns=(*_CLUSTER_NOT_NULL, "identity_id"),
+            id_column="unique_id",
+            min_id_overlap=0.8,
+            expected_sources=("ballotready", "gp_api", "hubspot", "techspeed", "techspeed_officeholder"),
         ),
         pairwise_gate=TableGate(
             cold_start_floor=1_000,
