@@ -7,7 +7,7 @@ from splink import block_on
 from splink.comparison_library import CustomComparison
 
 from scripts.constants import PERSON_POST_PREDICTION_FILTER
-from scripts.entity_config import EntityConfig, GraphInputs
+from scripts.entity_config import EntityConfig
 
 PERSON_CONFIG = EntityConfig(
     entity_type="person",
@@ -95,14 +95,11 @@ PERSON_CONFIG = EntityConfig(
     link_type="link_and_dedupe",
     date_columns=["birth_date"],
     clustered_output_name="clustered_people.csv",
-    groups_output_name="person_groups.csv",
-    # Canonical groups close over dbt's deterministic links and admit Splink
-    # pairs under the clique and BallotReady cannot-link rules; see
-    # person_clustering.py. The Splink clusters above are audit only.
-    graph_inputs=GraphInputs(
-        links_table="goodparty_data_catalog.dbt.int__civics_person_links",
-        nodes_table="goodparty_data_catalog.dbt.int__civics_person_nodes",
-    ),
+    # dbt's native-identifier and candidacy-cluster pairs cluster with the
+    # scored pairs as certain matches; BallotReady's person id is the one clean
+    # identifier, so no cluster may hold two. See pipeline.cluster_with_links.
+    links_table="goodparty_data_catalog.dbt.int__civics_person_links",
+    cannot_link_column="br_candidate_id",
     post_prediction_filters=[PERSON_POST_PREDICTION_FILTER],
     audit_display_columns=[
         "source_name",

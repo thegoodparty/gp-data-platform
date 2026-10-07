@@ -185,18 +185,15 @@ EO_POST_PREDICTION_FILTER = f"""
 # pairs with the same last name and a different first name, and the audited
 # sample was dominated by genuine two-person households.
 #
-# Two distinct BallotReady people are never linked directly, BR being the one
-# source with a clean person id. This is a precision heuristic on direct pairs,
-# not an invariant: a pair filter cannot stop BR1-X-BR2 chaining transitively,
-# and downstream the deterministic graph can still put two BR ids in one person
-# where it has the evidence. The dbt test on the resulting groups warns rather
-# than fails for that reason.
-# Two BallotReady people are a cannot-link. The name clause is the measured
-# false-positive class: a pair with no shared contact key whose first names
-# agree only because the nickname alias arrays intersect (antonio/antoinette,
-# dennis/denise, nancy/hannah). Six of fifty sampled were wrong there against
-# none elsewhere; abbreviations (ben/benjamin) were right every time and pass
-# via contains().
+# Two BallotReady people are a cannot-link. This refuses the direct pair;
+# pipeline.cluster_with_links refuses the transitive case (BR1-X-BR2), which
+# a pair filter cannot see.
+#
+# The name clause is the measured false-positive class: a pair with no shared
+# contact key whose first names agree only because the nickname alias arrays
+# intersect (antonio/antoinette, dennis/denise, nancy/hannah). Six of fifty
+# sampled were wrong there against none elsewhere; abbreviations
+# (ben/benjamin) were right every time and pass via contains().
 PERSON_POST_PREDICTION_FILTER = """
     gamma_first_name > 0
       AND NOT (

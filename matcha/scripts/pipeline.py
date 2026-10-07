@@ -15,6 +15,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 from splink import DuckDBAPI, Linker, SettingsCreator, block_on
+from splink.clustering import cluster_pairwise_predictions_at_threshold
 
 from scripts.entity_config import EntityConfig
 
@@ -189,39 +190,75 @@ def _check_gamma_columns(filters: list[str], available_cols: set[str]) -> None:
             )
 
 
-def filter_pairwise(pairwise_df: pd.DataFrame, config: EntityConfig) -> pd.DataFrame:
-    """Apply the config's post-prediction filters to an already-scored pairwise
-    frame (a published vintage), so a vintage can be re-clustered under the
-    current filters without re-scoring."""
-    if not config.post_prediction_filters or pairwise_df.empty:
-        return pairwise_df
-    _check_gamma_columns(config.post_prediction_filters, set(pairwise_df.columns))
-    # Published vintages and Databricks reads arrive all-string; the filters
-    # compare gammas and scores numerically.
-    typed = pairwise_df.copy()
-    for col in typed.columns:
-        if col.startswith("gamma_") or col in ("match_probability", "match_weight"):
-            typed[col] = pd.to_numeric(typed[col], errors="coerce")
-    con = duckdb.connect()
-    try:
-        con.register("pairwise", typed)
-        kept = con.execute(
-            f"SELECT * FROM pairwise WHERE {_keep_expression(config.post_prediction_filters)}"
-        ).fetchdf()
-    finally:
-        con.close()
-    if (removed := len(pairwise_df) - len(kept)) > 0:
-        print(f"Post-prediction filters: removed {removed:,} pairs")
-    return kept
+def dissolve_cannot_links(clustered: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Enforce that no cluster holds two distinct values of `column`.
+
+    An identity that would is dissolved into singletons, and a cluster that
+    would falls back to its identities. Nulls do not count as a value.
+    """
+    df = clustered.copy()
+    per_identity = df.groupby("identity_id")[column].nunique()
+    df["identity_id"] = df["identity_id"].where(df["identity_id"].map(per_identity) <= 1, df["unique_id"])
+    per_cluster = df.groupby("cluster_id")[column].nunique()
+    df["cluster_id"] = df["cluster_id"].where(df["cluster_id"].map(per_cluster) <= 1, df["identity_id"])
+    moved = (df["cluster_id"] != clustered["cluster_id"]) | (df["identity_id"] != clustered["identity_id"])
+    if dissolved := int(moved.sum()):
+        print(f"Cannot-link on {column}: {dissolved:,} records left a cluster or identity holding two values")
+    return df
+
+
+def cluster_with_links(
+    db_api: DuckDBAPI,
+    nodes_df: pd.DataFrame,
+    pairwise_df: pd.DataFrame,
+    links_df: pd.DataFrame,
+    config: EntityConfig,
+) -> pd.DataFrame:
+    """Cluster the scored pairs together with dbt's deterministic links.
+
+    Links are certain matches (probability 1). Connected components over them
+    alone give each record its identity_id; over links plus scored pairs at
+    the cluster threshold, its cluster_id. Plain components chain through
+    similarity, which on the person entity fused two BallotReady people in
+    6,650 components, so the cannot-link column is enforced afterwards.
+    """
+    assert config.cannot_link_column is not None
+    links = links_df[["unique_id_l", "unique_id_r"]].drop_duplicates().assign(match_probability=1.0)
+    edges = links
+    if len(pairwise_df):
+        edges = pd.concat(
+            [links, pairwise_df[["unique_id_l", "unique_id_r", "match_probability"]]], ignore_index=True
+        )
+    nodes = nodes_df.reset_index(drop=True)
+
+    def components(edges: pd.DataFrame) -> pd.Series:
+        clusters = cluster_pairwise_predictions_at_threshold(
+            nodes[["unique_id"]],
+            edges,
+            db_api,
+            "unique_id",
+            threshold_match_probability=config.cluster_threshold,
+        ).as_pandas_dataframe()
+        return nodes["unique_id"].map(clusters.set_index("unique_id")["cluster_id"])
+
+    out = nodes.copy()
+    out["identity_id"] = components(links) if len(links) else out["unique_id"]
+    out["cluster_id"] = components(edges) if len(edges) else out["unique_id"]
+    return dissolve_cannot_links(out, config.cannot_link_column)
 
 
 def predict_and_cluster(
-    linker: Linker, config: EntityConfig
+    linker: Linker,
+    config: EntityConfig,
+    nodes_df: pd.DataFrame | None = None,
+    links_df: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Predict matches, apply post-prediction filters, cluster.
 
-    Returns the pairwise, clustered, and filtered-out frames. The caller writes
-    them; nothing here touches the filesystem.
+    With links, clustering runs over the links and the scored pairs together
+    (see cluster_with_links); otherwise it is Splink's own clustering of the
+    scored pairs. Returns the pairwise, clustered, and filtered-out frames. The
+    caller writes them; nothing here touches the filesystem.
     """
     predictions = linker.inference.predict(threshold_match_probability=config.predict_threshold)
 
@@ -229,7 +266,8 @@ def predict_and_cluster(
     pre_count = linker._db_api._con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
     print(f"Pairwise predictions: {pre_count:,} pairs above {config.predict_threshold}")
 
-    if pre_count == 0:
+    # With links the clusters are well defined even with nothing scored.
+    if pre_count == 0 and links_df is None:
         print("WARNING: No predictions found.")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
@@ -260,13 +298,17 @@ def predict_and_cluster(
 
     pairwise_df = predictions.as_pandas_dataframe()
 
-    clusters = linker.clustering.cluster_pairwise_predictions_at_threshold(
-        predictions, threshold_match_probability=config.cluster_threshold
-    )
-    clustered_df = clusters.as_pandas_dataframe()
+    if links_df is not None:
+        assert nodes_df is not None
+        clustered_df = cluster_with_links(linker._db_api, nodes_df, pairwise_df, links_df, config)
+    else:
+        clusters = linker.clustering.cluster_pairwise_predictions_at_threshold(
+            predictions, threshold_match_probability=config.cluster_threshold
+        )
+        clustered_df = clusters.as_pandas_dataframe()
 
     n_matched = (clustered_df.groupby("cluster_id").size() > 1).sum()
-    n_cross = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
+    n_cross = (clustered_df.groupby("cluster_id")["source_name"].nunique() > 1).sum()
     print(f"Matched clusters: {n_matched:,}  |  Cross-source: {n_cross:,}")
     if (within := n_matched - n_cross) > 0:
         prefix = "" if config.expects_within_source_duplicates else "WARNING: "
@@ -344,13 +386,23 @@ def save_results(
     print(f"\nResults saved to {output_dir}/")
 
 
-def run(input_df: pd.DataFrame, output_dir: Path, config: EntityConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run(
+    input_df: pd.DataFrame,
+    output_dir: Path,
+    config: EntityConfig,
+    links_df: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Prepare data, train, predict, cluster, save. Returns (pairwise_df, clustered_df)."""
+    if config.links_table is not None and links_df is None:
+        raise ValueError(f"{config.entity_type} clusters over deterministic links; pass links_df")
     output_dir.mkdir(parents=True, exist_ok=True)
     source_dfs = load_and_prepare(input_df, config)
     settings = build_settings(config)
     linker = Linker(source_dfs, settings, _duckdb_api())
     train_model(linker, config)
-    pairwise_df, clustered_df, filtered_df = predict_and_cluster(linker, config)
+    nodes_df = pd.concat(source_dfs, ignore_index=True) if links_df is not None else None
+    pairwise_df, clustered_df, filtered_df = predict_and_cluster(
+        linker, config, nodes_df=nodes_df, links_df=links_df
+    )
     save_results(linker, pairwise_df, clustered_df, filtered_df, output_dir, config)
     return pairwise_df, clustered_df

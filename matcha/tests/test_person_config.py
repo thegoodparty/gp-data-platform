@@ -22,6 +22,11 @@ def test_person_is_registered():
     assert get_config("person") is PERSON_CONFIG
 
 
+def test_person_clusters_over_links_with_the_ballotready_cannot_link():
+    assert PERSON_CONFIG.links_table == "goodparty_data_catalog.dbt.int__civics_person_links"
+    assert PERSON_CONFIG.cannot_link_column == "br_candidate_id"
+
+
 def test_post_filter_gammas_all_exist():
     """Every gamma_<col> in the filter must name a real comparison.
 

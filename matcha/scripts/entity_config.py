@@ -8,16 +8,6 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class GraphInputs:
-    """Deterministic graph an entity clusters over instead of Splink's connected
-    components: dbt's link pairs (native identifiers and candidacy clusters) and
-    the record universe they run over."""
-
-    links_table: str
-    nodes_table: str
-
-
-@dataclass(frozen=True)
 class EntityConfig:
     """Complete Splink configuration for one entity type."""
 
@@ -51,12 +41,14 @@ class EntityConfig:
 
     # Output
     clustered_output_name: str = "clustered_records.csv"
-    groups_output_name: str = "groups.csv"
 
-    # When set, the entity's canonical groups come from
-    # person_clustering.cluster_people over these inputs. Splink's own clusters
-    # are still written, for audit.
-    graph_inputs: GraphInputs | None = None
+    # Deterministic pairs (unique_id_l, unique_id_r) dbt derives from native
+    # identifiers, clustered with the scored pairs as certain matches. The
+    # closure over them alone is each record's identity_id.
+    links_table: str | None = None
+    # No cluster may hold two distinct values of this column. One that would
+    # falls back to its identities, and an identity that would to singletons.
+    cannot_link_column: str | None = None
 
     # Audit
     audit_display_columns: list[str] = field(default_factory=list)

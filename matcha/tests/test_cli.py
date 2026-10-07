@@ -26,7 +26,7 @@ from scripts.serialization import json_fallback
 DUMMY_CSV = Path(__file__).parent / "dummy_data.csv"
 
 
-def _fake_run(input_df, output_dir, config):
+def _fake_run(input_df, output_dir, config, links_df=None):
     """Return minimal pairwise + clustered DataFrames without running Splink."""
     pairwise = pd.DataFrame(
         {
