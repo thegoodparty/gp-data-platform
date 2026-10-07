@@ -7,12 +7,14 @@ and README do not already make obvious.
 ## What this is
 
 Splink-based probabilistic entity resolution for cross-source record linkage
-(candidacy stages, elected officials, election stages). The pipeline is
-config-driven: each entity type's comparisons, blocking rules, EM training
+(candidacy stages, elected officials, election stages, people). The pipeline
+is config-driven: each entity type's comparisons, blocking rules, EM training
 blocks, and post-prediction filters live in a frozen `EntityConfig` in
 `scripts/configs/`. Pipeline functions in `scripts/pipeline.py` take a `config`
 parameter, so there is no hardcoded entity logic. The matcher reads a prematch
-table (CSV or Databricks) and writes clustered + pairwise output.
+table (CSV or Databricks) and writes clustered + pairwise output. The person
+lane also reads dbt's deterministic links (`--links`) and clusters over them
+together with the scored pairs; see `pipeline.cluster_with_links`.
 
 ## ai-rules submodule
 

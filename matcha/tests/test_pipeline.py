@@ -14,6 +14,7 @@ from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
 from scripts.configs.person import PERSON_CONFIG
 from scripts.pipeline import (
     build_settings,
+    dissolve_cannot_links,
     load_and_prepare,
     predict_and_cluster,
     run,
@@ -193,7 +194,7 @@ def test_eo_pipeline_smoke(tmp_path):
     assert (tmp_path / "clustered_elected_officials.csv").exists()
 
     # At least 1 cross-source cluster (proves matching worked)
-    multi_source = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
+    multi_source = (clustered_df.groupby("cluster_id")["source_name"].nunique() > 1).sum()
     assert multi_source >= 1, f"Expected cross-source clusters, got {multi_source}"
 
     # EO-specific retained columns present in clustered output
@@ -683,7 +684,7 @@ def test_save_results_writes_expected_files(tmp_path):
     assert (tmp_path / CANDIDACY_CONFIG.clustered_output_name).exists()
 
 
-# ── Deterministic pregroups ──
+# ── Link types ──
 
 
 def test_build_settings_leaves_other_entities_link_only():
@@ -696,13 +697,31 @@ def test_build_settings_leaves_other_entities_link_only():
 # ── Person E2E smoke tests ──
 
 
+_PERSON_FIXTURE = Path(__file__).parent / "dummy_data_people.csv"
+
+
 @pytest.fixture(scope="module")
 def person_results(tmp_path_factory):
-    """One person pipeline run shared by the smoke tests below."""
-    df = pd.read_csv(Path(__file__).parent / "dummy_data_people.csv", dtype=str)
+    """One person pipeline run with no deterministic links, shared by the
+    smoke tests below: every record is its own identity, so the clusters are
+    Splink's own plus the cannot-link."""
+    df = pd.read_csv(_PERSON_FIXTURE, dtype=str)
     out = tmp_path_factory.mktemp("person")
-    pairwise_df, clustered_df = run(input_df=df, output_dir=out, config=PERSON_CONFIG)
+    links = pd.DataFrame(columns=["unique_id_l", "unique_id_r"], dtype=str)
+    pairwise_df, clustered_df = run(input_df=df, output_dir=out, config=PERSON_CONFIG, links_df=links)
     return pairwise_df, clustered_df, out
+
+
+@pytest.fixture(scope="module")
+def person_linked_results(tmp_path_factory):
+    """The same run with dummy_links_people.csv: a native link Splink could
+    never score, and two links that chain two BallotReady people through the
+    HubSpot pair Splink dedupes."""
+    df = pd.read_csv(_PERSON_FIXTURE, dtype=str)
+    links = pd.read_csv(Path(__file__).parent / "dummy_links_people.csv", dtype=str)
+    out = tmp_path_factory.mktemp("person_linked")
+    _, clustered_df = run(input_df=df, output_dir=out, config=PERSON_CONFIG, links_df=links)
+    return clustered_df
 
 
 def _pair_rows(pairwise_df: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
@@ -714,8 +733,57 @@ def test_person_pipeline_smoke(person_results):
 
     assert len(pairwise_df) > 0
     assert (out / "clustered_people.csv").exists()
-    for col in ("source_name", "pregroup_id", "suffix_token", "br_candidate_id"):
-        assert col in clustered_df.columns, f"Missing retained column: {col}"
+    for col in ("source_name", "suffix_token", "br_candidate_id", "identity_id", "cluster_id"):
+        assert col in clustered_df.columns, f"Missing column: {col}"
+    assert (clustered_df["identity_id"] == clustered_df["unique_id"]).all()
+
+
+def test_person_pipeline_requires_links():
+    with pytest.raises(ValueError, match="links"):
+        run(
+            input_df=pd.read_csv(_PERSON_FIXTURE, dtype=str),
+            output_dir=Path("/nonexistent"),
+            config=PERSON_CONFIG,
+        )
+
+
+def test_links_merge_what_splink_cannot_score(person_linked_results):
+    """A native identifier joins two records whose fields disagree."""
+    by_id = person_linked_results.set_index("unique_id")
+    assert by_id.loc["gp_api|40", "identity_id"] == by_id.loc["hubspot|40", "identity_id"]
+    assert by_id.loc["gp_api|40", "cluster_id"] == by_id.loc["hubspot|40", "cluster_id"]
+
+
+def test_a_cluster_reaching_two_ballotready_people_falls_back_to_identities(person_linked_results):
+    """Splink dedupes hubspot|2 and hubspot|3; the links tie each to a different
+    BallotReady person. The merged cluster would hold two, so it dissolves and
+    each HubSpot contact stays with the BallotReady person its link names."""
+    by_id = person_linked_results.set_index("unique_id")
+    assert by_id.loc["hubspot|2", "identity_id"] == by_id.loc["ballotready|30", "identity_id"]
+    assert by_id.loc["hubspot|3", "identity_id"] == by_id.loc["ballotready|31", "identity_id"]
+    assert by_id.loc["hubspot|2", "cluster_id"] != by_id.loc["hubspot|3", "cluster_id"]
+    br_per_cluster = person_linked_results.groupby("cluster_id")["br_candidate_id"].nunique()
+    assert br_per_cluster.max() == 1
+
+
+def test_dissolve_cannot_links_unit():
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "b", "c", "d", "e"],
+            "identity_id": ["a", "a", "c", "c", "e"],
+            "cluster_id": ["a", "a", "a", "a", "e"],
+            "br": ["1", None, "2", None, "3"],
+        }
+    )
+    out = dissolve_cannot_links(df, "br").set_index("unique_id")
+    # identities hold one value each, so they survive; the cluster held two
+    assert out["identity_id"].tolist() == ["a", "a", "c", "c", "e"]
+    assert out["cluster_id"].tolist() == ["a", "a", "c", "c", "e"]
+
+    df.loc[df["unique_id"] == "b", "br"] = "9"  # identity a now holds two
+    out = dissolve_cannot_links(df, "br").set_index("unique_id")
+    assert out["identity_id"].tolist() == ["a", "b", "c", "c", "e"]
+    assert out["cluster_id"].tolist() == ["a", "b", "c", "c", "e"]
 
 
 def test_person_pipeline_dedupes_within_hubspot(person_results):

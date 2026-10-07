@@ -112,20 +112,36 @@ with
         where ddhq_candidate_id is not null and ddhq_race_id is not null
     ),
 
-    person_ids as (
-        select record_key, gp_person_id
-        from {{ ref("int__civics_person_canonical_ids") }}
+    -- DDHQ carries no person record, so a row reaches a person only through
+    -- its candidacy cluster: the BallotReady co-member's person first, else
+    -- another member's. Clusters spanning two BR people have no members in
+    -- the lookup, so those rows self-mint like unclustered ones.
+    cluster_person as (
+        select cc.source_id, p.gp_person_id
+        from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cc
+        inner join
+            {{ ref("int__civics_candidacy_cluster_members") }} as m using (cluster_id)
+        inner join
+            {{ ref("int__civics_person_canonical_ids") }} as p
+            on p.record_key = m.record_key
+        where cc.source_name = 'ddhq'
+        qualify
+            row_number() over (
+                partition by cc.source_id
+                order by m.record_key like 'ballotready|%' desc, p.gp_person_id
+            )
+            = 1
     ),
 
     with_ids as (
         select
             -- === Computed IDs (canonical if Splink-matched, else self-mint) ===
-            -- gp_candidate_id is the person id. Records absent from ER (all
-            -- pre-2026 rows: the prematch is 2026-gated) self-mint from
-            -- candidate_id alone -- E7's within-source person key -- so one
+            -- gp_candidate_id is the person id. Rows outside a resolvable
+            -- cluster (all pre-2026 rows, the prematch being 2026-gated, and
+            -- DDHQ-only candidacies) self-mint from candidate_id alone, so one
             -- person's multi-race rows share an id. Accepts DDHQ's ~1.5%
-            -- candidate_id reuse across people without E7's conflict guard;
-            -- the all-time ER expansion shrinks this population.
+            -- candidate_id reuse across people; the all-time ER expansion
+            -- shrinks this population.
             coalesce(
                 p.gp_person_id,
                 {{
@@ -277,12 +293,9 @@ with
             on cast(s.candidate_id as bigint) = xw.ddhq_candidate_id
             and cast(s.ddhq_race_id as bigint) = xw.ddhq_race_id
         left join
-            person_ids as p
-            on 'ddhq|'
-            || cast(s.candidate_id as string)
-            || '_'
-            || cast(s.ddhq_race_id as string)
-            = p.record_key
+            cluster_person as p
+            on cast(s.candidate_id as string) || '_' || cast(s.ddhq_race_id as string)
+            = p.source_id
     ),
 
     -- Separate select: gp_candidacy_id is a window result above, so the PK

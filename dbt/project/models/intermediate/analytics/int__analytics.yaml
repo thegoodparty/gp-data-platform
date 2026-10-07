@@ -61,13 +61,6 @@ models:
           account of the remainder.
         data_tests:
           - not_null
-      - name: had_conflict
-        description: >
-          The person group was touched by a within-source vendor-key edge that
-          spanned more than one BallotReady person, so its membership is less
-          certain. The row is kept; ambiguity is a column, never a filter.
-        data_tests:
-          - not_null
       - name: hubspot_contact_id
         description: >
           The HubSpot contact for this user, resolved through the person graph.

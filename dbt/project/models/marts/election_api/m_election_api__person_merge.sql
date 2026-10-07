@@ -58,7 +58,12 @@ select
     -- build timestamp: the table is swap-replaced wholesale each run
     current_timestamp() as created_at
 from retired
-inner join current_ids as survivor on survivor.record_key = retired.minting_record_key
+-- TechSpeed records minted at stage grain before the person universe moved
+-- to candidate-code grain; the stripped key is the record that carries the
+-- id today.
+inner join
+    current_ids as survivor
+    on survivor.record_key = {{ strip_ts_stage_suffix("retired.minting_record_key") }}
 -- A survivor missing from Person would redirect to a 404, so the row waits
 -- until the survivor is published.
 inner join

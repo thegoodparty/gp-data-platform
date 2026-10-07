@@ -51,8 +51,7 @@ with
             hubspot_key_source,
             stripe_customer_id,
             account_count,
-            is_primary_account,
-            had_conflict
+            is_primary_account
         from {{ ref("int__user_resolved_keys") }}
     ),
 
@@ -83,7 +82,6 @@ select
     k.stripe_customer_id,
     k.account_count,
     k.is_primary_account,
-    k.had_conflict,
 
     u.email,
     u.first_name,

@@ -22,6 +22,11 @@ def test_person_is_registered():
     assert get_config("person") is PERSON_CONFIG
 
 
+def test_person_clusters_over_links_with_the_ballotready_cannot_link():
+    assert PERSON_CONFIG.links_table == "goodparty_data_catalog.dbt.int__civics_person_links"
+    assert PERSON_CONFIG.cannot_link_column == "br_candidate_id"
+
+
 def test_post_filter_gammas_all_exist():
     """Every gamma_<col> in the filter must name a real comparison.
 
@@ -44,7 +49,7 @@ def test_no_unbounded_blocking_rule():
     # Word boundaries, not substring: "first_name" occurs inside
     # "first_name_aliases", so a plain `in` passes any first_name_* column
     # without ever checking that it narrows anything.
-    narrowing = ("email", "phone", "first_name", "first_name_aliases", "birth_date", "pregroup_id")
+    narrowing = ("email", "phone", "first_name", "first_name_aliases", "birth_date")
     for rule in PERSON_CONFIG.blocking_rules_for_prediction:
         sql = _rule_sql(rule)
         assert any(

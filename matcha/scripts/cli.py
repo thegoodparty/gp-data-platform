@@ -91,6 +91,16 @@ def cli():
     help="Path to prematch CSV file or Databricks FQN (catalog.schema.table).",
 )
 @click.option(
+    "--links",
+    "links_value",
+    default=None,
+    type=str,
+    help=(
+        "Deterministic pairs (unique_id_l, unique_id_r), CSV path or Databricks FQN. "
+        "Defaults to the config's links table; only entities that define one accept it."
+    ),
+)
+@click.option(
     "--output-dir",
     "output_dir",
     default=None,
@@ -126,6 +136,7 @@ def cli():
 def match(
     entity_type: str,
     input_value: str,
+    links_value: str | None,
     output_dir: Path | None,
     output_cluster_table: str | None,
     output_pairwise_table: str | None,
@@ -134,12 +145,19 @@ def match(
 ) -> None:
     """Run Splink entity resolution on prematch data."""
     config = get_config(entity_type)
+    if links_value and config.links_table is None:
+        raise click.BadParameter(
+            f"--links applies only to entities that cluster over links, not {entity_type}"
+        )
 
     if output_dir is None:
         output_dir = _DEFAULT_RESULTS / config.entity_type
 
     input_df = _load_input(input_value)
-    pairwise_df, clustered_df = run(input_df=input_df, output_dir=output_dir, config=config)
+    links_df = _load_input(links_value or config.links_table) if config.links_table else None
+    pairwise_df, clustered_df = run(
+        input_df=input_df, output_dir=output_dir, config=config, links_df=links_df
+    )
 
     if pairwise_df.empty and clustered_df.empty:
         raise click.ClickException(

@@ -1562,19 +1562,21 @@ sources:
           unmatched records.
 
       - name: clustered_people
+        # Jinja so a dated vintage can be built and audited in dev before the
+        # matcha_er DAG swaps it live:
+        #   dbt build --vars '{clustered_people_identifier: clustered_people_20261007}'
+        identifier: "{{ var('clustered_people_identifier', 'clustered_people') }}"
         description: >
-          Person-level cluster assignments (threshold: 0.95 match probability).
-          One row per person record from BallotReady, gp_api, HubSpot or
-          TechSpeed. Published for audit only: canonical person identity is
-          resolved in int__civics_person_groups, which unions these edges with
-          the deterministic graph rather than adopting Splink's clustering.
+          Person clusters from matcha's person lane. One row per prematch
+          record with cluster_id (connected components over dbt's
+          deterministic links and the scored pairs at 0.95) and identity_id
+          (the components over the links alone); no cluster holds two
+          BallotReady people. Canonical person identity.
 
       - name: pairwise_people
         description: >
           Scored person pairs from Splink prediction (threshold: 0.01 match
-          probability), after the post-prediction filters. This, not the
-          clustered table, is what the person graph consumes, so that an edge
-          can be dropped on its own evidence before propagation.
+          probability), after the post-prediction filters. Audit input.
 
       - name: pairwise_candidacy_stages
         description: >

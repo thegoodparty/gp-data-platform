@@ -22,11 +22,10 @@ with
         where source_name = 'gp_api'
     ),
 
-    -- Restricted to accounts this model actually has a row for. The node model
-    -- deliberately seeds a label for a gp-api user id absent from the staging
-    -- user table, so the graph's gp-api membership can be a superset of the
-    -- spine. Ranking over the superset would hand a person zero primaries
-    -- whenever their earliest account is one of those absent ids.
+    -- Restricted to accounts this model actually has a row for. The person
+    -- universe holds every gp-api user while the users mart may not, so
+    -- ranking over the graph could hand a person zero primaries whenever their
+    -- earliest account is one the spine lacks.
     spine_members as (
         select m.gp_person_id, m.user_id, m.first_seen_at
         from gp_api_members as m
@@ -46,14 +45,6 @@ with
             )
             = 1 as is_primary_account
         from spine_members
-    ),
-
-    groups as (
-        select
-            cast(substring_index(record_key, '|', -1) as bigint) as user_id,
-            had_conflict
-        from {{ ref("int__civics_person_groups") }}
-        where source_name = 'gp_api'
     ),
 
     -- Contacts that still exist. The user row's own hubspot_contact_id is
@@ -117,7 +108,6 @@ select
     u.gp_person_id,
     coalesce(r.account_count, 1) as account_count,
     coalesce(r.is_primary_account, true) as is_primary_account,
-    coalesce(g.had_conflict, false) as had_conflict,
     case
         when oc.hs_contact_id is not null
         then 'own_live_id'
@@ -149,7 +139,6 @@ select
     cast(null as bigint) as team_member_count
 from users as u
 left join account_ranks as r using (user_id)
-left join groups as g using (user_id)
 left join own_contact as oc using (user_id)
 left join group_contacts as gc on gc.gp_person_id = u.gp_person_id
 left join stripe as s using (user_id)
