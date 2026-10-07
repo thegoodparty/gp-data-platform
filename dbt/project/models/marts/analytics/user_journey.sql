@@ -88,6 +88,10 @@ select
     u.email,
     u.first_name,
     u.last_name,
+    nullif(
+        concat_ws(' ', nullif(trim(u.first_name), ''), nullif(trim(u.last_name), '')),
+        ''
+    ) as full_name,
     u.phone,
     u.zip,
     u.registered_at,
