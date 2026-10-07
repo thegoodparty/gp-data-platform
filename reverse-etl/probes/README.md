@@ -65,3 +65,20 @@ is not automated here, because it needs a throwaway contact workflow built in th
 one rather than enabling an inherited workflow: the sandbox carries 50+ contact workflows cloned
 from production, disabled, and the set includes SMS sends and Slack notifications that could fire
 for real.
+
+## Merging reviewed pairs
+
+`merge_pairs.py` is not a check. It merges contact pairs named on the command line, taken from
+`mart_sales_reverse_etl.hubspot_contact_merge_candidates` as `primary_hs_contact_id:hs_contact_id`,
+and compares the survivor with what the primary-wins rule predicts. It is for the handful of test
+merges that confirm the ranking before a bulk run.
+
+```bash
+uv run python -m probes.merge_pairs --pair 111:222                # dry run: reads, checks, predicts
+RETL_PROBE_EXPECTED_PORTAL_ID=<id> uv run python -m probes.merge_pairs --pair 111:222 --execute
+```
+
+A dry run writes nothing. It skips a pair when either id no longer answers as itself, which is what
+a contact already merged away does. A merge cannot be undone, and the same portal guard applies,
+so a production run needs that portal named deliberately. Check 12 settles the precedence rule
+itself on throwaway sandbox contacts.

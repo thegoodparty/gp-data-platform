@@ -349,3 +349,4 @@ task_status_5,Task Status 5,enumeration,win_campaign_plan,generated,task_status_
 task_type,Task Type,enumeration,win_campaign_plan,generated,task_type,string,348,,,,
 connected_with_rep,Connected with rep,enumeration,contactinformation,generated,connected_with_rep,string,349,,,,
 viable_state_leg,Viable State Leg,bool,contactinformation,generated,is_viable_state_leg,boolean,350,,,,
+hs_merged_object_ids,Merged Contact IDs,enumeration,contactinformation,generated,merged_object_ids,string,351,The list of Contact record IDs that have been merged into this Contact.,,,

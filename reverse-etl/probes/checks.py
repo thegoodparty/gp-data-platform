@@ -528,6 +528,70 @@ def check_11_merge_record_id_stability(client: SandboxClient) -> Finding:
     )
 
 
+# Set on both, set on the primary only, set on the secondary only. The merge-candidate
+# ranking assumes the first two keep the primary's value and the third is filled in.
+PRECEDENCE_PRIMARY = {"jobtitle": "primary-title", "company": "primary-company", "lifecyclestage": "lead"}
+PRECEDENCE_SECONDARY = {"jobtitle": "secondary-title", "city": "secondary-city", "lifecyclestage": "customer"}
+
+
+def check_12_merge_property_precedence(client: SandboxClient) -> Finding:
+    """Whose value does a merge keep: the primary's when both are set, the secondary's
+    when only it is set, and the furthest lifecycle stage either way?
+    """
+    key_a, key_b = client.tag("prec-a"), client.tag("prec-b")
+    id_a = client.create_contact({**PRECEDENCE_PRIMARY, "email": f"{key_a}@example.com"}, label="prec-a")
+    # Created second, so a most-recent-value rule would pick the secondary's jobtitle.
+    settle()
+    id_b = client.create_contact({**PRECEDENCE_SECONDARY, "email": f"{key_b}@example.com"}, label="prec-b")
+    settle()
+
+    merge = client.request("POST", V3_MERGE_PATH, json={"primaryObjectId": id_a, "objectIdToMerge": id_b})
+    settle()
+    survivor_id = str(merge.body.get("id") or "")
+    if survivor_id and survivor_id not in (id_a, id_b):
+        client.created_contact_ids.append(survivor_id)
+
+    props = ["jobtitle", "company", "city", "lifecyclestage", "email", "hs_additional_emails"]
+    survivor = client.get_contact(survivor_id, props) if survivor_id else {}
+    observed = {p: survivor.get(p) for p in props}
+    expected = {
+        "jobtitle": PRECEDENCE_PRIMARY["jobtitle"],
+        "company": PRECEDENCE_PRIMARY["company"],
+        "city": PRECEDENCE_SECONDARY["city"],
+        "lifecyclestage": "customer",
+        "email": f"{key_a}@example.com",
+    }
+    mismatched = {
+        p: {"expected": v, "observed": observed.get(p)} for p, v in expected.items() if observed.get(p) != v
+    }
+    return Finding(
+        check=12,
+        title="Merge property precedence",
+        verdict=(
+            f"merge status {merge.status_code}; "
+            + (
+                "every property matched the primary-wins rule"
+                if not mismatched
+                else f"mismatched: {sorted(mismatched)}"
+            )
+        ),
+        implication=(
+            "hubspot_contact_merge_candidates ranks contacts on the premise that the primary's "
+            "set values survive and the secondary only fills blanks. A mismatch on jobtitle means "
+            "the most recent value wins instead, and the ranking should lead on recency."
+        ),
+        evidence={
+            "primary_id": id_a,
+            "secondary_id": id_b,
+            "survivor_id": survivor_id,
+            "survivor_is_new_record": bool(survivor_id) and survivor_id not in (id_a, id_b),
+            "observed": observed,
+            "mismatched": mismatched,
+            "merge_error": merge.body.get("message") if merge.status_code >= 300 else None,
+        },
+    )
+
+
 CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     1: check_01_merged_contact_ids,
     2: check_02_omitted_properties_untouched,
@@ -539,6 +603,7 @@ CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     8: check_08_email_collision,
     10: check_10_dated_api_version,
     11: check_11_merge_record_id_stability,
+    12: check_12_merge_property_precedence,
 }
 
 
