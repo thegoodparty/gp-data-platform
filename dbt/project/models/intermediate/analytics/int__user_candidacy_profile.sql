@@ -182,7 +182,15 @@ select
     end as candidacy_normalized_position_name,
     case when a.has_candidacy then ac.campaign_state end as candidacy_state,
     case when a.has_candidacy then ac.campaign_party end as candidacy_party,
-    case when a.has_candidacy then ac.partisan_type end as candidacy_partisan_type,
+    -- The raw party varies in casing and suffix by signup flow, which the raw
+    -- column keeps as a source tell. Grouped through the same macro the civics
+    -- candidacy models apply to this field, so the two agree.
+    case
+        when a.has_candidacy then {{ parse_party_affiliation("ac.campaign_party") }}
+    end as candidacy_party_normalized,
+    case
+        when a.has_candidacy then nullif(trim(ac.partisan_type), '')
+    end as candidacy_partisan_type,
     a.election_date as candidacy_election_date,
     case when a.has_candidacy then ac.election_level end as candidacy_election_level,
     f.filing_deadline as candidacy_filing_deadline,
@@ -190,6 +198,56 @@ select
         when a.has_candidacy then ac.ballotready_position_id
     end as candidacy_position_id,
     cc.office_level as candidacy_office_level,
+    -- The civics value arrives in several casings plus a few labels that are
+    -- not levels. BallotReady's level is the more specific one (it separates
+    -- township and local districts), so it wins, and the product's own level
+    -- fills the gaps.
+    case
+        when a.has_candidacy
+        then
+            coalesce(
+                case
+                    lower(trim(cc.office_level))
+                    when 'federal'
+                    then 'federal'
+                    when 'presidential'
+                    then 'federal'
+                    when 'state'
+                    then 'state'
+                    when 'state legislative'
+                    then 'state'
+                    when 'statewide'
+                    then 'state'
+                    when 'county'
+                    then 'county'
+                    when 'city'
+                    then 'city'
+                    when 'township'
+                    then 'township'
+                    when 'town'
+                    then 'township'
+                    when 'local'
+                    then 'local'
+                    when 'regional'
+                    then 'regional'
+                end,
+                -- election_level is free text upstream, so it is held to the
+                -- same set rather than passed through.
+                case
+                    when
+                        lower(trim(ac.election_level)) in (
+                            'federal',
+                            'state',
+                            'county',
+                            'city',
+                            'township',
+                            'local',
+                            'regional'
+                        )
+                    then lower(trim(ac.election_level))
+                end
+            )
+    end as candidacy_office_level_normalized,
     case when a.has_candidacy then ac.is_pledged end as candidacy_is_pledged,
     case when a.has_candidacy then ac.is_verified end as candidacy_is_verified,
     -- Not candidacy_is_verified, which is the product's own flag.
