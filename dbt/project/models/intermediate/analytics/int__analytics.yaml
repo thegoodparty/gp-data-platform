@@ -1495,6 +1495,23 @@ models:
                 values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
       - name: candidacy_latest_stage_reached
         description: The stage candidacy_result belongs to.
+      - name: candidacy_primary_election_date
+        description: >
+          The primary's date on the civics candidacy. Null with no primary or no
+          civics candidacy.
+      - name: candidacy_primary_result
+        description: >
+          The primary stage's result from candidacy_stage. Can disagree with
+          candidacy_latest_stage_reached (some show a primary loss yet a general
+          reached), so use that column, not this one, to decide whether the
+          candidate advanced.
+      - name: candidacy_general_election_date
+        description: >
+          The general's date on the civics candidacy. Set even for candidates
+          who never advanced to it. Null with no civics candidacy, where
+          candidacy_election_date is the only date.
+      - name: candidacy_general_result
+        description: The general's result on the civics candidacy.
       - name: is_still_running
         description: >
           The anchor election is today or later, so no outcome exists yet.
