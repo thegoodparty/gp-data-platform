@@ -1379,23 +1379,20 @@ models:
           flow, which makes it a source tell; group by candidacy_party_normalized.
       - name: candidacy_party_normalized
         description: >
-          One name per party: Independent, Nonpartisan, Libertarian, Green,
-          Forward, Reform, Working Families, Democratic, Republican, or Other.
-          Lowercased and stripped of a trailing " Party" before mapping; blank
-          reads null.
+          Party through parse_party_affiliation, the macro the civics candidacy
+          models apply to the same field: Independent, Nonpartisan, Democrat,
+          Republican, Libertarian, Green, or Other. Blank reads null. Parties
+          the macro does not name (Forward, Reform, Working Families) read Other.
         data_tests:
           - accepted_values:
               arguments:
                 values:
                   - Independent
                   - Nonpartisan
+                  - Democrat
+                  - Republican
                   - Libertarian
                   - Green
-                  - Forward
-                  - Reform
-                  - Working Families
-                  - Democratic
-                  - Republican
                   - Other
       - name: candidacy_partisan_type
         description: >

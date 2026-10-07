@@ -182,37 +182,11 @@ select
     end as candidacy_normalized_position_name,
     case when a.has_candidacy then ac.campaign_state end as candidacy_state,
     case when a.has_candidacy then ac.campaign_party end as candidacy_party,
-    -- The raw party mixes casings and a " Party" suffix by signup flow, which
-    -- the raw column keeps as a source tell. This is the one to group by.
+    -- The raw party varies in casing and suffix by signup flow, which the raw
+    -- column keeps as a source tell. Grouped through the same macro the civics
+    -- candidacy models apply to this field, so the two agree.
     case
-        when a.has_candidacy and nullif(trim(ac.campaign_party), '') is not null
-        then
-            case
-                regexp_replace(lower(trim(ac.campaign_party)), ' party$', '')
-                when 'independent'
-                then 'Independent'
-                when 'independent/none'
-                then 'Independent'
-                when 'nonpartisan'
-                then 'Nonpartisan'
-                when 'non-partisan'
-                then 'Nonpartisan'
-                when 'libertarian'
-                then 'Libertarian'
-                when 'green'
-                then 'Green'
-                when 'forward'
-                then 'Forward'
-                when 'reform'
-                then 'Reform'
-                when 'working families'
-                then 'Working Families'
-                when 'democratic'
-                then 'Democratic'
-                when 'republican'
-                then 'Republican'
-                else 'Other'
-            end
+        when a.has_candidacy then {{ parse_party_affiliation("ac.campaign_party") }}
     end as candidacy_party_normalized,
     case
         when a.has_candidacy then nullif(trim(ac.partisan_type), '')
@@ -257,7 +231,21 @@ select
                     when 'regional'
                     then 'regional'
                 end,
-                lower(trim(ac.election_level))
+                -- election_level is free text upstream, so it is held to the
+                -- same set rather than passed through.
+                case
+                    when
+                        lower(trim(ac.election_level)) in (
+                            'federal',
+                            'state',
+                            'county',
+                            'city',
+                            'township',
+                            'local',
+                            'regional'
+                        )
+                    then lower(trim(ac.election_level))
+                end
             )
     end as candidacy_office_level_normalized,
     case when a.has_candidacy then ac.is_pledged end as candidacy_is_pledged,
