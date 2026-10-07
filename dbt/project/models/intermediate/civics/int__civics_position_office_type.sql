@@ -127,7 +127,10 @@ select
         then 'Clerk/Treasurer'
         when
             lower(normalized_position_name) like '%highway%'
-            or lower(normalized_position_name) like '%road%'
+            or (
+                lower(normalized_position_name) like '%road%'
+                and lower(normalized_position_name) not like '%railroad%'
+            )
             or lower(normalized_position_name) like '%surveyor%'
             or lower(normalized_position_name) like '%engineer%'
             or lower(normalized_position_name) like '%drain commissioner%'
