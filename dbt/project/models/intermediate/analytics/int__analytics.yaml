@@ -1423,6 +1423,13 @@ models:
           and deadline links each narrow the population.
       - name: candidacy_position_id
         description: BallotReady position id for the race.
+      - name: candidacy_office_category
+        description: >
+          The kind of office in plain terms (City Council, School Board, Mayor,
+          County Supervisor, Special District Board, Judge and so on), from
+          int__civics_position_office_type.office_category on the anchor
+          campaign's BallotReady position. Null when the campaign has no
+          position.
       - name: candidacy_office_level
         description: >
           Office level from the corroborated civics candidacy, raw: several

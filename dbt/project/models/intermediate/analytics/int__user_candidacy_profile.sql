@@ -150,6 +150,13 @@ with
         group by a.user_id
     ),
 
+    -- The reporting grain for office, keyed on the anchor campaign's
+    -- BallotReady position. Candidacies with no position stay null.
+    office_category as (
+        select br_position_database_id, office_category
+        from {{ ref("int__civics_position_office_type") }}
+    ),
+
     -- Scored per campaign, so it attaches to the anchor like every other
     -- candidacy column.
     legitimacy as (
@@ -197,6 +204,7 @@ select
     case
         when a.has_candidacy then ac.ballotready_position_id
     end as candidacy_position_id,
+    case when a.has_candidacy then oc.office_category end as candidacy_office_category,
     cc.office_level as candidacy_office_level,
     -- The civics value arrives in several casings plus a few labels that are
     -- not levels. BallotReady's level is the more specific one (it separates
@@ -307,3 +315,5 @@ left join anchor_filing as f on f.user_id = a.user_id
 left join prior_runs as p on p.user_id = a.user_id
 left join wins as w on w.user_id = a.user_id
 left join legitimacy as lg on lg.campaign_id = a.anchor_campaign_id
+left join
+    office_category as oc on oc.br_position_database_id = ac.ballotready_position_id
