@@ -55,6 +55,19 @@ with
         from {{ ref("users_win_candidacy") }}
     ),
 
+    -- Archive candidacies (2024 and 2025) list only gp_api and hubspot as
+    -- sources, but their stages carry the vendor ids the match was made on.
+    stage_vendor_match as (
+        select gp_candidacy_id
+        from {{ ref("candidacy_stage") }}
+        where
+            br_candidacy_id is not null
+            or ddhq_candidate_id is not null
+            or ts_source_candidate_id is not null
+            or exists (source_systems, s -> s in ('ballotready', 'ddhq', 'techspeed'))
+        group by gp_candidacy_id
+    ),
+
     -- The civics candidacy for the anchor run. A product campaign can map to
     -- candidacies from different cycles, so the match requires the anchor date
     -- to be one of the candidacy's stage dates; a general-date match wins. A
@@ -71,17 +84,17 @@ with
             c.general_election_date,
             c.general_election_result,
             -- A gp-api-only candidacy is our own campaign echoed back, not
-            -- evidence the run reached a ballot.
-            exists (c.source_systems, s -> s <> 'gp_api') as has_ballot_evidence,
-            -- Narrower: a ballot data vendor. Vendor-sourced candidacies only
-            -- exist from 2026; earlier runs reach the civics record through
-            -- HubSpot, so this is false for them by construction. Taken over
-            -- every candidacy matching the anchor, since the tiebreak below can
-            -- pick one that lacks it.
+            -- evidence the run reached a ballot. A vendor id on a stage is.
+            exists (c.source_systems, s -> s <> 'gp_api')
+            or svm.gp_candidacy_id is not null as has_ballot_evidence,
+            -- Narrower: a ballot data vendor, on the candidacy or any of its
+            -- stages. Taken over every candidacy matching the anchor, since the
+            -- tiebreak below can pick one that lacks it.
             max(
                 exists (
                     c.source_systems, s -> s in ('ballotready', 'ddhq', 'techspeed')
                 )
+                or svm.gp_candidacy_id is not null
             ) over (partition by a.user_id) as has_external_match
         from anchor as a
         inner join
@@ -93,6 +106,7 @@ with
                 c.primary_runoff_election_date,
                 c.general_runoff_election_date
             )
+        left join stage_vendor_match as svm on svm.gp_candidacy_id = c.gp_candidacy_id
         qualify
             row_number() over (
                 partition by a.user_id
