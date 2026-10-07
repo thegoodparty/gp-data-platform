@@ -22,6 +22,11 @@ with
             pg.had_conflict
         from {{ ref("int__civics_person_canonical_ids") }} as ci
         inner join {{ ref("int__civics_person_groups") }} as pg using (record_key)
+        -- Before the count: staging applies DSAR suppression on every read, so a
+        -- contact suppressed since the person graph last built is absent here.
+        inner join
+            contacts as c
+            on cast(c.id as string) = substring_index(ci.record_key, '|', -1)
         left join
             merged_away as ma on ma.merged_id = substring_index(ci.record_key, '|', -1)
         -- Staff and test accounts are left alone.
