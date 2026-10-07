@@ -29,6 +29,68 @@ models:
               arguments:
                 min_value: 18
 
+  - name: gp_api_consumer_only_people
+    description: >
+      People in the L2 commercial file who are not in gp_api_voters, in the
+      gp_api_voters column contract so gp_api_people can union the two.
+      Voter-file columns (party, turnout history, registration, precinct,
+      scores) are null. District columns come as one set from the most common
+      district values of voters in the person's ZIP+4, else census block, block
+      group or tract (int__l2_area_district_profiles). Where no area matches,
+      County and the state legislative and congressional districts fall back to
+      the commercial file's own values.
+    columns:
+      - name: id
+        description: >
+          The voter-file id (salted hash of LALVOTERID, as in gp_api_voters)
+          when the person has a LALVOTERID that is no longer in the voter file,
+          otherwise a salted hash of individual_id.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: individual_id
+        data_tests:
+          - unique
+          - not_null
+      - name: LALVOTERID
+        data_tests:
+          - unique
+      - name: Registered_Voter
+        description: Always false; the row is not in the voter file.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [false]
+      - name: District_Source
+        description: >
+          The area whose voters supplied the district columns. Null when no area
+          matched.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - zip_plus_4
+                  - census_block
+                  - census_block_group
+                  - census_tract
+
+  - name: gp_api_people
+    description: >
+      Everyone the app can reach: every gp_api_voters row plus the people in
+      gp_api_consumer_only_people, under the gp_api_voters columns and two more.
+      ids do not collide across the two halves, which
+      assert_gp_api_consumer_only_people_ids_not_voter_ids checks on the table
+      rather than on this large view.
+    columns:
+      - name: Registered_Voter
+        description: True when the row comes from the voter file.
+      - name: District_Source
+        description: >
+          voter_file for voter rows; for consumer-only rows, the area whose
+          voters supplied the district columns, or null when none matched.
+
   - name: gp_api_districts
     description: Pass-through of m_people_api__district
 

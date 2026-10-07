@@ -692,6 +692,58 @@ models:
           arguments:
             expression: "voters_in_zip_district <= voters_in_zip"
 
+  - name: int__l2_area_district_profiles
+    description: >
+      For each census block, block group, tract and ZIP+4 in a state with an L2
+      commercial file, the most common complete set of L2 district values among
+      the voters there. It places people who are not in the voter file. The whole
+      set comes from one group of voters, so the columns stay consistent with
+      each other, and values are the voter file's raw strings, so they match
+      gp_api_voters. Carries every get_l2_district_types() column.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area_type, area_id]
+    columns:
+      - name: area_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - census_block
+                  - census_block_group
+                  - census_tract
+                  - zip_plus_4
+      - name: area_id
+        description: >
+          15-, 12- or 11-character census GEOID, or a ZIP+4 written as
+          ZIP-PLUS4.
+        data_tests:
+          - not_null
+      - name: voters_in_area
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: voters_with_profile
+        description: Voters in the area whose district values are exactly this set.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: profile_share
+        description: voters_with_profile / voters_in_area.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+
   - name: int__l2_block_district_map
     description: >
       One row per (census block, state, district_type, normalized
