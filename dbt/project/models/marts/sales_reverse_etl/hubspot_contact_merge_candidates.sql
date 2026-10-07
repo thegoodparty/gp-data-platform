@@ -19,9 +19,8 @@ with
         select
             ci.gp_person_id,
             substring_index(ci.record_key, '|', -1) as hs_contact_id,
-            pg.had_conflict
+            ci.identity_key
         from {{ ref("int__civics_person_canonical_ids") }} as ci
-        inner join {{ ref("int__civics_person_groups") }} as pg using (record_key)
         -- Before the count: staging applies DSAR suppression on every read, so a
         -- contact suppressed since the person graph last built is absent here.
         inner join
@@ -67,19 +66,19 @@ with
 
     -- How each contact joined its person, for reviewing the match itself.
     edges as (
-        select record_key_1 as record_key, edge_type
-        from {{ ref("int__civics_person_edges") }}
-        where not is_conflict and record_key_1 like 'hubspot|%'
+        select unique_id_l as record_key, link_type
+        from {{ ref("int__civics_person_links") }}
+        where unique_id_l like 'hubspot|%'
         union
-        select record_key_2, edge_type
-        from {{ ref("int__civics_person_edges") }}
-        where not is_conflict and record_key_2 like 'hubspot|%'
+        select unique_id_r, link_type
+        from {{ ref("int__civics_person_links") }}
+        where unique_id_r like 'hubspot|%'
     ),
 
     linked_via as (
         select
             substring_index(record_key, '|', -1) as hs_contact_id,
-            array_join(array_sort(collect_set(edge_type)), ', ') as linked_via
+            array_join(array_sort(collect_set(link_type)), ', ') as linked_via
         from edges
         group by record_key
     ),
@@ -88,12 +87,13 @@ with
         select
             pc.gp_person_id,
             pc.hs_contact_id,
-            pc.had_conflict,
+            pc.identity_key,
             c.first_name,
             c.last_name,
             c.email,
             c.phone,
-            c.state,
+            -- Free text in HubSpot (Ohio, OH); normalized so contacts compare.
+            coalesce(cs.state_cleaned_postal_code, c.state) as state,
             c.candidate_office,
             c.goodparty_user_id,
             c.hubspot_owner_id,
@@ -150,6 +150,9 @@ with
             ) as last_engagement_at
         from person_contacts as pc
         inner join contacts as c on cast(c.id as string) = pc.hs_contact_id
+        left join
+            {{ ref("clean_states") }} as cs
+            on upper(trim(c.state)) = upper(trim(cs.state_raw))
         left join app_links as al on al.hubspot_contact_id = pc.hs_contact_id
         left join linked_via as lv on lv.hs_contact_id = pc.hs_contact_id
     ),
@@ -215,8 +218,7 @@ with
             count(lower(trim(email)))
             > count(distinct lower(trim(email))) as has_shared_email,
             count_if(is_pro_candidate) > 1 as has_multiple_pro_contacts,
-            count(distinct hubspot_owner_id) > 1 as has_multiple_owners,
-            bool_or(had_conflict) as had_conflict
+            count(distinct hubspot_owner_id) > 1 as has_multiple_owners
         from ranked
         group by gp_person_id
     )
@@ -268,8 +270,16 @@ select
     f.has_shared_email,
     f.has_multiple_pro_contacts,
     f.has_multiple_owners,
-    f.had_conflict,
 
+    -- Native ids when the secondary shares the primary's deterministic identity;
+    -- otherwise only the Splink person matcher joined them.
+    case
+        when r.contact_rank = 1
+        then null
+        when r.identity_key = pr.identity_key
+        then 'native_ids'
+        else 'splink'
+    end as matched_on,
     r.linked_via,
 
     -- Ranking inputs.

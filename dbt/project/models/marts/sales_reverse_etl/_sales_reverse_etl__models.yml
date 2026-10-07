@@ -268,10 +268,18 @@ models:
           Two of the person's contacts carry the same email. HubSpot does not allow
           that on live contacts, so one was likely deleted or merged without the
           survivor showing it; confirm both exist before merging.
-      - name: had_conflict
-        description: The person group touched a conflicting vendor-key edge.
+      - name: matched_on
+        description: >
+          On a secondary, native_ids when it shares the primary's deterministic
+          identity (a native id such as a gp_api account or BallotReady candidacy
+          connects them), splink when only the Splink person matcher joined them.
+          Null on the primary.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["native_ids", "splink"]
       - name: linked_via
-        description: The person-graph edge types touching this contact.
+        description: The person-link types touching this contact.
       - name: is_app_linked
         description: A gp_api user's meta_data points at this contact.
       - name: app_user_last_active_at
