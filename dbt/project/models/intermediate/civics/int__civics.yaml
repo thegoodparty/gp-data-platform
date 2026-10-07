@@ -2699,6 +2699,19 @@ models:
                   - Statewide/Governor
                   - Town Council
                   - Other
+      - name: office_category
+        description: >
+          The reporting grain for office: office_type wherever it is specific,
+          and the BallotReady normalized position name sorted into named groups
+          where office_type says Other (Special District Board, Education Board,
+          Assessor/Tax Collector, Public Works/Roads, Elections Official,
+          Board/Commission, Party Office, Coroner), plus Other positions that
+          belong in an existing type (President, Congressional, Judge,
+          Statewide/Governor, Clerk/Treasurer, Sheriff, Attorney, Mayor, City
+          Council). Kept beside office_type rather than changing it, because
+          office_type feeds the gp_election_id hash.
+        data_tests:
+          - not_null
       - name: is_office_type_fallback
         description: >
           True when no candidate_office could be derived for the position (no
