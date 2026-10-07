@@ -3413,7 +3413,7 @@ models:
         description: >
           registered (every account), completed_onboarding (is_onboarded),
           activated (is_activated), pro (is_pro), matched_third_party
-          (candidacy_has_external_match, 2026 races only), power_user
+          (candidacy_has_external_match), power_user
           (is_power_user).
         data_tests:
           - not_null

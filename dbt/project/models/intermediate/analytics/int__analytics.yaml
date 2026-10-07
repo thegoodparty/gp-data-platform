@@ -1448,10 +1448,11 @@ models:
           The anchor run is linked to a ballot data vendor (BallotReady, DDHQ or
           TechSpeed) through a civics candidacy on the anchor election date.
           Third-party evidence the run is real, unlike candidacy_is_verified,
-          which is the product's own flag. Vendor-sourced candidacies only exist
-          from 2026, so this is false for every earlier run by construction;
-          never_filed is the era-safe ballot check. Null when there is no
-          candidacy.
+          which is the product's own flag. Read from the candidacy's sources
+          and from its stages' vendor ids, because 2024 and 2025 archive
+          candidacies carry the vendor only on their stages. A matched run with
+          no vendor id on any stage reads false; never_filed is the broader
+          ballot check. Null when there is no candidacy.
       - name: candidacy_is_pro
         description: The anchor campaign is on Pro.
       - name: candidacy_is_win_icp
