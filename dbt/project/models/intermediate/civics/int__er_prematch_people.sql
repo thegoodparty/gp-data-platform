@@ -4,11 +4,12 @@
 -- person id or contact fields and attaches via candidacy clusters; voter
 -- records are out of scope.
 -- Matching happens in Splink. This model normalizes fields and applies hygiene:
--- it drops records that are not people, and nulls contact keys that many people
--- share, so neither chains unrelated people together through blocking.
--- This model depends on no graph model. Canonical identity is settled in
--- matcha (scripts/person_clustering.py) over these records, the deterministic
--- links, and the record universe, and published as er_source.person_groups.
+-- it nulls the names of records that are not people, and nulls contact keys
+-- that many people share, so neither chains unrelated people through blocking.
+-- It is also the person record universe: every row gets a person id, so a
+-- record that cannot be matched keeps its row. Canonical identity is settled
+-- in matcha over these records and int__civics_person_links, and published as
+-- er_source.clustered_people.
 {% set contact_key_max_records = 25 %}
 with
     -- Nickname aliases per canonical name (same construction as the candidacy
@@ -114,10 +115,12 @@ with
         where br_candidate_id is not null
     ),
 
+    -- Anchored on the feeds themselves, so every BR person with a candidacy
+    -- or a term is in the universe even when the identity model has no row.
     ballotready_raw as (
         select
             'ballotready' as source_name,
-            coalesce(cast(i.br_candidate_id as string), o.br_candidate_id) as source_id,
+            f.br_candidate_id as source_id,
             coalesce(i.id_first_name, o.first_name) as first_name,
             coalesce(i.id_last_name, o.last_name) as last_name,
             coalesce(o.suffix_raw, s.suffix_raw) as suffix_raw,
@@ -128,22 +131,14 @@ with
             o.mailing_zip as zip_raw,
             cast(null as date) as birth_date,
             coalesce(i.id_party, o.party_affiliation) as party_raw,
-            coalesce(
-                cast(i.br_candidate_id as string), o.br_candidate_id
-            ) as br_candidate_id,
+            f.br_candidate_id,
             f.first_seen_at
-        from {{ ref("int__ballotready_candidate_identity") }} as i
-        full outer join
-            br_officeholder as o
-            on o.br_candidate_id = cast(i.br_candidate_id as string)
+        from br_first_seen as f
         left join
-            br_suffixes as s
-            on s.br_candidate_id
-            = coalesce(cast(i.br_candidate_id as string), o.br_candidate_id)
-        left join
-            br_first_seen as f
-            on f.br_candidate_id
-            = coalesce(cast(i.br_candidate_id as string), o.br_candidate_id)
+            {{ ref("int__ballotready_candidate_identity") }} as i
+            on cast(i.br_candidate_id as string) = f.br_candidate_id
+        left join br_officeholder as o on o.br_candidate_id = f.br_candidate_id
+        left join br_suffixes as s on s.br_candidate_id = f.br_candidate_id
     ),
 
     -- TechSpeed candidates at person grain: the candidate code without the
@@ -245,14 +240,6 @@ with
         from ts_officeholder_raw
     ),
 
-    named as (
-        select *
-        from unioned
-        where
-            nullif(trim(first_name), '') is not null
-            and nullif(trim(last_name), '') is not null
-    ),
-
     normalized as (
         select
             u.source_name,
@@ -331,11 +318,16 @@ with
                 when length(regexp_replace(u.zip_raw, '[^0-9]', '')) >= 5
                 then left(regexp_replace(u.zip_raw, '[^0-9]', ''), 5)
             end as zip5,
-            u.birth_date,
+            -- Typo years (a date typed as 11011976) survive the staging cast
+            -- and overflow the matcher's date type.
+            case
+                when year(u.birth_date) between 1900 and year(current_date())
+                then u.birth_date
+            end as birth_date,
             {{ parse_party_affiliation("u.party_raw") }} as party,
             u.br_candidate_id,
             u.first_seen_at
-        from named as u
+        from unioned as u
         left join clean_states as cs on trim(upper(u.state_raw)) = cs.state_raw
     ),
 
@@ -354,19 +346,39 @@ with
         from normalized
         where phone is not null
         group by phone
+    ),
+
+    -- Nameless rows, role inboxes ("<town> party registrar") and signup-form
+    -- fixtures ("test user") keep their row, since every record needs a
+    -- person id, but lose their name fields so they pair with nothing.
+    -- Computed outside `normalized`, where a select-list alias loses to the
+    -- same-named raw column.
+    matchable as (
+        select
+            *,
+            coalesce(
+                first_name <> ''
+                and last_name <> ''
+                and last_name not like '%party registrar%'
+                and last_name <> 'user',
+                false
+            ) as is_person
+        from normalized
     )
 
 select
     n.unique_id,
     n.source_id,
     n.source_name,
-    n.first_name,
-    coalesce(a.aliases, array(n.first_name)) as first_name_aliases,
-    n.first_name_tokens,
-    n.last_name,
-    -- Not in `normalized`: a select-list alias loses to a same-named FROM
-    -- column, so tokenizing there would read the raw, still-suffixed surname.
-    {{ last_name_tokens("n.last_name") }} as last_name_tokens,
+    case when n.is_person then n.first_name end as first_name,
+    case
+        when n.is_person then coalesce(a.aliases, array(n.first_name))
+    end as first_name_aliases,
+    case when n.is_person then n.first_name_tokens end as first_name_tokens,
+    case when n.is_person then n.last_name end as last_name,
+    case
+        when n.is_person then {{ last_name_tokens("n.last_name") }}
+    end as last_name_tokens,
     n.suffix_token,
     case when ec.n_records <= {{ contact_key_max_records }} then n.email end as email,
     case when pc.n_records <= {{ contact_key_max_records }} then n.phone end as phone,
@@ -377,17 +389,7 @@ select
     n.party,
     n.br_candidate_id,
     n.first_seen_at
-from normalized as n
+from matchable as n
 left join nickname_aliases as a on a.name = n.first_name
 left join email_counts as ec on ec.email = n.email
 left join phone_counts as pc on pc.phone = n.phone
-where
-    -- Names that normalize to empty (punctuation-only) cannot be matched.
-    n.first_name <> ''
-    and n.last_name <> ''
-    -- Role inboxes ("<town> party registrar") and signup-form test fixtures
-    -- ("test user"). Neither is a person. Both sit only in the product sources
-    -- and carry no br_candidate_id, so no filed candidate is lost. Left in,
-    -- their shared names merged unrelated HubSpot contacts.
-    and n.last_name not like '%party registrar%'
-    and n.last_name <> 'user'

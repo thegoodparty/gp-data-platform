@@ -1101,11 +1101,12 @@ models:
       - name: gp_person_id
         description: >
           Canonical person (FK to people.gp_person_id). Resolved from the row's
-          native keys (br_candidacy_id -> BR person, ts_source_candidate_id,
-          ddhq keys, gp_api_campaign_id -> user) for FOJ rows, and from the
-          HubSpot contact for archive rows. Deterministic min when a row's
-          sources reach more than one person (a warn test tracks that). NULL for
-          <=2025 vendor rows not yet in the person universe (pre-swap).
+          native keys (br_candidacy_id -> BR person first, else
+          ts_source_candidate_id and gp_api_campaign_id -> user) for FOJ rows,
+          and from the HubSpot contact for archive rows. Deterministic min
+          when a row's sources reach more than one person (a warn test tracks
+          that). NULL for DDHQ-only rows, since DDHQ carries no person record,
+          and for <=2025 vendor rows outside the person universe.
         data_tests:
           - relationships:
               arguments:
@@ -2972,24 +2973,24 @@ models:
 
   - name: people
     description: >
-      Canonical person mart. One row per gp_person_id, derived from the dbt
-      person groups (deterministic native-id and cluster co-membership edges,
-      no probabilistic matching).
+      Canonical person mart. One row per gp_person_id, the person groups
+      matcha publishes from the deterministic native-id and candidacy-cluster
+      links plus the scored person pairs, with no group holding two
+      BallotReady people. DDHQ carries no person record and reaches a person
+      only through its candidacy cluster.
 
       Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
-      ddhq_candidate_id, ts_candidate_code) are scalar only when the person
-      group carries exactly one value for that source; a group with zero or
-      more than one value leaves the column NULL. The full multi-valued sets
-      live in person_identifiers. ts_candidate_code is stage-stripped (the
-      primary/general suffix removed); ddhq_candidate_id is the candidate_id
-      portion of the DDHQ candidacy key.
+      ts_candidate_code) are scalar only when the person group carries
+      exactly one value for that source; a group with zero or more than one
+      value leaves the column NULL. The full multi-valued sets live in
+      person_identifiers. ts_candidate_code is the stage-stripped TechSpeed
+      candidate code.
 
       Attribute precedence:
         first_name, last_name, email, phone: gp_api > HubSpot > BR >
-          BR officeholder > TS > TS officeholder > DDHQ (DDHQ carries no
-          email/phone).
-        state, party: BR > BR officeholder > HubSpot > TS > TS officeholder >
-          DDHQ (gp_api carries neither).
+          BR officeholder > TS > TS officeholder.
+        state, party: BR > BR officeholder > HubSpot > TS > TS officeholder
+          (gp_api carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at), so a source's fields stay internally consistent.
       email adds a final tier: when no rep has one, a sweep of every member
@@ -3004,7 +3005,7 @@ models:
 
       Role flags derive from the member records, not a stored status:
         is_candidate: the group contains any candidacy-context member -- a
-          techspeed or ddhq record, a br_candidate_id with at least one
+          techspeed record, a br_candidate_id with at least one
           candidacies_v3 row, or a gp_api user with a campaign.
         is_elected_official: the group contains a techspeed_officeholder
           record, a br_candidate_id with at least one office_holders_v3 row,
@@ -3039,12 +3040,10 @@ models:
           9,750 persons among those holding a user account, of which only about
           1,480 are the ambiguous case rather than simple absence. Read
           person_identifiers, or int__user_resolved_keys at user grain.
-      - name: ddhq_candidate_id
-        description: DDHQ candidate_id when unambiguous, else NULL.
       - name: ts_candidate_code
         description: Stage-stripped TechSpeed candidate code when unambiguous, else NULL.
       - name: first_name
-        description: First name, precedence gp_api > HubSpot > BR > TS > TS officeholder > DDHQ.
+        description: First name, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: last_name
         description: Last name, same precedence as first_name.
       - name: email
@@ -3054,14 +3053,14 @@ models:
       - name: phone
         description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: state
-        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Always a 2-letter postal code.
+        description: State, precedence BR > HubSpot > TS > TS officeholder. Always a 2-letter postal code.
         data_tests:
           - is_state_abbreviation
       - name: party
         description: >
-          Party affiliation, precedence BR > HubSpot > TS > TS officeholder >
-          DDHQ. All tiers normalized via parse_party_affiliation; values
-          outside its vocabulary coarsen to 'Other'.
+          Party affiliation, precedence BR > HubSpot > TS > TS officeholder.
+          All tiers normalized via parse_party_affiliation; values outside
+          its vocabulary coarsen to 'Other'.
         data_tests:
           - accepted_values:
               arguments:
@@ -3086,11 +3085,10 @@ models:
                 min_value: 1
       - name: identity_count
         description: >
-          How many native-id identities the published matcha merge fused into
-          this person. 1 means nothing merged. Provenance for tracing where a
-          person came from, not a caveat a consumer has to act on: an admitted
-          merge has direct evidence on every pair, and one that would fuse two
-          BallotReady people is refused in matcha.
+          How many native-id identities the published matcha clustering fused
+          into this person. 1 means nothing merged. Provenance only, for
+          tracing where a person came from; a cluster that would fuse two
+          BallotReady people is dissolved in matcha.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -3129,7 +3127,7 @@ models:
                 to: ref('people')
                 field: gp_person_id
       - name: source_name
-        description: Source system of the record (ballotready, gp_api, hubspot, techspeed, techspeed_officeholder, ddhq).
+        description: Source system of the record (ballotready, gp_api, hubspot, techspeed, techspeed_officeholder).
         data_tests:
           - not_null
           - accepted_values:
@@ -3140,7 +3138,6 @@ models:
                   - hubspot
                   - techspeed
                   - techspeed_officeholder
-                  - ddhq
       - name: source_id
         description: Native identifier of the record within its source system.
         data_tests:

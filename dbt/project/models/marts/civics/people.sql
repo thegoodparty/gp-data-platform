@@ -1,11 +1,11 @@
 -- Canonical person mart. One row per gp_person_id. Identifier columns are
 -- scalar only when the group carries exactly one value for that source; the
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
--- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder > DDHQ for
--- contact fields,
--- BR > others for civic fields (email adds a group-wide fallback). Role flags
--- derive from the member records, not from a stored status, so they stay
--- re-derivable on every run.
+-- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder for contact
+-- fields, BR > others for civic fields (email adds a group-wide fallback).
+-- DDHQ carries no person record and reaches a person only through its
+-- candidacy cluster. Role flags derive from the member records, not from a
+-- stored status, so they stay re-derivable on every run.
 with
     records as (
         select
@@ -16,18 +16,11 @@ with
             ci.first_seen_at,
             ci.group_size,
             ci.identity_count,
-            -- Per-source native identifiers, stage/race suffixes stripped so a
-            -- vendor person's primary+general rows collapse to one value.
+            -- Per-source native identifiers (TechSpeed's is the candidate code).
             case when ci.source_name = 'ballotready' then source_id end as br_id_val,
             case when ci.source_name = 'gp_api' then source_id end as gp_api_id_val,
             case when ci.source_name = 'hubspot' then source_id end as hs_id_val,
-            case
-                when ci.source_name = 'ddhq' then substring_index(source_id, '_', 1)
-            end as ddhq_id_val,
-            case
-                when ci.source_name = 'techspeed'
-                then {{ strip_ts_stage_suffix("source_id") }}
-            end as ts_code_val
+            case when ci.source_name = 'techspeed' then source_id end as ts_code_val
         from {{ ref("int__civics_person_canonical_ids") }} as ci
     ),
 
@@ -45,9 +38,6 @@ with
             case
                 when count(distinct hs_id_val) = 1 then max(hs_id_val)
             end as hs_contact_id,
-            case
-                when count(distinct ddhq_id_val) = 1 then max(ddhq_id_val)
-            end as ddhq_candidate_id,
             case
                 when count(distinct ts_code_val) = 1 then max(ts_code_val)
             end as ts_candidate_code,
@@ -166,11 +156,21 @@ with
             = 1
     ),
 
-    -- TS/DDHQ attributes ride the clustered candidacy-stage rows, keyed on
-    -- unique_id == record_key (DDHQ carries no email/phone).
+    -- TS attributes ride the clustered candidacy-stage rows. Those are stage
+    -- grain while the person record is the candidate code, so a code reaches
+    -- its primary and general rows; the earliest stage row represents it.
     clustered as (
-        select unique_id, first_name, last_name, state, party, email, phone
+        select
+            {{ strip_ts_stage_suffix("unique_id") }} as record_key,
+            unique_id,
+            first_name,
+            last_name,
+            state,
+            party,
+            email,
+            phone
         from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+        where source_name = 'techspeed'
     ),
 
     ts_attrs as (
@@ -183,30 +183,12 @@ with
             nullif(trim(cl.state), '') as state,
             {{ parse_party_affiliation("cl.party") }} as party
         from records as r
-        inner join clustered as cl on cl.unique_id = r.record_key
+        inner join clustered as cl on cl.record_key = r.record_key
         where r.source_name = 'techspeed'
         qualify
             row_number() over (
                 partition by r.gp_person_id
-                order by r.first_seen_at asc nulls last, r.source_id
-            )
-            = 1
-    ),
-
-    ddhq_attrs as (
-        select
-            r.gp_person_id,
-            nullif(trim(cl.first_name), '') as first_name,
-            nullif(trim(cl.last_name), '') as last_name,
-            nullif(trim(cl.state), '') as state,
-            {{ parse_party_affiliation("cl.party") }} as party
-        from records as r
-        inner join clustered as cl on cl.unique_id = r.record_key
-        where r.source_name = 'ddhq'
-        qualify
-            row_number() over (
-                partition by r.gp_person_id
-                order by r.first_seen_at asc nulls last, r.source_id
+                order by r.first_seen_at asc nulls last, r.source_id, cl.unique_id
             )
             = 1
     ),
@@ -293,7 +275,7 @@ with
         select
             r.gp_person_id, 5, r.first_seen_at, r.source_id, nullif(trim(cl.email), '')
         from records as r
-        inner join clustered as cl on cl.unique_id = r.record_key
+        inner join clustered as cl on cl.record_key = r.record_key
         where r.source_name = 'techspeed'
         union all
         select
@@ -317,7 +299,7 @@ with
             = 1
     ),
 
-    -- Role signals. is_candidate: any candidacy-context member (TS/DDHQ record,
+    -- Role signals. is_candidate: any candidacy-context member (a TS record,
     -- a BR person with a candidacy row, or a gp_api user with a campaign).
     -- is_elected_official: a techspeed_officeholder record, a BR person with an
     -- officeholder-feed row, or a gp_api user with an elected-office record.
@@ -351,7 +333,7 @@ with
         select
             r.gp_person_id,
             bool_or(
-                r.source_name in ('techspeed', 'ddhq')
+                r.source_name = 'techspeed'
                 or (r.source_name = 'ballotready' and bc.br_candidate_id is not null)
                 or (r.source_name = 'gp_api' and gc.user_id is not null)
             ) as is_candidate,
@@ -387,20 +369,18 @@ select
     ids.br_person_id,
     ids.gp_api_user_id,
     ids.hs_contact_id,
-    ids.ddhq_candidate_id,
     ids.ts_candidate_code,
     ids.gp_api_user_ids,
 
     -- Contact attributes: gp_api > HubSpot > BR > BR officeholder > TS > TS
-    -- officeholder > DDHQ.
+    -- officeholder.
     coalesce(
         ga.first_name,
         ha.first_name,
         ba.first_name,
         boa.first_name,
         ta.first_name,
-        toa.first_name,
-        da.first_name
+        toa.first_name
     ) as first_name,
     coalesce(
         ga.last_name,
@@ -408,8 +388,7 @@ select
         ba.last_name,
         boa.last_name,
         ta.last_name,
-        toa.last_name,
-        da.last_name
+        toa.last_name
     ) as last_name,
     coalesce(
         ga.email, ha.email, ba.email, boa.email, ta.email, toa.email, ge.email
@@ -417,14 +396,14 @@ select
     coalesce(ga.phone, ha.phone, ba.phone, boa.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
-    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state, da.state) as state,
-    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party, da.party) as party,
+    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state) as state,
+    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party) as party,
 
     pb.first_seen_at,
     pb.group_size,
 
-    -- Merge provenance, not a caveat a consumer has to act on: a group holding
-    -- two BallotReady people is refused upstream rather than flagged here.
+    -- Provenance only; a group holding two BallotReady people is dissolved
+    -- upstream rather than flagged here.
     pb.identity_count,
 
     coalesce(roles.is_candidate, false) as is_candidate,
@@ -438,5 +417,4 @@ left join br_attrs as ba using (gp_person_id)
 left join br_officeholder_attrs as boa using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
 left join ts_officeholder_attrs as toa using (gp_person_id)
-left join ddhq_attrs as da using (gp_person_id)
 left join group_emails as ge using (gp_person_id)

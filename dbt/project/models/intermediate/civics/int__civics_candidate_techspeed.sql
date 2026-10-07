@@ -5,12 +5,9 @@ with
     -- Must match int__civics_candidacy_techspeed.
     ts_person as (
         select
-            {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
-            as ts_source_candidate_id,
-            min(gp_person_id) as gp_person_id
+            substring_index(record_key, '|', -1) as ts_source_candidate_id, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
         where source_name = 'techspeed'
-        group by 1
     ),
 
     source as (

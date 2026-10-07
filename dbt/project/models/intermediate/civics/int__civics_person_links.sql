@@ -1,20 +1,14 @@
--- Person links. One row per undirected pair of record keys
--- (record_key = source_name || '|' || source_id) asserting sameness: native
--- identifiers (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
--- ts_officeholder->BR, E6 the gp_api->BR bridge, E7 within-source vendor keys)
--- and candidacy-stage cluster co-membership (E5). No closure happens here or
--- anywhere in dbt: matcha (scripts/person_clustering.py) closes over these
--- pairs, admits Splink pairs between the resulting components, and publishes
--- er_source.person_groups.
---
--- Closure is only sound for evidence that is transitive. Native identifiers
--- are transitive by definition. E5 is a Splink clustering, so it is transitive
--- only in practice, and where it is not, it is detectable: a cluster spanning
--- two BallotReady people cannot say which one it means. Those pairs, and the
--- reused vendor keys in the same position, are flagged is_conflict and matcha
--- leaves them out of the closure.
+-- Person links. One row per undirected pair of person records (unique_id in
+-- int__er_prematch_people) that a native identifier asserts are the same
+-- person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
+-- ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, and E5
+-- candidacy-stage cluster co-membership (hub to the cluster's min record key).
+-- matcha clusters these with the scored pairs as certain matches; no closure
+-- happens in dbt. Both endpoints must be prematch records, so the universe
+-- matcha clusters over and the one the mint reads are the same set.
 with
-    -- br_candidacy_id -> br_candidate_id (person grain).
+    prematch as (select unique_id from {{ ref("int__er_prematch_people") }}),
+
     candidacies as (
         select distinct
             cast(br_candidacy_id as string) as br_candidacy_id,
@@ -35,31 +29,6 @@ with
             goodparty_user_id,
             cast(br_candidacy_id as string) as br_candidacy_id
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
-    ),
-
-    campaigns as (
-        select cast(campaign_id as string) as campaign_id, user_id
-        from {{ ref("campaigns") }}
-        where is_latest_version and user_id is not null
-    ),
-
-    clustered as (
-        select
-            cluster_id,
-            source_id,
-            source_name,
-            br_candidacy_id,
-            split(source_id, '__')[0] as gp_api_campaign_id
-        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
-    ),
-
-    -- gp_api user <-> BR person via the elected-official bridge (E6 and the
-    -- E7 conflict pre-filter both consume this).
-    bridge as (
-        select distinct
-            gp_api_user_id, cast(br_candidate_id as string) as br_candidate_id
-        from {{ ref("int__civics_elected_official_gp_api_bridge") }}
-        where gp_api_user_id is not null and br_candidate_id is not null
     ),
 
     -- E1/E2: HubSpot contact <-> gp_api user via bidirectional native ids.
@@ -97,164 +66,53 @@ with
         where not ts_officeholder_id_is_reused and br_candidate_id is not null
     ),
 
-    -- E6: elected-official bridge. gp_api user <-> BR person.
-    e6 as (
-        select
-            'gp_api|' || cast(gp_api_user_id as string) as rk_a,
-            'ballotready|' || br_candidate_id as rk_b
-        from bridge
-    ),
-
-    -- Cluster members mapped to person record keys. BR members map via
-    -- candidacy; gp_api members map campaign -> user; TS and DDHQ members are
-    -- their own keys.
-    cluster_members as (
-        select cc.cluster_id, 'ballotready|' || cand.br_candidate_id as record_key
-        from clustered as cc
-        inner join candidacies as cand on cand.br_candidacy_id = cc.br_candidacy_id
-        where cc.source_name = 'ballotready'
-        union
-        select cc.cluster_id, 'gp_api|' || cast(camp.user_id as string)
-        from clustered as cc
-        inner join campaigns as camp on camp.campaign_id = cc.gp_api_campaign_id
-        where cc.source_name = 'gp_api'
-        union
-        select cluster_id, 'techspeed|' || source_id
-        from clustered
-        where source_name = 'techspeed'
-        union
-        select cluster_id, 'ddhq|' || source_id
-        from clustered
-        where source_name = 'ddhq'
-    ),
-
-    cluster_br_stats as (
-        select cluster_id, count(*) as distinct_br
-        from cluster_members
-        where record_key like 'ballotready|%'
+    -- E5: hub every member to the cluster's min record key. Hub-and-spoke is
+    -- enough because clustering reaches the rest. Clusters spanning two BR
+    -- people are already absent from the members model.
+    cluster_hub as (
+        select cluster_id, min(record_key) as hub_key
+        from {{ ref("int__civics_candidacy_cluster_members") }}
         group by cluster_id
     ),
 
-    -- E5: hub every member to the cluster's min record key. Hub-and-spoke is
-    -- enough because the closure reaches the rest.
     e5 as (
-        select
-            cm.record_key as rk_a,
-            h.hub_key as rk_b,
-            coalesce(s.distinct_br, 0) > 1 as is_conflict
-        from cluster_members as cm
-        inner join
-            (
-                select cluster_id, min(record_key) as hub_key
-                from cluster_members
-                group by cluster_id
-            ) as h using (cluster_id)
-        left join cluster_br_stats as s using (cluster_id)
-        where cm.record_key <> h.hub_key
+        select m.record_key as rk_a, h.hub_key as rk_b
+        from {{ ref("int__civics_candidacy_cluster_members") }} as m
+        inner join cluster_hub as h using (cluster_id)
+        where m.record_key <> h.hub_key
     ),
 
-    -- E7: within-source vendor keys. TS records sharing a stage-stripped
-    -- candidate_code; DDHQ records sharing candidate_id. Guards a vendor-only
-    -- person's primary/general split. DDHQ candidate_id is reused across
-    -- people ~1.5% of the time, so pre-filter: if a key's records already
-    -- resolve (via clusters) to >1 distinct br_candidate_id, its E7 pairs are
-    -- flagged is_conflict and matcha excludes them from the closure.
-    e7_members as (
-        select
-            'techspeed' as source_name,
-            source_id,
-            {{ strip_ts_stage_suffix("source_id") }} as e7_key
-        from clustered
-        where source_name = 'techspeed'
-        union all
-        select 'ddhq', source_id, split(source_id, '_')[0]
-        from clustered
-        where source_name = 'ddhq'
-    ),
-
-    -- Distinct br_candidate_ids each vendor record reaches through its
-    -- cluster: directly via a BR co-member, or via a gp_api co-member that
-    -- resolves to a BR person through the elected-official bridge. Cluster
-    -- membership is a similarity, used here only to suppress an equality,
-    -- never to assert one.
-    vendor_cluster_br as (
-        select cc.source_name, cc.source_id, cand.br_candidate_id
-        from clustered as cc
-        inner join
-            clustered as br
-            on br.cluster_id = cc.cluster_id
-            and br.source_name = 'ballotready'
-        inner join candidacies as cand on cand.br_candidacy_id = br.br_candidacy_id
-        where cc.source_name in ('techspeed', 'ddhq')
-        union
-        select cc.source_name, cc.source_id, b.br_candidate_id
-        from clustered as cc
-        inner join
-            clustered as gp
-            on gp.cluster_id = cc.cluster_id
-            and gp.source_name = 'gp_api'
-        inner join campaigns as camp on camp.campaign_id = gp.gp_api_campaign_id
-        inner join bridge as b on b.gp_api_user_id = camp.user_id
-        where cc.source_name in ('techspeed', 'ddhq')
-    ),
-
-    e7_key_stats as (
-        select
-            m.source_name,
-            m.e7_key,
-            count(distinct v.br_candidate_id) as distinct_br,
-            count(distinct m.source_id) as distinct_records
-        from e7_members as m
-        left join
-            vendor_cluster_br as v
-            on v.source_name = m.source_name
-            and v.source_id = m.source_id
-        group by m.source_name, m.e7_key
-    ),
-
-    e7_hub as (
-        select source_name, e7_key, min(source_name || '|' || source_id) as hub_key
-        from e7_members
-        group by source_name, e7_key
-    ),
-
-    e7 as (
-        select
-            m.source_name || '|' || m.source_id as rk_a,
-            h.hub_key as rk_b,
-            s.distinct_br > 1 as is_conflict
-        from e7_members as m
-        inner join e7_key_stats as s using (source_name, e7_key)
-        inner join e7_hub as h using (source_name, e7_key)
-        where
-            s.distinct_records > 1 and m.source_name || '|' || m.source_id <> h.hub_key
+    -- E6: elected-official bridge. gp_api user <-> BR person.
+    e6 as (
+        select distinct
+            'gp_api|' || cast(gp_api_user_id as string) as rk_a,
+            'ballotready|' || cast(br_candidate_id as string) as rk_b
+        from {{ ref("int__civics_elected_official_gp_api_bridge") }}
+        where gp_api_user_id is not null and br_candidate_id is not null
     ),
 
     all_pairs as (
-        select rk_a, rk_b, 'e1_hubspot_user' as link_type, false as is_conflict
+        select rk_a, rk_b, 'e1_hubspot_user' as link_type
         from e1
         union all
-        select rk_a, rk_b, 'e3_hubspot_br_candidacy', false
+        select rk_a, rk_b, 'e3_hubspot_br_candidacy'
         from e3
         union all
-        select rk_a, rk_b, 'e4_ts_officeholder', false
+        select rk_a, rk_b, 'e4_ts_officeholder'
         from e4
         union all
-        select rk_a, rk_b, 'e5_candidacy_cluster', is_conflict
+        select rk_a, rk_b, 'e5_candidacy_cluster'
         from e5
         union all
-        select rk_a, rk_b, 'e6_eo_bridge', false
+        select rk_a, rk_b, 'e6_eo_bridge'
         from e6
-        union all
-        select rk_a, rk_b, 'e7_within_source', is_conflict
-        from e7
     )
 
-select
-    least(rk_a, rk_b) as record_key_1,
-    greatest(rk_a, rk_b) as record_key_2,
-    link_type,
-    bool_or(is_conflict) as is_conflict
-from all_pairs
-where rk_a is not null and rk_b is not null and rk_a <> rk_b
-group by 1, 2, 3
+select distinct
+    least(p.rk_a, p.rk_b) as unique_id_l,
+    greatest(p.rk_a, p.rk_b) as unique_id_r,
+    p.link_type
+from all_pairs as p
+inner join prematch as a on a.unique_id = p.rk_a
+inner join prematch as b on b.unique_id = p.rk_b
+where p.rk_a <> p.rk_b
