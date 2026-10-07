@@ -1,17 +1,17 @@
 """## Matcha entity resolution on a schedule
 
-Runs the Splink entity-resolution container weekly for each of the three entity
-types, gates its output, and swaps it into the tables dbt reads. One task group
-per entity: **match** runs the container as a Kubernetes pod, **gate** checks
-what it produced, **swap** renames it into place.
+Runs the Splink entity-resolution container weekly for each entity type, gates
+its output, and swaps it into the tables dbt reads. One task group per entity:
+**match** runs the container as a Kubernetes pod, **gate** checks what it
+produced, **swap** renames it into place.
 
 matcha writes a DATED table and never a live one, because its upload is
 `CREATE OR REPLACE TABLE` then `COPY INTO` -- aimed at a live table, a
 mid-upload failure would leave downstream dbt reading a partial one.
 
-The three entities have no dependency edges between them here: each match
-depends only on `dbt_refresh_prematch`. `max_active_tasks=1` serialises them
-anyway, which is a quota accommodation, not a modelling decision.
+The entities have no dependency edges between them here: each match depends
+only on `dbt_refresh_prematch`. `max_active_tasks=1` serialises them anyway,
+which is a quota accommodation, not a modelling decision.
 
 `docs/matcha_er.md` covers the Variables and Connections this expects, why dev
 needs its own schema, rehearsal vs. live, and the gate/swap recovery paths.
@@ -72,6 +72,8 @@ DBT_SCHEMA = "dbt"
 CATALOG_VARIABLE = "databricks_catalog"
 # Weekly schedule, so this keeps roughly a month of vintages to audit against.
 VINTAGE_RETENTION_DAYS = 28
+# Everything matcha reads from dbt: each entity's prematch, plus the person lane's links.
+ER_INPUT_MODELS = [m for e in ENTITIES for m in (e.prematch_model, e.links_model) if m]
 
 
 def er_schema() -> str:
@@ -145,6 +147,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     catalog = "{{ var.value.get('databricks_catalog') }}"
     dated_cluster = dated_name(entity.cluster_table, "{{ ds_nodash }}")
     dated_pairwise = dated_name(entity.pairwise_table, "{{ ds_nodash }}")
+    links = ["--links", f"{catalog}.{DBT_SCHEMA}.{entity.links_model}"] if entity.links_model else []
     return _MatchaPodOperator(
         task_id="match",
         name=f"matcha-{entity.entity_type.replace('_', '-')}",
@@ -156,6 +159,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             entity.entity_type,
             "--input",
             f"{catalog}.{DBT_SCHEMA}.{entity.prematch_model}",
+            *links,
             "--output-cluster-table",
             f"{catalog}.{ER_SCHEMA_TEMPLATE}.{dated_cluster}",
             "--output-pairwise-table",
@@ -203,7 +207,7 @@ def matcha_er():
         task_id="dbt_refresh_prematch",
         dbt_cloud_conn_id="dbt_cloud",
         job_id="{{ var.value.dbt_cloud_job_id }}",
-        steps_override=["dbt build --select " + " ".join(e.prematch_model for e in ENTITIES)],
+        steps_override=["dbt build --select " + " ".join(ER_INPUT_MODELS)],
         check_interval=30,
         timeout=3600,
     )

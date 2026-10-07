@@ -42,6 +42,14 @@ class EntityConfig:
     # Output
     clustered_output_name: str = "clustered_records.csv"
 
+    # Deterministic pairs (unique_id_l, unique_id_r) dbt derives from native
+    # identifiers, clustered with the scored pairs as certain matches. The
+    # closure over them alone is each record's identity_id.
+    links_table: str | None = None
+    # No cluster may hold two distinct values of this column. One that would
+    # falls back to its identities, and an identity that would to singletons.
+    cannot_link_column: str | None = None
+
     # Audit
     audit_display_columns: list[str] = field(default_factory=list)
     audit_gamma_columns: list[str] = field(default_factory=list)

@@ -61,13 +61,6 @@ models:
           account of the remainder.
         data_tests:
           - not_null
-      - name: had_conflict
-        description: >
-          The person group was touched by a within-source vendor-key edge that
-          spanned more than one BallotReady person, so its membership is less
-          certain. The row is kept; ambiguity is a column, never a filter.
-        data_tests:
-          - not_null
       - name: hubspot_contact_id
         description: >
           The HubSpot contact for this user, resolved through the person graph.
@@ -795,13 +788,25 @@ models:
         description: First candidate-dashboard view.
       - name: last_dashboard_viewed_at
         description: Most recent candidate-dashboard view.
+      - name: onboarding_started_at
+        description: >
+          When they entered the onboarding flow: the earliest of each flow
+          version's start event (Onboarding - Registration Completed, Onboarding
+          - Welcome Completed, Onboarding V2 - Welcome Viewed). In the oldest
+          version the start event is registration itself, so the gap from signup
+          is near zero there.
       - name: onboarding_completed_at
         description: >
-          When the onboarding flow fired its own completion event. Not the same
-          question as users_win_base.is_onboarded, which is a US-registration
-          plus dashboard-view-within-14-days construction under a similar name.
+          When they finished the onboarding flow: the earliest of each flow
+          version's pledge-completion event (onboarding_complete, Onboarding -
+          Candidate Pledge Completed, Onboarding - Pledge Completed, Onboarding V2
+          - Pledge Completed). No single event spans the 2026-05-07 and
+          2026-06-08 rebuilds; the legacy onboarding_complete alone read 1 of
+          4,122 post-May signups as onboarded. The pledge is the last step of every
+          version so far; an explicit completion event is requested separately.
+          Not users_win_base.is_onboarded, a dashboard view within 14 days.
       - name: is_onboarded
-        description: They finished the onboarding flow.
+        description: They finished the onboarding flow, in any of its versions.
         data_tests:
           - not_null
       - name: product_output_at
@@ -1374,9 +1379,30 @@ models:
       - name: candidacy_state
         description: State of the race.
       - name: candidacy_party
-        description: Party as entered.
+        description: >
+          Party as entered, raw. Its casing and " Party" suffix vary by signup
+          flow, which makes it a source tell; group by candidacy_party_normalized.
+      - name: candidacy_party_normalized
+        description: >
+          Party through parse_party_affiliation, the macro the civics candidacy
+          models apply to the same field: Independent, Nonpartisan, Democrat,
+          Republican, Libertarian, Green, or Other. Blank reads null. Parties
+          the macro does not name (Forward, Reform, Working Families) read Other.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
       - name: candidacy_partisan_type
-        description: Whether the race is partisan, as entered.
+        description: >
+          Whether the race is partisan, as entered: nonpartisan, partisan, or
+          partisan for primary only. Blank reads null.
       - name: candidacy_election_date
         description: >
           Election date of the anchor run. Every election-anchored duration
@@ -1390,8 +1416,29 @@ models:
           and deadline links each narrow the population.
       - name: candidacy_position_id
         description: BallotReady position id for the race.
+      - name: candidacy_office_category
+        description: >
+          The kind of office in plain terms (City Council, School Board, Mayor,
+          County Supervisor, Special District Board, Judge and so on), from
+          int__civics_position_office_type.office_category on the anchor
+          campaign's BallotReady position. Null when the campaign has no
+          position.
       - name: candidacy_office_level
-        description: Office level from the corroborated civics candidacy.
+        description: >
+          Office level from the corroborated civics candidacy, raw: several
+          casings and a few non-level labels. Group by
+          candidacy_office_level_normalized instead.
+      - name: candidacy_office_level_normalized
+        description: >
+          One of federal, state, county, city, township, local (school boards and
+          special districts) or regional. BallotReady's level wins, cleaned of
+          casing and stray labels (Presidential to federal, Statewide to state,
+          junk such as N/A or Ballot Initiative dropped); the product's
+          election_level fills the gaps. Null only when neither has a level.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [federal, state, county, city, township, local, regional]
       - name: candidacy_is_pledged
         description: The anchor campaign took the GoodParty pledge.
       - name: candidacy_is_verified
@@ -1413,6 +1460,30 @@ models:
           already applied.
       - name: candidacy_voter_count
         description: Registered voters in the district.
+      - name: candidacy_voter_count_bucket
+        description: >
+          candidacy_voter_count in ranges whose edges are the ICP cutoffs: Win
+          covers 500 to 100,000 voters, Serve 1,000 to 100,000, and over 100,000
+          is supersize. Each range includes its lower edge, except that 100,000
+          itself sits in "7. 50K to 100K" because the ICP includes it. Registered
+          voters, not census population. Covers only the ICP's size rule; the
+          office rules (no judicial, appointed or non-ICP positions) are in
+          candidacy_is_win_icp, so an in-range bucket is not proof of ICP. The number prefix keeps the ranges in
+          order. Null where there is no candidacy or the district is unsized.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "1. under 500",
+                    "2. 500 to 999",
+                    "3. 1K to 5K",
+                    "4. 5K to 10K",
+                    "5. 10K to 25K",
+                    "6. 25K to 50K",
+                    "7. 50K to 100K",
+                    "8. over 100K",
+                  ]
       - name: candidacy_result
         description: >
           How the run ended at the deepest stage reached, from the civics
@@ -1513,6 +1584,96 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: not (is_still_running and never_filed)
+
+  - name: int__user_engagement_days
+    description: >
+      One row per user per day on which they viewed their campaign dashboard or
+      reached voters through the product. Views read the governed
+      dashboard-view union and drop staff viewing on the candidate's behalf
+      (marked from 2026-03-24). Sends read the same legs as is_activated.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: activity_date
+        description: The UTC date of the activity.
+        data_tests:
+          - not_null
+      - name: has_dashboard_view
+        description: They viewed their dashboard that day, not as staff impersonating them.
+        data_tests:
+          - not_null
+      - name: has_activation_event
+        description: They did something that counts toward is_activated that day.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, activity_date]
+
+  - name: int__power_user_bar
+    description: >
+      The power-user viewing bar at each distance from the election, 0 to 365
+      days out, measured on completed races from six months after telemetry
+      began. At each distance the raw bar is the power-user report's rule: the
+      85th percentile of view-days among users who had viewed by then, rounded
+      up. The published bar never rises with distance, and days with fewer than
+      500 viewers carry the last bar measured on enough. Reproduces the report's
+      two bars: 6 at the election and 4 at 96 days out.
+    columns:
+      - name: days_out
+        description: Days before the election, 0 to 365. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: reference_user_count
+        description: Completed-race candidates the bar is measured on.
+      - name: viewer_count
+        description: Of those, how many had viewed their dashboard by this distance.
+      - name: raw_view_day_bar
+        description: The rounded-up 85th percentile before smoothing.
+      - name: is_measured
+        description: At least 500 viewers, so this day's own percentile is used.
+      - name: view_day_bar
+        description: The bar the flag compares against.
+        data_tests:
+          - not_null
+
+  - name: int__user_power_user
+    description: >
+      Whether each candidate is a power user: reached voters through the
+      product at least once, and viewed their dashboard on at least as many
+      days as the bar for their distance from the election. Both counts run up
+      to the build date, capped at the election. One row per user with a
+      candidacy. Moves with the build date.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: power_user_days_out
+        description: Days from the build date to the anchor election, 0 once it has passed.
+        data_tests:
+          - not_null
+      - name: power_user_view_days
+        description: Days with a dashboard view, from first use up to the build date or the election, whichever is first.
+        data_tests:
+          - not_null
+      - name: power_user_view_day_bar
+        description: The bar for power_user_days_out, or for 365 when further out.
+        data_tests:
+          - not_null
+      - name: power_user_has_sent
+        description: Did something that counts toward is_activated by the same cutoff.
+        data_tests:
+          - not_null
+      - name: is_power_user
+        description: power_user_has_sent and power_user_view_days at or above the bar.
+        data_tests:
+          - not_null
 
   - name: int__user_first_touch_utm
     description: >

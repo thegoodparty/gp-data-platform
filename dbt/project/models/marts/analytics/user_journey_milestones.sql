@@ -7,7 +7,7 @@
 -- Stages are not nested: a user can be Pro without finishing onboarding. Read a
 -- stage as "share of users who reached it", never as drop-off from the one
 -- before. reached_at is null where the stage has no date: pro_since for about
--- half of Pro users, and every third-party match.
+-- half of Pro users, every third-party match, and every power user.
 with
     journey as (
         select
@@ -19,7 +19,8 @@ with
             activated_at,
             is_pro,
             pro_since,
-            candidacy_has_external_match
+            candidacy_has_external_match,
+            is_power_user
         from {{ ref("user_journey") }}
     ),
 
@@ -46,6 +47,10 @@ with
         select user_id, 'matched_third_party', 5, cast(null as timestamp)
         from journey
         where candidacy_has_external_match
+        union all
+        select user_id, 'power_user', 6, cast(null as timestamp)
+        from journey
+        where is_power_user
     )
 
 select user_id, stage, stage_order, reached_at

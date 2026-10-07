@@ -109,19 +109,16 @@ with
             = 1
     ),
 
-    -- gp_person_id per stage-stripped candidate_code. Cluster-linked TS
-    -- records share the BR/gp_api person's group by construction, so this
-    -- subsumes the old adopt-BR candidate cascade; codes absent from ER
-    -- self-mint below (own-person semantics). Must match
-    -- int__civics_candidate_techspeed.
+    -- gp_person_id per candidate_code (the person universe keys TechSpeed at
+    -- code grain). Cluster-linked TS records share the BR/gp_api person's
+    -- group by construction, so this subsumes the old adopt-BR candidate
+    -- cascade; codes absent from ER self-mint below (own-person semantics).
+    -- Must match int__civics_candidate_techspeed.
     ts_person as (
         select
-            {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
-            as ts_source_candidate_id,
-            min(gp_person_id) as gp_person_id
+            substring_index(record_key, '|', -1) as ts_source_candidate_id, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
         where source_name = 'techspeed'
-        group by 1
     ),
 
     candidacies as (

@@ -700,12 +700,46 @@ models:
       - name: br_race_id
         description: BallotReady race id; populated on BR rows, null on DDHQ/TS.
 
+  - name: stg_er_source__clustered_people
+    description: >
+      Person clusters published by matcha's person lane. One row per prematch
+      record with cluster_id (connected components over dbt's deterministic
+      links and the scored pairs at 0.95) and identity_id (the components
+      over the links alone). No cluster holds two BallotReady people: matcha
+      dissolves one that would back to its identities. Read by
+      int__civics_person_canonical_ids, which falls back to the record's own
+      key for anything the vintage has not seen.
+    columns:
+      - name: unique_id
+        description: Person record key (int__er_prematch_people.unique_id). Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Person group label.
+        data_tests:
+          - not_null
+      - name: identity_id
+        description: Deterministic component label.
+        data_tests:
+          - not_null
+      - name: source_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+
   - name: stg_er_source__pairwise_people
     description: >
       Staged person pairs scored by the Splink person matcher. One row per
       candidate pair above a 0.01 match probability, after the post-prediction
-      filters. The person graph reads these pairs rather than the clustered
-      table so an edge can be judged on its own evidence before propagation.
+      filters. Audit input.
     columns:
       - name: unique_id_l
         description: Left record key, `source_name|source_id` in prematch grain.

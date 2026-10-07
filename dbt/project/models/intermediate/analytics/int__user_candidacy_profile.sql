@@ -150,6 +150,13 @@ with
         group by a.user_id
     ),
 
+    -- The reporting grain for office, keyed on the anchor campaign's
+    -- BallotReady position. Candidacies with no position stay null.
+    office_category as (
+        select br_position_database_id, office_category
+        from {{ ref("int__civics_position_office_type") }}
+    ),
+
     -- Scored per campaign, so it attaches to the anchor like every other
     -- candidacy column.
     legitimacy as (
@@ -182,14 +189,73 @@ select
     end as candidacy_normalized_position_name,
     case when a.has_candidacy then ac.campaign_state end as candidacy_state,
     case when a.has_candidacy then ac.campaign_party end as candidacy_party,
-    case when a.has_candidacy then ac.partisan_type end as candidacy_partisan_type,
+    -- The raw party varies in casing and suffix by signup flow, which the raw
+    -- column keeps as a source tell. Grouped through the same macro the civics
+    -- candidacy models apply to this field, so the two agree.
+    case
+        when a.has_candidacy then {{ parse_party_affiliation("ac.campaign_party") }}
+    end as candidacy_party_normalized,
+    case
+        when a.has_candidacy then nullif(trim(ac.partisan_type), '')
+    end as candidacy_partisan_type,
     a.election_date as candidacy_election_date,
     case when a.has_candidacy then ac.election_level end as candidacy_election_level,
     f.filing_deadline as candidacy_filing_deadline,
     case
         when a.has_candidacy then ac.ballotready_position_id
     end as candidacy_position_id,
+    case when a.has_candidacy then oc.office_category end as candidacy_office_category,
     cc.office_level as candidacy_office_level,
+    -- The civics value arrives in several casings plus a few labels that are
+    -- not levels. BallotReady's level is the more specific one (it separates
+    -- township and local districts), so it wins, and the product's own level
+    -- fills the gaps.
+    case
+        when a.has_candidacy
+        then
+            coalesce(
+                case
+                    lower(trim(cc.office_level))
+                    when 'federal'
+                    then 'federal'
+                    when 'presidential'
+                    then 'federal'
+                    when 'state'
+                    then 'state'
+                    when 'state legislative'
+                    then 'state'
+                    when 'statewide'
+                    then 'state'
+                    when 'county'
+                    then 'county'
+                    when 'city'
+                    then 'city'
+                    when 'township'
+                    then 'township'
+                    when 'town'
+                    then 'township'
+                    when 'local'
+                    then 'local'
+                    when 'regional'
+                    then 'regional'
+                end,
+                -- election_level is free text upstream, so it is held to the
+                -- same set rather than passed through.
+                case
+                    when
+                        lower(trim(ac.election_level)) in (
+                            'federal',
+                            'state',
+                            'county',
+                            'city',
+                            'township',
+                            'local',
+                            'regional'
+                        )
+                    then lower(trim(ac.election_level))
+                end
+            )
+    end as candidacy_office_level_normalized,
     case when a.has_candidacy then ac.is_pledged end as candidacy_is_pledged,
     case when a.has_candidacy then ac.is_verified end as candidacy_is_verified,
     -- Not candidacy_is_verified, which is the product's own flag.
@@ -199,6 +265,28 @@ select
     case when a.has_candidacy then ac.is_pro end as candidacy_is_pro,
     case when a.has_candidacy then civ.icp_office_win end as candidacy_is_win_icp,
     case when a.has_candidacy then civ.voter_count end as candidacy_voter_count,
+    -- Edges at the ICP cutoffs (Win 500 to 100,000, Serve from 1,000, both
+    -- inclusive), so the bucket says whether the race passes the ICP's size
+    -- rule. The office rules live in candidacy_is_win_icp.
+    case
+        when not a.has_candidacy or civ.voter_count is null
+        then null
+        when civ.voter_count < 500
+        then '1. under 500'
+        when civ.voter_count < 1000
+        then '2. 500 to 999'
+        when civ.voter_count < 5000
+        then '3. 1K to 5K'
+        when civ.voter_count < 10000
+        then '4. 5K to 10K'
+        when civ.voter_count < 25000
+        then '5. 10K to 25K'
+        when civ.voter_count < 50000
+        then '6. 25K to 50K'
+        when civ.voter_count <= 100000
+        then '7. 50K to 100K'
+        else '8. over 100K'
+    end as candidacy_voter_count_bucket,
 
     cc.latest_stage_result as candidacy_result,
     cc.latest_stage_reached as candidacy_latest_stage_reached,
@@ -249,3 +337,5 @@ left join anchor_filing as f on f.user_id = a.user_id
 left join prior_runs as p on p.user_id = a.user_id
 left join wins as w on w.user_id = a.user_id
 left join legitimacy as lg on lg.campaign_id = a.anchor_campaign_id
+left join
+    office_category as oc on oc.br_position_database_id = ac.ballotready_position_id

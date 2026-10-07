@@ -792,14 +792,16 @@ models:
           - relationships:
               # Warn-severity: multi-TS-record Splink clusters keep one
               # ts_source_candidate_id in the mart row by design (cluster
-              # dedup drops the other natural keys). error_if=">100" guards
-              # regressions while tolerating the expected handful.
+              # dedup drops the other natural keys). The ceiling guards
+              # regressions while tolerating the expected handful: measured
+              # at 102 once person-level ER began collapsing groups, with
+              # headroom for ordinary drift.
               arguments:
                 to: ref('candidacy_stage')
                 field: ts_source_candidate_id
               config:
                 warn_if: ">0"
-                error_if: ">100"
+                error_if: ">150"
 
       - name: election_result
         description: Result of the election stage (Won or null, general stages only)
@@ -2699,6 +2701,46 @@ models:
                   - Statewide/Governor
                   - Town Council
                   - Other
+      - name: office_category
+        description: >
+          The reporting grain for office: office_type wherever it is specific,
+          and the BallotReady normalized position name sorted into named groups
+          where office_type says Other (Special District Board, Education Board,
+          Assessor/Tax Collector, Public Works/Roads, Elections Official,
+          Board/Commission, Party Office, Coroner), plus Other positions that
+          belong in an existing type (President, Congressional, Judge,
+          Statewide/Governor, Clerk/Treasurer, Sheriff, Attorney, Mayor, City
+          Council). Kept beside office_type rather than changing it, because
+          office_type feeds the gp_election_id hash.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Alderman
+                  - Attorney
+                  - City Council
+                  - Clerk/Treasurer
+                  - Congressional
+                  - County Supervisor
+                  - Judge
+                  - Mayor
+                  - President
+                  - School Board
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Statewide/Governor
+                  - Town Council
+                  - Special District Board
+                  - Education Board
+                  - Assessor/Tax Collector
+                  - Public Works/Roads
+                  - Elections Official
+                  - Board/Commission
+                  - Party Office
+                  - Coroner
+                  - Other
       - name: is_office_type_fallback
         description: >
           True when no candidate_office could be derived for the position (no
@@ -3351,82 +3393,52 @@ models:
           config:
             where: "gp_api_campaign_id is not null"
 
-  - name: int__civics_person_nodes
+  - name: int__civics_candidacy_cluster_members
     description: >
-      Person record universe. One row per record_key (source_name || '|' ||
-      source_id) participating in person identity: BR persons (all-time
-      candidacies + officeholder terms), gp_api users, HubSpot contacts,
-      non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
-      Also unions in the cluster- and bridge-derived gp_api user ids so every
-      edge endpoint is guaranteed a label seed in the propagation.
-      Deterministically derived, no probabilistic matching.
-    columns:
-      - name: record_key
-        description: Primary key.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-
-  - name: int__civics_person_edges
-    description: >
-      Deterministic person edges. One row per typed edge between two record
-      keys (record_key = source_name || '|' || source_id). Direction-agnostic
-      (record_key_1 <= record_key_2). No new matching: edges derive from native
-      ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
-      linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
-      Splink cluster co-membership (E5, hub to the cluster's min record key),
-      and within-source vendor keys (E7).
-    tests:
+      Candidacy-stage cluster members as person record keys
+      (int__er_prematch_people.unique_id): BallotReady via the candidacy's
+      person, TechSpeed at candidate-code grain, gp_api via the campaign's
+      user. One row per (cluster_id, record_key). A cluster spanning two
+      BallotReady people contributes nothing, so neither the person links nor
+      the DDHQ person lookup can assert one of two contradictory identities.
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [record_key_1, record_key_2, edge_type]
-      # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
-      # (mostly DDHQ candidate_id reuse across cycles). Excluded from
-      # propagation and flagged. Warn on any; error on a large jump that would
-      # signal an E7-keying regression. Baseline is ~1188 over the all-time
-      # historical ER universe (was ~23 before pre-2026 candidacies were
-      # included). No severity override: severity warn would disable error_if.
-      - dbt_utils.expression_is_true:
-          name: person_edges_conflict_count_warn
-          arguments:
-            expression: "not is_conflict"
-          config:
-            warn_if: ">0"
-            error_if: ">2000"
+            combination_of_columns: [cluster_id, record_key]
     columns:
-      - name: record_key_1
-        description: Lower of the two endpoint record keys (source_name || '|' || source_id).
+      - name: cluster_id
         data_tests:
           - not_null
-          # Every endpoint must exist in the node universe; a missing endpoint
-          # silently drops a propagation neighbor in one direction.
-          - relationships:
-              arguments:
-                to: ref('int__civics_person_nodes')
-                field: record_key
-      - name: record_key_2
+      - name: record_key
+        description: Person record key, a prematch unique_id.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_links
+    description: >
+      Person links. One row per undirected pair of person records
+      (int__er_prematch_people.unique_id) that a native identifier asserts
+      are the same person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
+      ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, and E5
+      candidacy-stage cluster co-membership (hub to the cluster's min record
+      key). Both endpoints are prematch records by construction. matcha's
+      person lane clusters these with the scored pairs as certain matches and
+      publishes er_source.clustered_people; no closure happens in dbt.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [unique_id_l, unique_id_r, link_type]
+    columns:
+      - name: unique_id_l
+        description: Lower of the two endpoint record keys.
+        data_tests:
+          - not_null
+      - name: unique_id_r
         description: Higher of the two endpoint record keys.
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('int__civics_person_nodes')
-                field: record_key
-      - name: edge_type
-        description: Trust-ordered edge provenance.
+      - name: link_type
+        description: Which identifier or cluster asserted the pair.
         data_tests:
           - not_null
           - accepted_values:
@@ -3435,15 +3447,8 @@ models:
                   - e1_hubspot_user
                   - e3_hubspot_br_candidacy
                   - e4_ts_officeholder
-                  - e5_cluster
+                  - e5_candidacy_cluster
                   - e6_eo_bridge
-                  - e7_within_source
-      - name: is_conflict
-        description: >
-          true for E7 edges whose within-source key resolves to more than one
-          distinct br_candidate_id. Flagged and excluded from propagation.
-        data_tests:
-          - not_null
 
   - name: int__civics_internal_persons
     description: >
@@ -3487,142 +3492,25 @@ models:
           - not_null
           - unique
 
-  - name: int__civics_person_edges_probabilistic
-    description: >
-      Splink person-matcher edges, one row per undirected record-key pair at or
-      above a 0.95 match probability. Held apart from int__civics_person_edges
-      so the deterministic pregroups cannot read matcher output: the pregroup
-      model sits upstream of the matcher, so the separation is enforced by DAG
-      topology rather than by convention.
-
-      Pairs whose first names agree only through the nickname alias arrays, with
-      no shared email or phone, are dropped. That class was measured at six
-      false positives in fifty sampled pairs while every other class read clean,
-      and a wrong person merge is destructive once it reaches HubSpot.
-    data_tests:
-      - dbt_utils.expression_is_true:
-          name: person_probabilistic_edges_are_ordered
-          arguments:
-            expression: "record_key_1 < record_key_2"
-    columns:
-      - name: record_key_1
-        description: Lexically smaller record key of the pair.
-        data_tests:
-          - not_null
-      - name: record_key_2
-        description: Lexically larger record key of the pair.
-        data_tests:
-          - not_null
-      - name: edge_type
-        description: Always `e10_splink_person`; named to sit alongside E1-E7.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: ["e10_splink_person"]
-      - name: match_probability
-        description: >
-          Highest Splink posterior among the prematch pairs that produced this
-          record-key pair. Audit only; propagation treats every edge alike.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_groups
-    description: >
-      Person groups. One row per int__civics_person_nodes record_key with its
-      person_group_key: the min record_key reachable over the non-conflicting
-      edges, via min-label propagation across 15 unrolled passes (Spark SQL,
-      no recursion). Pass count exceeds the largest component's diameter with
-      headroom; convergence is tested (penultimate pass == final).
-      had_conflict rolls up E7 conflict edges to the group (both endpoints).
-    tests:
-      # Propagation converged: the last two passes agree for every record.
-      - dbt_utils.expression_is_true:
-          name: person_groups_converged
-          arguments:
-            expression: "person_group_key = pass_penultimate_key"
-      # At most one distinct br_candidate_id per group. ~223 known cluster
-      # conflicts resolve to the min br_candidate_id (plan decision 1); warn
-      # on the known set, error on a regression. See the singular test
-      # assert_person_group_single_br_candidate.
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id for the source record.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: person_group_key
-        description: Min record_key reachable over non-conflicting edges. Stable person label.
-        data_tests:
-          - not_null
-      - name: had_conflict
-        description: true when the group is touched by an E7 conflict edge.
-        data_tests:
-          - not_null
-
-  - name: int__civics_person_groups_deterministic
-    description: >
-      Deterministic-only person groups: the same min-label propagation as
-      int__civics_person_groups, but structurally restricted to the
-      deterministic edge model. This is the pregroup source for the Splink
-      person entity, so a published probabilistic person match can never feed
-      back into the next run's pregroups.
-    tests:
-      - dbt_utils.expression_is_true:
-          name: person_groups_deterministic_converged
-          arguments:
-            expression: "deterministic_group_key = pass_penultimate_key"
-    columns:
-      - name: record_key
-        description: Primary key. source_name || '|' || source_id for the source record.
-        data_tests:
-          - unique
-          - not_null
-      - name: source_name
-        description: Source system, parsed from record_key.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
-                  - gp_api
-                  - hubspot
-                  - techspeed
-                  - techspeed_officeholder
-                  - ddhq
-      - name: deterministic_group_key
-        description: >
-          Min record_key reachable over non-conflicting deterministic edges.
-        data_tests:
-          - not_null
-
   - name: int__er_prematch_people
     description: >
-      Entity resolution prematch for the person entity: HubSpot contacts,
-      gp_api users, BallotReady people, TechSpeed candidates (person grain via
-      the stage-stripped candidate code), and TechSpeed officeholders in one
-      standardized schema for Splink probabilistic matching. DDHQ has no person
-      id or contact fields and attaches via candidacy clusters; voter records
-      are out of scope.
+      Entity resolution prematch for the person entity, and the person record
+      universe: every HubSpot contact, gp_api user, BallotReady person (any
+      candidacy or term), TechSpeed candidate (person grain via the
+      stage-stripped candidate code) and non-reused TechSpeed officeholder, in
+      one standardized schema for Splink. DDHQ has no person id or contact
+      fields and reaches a person only through its candidacy cluster; voter
+      records are out of scope.
 
-      Hygiene happens here so blocking cannot chain unrelated people. Records
-      that are not people are dropped: role inboxes and signup-form test
-      fixtures, identified by surname. Contact keys are then cleaned:
-      internal/test email domains and placeholder phones are nulled,
-      plus-addressing is stripped, phones must be 10 digits (or 11 with a
-      leading country code), and any contact key on more than 25 records
-      (institutional inboxes, switchboards) is nulled.
+      Every record keeps its row because every record needs a person id.
+      Records that cannot be matched have their name fields nulled instead:
+      nameless rows, role inboxes and signup-form test fixtures (identified
+      by surname). Splink scores a null name as no evidence and the
+      post-prediction filter requires first-name agreement, so they pair with
+      nothing. Contact keys are cleaned: internal/test email domains and
+      placeholder phones are nulled, plus-addressing is stripped, phones must
+      be 10 digits (or 11 with a leading country code), and any contact key
+      on more than 25 records (institutional inboxes, switchboards) is nulled.
     data_tests:
       # Model level so the expression can name the column without the
       # column-test macro prepending it. Guards the tokenizer silently
@@ -3638,10 +3526,9 @@ models:
     columns:
       - name: unique_id
         description: >
-          Primary key for Splink: source_name || '|' || source_id. For
-          techspeed rows the source_id is the stage-stripped candidate code
-          (person grain), so unlike other sources it is not a person-graph
-          record key.
+          Primary key for Splink and the person record key every consumer
+          joins on: source_name || '|' || source_id. For techspeed rows the
+          source_id is the stage-stripped candidate code (person grain).
         data_tests:
           - unique
           - not_null
@@ -3657,13 +3544,11 @@ models:
                   - techspeed
                   - techspeed_officeholder
       - name: first_name
-        description: Alpha-only normalized first name.
-        data_tests:
-          - not_null
+        description: Alpha-only normalized first name; null when the record cannot be matched.
       - name: last_name
-        description: Lowercased surname with generational suffixes stripped.
-        data_tests:
-          - not_null
+        description: >
+          Lowercased surname with generational suffixes stripped; null when
+          the record cannot be matched.
       - name: last_name_tokens
         description: >
           Surname split on non-letter characters, single-character tokens
@@ -3687,52 +3572,58 @@ models:
                 expression: "rlike '^(JR|SR|[IVX]*)$'"
       - name: br_candidate_id
         description: >
-          BallotReady person id, ballotready rows only. Carried so the matcher
-          can refuse to link two distinct BR people directly.
+          BallotReady person id, ballotready rows only. The matcher refuses a
+          direct pair of two, and dissolves a cluster that would hold two.
       - name: first_seen_at
         description: >
-          Source-native creation timestamp, same constructions as the person
-          mint. Feeds earliest-member id minting.
-        data_tests:
-          - not_null
-      - name: pregroup_id
-        description: >
-          Deterministic person group of the record (falls back to unique_id
-          for records not yet in the graph). Splink blocks on it to score those
-          pairs, but does not assert them. Canonical identity is settled
-          downstream in int__civics_person_groups, which unions these groups
-          with the Splink clusters.
+          Source-native creation timestamp. Feeds earliest-member id minting.
         data_tests:
           - not_null
 
   - name: int__civics_person_canonical_ids
     description: >
-      Canonical gp_person_id per record. One row per record_key. The id is minted
-      from the group member earliest by first_seen_at (ties: source_name,
-      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
-      so first-in wins uniformly and the id survives a later record joining the
-      group. first_seen_at is computed inline where each record's native id and
-      source timestamp share a row.
+      Canonical gp_person_id per person record. One row per
+      int__er_prematch_people unique_id. The person group is the cluster
+      matcha published in er_source.clustered_people; a record the vintage
+      has not seen stands alone under its own key. The id is minted from the
+      group member earliest by first_seen_at (ties: source_name, source_id)
+      via generate_salted_uuid([source_name, source_id], salt=person), so
+      first-in wins uniformly and the id survives a later record joining the
+      group.
     columns:
       - name: record_key
-        description: Primary key. source_name || '|' || source_id for the source record.
+        description: Primary key. The prematch unique_id, source_name || '|' || source_id.
         data_tests:
           - unique
           - not_null
       - name: source_name
-        description: Source system, parsed from record_key.
         data_tests:
           - not_null
       - name: person_group_key
-        description: The record's person group (from int__civics_person_groups).
+        description: >
+          The record's person group: the published cluster, else the record's
+          own key.
         data_tests:
           - not_null
+      - name: identity_key
+        description: >
+          The record's deterministic identity: the published component over
+          the native-identifier links, else the record's own key. Two distinct
+          values under one gp_person_id is what a Splink merge looks like.
+        data_tests:
+          - not_null
+      - name: identity_count
+        description: How many deterministic identities the published clustering fused into this group. 1 means nothing merged.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
       - name: first_seen_at
         description: >
-          Earliest source-native timestamp for the record. Drives the mint.
-          Derived from source data only (never current_timestamp), so a full
-          refresh reproduces it; the ddhq value can still shift if Airbyte
-          re-extracts the master CSV. The snapshot is the churn detector.
+          Earliest source-native timestamp for the record, from the prematch
+          row. Drives the mint. Derived from source data only (never
+          current_timestamp), so a full refresh reproduces it.
         data_tests:
           - not_null
       - name: minting_source_name

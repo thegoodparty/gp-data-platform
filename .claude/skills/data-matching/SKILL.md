@@ -1,6 +1,6 @@
 ---
 name: data-matching
-description: Match an external or ad-hoc table (HubSpot export, lead list, P2V sample) to ICP flags or other reference data in Databricks. Use when you have a table of people or races and need to attach int__icp_offices flags (icp_office_win / icp_office_serve, voter_count, etc.) but the table only has emails, BallotReady race IDs, or position IDs, not the ICP join. Routes by which ID you have: email (two-hop via campaigns), race ID (two-hop via race staging), or position ID (direct join). General Databricks matching reference; not Win-pipeline specific.
+description: "Match an external or ad-hoc table (HubSpot export, lead list, P2V sample) to ICP flags or other reference data in Databricks. Use when you have a table of people or races and need to attach int__icp_offices flags (icp_office_win / icp_office_serve, voter_count, etc.) but the table only has emails, BallotReady race IDs, or position IDs, not the ICP join. Routes by which ID you have: email (two-hop via campaigns), race ID (two-hop via race staging), or position ID (direct join). General Databricks matching reference; not Win-pipeline specific."
 ---
 
 # Data matching

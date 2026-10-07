@@ -39,13 +39,21 @@ from include.custom_functions.matcha_utils import (
 class TestEntitySpecs:
     """The declarative entity registry the DAG builds its task groups from."""
 
-    def test_three_entities(self):
+    def test_four_entities(self):
         """One spec per matcha --entity-type."""
         assert {e.entity_type for e in ENTITIES} == {
             "candidacy_stage",
             "elected_official",
             "election_stage",
+            "person",
         }
+
+    def test_only_the_person_lane_clusters_over_links(self):
+        """The person pod gets --links; the others must not, since their
+        configs reject the option."""
+        by_type = {e.entity_type: e.links_model for e in ENTITIES}
+        assert by_type.pop("person") == "int__civics_person_links"
+        assert set(by_type.values()) == {None}
 
     def test_table_names_derive_from_stem(self):
         """Cluster and pairwise names share one plural stem."""
@@ -59,6 +67,7 @@ class TestEntitySpecs:
             "int__er_prematch_candidacy_stages",
             "int__er_prematch_elected_officials",
             "int__er_prematch_election_stages",
+            "int__er_prematch_people",
         }
 
     def test_cluster_gates_are_strict(self):
@@ -68,7 +77,7 @@ class TestEntitySpecs:
             assert gate.min_prior_ratio == 0.8
             assert gate.id_column == "unique_id"
             assert gate.min_id_overlap == 0.8
-            assert gate.not_null_columns == ("cluster_id", "unique_id")
+            assert gate.not_null_columns[:2] == ("cluster_id", "unique_id")
             assert gate.expected_sources
 
     def test_pairwise_gates_are_loose(self):
@@ -96,6 +105,13 @@ class TestEntitySpecs:
             "ddhq",
         }
         assert set(by_type["election_stage"]) == {"ballotready", "ddhq", "techspeed"}
+        assert set(by_type["person"]) == {
+            "ballotready",
+            "gp_api",
+            "hubspot",
+            "techspeed",
+            "techspeed_officeholder",
+        }
 
     def test_specs_are_frozen(self):
         """Specs are module constants; mutation would leak across tasks."""

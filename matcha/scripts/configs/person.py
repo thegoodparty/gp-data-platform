@@ -73,16 +73,11 @@ PERSON_CONFIG = EntityConfig(
         block_on(
             "state", "last_name_tokens", "substr(first_name, 1, 1)", arrays_to_explode=["last_name_tokens"]
         ),
-        # The dbt graph already resolved these pairs. Scoring them anyway is the
-        # calibration signal: a BallotReady and a TechSpeed record for one
-        # person, agreeing on nothing but the name, lands around 0.45.
-        block_on("pregroup_id"),
     ],
     additional_columns_to_retain=[
         "source_name",
         "source_id",
         # Splink retains comparison columns itself; listing one here duplicates it.
-        "pregroup_id",
         "last_name_tokens",
         "suffix_token",
         "br_candidate_id",
@@ -100,6 +95,11 @@ PERSON_CONFIG = EntityConfig(
     link_type="link_and_dedupe",
     date_columns=["birth_date"],
     clustered_output_name="clustered_people.csv",
+    # dbt's native-identifier and candidacy-cluster pairs cluster with the
+    # scored pairs as certain matches; BallotReady's person id is the one clean
+    # identifier, so no cluster may hold two. See pipeline.cluster_with_links.
+    links_table="goodparty_data_catalog.dbt.int__civics_person_links",
+    cannot_link_column="br_candidate_id",
     post_prediction_filters=[PERSON_POST_PREDICTION_FILTER],
     audit_display_columns=[
         "source_name",

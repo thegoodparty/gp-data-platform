@@ -32,7 +32,7 @@ _DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "matcha_er.py")
 with suppress_logging("airflow"):
     _DAG = DagBag(dag_folder=_DAG_FILE).dags.get("matcha_er")
 
-_ENTITIES = ("candidacy_stage", "elected_official", "election_stage")
+_ENTITIES = ("candidacy_stage", "elected_official", "election_stage", "person")
 
 
 def test_dag_loads():
@@ -134,6 +134,21 @@ def test_pods_write_dated_tables_never_live():
         args = " ".join(_DAG.get_task(f"{entity}.match").arguments)
         assert "ds_nodash" in args
         assert "--overwrite" in args
+
+
+def test_the_person_pod_passes_its_links_and_the_prematch_refresh_builds_them():
+    """The person lane clusters over dbt's deterministic links, so the pod
+    needs the links table and the refresh step must have rebuilt it alongside
+    the prematch; a stale links table would re-mint ids from last week's keys."""
+    for entity in _ENTITIES:
+        args = _DAG.get_task(f"{entity}.match").arguments
+        if entity == "person":
+            assert args[args.index("--links") + 1].endswith(".int__civics_person_links")
+        else:
+            assert "--links" not in args
+    refresh = _DAG.get_task("dbt_refresh_prematch").steps_override[0]
+    assert "int__er_prematch_people" in refresh
+    assert "int__civics_person_links" in refresh
 
 
 def test_match_pod_targets_its_own_entity():

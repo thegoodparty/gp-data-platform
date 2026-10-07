@@ -3317,6 +3317,11 @@ models:
         description: >
           Country on the registration event, from Amplitude. Null before
           telemetry began in 2025-04.
+      - name: full_name
+        description: >
+          first_name and last_name, each trimmed, joined by a space. The other
+          part alone when one is blank; null when both are. Casing is left as
+          entered.
       - name: is_activated
         description: >
           The Activated Candidates OKR flag, read from users_win_base so this
@@ -3340,6 +3345,29 @@ models:
           Days from first known contact to signup. Zero for most rows, where
           the signup created the contact; filter on not first_touch_is_signup
           for a lead-time population.
+      - name: signup_to_onboarding_started_days
+        description: >
+          Calendar days from signup to entering onboarding. Zero for about 99%
+          of users: onboarding starts in the signup session, and in the oldest
+          flow its start event is registration itself.
+      - name: onboarding_started_to_completed_days
+        description: >
+          Calendar days from entering onboarding to finishing it. Zero for about
+          95% of finishers; the median is about two minutes.
+      - name: signup_to_onboarding_completed_days
+        description: >
+          Calendar days from signup to finishing onboarding. Zero for about 91%
+          of finishers.
+      - name: onboarding_completed_to_activated_days
+        description: >
+          Calendar days from finishing onboarding to first reaching voters
+          (activated_at). Median about 15 days. Can be negative for the few who
+          reached voters before finishing onboarding.
+      - name: onboarding_completed_to_pro_days
+        description: >
+          Calendar days from finishing onboarding to Pro (pro_since). pro_since is
+          undated for about half of Pro users, who read null. Negative where Pro
+          came first.
       - name: signup_to_product_output_days
         description: Days from account creation to first product output.
       - name: first_touch_to_election_days
@@ -3385,7 +3413,8 @@ models:
         description: >
           registered (every account), completed_onboarding (is_onboarded),
           activated (is_activated), pro (is_pro), matched_third_party
-          (candidacy_has_external_match, 2026 races only).
+          (candidacy_has_external_match, 2026 races only), power_user
+          (is_power_user).
         data_tests:
           - not_null
           - accepted_values:
@@ -3396,15 +3425,16 @@ models:
                   - activated
                   - pro
                   - matched_third_party
+                  - power_user
       - name: stage_order
-        description: Display order, 1 to 5, matching stage.
+        description: Display order, 1 to 6, matching stage.
         data_tests:
           - not_null
       - name: reached_at
         description: >
           When the user reached the stage. Null where the stage has no date:
           pro_since is undated for about half of Pro users, and third-party
-          matches carry no date.
+          matches and power users carry no date.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
