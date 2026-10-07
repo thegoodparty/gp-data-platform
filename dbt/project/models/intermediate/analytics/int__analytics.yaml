@@ -795,13 +795,25 @@ models:
         description: First candidate-dashboard view.
       - name: last_dashboard_viewed_at
         description: Most recent candidate-dashboard view.
+      - name: onboarding_started_at
+        description: >
+          When they entered the onboarding flow: the earliest of each flow
+          version's start event (Onboarding - Registration Completed, Onboarding
+          - Welcome Completed, Onboarding V2 - Welcome Viewed). In the oldest
+          version the start event is registration itself, so the gap from signup
+          is near zero there.
       - name: onboarding_completed_at
         description: >
-          When the onboarding flow fired its own completion event. Not the same
-          question as users_win_base.is_onboarded, which is a US-registration
-          plus dashboard-view-within-14-days construction under a similar name.
+          When they finished the onboarding flow: the earliest of each flow
+          version's pledge-completion event (onboarding_complete, Onboarding -
+          Candidate Pledge Completed, Onboarding - Pledge Completed, Onboarding V2
+          - Pledge Completed). No single event spans the 2026-05-07 and
+          2026-06-08 rebuilds; the legacy onboarding_complete alone read 1 of
+          4,122 post-May signups as onboarded. The pledge is the last step of every
+          version so far; an explicit completion event is requested separately.
+          Not users_win_base.is_onboarded, a dashboard view within 14 days.
       - name: is_onboarded
-        description: They finished the onboarding flow.
+        description: They finished the onboarding flow, in any of its versions.
         data_tests:
           - not_null
       - name: product_output_at

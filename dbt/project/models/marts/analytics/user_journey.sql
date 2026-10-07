@@ -165,6 +165,21 @@ select
     ) as days_to_candidacy_election,
     datediff(cand.candidacy_filing_deadline, current_date()) as days_to_filing_deadline,
     datediff(u.registered_at, hs.first_touch_at) as first_touch_to_signup_days,
+    datediff(
+        act.onboarding_started_at, u.registered_at
+    ) as signup_to_onboarding_started_days,
+    datediff(
+        act.onboarding_completed_at, act.onboarding_started_at
+    ) as onboarding_started_to_completed_days,
+    datediff(
+        act.onboarding_completed_at, u.registered_at
+    ) as signup_to_onboarding_completed_days,
+    datediff(
+        wa.activated_at, act.onboarding_completed_at
+    ) as onboarding_completed_to_activated_days,
+    datediff(
+        rev.pro_since, act.onboarding_completed_at
+    ) as onboarding_completed_to_pro_days,
     datediff(act.product_output_at, u.registered_at) as signup_to_product_output_days,
     datediff(
         cand.candidacy_election_date, hs.first_touch_at
