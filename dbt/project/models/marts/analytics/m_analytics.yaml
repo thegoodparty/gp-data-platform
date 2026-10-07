@@ -3317,6 +3317,11 @@ models:
         description: >
           Country on the registration event, from Amplitude. Null before
           telemetry began in 2025-04.
+      - name: full_name
+        description: >
+          first_name and last_name, each trimmed, joined by a space. The other
+          part alone when one is blank; null when both are. Casing is left as
+          entered.
       - name: is_activated
         description: >
           The Activated Candidates OKR flag, read from users_win_base so this

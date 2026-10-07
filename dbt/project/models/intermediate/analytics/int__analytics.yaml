@@ -1467,6 +1467,30 @@ models:
           already applied.
       - name: candidacy_voter_count
         description: Registered voters in the district.
+      - name: candidacy_voter_count_bucket
+        description: >
+          candidacy_voter_count in ranges whose edges are the ICP cutoffs: Win
+          covers 500 to 100,000 voters, Serve 1,000 to 100,000, and over 100,000
+          is supersize. Each range includes its lower edge, except that 100,000
+          itself sits in "7. 50K to 100K" because the ICP includes it. Registered
+          voters, not census population. Covers only the ICP's size rule; the
+          office rules (no judicial, appointed or non-ICP positions) are in
+          candidacy_is_win_icp, so an in-range bucket is not proof of ICP. The number prefix keeps the ranges in
+          order. Null where there is no candidacy or the district is unsized.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "1. under 500",
+                    "2. 500 to 999",
+                    "3. 1K to 5K",
+                    "4. 5K to 10K",
+                    "5. 10K to 25K",
+                    "6. 25K to 50K",
+                    "7. 50K to 100K",
+                    "8. over 100K",
+                  ]
       - name: candidacy_result
         description: >
           How the run ended at the deepest stage reached, from the civics
