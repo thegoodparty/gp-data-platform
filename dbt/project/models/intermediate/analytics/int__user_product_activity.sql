@@ -91,12 +91,35 @@ with
                 end
             ) as last_dashboard_viewed_at,
 
-            -- The onboarding flow's own completion event. Distinct from
-            -- users_win_base.is_onboarded, which is a US-registration-plus-
-            -- dashboard-view-within-14-days construction answering a different
-            -- question under a similar name.
+            -- The onboarding flow has been rebuilt twice (2026-05-07 and the
+            -- 2026-06-08 V2), and no event spans all three versions: the legacy
+            -- onboarding_complete stopped at the first rebuild. So start and
+            -- completion each take the earliest of every version's own event.
+            -- Completion is the pledge step, the last step of every version so
+            -- far. Distinct from users_win_base.is_onboarded, which is a
+            -- dashboard view within 14 days of registration.
             min(
-                case when event_type = 'onboarding_complete' then event_time end
+                case
+                    when
+                        event_type in (
+                            'Onboarding - Registration Completed',
+                            'Onboarding - Welcome Completed',
+                            'Onboarding V2 - Welcome Viewed'
+                        )
+                    then event_time
+                end
+            ) as onboarding_started_at,
+            min(
+                case
+                    when
+                        event_type in (
+                            'onboarding_complete',
+                            'Onboarding - Candidate Pledge Completed',
+                            'Onboarding - Pledge Completed',
+                            'Onboarding V2 - Pledge Completed'
+                        )
+                    then event_time
+                end
             ) as onboarding_completed_at,
 
             min(
@@ -173,6 +196,7 @@ select
     l.first_dashboard_viewed_at,
     l.last_dashboard_viewed_at,
 
+    l.onboarding_started_at,
     l.onboarding_completed_at,
     l.onboarding_completed_at is not null as is_onboarded,
 

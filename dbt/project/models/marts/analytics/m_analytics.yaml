@@ -3340,6 +3340,29 @@ models:
           Days from first known contact to signup. Zero for most rows, where
           the signup created the contact; filter on not first_touch_is_signup
           for a lead-time population.
+      - name: signup_to_onboarding_started_days
+        description: >
+          Calendar days from signup to entering onboarding. Zero for about 99%
+          of users: onboarding starts in the signup session, and in the oldest
+          flow its start event is registration itself.
+      - name: onboarding_started_to_completed_days
+        description: >
+          Calendar days from entering onboarding to finishing it. Zero for about
+          95% of finishers; the median is about two minutes.
+      - name: signup_to_onboarding_completed_days
+        description: >
+          Calendar days from signup to finishing onboarding. Zero for about 91%
+          of finishers.
+      - name: onboarding_completed_to_activated_days
+        description: >
+          Calendar days from finishing onboarding to first reaching voters
+          (activated_at). Median about 15 days. Can be negative for the few who
+          reached voters before finishing onboarding.
+      - name: onboarding_completed_to_pro_days
+        description: >
+          Calendar days from finishing onboarding to Pro (pro_since). pro_since is
+          undated for about half of Pro users, who read null. Negative where Pro
+          came first.
       - name: signup_to_product_output_days
         description: Days from account creation to first product output.
       - name: first_touch_to_election_days
