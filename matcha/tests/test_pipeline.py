@@ -194,7 +194,7 @@ def test_eo_pipeline_smoke(tmp_path):
     assert (tmp_path / "clustered_elected_officials.csv").exists()
 
     # At least 1 cross-source cluster (proves matching worked)
-    multi_source = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
+    multi_source = (clustered_df.groupby("cluster_id")["source_name"].nunique() > 1).sum()
     assert multi_source >= 1, f"Expected cross-source clusters, got {multi_source}"
 
     # EO-specific retained columns present in clustered output
