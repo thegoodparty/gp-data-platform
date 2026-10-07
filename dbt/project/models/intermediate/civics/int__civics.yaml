@@ -2712,6 +2712,33 @@ models:
           office_type feeds the gp_election_id hash.
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Alderman
+                  - Attorney
+                  - City Council
+                  - Clerk/Treasurer
+                  - Congressional
+                  - County Supervisor
+                  - Judge
+                  - Mayor
+                  - President
+                  - School Board
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Statewide/Governor
+                  - Town Council
+                  - Special District Board
+                  - Education Board
+                  - Assessor/Tax Collector
+                  - Public Works/Roads
+                  - Elections Official
+                  - Board/Commission
+                  - Party Office
+                  - Coroner
+                  - Other
       - name: is_office_type_fallback
         description: >
           True when no candidate_office could be derived for the position (no

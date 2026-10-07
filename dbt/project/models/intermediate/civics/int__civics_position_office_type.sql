@@ -100,14 +100,19 @@ select
             or lower(normalized_position_name) like '%authority board%'
             or lower(normalized_position_name) = 'council of governments'
         then 'Special District Board'
+        -- A joint office that names a clerk is a clerk's office first, so any
+        -- clerk title skips the tax rule and reaches Clerk/Treasurer below.
         when
-            lower(normalized_position_name) like '%assessor%'
-            or lower(normalized_position_name) like '%(tax)%'
-            or lower(normalized_position_name) like '%tax collector%'
-            or lower(normalized_position_name) like '%revenue%'
-            or lower(normalized_position_name) like '%tax commissioner%'
-            or lower(normalized_position_name) like '%receiver%'
-            or lower(normalized_position_name) like '%property%review board%'
+            lower(normalized_position_name) not like '%clerk%'
+            and (
+                lower(normalized_position_name) like '%assessor%'
+                or lower(normalized_position_name) like '%(tax)%'
+                or lower(normalized_position_name) like '%tax collector%'
+                or lower(normalized_position_name) like '%revenue%'
+                or lower(normalized_position_name) like '%tax commissioner%'
+                or lower(normalized_position_name) like '%receiver%'
+                or lower(normalized_position_name) like '%property%review board%'
+            )
         then 'Assessor/Tax Collector'
         when
             lower(normalized_position_name) like '%clerk%'
