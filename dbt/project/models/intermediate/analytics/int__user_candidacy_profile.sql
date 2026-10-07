@@ -84,8 +84,9 @@ with
             c.general_election_date,
             c.general_election_result,
             -- A gp-api-only candidacy is our own campaign echoed back, not
-            -- evidence the run reached a ballot.
-            exists (c.source_systems, s -> s <> 'gp_api') as has_ballot_evidence,
+            -- evidence the run reached a ballot. A vendor id on a stage is.
+            exists (c.source_systems, s -> s <> 'gp_api')
+            or svm.gp_candidacy_id is not null as has_ballot_evidence,
             -- Narrower: a ballot data vendor, on the candidacy or any of its
             -- stages. Taken over every candidacy matching the anchor, since the
             -- tiebreak below can pick one that lacks it.

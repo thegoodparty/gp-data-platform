@@ -1521,10 +1521,10 @@ models:
           - not_null
       - name: never_filed
         description: >
-          The anchor election has passed and no civics candidacy with any
-          source beyond gp-api exists for it. A gp-api-only candidacy is our
-          own campaign echoed back and is not evidence the run reached a
-          ballot. Never null.
+          The anchor election has passed and no civics candidacy exists for it
+          with a source beyond gp-api or a vendor id on one of its stages. A
+          gp-api-only candidacy is our own campaign echoed back and is not
+          evidence the run reached a ballot. Never null.
         data_tests:
           - not_null
       - name: candidacy_is_incumbent
