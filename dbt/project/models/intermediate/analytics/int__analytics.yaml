@@ -1374,9 +1374,33 @@ models:
       - name: candidacy_state
         description: State of the race.
       - name: candidacy_party
-        description: Party as entered.
+        description: >
+          Party as entered, raw. Its casing and " Party" suffix vary by signup
+          flow, which makes it a source tell; group by candidacy_party_normalized.
+      - name: candidacy_party_normalized
+        description: >
+          One name per party: Independent, Nonpartisan, Libertarian, Green,
+          Forward, Reform, Working Families, Democratic, Republican, or Other.
+          Lowercased and stripped of a trailing " Party" before mapping; blank
+          reads null.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Libertarian
+                  - Green
+                  - Forward
+                  - Reform
+                  - Working Families
+                  - Democratic
+                  - Republican
+                  - Other
       - name: candidacy_partisan_type
-        description: Whether the race is partisan, as entered.
+        description: >
+          Whether the race is partisan, as entered: nonpartisan, partisan, or
+          partisan for primary only. Blank reads null.
       - name: candidacy_election_date
         description: >
           Election date of the anchor run. Every election-anchored duration
@@ -1391,7 +1415,21 @@ models:
       - name: candidacy_position_id
         description: BallotReady position id for the race.
       - name: candidacy_office_level
-        description: Office level from the corroborated civics candidacy.
+        description: >
+          Office level from the corroborated civics candidacy, raw: several
+          casings and a few non-level labels. Group by
+          candidacy_office_level_normalized instead.
+      - name: candidacy_office_level_normalized
+        description: >
+          One of federal, state, county, city, township, local (school boards and
+          special districts) or regional. BallotReady's level wins, cleaned of
+          casing and stray labels (Presidential to federal, Statewide to state,
+          junk such as N/A or Ballot Initiative dropped); the product's
+          election_level fills the gaps. Null only when neither has a level.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [federal, state, county, city, township, local, regional]
       - name: candidacy_is_pledged
         description: The anchor campaign took the GoodParty pledge.
       - name: candidacy_is_verified

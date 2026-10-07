@@ -182,7 +182,41 @@ select
     end as candidacy_normalized_position_name,
     case when a.has_candidacy then ac.campaign_state end as candidacy_state,
     case when a.has_candidacy then ac.campaign_party end as candidacy_party,
-    case when a.has_candidacy then ac.partisan_type end as candidacy_partisan_type,
+    -- The raw party mixes casings and a " Party" suffix by signup flow, which
+    -- the raw column keeps as a source tell. This is the one to group by.
+    case
+        when a.has_candidacy and nullif(trim(ac.campaign_party), '') is not null
+        then
+            case
+                regexp_replace(lower(trim(ac.campaign_party)), ' party$', '')
+                when 'independent'
+                then 'Independent'
+                when 'independent/none'
+                then 'Independent'
+                when 'nonpartisan'
+                then 'Nonpartisan'
+                when 'non-partisan'
+                then 'Nonpartisan'
+                when 'libertarian'
+                then 'Libertarian'
+                when 'green'
+                then 'Green'
+                when 'forward'
+                then 'Forward'
+                when 'reform'
+                then 'Reform'
+                when 'working families'
+                then 'Working Families'
+                when 'democratic'
+                then 'Democratic'
+                when 'republican'
+                then 'Republican'
+                else 'Other'
+            end
+    end as candidacy_party_normalized,
+    case
+        when a.has_candidacy then nullif(trim(ac.partisan_type), '')
+    end as candidacy_partisan_type,
     a.election_date as candidacy_election_date,
     case when a.has_candidacy then ac.election_level end as candidacy_election_level,
     f.filing_deadline as candidacy_filing_deadline,
@@ -190,6 +224,42 @@ select
         when a.has_candidacy then ac.ballotready_position_id
     end as candidacy_position_id,
     cc.office_level as candidacy_office_level,
+    -- The civics value arrives in several casings plus a few labels that are
+    -- not levels. BallotReady's level is the more specific one (it separates
+    -- township and local districts), so it wins, and the product's own level
+    -- fills the gaps.
+    case
+        when a.has_candidacy
+        then
+            coalesce(
+                case
+                    lower(trim(cc.office_level))
+                    when 'federal'
+                    then 'federal'
+                    when 'presidential'
+                    then 'federal'
+                    when 'state'
+                    then 'state'
+                    when 'state legislative'
+                    then 'state'
+                    when 'statewide'
+                    then 'state'
+                    when 'county'
+                    then 'county'
+                    when 'city'
+                    then 'city'
+                    when 'township'
+                    then 'township'
+                    when 'town'
+                    then 'township'
+                    when 'local'
+                    then 'local'
+                    when 'regional'
+                    then 'regional'
+                end,
+                lower(trim(ac.election_level))
+            )
+    end as candidacy_office_level_normalized,
     case when a.has_candidacy then ac.is_pledged end as candidacy_is_pledged,
     case when a.has_candidacy then ac.is_verified end as candidacy_is_verified,
     -- Not candidacy_is_verified, which is the product's own flag.
