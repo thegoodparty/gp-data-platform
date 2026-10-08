@@ -86,6 +86,14 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: "^[0-9]{15}$"
+      - name: Residence_Addresses_ZipPlus4
+        description: >
+          Joined with Residence_Addresses_Zip to the area profiles' ZIP+4 ids,
+          so it must keep its leading zeros.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{4}$"
 
   - name: gp_api_people
     description: >
