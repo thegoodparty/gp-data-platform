@@ -32,7 +32,7 @@ models:
   - name: gp_api_consumer_only_people
     description: >
       People in the L2 commercial file who are not in gp_api_voters, in the
-      gp_api_voters column contract so gp_api_people can union the two.
+      gp_api_voters column contract so gp_api_constituents can union the two.
       Voter-file columns (party, turnout history, registration, scores) are
       null. District columns and Precinct come as one set from the most common
       values among voters in the person's ZIP+4, else census block, block group
@@ -95,7 +95,7 @@ models:
               arguments:
                 regex: "^[0-9]{4}$"
 
-  - name: gp_api_people
+  - name: gp_api_constituents
     description: >
       Everyone the app can reach: every gp_api_voters row plus the people in
       gp_api_consumer_only_people. Columns are those of gp_api_voters, then
