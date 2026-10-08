@@ -13,7 +13,7 @@ with
     merges as (
         select listing_contact_id, merged_contact_id
         from listed
-        where merged_contact_id != listing_contact_id
+        where merged_contact_id not in ('', listing_contact_id)
     )
 
 select
