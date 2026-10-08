@@ -20,3 +20,28 @@ models:
           exactly one; null for a group with zero or more than one, so an
           ambiguous person resolves to nothing rather than an arbitrary
           contact.
+
+  - name: serve_agent_constituents
+    description: >
+      serve_agent_voters plus the people in gp_api_consumer_only_people, under
+      the same de-identified, non-partisan columns, so a Serve agent can reach
+      residents who are not registered voters. Consumer-only rows carry
+      districts and precinct (placed by area), city, ZIP, census tract and
+      block group, and the demographics the commercial file shares with the
+      voter file; turnout, registration and Haystaq columns are null. Only
+      Michigan has consumer-only rows today.
+    columns:
+      - name: voter_key
+        description: >
+          sha2 of LALVOTERID, as in serve_agent_voters. A consumer-only person
+          whose LALVOTERID has left the voter file keeps that key; one with no
+          LALVOTERID gets the sha2 of the commercial Individual_Id, the same
+          value as individual_id_hash in the de-identified commercial staging
+          model.
+      - name: is_registered_voter
+        description: True when the row comes from the voter file.
+      - name: district_source
+        description: >
+          voter_file for voter rows; for consumer-only rows, the area whose
+          voters supplied the district columns (zip_plus_4, census_block,
+          census_block_group, census_tract), or null when none matched.
