@@ -76,6 +76,16 @@ models:
                   - census_block
                   - census_block_group
                   - census_tract
+      - name: geocode_full
+        description: >
+          The commercial file's 15-digit census block GEOID, joined as-is to the
+          area profiles' zero-padded ids. The file arrives as text, so leading
+          zeros survive, unlike the voter file's numeric geocode. The test fails
+          the build if a file ever drops them, rather than padding silently.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{15}$"
 
   - name: gp_api_people
     description: >
