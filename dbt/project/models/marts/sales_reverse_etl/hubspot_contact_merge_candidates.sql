@@ -88,26 +88,30 @@ with
             pc.gp_person_id,
             pc.hs_contact_id,
             pc.identity_key,
-            c.first_name,
-            c.last_name,
-            c.email,
-            c.phone,
+            -- HubSpot sends '' for an unset string property; null it so blanks never
+            -- compare equal.
+            nullif(trim(c.first_name), '') as first_name,
+            nullif(trim(c.last_name), '') as last_name,
+            nullif(trim(c.email), '') as email,
+            nullif(trim(c.phone), '') as phone,
             -- Free text in HubSpot (Ohio, OH); normalized so contacts compare.
-            coalesce(cs.state_cleaned_postal_code, c.state) as state,
-            c.candidate_office,
+            coalesce(cs.state_cleaned_postal_code, nullif(trim(c.state), '')) as state,
+            nullif(trim(c.candidate_office), '') as candidate_office,
             -- Comparison keys for match_evidence.
             nullif(right(regexp_replace(c.phone, '[^0-9]', ''), 10), '') as phone_key,
-            lower(trim(c.first_name)) || ' ' || lower(trim(c.last_name)) as name_key,
+            lower(nullif(trim(c.first_name), ''))
+            || ' '
+            || lower(nullif(trim(c.last_name), '')) as name_key,
             nullif(lower(trim(c.candidate_office)), '') as office_key,
             c.goodparty_user_id,
-            c.hubspot_owner_id,
+            nullif(trim(c.hubspot_owner_id), '') as hubspot_owner_id,
             c.lifecycle_stage,
-            c.lead_status,
+            nullif(trim(c.lead_status), '') as lead_status,
             c.type,
             c.product_user,
-            c.win_stage,
-            c.serve_stage,
-            c.pledge_status,
+            nullif(trim(c.win_stage), '') as win_stage,
+            nullif(trim(c.serve_stage), '') as serve_stage,
+            nullif(trim(c.pledge_status), '') as pledge_status,
             coalesce(c.is_pro_candidate, false) as is_pro_candidate,
             coalesce(c.has_ever_been_pro, false) as has_ever_been_pro,
             coalesce(c.num_notes, 0) as num_notes,
@@ -219,8 +223,7 @@ with
             count(distinct lower(trim(last_name))) > 1 as has_last_name_mismatch,
             -- HubSpot refuses a second live contact with the same email, so one of
             -- these was likely deleted or merged without the survivor showing it.
-            count(lower(trim(email)))
-            > count(distinct lower(trim(email))) as has_shared_email,
+            count(lower(email)) > count(distinct lower(email)) as has_shared_email,
             count_if(is_pro_candidate) > 1 as has_multiple_pro_contacts,
             count(distinct hubspot_owner_id) > 1 as has_multiple_owners
         from ranked
