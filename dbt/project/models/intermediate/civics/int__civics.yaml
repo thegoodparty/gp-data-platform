@@ -3419,11 +3419,14 @@ models:
       Person links. One row per undirected pair of person records
       (int__er_prematch_people.unique_id) that a native identifier asserts
       are the same person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
-      ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, and E5
+      ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
       candidacy-stage cluster co-membership (hub to the cluster's min record
-      key). Both endpoints are prematch records by construction. matcha's
-      person lane clusters these with the scored pairs as certain matches and
-      publishes er_source.clustered_people; no closure happens in dbt.
+      key), and E7 a contact merged away in HubSpot to its survivor (only when
+      the merged-away contact has no E1/E3 link of its own, so the edge cannot
+      join two BR people). Both endpoints are prematch records by construction.
+      matcha's person lane clusters these with the scored pairs as certain
+      matches and publishes er_source.clustered_people; no closure happens in
+      dbt.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -3449,6 +3452,7 @@ models:
                   - e4_ts_officeholder
                   - e5_candidacy_cluster
                   - e6_eo_bridge
+                  - e7_hubspot_merge
 
   - name: int__civics_internal_persons
     description: >

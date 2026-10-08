@@ -1,11 +1,12 @@
 -- Person links. One row per undirected pair of person records (unique_id in
 -- int__er_prematch_people) that a native identifier asserts are the same
 -- person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
--- ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, and E5
--- candidacy-stage cluster co-membership (hub to the cluster's min record key).
--- matcha clusters these with the scored pairs as certain matches; no closure
--- happens in dbt. Both endpoints must be prematch records, so the universe
--- matcha clusters over and the one the mint reads are the same set.
+-- ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
+-- candidacy-stage cluster co-membership (hub to the cluster's min record key),
+-- and E7 a HubSpot merge (merged-away contact->its survivor). matcha clusters
+-- these with the scored pairs as certain matches; no closure happens in dbt.
+-- Both endpoints must be prematch records, so the universe matcha clusters
+-- over and the one the mint reads are the same set.
 with
     prematch as (select unique_id from {{ ref("int__er_prematch_people") }}),
 
@@ -91,6 +92,30 @@ with
         where gp_api_user_id is not null and br_candidate_id is not null
     ),
 
+    -- E7: only a merged-away contact with no native link of its own. Such a
+    -- contact reaches no BR person, so the edge cannot put two BR people in one
+    -- identity, which matcha would dissolve into singletons.
+    native_linked as (
+        select rk_a as unique_id
+        from e1
+        union
+        select rk_b
+        from e1
+        union
+        select rk_a
+        from e3
+    ),
+
+    e7 as (
+        select
+            'hubspot|' || m.merged_contact_id as rk_a,
+            'hubspot|' || m.surviving_contact_id as rk_b
+        from {{ ref("int__hubspot_contact_merges") }} as m
+        left anti join
+            native_linked as n on n.unique_id = 'hubspot|' || m.merged_contact_id
+        where m.surviving_contact_id is not null
+    ),
+
     all_pairs as (
         select rk_a, rk_b, 'e1_hubspot_user' as link_type
         from e1
@@ -106,6 +131,9 @@ with
         union all
         select rk_a, rk_b, 'e6_eo_bridge'
         from e6
+        union all
+        select rk_a, rk_b, 'e7_hubspot_merge'
+        from e7
     )
 
 select distinct

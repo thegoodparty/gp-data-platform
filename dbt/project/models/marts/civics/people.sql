@@ -19,9 +19,17 @@ with
             -- Per-source native identifiers (TechSpeed's is the candidate code).
             case when ci.source_name = 'ballotready' then source_id end as br_id_val,
             case when ci.source_name = 'gp_api' then source_id end as gp_api_id_val,
-            case when ci.source_name = 'hubspot' then source_id end as hs_id_val,
+            -- A contact merged away in HubSpot stays in its group as an alias,
+            -- but it is no longer anyone's contact.
+            case
+                when ci.source_name = 'hubspot' and m.merged_contact_id is null
+                then source_id
+            end as hs_id_val,
             case when ci.source_name = 'techspeed' then source_id end as ts_code_val
         from {{ ref("int__civics_person_canonical_ids") }} as ci
+        left join
+            {{ ref("int__hubspot_contact_merges") }} as m
+            on ci.record_key = 'hubspot|' || m.merged_contact_id
     ),
 
     -- Scalar where unambiguous: the case has no else branch, so a group with
@@ -97,10 +105,12 @@ with
             on cast(c.id as string) = r.source_id
         left join clean_states as cs on upper(trim(c.state)) = upper(trim(cs.state_raw))
         where r.source_name = 'hubspot'
+        -- Live contacts first: a merged-away row is frozen at the merge.
         qualify
             row_number() over (
                 partition by r.gp_person_id
-                order by r.first_seen_at asc nulls last, r.source_id
+                order by
+                    r.hs_id_val is null, r.first_seen_at asc nulls last, r.source_id
             )
             = 1
     ),
