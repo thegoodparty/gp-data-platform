@@ -95,6 +95,10 @@ with
             -- Free text in HubSpot (Ohio, OH); normalized so contacts compare.
             coalesce(cs.state_cleaned_postal_code, c.state) as state,
             c.candidate_office,
+            -- Comparison keys for match_evidence.
+            nullif(right(regexp_replace(c.phone, '[^0-9]', ''), 10), '') as phone_key,
+            lower(trim(c.first_name)) || ' ' || lower(trim(c.last_name)) as name_key,
+            nullif(lower(trim(c.candidate_office)), '') as office_key,
             c.goodparty_user_id,
             c.hubspot_owner_id,
             c.lifecycle_stage,
@@ -280,6 +284,26 @@ select
         then 'native_ids'
         else 'splink'
     end as matched_on,
+    -- What the secondary shares with the primary, strongest first, so a merge run
+    -- can go in batches and leave the weakest for review. Null on the primary.
+    case
+        when r.contact_rank = 1
+        then null
+        when r.phone_key = pr.phone_key
+        then 'same_phone'
+        when r.name_key = pr.name_key and r.office_key = pr.office_key
+        then 'same_name_and_office'
+        when
+            r.name_key = pr.name_key
+            and r.state = pr.state
+            and (r.office_key is null or pr.office_key is null)
+        then 'same_name_and_state_office_unknown'
+        when r.name_key = pr.name_key and r.state = pr.state
+        then 'same_name_and_state_office_differs'
+        when r.name_key = pr.name_key
+        then 'same_name_state_unknown_or_differs'
+        else 'name_differs'
+    end as match_evidence,
     r.linked_via,
 
     -- Ranking inputs.
