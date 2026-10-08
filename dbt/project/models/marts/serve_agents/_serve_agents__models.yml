@@ -24,7 +24,8 @@ models:
   - name: serve_agent_constituents
     description: >
       serve_agent_voters plus the people in gp_api_consumer_only_people, under
-      the same de-identified, non-partisan columns, so a Serve agent can reach
+      the same de-identified, non-partisan columns, read from
+      int__l2_nationwide_constituents_w_haystaq, so a Serve agent can reach
       residents who are not registered voters. Consumer-only rows carry
       districts and precinct (placed by area), city, ZIP, census tract and
       block group, and the demographics the commercial file shares with the

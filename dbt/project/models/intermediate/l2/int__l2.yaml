@@ -692,6 +692,28 @@ models:
           arguments:
             expression: "voters_in_zip_district <= voters_in_zip"
 
+  - name: int__l2_nationwide_constituents_w_haystaq
+    description: >
+      int__l2_nationwide_uniform_w_haystaq plus the people in
+      gp_api_consumer_only_people, under the voter table's raw L2 columns, so a
+      reader of the voter table can switch to this one without changing a
+      query. Consumer-only rows carry names, address, phones, districts and
+      precinct (placed by area), census tract and block group, and the
+      demographics the commercial file shares with the voter file; party,
+      turnout, registration and Haystaq columns are null. Only Michigan has
+      consumer-only rows today. A view, so it stores nothing beyond its inputs.
+    columns:
+      - name: is_registered_voter
+        description: True when the row comes from the voter file.
+      - name: district_source
+        description: >
+          voter_file for voter rows; for consumer-only rows, the area whose
+          voters supplied the district columns, or null when none matched.
+      - name: individual_id
+        description: >
+          The L2 commercial Individual_Id on consumer-only rows; null on voter
+          rows.
+
   - name: int__l2_area_district_profiles
     description: >
       For each census block, block group, tract and ZIP+4 in a state with an L2
