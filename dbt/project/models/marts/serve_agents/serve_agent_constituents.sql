@@ -39,10 +39,17 @@ select
     {%- for column in serve_columns %}
         {%- set name = column.name | lower %}
         {%- if name == "voter_key" %}
-            {#- The voter_key the person had while in the voter file, so it
-                matches serve_agent_voters history; otherwise the hash of the
-                commercial individual id, as in the de-identified staging model. #}
-            sha2(coalesce(`LALVOTERID`, individual_id), 256) as voter_key,
+            {#- The voter_key the person had while in the voter file. Otherwise
+                the commercial id, prefixed so it can never hash to a voter's key
+                whatever the two vendor id formats do. #}
+            sha2(
+                case
+                    when `LALVOTERID` is not null
+                    then `LALVOTERID`
+                    else concat('commercial:', individual_id)
+                end,
+                256
+            ) as voter_key,
         {%- elif name in renamed %}
             cast({{ renamed[name] }} as {{ column.dtype }}) as `{{ column.name }}`,
         {%- elif name in people_columns %}

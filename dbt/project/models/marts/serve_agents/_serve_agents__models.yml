@@ -35,9 +35,8 @@ models:
         description: >
           sha2 of LALVOTERID, as in serve_agent_voters. A consumer-only person
           whose LALVOTERID has left the voter file keeps that key; one with no
-          LALVOTERID gets the sha2 of the commercial Individual_Id, the same
-          value as individual_id_hash in the de-identified commercial staging
-          model.
+          LALVOTERID gets the sha2 of 'commercial:' followed by the commercial
+          Individual_Id; the prefix keeps it from ever equalling a voter's key.
       - name: is_registered_voter
         description: True when the row comes from the voter file.
       - name: district_source
