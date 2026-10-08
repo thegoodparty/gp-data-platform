@@ -37,4 +37,4 @@ select
     timestamp_seconds(cast(ended_at as bigint)) as ended_at,
 
     _airbyte_extracted_at
-from {{ source("airbyte_source", "stripe_api_subscriptions") }}
+from {{ source("airbyte_source_finance", "stripe_api_subscriptions") }}

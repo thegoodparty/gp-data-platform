@@ -55,7 +55,7 @@ with
 
     stripe_load as (
         select max(_airbyte_extracted_at) as stripe_loaded_at
-        from {{ ref("stg_airbyte_source__stripe_api_charges") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_charges") }}
     )
 
 select

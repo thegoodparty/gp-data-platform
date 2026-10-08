@@ -35,4 +35,4 @@ select
     ) as voided_at,
 
     _airbyte_extracted_at
-from {{ source("airbyte_source", "stripe_api_invoices") }}
+from {{ source("airbyte_source_finance", "stripe_api_invoices") }}

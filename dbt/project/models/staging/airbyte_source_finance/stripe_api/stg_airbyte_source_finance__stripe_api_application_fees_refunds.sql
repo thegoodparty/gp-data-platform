@@ -1,6 +1,12 @@
 with
     source as (
-        select * from {{ source("airbyte_source", "stripe_api_application_fees") }}
+        select *
+        from
+            {{
+                source(
+                    "airbyte_source_finance", "stripe_api_application_fees_refunds"
+                )
+            }}
     ),
     renamed as (
         select
@@ -9,21 +15,14 @@ with
             {{ adapter.quote("_airbyte_meta") }},
             {{ adapter.quote("_airbyte_generation_id") }},
             {{ adapter.quote("id") }},
+            {{ adapter.quote("fee") }},
             {{ adapter.quote("amount") }},
-            {{ adapter.quote("charge") }},
             {{ adapter.quote("object") }},
-            {{ adapter.quote("source") }},
-            {{ adapter.quote("account") }},
             {{ adapter.quote("created") }},
-            {{ adapter.quote("refunds") }},
             {{ adapter.quote("updated") }},
             {{ adapter.quote("currency") }},
-            {{ adapter.quote("livemode") }},
-            {{ adapter.quote("refunded") }},
-            {{ adapter.quote("application") }},
-            {{ adapter.quote("amount_refunded") }},
-            {{ adapter.quote("balance_transaction") }},
-            {{ adapter.quote("originating_transaction") }}
+            {{ adapter.quote("metadata") }},
+            {{ adapter.quote("balance_transaction") }}
 
         from source
     )

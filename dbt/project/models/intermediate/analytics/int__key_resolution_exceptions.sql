@@ -25,7 +25,7 @@ with
                 end
             )
             = 1 as has_active_subscription
-        from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_subscriptions") }}
         where stripe_customer_id is not null
         group by stripe_customer_id
     ),
@@ -37,7 +37,7 @@ with
             stripe_customer_id,
             sum(amount_captured_usd) as lifetime_paid_usd,
             count(*) as payment_count
-        from {{ ref("stg_airbyte_source__stripe_api_charges") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_charges") }}
         where
             charge_status = 'succeeded'
             and is_captured
@@ -68,7 +68,7 @@ select
     coalesce(r.lifetime_paid_usd, 0) as lifetime_paid_usd,
     coalesce(r.payment_count, 0) as payment_count,
     ue.user_email is not null as email_match_available
-from {{ ref("stg_airbyte_source__stripe_api_customers") }} as c
+from {{ ref("stg_airbyte_source_finance__stripe_api_customers") }} as c
 left join subscription_state as s on s.stripe_customer_id = c.id
 left join customer_revenue as r on r.stripe_customer_id = c.id
 left join user_emails as ue on ue.user_email = lower(trim(c.email))

@@ -59,4 +59,4 @@ select
     get_json_object(metadata, '$.portalId') as hs_portal_id,
 
     _airbyte_extracted_at
-from {{ source("airbyte_source", "stripe_api_charges") }}
+from {{ source("airbyte_source_finance", "stripe_api_charges") }}
