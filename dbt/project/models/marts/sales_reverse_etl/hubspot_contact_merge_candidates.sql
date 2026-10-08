@@ -294,6 +294,9 @@ select
         then null
         when r.phone_key = pr.phone_key
         then 'same_phone'
+        -- A half name is too weak to call a name match, and is not a mismatch.
+        when r.name_key is null or pr.name_key is null
+        then 'name_incomplete'
         when r.name_key = pr.name_key and r.office_key = pr.office_key
         then 'same_name_and_office'
         when

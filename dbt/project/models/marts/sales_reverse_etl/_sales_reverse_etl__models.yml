@@ -285,8 +285,9 @@ models:
         description: >
           On a secondary, the strongest thing it shares with the primary: same_phone
           (last ten digits), same_name_and_office, same_name_and_state_office_unknown,
-          same_name_and_state_office_differs, same_name_state_unknown_or_differs, or
-          name_differs. Lets a merge run go in batches by strength and hold the
+          same_name_and_state_office_differs, same_name_state_unknown_or_differs,
+          name_incomplete (first or last name missing on either, so no name comparison),
+          or name_differs. Lets a merge run go in batches by strength and hold the
           weakest for review. Null on the primary.
         data_tests:
           - accepted_values:
@@ -297,6 +298,7 @@ models:
                   - same_name_and_state_office_unknown
                   - same_name_and_state_office_differs
                   - same_name_state_unknown_or_differs
+                  - name_incomplete
                   - name_differs
       - name: linked_via
         description: The person-link types touching this contact.
