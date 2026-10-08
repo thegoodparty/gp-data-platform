@@ -55,6 +55,19 @@ with
         from {{ ref("users_win_candidacy") }}
     ),
 
+    -- Archive candidacies (2024 and 2025) list only gp_api and hubspot as
+    -- sources, but their stages carry the vendor ids the match was made on.
+    stage_vendor_match as (
+        select gp_candidacy_id
+        from {{ ref("candidacy_stage") }}
+        where
+            br_candidacy_id is not null
+            or ddhq_candidate_id is not null
+            or ts_source_candidate_id is not null
+            or exists (source_systems, s -> s in ('ballotready', 'ddhq', 'techspeed'))
+        group by gp_candidacy_id
+    ),
+
     -- The civics candidacy for the anchor run. A product campaign can map to
     -- candidacies from different cycles, so the match requires the anchor date
     -- to be one of the candidacy's stage dates; a general-date match wins. A
@@ -67,18 +80,21 @@ with
             c.office_level,
             c.latest_stage_result,
             c.latest_stage_reached,
+            c.primary_election_date,
+            c.general_election_date,
+            c.general_election_result,
             -- A gp-api-only candidacy is our own campaign echoed back, not
-            -- evidence the run reached a ballot.
-            exists (c.source_systems, s -> s <> 'gp_api') as has_ballot_evidence,
-            -- Narrower: a ballot data vendor. Vendor-sourced candidacies only
-            -- exist from 2026; earlier runs reach the civics record through
-            -- HubSpot, so this is false for them by construction. Taken over
-            -- every candidacy matching the anchor, since the tiebreak below can
-            -- pick one that lacks it.
+            -- evidence the run reached a ballot. A vendor id on a stage is.
+            exists (c.source_systems, s -> s <> 'gp_api')
+            or svm.gp_candidacy_id is not null as has_ballot_evidence,
+            -- Narrower: a ballot data vendor, on the candidacy or any of its
+            -- stages. Taken over every candidacy matching the anchor, since the
+            -- tiebreak below can pick one that lacks it.
             max(
                 exists (
                     c.source_systems, s -> s in ('ballotready', 'ddhq', 'techspeed')
                 )
+                or svm.gp_candidacy_id is not null
             ) over (partition by a.user_id) as has_external_match
         from anchor as a
         inner join
@@ -90,6 +106,7 @@ with
                 c.primary_runoff_election_date,
                 c.general_runoff_election_date
             )
+        left join stage_vendor_match as svm on svm.gp_candidacy_id = c.gp_candidacy_id
         qualify
             row_number() over (
                 partition by a.user_id
@@ -148,6 +165,15 @@ with
         inner join run_years as r on r.user_id = a.user_id
         where a.has_candidacy
         group by a.user_id
+    ),
+
+    -- The candidacy table carries a general result but no primary one. A few
+    -- candidacies hold two primary stage rows; max keeps a non-null result.
+    primary_results as (
+        select gp_candidacy_id, max(election_result) as primary_result
+        from {{ ref("candidacy_stage") }}
+        where election_stage = 'primary'
+        group by gp_candidacy_id
     ),
 
     -- The reporting grain for office, keyed on the anchor campaign's
@@ -290,6 +316,10 @@ select
 
     cc.latest_stage_result as candidacy_result,
     cc.latest_stage_reached as candidacy_latest_stage_reached,
+    cc.primary_election_date as candidacy_primary_election_date,
+    pr.primary_result as candidacy_primary_result,
+    cc.general_election_date as candidacy_general_election_date,
+    cc.general_election_result as candidacy_general_result,
     -- Never null. A user with no candidacy is neither running nor a
     -- non-filer, and a null would drop them out of a `where not` filter.
     coalesce(a.election_date >= current_date(), false) as is_still_running,
@@ -333,6 +363,7 @@ from anchor as a
 left join anchor_campaign as ac on ac.campaign_version_id = a.anchor_campaign_version_id
 left join anchor_civics as civ on civ.campaign_version_id = a.anchor_campaign_version_id
 left join anchor_candidacy as cc on cc.user_id = a.user_id
+left join primary_results as pr on pr.gp_candidacy_id = cc.gp_candidacy_id
 left join anchor_filing as f on f.user_id = a.user_id
 left join prior_runs as p on p.user_id = a.user_id
 left join wins as w on w.user_id = a.user_id

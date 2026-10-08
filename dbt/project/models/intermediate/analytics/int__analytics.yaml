@@ -1448,10 +1448,11 @@ models:
           The anchor run is linked to a ballot data vendor (BallotReady, DDHQ or
           TechSpeed) through a civics candidacy on the anchor election date.
           Third-party evidence the run is real, unlike candidacy_is_verified,
-          which is the product's own flag. Vendor-sourced candidacies only exist
-          from 2026, so this is false for every earlier run by construction;
-          never_filed is the era-safe ballot check. Null when there is no
-          candidacy.
+          which is the product's own flag. Read from the candidacy's sources
+          and from its stages' vendor ids, because 2024 and 2025 archive
+          candidacies carry the vendor only on their stages. A matched run with
+          no vendor id on any stage reads false; never_filed is the broader
+          ballot check. Null when there is no candidacy.
       - name: candidacy_is_pro
         description: The anchor campaign is on Pro.
       - name: candidacy_is_win_icp
@@ -1495,6 +1496,23 @@ models:
                 values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
       - name: candidacy_latest_stage_reached
         description: The stage candidacy_result belongs to.
+      - name: candidacy_primary_election_date
+        description: >
+          The primary's date on the civics candidacy. Null with no primary or no
+          civics candidacy.
+      - name: candidacy_primary_result
+        description: >
+          The primary stage's result from candidacy_stage. Can disagree with
+          candidacy_latest_stage_reached (some show a primary loss yet a general
+          reached), so use that column, not this one, to decide whether the
+          candidate advanced.
+      - name: candidacy_general_election_date
+        description: >
+          The general's date on the civics candidacy. Set even for candidates
+          who never advanced to it. Null with no civics candidacy, where
+          candidacy_election_date is the only date.
+      - name: candidacy_general_result
+        description: The general's result on the civics candidacy.
       - name: is_still_running
         description: >
           The anchor election is today or later, so no outcome exists yet.
@@ -1503,10 +1521,10 @@ models:
           - not_null
       - name: never_filed
         description: >
-          The anchor election has passed and no civics candidacy with any
-          source beyond gp-api exists for it. A gp-api-only candidacy is our
-          own campaign echoed back and is not evidence the run reached a
-          ballot. Never null.
+          The anchor election has passed and no civics candidacy exists for it
+          with a source beyond gp-api or a vendor id on one of its stages. A
+          gp-api-only candidacy is our own campaign echoed back and is not
+          evidence the run reached a ballot. Never null.
         data_tests:
           - not_null
       - name: candidacy_is_incumbent

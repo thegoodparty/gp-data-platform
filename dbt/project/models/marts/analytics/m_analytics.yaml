@@ -3413,7 +3413,7 @@ models:
         description: >
           registered (every account), completed_onboarding (is_onboarded),
           activated (is_activated), pro (is_pro), matched_third_party
-          (candidacy_has_external_match, 2026 races only), power_user
+          (candidacy_has_external_match), power_user
           (is_power_user).
         data_tests:
           - not_null
@@ -3439,6 +3439,61 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [user_id, stage]
+
+  - name: user_journey_events
+    description: >
+      The dated moments on each user's journey, one row per user per event, for
+      a single-user timeline. Internal only. Reshaping only: every date is a
+      user_journey column, and an event with no date has no row. Elections show
+      the primary when there was one, then the general unless
+      candidacy_latest_stage_reached says the run ended at the primary. Without
+      a civics candidacy, candidacy_election_date stands in for the general.
+    columns:
+      - name: user_id
+        description: The gp-api user account.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref("user_journey")
+                field: user_id
+      - name: event
+        description: >
+          Registered (registered_at), Onboarded (onboarding_completed_at), Free
+          product output (free_product_output_at), First payment
+          (first_payment_at), Pro (pro_since), Activated (activated_at),
+          Primary election, General election.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Registered
+                  - Onboarded
+                  - Free product output
+                  - First payment
+                  - Pro
+                  - Activated
+                  - Primary election
+                  - General election
+      - name: event_order
+        description: Display order, 1 to 8, matching event.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: >
+          When it happened. Election dates are dates cast to midnight, and can
+          be in the future.
+        data_tests:
+          - not_null
+      - name: event_label
+        description: >
+          The result for an election event (Won, Lost, Runoff and so on); null
+          for every other event and for an election with no result yet.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, event]
 
   - name: user_growth_state_monthly
     description: >
