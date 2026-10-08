@@ -22,8 +22,12 @@ with
             lpad(
                 cast(residence_addresses_complete_census_geocode as string), 15, '0'
             ) as block_geoid,
+            -- The suffix arrives as text today, but L2 types it as a number; the pad
+            -- keeps the join to the commercial file's suffix if that ever shows.
             concat(
-                residence_addresses_zip, '-', residence_addresses_zipplus4
+                residence_addresses_zip,
+                '-',
+                lpad(cast(residence_addresses_zipplus4 as string), 4, '0')
             ) as zip_plus_4,
             -- Blanks are nulled to match how m_people_api__voter serves them.
             named_struct(

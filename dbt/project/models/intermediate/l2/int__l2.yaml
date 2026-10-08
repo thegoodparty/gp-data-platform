@@ -718,9 +718,8 @@ models:
       - name: area_id
         description: >
           15-, 12- or 11-character census GEOID, or a ZIP+4 written as
-          ZIP-PLUS4. The voter file's ZIP+4 suffix is already a 4-character
-          string with its leading zeros, matching the commercial file's; the
-          regex test fails the build if a load ever strips them.
+          ZIP-PLUS4. The voter file's suffix is padded to 4 digits, so it
+          matches the commercial file's even if a load drops leading zeros.
         data_tests:
           - not_null
           - dbt_expectations.expect_column_values_to_match_regex:
