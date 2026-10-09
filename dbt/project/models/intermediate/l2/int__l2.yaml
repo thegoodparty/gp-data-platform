@@ -692,6 +692,86 @@ models:
           arguments:
             expression: "voters_in_zip_district <= voters_in_zip"
 
+  - name: int__l2_nationwide_constituents_w_haystaq
+    description: >
+      int__l2_nationwide_uniform_w_haystaq plus the people in
+      gp_api_consumer_only_people, under the voter table's raw L2 columns, so a
+      reader of the voter table can switch to this one without changing a
+      query. Consumer-only rows carry names, address, phones, districts and
+      precinct (placed by area), census tract and block group, and the
+      demographics the commercial file shares with the voter file; party,
+      turnout, registration and Haystaq columns are null. Only Michigan has
+      consumer-only rows today. A view, so it stores nothing beyond its inputs.
+    columns:
+      - name: is_registered_voter
+        description: True when the row comes from the voter file.
+      - name: district_source
+        description: >
+          voter_file for voter rows; for consumer-only rows, the area whose
+          voters supplied the district columns, or null when none matched.
+      - name: individual_id
+        description: >
+          The L2 commercial Individual_Id on consumer-only rows; null on voter
+          rows.
+
+  - name: int__l2_area_district_profiles
+    description: >
+      For each census block, block group, tract and ZIP+4 in a state with an L2
+      commercial file, the most common complete set of L2 district values among
+      the voters there. It places people who are not in the voter file. The whole
+      set comes from one group of voters, so the columns stay consistent with
+      each other, and values are the voter file's raw strings, so they match
+      gp_api_voters. Carries every get_l2_district_types() column and Precinct.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area_type, area_id]
+    columns:
+      - name: area_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - census_block
+                  - census_block_group
+                  - census_tract
+                  - zip_plus_4
+      - name: area_id
+        description: >
+          15-, 12- or 11-character census GEOID, or a ZIP+4 written as
+          ZIP-PLUS4. The voter file's suffix is padded to 4 digits, so it
+          matches the commercial file's even if a load drops leading zeros.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{5}-[0-9]{4}$"
+              config:
+                where: "area_type = 'zip_plus_4'"
+      - name: voters_in_area
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: voters_with_profile
+        description: Voters in the area whose district values are exactly this set.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: profile_share
+        description: voters_with_profile / voters_in_area.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+
   - name: int__l2_block_district_map
     description: >
       One row per (census block, state, district_type, normalized
