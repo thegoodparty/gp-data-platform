@@ -200,3 +200,120 @@ models:
           Viability stored in HubSpot when the feed was built; null where unset. Kept so
           the diff is auditable after the import. Deliberately excluded from the import
           file: mapped by mistake it would write the stale score back.
+
+  - name: hubspot_contact_merge_candidates
+    description: >
+      HubSpot contacts the person graph resolves to the same person, with the primary
+      each should be merged into. One row per live contact in a person holding two or
+      more. A contact already merged away in HubSpot (named in another contact's
+      merged_object_ids) is excluded, as are staff and test persons. A HubSpot merge
+      keeps the primary's value for every property the primary has set and fills the
+      rest from the secondary, so the ranking puts first the contact whose values
+      should survive: currently Pro, then linked from a gp_api account (most recently
+      active account first), then furthest Win stage, then any sales activity, then
+      most recent engagement, then oldest. Secondary rows are the merge operations.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(merge_role = 'primary') = (hs_contact_id = primary_hs_contact_id)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(merge_role = 'secondary') = (match_evidence is not null and matched_on is not null)"
+    columns:
+      - name: gp_person_id
+        description: The person every contact in the group resolves to.
+        data_tests:
+          - not_null
+      - name: hs_contact_id
+        description: HubSpot contact id; the model grain.
+        data_tests:
+          - unique
+          - not_null
+      - name: merge_role
+        description: primary for the contact the others merge into, else secondary.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["primary", "secondary"]
+      - name: primary_hs_contact_id
+        description: The person's primary contact; the merge target for a secondary row.
+        data_tests:
+          - not_null
+      - name: contact_rank
+        description: 1 for the primary; the order secondaries are merged in.
+        data_tests:
+          - not_null
+      - name: primary_decided_by
+        description: >
+          The first ranking key on which the primary beat the second-ranked contact,
+          for reviewing which rule made the call.
+        data_tests:
+          - not_null
+      - name: live_contact_count
+        description: Live contacts the person holds.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2
+      - name: conflicting_properties
+        description: >
+          On a secondary, the properties set on both contacts with different values,
+          which the merge resolves to the primary's. Null when nothing is lost.
+          Lifecycle stage and email are not listed: HubSpot keeps the furthest
+          lifecycle stage and adds the secondary's email as an additional address.
+      - name: has_multiple_app_accounts
+        description: >
+          The person holds more than one gp_api account. After the merge both
+          accounts write to the one contact.
+      - name: has_shared_email
+        description: >
+          Two of the person's contacts carry the same email. HubSpot does not allow
+          that on live contacts, so one was likely deleted or merged without the
+          survivor showing it; confirm both exist before merging.
+      - name: matched_on
+        description: >
+          On a secondary, native_ids when it shares the primary's deterministic
+          identity (a native id such as a gp_api account or BallotReady candidacy
+          connects them), splink when only the Splink person matcher joined them.
+          Null on the primary.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["native_ids", "splink"]
+      - name: match_evidence
+        description: >
+          On a secondary, the strongest thing it shares with the primary: same_phone
+          (last ten digits), same_name_and_office, same_name_and_state_office_unknown,
+          same_name_and_state_office_differs, same_name_state_unknown_or_differs,
+          name_incomplete (first or last name missing on either, so no name comparison),
+          or name_differs. Lets a merge run go in batches by strength and hold the
+          weakest for review. Null on the primary.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - same_phone
+                  - same_name_and_office
+                  - same_name_and_state_office_unknown
+                  - same_name_and_state_office_differs
+                  - same_name_state_unknown_or_differs
+                  - name_incomplete
+                  - name_differs
+      - name: linked_via
+        description: The person-link types touching this contact.
+      - name: is_app_linked
+        description: A gp_api user's meta_data points at this contact.
+      - name: app_user_last_active_at
+        description: >
+          Latest campaign creation, else signup, across the gp_api users pointing at
+          this contact.
+      - name: win_stage_rank
+        description: >
+          Win stage as a rank, 9 for Activated Pro down to 1 for Intake; a closed
+          disposition ranks 2, above an untouched intake. 0 when unset.
+      - name: last_engagement_at
+        description: >
+          Latest of last contacted, notes updated, last site visit, and last email
+          open or click. Not updated_at, which imports and syncs touch on every
+          contact.
