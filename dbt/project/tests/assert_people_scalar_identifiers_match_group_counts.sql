@@ -1,6 +1,6 @@
 -- Pins the scalar-nulling contract on people: each per-source identifier
 -- column is populated iff the person's group holds exactly one distinct value
--- for that source.
+-- for that source (for HubSpot, one contact not merged away).
 with
     counts as (
         select
@@ -10,12 +10,18 @@ with
             ) as n_br,
             count(distinct case when source_name = 'gp_api' then source_id end) as n_gp,
             count(
-                distinct case when source_name = 'hubspot' then source_id end
+                distinct case
+                    when source_name = 'hubspot' and m.merged_contact_id is null
+                    then source_id
+                end
             ) as n_hs,
             count(
                 distinct case when source_name = 'techspeed' then source_id end
             ) as n_ts
-        from {{ ref("person_identifiers") }}
+        from {{ ref("person_identifiers") }} as pi
+        left join
+            {{ ref("int__hubspot_contact_merges") }} as m
+            on pi.record_key = 'hubspot|' || m.merged_contact_id
         group by gp_person_id
     )
 
