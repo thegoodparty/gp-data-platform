@@ -502,6 +502,146 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
+  - name: int__indep_openness_voter_scores
+    description: >
+      Per-voter openness to an independent candidate, from the two ballot-caster
+      state-leg independent models. Each voter is scored as a district of 1 under 10
+      fixed race scenarios (field, seat count, incumbent or open seat) at the state's
+      reference size. Each scenario has a raw score and a flag: true when the voter
+      is in the top 40% of their state on that score. One row per LALVOTERID;
+      m_people_api__voter joins only the flags onto the voter row, and gp-api picks
+      the campaign's scenario column at query time. The raw scores stay in the
+      warehouse; only their rank within the state means anything.
+      The models follow a registry alias. Cut points come from a research notebook
+      that scores the whole voter file, keyed by a fingerprint of everything that
+      moves a score; this model reads only the cuts matching its own fingerprint.
+      Incremental (merge on LALVOTERID): runs score only new voters until the
+      fingerprint changes (a promoted model, a new seed or date), then rescore every
+      voter. With no cuts yet for a new fingerprint, the table is left unchanged.
+    config:
+      # Monthly, with the L2 refresh: new registrants only arrive with an L2 load.
+      tags: ["monthly"]
+      meta:
+        # A model reaches the product when the alias moves, so rank-compare a new
+        # version against the current one and cut it in the notebook before promoting.
+        # Models and cut points are developed in sandbox and copied here at promotion;
+        # point the two vars at sandbox to test a candidate in dev.
+        indep_openness_models_schema: "{{ var('indep_openness_models_schema', 'model_predictions') }}"
+        indep_openness_model_alias: "{{ var('indep_openness_model_alias', 'production') }}"
+        # Feature dates and the ballot-caster election. Part of the fingerprint, so a
+        # change here waits for matching cuts and then rescores everyone.
+        indep_openness_election_date: "{{ var('indep_openness_election_date', '2026-11-03') }}"
+        indep_openness_reg_cutoff: "{{ var('indep_openness_reg_cutoff', '2026-11-15') }}"
+        indep_openness_primary_end_year: "{{ var('indep_openness_primary_end_year', 2026) }}"
+        indep_openness_caster_column: "{{ var('indep_openness_caster_column', 'General_2024') }}"
+        indep_openness_cutpoints_table: "{{ var('indep_openness_cutpoints_table', 'goodparty_data_catalog.model_predictions.indep_openness_cutpoints') }}"
+        # DEV-ONLY: comma/space list like "WV" to score a subset without a full run.
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns:
+      - name: LALVOTERID
+        description: "L2 voter id; join key to m_people_api__voter. One row per voter."
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: Two-letter state code. Quintiles are cut within it.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('indep_openness_n_ref')
+                field: state
+      - name: indep_openness_single_inc
+        description: "In the top 40% of the state. One seat, a Democrat and a Republican running, D or R incumbent in the field."
+        data_tests: &indep_openness_not_null
+          - not_null
+      - name: indep_openness_single_open
+        description: "In the top 40% of the state. One seat, a Democrat and a Republican running, no D or R incumbent."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_multi_inc
+        description: "In the top 40% of the state. Two or more seats, full field (scored at 3 seats), incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_multi_open
+        description: "In the top 40% of the state. Two or more seats, full field (scored at 3 seats), open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_inc
+        description: "In the top 40% of the state. One seat, a lone Democrat opponent, incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_open
+        description: "In the top 40% of the state. One seat, a lone Democrat opponent, open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_inc
+        description: "In the top 40% of the state. One seat, a lone Republican opponent, incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_open
+        description: "In the top 40% of the state. One seat, a lone Republican opponent, open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_multi
+        description: "In the top 40% of the state. Two or more seats, Democrats and no Republicans (incumbent seed only)."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_multi
+        description: "In the top 40% of the state. Two or more seats, Republicans and no Democrats (incumbent seed only)."
+        data_tests: *indep_openness_not_null
+      - name: raw_single_inc
+        description: Raw model score behind indep_openness_single_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_single_open
+        description: Raw model score behind indep_openness_single_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_multi_inc
+        description: Raw model score behind indep_openness_multi_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_multi_open
+        description: Raw model score behind indep_openness_multi_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_inc
+        description: Raw model score behind indep_openness_donly_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_open
+        description: Raw model score behind indep_openness_donly_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_inc
+        description: Raw model score behind indep_openness_ronly_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_open
+        description: Raw model score behind indep_openness_ronly_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_multi
+        description: Raw model score behind indep_openness_donly_multi. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_multi
+        description: Raw model score behind indep_openness_ronly_multi. Warehouse only.
+        data_tests: *indep_openness_not_null
+      # Version numbers can differ across rows without a rescore: copying a model
+      # between registries renumbers it but leaves its content, and the fingerprint, alone.
+      - name: model_version_2plus
+        description: Registry version of stateleg_ind_2plusmajorparty_voted that scored the row.
+        data_tests:
+          - not_null
+      - name: model_version_0or1
+        description: Registry version of stateleg_ind_voted that scored the row.
+        data_tests:
+          - not_null
+      - name: scoring_fingerprint
+        description: >
+          Hash of the boosters, n_ref seed, scenarios and feature SQL the row was
+          scored with; the key its cut points were read under.
+        data_tests:
+          - not_null
+          # More than one value means a rescore after a change did not complete.
+          - dbt_expectations.expect_column_unique_value_count_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 1
+      - name: n_ref
+        description: Reference size the voter's state was scored at (seed indep_openness_n_ref).
+        data_tests:
+          - not_null
+      - name: scored_at
+        description: When the row was scored.
+        data_tests:
+          - not_null
+
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:

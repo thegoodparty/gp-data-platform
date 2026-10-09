@@ -154,6 +154,117 @@ models:
         data_type: boolean
         tests:
           - not_null
+      - name: Indep_Openness_Registration
+        description: >
+          Control-arm flag for the openness-to-an-independent experiment, built
+          only from official records and L2's own party model, with no Haystaq
+          scores. True when the voter is registered as neither Democratic nor
+          Republican, changed party registration within ~4 years, lives in a
+          household that includes an Independent, or pulled both a Democratic
+          and a Republican primary ballot between 2012 and 2024. In states without
+          party registration the party is L2's model. Never null; ~45% of the file.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Haystaq
+        description: >
+          Haystaq-arm flag for the openness-to-an-independent experiment: true when
+          hs_partisanship_moderate_third_party_support is at or above the voter's
+          state cutoff (seed indep_openness_haystaq_cutoff), the top 40-41% of voters
+          with a score. Voters with no score are false, so never null; ~37% of the file.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Single_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a Democrat and a Republican running, D or R incumbent in the field. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Single_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a Democrat and a Republican running, no D or R incumbent. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Multi_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, full field (scored at 3 seats), incumbent in the field. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Multi_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, full field (scored at 3 seats), open. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Democrat opponent, incumbent in the field. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Democrat opponent, open. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Republican opponent, incumbent in the field. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Republican opponent, open. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Multi
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, Democrats and no Republicans. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Multi
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, Republicans and no Democrats. True when the voter is in the top 40% of their state on the
+          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
       - name: hf_ideology_general
         description: >
           Haystaq general-ideology label, passed through from the L2/Haystaq

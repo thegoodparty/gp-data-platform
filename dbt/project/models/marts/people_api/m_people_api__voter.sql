@@ -199,6 +199,35 @@ with
             or coalesce(
                 `Parties_Description` = 'Non-Partisan', false
             ) as `Voter_Independent_Affinity`,
+            -- Control arm of the openness-to-an-independent experiment: evidence from
+            -- official records or L2's own party model only, no Haystaq scores, so it
+            -- stays distinct from the Haystaq and state-leg model arms. In states
+            -- without party registration L2 models the party, which is accepted. An 'O'
+            -- primary ballot does not count on its own: L2 also uses it for top-two and
+            -- nonpartisan-only ballots.
+            coalesce(`Parties_Description` not in ('Democratic', 'Republican'), false)
+            or coalesce(
+                `VoterParties_Change_Changed_Party` in (
+                    'Within Last 1 Year',
+                    'Between 1 and 2 Years Ago',
+                    'Between 2 and 4 Years Ago'
+                ),
+                false
+            )
+            or coalesce(`Residence_HHParties_Description` like '%Independent%', false)
+            or coalesce(
+                (
+                    {%- for y in range(2012, 2025) %}
+                        `PRI_BLT_{{ y }}` = 'D' {%- if not loop.last %} or{% endif %}
+                    {%- endfor %}
+                )
+                and (
+                    {%- for y in range(2012, 2025) %}
+                        `PRI_BLT_{{ y }}` = 'R' {%- if not loop.last %} or{% endif %}
+                    {%- endfor %}
+                ),
+                false
+            ) as `Indep_Openness_Registration`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -315,12 +344,36 @@ with
             `Vote_By_Mail_Area`,
             `hf_ideology_general`,
             `hf_most_important_policy_item`,
+            -- Input to Indep_Openness_Haystaq below; final selects by name, so it does
+            -- not reach the output.
+            `hs_partisanship_moderate_third_party_support`,
             loaded_at
         from source_nulled
     ),
     voter_propensity as (
         select `LALVOTERID`, `prob_vote`
         from {{ ref("int__voter_turnout_lgbm_voter_scores") }}
+    ),
+    -- Openness-to-an-independent flags for the state-leg arm, one per race scenario.
+    -- Raw scores stay in the scoring table: only the true/false flags reach the
+    -- product.
+    indep_openness_flags as (
+        select
+            `LALVOTERID`,
+            indep_openness_single_inc,
+            indep_openness_single_open,
+            indep_openness_multi_inc,
+            indep_openness_multi_open,
+            indep_openness_donly_inc,
+            indep_openness_donly_open,
+            indep_openness_ronly_inc,
+            indep_openness_ronly_open,
+            indep_openness_donly_multi,
+            indep_openness_ronly_multi
+        from {{ ref("int__indep_openness_voter_scores") }}
+    ),
+    haystaq_cutoffs as (
+        select state, cutoff from {{ ref("indep_openness_haystaq_cutoff") }}
     ),
     /*
         Note that here we need to list each column individually since we need to
@@ -408,6 +461,44 @@ with
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
             tbl_updated.`Voter_Independent_Affinity`,
+            tbl_updated.`Indep_Openness_Registration`,
+            -- Non-null like Voter_Independent_Affinity: a voter with no score is not
+            -- flagged. The Haystaq cutoff is frozen per state; see its seed.
+            coalesce(
+                tbl_updated.`hs_partisanship_moderate_third_party_support`
+                >= tbl_haystaq.cutoff,
+                false
+            ) as `Indep_Openness_Haystaq`,
+            coalesce(
+                tbl_openness.indep_openness_single_inc, false
+            ) as `Indep_Openness_Single_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_single_open, false
+            ) as `Indep_Openness_Single_Open`,
+            coalesce(
+                tbl_openness.indep_openness_multi_inc, false
+            ) as `Indep_Openness_Multi_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_multi_open, false
+            ) as `Indep_Openness_Multi_Open`,
+            coalesce(
+                tbl_openness.indep_openness_donly_inc, false
+            ) as `Indep_Openness_DOnly_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_donly_open, false
+            ) as `Indep_Openness_DOnly_Open`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_inc, false
+            ) as `Indep_Openness_ROnly_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_open, false
+            ) as `Indep_Openness_ROnly_Open`,
+            coalesce(
+                tbl_openness.indep_openness_donly_multi, false
+            ) as `Indep_Openness_DOnly_Multi`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_multi, false
+            ) as `Indep_Openness_ROnly_Multi`,
             case
                 when tbl_propensity.`prob_vote` is null
                 then 'Unknown'
@@ -493,6 +584,11 @@ with
         left join
             voter_propensity as tbl_propensity
             on tbl_updated.`LALVOTERID` = tbl_propensity.`LALVOTERID`
+        left join
+            indep_openness_flags as tbl_openness
+            on tbl_updated.`LALVOTERID` = tbl_openness.`LALVOTERID`
+        left join
+            haystaq_cutoffs as tbl_haystaq on tbl_updated.`State` = tbl_haystaq.state
     )
 
 select *

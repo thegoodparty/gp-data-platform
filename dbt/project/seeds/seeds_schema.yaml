@@ -984,3 +984,58 @@ seeds:
         description: The channel it belongs to.
         data_tests:
           - not_null
+
+  - name: indep_openness_n_ref
+    description: >
+      Reference district size per state for int__indep_openness_voter_scores. Every
+      voter in a state is scored as if their race had this many registered voters,
+      and the fundraising features scale from it. n_ref = max(3762, the state's
+      smallest State_House_District registered count), where 3,762 is the median
+      voter count of Win ICP offices. DC has no legislature, so its smallest
+      City_Ward stands in. Part of the scoring fingerprint: after a change the model
+      waits for cut points made with the new values, then rescores every voter.
+    columns:
+      - name: state
+        description: Two-letter state code.
+        data_tests:
+          - unique
+          - not_null
+          # Every state and DC, so no L2 state goes unscored.
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+      - name: n_ref
+        description: Reference registered-voter count.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3762
+
+  - name: indep_openness_haystaq_cutoff
+    description: >
+      Frozen per-state cutoff for Indep_Openness_Haystaq on m_people_api__voter: a
+      voter is flagged when hs_partisanship_moderate_third_party_support is at or
+      above their state's cutoff, the state's 60th percentile among voters with a
+      score. The score is an integer 0-100 and about 1% of each state sits exactly on
+      the cutoff, so the flag covers 40-41% of scored voters rather than exactly 40%;
+      voters with identical scores always get the same flag. Frozen so flags do not
+      move with each Haystaq vintage; assert_indep_openness_haystaq_cutoff_shares
+      warns when a new vintage drifts a state out of 40-41%.
+    columns:
+      - name: state
+        description: Two-letter state code.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+      - name: cutoff
+        description: Lowest flagged score in the state.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
