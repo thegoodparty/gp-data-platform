@@ -18,7 +18,14 @@ with
                     "e.event_properties:method::string",
                     "e.event_properties:product::string",
                 )
-            }} as is_win_leg
+            }} as is_win_leg,
+            {{
+                is_serve_activation_event(
+                    "e.event_type",
+                    "e.event_properties:method::string",
+                    "e.event_properties:product::string",
+                )
+            }} as is_serve_leg
         from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
         where
             e.event_time >= '{{ var("product_telemetry_start") }}'
@@ -40,7 +47,7 @@ with
             )
     )
 
-select l.user_id, l.activity_month, l.is_win_leg
+select l.user_id, l.activity_month, l.is_win_leg, l.is_serve_leg
 from legs as l
 join keys as k using (user_id)
 left join
@@ -50,4 +57,4 @@ left join
 where
     m.user_id is null
     or (l.is_win_leg and not m.is_engaged)
-    or (not l.is_win_leg and not m.is_engaged_serve)
+    or (l.is_serve_leg and not m.is_engaged_serve)

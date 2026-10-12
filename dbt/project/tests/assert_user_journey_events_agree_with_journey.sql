@@ -35,6 +35,23 @@ with
         select 'Primary election', count(candidacy_primary_election_date)
         from journey
         union all
+        -- Same rule as the model: no general row when the run ended at the primary.
+        select
+            'General election',
+            count(
+                case
+                    when
+                        not coalesce(
+                            candidacy_latest_stage_reached like 'primary%', false
+                        )
+                    then
+                        coalesce(
+                            candidacy_general_election_date, candidacy_election_date
+                        )
+                end
+            )
+        from journey
+        union all
         select 'HubSpot touch', count(*)
         from {{ ref("int__user_hubspot_touches") }} as t
         join journey as j using (user_id)
