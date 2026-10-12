@@ -3568,6 +3568,24 @@ models:
         description: The month is the current one and still filling.
         data_tests:
           - not_null
+      - name: serve_activity_days
+        description: Days with Serve activity in the month. See int__user_activity_monthly.
+        data_tests:
+          - not_null
+      - name: serve_growth_state
+        description: >
+          Growth state on Serve activity alone; null before the first Serve month.
+          See int__user_activity_monthly.
+      - name: is_engaged
+        description: >
+          Any Win activation leg in the month (the dashboard's "engaged"). See
+          int__user_activity_monthly.
+        data_tests:
+          - not_null
+      - name: is_engaged_serve
+        description: Any Serve activation leg in the month. See int__user_activity_monthly.
+        data_tests:
+          - not_null
 
   - name: user_journey_refresh_log
     description: >
