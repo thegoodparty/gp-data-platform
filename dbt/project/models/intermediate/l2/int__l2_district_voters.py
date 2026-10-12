@@ -1,7 +1,6 @@
 """
-This model creates the district voter table in the mart layer using the voter table.
-It transforms voter district data into a normalized district voter relationship table.
-This python data model is significantly faster than the sql data model (stored as .sql_backup).
+Voter-to-district bridge: one row per voter per L2 district type, unpivoted from the
+district columns on gp_api_voters and matched to m_election_api__district.
 """
 
 from pyspark.sql import DataFrame, SparkSession
@@ -21,9 +20,9 @@ THIS_SCHEMA = StructType(
     ]
 )
 
-# District types with no per-voter column to unpivot. DistrictStats derives statewide
-# associations straight from Voter.state, so emitting them here as well would add a row
-# per voter per state and double count every statewide district.
+# District types with no per-voter column to unpivot. Statewide membership follows from
+# the voter's state, so emitting it here would add a row per voter per state, and the
+# voter-density marts deliberately exclude statewide districts.
 NON_VOTER_DISTRICT_TYPES = {"state", "country"}
 
 
@@ -81,10 +80,7 @@ def _district_columns(voter_df: DataFrame, district_df: DataFrame) -> list[str]:
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
-    """
-    This model creates the district voter table in the mart layer using the voter table.
-    It transforms voter district data into a normalized district voter relationship table.
-    """
+    """Unpivot voter district columns and match each value to its district id."""
     # Configure the data model
     dbt.config(
         materialized="incremental",
@@ -92,7 +88,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         unique_key=["voter_id", "type"],
         on_schema_change="append_new_columns",
         liquid_clustered_by=["voter_id", "type", "updated_at"],
-        tags=["mart", "people_api", "district_voter"],
+        tags=["intermediate", "l2", "district_voter"],
     )
 
     # Get the voter data
@@ -113,8 +109,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if voter_df_count == 0:
         return session.createDataFrame(data=[], schema=THIS_SCHEMA)
 
-    # Get the district table for joining
-    district__mart_df: DataFrame = dbt.ref("m_people_api__district")
+    district__mart_df: DataFrame = dbt.ref("m_election_api__district").select(
+        col("id"),
+        col("l2_district_type").alias("type"),
+        col("l2_district_name").alias("name"),
+        col("state"),
+    )
 
     district_columns = _district_columns(voter_df, district__mart_df)
 

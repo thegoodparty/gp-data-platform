@@ -3,7 +3,6 @@
         materialized="table",
         tags=[
             "intermediate",
-            "people_api",
             "district_h3_cell_counts",
             "voter_density",
             "monthly",
@@ -39,7 +38,7 @@ with
     -- mart's own type, by assert_voter_density_excludes_statewide_districts.
     district_voter as (
         select districtvoter.district_id, districtvoter.voter_id, districtvoter.state
-        from {{ ref("m_people_api__districtvoter") }} as districtvoter
+        from {{ ref("int__l2_district_voters") }} as districtvoter
     ),
 
     -- LEFT join so non-geocoded voters survive: they carry a NULL h3_index and
@@ -48,7 +47,7 @@ with
         select district_voter.district_id, district_voter.state, resolution, h3_index
         from district_voter
         left join
-            {{ ref("int__people_api__voter_h3") }} as voter_h3
+            {{ ref("int__voter_density_voter_h3") }} as voter_h3
             on voter_h3.voter_id = district_voter.voter_id
         lateral view
             stack(

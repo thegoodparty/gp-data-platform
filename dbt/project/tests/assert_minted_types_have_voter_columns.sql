@@ -1,5 +1,5 @@
 -- Every minted district type must be a column on the voter mart, or
--- m_people_api__districtvoter emits no links for it: it intersects voter columns
+-- int__l2_district_voters emits no links for it: it intersects voter columns
 -- with district types. Those districts then carry a registered_voters count and
 -- serve nobody, which reads as a filter bug rather than missing data.
 --

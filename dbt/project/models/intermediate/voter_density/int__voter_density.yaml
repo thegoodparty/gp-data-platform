@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: int__people_api__voter_h3
+  - name: int__voter_density_voter_h3
     description: >
       Voter → H3 binning for the voter-density heat map. Parses each voter's
       residence lat/lng and bins to H3 at the resolutions in the
@@ -11,7 +11,7 @@ models:
       - name: voter_id
         description: >
           The voter's salted-uuid id (generate_salted_uuid([LALVOTERID], salt='l2')),
-          equal to m_people_api__districtvoter.voter_id — the join key.
+          equal to int__l2_district_voters.voter_id — the join key.
         data_type: uuid
         data_tests:
           - not_null
@@ -38,7 +38,7 @@ models:
           config:
             severity: error
 
-  - name: int__people_api__district_h3_cell_counts
+  - name: int__voter_density_district_h3_cell_counts
     description: >
       Pre-suppression H3 cell counts per district — the shared input to both
       voter-density marts, so the district↔voter join and the resolution fan-out

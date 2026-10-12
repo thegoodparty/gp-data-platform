@@ -6,7 +6,7 @@ The app uses `coverage` to decide whether the map is trustworthy enough to rende
 (it hides the map below a threshold) and to draw the legend. Suppressed voters
 still count toward the coverage denominator but never produce a rendered cell.
 
-Every measure is a reduction over int__people_api__district_h3_cell_counts, the
+Every measure is a reduction over int__voter_density_district_h3_cell_counts, the
 same pre-suppression table the density mart filters. That is deliberate: deriving
 coverage from a second, independently-computed population is how the denominator
 silently stops describing the map it is reported against.
@@ -15,13 +15,13 @@ total_voters and geocoded_voters are identical across resolutions — a voter's 
 cell exists at every resolution or at none — but are published per resolution
 because the app reads them keyed by (district, resolution) alongside coverage.
 
-Column semantics are documented in m_people_api.yaml.
+Column semantics are documented in m_election_api.yaml.
 */
 {{
     config(
         tags=[
             "mart",
-            "people_api",
+            "election_api",
             "district_voter_density_meta",
             "voter_density",
             "monthly",
@@ -51,7 +51,7 @@ with
             count_if(
                 h3_index is not null and voter_count < {{ var("voter_density_k") }}
             ) as suppressed_cells
-        from {{ ref("int__people_api__district_h3_cell_counts") }}
+        from {{ ref("int__voter_density_district_h3_cell_counts") }}
         group by district_id, resolution
     )
 

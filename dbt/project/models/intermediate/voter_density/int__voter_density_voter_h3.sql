@@ -1,7 +1,7 @@
 {{
     config(
         materialized="table",
-        tags=["intermediate", "people_api", "voter_h3", "voter_density", "monthly"],
+        tags=["intermediate", "voter_h3", "voter_density", "monthly"],
     )
 }}
 
@@ -12,7 +12,7 @@ One row per geocoded voter, one H3 column per published resolution. The
 resolution list comes from the voter_density_h3_resolutions var so the policy
 lives in one place.
 
-The join key back to m_people_api__districtvoter.voter_id is the voter's
+The join key back to int__l2_district_voters.voter_id is the voter's
 salted-uuid `id` from gp_api_voters, NOT the raw LALVOTERID — we source
 `id` directly rather than re-minting it.
 

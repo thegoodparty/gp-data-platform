@@ -559,7 +559,7 @@ TABLES: tuple[MartSync, ...] = (
                 ),
             ),
         ),
-        source_model="m_people_api__district_voter_density",
+        source_model="m_election_api__district_voter_density",
         # ~59.3M rows, the largest table in the set by an order of magnitude;
         # read one state at a time so no single server-side result set holds
         # the whole mart. Unpartitioned is what OOM-kills these tasks.
@@ -590,7 +590,7 @@ TABLES: tuple[MartSync, ...] = (
                 ),
             ),
         ),
-        source_model="m_people_api__district_voter_density_meta",
+        source_model="m_election_api__district_voter_density_meta",
         # ~512k rows across four resolutions; small enough to read in one pass.
         gate=QualityGate(
             cold_start_floor=400_000,

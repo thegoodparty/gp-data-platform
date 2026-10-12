@@ -28,9 +28,7 @@
 select district.id, district.state, district.l2_district_type, district.l2_district_name
 from {{ ref("m_election_api__district") }} as district
 left join
-    (
-        select distinct district_id from {{ ref("m_people_api__districtvoter") }}
-    ) as linked
+    (select distinct district_id from {{ ref("int__l2_district_voters") }}) as linked
     on district.id = linked.district_id
 where
     district.registered_voters > 0

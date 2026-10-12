@@ -21,14 +21,14 @@
 with
     coarsest as (
         select min(resolution) as resolution
-        from {{ ref("m_people_api__district_voter_density_meta") }}
+        from {{ ref("m_election_api__district_voter_density_meta") }}
     ),
     band as (
         select
             meta.resolution,
             count(*) as districts,
             percentile_approx(meta.coverage, 0.5) as median_coverage
-        from {{ ref("m_people_api__district_voter_density_meta") }} as meta
+        from {{ ref("m_election_api__district_voter_density_meta") }} as meta
         inner join coarsest on coarsest.resolution = meta.resolution
         group by meta.resolution
     )

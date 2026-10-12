@@ -14,8 +14,8 @@
 -- small join, not a scan of the published cells. Error severity, not warn: this
 -- is the feature's scope contract, and a violation means the bridge started
 -- carrying statewide associations and the marts silently began publishing them.
-select meta.district_id, meta.resolution, district.type
-from {{ ref("m_people_api__district_voter_density_meta") }} as meta
+select meta.district_id, meta.resolution, district.l2_district_type as type
+from {{ ref("m_election_api__district_voter_density_meta") }} as meta
 inner join
-    {{ ref("m_people_api__district") }} as district on district.id = meta.district_id
-where district.type = 'State'
+    {{ ref("m_election_api__district") }} as district on district.id = meta.district_id
+where district.l2_district_type = 'State'

@@ -6,7 +6,7 @@ row is an H3 cell with a voter count and the deterministic H3 cell centroid —
 never a voter, address, or the mean of voter positions. Two different voter
 distributions in the same cell publish the identical point.
 
-Column semantics are documented in m_people_api.yaml; the grain is one row per
+Column semantics are documented in m_election_api.yaml; the grain is one row per
 (district_id, resolution, h3_index) surviving suppression.
 
 Materialization — K-anonymity correctness: each district must be recomputed AS A
@@ -21,7 +21,7 @@ whole-district `replace_where` delete+insert, NOT a plain cell-key merge.
     config(
         tags=[
             "mart",
-            "people_api",
+            "election_api",
             "district_voter_density",
             "voter_density",
             "monthly",
@@ -40,7 +40,7 @@ with
             split(
                 regexp_extract(h3_centeraswkt(h3_index), 'POINT\\(([^)]+)\\)', 1), ' '
             ) as centroid
-        from {{ ref("int__people_api__district_h3_cell_counts") }}
+        from {{ ref("int__voter_density_district_h3_cell_counts") }}
         where h3_index is not null and voter_count >= {{ var("voter_density_k") }}
     )
 
