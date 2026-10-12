@@ -1755,3 +1755,34 @@ models:
           - not_null
       - name: utm_medium_first_normalized
         description: utm_medium_first lowercased, so paid and Paid are one value.
+
+  - name: int__user_signup_touch_utm
+    description: >
+      Last-touch UTM at signup per user: the utm_*_last properties on the user's
+      registration event in Amplitude, so the campaign in front of them when they
+      signed up. One row per user whose registration event carries any; the
+      earliest registration event wins. Pair with int__user_first_touch_utm,
+      which holds where they first arrived. Values are raw; the _normalized
+      columns use the same rule as first touch so the two compare.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: utm_source_last
+        description: UTM source on the registration event.
+        data_tests:
+          - not_null
+      - name: utm_medium_last
+        description: UTM medium on the registration event.
+      - name: utm_campaign_last
+        description: UTM campaign on the registration event.
+      - name: utm_source_last_normalized
+        description: >
+          utm_source_last cleaned and mapped through the utm_source_normalization
+          seed, exactly as utm_source_first_normalized is.
+        data_tests:
+          - not_null
+      - name: utm_medium_last_normalized
+        description: utm_medium_last lowercased.
