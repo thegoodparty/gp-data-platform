@@ -136,22 +136,58 @@ with
             and startswith(
                 assignments.l2_district_name, voters.`Unified_School_District` || ' '
             )
+    ),
+
+    -- Where the adoption seed puts a state on its proposed map, that map replaces
+    -- the current column outright, so every consumer sees one map per type.
+    -- Virginia's struck-down proposal never passes the gate.
+    {% set replaced_types = proposed_district_type_map() | map(attribute=1) | list %}
+    adopted as (
+        select
+            voters.* except (
+                {% for column in replaced_types -%}
+                    `{{ column }}`{% if not loop.last %},{% endif %}
+                {%- endfor %}
+            ),
+            {% for column in replaced_types -%}
+                case
+                    when adoption.district_type = '{{ column }}'
+                    then {{ proposed_district_number("voters.`Proposed_District`") }}
+                    else voters.`{{ column }}`
+                end as `{{ column }}`
+                {% if not loop.last %},{% endif %}
+            {% endfor %}
+        from assigned as voters
+        left join
+            {{ ref("district_map_adoption") }} as adoption
+            on adoption.state = voters.state_postal_code
+            and adoption.district_type
+            = {{ proposed_district_type("voters.`Proposed_District`") }}
+            and adoption.adopted_source = 'proposed'
+            and adoption.is_verified
+            -- An empty district_number covers the whole state.
+            and (
+                nullif(trim(adoption.district_number), '') is null
+                or cast(trim(adoption.district_number) as int) = cast(
+                    {{ proposed_district_number("voters.`Proposed_District`") }} as int
+                )
+            )
     )
 
 -- Strip L2's padding here so every consumer agrees on a district's name and id.
 -- Every district column, not just the six that pad today: a no-op on the rest,
 -- and nothing to keep in sync when L2 starts padding a new one.
 select
-    assigned.* except (
+    adopted.* except (
         {{ get_l2_district_columns() }},
         `VoterTelephones_CellPhoneFormatted`,
         `VoterTelephones_LandlineFormatted`
     ),
     {% for column in get_l2_district_types() -%}
-        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`,
+        ltrim('0', adopted.`{{ column }}`) as `{{ column }}`,
     {% endfor %}
-    {{ clean_l2_phone_number("assigned.`VoterTelephones_CellPhoneFormatted`") }}
+    {{ clean_l2_phone_number("adopted.`VoterTelephones_CellPhoneFormatted`") }}
     as `VoterTelephones_CellPhoneFormatted`,
-    {{ clean_l2_phone_number("assigned.`VoterTelephones_LandlineFormatted`") }}
+    {{ clean_l2_phone_number("adopted.`VoterTelephones_LandlineFormatted`") }}
     as `VoterTelephones_LandlineFormatted`
-from assigned
+from adopted

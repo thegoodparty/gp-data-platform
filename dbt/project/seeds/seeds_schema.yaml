@@ -194,25 +194,12 @@ seeds:
       # universe cannot say since the mart's L2 leg, int__l2_district_aggregations,
       # is an incremental that can lag a delivery. An override satisfying only
       # one of them resolves to nothing in production.
-      #
-      # Liveness has two sources. Minted districts cannot be in the universe,
-      # which unpivots L2 column names while their type comes from parsing the
-      # value. They prove it instead by still being emitted by
-      # int__l2_proposed_district_aggregations, a full rebuild from the current
-      # file. Hence the or: adding them to the universe breaks its own
-      # reciprocal test against int__l2_district_aggregations.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
-              (
-                concat(state, '|', l2_district_type, '|', l2_district_name) in (
-                  select concat(state_postal_code, '|', district_type, '|', district_name)
-                  from {{ ref('int__l2_district_universe') }}
-                )
-                or concat(state, '|', l2_district_type, '|', l2_district_name) in (
-                  select concat(state_postal_code, '|', district_type, '|', district_name)
-                  from {{ ref('int__l2_proposed_district_aggregations') }}
-                )
+              concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                select concat(state_postal_code, '|', district_type, '|', district_name)
+                from {{ ref('int__l2_district_universe') }}
               )
               and concat(state, '|', l2_district_type, '|', l2_district_name) in (
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
@@ -818,12 +805,12 @@ seeds:
 
   - name: proposed_district_ignored_values
     description: >
-      Proposed_District values that are known and deliberately not minted as
+      Proposed_District values that are known and deliberately not adopted as
       districts. The column is a catch-all for district changes, so alongside
       the congressional and state senate maps it carries county-commissioner
       rows and local annexation records that are not seats at all. It also
-      parks real seats whose minting is deferred by decision, such as a map
-      for an election year the minted district types do not cover yet.
+      parks real seats whose adoption is deferred by decision, such as a map
+      for a later election year.
 
       This exists so the drift guard can tell "known and ignored" from "new
       shape nobody has looked at". Removing a row makes the build fail rather
@@ -841,7 +828,7 @@ seeds:
           - is_state_abbreviation
       - name: reason
         description: >
-          Why it is not minted: either not a seat, or a deferral with what
+          Why it is not adopted: either not a seat, or a deferral with what
           would lift it. Each was located by voter geography and then verified
           against the jurisdiction's own records.
         data_tests:
