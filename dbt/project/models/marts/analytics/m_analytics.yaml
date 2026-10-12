@@ -3442,12 +3442,18 @@ models:
 
   - name: user_journey_events
     description: >
-      The dated moments on each user's journey, one row per user per event, for
-      a single-user timeline. Internal only. Reshaping only: every date is a
-      user_journey column, and an event with no date has no row. Elections show
-      the primary when there was one, then the general unless
-      candidacy_latest_stage_reached says the run ended at the primary. Without
-      a civics candidacy, candidacy_election_date stands in for the general.
+      Every dated moment on each user's journey, one row per moment: the
+      milestones, first contact, payments, the filing deadline and elections,
+      plus each outbound HubSpot touch and each committed outreach send. Internal
+      only. Reshaping only: single moments are user_journey columns, and touches
+      and sends are the histories user_journey already rolls up. A moment with no
+      date has no row, so undated facts (Pro with no start date, third-party
+      match, power user) stay as user_journey flags. Count by period with
+      event_at; count stage reach by stage. Elections show the primary when there
+      was one, then the general unless candidacy_latest_stage_reached says the
+      run ended at the primary. Without a civics candidacy, candidacy_election_date
+      stands in for the general. Supersedes user_journey_milestones, which stays
+      only until the live workbook stops reading it.
     columns:
       - name: user_id
         description: The gp-api user account.
@@ -3458,42 +3464,80 @@ models:
                 to: ref("user_journey")
                 field: user_id
       - name: event
-        description: >
-          Registered (registered_at), Onboarded (onboarding_completed_at), Free
-          product output (free_product_output_at), First payment
-          (first_payment_at), Pro (pro_since), Activated (activated_at),
-          Primary election, General election.
+        description: The moment, in display words. See event_order for the full list.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
+                  - First contact
+                  - HubSpot touch
                   - Registered
                   - Onboarded
                   - Free product output
-                  - First payment
-                  - Pro
                   - Activated
+                  - Outreach send
+                  - First payment
+                  - First subscription payment
+                  - Pro
+                  - Filing deadline
                   - Primary election
                   - General election
+      - name: event_category
+        description: acquisition, touch, milestone, send, revenue or election.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [acquisition, touch, milestone, send, revenue, election]
+      - name: stage
+        description: >
+          The user_journey_milestones stage key for the four dated funnel stages
+          (registered, completed_onboarding, activated, pro); null otherwise.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [registered, completed_onboarding, activated, pro]
       - name: event_order
-        description: Display order, 1 to 8, matching event.
+        description: >
+          Display order, 1 to 13: First contact, HubSpot touch, Registered,
+          Onboarded, Free product output, Activated, Outreach send, First payment,
+          First subscription payment, Pro, Filing deadline, Primary election,
+          General election.
+        data_tests:
+          - not_null
+      - name: event_key
+        description: >
+          Unique within a user: the event name for one-off moments, the HubSpot
+          touch id for touches, the send key for sends.
         data_tests:
           - not_null
       - name: event_at
         description: >
-          When it happened. Election dates are dates cast to midnight, and can
-          be in the future.
+          When it happened. Election and filing-deadline dates are dates cast to
+          midnight and can be in the future, so a period filter must also stop at
+          today.
         data_tests:
           - not_null
       - name: event_label
         description: >
-          The result for an election event (Won, Lost, Runoff and so on); null
-          for every other event and for an election with no result yet.
+          The result for an election (Won, Lost, Runoff and so on), the channel
+          for a touch (call, email, meeting, sms) or a send (texting, robocall,
+          door_knocking, phone_banking, social, unattributed); null otherwise.
+      - name: event_value
+        description: Recipients for an outreach send; null for every other event.
+      - name: product
+        description: >
+          user_journey.product for the user (win, serve, both, none). A user
+          attribute, not a per-event one.
+      - name: days_since_registered
+        description: >
+          Whole days from registered_at to event_at. Negative for moments before
+          signup, such as first contact. Use it for the 14- and 30-day windows.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [user_id, event]
+            combination_of_columns: [user_id, event_key]
 
   - name: user_growth_state_monthly
     description: >
