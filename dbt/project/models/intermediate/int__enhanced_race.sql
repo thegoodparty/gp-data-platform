@@ -111,6 +111,12 @@ with
                     -- placeless, as before.
                     when tbl_position.mtfcc = 'X0028'
                     then left(tbl_position.geo_id, 5)
+                    -- Water District. CA and AZ geo_ids are county FIPS + a
+                    -- suffix. Nebraska's Natural Resources Districts use 7-char
+                    -- state-level codes that a county rollup would empty out.
+                    when
+                        tbl_position.mtfcc = 'X0018' and length(tbl_position.geo_id) > 7
+                    then left(tbl_position.geo_id, 5)
                     when tbl_position.mtfcc = 'X0025'
                     then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
                     else tbl_position.geo_id
