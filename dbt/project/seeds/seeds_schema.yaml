@@ -885,6 +885,19 @@ seeds:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "adopted_source = 'proposed' or not is_verified"
+      # The voter view joins every open row, so a statewide row beside a
+      # per-district row for the same scope would duplicate that district's voters.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              not (adopted_source = 'proposed' and is_verified)
+              or nullif(trim(district_number), '') is null
+              or concat(state, '|', district_type) not in (
+                select concat(state, '|', district_type)
+                from {{ ref('district_map_adoption') }}
+                where adopted_source = 'proposed' and is_verified
+                  and nullif(trim(district_number), '') is null
+              )
     columns:
       - name: state
         description: Two-letter state code the decision applies to.
