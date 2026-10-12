@@ -114,17 +114,5 @@ models:
           voter_file for voter rows; for consumer-only rows, the area whose
           voters supplied the district columns, or null when none matched.
 
-  - name: gp_api_districts
-    description: Pass-through of m_people_api__district
-
-  - name: gp_api_district_stats
-    description: Pass-through of m_people_api__districtstats
-
-  - name: gp_api_district_voter_density
-    description: Pass-through of m_people_api__district_voter_density
-
-  - name: gp_api_district_voter_density_meta
-    description: Pass-through of m_people_api__district_voter_density_meta
-
   - name: gp_api_district_census_stats
     description: Pass-through of district_census_stats
