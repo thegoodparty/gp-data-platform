@@ -23,14 +23,14 @@
 with
     coarsest as (
         select min(resolution) as resolution
-        from {{ ref("m_people_api__district_voter_density_meta") }}
+        from {{ ref("m_election_api__district_voter_density_meta") }}
     ),
     share as (
         select
             meta.resolution,
             count(*) as districts,
             count_if(meta.rendered_voters = 0) as zero_cell_districts
-        from {{ ref("m_people_api__district_voter_density_meta") }} as meta
+        from {{ ref("m_election_api__district_voter_density_meta") }} as meta
         inner join coarsest on coarsest.resolution = meta.resolution
         group by meta.resolution
     )

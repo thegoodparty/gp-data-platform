@@ -75,7 +75,7 @@ consideration is likely more around necessity to delete from Group B entirely.
 | `s3://gp-people-loader-us-west-2/voter_export_<date>/` | Voter extracts staged for the Postgres COPY. `teardown` deletes the prefix, so check whether it ran for each past date. | `LALVOTERID` | Delete leftover prefixes | No |
 | RDS snapshots `gp-people-db-<date>-<env>-final`, plus 14-day automated backups | Full voter data | n/a | Delete manual snapshots. Automated backups age out in 14 days. | n/a |
 | `mart_mban2026.deid_voters` | Already de-identified: names and contact removed, addresses hashed, `LALVOTERID` retained for linkage | `LALVOTERID` | Retaining `LALVOTERID` means it is pseudonymized rather than anonymized, so it probably still counts as personal information. Worth a legal read. | Rebuilt monthly |
-| `gp_api_voters`, `m_people_api__districtvoter`, `int__l2_nationwide_uniform*`, `int__voter_turnout_inference`, `model_predictions.voter_turnout_scores_20260730` | Voter-level rows and per-voter turnout scores | `LALVOTERID` | Full refresh once upstream is clean | No |
+| `gp_api_voters`, `int__l2_district_voters`, `int__l2_nationwide_uniform*`, `int__voter_turnout_inference`, `model_predictions.voter_turnout_scores_20260730` | Voter-level rows and per-voter turnout scores | `LALVOTERID` | Full refresh once upstream is clean | No |
 
 ## Group D: copies, history, and backups
 

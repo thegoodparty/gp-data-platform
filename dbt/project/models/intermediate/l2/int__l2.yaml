@@ -887,3 +887,52 @@ models:
           name: election_calendar_even_years_only
           arguments:
             expression: "year(election_date) % 2 = 0"
+
+  - name: int__l2_district_voters
+    config:
+      tags: ["monthly"]
+    description: >
+      One row per voter per L2 district type, linking each voter in
+      gp_api_voters to the district they fall in. The bridge the voter-density
+      models fan out from.
+    columns:
+      - name: voter_id
+        description: Unique identifier for a district voter
+        data_type: uuid
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gp_api_voters')
+                field: id
+      - name: district_id
+        description: Unique identifier for a district
+        data_type: uuid
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: id
+      - name: type
+        description: Type of district
+        data_type: string
+        tests:
+          - not_null
+    data_tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - district_id
+            sample_size: 100000
+          config:
+            severity: error
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - type
+            sample_size: 100000
+          config:
+            severity: error
