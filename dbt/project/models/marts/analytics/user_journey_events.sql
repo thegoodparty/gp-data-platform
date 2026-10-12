@@ -42,12 +42,12 @@ with
             'First contact' as event,
             'acquisition' as event_category,
             cast(null as string) as stage,
-            1 as event_order,
+            9 as event_order,
             first_touch_at as event_at,
             cast(null as string) as event_label
         from journey
         union all
-        select user_id, 'Registered', 'milestone', 'registered', 3, registered_at, null
+        select user_id, 'Registered', 'milestone', 'registered', 1, registered_at, null
         from journey
         union all
         select
@@ -55,7 +55,7 @@ with
             'Onboarded',
             'milestone',
             'completed_onboarding',
-            4,
+            2,
             onboarding_completed_at,
             null
         from journey
@@ -65,7 +65,7 @@ with
             'Free product output',
             'milestone',
             null,
-            5,
+            3,
             free_product_output_at,
             null
         from journey
@@ -73,7 +73,7 @@ with
         select user_id, 'Activated', 'milestone', 'activated', 6, activated_at, null
         from journey
         union all
-        select user_id, 'First payment', 'revenue', null, 8, first_payment_at, null
+        select user_id, 'First payment', 'revenue', null, 4, first_payment_at, null
         from journey
         union all
         select
@@ -81,12 +81,12 @@ with
             'First subscription payment',
             'revenue',
             null,
-            9,
+            12,
             first_subscription_payment_at,
             null
         from journey
         union all
-        select user_id, 'Pro', 'revenue', 'pro', 10, pro_since, null
+        select user_id, 'Pro', 'revenue', 'pro', 5, pro_since, null
         from journey
         union all
         select
@@ -94,7 +94,7 @@ with
             'Filing deadline',
             'election',
             null,
-            11,
+            13,
             cast(candidacy_filing_deadline as timestamp),
             null
         from journey
@@ -104,7 +104,7 @@ with
             'Primary election',
             'election',
             null,
-            12,
+            7,
             cast(candidacy_primary_election_date as timestamp),
             candidacy_primary_result
         from journey
@@ -114,7 +114,7 @@ with
             'General election',
             'election',
             null,
-            13,
+            8,
             cast(general_election_date as timestamp),
             candidacy_general_result
         from journey
@@ -129,7 +129,7 @@ with
             'HubSpot touch' as event,
             'touch' as event_category,
             cast(null as string) as stage,
-            2 as event_order,
+            10 as event_order,
             'touch:' || t.touch_id as event_key,
             t.touch_at as event_at,
             t.channel as event_label,
@@ -146,7 +146,7 @@ with
             'Outreach send' as event,
             'send' as event_category,
             cast(null as string) as stage,
-            7 as event_order,
+            11 as event_order,
             'send:' || s.send_key as event_key,
             s.send_at as event_at,
             s.channel as event_label,

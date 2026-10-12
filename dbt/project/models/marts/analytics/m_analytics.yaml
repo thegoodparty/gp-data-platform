@@ -3500,10 +3500,11 @@ models:
                 values: [registered, completed_onboarding, activated, pro]
       - name: event_order
         description: >
-          Display order, 1 to 13: First contact, HubSpot touch, Registered,
-          Onboarded, Free product output, Activated, Outreach send, First payment,
-          First subscription payment, Pro, Filing deadline, Primary election,
-          General election.
+          Display order. 1 to 8 keep the numbers the live workbook already reads:
+          Registered, Onboarded, Free product output, First payment, Pro,
+          Activated, Primary election, General election. Moments added later take
+          9 to 13: First contact, HubSpot touch, Outreach send, First subscription
+          payment, Filing deadline. Not chronological; sort a timeline by event_at.
         data_tests:
           - not_null
       - name: event_key

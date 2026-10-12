@@ -1,3 +1,7 @@
+-- Warns on any row; errors only past 25, so one edge-case user-month cannot
+-- skip the journey mart that live Sigma workbooks read.
+{{ config(warn_if=">0", error_if=">25") }}
+
 -- Fails where a Serve growth state appears before the user's first Serve month,
 -- or is missing from it on. Before then the user is not a Serve user at all, and
 -- reading them as dormant would put every Win user in the Serve chart.

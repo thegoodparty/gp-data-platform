@@ -1,3 +1,7 @@
+-- Warns on any row; errors only past 25, so one edge-case user-month cannot
+-- skip the journey mart that live Sigma workbooks read.
+{{ config(warn_if=">0", error_if=">25") }}
+
 -- Fails for any user-month with a Win or Serve activation leg that the monthly
 -- table does not mark engaged. The grid only holds users with non-machine
 -- activity, so an engaged month outside it would vanish without this.
