@@ -83,3 +83,14 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: is_serve_priority_segment
+        description: >
+          Serve Priority Segment: a GTM outreach sub-segment, not an
+          ICP definition. True for non-judicial, non-appointed offices flagged
+          serve_priority in icp_normalized_position_names (municipal legislative
+          and mayor) with more than 5,000 voters. Independent of icp_office_win,
+          so offices over 100,000 voters qualify. Null when voter_count is null.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]

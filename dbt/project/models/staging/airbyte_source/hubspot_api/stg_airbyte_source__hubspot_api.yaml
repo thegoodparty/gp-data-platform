@@ -1325,6 +1325,13 @@ models:
         description: >
           HubSpot contact property `viable_state_leg` (Viable State Leg). HubSpot
           property group: contactinformation.
+      - name: serve_priority_segment
+        description: >
+          HubSpot contact property `serve_priority_segment` (Serve Priority
+          Segment). HubSpot property group: contactinformation. Written by
+          Databricks via the contact_attributes_hubspot feed; the
+          authoritative value is int__icp_offices.is_serve_priority_segment.
+          Null until the property exists in HubSpot and has been populated.
       - name: companies
         description: >
           HubSpot company ids associated with the contact (Airbyte record column,

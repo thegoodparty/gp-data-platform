@@ -116,6 +116,17 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: serve_priority_segment
+        description: >
+          Serve Priority Segment, from
+          int__icp_offices.is_serve_priority_segment on the candidacy's
+          BallotReady position. False when the position is unresolved or
+          unsized; no free-text fallback.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: viability_rating_2_0
         description: Viability 2.0 score (0-5); null for the not-yet-scored provider expansion.
         data_tests:
@@ -200,3 +211,35 @@ models:
           Viability stored in HubSpot when the feed was built; null where unset. Kept so
           the diff is auditable after the import. Deliberately excluded from the import
           file: mapped by mistake it would write the stale score back.
+
+  - name: contact_attributes_hubspot
+    description: >
+      Databricks-owned attributes synced onto EXISTING HubSpot contacts
+      (reverse-ETL sendable mart). One row per HubSpot contact Record ID where a
+      published value differs from HubSpot's current value, so the first run after
+      a property is created is its backfill and later runs carry only changes.
+      Contact-grained companion to company_viability_hubspot. Publishes
+      serve_priority_segment.
+    columns:
+      - name: Record ID
+        # Space in the name: dbt emits the identifier unquoted in generic tests
+        # without this, which is a syntax error.
+        quote: true
+        description: HubSpot contact id, the import match key and the model grain.
+        data_tests:
+          - unique
+          - not_null
+      - name: serve_priority_segment
+        description: >
+          Value to write to the HubSpot `serve_priority_segment` contact property.
+          From int__icp_offices.is_serve_priority_segment via the contact's
+          effective BallotReady position; false only where HubSpot holds true and
+          we no longer have a value.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: hubspot_current_serve_priority_segment
+        description: >
+          HubSpot's current value, for review before import. Not for upload.

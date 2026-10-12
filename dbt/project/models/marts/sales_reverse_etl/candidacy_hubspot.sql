@@ -118,6 +118,7 @@ with
             cy.is_win_icp,
             cy.is_serve_icp,
             cy.is_win_supersize_icp,
+            icp.is_serve_priority_segment,
             cy.primary_election_date,
             cy.general_election_date,
             cy.viability_score,
@@ -193,6 +194,10 @@ with
         from {{ ref("candidacy_scored") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
+        -- 1:1 on the position (unique in int__icp_offices), so no fan-out.
+        left join
+            {{ ref("int__icp_offices") }} as icp
+            on cy.br_position_database_id = icp.br_database_position_id
         left join
             {{ ref("int__civics_candidacy_ballotready") }} as br_int
             on cy.gp_candidacy_id = br_int.gp_candidacy_id
@@ -363,6 +368,10 @@ select
         and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices),
         false
     ) as icp_win_supersize,
+    -- GTM outreach segment. No free-text fallback like the ICP flags:
+    -- the segment is defined on the BallotReady position allow-list, so a lead
+    -- without a resolved position is false rather than guessed from text.
+    coalesce(b.is_serve_priority_segment, false) as serve_priority_segment,
     'Civics Net New' as lead_source,
 
     -- === appended: match-back key + reverse-ETL key inputs + recency ===

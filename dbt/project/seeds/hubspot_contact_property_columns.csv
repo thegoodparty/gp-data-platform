@@ -351,3 +351,4 @@ connected_with_rep,Connected with rep,enumeration,contactinformation,generated,c
 viable_state_leg,Viable State Leg,bool,contactinformation,generated,is_viable_state_leg,boolean,350,,,,
 hs_merged_object_ids,Merged Contact IDs,enumeration,contactinformation,generated,merged_object_ids,string,351,The list of Contact record IDs that have been merged into this Contact.,,,
 team_role,Team Role,enumeration,contactinformation,generated,team_role,string,352,,,,
+serve_priority_segment,Serve Priority Segment,bool,contactinformation,generated,serve_priority_segment,boolean,353,,,,

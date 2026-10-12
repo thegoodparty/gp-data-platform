@@ -96,6 +96,7 @@ with
             icp_offices.icp_office_win,
             icp_offices.icp_office_serve,
             icp_offices.icp_win_supersize,
+            icp_offices.is_serve_priority_segment,
             icp_offices.icp_win_effective_date is not null
             and (
                 cast(
@@ -192,6 +193,8 @@ select
     case
         when is_before_icp_win_effective_date then false else icp_win_supersize
     end as icp_win_supersize,
+    -- No effective-date guard: no school board office is in the segment.
+    is_serve_priority_segment,
 
     -- Metadata
     created_at,

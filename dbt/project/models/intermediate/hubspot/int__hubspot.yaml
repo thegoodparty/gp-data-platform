@@ -138,6 +138,16 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: is_serve_priority_segment
+        description: >
+          Whether the contact's position is in the Serve Priority Segment.
+          Pass-through of `int__icp_offices.is_serve_priority_segment`
+          via the effective BR position. Null when the contact has no resolved
+          position or its district has no voter count.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: int__hubspot_contact_merges
     description: >
