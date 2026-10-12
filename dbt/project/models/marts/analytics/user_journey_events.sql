@@ -121,6 +121,40 @@ with
         where not ended_at_primary
     ),
 
+    -- Outbound only: contact we made. Notes, tasks and inbound mail stay off,
+    -- matching the per-user touch counts.
+    touches as (
+        select
+            t.user_id,
+            'HubSpot touch' as event,
+            'touch' as event_category,
+            cast(null as string) as stage,
+            2 as event_order,
+            'touch:' || t.touch_id as event_key,
+            t.touch_at as event_at,
+            t.channel as event_label,
+            cast(null as bigint) as event_value
+        from {{ ref("int__user_hubspot_touches") }} as t
+        where t.is_outbound_touch
+    ),
+
+    -- Committed only: a requested send never confirmed delivery, and the row's
+    -- voters-reached figure counts committed sends.
+    sends as (
+        select
+            s.user_id,
+            'Outreach send' as event,
+            'send' as event_category,
+            cast(null as string) as stage,
+            7 as event_order,
+            'send:' || s.send_key as event_key,
+            s.send_at as event_at,
+            s.channel as event_label,
+            cast(s.recipient_count as bigint) as event_value
+        from {{ ref("int__user_outreach_sends") }} as s
+        where s.basis = 'committed'
+    ),
+
     events as (
         select
             user_id,
@@ -133,6 +167,12 @@ with
             event_label,
             cast(null as bigint) as event_value
         from one_off
+        union all
+        select *
+        from touches
+        union all
+        select *
+        from sends
     )
 
 select

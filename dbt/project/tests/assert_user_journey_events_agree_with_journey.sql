@@ -34,6 +34,16 @@ with
         union all
         select 'Primary election', count(candidacy_primary_election_date)
         from journey
+        union all
+        select 'HubSpot touch', count(*)
+        from {{ ref("int__user_hubspot_touches") }} as t
+        join journey as j using (user_id)
+        where t.is_outbound_touch and t.touch_at is not null
+        union all
+        select 'Outreach send', count(*)
+        from {{ ref("int__user_outreach_sends") }} as s
+        join journey as j using (user_id)
+        where s.basis = 'committed' and s.send_at is not null
     ),
 
     actual as (
