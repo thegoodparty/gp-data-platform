@@ -1,11 +1,5 @@
 version: 2
 
-# Quality gate for the marts gp-api reads through mart_gp_api. Covers the column
-# tests below plus the singular row-count/state-coverage test in
-# tests/assert_people_api_voter_rowcount_and_state_coverage.sql. Everything is
-# severity=error except assert_people_api_voter_affinity_and_ideology_rates,
-# which warns: it tracks a modelled distribution that may legitimately move with
-# a new Haystaq vintage.
 models:
   - name: m_people_api__district
     description: >
@@ -53,7 +47,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('m_people_api__voter')
+                to: ref('gp_api_voters')
                 field: id
       - name: district_id
         description: Unique identifier for a district
@@ -86,89 +80,6 @@ models:
             sample_size: 100000
           config:
             severity: error
-
-  - name: m_people_api__voter
-    config:
-      tags: ["monthly"]
-    description: >
-      This model creates the voter table in the mart layer using the hubspot data
-    columns:
-      - name: id
-        description: Unique identifier for a voter
-        data_type: uuid
-        tests:
-          - not_null
-          - unique
-      - name: LALVOTERID
-        description: Unique identifier for a voter
-        data_type: varchar
-        tests:
-          - not_null
-          - unique
-      - name: State
-        description: Two-letter state postal code
-        data_type: varchar
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: "{{ get_us_states_list(include_DC=true, include_US=true) }}"
-      - name: Voter_Status
-        description: >
-          Turnout-propensity bucket for the 2026 General, derived from the
-          in-house model probability: Unlikely (<0.25), Unreliable (<0.50),
-          Likely (<0.75), Super (>=0.75), Unknown (no score).
-        data_type: varchar
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values:
-                  - Unlikely
-                  - Unreliable
-                  - Likely
-                  - Super
-                  - Unknown
-      - name: Voter_Turnout_Probability
-        description: >
-          In-house modeled turnout probability in [0,1] for the 2026 General;
-          null when the voter has no score.
-        data_type: double
-        tests:
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 0
-                max_value: 1
-              config:
-                where: "Voter_Turnout_Probability is not null"
-      - name: Voter_Independent_Affinity
-        description: >
-          True when the voter shows any signal of independent-leaning behaviour:
-          a registration party change within ~4 years, frequent ticket
-          splitting, a third-party or crossover primary ballot in 2020/2022/2024,
-          a Haystaq score at or above the double-dislike or moderate-third-party
-          cut (both cuts are project vars), or a 'Non-Partisan' registration. A
-          union of signals, so a voter with no data on a given signal is simply
-          not flagged on it and the column is never null. Set membership, not a
-          ranking: it carries ~70% of the file, so it filters but cannot order.
-        data_type: boolean
-        tests:
-          - not_null
-      - name: hf_ideology_general
-        description: >
-          Haystaq general-ideology label, passed through from the L2/Haystaq
-          source under its source name and with its source values: Conservative,
-          Liberal, or Moderate, and null (~40% of voters) where the model is
-          undecided. These are the source's own labels and are kept as they
-          are, here and downstream; nothing relabels them.
-        data_type: string
-        tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - Conservative
-                  - Liberal
-                  - Moderate
 
   - name: m_people_api__district_voter_density
     description: >

@@ -13,7 +13,7 @@ resolution list comes from the voter_density_h3_resolutions var so the policy
 lives in one place.
 
 The join key back to m_people_api__districtvoter.voter_id is the voter's
-salted-uuid `id` from m_people_api__voter, NOT the raw LALVOTERID — we source
+salted-uuid `id` from gp_api_voters, NOT the raw LALVOTERID — we source
 `id` directly rather than re-minting it.
 
 h3_longlatash3 takes (lng, lat, res) — longitude FIRST. No prior model in this
@@ -28,7 +28,7 @@ with
             voter.id as voter_id,
             try_cast(voter.`Residence_Addresses_Latitude` as double) as lat,
             try_cast(voter.`Residence_Addresses_Longitude` as double) as lng
-        from {{ ref("m_people_api__voter") }} as voter
+        from {{ ref("gp_api_voters") }} as voter
     )
 
 select

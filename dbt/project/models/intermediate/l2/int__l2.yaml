@@ -415,7 +415,7 @@ models:
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
     columns:
       - name: LALVOTERID
-        description: "L2 voter id; join key to m_people_api__voter. One row per voter."
+        description: "L2 voter id; join key to gp_api_voters. One row per voter."
         tests:
           - not_null
           - unique
