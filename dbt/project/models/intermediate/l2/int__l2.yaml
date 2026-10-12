@@ -549,7 +549,10 @@ models:
       wrong district or not at all. To see why a district was chosen, join
       stg_model_predictions__llm_l2_br_match (a view) on br_database_id; a
       position absent there, or carrying a different district than the row
-      shows, was placed by the seed.
+      shows, was placed by the seed. Districts on an adopted proposed map (for
+      example Congressional_District_2026) take their zips from L2's proposed
+      district column, since int__zip_code_to_l2_district carries only the
+      current map.
     columns:
       - name: zip_code
         description: "Zip code"

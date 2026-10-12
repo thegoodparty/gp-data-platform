@@ -10,6 +10,65 @@ with
     map_key_spellings as (
         {{ l2_normalized_district_keys(ref("int__zip_code_to_l2_district")) }}
     ),
+    -- Overrides point seats in an adopted state at the minted proposed-map type,
+    -- which int__zip_code_to_l2_district never emits. Read from the column that
+    -- mints the district, since the current column holds the old map. Every
+    -- voter is kept so the zip total shares this scan; the incremental zip model
+    -- can lag a fresh L2 load and leave the district count above it.
+    proposed_zip_counts as (
+        select
+            l2.state_postal_code,
+            case
+                when length(l2.residence_addresses_zip) = 4
+                then concat('0', l2.residence_addresses_zip)
+                else l2.residence_addresses_zip
+            end as zip_code,
+            case
+                when {{ is_proposed_handled_district("l2.proposed_district") }}
+                then {{ proposed_district_minted_type("l2.proposed_district") }}
+            end as district_type,
+            case
+                when {{ is_proposed_handled_district("l2.proposed_district") }}
+                then {{ proposed_district_number("l2.proposed_district") }}
+            end as district_name,
+            count(*) as voters_in_zip_district
+        from {{ ref("int__l2_nationwide_uniform") }} as l2
+        where l2.residence_addresses_zip is not null
+        group by 1, 2, 3, 4
+    ),
+    proposed_zip_districts as (
+        select
+            *,
+            sum(voters_in_zip_district) over (
+                partition by zip_code, state_postal_code
+            ) as voters_in_zip
+        from proposed_zip_counts
+    ),
+    l2_zip_districts as (
+        select
+            zip_code,
+            state_postal_code,
+            district_type,
+            district_name,
+            voters_in_zip_district,
+            voters_in_zip
+        from {{ ref("int__zip_code_to_l2_district") }}
+        union all
+        select
+            proposed.zip_code,
+            proposed.state_postal_code,
+            proposed.district_type,
+            proposed.district_name,
+            proposed.voters_in_zip_district,
+            proposed.voters_in_zip
+        from proposed_zip_districts as proposed
+        -- The adoption gate lives in the aggregation; reuse it.
+        inner join
+            {{ ref("int__l2_proposed_district_aggregations") }} as adopted
+            on proposed.state_postal_code = adopted.state_postal_code
+            and proposed.district_type = adopted.district_type
+            and proposed.district_name = adopted.district_name
+    ),
     -- Some L2 voters have an out-of-state zip in the L2 file; filter those.
     zip_code_within_state_range as (
         select
@@ -21,7 +80,7 @@ with
             tbl_zip.voters_in_zip,
             map_key_spellings.normalized_district_name,
             map_key_spellings.spellings
-        from {{ ref("int__zip_code_to_l2_district") }} as tbl_zip
+        from l2_zip_districts as tbl_zip
         inner join
             {{ ref("int__general_states_zip_code_range") }} as zip_range
             on tbl_zip.state_postal_code = zip_range.state_postal_code

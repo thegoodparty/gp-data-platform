@@ -31,6 +31,11 @@ with
             lower(district_type) as district_type,
             lower(district_name) as district_name
         from {{ ref("int__zip_code_to_l2_district") }}
+        -- Adopted proposed-map districts get zips from the proposed column, not
+        -- from the model above.
+        union
+        select lower(state_postal_code), lower(district_type), lower(district_name)
+        from {{ ref("int__l2_proposed_district_aggregations") }}
     ),
     covered as (
         select distinct br_database_id
