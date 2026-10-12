@@ -15,6 +15,9 @@ with
     -- Prefer the general stage (regular or special), then general runoff, then
     -- fall back to the earliest stage so a special-cycle gp_election_id that
     -- only has runoff/primary stages still gets a sensible representative.
+    -- gp_election_id is keyed on position + year, so a rescheduled election
+    -- (e.g. May moved to November) keeps both general dates under one id;
+    -- prefer the next upcoming date so the election is not dated in the past.
     representative_stage as (
         select *
         from stages
@@ -34,6 +37,7 @@ with
                         then 1
                         else 2
                     end,
+                    case when election_date >= current_date() then 0 else 1 end,
                     election_date asc
             )
             = 1
