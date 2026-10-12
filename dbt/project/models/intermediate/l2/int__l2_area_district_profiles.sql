@@ -29,7 +29,7 @@ with
                 '-',
                 lpad(cast(residence_addresses_zipplus4 as string), 4, '0')
             ) as zip_plus_4,
-            -- Blanks are nulled to match how m_people_api__voter serves them.
+            -- Blanks are nulled to match how gp_api_voters serves them.
             named_struct(
                 {%- for c in district_types %}
                     '{{ c }}',

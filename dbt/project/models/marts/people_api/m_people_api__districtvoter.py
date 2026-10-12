@@ -96,7 +96,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # Get the voter data
-    voter_df: DataFrame = dbt.ref("m_people_api__voter")
+    voter_df: DataFrame = dbt.ref("gp_api_voters")
 
     # Apply incremental logic
     if dbt.is_incremental:

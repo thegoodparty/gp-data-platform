@@ -29,7 +29,7 @@ models:
         data_type: bigint
     data_tests:
       # Sampled rather than a full `unique`: this is voter-file grain (~200M rows),
-      # and voter_id is m_people_api__voter.id, which already carries `unique`.
+      # and voter_id is gp_api_voters.id, which already carries `unique`.
       - unique_combination_sampled:
           arguments:
             combination_of_columns:

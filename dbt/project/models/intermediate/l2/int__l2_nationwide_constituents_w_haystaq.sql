@@ -14,7 +14,7 @@
     | list
 ) -%}
 {#- Raw L2 names whose value the people table carries under its voter-contract
-    name (the renames in m_people_api__voter), or derives from the block GEOID. -#}
+    name (the renames in gp_api_voters), or derives from the block GEOID. -#}
 {%- set renamed = {
     "state_postal_code": "`State`",
     "voters_fips": "`FIPS`",

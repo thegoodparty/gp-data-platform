@@ -109,7 +109,7 @@ seeds:
       The people chain has two watermarks keyed on the same unchanged voter
       loaded_at, so int__l2_nationwide_uniform_w_haystaq and
       m_people_api__districtvoter each re-emit the voters carrying an assigned
-      district. Build those two and m_people_api__voter between them, and the
+      district. Build those two and gp_api_voters between them, and the
       assignment reaches the people DB without waiting for an L2 load.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.

@@ -11,9 +11,8 @@
 -- by how often the Haystaq model declines to label, which should not jump either
 -- way without someone knowing.
 --
--- Warns rather than errors. This model gates the people-db loader unload, and a
--- real shift in a Haystaq vintage should show up in run results without holding
--- the loader.
+-- Warns rather than errors. A real shift in a Haystaq vintage should show up in
+-- run results without failing the monthly build that refreshes gp-api's voters.
 --
 -- Single scan; both checks derive from the same one-row aggregate.
 {% set affinity_rate_min = 0.690 %}
@@ -30,7 +29,7 @@ with
             count(`hf_ideology_general`)
             * 1.0
             / nullif(count(*), 0) as ideology_coverage
-        from {{ ref("m_people_api__voter") }}
+        from {{ ref("gp_api_voters") }}
     )
 
 select
