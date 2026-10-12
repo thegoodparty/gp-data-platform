@@ -972,6 +972,34 @@ models:
         description: The month is the current one and still filling.
         data_tests:
           - not_null
+      - name: serve_activity_days
+        description: >
+          Distinct days in the month with a non-machine Serve event (catalog
+          is_serve). Part of activity_days, not in addition to it.
+        data_tests:
+          - not_null
+      - name: serve_growth_state
+        description: >
+          growth_state computed on Serve activity alone: new, retained,
+          resurrected, churned or dormant. Null before the user's first Serve
+          month, because they were not a Serve user yet.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [new, retained, resurrected, churned, dormant]
+      - name: is_engaged
+        description: >
+          The user did any Win activation leg this month (the win_activated_users
+          OKR legs via is_outreach_activation_event): activity that reached out of
+          the product. The dashboard's "engaged".
+        data_tests:
+          - not_null
+      - name: is_engaged_serve
+        description: >
+          The user did any Serve activation leg this month
+          (is_serve_activation_event). Serve's counterpart to is_engaged.
+        data_tests:
+          - not_null
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
