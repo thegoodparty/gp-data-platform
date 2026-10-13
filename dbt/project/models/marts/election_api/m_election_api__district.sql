@@ -5,10 +5,6 @@ with
         from {{ ref("int__model_prediction_voter_turnout") }}
     ),
     -- Carries the synthetic district_type='State' rows statewide positions match on.
-    -- Unions the proposed-map districts the adoption seed has cleared. Those are
-    -- aggregated in their own model so a seed edit rebuilds only them, and they
-    -- carry the same column shape and salted id, so everything below treats the
-    -- two sources identically.
     l2_aggregations as (
         select
             id,
@@ -19,16 +15,6 @@ with
             unique_cellphones,
             unique_landlines
         from {{ ref("int__l2_district_aggregations") }}
-        union all
-        select
-            id,
-            state_postal_code,
-            district_type,
-            district_name,
-            voter_count,
-            unique_cellphones,
-            unique_landlines
-        from {{ ref("int__l2_proposed_district_aggregations") }}
     ),
     l2_districts as (
         select

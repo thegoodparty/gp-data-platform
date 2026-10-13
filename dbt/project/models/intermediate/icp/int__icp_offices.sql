@@ -45,42 +45,6 @@ with
             on tbl_match.br_database_id = tbl_override.br_database_id
     ),
 
-    -- Overrides onto an adopted proposed map name a minted district type, which
-    -- only the proposed model aggregates. Without this leg those offices size to
-    -- null and lose all three ICP gates.
-    district_counts_both_maps as (
-        select
-            state_postal_code,
-            district_type,
-            district_name,
-            voter_count,
-            1 as source_rank
-        from {{ ref("int__l2_district_aggregations") }}
-        union all
-        select
-            state_postal_code,
-            district_type,
-            district_name,
-            voter_count,
-            2 as source_rank
-        from {{ ref("int__l2_proposed_district_aggregations") }}
-    ),
-
-    -- Keys present in both models would fan out the joins below, so dedup with
-    -- the current map winning: no already-sized position changes value.
-    district_counts_all as (
-        select
-            state_postal_code,
-            district_type,
-            district_name,
-            coalesce(
-                max(case when source_rank = 1 then voter_count end),
-                max(case when source_rank = 2 then voter_count end)
-            ) as voter_count
-        from district_counts_both_maps
-        group by state_postal_code, district_type, district_name
-    ),
-
     -- aliased on both lookups: a bare voter_count on either would shadow the
     -- coalesced select alias the gates read, silently gating on the exact name only.
     district_counts as (
@@ -89,7 +53,7 @@ with
             district_type,
             district_name,
             voter_count as voter_count_exact
-        from district_counts_all
+        from {{ ref("int__l2_district_aggregations") }}
     ),
 
     -- Fallback keyed on the normalized name: match labels can carry "(EST.)"
@@ -104,7 +68,7 @@ with
             district_type,
             {{ normalize_l2_district_name("district_name") }} as district_name,
             max(voter_count) as voter_count_normalized
-        from district_counts_all
+        from {{ ref("int__l2_district_aggregations") }}
         group by
             state_postal_code,
             district_type,
