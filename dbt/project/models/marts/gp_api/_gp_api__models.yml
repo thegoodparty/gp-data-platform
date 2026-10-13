@@ -25,6 +25,16 @@ models:
         tests:
           - not_null
           - unique
+      - name: Residence_Census_Block_Group_Geoid
+        description: >
+          12-digit census block group geoid of the residence, from the L2 complete
+          census geocode. Joins gp_api_block_group_census_demographics. Null when L2
+          has no geocode for the address.
+        data_type: varchar
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{12}$"
       - name: State
         description: Two-letter state postal code
         data_type: varchar
@@ -199,6 +209,20 @@ models:
         description: >
           voter_file for voter rows; for consumer-only rows, the area whose
           voters supplied the district columns, or null when none matched.
+
+  - name: gp_api_block_group_census_demographics
+    description: >
+      ACS 2020-2024 5-year demographic counts per census block group, keyed by the
+      block group geoid gp_api_voters carries per person. Serve compares the block
+      groups its outreach respondents live in against the district's composition in
+      gp_api_district_census_stats, so both sides use the same census source.
+      Aggregate counts only.
+    columns:
+      - name: block_group_geoid
+        description: 12-digit census block group geoid.
+        data_tests:
+          - not_null
+          - unique
 
   - name: gp_api_district_census_stats
     description: Pass-through of district_census_stats

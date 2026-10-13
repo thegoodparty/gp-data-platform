@@ -1,3 +1,30 @@
+{%- set acs_counts = [
+    "total_population",
+    "population_under_18",
+    "population_65_plus",
+    "population_race_universe",
+    "population_white_nh",
+    "population_black_nh",
+    "population_native_american_nh",
+    "population_asian_nh",
+    "population_other_nh",
+    "population_hispanic",
+    "population_25_plus",
+    "population_hs_or_higher",
+    "population_bachelors_or_higher",
+    "households",
+    "owner_occupied_households",
+    "population_poverty_universe",
+    "population_below_poverty",
+    "households_income_universe",
+    "households_income_under_25k",
+    "households_income_25k_to_50k",
+    "households_income_50k_to_75k",
+    "households_income_75k_to_100k",
+    "households_income_100k_to_150k",
+    "households_income_150k_plus",
+] -%}
+
 -- Civics mart district_census_stats: the universal district population reference.
 -- One row per district -- (state_postal_code, district_type,
 -- district_name) -- for every district of the allocation's curated office-bearing types
@@ -29,8 +56,9 @@
 -- summing local + statewide mixes the two bases. That is inherent to a universal
 -- district reference, not specific to the statewide rows.
 --
--- v1 = population columns only. ACS demographics + the validated (block-group)
--- non-exact-assignment share land in the demographic layer (phase 2).
+-- ACS demographics (acs_* columns) are allocated block-group counts for local
+-- rows (int__district_census_demographics) and the published state row for
+-- statewide rows. The validated non-exact-assignment share is still to come.
 with
     allocation as (select * from {{ ref("int__district_census_allocation") }}),
 
@@ -74,6 +102,23 @@ with
         group by state_postal_code
     ),
 
+    statewide_acs as (
+        select
+            sf.place_name as state_postal_code,
+            {%- for column in acs_counts %}
+                cast(acs.{{ column }} as double) as acs_{{ column }},
+            {%- endfor %}
+            cast(
+                case when acs.total_population is not null then 1 else 0 end as double
+            ) as acs_coverage_share
+        from {{ ref("int__census_acs_demographics") }} acs
+        join
+            {{ ref("fips_codes") }} sf
+            on acs.geoid = sf.fips_code
+            and sf.level = 'state'
+        where acs.summary_level = '040'
+    ),
+
     statewide as (
         select
             sp.state_postal_code,
@@ -81,9 +126,29 @@ with
             sp.state_postal_code as district_name,
             sp.district_population,
             sp.n_census_blocks,
-            coalesce(sv.registered_voters, 0) as registered_voters
+            coalesce(sv.registered_voters, 0) as registered_voters,
+            {%- for column in acs_counts %} sa.acs_{{ column }},{% endfor %}
+            coalesce(sa.acs_coverage_share, 0) as acs_coverage_share
         from statewide_pop sp
         left join statewide_voters sv using (state_postal_code)
+        left join statewide_acs sa using (state_postal_code)
+    ),
+
+    local_with_demographics as (
+        select
+            ld.state_postal_code,
+            ld.district_type,
+            ld.district_name,
+            ld.district_population,
+            ld.n_census_blocks,
+            ld.registered_voters,
+            {%- for column in acs_counts %} dd.acs_{{ column }},{% endfor %}
+            coalesce(dd.acs_coverage_share, 0) as acs_coverage_share
+        from local_districts ld
+        left join
+            {{ ref("int__district_census_demographics") }} dd using (
+                state_postal_code, district_type, district_name
+            )
     )
 
 select
@@ -92,8 +157,10 @@ select
     district_name,
     district_population,
     n_census_blocks,
-    registered_voters
-from local_districts
+    registered_voters,
+    {%- for column in acs_counts %} acs_{{ column }},{% endfor %}
+    acs_coverage_share
+from local_with_demographics
 
 union all
 
@@ -103,5 +170,7 @@ select
     district_name,
     district_population,
     n_census_blocks,
-    registered_voters
+    registered_voters,
+    {%- for column in acs_counts %} acs_{{ column }},{% endfor %}
+    acs_coverage_share
 from statewide

@@ -4070,6 +4070,64 @@ models:
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
 
+  - name: int__census_acs_demographics
+    description: >
+      ACS 2020-2024 5-year demographic counts at block group (summary level 150) and
+      state (040), the two grains the district layer reads. Counts only so every column
+      stays additive under allocation; the published medians are left out. Household
+      income is collapsed from sixteen published brackets into six bands. Read by
+      int__district_census_demographics, district_census_stats (statewide rows), and
+      gp_api_block_group_census_demographics.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [summary_level, geoid]
+    columns:
+      - name: summary_level
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["150", "040"]
+      - name: geoid
+        description: 12-digit block group geoid, or 2-digit state FIPS.
+        data_tests:
+          - not_null
+
+  - name: int__district_census_demographics
+    description: >
+      ACS demographic counts for each local district: block-group counts multiplied by
+      the district's share of the block group's 2020 census population, then summed.
+      The share's denominator is the block group's full population (zero-voter blocks
+      included), so a block group only partly inside a district type gives the district
+      only its part. Point estimates; margins are not carried. One row per
+      (state_postal_code, district_type, district_name), the same key as
+      int__district_population.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state_postal_code, district_type, district_name]
+    columns:
+      - name: state_postal_code
+        data_tests:
+          - not_null
+      - name: district_type
+        data_tests:
+          - not_null
+      - name: district_name
+        data_tests:
+          - not_null
+      - name: acs_coverage_share
+        description: >
+          Share of the district's allocated population in block groups with a published
+          ACS total.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1.000001
+
   - name: int__district_population
     description: >
       The local-district rollup of the allocation: one row per

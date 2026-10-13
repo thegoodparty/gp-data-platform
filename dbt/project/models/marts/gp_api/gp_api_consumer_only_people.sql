@@ -91,6 +91,8 @@ select
                         )
                     }}
             end as id,
+        {%- elif name | lower == "residence_census_block_group_geoid" %}
+            left(consumer_only.geocode_full, 12) as `{{ name }}`,
         {%- elif name | lower in district_types and name | lower in commercial_columns %}
             {#- The commercial file's own value fills in only where no area
                 matched, so it never mixes into an area's set. #}

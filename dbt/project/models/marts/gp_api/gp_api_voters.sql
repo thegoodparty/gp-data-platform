@@ -131,6 +131,15 @@ with
             `Residence_Addresses_LatLongAccuracy`,
             `Residence_Addresses_Latitude`,
             `Residence_Addresses_Longitude`,
+            -- 12-digit census block group, for joining ACS block-group counts.
+            left(
+                lpad(
+                    cast(`Residence_Addresses_Complete_Census_Geocode` as string),
+                    15,
+                    '0'
+                ),
+                12
+            ) as `Residence_Census_Block_Group_Geoid`,
             -- Directions are N/S/E/W, not digits: casting them to int nulls the column.
             `Residence_Addresses_PrefixDirection`,
             `Residence_Addresses_State`,
@@ -393,6 +402,7 @@ with
             tbl_updated.`Residence_Addresses_LatLongAccuracy`,
             tbl_updated.`Residence_Addresses_Latitude`,
             tbl_updated.`Residence_Addresses_Longitude`,
+            tbl_updated.`Residence_Census_Block_Group_Geoid`,
             tbl_updated.`Residence_Addresses_PrefixDirection`,
             tbl_updated.`Residence_Addresses_State`,
             tbl_updated.`Residence_Addresses_StreetName`,

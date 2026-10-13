@@ -2897,9 +2897,13 @@ models:
       2020 census population. Read one district_type at a time: summing
       district_population across types double-counts, and summing local + statewide
       mixes the two bases -- consumers wanting only local districts filter
-      WHERE district_type <> 'State'. v1 is population only; ACS demographics and the
-      validated non-exact-assignment share are phase 2 and will append here
-      at this same grain.
+      WHERE district_type <> 'State'. The acs_* columns are ACS 2020-2024 5-year
+      demographic counts: allocated block-group counts for local rows (from
+      int__district_census_demographics) and the published state values for statewide
+      rows. They are counts, not shares; divide by the matching universe column
+      (acs_population_race_universe, acs_population_25_plus, acs_households,
+      acs_households_income_universe, acs_population_poverty_universe) for a share.
+      The validated non-exact-assignment share is still to come at this same grain.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -2970,6 +2974,161 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+      - name: acs_total_population
+        description: Total population (B01001_E001). ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_under_18
+        description: Population under 18. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_65_plus
+        description: Population 65 and over. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_race_universe
+        description: Denominator for the race and ethnicity columns (B03002_E001). ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_white_nh
+        description: Not Hispanic or Latino, white alone. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_black_nh
+        description: Not Hispanic or Latino, Black or African American alone. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_native_american_nh
+        description: Not Hispanic or Latino, American Indian and Alaska Native alone. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_asian_nh
+        description: Not Hispanic or Latino, Asian alone. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_other_nh
+        description: Not Hispanic or Latino, and Native Hawaiian or Pacific Islander, some other race, or two or more races. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_hispanic
+        description: Hispanic or Latino, any race. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_25_plus
+        description: Population 25 and over, the education denominator. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_hs_or_higher
+        description: Population 25 and over with a high school diploma or higher. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_bachelors_or_higher
+        description: Population 25 and over with a bachelor's degree or higher. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households
+        description: Occupied housing units. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_owner_occupied_households
+        description: Owner-occupied housing units. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_poverty_universe
+        description: Denominator for population_below_poverty. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_population_below_poverty
+        description: Population below the poverty line. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_universe
+        description: Denominator for the household income bands. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_under_25k
+        description: Households with income under $25,000. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_25k_to_50k
+        description: Households with income from $25,000 to $49,999. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_50k_to_75k
+        description: Households with income from $50,000 to $74,999. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_75k_to_100k
+        description: Households with income from $75,000 to $99,999. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_100k_to_150k
+        description: Households with income from $100,000 to $149,999. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_households_income_150k_plus
+        description: Households with income of $150,000 or more. ACS 2020-2024 5-year estimate; local rows are allocated block-group counts (fractional), statewide rows the published state value.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: acs_coverage_share
+        description: >
+          Share of the district's population living in block groups with a published
+          ACS total, from 0 to 1. Below 1 means suppressed block groups are missing from
+          the acs_* counts, so shares computed from them are less certain.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1.000001
 
   - name: people
     description: >
