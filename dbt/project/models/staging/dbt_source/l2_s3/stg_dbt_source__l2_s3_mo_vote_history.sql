@@ -1,2 +1,1 @@
-select *
-from {{ source("dbt_source", "l2_s3_mo_vote_history") }}
+select * from {{ source("dbt_source", "l2_s3_mo_vote_history") }}
