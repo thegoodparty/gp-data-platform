@@ -147,7 +147,7 @@ models:
         description: >
           Reason why a candidacy is not verified. Only populated when is_verified
           is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
-          Write In.
+          Write In, Ended Pro.
         data_tests:
           - accepted_values:
               arguments:
@@ -157,6 +157,7 @@ models:
                   - "Can\\'t Determine"
                   - "Partisan Candidate"
                   - "Write In"
+                  - "Ended Pro"
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -347,6 +348,7 @@ models:
                   - "Can\\'t Determine"
                   - "Partisan Candidate"
                   - "Write In"
+                  - "Ended Pro"
 
   - name: int__civics_candidacy_techspeed
     description: >
