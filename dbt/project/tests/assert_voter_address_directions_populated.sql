@@ -13,7 +13,7 @@ with
             count(`Residence_Addresses_SuffixDirection`) as residence_suffix,
             count(`Mailing_Addresses_PrefixDirection`) as mailing_prefix,
             count(`Mailing_Addresses_SuffixDirection`) as mailing_suffix
-        from {{ ref("m_people_api__voter") }}
+        from {{ ref("gp_api_voters") }}
     ),
     per_column as (
         select

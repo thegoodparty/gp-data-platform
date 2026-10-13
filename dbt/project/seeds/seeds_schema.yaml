@@ -109,7 +109,7 @@ seeds:
       The people chain has two watermarks keyed on the same unchanged voter
       loaded_at, so int__l2_nationwide_uniform_w_haystaq and
       m_people_api__districtvoter each re-emit the voters carrying an assigned
-      district. Build those two and m_people_api__voter between them, and the
+      district. Build those two and gp_api_voters between them, and the
       assignment reaches the people DB without waiting for an L2 load.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.
@@ -251,6 +251,50 @@ seeds:
         data_tests:
           - not_null
     data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              br_database_id in (
+                select br_database_id
+                from {{ ref('m_election_api__race') }}
+              )
+
+  - name: br_race_election_date_overrides
+    description: >
+      Manual overrides for the election day of a BallotReady race. BallotReady
+      sometimes attaches a race to the wrong election, such as a school district
+      that votes in April attached to the November general. Keyed on the race
+      br_database_id and applied in int__enhanced_race, so the election-api race
+      and candidacy marts both serve the corrected date. A later election for
+      the same office gets a new br_database_id and needs its own row.
+    config:
+      column_types:
+        election_date: date
+    columns:
+      - name: br_database_id
+        description: BallotReady race database ID to override
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_race')
+                field: br_database_id
+      - name: slug
+        description: election-api race slug (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: election_date
+        description: Corrected election day
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the evidence
+        data_tests:
+          - not_null
+    data_tests:
+      # Guards against a race that fell out of the serving window or lost its
+      # position, which would make the override a silent no-op.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >

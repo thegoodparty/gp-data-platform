@@ -55,7 +55,11 @@ with
             tbl_race.is_runoff,
             tbl_race.created_at,
             tbl_race.updated_at,
-            to_timestamp(tbl_election.election_day) as election_date,
+            to_timestamp(
+                coalesce(
+                    tbl_election_date_override.election_date, tbl_election.election_day
+                )
+            ) as election_date,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
@@ -111,6 +115,12 @@ with
                     -- placeless, as before.
                     when tbl_position.mtfcc = 'X0028'
                     then left(tbl_position.geo_id, 5)
+                    -- Water District. CA and AZ geo_ids are county FIPS + a
+                    -- suffix. Nebraska's Natural Resources Districts use 7-char
+                    -- state-level codes that a county rollup would empty out.
+                    when
+                        tbl_position.mtfcc = 'X0018' and length(tbl_position.geo_id) > 7
+                    then left(tbl_position.geo_id, 5)
                     when tbl_position.mtfcc = 'X0025'
                     then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
                     else tbl_position.geo_id
@@ -141,6 +151,9 @@ with
         left join
             {{ ref("int__race_to_positions") }} as tbl_race_to_positions
             on tbl_race.database_id = tbl_race_to_positions.race_database_id
+        left join
+            {{ ref("br_race_election_date_overrides") }} as tbl_election_date_override
+            on tbl_race.database_id = tbl_election_date_override.br_database_id
         left join
             {{ ref("br_position_place_overrides") }} as tbl_place_override
             on tbl_position.geo_id = tbl_place_override.position_geo_id

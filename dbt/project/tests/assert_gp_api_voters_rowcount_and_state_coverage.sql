@@ -1,8 +1,6 @@
--- Pre-unload gate: the people-api voter mart must have a plausible total
--- row count
--- and cover every state the loader unloads (50 states + DC). Returns one row per
--- violation,
--- so the singular test fails iff any rows are returned.
+-- gp_api_voters must have a plausible total row count and cover every state
+-- (50 states + DC). Returns one row per violation, so the singular test fails iff
+-- any rows are returned.
 --
 -- Floor is a conservative band under the inspected ~218M; tune if the source grows
 -- materially.
@@ -23,7 +21,7 @@ with
     -- single scan of the 218M-row mart; both checks derive from this ~51-row aggregate
     state_counts as (
         select `State` as state, count(*) as n
-        from {{ ref("m_people_api__voter") }}
+        from {{ ref("gp_api_voters") }}
         group by `State`
     ),
     missing_states as (
