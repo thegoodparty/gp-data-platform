@@ -39,7 +39,9 @@ with
             last_campaign_created_at,
             campaign_count > 0 and non_demo_campaign_count = 0 as is_demo_only,
             is_serve_user,
-            eo_activated_at
+            eo_activated_at,
+            serve_started_at,
+            is_serve_icp
         from {{ ref("users") }}
     ),
 
@@ -56,11 +58,21 @@ with
     ),
 
     milestones as (
-        select user_id, registration_country
+        select
+            user_id,
+            registration_country,
+            serve_onboarding_started_at,
+            serve_onboarding_completed_at
         from {{ ref("int__amplitude_user_milestones") }}
     ),
 
     active_eos as (select user_id from {{ ref("users_serve_active") }}),
+
+    -- Read from the model the Activated Serve Users metric reads, for the same
+    -- reason as Win activation below.
+    serve_activation as (
+        select user_id, first_serve_activated_at from {{ ref("users_serve_base") }}
+    ),
 
     -- Read from the model the Activated Candidates OKR reads, so this row and
     -- the reported figure cannot drift. Win accounts only; null elsewhere.
@@ -121,6 +133,11 @@ select
     utm.utm_campaign_first,
     utm.utm_source_first_normalized,
     utm.utm_medium_first_normalized,
+    utm_last.utm_source_last,
+    utm_last.utm_medium_last,
+    utm_last.utm_campaign_last,
+    utm_last.utm_source_last_normalized,
+    utm_last.utm_medium_last_normalized,
 
     {{
         dbt_utils.star(
@@ -161,6 +178,11 @@ select
     u.is_serve_user,
     u.eo_activated_at,
     ae.user_id is not null as is_active_eo,
+    u.serve_started_at,
+    u.is_serve_icp,
+    sa.first_serve_activated_at,
+    m.serve_onboarding_started_at,
+    m.serve_onboarding_completed_at,
 
     datediff(
         cand.candidacy_election_date, current_date()
@@ -199,10 +221,12 @@ left join milestones as m using (user_id)
 left join {{ ref("int__user_candidacy_profile") }} as cand using (user_id)
 left join {{ ref("int__user_hubspot_profile") }} as hs using (user_id)
 left join {{ ref("int__user_first_touch_utm") }} as utm using (user_id)
+left join {{ ref("int__user_signup_touch_utm") }} as utm_last using (user_id)
 left join {{ ref("int__user_product_activity") }} as act using (user_id)
 left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
+left join serve_activation as sa using (user_id)
 left join win_activation as wa using (user_id)
 left join {{ ref("int__user_power_user") }} as pu using (user_id)
 left join internal as i on i.gp_person_id = k.gp_person_id

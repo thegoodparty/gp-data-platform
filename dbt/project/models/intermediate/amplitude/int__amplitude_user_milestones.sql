@@ -61,7 +61,9 @@ with
                     'Serve Onboarding - Poll Strategy Viewed',
                     'Serve Onboarding - Add Image Viewed',
                     'Serve Onboarding - Poll Preview Viewed',
-                    'Serve Onboarding - SMS Poll Sent'
+                    'Serve Onboarding - SMS Poll Sent',
+                    'Serve Onboarding - Welcome Viewed',
+                    'Serve Onboarding - Pledge Completed'
                 )
                 -- The dashboard-view union is read from the same macro the consumers
                 -- below use, so a re-anchor cannot admit rows downstream that this
@@ -288,7 +290,30 @@ with
                     when event_type = 'Serve Onboarding - Poll Preview Viewed'
                     then event_time
                 end
-            ) as serve_poll_preview_at
+            ) as serve_poll_preview_at,
+
+            -- Start and end of onboarding across both flows. The flow launched
+            -- 2026-06-24 opens on Welcome and ends on the pledge, with no poll.
+            min(
+                case
+                    when
+                        event_type in (
+                            'Serve Onboarding - Getting Started Viewed',
+                            'Serve Onboarding - Welcome Viewed'
+                        )
+                    then event_time
+                end
+            ) as serve_onboarding_started_at,
+            min(
+                case
+                    when
+                        event_type in (
+                            'Serve Onboarding - SMS Poll Sent',
+                            'Serve Onboarding - Pledge Completed'
+                        )
+                    then event_time
+                end
+            ) as serve_onboarding_completed_at
         from send_commits me
         left join dashboard_views_dedup dv on me.user_id = dv.user_id
         group by me.user_id

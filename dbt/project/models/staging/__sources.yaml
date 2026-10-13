@@ -298,7 +298,12 @@ sources:
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
-        description: raw data load from HubSpot data model
+        description: >
+          raw data load from HubSpot data model. Never reset this stream or run
+          Airbyte's "refresh and remove records" on it: a contact HubSpot merged
+          away survives only here, and the person graph keeps it as an alias of
+          its survivor (int__hubspot_contact_merges). Removing those rows
+          re-mints every person one of them mints, with no PersonMerge forward.
       - name: hubspot_api_deals
         description: raw data load from HubSpot data model
       - name: hubspot_api_engagements

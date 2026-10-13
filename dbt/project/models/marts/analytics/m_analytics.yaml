@@ -776,7 +776,9 @@ models:
           Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
 
       - name: has_started_serve_onboarding
-        description: TRUE if user has the Getting Started milestone timestamp.
+        description: >
+          TRUE if the user opened Serve onboarding in either flow: Getting
+          Started (the poll flow) or Welcome (the flow from 2026-06-24).
         data_tests:
           - not_null
 
@@ -807,13 +809,18 @@ models:
 
       - name: has_completed_serve_onboarding
         description: >
-          TRUE if user has sent an SMS poll (final funnel step).
+          TRUE if the user reached the end of Serve onboarding in either flow:
+          sent the onboarding poll (the poll flow) or completed the pledge (the
+          flow from 2026-06-24, which has no poll step).
         data_tests:
           - not_null
 
       - name: serve_onboarding_steps_completed
         description: >
-          Integer count of completed Serve onboarding steps (0-7).
+          Integer count of completed steps in the poll onboarding flow (0-7).
+          The flow from 2026-06-24 has different steps that are not counted
+          here, so its users read low; use has_completed_serve_onboarding to
+          compare across flows.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -864,16 +871,19 @@ models:
             expression: "is_active_eo = true"
           config:
             where: "is_serve_user = true and last_serve_activity_at >= current_date - interval 30 days"
+      # Completion spans both flows, so it implies a start in either flow.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "first_sms_poll_sent_at is not null"
+            expression: "has_started_serve_onboarding"
           config:
             where: "has_completed_serve_onboarding = true"
+      # The step count is the poll flow's, so it is checked against that flow's
+      # first step.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "serve_onboarding_steps_completed >= 1"
           config:
-            where: "has_started_serve_onboarding = true"
+            where: "serve_getting_started_at is not null"
 
   - name: users_win_candidacy
     description: >
@@ -1782,8 +1792,9 @@ models:
   - name: hubspot_contacts
     description: >
       Passthrough exposure of stg_airbyte_source__hubspot_api_contacts
-      into mart_analytics for Sigma BI POV. View materialization, no
-      transformations. Columns documented at the upstream staging model.
+      into mart_analytics for Sigma BI POV. View materialization; the only
+      added column is is_merged_away. Columns documented at the upstream
+      staging model.
 
       Source: stg_airbyte_source__hubspot_api_contacts.
     columns:
@@ -1792,6 +1803,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_merged_away
+        description: >
+          True when HubSpot merged this contact into another. The row is the
+          contact's last extract before the merge, kept because Airbyte never
+          re-extracts it; the contact no longer exists in HubSpot, so exclude
+          these rows when counting contacts.
 
   - name: hubspot_calls
     description: >
@@ -3336,6 +3353,32 @@ models:
         description: Currently an active elected official on Serve.
         data_tests:
           - not_null
+      - name: serve_started_at
+        description: >
+          When the official started Serve: their first elected office in gp-api.
+          Use this, not eo_activated_at, for when someone became a Serve user;
+          eo_activated_at takes the first poll when that came first, and a
+          migration created hundreds of Serve organizations on one day.
+      - name: is_serve_icp
+        description: >
+          ICP-Serve: the office behind the official's Serve organization is a
+          state or local executive or legislative office with 1,000 to 100,000
+          constituents, not judicial and not appointed. False when the office
+          has no matched position; null for users who are not Serve users.
+      - name: first_serve_activated_at
+        description: >
+          The Activated Serve Users timestamp, read from users_serve_base so this
+          row agrees with the governed metric: the first time the official
+          reached constituents through the product. Null when not activated.
+      - name: serve_onboarding_started_at
+        description: >
+          First Serve onboarding screen, across both flows: Getting Started
+          (to 2026-06) or Welcome (from 2026-06-24).
+      - name: serve_onboarding_completed_at
+        description: >
+          End of Serve onboarding, across both flows: the onboarding poll sent
+          (old flow) or the pledge completed (the flow from 2026-06-24, which has
+          no poll step).
       - name: days_to_candidacy_election
         description: Days from the build date to the anchor election. Negative once passed.
       - name: days_to_filing_deadline
@@ -3442,12 +3485,20 @@ models:
 
   - name: user_journey_events
     description: >
-      The dated moments on each user's journey, one row per user per event, for
-      a single-user timeline. Internal only. Reshaping only: every date is a
-      user_journey column, and an event with no date has no row. Elections show
-      the primary when there was one, then the general unless
-      candidacy_latest_stage_reached says the run ended at the primary. Without
-      a civics candidacy, candidacy_election_date stands in for the general.
+      Every dated moment on each user's journey, one row per moment: the
+      milestones, first contact, payments, the filing deadline and elections,
+      plus each outbound HubSpot touch and each committed outreach send. Win
+      sends are Outreach send; an elected official's polls and outreach to
+      constituents are Serve outreach, so Win counts never include them. Internal
+      only. Reshaping only: single moments are user_journey columns, and touches
+      and sends are the histories user_journey already rolls up. A moment with no
+      date has no row, so undated facts (Pro with no start date, third-party
+      match, power user) stay as user_journey flags. Count by period with
+      event_at; count stage reach by stage. Elections show the primary when there
+      was one, then the general unless candidacy_latest_stage_reached says the
+      run ended at the primary. Without a civics candidacy, candidacy_election_date
+      stands in for the general. Supersedes user_journey_milestones, which stays
+      only until the live workbook stops reading it.
     columns:
       - name: user_id
         description: The gp-api user account.
@@ -3458,42 +3509,90 @@ models:
                 to: ref("user_journey")
                 field: user_id
       - name: event
-        description: >
-          Registered (registered_at), Onboarded (onboarding_completed_at), Free
-          product output (free_product_output_at), First payment
-          (first_payment_at), Pro (pro_since), Activated (activated_at),
-          Primary election, General election.
+        description: The moment, in display words. See event_order for the full list.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
+                  - First contact
+                  - HubSpot touch
                   - Registered
                   - Onboarded
                   - Free product output
-                  - First payment
-                  - Pro
                   - Activated
+                  - Outreach send
+                  - Serve outreach
+                  - First payment
+                  - First subscription payment
+                  - Pro
+                  - Filing deadline
                   - Primary election
                   - General election
+      - name: event_category
+        description: acquisition, touch, milestone, send, revenue or election.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [acquisition, touch, milestone, send, revenue, election]
+      - name: stage
+        description: >
+          The user_journey_milestones stage key for the four dated funnel stages
+          (registered, completed_onboarding, activated, pro); null otherwise.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [registered, completed_onboarding, activated, pro]
       - name: event_order
-        description: Display order, 1 to 8, matching event.
+        description: >
+          Display order. 1 to 8 keep the numbers the live workbook already reads:
+          Registered, Onboarded, Free product output, First payment, Pro,
+          Activated, Primary election, General election. Moments added later take
+          9 to 13: First contact, HubSpot touch, Outreach send, First subscription
+          payment, Filing deadline. 14 is Serve outreach. Not chronological; sort
+          a timeline by event_at.
+        data_tests:
+          - not_null
+      - name: event_key
+        description: >
+          Unique within a user: the event name for one-off moments, the HubSpot
+          touch id for touches, the send key for sends.
         data_tests:
           - not_null
       - name: event_at
         description: >
-          When it happened. Election dates are dates cast to midnight, and can
-          be in the future.
+          When it happened. Election and filing-deadline dates are dates cast to
+          midnight and can be in the future, so a period filter must also stop at
+          today.
         data_tests:
           - not_null
       - name: event_label
         description: >
-          The result for an election event (Won, Lost, Runoff and so on); null
-          for every other event and for an election with no result yet.
+          The result for an election (Won, Lost, Runoff and so on), the channel
+          for a touch (call, email, meeting, sms) or a send (texting, robocall,
+          door_knocking, phone_banking, social, unattributed, and poll for Serve
+          outreach); null otherwise.
+      - name: event_value
+        description: >
+          Recipients for an Outreach send or Serve outreach (a poll's audience
+          size); null for every other event and for sends with no recipient count.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: product
+        description: >
+          user_journey.product for the user (win, serve, both, none). A user
+          attribute, not a per-event one.
+      - name: days_since_registered
+        description: >
+          Whole days from registered_at to event_at. Negative for moments before
+          signup, such as first contact. Use it for the 14- and 30-day windows.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [user_id, event]
+            combination_of_columns: [user_id, event_key]
 
   - name: user_growth_state_monthly
     description: >
@@ -3522,6 +3621,24 @@ models:
           - not_null
       - name: is_partial_month
         description: The month is the current one and still filling.
+        data_tests:
+          - not_null
+      - name: serve_activity_days
+        description: Days with Serve activity in the month. See int__user_activity_monthly.
+        data_tests:
+          - not_null
+      - name: serve_growth_state
+        description: >
+          Growth state on Serve activity alone; null before the first Serve month.
+          See int__user_activity_monthly.
+      - name: is_engaged
+        description: >
+          Any Win activation leg in the month (the dashboard's "engaged"). See
+          int__user_activity_monthly.
+        data_tests:
+          - not_null
+      - name: is_engaged_serve
+        description: Any Serve activation leg in the month. See int__user_activity_monthly.
         data_tests:
           - not_null
 

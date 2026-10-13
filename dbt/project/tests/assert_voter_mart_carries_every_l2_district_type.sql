@@ -8,10 +8,10 @@
 -- source, so they drift. This resolves the mart's real columns at compile time,
 -- so it costs no scan. (m_people_api__districtvoter derives its list from the
 -- district table's own types, so it cannot fall behind.)
--- depends_on: {{ ref('m_people_api__voter') }}
+-- depends_on: {{ ref('gp_api_voters') }}
 {% set voter_columns = [] %}
 {% if execute %}
-    {% for column in adapter.get_columns_in_relation(ref("m_people_api__voter")) %}
+    {% for column in adapter.get_columns_in_relation(ref("gp_api_voters")) %}
         {% do voter_columns.append(column.name | lower) %}
     {% endfor %}
 {% endif %}
