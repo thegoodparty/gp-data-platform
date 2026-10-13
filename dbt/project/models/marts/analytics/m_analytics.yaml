@@ -1792,8 +1792,9 @@ models:
   - name: hubspot_contacts
     description: >
       Passthrough exposure of stg_airbyte_source__hubspot_api_contacts
-      into mart_analytics for Sigma BI POV. View materialization, no
-      transformations. Columns documented at the upstream staging model.
+      into mart_analytics for Sigma BI POV. View materialization; the only
+      added column is is_merged_away. Columns documented at the upstream
+      staging model.
 
       Source: stg_airbyte_source__hubspot_api_contacts.
     columns:
@@ -1802,6 +1803,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_merged_away
+        description: >
+          True when HubSpot merged this contact into another. The row is the
+          contact's last extract before the merge, kept because Airbyte never
+          re-extracts it; the contact no longer exists in HubSpot, so exclude
+          these rows when counting contacts.
 
   - name: hubspot_calls
     description: >
