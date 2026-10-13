@@ -853,10 +853,8 @@ seeds:
 
       int__l2_nationwide_uniform reads it: for a proposed and verified row,
       the proposed map replaces the current column for every voter in that
-      state, and a voter L2 left off the proposed map gets no district. Once
-      L2 moves an adopted map into its current column and clears the proposed
-      one, delete the row, or those voters lose the district. Absence of a
-      row means current, which is conservative but not automatically right:
+      state that L2 places on it, and any other voter keeps the current
+      column. Absence of a row means current, which is conservative but not automatically right:
       for a redistricted state, current is the stale map. Every
       (state, district type) carrying a proposed value must therefore be
       listed explicitly, which assert_proposed_district_seed_coverage

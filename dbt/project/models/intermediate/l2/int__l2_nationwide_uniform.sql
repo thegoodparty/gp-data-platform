@@ -144,8 +144,9 @@ with
         where adopted_source = 'proposed' and is_verified
     ),
 
-    -- An adopted proposed map replaces the current column outright, so every
-    -- consumer sees one map per type, and a voter L2 left off it has no district.
+    -- An adopted proposed map replaces the current column. A voter without a
+    -- proposed value keeps the current one, so once L2 folds the map into the
+    -- current column and clears the proposed one, nothing needs to change here.
     -- Virginia's struck-down proposal never passes the gate.
     {% set proposed = "voters.`Proposed_District`" %}
     adopted as (
@@ -155,26 +156,17 @@ with
                 when
                     concat(voters.state_postal_code, '|US_Congressional_District')
                     in (select scope from adopted_scopes)
-                then
-                    case
-                        when
-                            {{ proposed_district_type(proposed) }}
-                            = 'US_Congressional_District'
-                        then {{ proposed_district_number(proposed) }}
-                    end
+                    and {{ proposed_district_type(proposed) }}
+                    = 'US_Congressional_District'
+                then {{ proposed_district_number(proposed) }}
                 else voters.`US_Congressional_District`
             end as `US_Congressional_District`,
             case
                 when
                     concat(voters.state_postal_code, '|State_Senate_District')
                     in (select scope from adopted_scopes)
-                then
-                    case
-                        when
-                            {{ proposed_district_type(proposed) }}
-                            = 'State_Senate_District'
-                        then {{ proposed_district_number(proposed) }}
-                    end
+                    and {{ proposed_district_type(proposed) }} = 'State_Senate_District'
+                then {{ proposed_district_number(proposed) }}
                 else voters.`State_Senate_District`
             end as `State_Senate_District`
         from assigned as voters
