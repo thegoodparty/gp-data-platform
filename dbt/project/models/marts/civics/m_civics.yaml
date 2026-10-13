@@ -123,10 +123,26 @@ models:
           This is the earlier of: the creation date of their first Serve
           organization, or the creation date of their first completed poll.
           NULL for users who are not Serve users (is_serve_user = false).
+          For the date someone started Serve use serve_started_at: a migration
+          on 2026-03-12 created hundreds of Serve organizations at once, which
+          this column reads as Serve starts.
         data_tests:
           - not_null:
               config:
                 where: "is_serve_user = true"
+
+      - name: serve_started_at
+        description: >
+          Creation date of the user's first elected office in gp-api: the day
+          they signed up for Serve. NULL for users with no elected office.
+
+      - name: is_serve_icp
+        description: >
+          ICP-Serve: any of the user's elected offices sits in an organization
+          whose position is ICP-Serve in int__icp_offices (state or local
+          executive or legislative, 1,000 to 100,000 constituents, not judicial,
+          not appointed). False when no position is matched; NULL for users with
+          no elected office.
 
   - name: campaigns
     description: >

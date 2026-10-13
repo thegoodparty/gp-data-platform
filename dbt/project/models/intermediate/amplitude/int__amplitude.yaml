@@ -155,6 +155,17 @@ models:
         description: >
           Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
           Sixth step in the Serve onboarding funnel. Precedes SMS Poll Sent.
+
+      - name: serve_onboarding_started_at
+        description: >
+          First Serve onboarding screen across both flows: 'Getting Started
+          Viewed' (the poll flow) or 'Welcome Viewed' (the flow from 2026-06-24).
+
+      - name: serve_onboarding_completed_at
+        description: >
+          End of Serve onboarding across both flows: 'SMS Poll Sent' (the poll
+          flow) or 'Pledge Completed' (the flow from 2026-06-24, which has no
+          poll step).
     tests:
       - dbt_utils.expression_is_true:
           arguments:

@@ -13,6 +13,32 @@ with
 
     polls as (select * from {{ ref("stg_airbyte_source__gp_api_db_poll") }}),
 
+    positions as (select id, br_database_id from {{ ref("int__enhanced_position") }}),
+
+    icp_offices as (
+        select br_database_position_id, icp_office_serve
+        from {{ ref("int__icp_offices") }}
+    ),
+
+    /*
+        When the official started Serve, and whether their office is ICP-Serve.
+        The elected office row is the Serve signup itself. eo_activated_at is
+        not: it takes the first poll when that came earlier, and a 2026-03-12
+        migration created hundreds of Serve organizations at once.
+    */
+    serve_offices as (
+        select
+            eo.user_id,
+            min(eo.created_at) as serve_started_at,
+            -- An office with no matched position reads false, not unknown.
+            bool_or(coalesce(icp.icp_office_serve, false)) as is_serve_icp
+        from elected_offices as eo
+        left join organizations as o on o.slug = eo.organization_slug
+        left join positions as pos on pos.id = o.position_id
+        left join icp_offices as icp on icp.br_database_position_id = pos.br_database_id
+        group by eo.user_id
+    ),
+
     poll_users as (
         /*
             Users who have completed at least one poll through an elected
@@ -92,11 +118,14 @@ with
                 os.serve_organization_count > 0 or pu.user_id is not null, false
             ) as is_serve_user,
             case when pu.user_id is not null then true else false end as is_poll_user,
-            least(pu.eo_activated_at, os.first_serve_org_created_at) as eo_activated_at
+            least(pu.eo_activated_at, os.first_serve_org_created_at) as eo_activated_at,
+            so.serve_started_at,
+            so.is_serve_icp
         from users u
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id
         left join poll_users pu on u.id = pu.user_id
+        left join serve_offices so on u.id = so.user_id
     ),
 
     person_ids as (
