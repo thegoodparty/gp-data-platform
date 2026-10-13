@@ -565,6 +565,107 @@ models:
           config:
             where: has_hubspot_contact
 
+  - name: int__user_stripe_charges
+    description: >
+      Each settled Stripe charge that reaches a gp-api user, with its purchase
+      line. One row per user and charge: a charge reaches a user through their
+      Stripe customer, or through the product's own user id on a charge with no
+      customer. The only place a charge is typed, read by both
+      int__user_revenue_profile and int__user_revenue_events. A customer shared
+      by two user rows puts its charges on both. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: charge_id
+        description: Stripe charge id.
+        data_tests:
+          - not_null
+      - name: created_at
+        description: When the charge was taken.
+        data_tests:
+          - not_null
+      - name: amount_captured_usd
+        description: Dollars captured.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: amount_refunded_usd
+        description: Dollars refunded against the charge so far.
+      - name: revenue_line
+        description: >
+          subscription (raised an invoice), sales_led (HubSpot commerce
+          checkout), one_off (the product's own checkout metadata) or
+          unclassified. Own-product one-offs after 2026-02-16 are unclassified,
+          because checkout moved behind a payment intent this connector does not
+          ingest.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [subscription, sales_led, one_off, unclassified]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, charge_id]
+
+  - name: int__user_revenue_events
+    description: >
+      Dated money moments per user: each payment, each refund (dated when
+      refunded), and each Pro subscription's start and end. Failed checkouts
+      (incomplete, incomplete_expired) are neither a start nor an end. Amounts
+      are signed so a sum is net revenue. Feeds user_journey_events. Internal
+      only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: event
+        description: Payment, Refund, Subscription started or Subscription ended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Payment, Refund, Subscription started, Subscription ended]
+      - name: event_key
+        description: The Stripe charge, refund or subscription id, prefixed by kind.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: When it happened.
+        data_tests:
+          - not_null
+      - name: event_label
+        description: >
+          The purchase line for a Payment or Refund, the plan interval for a
+          subscription start or end.
+      - name: event_amount_usd
+        description: >
+          Captured dollars for a Payment, minus the refunded dollars for a
+          Refund, the plan's recurring amount for a subscription start or end.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, event_key]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd >= 0"
+          config:
+            where: event = 'Payment'
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd <= 0"
+          config:
+            where: event = 'Refund'
+
   - name: int__user_revenue_profile
     description: >
       The revenue slice of the end-to-end user view: what a user has paid us

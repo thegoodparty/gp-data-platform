@@ -3507,7 +3507,8 @@ models:
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
       plus each outbound HubSpot touch, each committed outreach send, and each
-      onboarding or Pro upgrade step reached in order. Win
+      onboarding or Pro upgrade step reached in order, and each Stripe payment,
+      refund and subscription start or end. Win
       sends are Outreach send; an elected official's polls and outreach to
       constituents are Serve outreach, so Win counts never include them. Internal
       only. Reshaping only: single moments are user_journey columns, and touches
@@ -3552,6 +3553,10 @@ models:
                   - Onboarding step
                   - Pro upgrade step
                   - Serve onboarding step
+                  - Payment
+                  - Refund
+                  - Subscription started
+                  - Subscription ended
       - name: event_category
         description: acquisition, touch, milestone, send, revenue, election or flow_step.
         data_tests:
@@ -3575,15 +3580,17 @@ models:
           Activated, Primary election, General election. Moments added later take
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
           payment, Filing deadline. 14 is Serve outreach; 15 to 17 are the Onboarding,
-          Pro upgrade and Serve onboarding steps. Not chronological; sort a timeline
-          by event_at.
+          Pro upgrade and Serve onboarding steps; 18 to 21 are Payment, Refund,
+          Subscription started and Subscription ended. Not chronological; sort a
+          timeline by event_at.
         data_tests:
           - not_null
       - name: event_key
         description: >
           Unique within a user: the event name for one-off moments, the HubSpot
           touch id for touches, the send key for sends, the flow and step number
-          for a flow step.
+          for a flow step, and the Stripe charge, refund or subscription id for
+          revenue rows.
         data_tests:
           - not_null
       - name: event_at
@@ -3598,8 +3605,11 @@ models:
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
           door_knocking, phone_banking, social, unattributed, and poll for Serve
-          outreach), or the numbered step for a flow step ("3. Party"); null
-          otherwise.
+          outreach), the numbered step for a flow step ("3. Party"), the
+          purchase line for a Payment or Refund (subscription, one_off,
+          sales_led, unclassified), or the plan interval for a subscription start
+          or end; null otherwise. Since 2026-02-16 product one-offs arrive as
+          unclassified, because Stripe stopped carrying the purchase type.
       - name: event_value
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience
@@ -3609,6 +3619,18 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: event_amount_usd
+        description: >
+          Dollars, signed so a sum is net revenue: the captured amount for a
+          Payment, minus the refunded amount for a Refund (dated when refunded),
+          and the plan's recurring amount for a subscription start or end. Null
+          for every other event. A Stripe customer shared by two user rows puts
+          its revenue rows on both, so a sum across users filters on
+          user_journey.is_primary_stripe_customer_row.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
       - name: product
         description: >
           user_journey.product for the user (win, serve, both, none). A user

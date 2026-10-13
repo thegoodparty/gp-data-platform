@@ -133,7 +133,8 @@ with
             'touch:' || t.touch_id as event_key,
             t.touch_at as event_at,
             t.channel as event_label,
-            cast(null as bigint) as event_value
+            cast(null as bigint) as event_value,
+            cast(null as decimal(12, 2)) as event_amount_usd
         from {{ ref("int__user_hubspot_touches") }} as t
         where t.is_outbound_touch
     ),
@@ -150,7 +151,8 @@ with
             'send:' || s.send_key as event_key,
             s.send_at as event_at,
             s.channel as event_label,
-            cast(s.recipient_count as bigint) as event_value
+            cast(s.recipient_count as bigint) as event_value,
+            cast(null as decimal(12, 2)) as event_amount_usd
         from {{ ref("int__user_outreach_sends") }} as s
         where s.basis = 'committed' and s.product = 'win'
     ),
@@ -167,7 +169,8 @@ with
             'send:' || s.send_key as event_key,
             s.send_at as event_at,
             s.channel as event_label,
-            cast(s.recipient_count as bigint) as event_value
+            cast(s.recipient_count as bigint) as event_value,
+            cast(null as decimal(12, 2)) as event_amount_usd
         from {{ ref("int__user_outreach_sends") }} as s
         where s.basis = 'committed' and s.product = 'serve'
     ),
@@ -201,8 +204,36 @@ with
             'step:' || f.flow || ':' || f.step_order as event_key,
             f.step_at as event_at,
             f.step_order || '. ' || f.step as event_label,
-            f.seconds_from_previous_step as event_value
+            f.seconds_from_previous_step as event_value,
+            cast(null as decimal(12, 2)) as event_amount_usd
         from {{ ref("int__amplitude_user_flow_steps") }} as f
+    ),
+
+    -- Each payment, refund and subscription start or end, so revenue counts by
+    -- period. One-off revenue moments above stay; these are the history.
+    revenue as (
+        select
+            r.user_id,
+            r.event,
+            'revenue' as event_category,
+            cast(null as string) as stage,
+            case
+                r.event
+                when 'Payment'
+                then 18
+                when 'Refund'
+                then 19
+                when 'Subscription started'
+                then 20
+                when 'Subscription ended'
+                then 21
+            end as event_order,
+            r.event_key,
+            r.event_at,
+            r.event_label,
+            cast(null as bigint) as event_value,
+            r.event_amount_usd
+        from {{ ref("int__user_revenue_events") }} as r
     ),
 
     events as (
@@ -215,7 +246,8 @@ with
             event as event_key,
             event_at,
             event_label,
-            cast(null as bigint) as event_value
+            cast(null as bigint) as event_value,
+            cast(null as decimal(12, 2)) as event_amount_usd
         from one_off
         union all
         select *
@@ -229,6 +261,9 @@ with
         union all
         select *
         from flow_steps
+        union all
+        select *
+        from revenue
     )
 
 select
@@ -241,6 +276,7 @@ select
     e.event_at,
     e.event_label,
     e.event_value,
+    e.event_amount_usd,
     j.product,
     datediff(e.event_at, j.registered_at) as days_since_registered
 from events as e
