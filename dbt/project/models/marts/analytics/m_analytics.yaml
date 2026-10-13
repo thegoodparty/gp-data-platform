@@ -776,7 +776,9 @@ models:
           Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
 
       - name: has_started_serve_onboarding
-        description: TRUE if user has the Getting Started milestone timestamp.
+        description: >
+          TRUE if the user opened Serve onboarding in either flow: Getting
+          Started (the poll flow) or Welcome (the flow from 2026-06-24).
         data_tests:
           - not_null
 
@@ -807,13 +809,18 @@ models:
 
       - name: has_completed_serve_onboarding
         description: >
-          TRUE if user has sent an SMS poll (final funnel step).
+          TRUE if the user reached the end of Serve onboarding in either flow:
+          sent the onboarding poll (the poll flow) or completed the pledge (the
+          flow from 2026-06-24, which has no poll step).
         data_tests:
           - not_null
 
       - name: serve_onboarding_steps_completed
         description: >
-          Integer count of completed Serve onboarding steps (0-7).
+          Integer count of completed steps in the poll onboarding flow (0-7).
+          The flow from 2026-06-24 has different steps that are not counted
+          here, so its users read low; use has_completed_serve_onboarding to
+          compare across flows.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -864,16 +871,19 @@ models:
             expression: "is_active_eo = true"
           config:
             where: "is_serve_user = true and last_serve_activity_at >= current_date - interval 30 days"
+      # Completion spans both flows, so it implies a start in either flow.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "first_sms_poll_sent_at is not null"
+            expression: "has_started_serve_onboarding"
           config:
             where: "has_completed_serve_onboarding = true"
+      # The step count is the poll flow's, so it is checked against that flow's
+      # first step.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "serve_onboarding_steps_completed >= 1"
           config:
-            where: "has_started_serve_onboarding = true"
+            where: "serve_getting_started_at is not null"
 
   - name: users_win_candidacy
     description: >
