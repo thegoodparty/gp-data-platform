@@ -89,6 +89,9 @@ with
                         'Village',
                         'City'
                     )
+                    -- A subdistrict row is a zone of the board, not the parent body.
+                    and not l2_district_type
+                    rlike '(?i)subdistrict|school_board_district|college_board_district'
                     and not (
                         instr(upper(l2_district_name), member_town) > 0
                         and instr(board_name, member_town) = 0
@@ -113,10 +116,12 @@ with
                     and l2_district_type in (
                         'School_District',
                         'Unified_School_District',
+                        'County_Unified_School_District',
                         'Elementary_School_District',
+                        'Middle_School_District',
                         'High_School_District',
                         'City_School_District',
-                        'County_School_District'
+                        'Exempted_Village_School_District'
                     )
                 then 'college_on_k12_row'
                 -- A census-designated place has no elected government.
