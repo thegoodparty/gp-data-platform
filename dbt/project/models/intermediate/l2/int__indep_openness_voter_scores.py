@@ -3,7 +3,7 @@
 Scores every L2 voter as a "district of 1" under 10 fixed race scenarios with the
 two ballot-caster (voted) state-leg models. For each scenario it keeps the raw score
 and a true/false flag: true when the voter is in the top 40% of their state on that
-score. One row per LALVOTERID; m_people_api__voter left-joins only the flags onto the
+score. One row per LALVOTERID; gp_api_voters left-joins only the flags onto the
 voter row, the same way turnout's int__voter_turnout_lgbm_voter_scores reaches the
 product. The raw scores stay in the warehouse: their level is not meaningful on its
 own, only their rank within the state.

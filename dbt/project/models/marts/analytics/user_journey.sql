@@ -121,6 +121,11 @@ select
     utm.utm_campaign_first,
     utm.utm_source_first_normalized,
     utm.utm_medium_first_normalized,
+    utm_last.utm_source_last,
+    utm_last.utm_medium_last,
+    utm_last.utm_campaign_last,
+    utm_last.utm_source_last_normalized,
+    utm_last.utm_medium_last_normalized,
 
     {{
         dbt_utils.star(
@@ -199,6 +204,7 @@ left join milestones as m using (user_id)
 left join {{ ref("int__user_candidacy_profile") }} as cand using (user_id)
 left join {{ ref("int__user_hubspot_profile") }} as hs using (user_id)
 left join {{ ref("int__user_first_touch_utm") }} as utm using (user_id)
+left join {{ ref("int__user_signup_touch_utm") }} as utm_last using (user_id)
 left join {{ ref("int__user_product_activity") }} as act using (user_id)
 left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)

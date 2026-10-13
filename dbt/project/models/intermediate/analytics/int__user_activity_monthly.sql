@@ -11,7 +11,7 @@ with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
     catalog as (
-        select event_type, is_machine_emitted
+        select event_type, is_machine_emitted, is_serve
         from {{ ref("int__amplitude_event_catalog") }}
     ),
 
@@ -19,12 +19,46 @@ with
         select
             try_cast(e.user_id as bigint) as user_id,
             trunc(e.event_time, 'MM') as activity_month,
-            count(distinct date(e.event_time)) as activity_days
+            count(distinct date(e.event_time)) as activity_days,
+            count(
+                distinct case when c.is_serve then date(e.event_time) end
+            ) as serve_activity_days
         from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
         join catalog as c on c.event_type = e.event_type
         where
             try_cast(e.user_id as bigint) is not null
             and not c.is_machine_emitted
+            and e.event_time >= '{{ var("product_telemetry_start") }}'
+        group by 1, 2
+    ),
+
+    -- The governed activation legs, read straight from events: the OKR does not
+    -- drop machine-emitted events, so neither does engagement.
+    engaged_months as (
+        select
+            try_cast(e.user_id as bigint) as user_id,
+            trunc(e.event_time, 'MM') as activity_month,
+            bool_or(
+                {{
+                    is_outreach_activation_event(
+                        "e.event_type",
+                        "e.event_properties:method::string",
+                        "e.event_properties:product::string",
+                    )
+                }}
+            ) as is_engaged,
+            bool_or(
+                {{
+                    is_serve_activation_event(
+                        "e.event_type",
+                        "e.event_properties:method::string",
+                        "e.event_properties:product::string",
+                    )
+                }}
+            ) as is_engaged_serve
+        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
+        where
+            try_cast(e.user_id as bigint) is not null
             and e.event_time >= '{{ var("product_telemetry_start") }}'
         group by 1, 2
     ),
@@ -52,10 +86,14 @@ with
         select
             f.user_id,
             cal.activity_month,
-            coalesce(um.activity_days, 0) as activity_days
+            coalesce(um.activity_days, 0) as activity_days,
+            coalesce(um.serve_activity_days, 0) as serve_activity_days,
+            coalesce(em.is_engaged, false) as is_engaged,
+            coalesce(em.is_engaged_serve, false) as is_engaged_serve
         from first_months as f
         join calendar as cal on cal.activity_month >= f.first_month
         left join user_months as um using (user_id, activity_month)
+        left join engaged_months as em using (user_id, activity_month)
     ),
 
     lagged as (
@@ -67,6 +105,15 @@ with
             lag(activity_days, 2, 0) over (
                 partition by user_id order by activity_month
             ) as days_prev_2,
+            lag(serve_activity_days, 1, 0) over (
+                partition by user_id order by activity_month
+            ) as serve_days_prev_1,
+            lag(serve_activity_days, 2, 0) over (
+                partition by user_id order by activity_month
+            ) as serve_days_prev_2,
+            min(case when serve_activity_days > 0 then activity_month end) over (
+                partition by user_id
+            ) as first_serve_month,
             -- The grid starts at the user's first active month, so its first
             -- row is the month they were new.
             activity_month
@@ -78,20 +125,25 @@ select
     user_id,
     activity_month,
     activity_days,
-    -- 'dormant' is kept apart from 'churned' because a user idle for three
-    -- months or more is no longer one we just lost.
-    case
-        when activity_days > 0 and is_first_month
-        then 'new'
-        when activity_days > 0 and days_prev_1 > 0
-        then 'retained'
-        when activity_days > 0
-        then 'resurrected'
-        when days_prev_1 > 0 or days_prev_2 > 0
-        then 'churned'
-        else 'dormant'
-    end as growth_state,
+    {{ growth_state("activity_days", "days_prev_1", "days_prev_2", "is_first_month") }}
+    as growth_state,
     -- The current month is still filling. On the 1st it reads zero new and zero
     -- retained until that day's events load, so a trend excludes it by default.
-    activity_month = trunc(current_date(), 'MM') as is_partial_month
+    activity_month = trunc(current_date(), 'MM') as is_partial_month,
+    serve_activity_days,
+    -- Null until the first Serve month: before that they were not a Serve user.
+    case
+        when activity_month >= first_serve_month
+        then
+            {{
+                growth_state(
+                    "serve_activity_days",
+                    "serve_days_prev_1",
+                    "serve_days_prev_2",
+                    "activity_month = first_serve_month",
+                )
+            }}
+    end as serve_growth_state,
+    is_engaged,
+    is_engaged_serve
 from lagged
