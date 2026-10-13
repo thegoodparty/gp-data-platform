@@ -15,6 +15,44 @@ with
             event_properties:method::string as outreach_method,
             -- Win or Serve. Only the events named since 2026-09-29 carry it.
             event_properties:product::string as outreach_product,
+            -- Same vocabulary as the outreach sends. The door and call legs name
+            -- their channel in the event, the campaign events in a property:
+            -- `medium` on completions, `channel` on the scheduled terminal.
+            -- 'events' only ever comes from a self-report.
+            case
+                when event_type like '%Door%'
+                then 'door_knocking'
+                when event_type like '%Phone Banking%'
+                then 'phone_banking'
+                else
+                    case
+                        lower(
+                            coalesce(
+                                event_properties:medium::string,
+                                event_properties:channel::string
+                            )
+                        )
+                        when 'text'
+                        then 'texting'
+                        when 'sms'
+                        then 'texting'
+                        when 'robocall'
+                        then 'robocall'
+                        when 'doorknocking'
+                        then 'door_knocking'
+                        when 'phonebanking'
+                        then 'phone_banking'
+                        when 'socialmedia'
+                        then 'social'
+                        when 'social'
+                        then 'social'
+                        when 'events'
+                        then 'events'
+                        when 'event'
+                        then 'events'
+                        else 'unattributed'
+                    end
+            end as outreach_channel,
             -- Dedup key for the shared send terminal, which is once per committed
             -- payment rather than once per outreach. The completion event carries
             -- the same id as outreachCampaignId and fires seconds after the
@@ -170,6 +208,35 @@ with
                     then event_time
                 end
             ) as first_campaign_sent_at,
+            -- The send that made first_campaign_sent_at, so a split by channel
+            -- adds up to the activated count. min_by skips the null ordering
+            -- values, which are every non-activating row.
+            min_by(
+                outreach_channel,
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method", "outreach_product"
+                            )
+                        }} and is_first_commit
+                    then event_time
+                end
+            ) as first_activation_channel,
+            -- Legacy self-report ('unknown'), which the OKR still counts. Most of
+            -- 2025's activations came this way, so a year-over-year read needs it.
+            min_by(
+                coalesce(outreach_method = 'unknown', false),
+                case
+                    when
+                        {{
+                            is_outreach_activation_event(
+                                "event_type", "outreach_method", "outreach_product"
+                            )
+                        }} and is_first_commit
+                    then event_time
+                end
+            ) as first_activation_is_self_reported,
             count(
                 case
                     when
