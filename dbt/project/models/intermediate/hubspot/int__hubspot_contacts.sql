@@ -41,6 +41,10 @@ with
         where
             contacts.companies is not null
             and trim(contacts.companies) not in ('', '[]')
+            -- Team members are associated with campaigns they do not run, and the
+            -- synced association carries no role label to tell them apart.
+            and coalesce(contacts.team_role, '')
+            not in ('volunteer', 'campaign manager')
     ),
 
     -- Pick one resolved position per contact so downstream joins stay 1:1.
