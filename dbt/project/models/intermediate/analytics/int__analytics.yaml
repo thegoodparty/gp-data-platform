@@ -484,6 +484,48 @@ models:
               arguments:
                 min_value: 0
                 inclusive: true
+      - name: call_before_signup_count
+        description: Calls logged before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: email_before_signup_count
+        description: Sales emails sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: meeting_before_signup_count
+        description: Meetings held or booked before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_before_signup_count
+        description: SMS sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: touches_before_signup_count
+        description: >
+          Outbound touches (the touch_count_total channels) strictly before
+          registered_at: what it took to bring the person in. Compared to the
+          instant, not the day: about 7,000 sales signups were created by a
+          rep during a connected pledge call logged minutes earlier, which a
+          whole-day count (days_since_registered < 0 on user_journey_events)
+          misses. Zero for most self-serve signups, whose contact the signup
+          itself created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: first_call_at
         description: First logged call.
       - name: last_call_at
@@ -511,6 +553,15 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: connected_call_count <= call_count
+          config:
+            where: has_hubspot_contact
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              touches_before_signup_count = call_before_signup_count
+              + email_before_signup_count + meeting_before_signup_count
+              + sms_before_signup_count
+              and touches_before_signup_count <= touch_count_total
           config:
             where: has_hubspot_contact
 
