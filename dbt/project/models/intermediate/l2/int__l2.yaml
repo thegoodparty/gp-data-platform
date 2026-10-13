@@ -189,7 +189,10 @@ models:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
   - name: int__l2_nationwide_uniform
-    description: "The voter file, with l2_manual_district_assignments applied"
+    description: >
+      The voter file, with l2_manual_district_assignments applied and, for each
+      (state, district type) district_map_adoption puts on its proposed map, the
+      proposed map in place of the current column.
 
   - name: int__voter_turnout_inference
     description: >

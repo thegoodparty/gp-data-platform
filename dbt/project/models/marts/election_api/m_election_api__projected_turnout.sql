@@ -13,6 +13,9 @@ with
             coalesce(ballots_projected, 0) as projected_turnout,
             inference_at,
             model_version
+        -- Knowingly approximate for districts on an adopted proposed map: the
+        -- projections were modelled on the old map's district of the same number,
+        -- and stay that way until the model is rerun on the swapped voter view.
         from {{ ref("int__model_prediction_voter_turnout") }}
         where
             -- Past election years are not served: an out-of-horizon race

@@ -138,55 +138,46 @@ with
             )
     ),
 
-    -- Statewide adoptions, where a voter L2 left off the proposed map has no
-    -- district rather than a number from the map it replaced.
-    statewide_adoptions as (
+    adopted_scopes as (
         select concat(state, '|', district_type) as scope
         from {{ ref("district_map_adoption") }}
-        where
-            adopted_source = 'proposed'
-            and is_verified
-            and nullif(trim(district_number), '') is null
+        where adopted_source = 'proposed' and is_verified
     ),
 
-    -- Where the adoption seed puts a state on its proposed map, that map replaces
-    -- the current column outright, so every consumer sees one map per type.
+    -- An adopted proposed map replaces the current column outright, so every
+    -- consumer sees one map per type, and a voter L2 left off it has no district.
     -- Virginia's struck-down proposal never passes the gate.
-    {% set replaced_types = proposed_district_type_map() | map(attribute=1) | list %}
+    {% set proposed = "voters.`Proposed_District`" %}
     adopted as (
         select
-            voters.* except (
-                {% for column in replaced_types -%}
-                    `{{ column }}`{% if not loop.last %},{% endif %}
-                {%- endfor %}
-            ),
-            {% for column in replaced_types -%}
-                case
-                    when adoption.district_type = '{{ column }}'
-                    then {{ proposed_district_number("voters.`Proposed_District`") }}
-                    when
-                        concat(voters.state_postal_code, '|{{ column }}')
-                        in (select scope from statewide_adoptions)
-                    then null
-                    else voters.`{{ column }}`
-                end as `{{ column }}`
-                {% if not loop.last %},{% endif %}
-            {% endfor %}
+            voters.* except (`US_Congressional_District`, `State_Senate_District`),
+            case
+                when
+                    concat(voters.state_postal_code, '|US_Congressional_District')
+                    in (select scope from adopted_scopes)
+                then
+                    case
+                        when
+                            {{ proposed_district_type(proposed) }}
+                            = 'US_Congressional_District'
+                        then {{ proposed_district_number(proposed) }}
+                    end
+                else voters.`US_Congressional_District`
+            end as `US_Congressional_District`,
+            case
+                when
+                    concat(voters.state_postal_code, '|State_Senate_District')
+                    in (select scope from adopted_scopes)
+                then
+                    case
+                        when
+                            {{ proposed_district_type(proposed) }}
+                            = 'State_Senate_District'
+                        then {{ proposed_district_number(proposed) }}
+                    end
+                else voters.`State_Senate_District`
+            end as `State_Senate_District`
         from assigned as voters
-        left join
-            {{ ref("district_map_adoption") }} as adoption
-            on adoption.state = voters.state_postal_code
-            and adoption.district_type
-            = {{ proposed_district_type("voters.`Proposed_District`") }}
-            and adoption.adopted_source = 'proposed'
-            and adoption.is_verified
-            -- An empty district_number covers the whole state.
-            and (
-                nullif(trim(adoption.district_number), '') is null
-                or cast(trim(adoption.district_number) as int) = cast(
-                    {{ proposed_district_number("voters.`Proposed_District`") }} as int
-                )
-            )
     )
 
 -- Strip L2's padding here so every consumer agrees on a district's name and id.

@@ -8,26 +8,14 @@
 {%- endmacro %}
 
 
--- Pattern -> the current type an adopted proposed map replaces.
-{% macro proposed_district_type_map() -%}
-    {{
-        return(
-            [
-                ("%PROPOSED CONG DIST%", "US_Congressional_District"),
-                ("%PROPOSED STATE SEN DIST%", "State_Senate_District"),
-            ]
-        )
-    }}
-{%- endmacro %}
-
-
--- The current type this value replaces, and what the adoption seed records its
--- decision against.
+-- The current type an adopted proposed value replaces, and what the adoption
+-- seed records its decision against.
 {% macro proposed_district_type(column_expr) -%}
     case
-        {%- for pattern, replaced in proposed_district_type_map() %}
-            when upper({{ column_expr }}) like '{{ pattern }}' then '{{ replaced }}'
-        {%- endfor %}
+        when upper({{ column_expr }}) like '%PROPOSED CONG DIST%'
+        then 'US_Congressional_District'
+        when upper({{ column_expr }}) like '%PROPOSED STATE SEN DIST%'
+        then 'State_Senate_District'
     end
 {%- endmacro %}
 
