@@ -720,7 +720,7 @@ models:
         description: >
           Reason why a candidacy is not verified. Only populated when is_verified
           is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
-          Write In.
+          Write In, Ended Pro.
 
       - name: is_partisan
         description: Whether the race is partisan
