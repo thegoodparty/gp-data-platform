@@ -138,6 +138,17 @@ with
             )
     ),
 
+    -- Statewide adoptions, where a voter L2 left off the proposed map has no
+    -- district rather than a number from the map it replaced.
+    statewide_adoptions as (
+        select concat(state, '|', district_type) as scope
+        from {{ ref("district_map_adoption") }}
+        where
+            adopted_source = 'proposed'
+            and is_verified
+            and nullif(trim(district_number), '') is null
+    ),
+
     -- Where the adoption seed puts a state on its proposed map, that map replaces
     -- the current column outright, so every consumer sees one map per type.
     -- Virginia's struck-down proposal never passes the gate.
@@ -153,6 +164,10 @@ with
                 case
                     when adoption.district_type = '{{ column }}'
                     then {{ proposed_district_number("voters.`Proposed_District`") }}
+                    when
+                        concat(voters.state_postal_code, '|{{ column }}')
+                        in (select scope from statewide_adoptions)
+                    then null
                     else voters.`{{ column }}`
                 end as `{{ column }}`
                 {% if not loop.last %},{% endif %}
