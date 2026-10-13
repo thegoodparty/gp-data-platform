@@ -3622,9 +3622,9 @@ models:
       - name: event_amount_usd
         description: >
           Dollars, signed so a sum is net revenue: the captured amount for a
-          Payment, minus the refunded amount for a Refund (dated when refunded),
-          and the plan's recurring amount for a subscription start or end. Null
-          for every other event. A Stripe customer shared by two user rows puts
+          Payment, minus the refunded amount for a Refund (dated when refunded).
+          Null for every other event, subscription starts and ends included:
+          they move no money, and the plan amount is on user_journey. A Stripe customer shared by two user rows puts
           its revenue rows on both, so a sum across users filters on
           user_journey.is_primary_stripe_customer_row.
         data_tests:

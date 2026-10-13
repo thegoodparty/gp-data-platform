@@ -66,6 +66,7 @@ with
         select r.event, count(*)
         from {{ ref("int__user_revenue_events") }} as r
         join journey as j using (user_id)
+        where r.event_at is not null
         group by r.event
     ),
 

@@ -646,7 +646,8 @@ models:
       - name: event_amount_usd
         description: >
           Captured dollars for a Payment, minus the refunded dollars for a
-          Refund, the plan's recurring amount for a subscription start or end.
+          Refund. Null for a subscription start or end, which moves no money,
+          so a sum over every row is net revenue.
         data_tests:
           - not_null:
               config:

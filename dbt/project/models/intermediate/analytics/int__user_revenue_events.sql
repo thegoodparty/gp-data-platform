@@ -3,7 +3,8 @@
 -- counted by period rather than only as lifetime totals.
 --
 -- Amounts are signed so a sum is net revenue: payments positive, refunds
--- negative. A Stripe customer shared by two user rows puts its rows on both;
+-- negative, and null on subscription rows, which mark a start or end and move
+-- no money. A Stripe customer shared by two user rows puts its rows on both;
 -- sum across users with user_journey.is_primary_stripe_customer_row.
 with
     charges as (
@@ -32,13 +33,7 @@ with
     -- incomplete and incomplete_expired are failed checkouts that never
     -- started, so they are neither a start nor a churn.
     subscriptions as (
-        select
-            subscription_id,
-            stripe_customer_id,
-            started_at,
-            ended_at,
-            plan_interval,
-            plan_amount_usd
+        select subscription_id, stripe_customer_id, started_at, ended_at, plan_interval
         from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
         where
             is_livemode
@@ -78,7 +73,7 @@ select
     'subscription_start:' || subscription_id,
     started_at,
     plan_interval,
-    plan_amount_usd
+    cast(null as decimal(12, 2))
 from user_subscriptions
 union all
 -- Ended, not cancelled: a subscription set to cancel at period end keeps
@@ -89,6 +84,6 @@ select
     'subscription_end:' || subscription_id,
     ended_at,
     plan_interval,
-    plan_amount_usd
+    cast(null as decimal(12, 2))
 from user_subscriptions
 where ended_at is not null
