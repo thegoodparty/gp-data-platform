@@ -1022,6 +1022,12 @@ models:
         description: "Content of the message sent for the poll"
       - name: elected_office_id
         description: "Foreign key reference to the elected office"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_elected_office')
+                field: id
       - name: targetAudienceSize
         description: "Size of the target audience for the poll"
       - name: estimatedCompletionDate

@@ -484,6 +484,48 @@ models:
               arguments:
                 min_value: 0
                 inclusive: true
+      - name: call_before_signup_count
+        description: Calls logged before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: email_before_signup_count
+        description: Sales emails sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: meeting_before_signup_count
+        description: Meetings held or booked before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_before_signup_count
+        description: SMS sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: touches_before_signup_count
+        description: >
+          Outbound touches (the touch_count_total channels) strictly before
+          registered_at: what it took to bring the person in. Compared to the
+          instant, not the day: about 7,000 sales signups were created by a
+          rep during a connected pledge call logged minutes earlier, which a
+          whole-day count (days_since_registered < 0 on user_journey_events)
+          misses. Zero for most self-serve signups, whose contact the signup
+          itself created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: first_call_at
         description: First logged call.
       - name: last_call_at
@@ -511,6 +553,15 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: connected_call_count <= call_count
+          config:
+            where: has_hubspot_contact
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              touches_before_signup_count = call_before_signup_count
+              + email_before_signup_count + meeting_before_signup_count
+              + sms_before_signup_count
+              and touches_before_signup_count <= touch_count_total
           config:
             where: has_hubspot_contact
 
@@ -1000,6 +1051,13 @@ models:
           (is_serve_activation_event). Serve's counterpart to is_engaged.
         data_tests:
           - not_null
+      - name: win_activity_days
+        description: >
+          Distinct days in the month with a non-machine Win event (catalog
+          is_win). Part of activity_days; use it for a Win monthly-active count
+          that leaves out days spent only in Serve.
+        data_tests:
+          - not_null
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -1139,6 +1197,11 @@ models:
       so that leg collapses exactly; the legacy events carry no id and fall
       back to same user, same day, matched per channel.
 
+      Serve rows ride along under product = 'serve': outreach from an elected
+      official's organization (it carries no campaign id), Serve polls from the
+      poll table, and Amplitude events tagged serve from 2026-09-29. Voter
+      outreach measures read product = 'win' only.
+
       Grain: one row per send, unique on send_key. Not unique on user_id.
     columns:
       - name: user_id
@@ -1170,7 +1233,18 @@ models:
                     "door_knocking",
                     "phone_banking",
                     "unattributed",
+                    "poll",
                   ]
+      - name: product
+        description: >
+          'win' for campaign outreach, 'serve' for an elected official's
+          outreach to constituents. Amplitude events before 2026-09-29 carry no
+          product and read as win.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
       - name: send_at
         description: >
           When the send went out. The scheduled send date where the candidate
@@ -1184,7 +1258,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["gp_api_outreach", "amplitude"]
+                values: ["gp_api_outreach", "amplitude", "gp_api_poll"]
       - name: basis
         description: >
           'committed' is a send we know went out. 'requested' is one we only

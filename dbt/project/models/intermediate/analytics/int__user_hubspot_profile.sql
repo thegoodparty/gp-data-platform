@@ -78,8 +78,27 @@ with
             min(case when channel = 'meeting' then touch_at end) as first_meeting_at,
             max(case when channel = 'meeting' then touch_at end) as last_meeting_at,
             min(case when channel = 'sms' then touch_at end) as first_sms_at,
-            max(case when channel = 'sms' then touch_at end) as last_sms_at
-        from {{ ref("int__user_hubspot_touches") }}
+            max(case when channel = 'sms' then touch_at end) as last_sms_at,
+            -- Strictly before the signup instant: a touch the signup sync
+            -- logs in the same session is a reaction to the signup, not what
+            -- brought them in.
+            count(
+                case when channel = 'call' and touch_at < u.registered_at then 1 end
+            ) as call_before_signup_count,
+            count(
+                case when channel = 'email' and touch_at < u.registered_at then 1 end
+            ) as email_before_signup_count,
+            count(
+                case when channel = 'meeting' and touch_at < u.registered_at then 1 end
+            ) as meeting_before_signup_count,
+            count(
+                case when channel = 'sms' and touch_at < u.registered_at then 1 end
+            ) as sms_before_signup_count,
+            count(
+                case when is_outbound_touch and touch_at < u.registered_at then 1 end
+            ) as touches_before_signup_count
+        from {{ ref("int__user_hubspot_touches") }} as ht
+        left join users as u using (user_id)
         group by user_id
     )
 
@@ -158,6 +177,21 @@ select
     case
         when has_hubspot_contact then coalesce(t.touch_count_total, 0)
     end as touch_count_total,
+    case
+        when has_hubspot_contact then coalesce(t.call_before_signup_count, 0)
+    end as call_before_signup_count,
+    case
+        when has_hubspot_contact then coalesce(t.email_before_signup_count, 0)
+    end as email_before_signup_count,
+    case
+        when has_hubspot_contact then coalesce(t.meeting_before_signup_count, 0)
+    end as meeting_before_signup_count,
+    case
+        when has_hubspot_contact then coalesce(t.sms_before_signup_count, 0)
+    end as sms_before_signup_count,
+    case
+        when has_hubspot_contact then coalesce(t.touches_before_signup_count, 0)
+    end as touches_before_signup_count,
     t.first_call_at,
     t.last_call_at,
     t.first_email_at,

@@ -57,10 +57,11 @@ with
         join journey as j using (user_id)
         where t.is_outbound_touch and t.touch_at is not null
         union all
-        select 'Outreach send', count(*)
+        select if(s.product = 'serve', 'Serve outreach', 'Outreach send'), count(*)
         from {{ ref("int__user_outreach_sends") }} as s
         join journey as j using (user_id)
         where s.basis = 'committed' and s.send_at is not null
+        group by s.product
     ),
 
     actual as (

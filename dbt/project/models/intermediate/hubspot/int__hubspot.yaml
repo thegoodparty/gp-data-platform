@@ -139,6 +139,22 @@ models:
               arguments:
                 values: [true, false]
 
+  - name: int__hubspot_contact_merges
+    description: >
+      One row per HubSpot contact merged into another contact. A merged-away
+      contact no longer exists in HubSpot (HubSpot redirects its id to the
+      survivor), but Airbyte never re-extracts it, so its last extract stays in
+      stg_airbyte_source__hubspot_api_contacts looking live. Join here to tell a
+      live contact from an alias.
+    columns:
+      - name: merged_contact_id
+        description: HubSpot id of the contact that was merged away.
+      - name: surviving_contact_id
+        description: >
+          The live contact that absorbed it. Null when every contact that lists
+          it was itself merged away later and the final survivor's list did not
+          carry it forward.
+
   - name: int__hubspot_contacts_w_companies
     description: >
         "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Candidacies."

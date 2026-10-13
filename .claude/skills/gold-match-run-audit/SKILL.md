@@ -727,13 +727,9 @@ with
         where attempted_at = timestamp'__RUN_KEY__'
     ),
 
-    -- Minted 2026-map rows exist to compensate for a class the universe
-    -- structurally cannot express, not to record a matcher disagreement;
-    -- excluded before joining.
     active_overrides as (
         select br_database_id, state, l2_district_type, l2_district_name
         from goodparty_data_catalog.dbt.l2_br_match_overrides
-        where l2_district_type not like '%\\_2026'
     ),
 
     joined as (

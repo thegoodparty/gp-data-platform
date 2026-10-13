@@ -7,7 +7,7 @@
 -- Load-bearing rather than defensive. The 99.6% of voters on the handled shapes
 -- are congressional and MI state senate; the rest are county-commissioner rows
 -- and local annexation records that are not seats at all. A parser that quietly
--- swallowed those would mint districts nobody runs in.
+-- swallowed those would put voters in districts nobody runs in.
 select distinct l2.state_postal_code, l2.proposed_district
 from {{ ref("int__l2_nationwide_uniform") }} as l2
 -- Matched on the shared normalized L2 key and scoped by state. L2 toggles a
