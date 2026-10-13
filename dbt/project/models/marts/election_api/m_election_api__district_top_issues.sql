@@ -1,7 +1,7 @@
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady
-    district match (`stg_model_predictions__llm_l2_br_match`). Not scoped to
+    district match as served (`int__l2_br_match_served`). Not scoped to
     a single election cycle — districts with off-cycle offices are included
     as well.
 
@@ -99,7 +99,7 @@ with
 
     target_districts as (
         select distinct m.l2_state, m.l2_district_type, m.l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as m
+        from {{ ref("int__l2_br_match_served") }} as m
         where m.is_matched
         union
         -- An override can point a position at a district no matched row names:

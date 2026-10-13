@@ -138,6 +138,61 @@ models:
             to_district_type_column: district_type
             to_district_name_column: district_name
 
+  - name: int__l2_br_match_served
+    description: >
+      The gold-match latest attempt per office as the publishing models see it.
+      A match that fits a known wrong-answer shape is withheld: its district
+      columns are null, is_matched is false, and withheld_reason names the shape.
+      Guards apply to attempts on or after the l2_br_match_guards_from var (the
+      daily loop's cutover); earlier attempts pass through unchanged. An override
+      in l2_br_match_overrides still wins in every consumer. The pending selector
+      reads the results table, so withholding a match does not re-queue its office.
+    columns:
+      - name: br_database_id
+        description: BallotReady position database id.
+        data_tests:
+          - unique
+          - not_null
+      - name: l2_state
+        description: The district's state; null on an abstain or a withheld match.
+      - name: l2_district_type
+        description: L2 district type; null on an abstain or a withheld match.
+      - name: l2_district_name
+        description: L2 district name; null on an abstain or a withheld match.
+      - name: confidence
+        description: The matcher's confidence, kept on withheld rows for audit.
+      - name: attempted_at
+        description: The run key of the attempt.
+      - name: is_matched
+        description: True when a district is served.
+        data_tests:
+          - not_null
+      - name: withheld_reason
+        description: >
+          Why a match was not served. special_district_on_general_row: a special
+          district on a same-named city, town, county, census place or state row.
+          town_seat_on_parent_body: a seat elected by one member town (NJ, AR, MA)
+          matched to the parent board. township_fire_on_county_pool: an NJ township
+          fire commission on a county-numbered fire row that pools several towns.
+          county_judge_off_county: a county judge off the county or county-court row.
+          college_on_k12_row: a college board on a K-12 school district.
+          census_place: a census-designated place, which elects no one.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - special_district_on_general_row
+                  - town_seat_on_parent_body
+                  - township_fire_on_county_pool
+                  - county_judge_off_county
+                  - college_on_k12_row
+                  - census_place
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: l2_br_match_served_withheld_rows_carry_no_district
+          arguments:
+            expression: "withheld_reason is null or (not is_matched and l2_district_name is null)"
+
   - name: int__l2_br_match_pending_offices
     description: >
       One row per BallotReady office needing an L2 district match attempt:
@@ -486,9 +541,9 @@ models:
       Zip code to BR office mapping. Rows arrive by two paths: the LLM match,
       and the l2_br_match_overrides seed for positions the LLM placed at the
       wrong district or not at all. To see why a district was chosen, join
-      stg_model_predictions__llm_l2_br_match (a view) on br_database_id; a
-      position absent there, or carrying a different district than the row
-      shows, was placed by the seed.
+      int__l2_br_match_served on br_database_id; a position absent there, or
+      carrying a different district than the row shows, was placed by the seed,
+      and a non-null withheld_reason there says why a match was not served.
     columns:
       - name: zip_code
         description: "Zip code"

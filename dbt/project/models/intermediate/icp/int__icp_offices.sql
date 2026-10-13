@@ -39,7 +39,7 @@ with
                 )
             }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
+        from {{ ref("int__l2_br_match_served") }} as tbl_match
         full outer join
             {{ ref("l2_br_match_overrides") }} as tbl_override
             on tbl_match.br_database_id = tbl_override.br_database_id
