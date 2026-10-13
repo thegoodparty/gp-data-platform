@@ -63,17 +63,39 @@ Three things that are NOT DAG failures but belong here:
   rebuild made it ~7; the owner ruled 2026-09-18 that a day or three of latency is fine in exchange for
   no rebuild).
 
-Two audit deadlines, both the operator's: **before 00:02 D+1 keeps the internal marts clean**; **before
-~12:02 D+1 keeps the product clean** (the backstop, not the target). The daily rule: audit the run the
-same day; confirmed wrong rows are deleted by key and their offices quarantined before 00:02.
+Daily audits were retired on 2026-10-13. A match that fits one of the wrong-answer shapes the audits kept
+finding is withheld at publication by `int__l2_br_match_served` (its YAML lists the shapes), and the loop
+is checked once a month (below). Whoever does audit a run has the same two deadlines as before: **before
+00:02 D+1 keeps the internal marts clean**; **before ~12:02 D+1 keeps the product clean**. Confirmed
+wrong rows are deleted by key and their offices quarantined.
 
 The nightly's tests (the voter-coverage floor at error severity, the staging label check at warn)
 page on the run's rows but do not roll them back: the tested mart is rebuilt before its test runs
-(see the red-nightly row above). The stops, in order, are the operator's same-day audit with
-delete-by-key before 00:02, the sync's own quality checks, and the `election_api_swap_enabled`
-Variable. A red nightly does pause the loop: the next day's admission declines until a scheduled
+(see the red-nightly row above). The stops, in order, are the publication guards in
+`int__l2_br_match_served`, a delete-by-key before 00:02 when a check finds a wrong row, the sync's own
+quality checks, and the `election_api_swap_enabled` Variable. A red nightly does pause the loop: the next day's admission declines until a scheduled
 build succeeds. There is deliberately no dependency wiring to the sync and no dbt trigger in the DAG;
 neither schedule should drift without rechecking this section.
+
+## Monthly health check
+
+Once a month (a calendar reminder fires on the second Tuesday), check the previous month:
+
+1. **The loop ran.** Read the month's rows in `model_predictions.llm_l2_br_match_run_log` (matched,
+   abstained, withdrawals held) and count the days admission declined. A streak of declines points at
+   the scheduled build, not this DAG.
+2. **What was withheld.** Count `int__l2_br_match_served` rows with a `withheld_reason` and an
+   `attempted_at` in the month, by reason. For an ICP office whose correct L2 row exists, add a sourced
+   row to `l2_br_match_overrides`.
+3. **A spot-check.** Draw 20 of the month's served matches (`order by md5(cast(br_database_id as
+   string))`) and verify each one electorate-first: who votes for the seat, then whether the row is
+   those voters. Three or more wrong is the trigger to audit the month's run keys in full, delete the
+   confirmed-wrong rows by key, quarantine their offices, and size a guard for any new shape against the
+   audited rows before adding it.
+4. **Holds and dead labels.** The active quarantine census (`released_at is null`) and the staging label
+   check's dead-tuple count. Neither should grow without a reason you can name.
+5. **Spend.** Haiku 4.5 on Bedrock (AWS Cost Explorer, service "Claude Haiku 4.5 (Amazon Bedrock
+   Edition)"). A month without a wave costs a few dollars.
 
 ## Retries
 

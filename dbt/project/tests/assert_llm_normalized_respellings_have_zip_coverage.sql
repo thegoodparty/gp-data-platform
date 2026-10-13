@@ -14,7 +14,7 @@ with
             l2_district_name,
             {{ normalize_l2_district_name("l2_district_name") }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("int__l2_br_match_served") }}
         where is_matched
     ),
     -- Mirrors the model's active_overrides: rows the LLM did not already place at

@@ -18,7 +18,7 @@ with
             tbl_district.district_id,
             tbl_position.created_at,
             tbl_position.updated_at
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }} as tbl_match
+        from {{ ref("int__l2_br_match_served") }} as tbl_match
         inner join
             {{ ref("int__enhanced_position") }} as tbl_position
             on tbl_match.br_database_id = tbl_position.br_database_id
@@ -87,7 +87,7 @@ with
         where
             tbl_override.br_database_id not in (
                 select br_database_id
-                from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+                from {{ ref("int__l2_br_match_served") }}
                 where br_database_id is not null
             )
     ),
