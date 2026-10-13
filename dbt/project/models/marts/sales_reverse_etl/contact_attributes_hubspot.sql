@@ -8,8 +8,9 @@
 -- HubSpot's current (Airbyte-ingested) value. The first run after a property is
 -- created is therefore its backfill, and later runs carry only changes.
 --
--- An unknown on our side (no resolved position, or an unsized district) is not
--- sent, so it stays blank in HubSpot rather than being asserted false. Exception:
+-- An unknown on our side (no resolved position, or an unsized serve_priority
+-- district) is not sent, so it stays blank in HubSpot rather than being asserted
+-- false. A resolved position off the list is a known false and is sent. Exception:
 -- a stale HubSpot true is cleared to false so it cannot keep a lead at the top of
 -- the outreach queue.
 --

@@ -89,7 +89,10 @@ models:
           ICP definition. True for non-judicial, non-appointed offices flagged
           serve_priority in icp_normalized_position_names (municipal legislative
           and mayor) with more than 5,000 voters. Independent of icp_office_win,
-          so offices over 100,000 voters qualify. Null when voter_count is null.
+          so offices over 100,000 voters qualify. False for offices off the
+          list, judicial or appointed, whatever their voter count, as with the
+          ICP flags; null only for a serve_priority office whose voter_count is
+          null.
         tests:
           - accepted_values:
               arguments:

@@ -142,8 +142,10 @@ models:
         description: >
           Whether the contact's position is in the Serve Priority Segment.
           Pass-through of `int__icp_offices.is_serve_priority_segment`
-          via the effective BR position. Null when the contact has no resolved
-          position or its district has no voter count.
+          via the effective BR position. False for a resolved position that is
+          off the serve_priority list, judicial or appointed (a known "not in
+          segment"). Null only when the contact has no resolved position, or a
+          serve_priority position's district has no voter count.
         tests:
           - accepted_values:
               arguments:
