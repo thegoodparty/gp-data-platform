@@ -14,8 +14,8 @@ County Legislature/Township Supervisor (Joint)//Executive Board/Township Supervi
 City Legislature,legislative,city,true,,true
 City Legislature Chair//President of Council,legislative,city,true,,true
 City Board of Selectmen,legislative,city,true,,true
-City Board of Finance,legislative,city,true,,true
-City Ward Moderator,legislative,city,true,,true
+City Board of Finance,legislative,city,true,,false
+City Ward Moderator,legislative,city,true,,false
 Town Meeting Board,legislative,town,true,,true
 Town Moderator,legislative,town,true,,true
 Town Assistant Moderator,legislative,town,true,,true
