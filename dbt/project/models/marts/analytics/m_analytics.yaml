@@ -3336,6 +3336,32 @@ models:
         description: Currently an active elected official on Serve.
         data_tests:
           - not_null
+      - name: serve_started_at
+        description: >
+          When the official started Serve: their first elected office in gp-api.
+          Use this, not eo_activated_at, for when someone became a Serve user;
+          eo_activated_at takes the first poll when that came first, and a
+          migration created hundreds of Serve organizations on one day.
+      - name: is_serve_icp
+        description: >
+          ICP-Serve: the office behind the official's Serve organization is a
+          state or local executive or legislative office with 1,000 to 100,000
+          constituents, not judicial and not appointed. False when the office
+          has no matched position; null for users who are not Serve users.
+      - name: first_serve_activated_at
+        description: >
+          The Activated Serve Users timestamp, read from users_serve_base so this
+          row agrees with the governed metric: the first time the official
+          reached constituents through the product. Null when not activated.
+      - name: serve_onboarding_started_at
+        description: >
+          First Serve onboarding screen, across both flows: Getting Started
+          (to 2026-06) or Welcome (from 2026-06-24).
+      - name: serve_onboarding_completed_at
+        description: >
+          End of Serve onboarding, across both flows: the onboarding poll sent
+          (old flow) or the pledge completed (the flow from 2026-06-24, which has
+          no poll step).
       - name: days_to_candidacy_election
         description: Days from the build date to the anchor election. Negative once passed.
       - name: days_to_filing_deadline
@@ -3444,7 +3470,9 @@ models:
     description: >
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
-      plus each outbound HubSpot touch and each committed outreach send. Internal
+      plus each outbound HubSpot touch and each committed outreach send. Win
+      sends are Outreach send; an elected official's polls and outreach to
+      constituents are Serve outreach, so Win counts never include them. Internal
       only. Reshaping only: single moments are user_journey columns, and touches
       and sends are the histories user_journey already rolls up. A moment with no
       date has no row, so undated facts (Pro with no start date, third-party
@@ -3477,6 +3505,7 @@ models:
                   - Free product output
                   - Activated
                   - Outreach send
+                  - Serve outreach
                   - First payment
                   - First subscription payment
                   - Pro
@@ -3504,7 +3533,8 @@ models:
           Registered, Onboarded, Free product output, First payment, Pro,
           Activated, Primary election, General election. Moments added later take
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
-          payment, Filing deadline. Not chronological; sort a timeline by event_at.
+          payment, Filing deadline. 14 is Serve outreach. Not chronological; sort
+          a timeline by event_at.
         data_tests:
           - not_null
       - name: event_key
@@ -3524,9 +3554,16 @@ models:
         description: >
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
-          door_knocking, phone_banking, social, unattributed); null otherwise.
+          door_knocking, phone_banking, social, unattributed, and poll for Serve
+          outreach); null otherwise.
       - name: event_value
-        description: Recipients for an outreach send; null for every other event.
+        description: >
+          Recipients for an Outreach send or Serve outreach (a poll's audience
+          size); null for every other event and for sends with no recipient count.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: product
         description: >
           user_journey.product for the user (win, serve, both, none). A user

@@ -152,7 +152,24 @@ with
             s.channel as event_label,
             cast(s.recipient_count as bigint) as event_value
         from {{ ref("int__user_outreach_sends") }} as s
-        where s.basis = 'committed'
+        where s.basis = 'committed' and s.product = 'win'
+    ),
+
+    -- Its own event so a Win count of sends or voters reached never picks up an
+    -- elected official's polls and texts to constituents.
+    serve_sends as (
+        select
+            s.user_id,
+            'Serve outreach' as event,
+            'send' as event_category,
+            cast(null as string) as stage,
+            14 as event_order,
+            'send:' || s.send_key as event_key,
+            s.send_at as event_at,
+            s.channel as event_label,
+            cast(s.recipient_count as bigint) as event_value
+        from {{ ref("int__user_outreach_sends") }} as s
+        where s.basis = 'committed' and s.product = 'serve'
     ),
 
     events as (
@@ -173,6 +190,9 @@ with
         union all
         select *
         from sends
+        union all
+        select *
+        from serve_sends
     )
 
 select
