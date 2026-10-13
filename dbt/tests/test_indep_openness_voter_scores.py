@@ -26,6 +26,7 @@ from dbt.project.models.intermediate.l2.int__indep_openness_voter_scores import 
     booster_digest,
     build_features_sql,
     cuts_by_state,
+    departed_voters_delete_sql,
     flag_column,
     flagged_frame,
     flags,
@@ -38,6 +39,7 @@ from dbt.project.models.intermediate.l2.int__indep_openness_voter_scores import 
     raw_scores,
     scenario_arm,
     scoring_fingerprint,
+    skip_for_missing_cuts,
 )
 
 _SEED = Path(__file__).resolve().parents[1] / "project" / "seeds" / "indep_openness_n_ref.csv"
@@ -257,6 +259,24 @@ def test_cuts_by_state_reports_missing_instead_of_raising():
 def test_cuts_by_state_rejects_corrupt_cuts(rows, match):
     with pytest.raises(ValueError, match=match):
         cuts_by_state(rows, ["NH", "WV"], "fp1")
+
+
+def test_missing_cuts_skip_an_incremental_run():
+    assert skip_for_missing_cuts(["WV"], True, "cuts", "fp1") is True
+    assert skip_for_missing_cuts([], True, "cuts", "fp1") is False
+    assert skip_for_missing_cuts([], False, "cuts", "fp1") is False
+
+
+def test_missing_cuts_fail_a_first_build_instead_of_writing_an_empty_table():
+    with pytest.raises(ValueError, match="empty table"):
+        skip_for_missing_cuts(["WV"], False, "cuts", "fp1")
+
+
+def test_departed_voters_delete_is_scoped_to_scored_states():
+    sql = " ".join(departed_voters_delete_sql("cat.sch.tbl", "_l2", ["WV", "NH"]).split())
+    assert sql.startswith("delete from cat.sch.tbl as target")
+    assert "target.state in ('NH', 'WV')" in sql
+    assert "not exists ( select 1 from _l2 as l2 where l2.LALVOTERID = target.LALVOTERID )" in sql
 
 
 def test_output_schema_lists_flags_and_raw_scores():

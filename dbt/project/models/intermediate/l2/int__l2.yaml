@@ -517,7 +517,9 @@ models:
       moves a score; this model reads only the cuts matching its own fingerprint.
       Incremental (merge on LALVOTERID): runs score only new voters until the
       fingerprint changes (a promoted model, a new seed or date), then rescore every
-      voter. With no cuts yet for a new fingerprint, the table is left unchanged.
+      voter. Each incremental run first deletes voters no longer in L2. With no
+      cuts yet for a new fingerprint, an incremental run leaves the table
+      unchanged and a first build or full refresh fails.
     config:
       # Monthly, with the L2 refresh: new registrants only arrive with an L2 load.
       tags: ["monthly"]

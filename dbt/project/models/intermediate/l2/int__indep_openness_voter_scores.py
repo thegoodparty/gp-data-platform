@@ -29,8 +29,11 @@ other cuts are kept so analysis can rebuild finer bands.
 The models follow an alias (@production by default). When the fingerprint changes
 (a promoted model, a new seed or feature date), the next run rescores the whole voter
 file; otherwise it scores only new LALVOTERIDs, so a voter's flag does not move
-between changes. If no cuts exist yet for the new fingerprint, the run leaves the
-table as it is and logs a warning rather than failing the monthly chain.
+between changes. Each incremental run first deletes voters who have left L2, so the
+table holds only current voters, all on one fingerprint. If no cuts exist yet for the
+new fingerprint, an incremental run leaves the table as it is and logs a warning
+rather than failing the monthly chain; a first build or full refresh raises instead
+of writing an empty table.
 
 Scoring follows the turnout scorer's mapInPandas pattern, with one difference: these
 boosters are a few MB, so the closure carries their text and no Volume staging is
@@ -520,6 +523,46 @@ def cuts_by_state(cut_rows, states, fingerprint):
     return {st: result[st] for st in states if st not in incomplete}, incomplete
 
 
+def skip_for_missing_cuts(no_cuts, is_incremental, cut_table, fingerprint):
+    """Whether to leave the table unchanged because some states have no cuts.
+
+    On an incremental run the existing flags stay valid for their own fingerprint, so
+    the run warns and writes nothing rather than failing the monthly chain. On a first
+    build or a --full-refresh there is nothing to keep: writing nothing would replace
+    the table with an empty one and every mart flag would silently read false, so it
+    raises instead.
+    """
+    if not no_cuts:
+        return False
+    detail = (
+        f"{cut_table} has no complete cut set for fingerprint {fingerprint} in {no_cuts}. "
+        "Run the cut-point notebook for the current models."
+    )
+    if not is_incremental:
+        raise ValueError(f"{detail} Refusing to build an empty table.")
+    print(f"WARNING: {detail} Leaving the table unchanged.")
+    return True
+
+
+def departed_voters_delete_sql(target, l2_view, states):
+    """Delete rows whose LALVOTERID has left L2, within the scored states only (a
+    dev allowlist run must not touch other states).
+
+    The merge only inserts and updates, so without this a full rescore leaves departed
+    voters on the old fingerprint: the table then never has a single fingerprint, its
+    uniqueness test fails, and every later run rescores the whole file.
+    """
+    state_list = ", ".join(f"'{st}'" for st in sorted(states))
+    return f"""
+        delete from {target} as target
+        where
+            target.state in ({state_list})
+            and not exists (
+                select 1 from {l2_view} as l2 where l2.LALVOTERID = target.LALVOTERID
+            )
+    """
+
+
 def _parse_state_allowlist(raw):
     """DEV-ONLY: score a subset of states without a full national run."""
     if raw is None:
@@ -654,21 +697,8 @@ def model(dbt, session):
 
     cut_rows = session.table(cut_table).filter(f"scoring_fingerprint = '{fingerprint}'").toPandas()
     cuts, no_cuts = cuts_by_state(cut_rows, states, fingerprint)
-    if no_cuts:
-        print(
-            f"WARNING: {cut_table} has no complete cut set for fingerprint {fingerprint} in "
-            f"{no_cuts}. Run the cut-point notebook for the current models. Leaving the table unchanged."
-        )
+    if skip_for_missing_cuts(no_cuts, dbt.is_incremental, cut_table, fingerprint):
         return session.createDataFrame([], schema=output_schema())
-
-    full_rescore = True
-    if dbt.is_incremental:
-        existing = session.table(f"{dbt.this}")
-        if "scoring_fingerprint" in existing.columns:
-            stamped = {r[0] for r in existing.select("scoring_fingerprint").distinct().collect()}
-            full_rescore = stamped != {fingerprint}
-            if full_rescore:
-                print(f"fingerprint changed from {sorted(stamped, key=str)}: rescoring every voter")
 
     l2 = dbt.ref("int__l2_nationwide_uniform_w_haystaq")
     missing = missing_l2_columns(l2.columns, cycle["primary_end_year"], cycle["caster_column"])
@@ -680,6 +710,19 @@ def model(dbt, session):
             raise ValueError(f"L2 has states with no n_ref: {sorted(unknown, key=str)}")
     l2 = l2.filter(l2.state_postal_code.isin(states))
     l2.createOrReplaceTempView("_l2")
+
+    full_rescore = True
+    if dbt.is_incremental:
+        # Prune first, so the fingerprint check below sees only current L2 voters.
+        deleted = session.sql(departed_voters_delete_sql(f"{dbt.this}", "_l2", states)).collect()
+        print(f"removed voters no longer in L2: {deleted}")
+        existing = session.table(f"{dbt.this}")
+        if "scoring_fingerprint" in existing.columns:
+            stamped = {r[0] for r in existing.select("scoring_fingerprint").distinct().collect()}
+            full_rescore = stamped != {fingerprint}
+            if full_rescore:
+                print(f"fingerprint changed from {sorted(stamped, key=str)}: rescoring every voter")
+
     # Precinct aggregates always come from the full state; only the scored set shrinks.
     to_score = l2
     if not full_rescore:
