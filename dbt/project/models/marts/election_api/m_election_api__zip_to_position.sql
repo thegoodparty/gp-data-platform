@@ -1,5 +1,5 @@
 with
-    future_elections as (
+    elections as (
         -- Some (br_position_database_id, election_date) pairs have multiple
         -- gp_election_ids when Splink misses clustering BR/TS rows for the
         -- same position+date; pick one canonical row to prevent fan-out below.
@@ -14,9 +14,8 @@ with
             is_judicial,
             br_position_database_id
         from {{ ref("election") }}
-        where
-            election_date > current_date()
-            and election_date <= current_date() + interval 2 years
+        -- No date bound: positions with only past races must still get rows
+        -- so they appear in the office picker.
         qualify
             row_number() over (
                 partition by br_position_database_id, election_date
@@ -93,7 +92,7 @@ with
             zips.voters_in_zip,
             zips.voters_in_zip_district,
             zips.pct_districtzip_to_zip
-        from future_elections as elec
+        from elections as elec
         left join
             zip_to_position as zips
             on zips.br_database_id = elec.br_position_database_id

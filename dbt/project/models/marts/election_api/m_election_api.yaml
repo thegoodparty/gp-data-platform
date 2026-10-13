@@ -475,10 +475,10 @@ models:
 
   - name: m_election_api__zip_to_position
     description: >
-      Maps zip codes to future election positions for the OfficePicker product.
+      Maps zip codes to election positions for the OfficePicker product.
       Joins the civics election mart with the zip-to-BallotReady-office
-      intermediate model, filtered to elections within two years of the
-      current date.
+      intermediate model. Covers all elections, past and future, so positions
+      with only past races are still pickable.
 
       Grain: One row per (zip_code, position_id, election_date). Positions
       without zip coverage will have a null zip_code.
