@@ -354,6 +354,35 @@ models:
       stg_census_acs__geo_estimates. Join a person through
       gp_api_voters.Census_Block_Group_Geoid. Null where the Census suppressed a
       value; there is no sex or gender breakdown.
+    data_tests:
+      # int__district_acs_estimates sums these counts over block groups, so a
+      # suppressed (null) one would quietly undercount a district.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              total_population is not null and population_under_18 is not null and
+              population_65_plus is not null and population_race_universe is not null and
+              population_white_nh is not null and population_black_nh is not null and
+              population_native_american_nh is not null and population_asian_nh is not null
+              and population_other_nh is not null and population_hispanic is not null and
+              population_25_plus is not null and population_hs_or_higher is not null and
+              population_bachelors_or_higher is not null and civilian_labor_force is not null
+              and unemployed_population is not null and households is not null and
+              owner_occupied_households is not null and population_in_households is not null
+              and households_broadband_universe is not null and households_with_broadband is
+              not null and population_poverty_universe is not null and
+              population_below_poverty is not null and households_income_universe is not null
+              and households_income_under_10k is not null and households_income_10k_to_15k is
+              not null and households_income_15k_to_20k is not null and
+              households_income_20k_to_25k is not null and households_income_25k_to_30k is
+              not null and households_income_30k_to_35k is not null and
+              households_income_35k_to_40k is not null and households_income_40k_to_45k is
+              not null and households_income_45k_to_50k is not null and
+              households_income_50k_to_60k is not null and households_income_60k_to_75k is
+              not null and households_income_75k_to_100k is not null and
+              households_income_100k_to_125k is not null and households_income_125k_to_150k
+              is not null and households_income_150k_to_200k is not null and
+              households_income_200k_plus is not null
     columns:
       - name: block_group_geoid
         description: >
