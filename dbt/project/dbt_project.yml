@@ -137,9 +137,6 @@ models:
         l2_s3:
           # There are about 400 static view models in this folder, so we need to add a tag to exclude them from recurring dbt jobs.
           +tags: ["staging", "dbt_source", "l2_s3", "monthly"]
-          # L2 drops old vote history columns; schema evolution lets these views follow without a rebuild.
-          # Uniform and Haystaq keep fixed columns so drops fail the nationwide models.
-          +post-hook: "{% if this.identifier.endswith('_vote_history') %}alter view {{ this }} with schema evolution{% endif %}"
       segment_storage_source:
         +tags: ["segment", "monthly"]
       l2_commercial:
