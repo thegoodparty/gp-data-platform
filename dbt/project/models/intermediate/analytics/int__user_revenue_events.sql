@@ -75,6 +75,7 @@ select
     plan_interval,
     cast(null as decimal(12, 2))
 from user_subscriptions
+where started_at is not null
 union all
 -- Ended, not cancelled: a subscription set to cancel at period end keeps
 -- paying until then.
