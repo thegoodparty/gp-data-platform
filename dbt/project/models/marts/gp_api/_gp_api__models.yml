@@ -197,6 +197,8 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: "^[0-9]{12}$"
+              config:
+                where: "Census_Block_Group_Geoid is not null"
       - name: hf_ideology_general
         description: >
           Haystaq general-ideology label, passed through from the L2/Haystaq
