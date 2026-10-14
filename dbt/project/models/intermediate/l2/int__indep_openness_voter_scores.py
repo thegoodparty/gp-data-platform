@@ -291,6 +291,10 @@ def _voter_feature_exprs(election_date, reg_cutoff, primary_end_year):
         "mean_edu_years": "try_cast(ConsumerData_AreaMedianEducationYears as double)",
         "mean_persons_in_hh": "try_cast(ConsumerData_Number_Of_Persons_in_HH as double)",
         "pct_moved_from": "case when Voters_MovedFrom_Date is not null then 1.0 else 0.0 end",
+        # Raw on purpose. The model wants LOR at the election, i.e. L2 LOR minus
+        # (L2 pull year - election year). This scores only the current cycle from the
+        # current L2 file, so that offset is zero. Scoring another cycle against this
+        # vintage would need the l2_collection_year term the turnout scorers apply.
         "mean_lor_corrected": lor,
         "mean_reg_duration_yrs": f"case when {reg_ok} then {reg_years} end",
         "pct_recently_registered": (
