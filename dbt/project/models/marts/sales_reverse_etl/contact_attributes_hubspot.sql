@@ -34,6 +34,13 @@ with
         join
             {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as theirs
             on ours.id = theirs.id
+        -- Staging keeps a merged-away contact's last extract looking live, so the
+        -- inner join cannot drop it. HubSpot can route a write to its id onto the
+        -- survivor, overwriting the survivor's own value.
+        left join
+            {{ ref("int__hubspot_contact_merges") }} as merged
+            on ours.id = merged.merged_contact_id
+        where merged.merged_contact_id is null
     )
 
 select

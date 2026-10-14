@@ -218,8 +218,8 @@ models:
       (reverse-ETL sendable mart). One row per HubSpot contact Record ID where a
       published value differs from HubSpot's current value, so the first run after
       a property is created is its backfill and later runs carry only changes.
-      Contact-grained companion to company_viability_hubspot. Publishes
-      serve_priority_segment.
+      Merged-away contacts are excluded. Contact-grained companion to
+      company_viability_hubspot. Publishes serve_priority_segment.
     columns:
       - name: Record ID
         # Space in the name: dbt emits the identifier unquoted in generic tests
