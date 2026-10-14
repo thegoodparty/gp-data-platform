@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,35 @@ def fake_repo(tmp_path: Path) -> Path:
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], cwd=repo, check=True
     )
     return repo
+
+
+def test_fixture_git_calls_ignore_an_inherited_git_dir(tmp_path):
+    """Failure this catches: under a git hook's GIT_DIR, fake_repo's git calls
+    and prep_arm's git archive land in that repo instead of tmp_path."""
+    victim = tmp_path / "victim"
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    subprocess.run(["git", "init", "-q", str(victim)], env=clean_env, check=True)
+    before = {p: p.read_bytes() for p in victim.rglob("*") if p.is_file()}
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--basetemp",
+            str(tmp_path / "inner"),
+            f"{__file__}::test_bare_is_substrate_only",
+        ],
+        cwd=Path(__file__).parent.parent,
+        env={**clean_env, "GIT_DIR": str(victim / ".git")},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert {p: p.read_bytes() for p in victim.rglob("*") if p.is_file()} == before
 
 
 def _prep(arm, fake_repo, tmp_path):
