@@ -141,6 +141,8 @@ with
             -- Activated metric
             m.first_campaign_sent_at,
             (m.first_campaign_sent_at is not null) as is_activated,
+            m.first_activation_channel,
+            m.first_activation_is_self_reported,
             m.total_campaigns_sent,
             m.total_recipient_count,
             m.total_outreach_contacts,

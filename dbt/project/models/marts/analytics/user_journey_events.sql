@@ -172,6 +172,39 @@ with
         where s.basis = 'committed' and s.product = 'serve'
     ),
 
+    -- In-order reach through each flow's current version. The label carries the
+    -- step number so a chart sorts by it; the value is seconds since the previous
+    -- step, for time spent on each.
+    flow_steps as (
+        select
+            f.user_id,
+            case
+                f.flow
+                when 'win_onboarding'
+                then 'Onboarding step'
+                when 'pro_upgrade'
+                then 'Pro upgrade step'
+                when 'serve_onboarding'
+                then 'Serve onboarding step'
+            end as event,
+            'flow_step' as event_category,
+            cast(null as string) as stage,
+            case
+                f.flow
+                when 'win_onboarding'
+                then 15
+                when 'pro_upgrade'
+                then 16
+                when 'serve_onboarding'
+                then 17
+            end as event_order,
+            'step:' || f.flow || ':' || f.step_order as event_key,
+            f.step_at as event_at,
+            f.step_order || '. ' || f.step as event_label,
+            f.seconds_from_previous_step as event_value
+        from {{ ref("int__amplitude_user_flow_steps") }} as f
+    ),
+
     events as (
         select
             user_id,
@@ -193,6 +226,9 @@ with
         union all
         select *
         from serve_sends
+        union all
+        select *
+        from flow_steps
     )
 
 select

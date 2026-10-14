@@ -77,7 +77,12 @@ with
     -- Read from the model the Activated Candidates OKR reads, so this row and
     -- the reported figure cannot drift. Win accounts only; null elsewhere.
     win_activation as (
-        select user_id, is_activated, first_campaign_sent_at as activated_at
+        select
+            user_id,
+            is_activated,
+            first_campaign_sent_at as activated_at,
+            first_activation_channel,
+            first_activation_is_self_reported
         from {{ ref("users_win_base") }}
     ),
 
@@ -166,6 +171,8 @@ select
 
     wa.is_activated,
     wa.activated_at,
+    wa.first_activation_channel,
+    wa.first_activation_is_self_reported,
 
     {{
         dbt_utils.star(

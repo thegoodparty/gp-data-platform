@@ -53,6 +53,31 @@ models:
           outreach_first_sent_at on the user outreach intensity model, which is
           a different number on purpose.
 
+      - name: first_activation_channel
+        description: >
+          The channel of the send that set first_campaign_sent_at, in the outreach
+          sends vocabulary. 'events' only comes from a self-report; 'unattributed'
+          is a send that named no channel. Null exactly when
+          first_campaign_sent_at is.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "texting",
+                    "robocall",
+                    "social",
+                    "door_knocking",
+                    "phone_banking",
+                    "events",
+                    "unattributed",
+                  ]
+
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report (method 'unknown'), which
+          the OKR still counts. Null when not activated.
+
       - name: total_campaigns_sent
         description: >
           Lifetime count of product-performed outreach sends per user, over the
@@ -181,6 +206,56 @@ models:
             expression: "dashboard_view_count >= 1"
           config:
             where: "last_dashboard_viewed_at is not null"
+
+  - name: int__amplitude_user_flow_steps
+    description: >
+      How far each user got through the Win onboarding, Pro upgrade and Serve
+      onboarding flows: one row per step reached in order. A step counts only
+      when every earlier step fired before it, so users per step never rise.
+      Core steps of each flow's current version only, counted from its launch
+      date (Win onboarding 2026-06-08, Pro upgrade 2026-06-17, Serve onboarding
+      2026-06-24). Optional and retired screens are left out, because a step
+      list spanning versions reads renames as drop-off.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: flow
+        description: win_onboarding, pro_upgrade or serve_onboarding.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win_onboarding, pro_upgrade, serve_onboarding]
+      - name: step_order
+        description: Position in the flow, from 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 6
+      - name: step
+        description: The step in display words.
+        data_tests:
+          - not_null
+      - name: step_at
+        description: First time the user reached the step.
+        data_tests:
+          - not_null
+      - name: seconds_from_previous_step
+        description: >
+          Seconds since the previous step. Null on step 1, never negative because
+          steps count only in order.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, flow, step_order]
 
   - name: int__amplitude_serve_activity
     description: >
