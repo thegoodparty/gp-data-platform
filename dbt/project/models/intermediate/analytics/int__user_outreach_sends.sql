@@ -18,6 +18,10 @@
 -- asserts a delivery nobody confirmed. They get their own basis and their own
 -- column downstream.
 --
+-- product says which product the send came from: Serve outreach is keyed to
+-- the elected office's organization, Serve polls come from the poll table, and
+-- Amplitude tags its events from 2026-09-29.
+--
 -- Grain: one row per send. Not unique on user_id.
 {{ config(materialized="table") }}
 
@@ -33,9 +37,19 @@ with
         where not coalesce(is_demo, false)
     ),
 
+    -- Serve outreach belongs to the elected office's organization and carries no
+    -- campaign id, so it is keyed through the organization instead.
+    serve_org_users as (
+        select organization_slug, min(user_id) as user_id
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }}
+        where organization_slug is not null
+        group by organization_slug
+    ),
+
     outreach_rows as (
         select
-            cu.user_id,
+            coalesce(cu.user_id, so.user_id) as user_id,
+            if(cu.user_id is not null, 'win', 'serve') as product,
             o.id as outreach_id,
             o.outreach_type,
             o.status,
@@ -45,12 +59,18 @@ with
             coalesce(o.date, o.createdat) as send_at,
             try_cast(o.billable_text_count as bigint) as billable_text_count
         from {{ ref("stg_airbyte_source__gp_api_db_outreach") }} as o
-        join campaign_users as cu on cu.campaign_id = o.campaignid
+        left join campaign_users as cu on cu.campaign_id = o.campaignid
+        left join serve_org_users as so on so.organization_slug = o.organization_slug
+        -- A row with a campaign id is Win even when the campaign is a demo, so
+        -- the organization fallback only applies when there is no campaign.
+        where
+            cu.user_id is not null or (o.campaignid is null and so.user_id is not null)
     ),
 
     gp_api_sends as (
         select
             user_id,
+            product,
             case
                 when outreach_type in ('p2p', 'text')
                 then 'texting'
@@ -127,7 +147,10 @@ with
             -- would report completing one call session as contacting a whole
             -- call list. The two properties never co-occur, so coalescing them
             -- silently mixes the two meanings into one column.
-            try_cast(event_properties:recipientcount as bigint) as raw_recipient_count
+            try_cast(event_properties:recipientcount as bigint) as raw_recipient_count,
+            -- Tagged from 2026-09-29. Earlier events are Win by default, because
+            -- before then Serve had no outreach of its own beyond polls.
+            if(event_properties:product::string = 'serve', 'serve', 'win') as product
         from {{ ref("stg_airbyte_source__amplitude_api_events") }}
         where
             try_cast(user_id as bigint) is not null
@@ -162,6 +185,7 @@ with
     amplitude_sends as (
         select
             user_id,
+            product,
             case
                 -- The v2 terminal names its own channel.
                 when event_type = 'Voter Outreach - Campaign Scheduled'
@@ -256,7 +280,7 @@ with
     -- Matched per channel where the event names one, and on user and day alone
     -- for the unattributed leg, which could have been any channel.
     gp_api_send_days as (
-        select distinct user_id, date(send_at) as send_date, channel
+        select distinct user_id, product, date(send_at) as send_date, channel
         from gp_api_sends
         where basis = 'committed'
     ),
@@ -268,6 +292,7 @@ with
         left join
             gp_api_send_days as d
             on d.user_id = a.user_id
+            and d.product = a.product
             and d.send_date = date(a.send_at)
             and (d.channel = a.channel or a.channel = 'unattributed')
         where i.outreach_id is null and d.user_id is null
@@ -285,7 +310,7 @@ with
     -- is silent on that and the event is not. Dropping the event instead would
     -- keep the weaker evidence and discard the confirmation.
     amplitude_confirmations as (
-        select distinct user_id, date(send_at) as send_date
+        select distinct user_id, product, date(send_at) as send_date
         from amplitude_kept
         where basis = 'committed' and channel = 'unattributed'
     ),
@@ -296,19 +321,52 @@ with
         left join
             amplitude_confirmations as c
             on c.user_id = g.user_id
+            and c.product = g.product
             and c.send_date = date(g.send_at)
         where g.basis = 'committed' or c.user_id is null
     ),
 
+    -- Serve polls live only in gp-api, so nothing to deduplicate. A poll counts
+    -- once it completes; the audience is the number of constituents texted.
+    poll_sends as (
+        select
+            eo.user_id,
+            'serve' as product,
+            'poll' as channel,
+            coalesce(p.scheduled_date, p.created_at) as send_at,
+            'gp_api_poll' as source,
+            if(p.is_completed, 'committed', 'requested') as basis,
+            p.targetaudiencesize as recipient_count,
+            'gp_api_poll|' || p.id as send_key
+        from {{ ref("stg_airbyte_source__gp_api_db_poll") }} as p
+        join
+            {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
+            on eo.id = p.elected_office_id
+    ),
+
     unioned as (
-        select user_id, channel, send_at, source, basis, recipient_count, send_key
+        select
+            user_id, product, channel, send_at, source, basis, recipient_count, send_key
         from gp_api_kept
         union all
-        select user_id, channel, send_at, source, basis, recipient_count, send_key
+        select
+            user_id, product, channel, send_at, source, basis, recipient_count, send_key
         from amplitude_kept
+        union all
+        select
+            user_id, product, channel, send_at, source, basis, recipient_count, send_key
+        from poll_sends
     )
 
-select u.user_id, u.channel, u.send_at, u.source, u.basis, u.recipient_count, u.send_key
+select
+    u.user_id,
+    u.product,
+    u.channel,
+    u.send_at,
+    u.source,
+    u.basis,
+    u.recipient_count,
+    u.send_key
 from unioned as u
 join keys as k using (user_id)
 where u.channel is not null and u.send_at is not null

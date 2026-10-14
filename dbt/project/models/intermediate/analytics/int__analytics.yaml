@@ -484,6 +484,48 @@ models:
               arguments:
                 min_value: 0
                 inclusive: true
+      - name: call_before_signup_count
+        description: Calls logged before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: email_before_signup_count
+        description: Sales emails sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: meeting_before_signup_count
+        description: Meetings held or booked before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_before_signup_count
+        description: SMS sent before the account was created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: touches_before_signup_count
+        description: >
+          Outbound touches (the touch_count_total channels) strictly before
+          registered_at: what it took to bring the person in. Compared to the
+          instant, not the day: about 7,000 sales signups were created by a
+          rep during a connected pledge call logged minutes earlier, which a
+          whole-day count (days_since_registered < 0 on user_journey_events)
+          misses. Zero for most self-serve signups, whose contact the signup
+          itself created.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: first_call_at
         description: First logged call.
       - name: last_call_at
@@ -513,6 +555,165 @@ models:
             expression: connected_call_count <= call_count
           config:
             where: has_hubspot_contact
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              touches_before_signup_count = call_before_signup_count
+              + email_before_signup_count + meeting_before_signup_count
+              + sms_before_signup_count
+              and touches_before_signup_count <= touch_count_total
+          config:
+            where: has_hubspot_contact
+
+  - name: int__stripe_checkout_sessions
+    description: >
+      Completed Stripe Checkout Sessions, one row per session, parsed from the
+      events stream. Since 2026-02-16 the product sells one-offs through
+      Checkout Sessions in payment mode and the purchase metadata lives on the
+      session, so this is how a later charge gets its purchase type, joined on
+      payment_intent_id. Stripe keeps events for 30 days, so the history here
+      exists only as long as the connector is never reset. Internal only.
+    columns:
+      - name: checkout_session_id
+        description: Stripe Checkout Session id.
+        data_tests:
+          - unique
+          - not_null
+      - name: payment_intent_id
+        description: >
+          The payment intent the session created; joins to the charge. Null for
+          subscription-mode sessions.
+        data_tests:
+          - unique
+      - name: checkout_mode
+        description: payment (one-off purchase) or subscription.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [payment, subscription, setup]
+      - name: payment_type
+        description: What the product says was bought, from the session metadata.
+      - name: purchase_type
+        description: The product's coarser label for the same purchase.
+      - name: amount_total_usd
+        description: Session total in dollars.
+      - name: completed_at
+        description: When the completion event was created.
+        data_tests:
+          - not_null
+
+  - name: int__user_stripe_charges
+    description: >
+      Each settled Stripe charge that reaches a gp-api user, with its purchase
+      line. One row per user and charge: a charge reaches a user through their
+      Stripe customer, or through the product's own user id on a charge with no
+      customer. The only place a charge is typed, read by both
+      int__user_revenue_profile and int__user_revenue_events. A customer shared
+      by two user rows puts its charges on both. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: charge_id
+        description: Stripe charge id.
+        data_tests:
+          - not_null
+      - name: created_at
+        description: When the charge was taken.
+        data_tests:
+          - not_null
+      - name: amount_captured_usd
+        description: Dollars captured.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: amount_refunded_usd
+        description: Dollars refunded against the charge so far.
+      - name: payment_type
+        description: >
+          What the product says was bought (outreach_purchase,
+          domain_registration, poll), from the charge's metadata before
+          2026-02-16 and from its checkout session after. Charges for outreach
+          taken outside checkout carry only an outreach id and count as
+          outreach_purchase. Null for subscription and sales-led charges.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [outreach_purchase, domain_registration, poll]
+      - name: revenue_line
+        description: >
+          subscription (raised an invoice), sales_led (HubSpot commerce
+          checkout), one_off (any own-product purchase with a payment_type) or
+          unclassified (none of these; a handful of charges).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [subscription, sales_led, one_off, unclassified]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, charge_id]
+
+  - name: int__user_revenue_events
+    description: >
+      Dated money moments per user: each payment, each refund (dated when
+      refunded), and each Pro subscription's start and end. Failed checkouts
+      (incomplete, incomplete_expired) are neither a start nor an end. Amounts
+      are signed so a sum is net revenue. Feeds user_journey_events. Internal
+      only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: event
+        description: Payment, Refund, Subscription started or Subscription ended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Payment, Refund, Subscription started, Subscription ended]
+      - name: event_key
+        description: The Stripe charge, refund or subscription id, prefixed by kind.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: When it happened.
+        data_tests:
+          - not_null
+      - name: event_label
+        description: >
+          What a Payment or Refund was for: outreach_purchase,
+          domain_registration or poll for a product purchase, otherwise the
+          line (subscription, sales_led, unclassified). The plan interval for a
+          subscription start or end.
+      - name: event_amount_usd
+        description: >
+          Captured dollars for a Payment, minus the refunded dollars for a
+          Refund. Null for a subscription start or end, which moves no money,
+          so a sum over every row is net revenue.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, event_key]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd >= 0"
+          config:
+            where: event = 'Payment'
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd <= 0"
+          config:
+            where: event = 'Refund'
 
   - name: int__user_revenue_profile
     description: >
@@ -639,12 +840,10 @@ models:
           - not_null
       - name: unclassified_paid_usd
         description: >
-          Own-product one-offs taken after 2026-02-16, when checkout moved
-          behind a payment intent this connector does not ingest and its
-          metadata went with it. The dollars are the user's and are counted in
-          the lifetime total; only the purchase line is unknown. Kept as its
-          own column so the gap is visible rather than folded into a named
-          line.
+          Charges that match no purchase line: no invoice, no HubSpot checkout,
+          and no purchase type on the charge, its checkout session or an
+          outreach id. A handful of charges. Kept as its own column so any gap
+          stays visible rather than folded into a named line.
         data_tests:
           - not_null
       - name: first_payment_at
@@ -1000,6 +1199,13 @@ models:
           (is_serve_activation_event). Serve's counterpart to is_engaged.
         data_tests:
           - not_null
+      - name: win_activity_days
+        description: >
+          Distinct days in the month with a non-machine Win event (catalog
+          is_win). Part of activity_days; use it for a Win monthly-active count
+          that leaves out days spent only in Serve.
+        data_tests:
+          - not_null
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -1139,6 +1345,11 @@ models:
       so that leg collapses exactly; the legacy events carry no id and fall
       back to same user, same day, matched per channel.
 
+      Serve rows ride along under product = 'serve': outreach from an elected
+      official's organization (it carries no campaign id), Serve polls from the
+      poll table, and Amplitude events tagged serve from 2026-09-29. Voter
+      outreach measures read product = 'win' only.
+
       Grain: one row per send, unique on send_key. Not unique on user_id.
     columns:
       - name: user_id
@@ -1170,7 +1381,18 @@ models:
                     "door_knocking",
                     "phone_banking",
                     "unattributed",
+                    "poll",
                   ]
+      - name: product
+        description: >
+          'win' for campaign outreach, 'serve' for an elected official's
+          outreach to constituents. Amplitude events before 2026-09-29 carry no
+          product and read as win.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
       - name: send_at
         description: >
           When the send went out. The scheduled send date where the candidate
@@ -1184,7 +1406,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["gp_api_outreach", "amplitude"]
+                values: ["gp_api_outreach", "amplitude", "gp_api_poll"]
       - name: basis
         description: >
           'committed' is a send we know went out. 'requested' is one we only
@@ -1720,6 +1942,34 @@ models:
         description: power_user_has_sent and power_user_view_days at or above the bar.
         data_tests:
           - not_null
+
+  - name: int__user_usage_group
+    description: >
+      Each Win user's usage group, one exclusive label per user, so a dashboard
+      control can filter every page to the same people. One row per Win user.
+      Moves with the build date, because is_power_user does.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: usage_group
+        description: >
+          Power user (is_power_user); Sent, not a power user (reached voters
+          through the product but below the dashboard bar); Pro, never sent
+          (a subscription payment, never reached voters); Free, never sent.
+          Users with no candidacy have no power-user row and fall into the two
+          never-sent groups.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Power user
+                  - Sent, not a power user
+                  - Pro, never sent
+                  - Free, never sent
 
   - name: int__user_first_touch_utm
     description: >

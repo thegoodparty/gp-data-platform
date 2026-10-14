@@ -44,7 +44,7 @@ with
             *,
             {{ normalize_l2_district_name("l2_district_name") }}
             as normalized_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("int__l2_br_match_served") }}
     ),
     -- (br_database_id, district) pairs the LLM confidently placed.
     llm_matched_districts as (

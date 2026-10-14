@@ -11,7 +11,7 @@ with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
     catalog as (
-        select event_type, is_machine_emitted, is_serve
+        select event_type, is_machine_emitted, is_serve, is_win
         from {{ ref("int__amplitude_event_catalog") }}
     ),
 
@@ -22,7 +22,10 @@ with
             count(distinct date(e.event_time)) as activity_days,
             count(
                 distinct case when c.is_serve then date(e.event_time) end
-            ) as serve_activity_days
+            ) as serve_activity_days,
+            count(
+                distinct case when c.is_win then date(e.event_time) end
+            ) as win_activity_days
         from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
         join catalog as c on c.event_type = e.event_type
         where
@@ -88,6 +91,7 @@ with
             cal.activity_month,
             coalesce(um.activity_days, 0) as activity_days,
             coalesce(um.serve_activity_days, 0) as serve_activity_days,
+            coalesce(um.win_activity_days, 0) as win_activity_days,
             coalesce(em.is_engaged, false) as is_engaged,
             coalesce(em.is_engaged_serve, false) as is_engaged_serve
         from first_months as f
@@ -145,5 +149,8 @@ select
             }}
     end as serve_growth_state,
     is_engaged,
-    is_engaged_serve
+    is_engaged_serve,
+    -- activity_days counts every product; this is the Win share, for a Win
+    -- monthly-active count that excludes days spent only in Serve.
+    win_activity_days
 from lagged

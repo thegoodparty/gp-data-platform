@@ -28,11 +28,7 @@ with
 
     districts as (select * from {{ ref("m_election_api__district") }}),
 
-    crosswalk as (
-        select *
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
-        where is_matched
-    ),
+    crosswalk as (select * from {{ ref("int__l2_br_match_served") }} where is_matched),
 
     -- the active People Served cohort's two non-email inputs. active_user is the
     -- behavioral half (unique by user_id, so the join cannot fan out the org

@@ -254,6 +254,15 @@ models:
         data_tests:
           - not_null
 
+      - name: first_activation_channel
+        description: >
+          The channel of the send that made the user activated. See
+          int__amplitude_user_milestones.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. See
+          int__amplitude_user_milestones.
+
       - name: product_output_at
         description: >
           When the user first made something with the product that left it.
@@ -776,7 +785,9 @@ models:
           Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
 
       - name: has_started_serve_onboarding
-        description: TRUE if user has the Getting Started milestone timestamp.
+        description: >
+          TRUE if the user opened Serve onboarding in either flow: Getting
+          Started (the poll flow) or Welcome (the flow from 2026-06-24).
         data_tests:
           - not_null
 
@@ -807,13 +818,18 @@ models:
 
       - name: has_completed_serve_onboarding
         description: >
-          TRUE if user has sent an SMS poll (final funnel step).
+          TRUE if the user reached the end of Serve onboarding in either flow:
+          sent the onboarding poll (the poll flow) or completed the pledge (the
+          flow from 2026-06-24, which has no poll step).
         data_tests:
           - not_null
 
       - name: serve_onboarding_steps_completed
         description: >
-          Integer count of completed Serve onboarding steps (0-7).
+          Integer count of completed steps in the poll onboarding flow (0-7).
+          The flow from 2026-06-24 has different steps that are not counted
+          here, so its users read low; use has_completed_serve_onboarding to
+          compare across flows.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -864,16 +880,19 @@ models:
             expression: "is_active_eo = true"
           config:
             where: "is_serve_user = true and last_serve_activity_at >= current_date - interval 30 days"
+      # Completion spans both flows, so it implies a start in either flow.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "first_sms_poll_sent_at is not null"
+            expression: "has_started_serve_onboarding"
           config:
             where: "has_completed_serve_onboarding = true"
+      # The step count is the poll flow's, so it is checked against that flow's
+      # first step.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "serve_onboarding_steps_completed >= 1"
           config:
-            where: "has_started_serve_onboarding = true"
+            where: "serve_getting_started_at is not null"
 
   - name: users_win_candidacy
     description: >
@@ -1782,8 +1801,9 @@ models:
   - name: hubspot_contacts
     description: >
       Passthrough exposure of stg_airbyte_source__hubspot_api_contacts
-      into mart_analytics for Sigma BI POV. View materialization, no
-      transformations. Columns documented at the upstream staging model.
+      into mart_analytics for Sigma BI POV. View materialization; the only
+      added column is is_merged_away. Columns documented at the upstream
+      staging model.
 
       Source: stg_airbyte_source__hubspot_api_contacts.
     columns:
@@ -1792,6 +1812,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_merged_away
+        description: >
+          True when HubSpot merged this contact into another. The row is the
+          contact's last extract before the merge, kept because Airbyte never
+          re-extracts it; the contact no longer exists in HubSpot, so exclude
+          these rows when counting contacts.
 
   - name: hubspot_calls
     description: >
@@ -3263,7 +3289,8 @@ models:
       it (int__user_resolved_keys, int__user_candidacy_profile,
       int__user_hubspot_profile, int__user_first_touch_utm,
       int__user_product_activity, int__user_outreach_intensity,
-      int__user_revenue_profile, users_win_base) and is not restated here. Only the columns
+      int__user_revenue_profile, int__user_power_user, int__user_usage_group,
+      users_win_base) and is not restated here. Only the columns
       this model derives are documented below.
 
       Nulls mean "cannot see", zeros mean "saw nothing happen". Each family has
@@ -3332,10 +3359,55 @@ models:
         description: >
           When is_activated became true, from users_win_base
           first_campaign_sent_at. Null when not activated.
+      - name: first_activation_channel
+        description: >
+          The channel of the activating send (texting, robocall, social,
+          door_knocking, phone_banking, events, unattributed), from
+          users_win_base. Null when not activated.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. Most
+          of 2025's activations came this way, so split on it before comparing
+          years. Null when not activated.
+      - name: usage_group
+        description: >
+          From int__user_usage_group: Power user, Sent, not a power user, Pro,
+          never sent, or Free, never sent. Null for accounts that are not Win
+          users.
+        data_tests:
+          - not_null:
+              config:
+                where: product in ('win', 'both')
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:
           - not_null
+      - name: serve_started_at
+        description: >
+          When the official started Serve: their first elected office in gp-api.
+          Use this, not eo_activated_at, for when someone became a Serve user;
+          eo_activated_at takes the first poll when that came first, and a
+          migration created hundreds of Serve organizations on one day.
+      - name: is_serve_icp
+        description: >
+          ICP-Serve: the office behind the official's Serve organization is a
+          state or local executive or legislative office with 1,000 to 100,000
+          constituents, not judicial and not appointed. False when the office
+          has no matched position; null for users who are not Serve users.
+      - name: first_serve_activated_at
+        description: >
+          The Activated Serve Users timestamp, read from users_serve_base so this
+          row agrees with the governed metric: the first time the official
+          reached constituents through the product. Null when not activated.
+      - name: serve_onboarding_started_at
+        description: >
+          First Serve onboarding screen, across both flows: Getting Started
+          (to 2026-06) or Welcome (from 2026-06-24).
+      - name: serve_onboarding_completed_at
+        description: >
+          End of Serve onboarding, across both flows: the onboarding poll sent
+          (old flow) or the pledge completed (the flow from 2026-06-24, which has
+          no poll step).
       - name: days_to_candidacy_election
         description: Days from the build date to the anchor election. Negative once passed.
       - name: days_to_filing_deadline
@@ -3444,7 +3516,11 @@ models:
     description: >
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
-      plus each outbound HubSpot touch and each committed outreach send. Internal
+      plus each outbound HubSpot touch, each committed outreach send, and each
+      onboarding or Pro upgrade step reached in order, and each Stripe payment,
+      refund and subscription start or end. Win
+      sends are Outreach send; an elected official's polls and outreach to
+      constituents are Serve outreach, so Win counts never include them. Internal
       only. Reshaping only: single moments are user_journey columns, and touches
       and sends are the histories user_journey already rolls up. A moment with no
       date has no row, so undated facts (Pro with no start date, third-party
@@ -3477,19 +3553,28 @@ models:
                   - Free product output
                   - Activated
                   - Outreach send
+                  - Serve outreach
                   - First payment
                   - First subscription payment
                   - Pro
                   - Filing deadline
                   - Primary election
                   - General election
+                  - Onboarding step
+                  - Pro upgrade step
+                  - Serve onboarding step
+                  - Payment
+                  - Refund
+                  - Subscription started
+                  - Subscription ended
       - name: event_category
-        description: acquisition, touch, milestone, send, revenue or election.
+        description: acquisition, touch, milestone, send, revenue, election or flow_step.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [acquisition, touch, milestone, send, revenue, election]
+                values:
+                  [acquisition, touch, milestone, send, revenue, election, flow_step]
       - name: stage
         description: >
           The user_journey_milestones stage key for the four dated funnel stages
@@ -3504,13 +3589,18 @@ models:
           Registered, Onboarded, Free product output, First payment, Pro,
           Activated, Primary election, General election. Moments added later take
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
-          payment, Filing deadline. Not chronological; sort a timeline by event_at.
+          payment, Filing deadline. 14 is Serve outreach; 15 to 17 are the Onboarding,
+          Pro upgrade and Serve onboarding steps; 18 to 21 are Payment, Refund,
+          Subscription started and Subscription ended. Not chronological; sort a
+          timeline by event_at.
         data_tests:
           - not_null
       - name: event_key
         description: >
           Unique within a user: the event name for one-off moments, the HubSpot
-          touch id for touches, the send key for sends.
+          touch id for touches, the send key for sends, the flow and step number
+          for a flow step, and the Stripe charge, refund or subscription id for
+          revenue rows.
         data_tests:
           - not_null
       - name: event_at
@@ -3524,9 +3614,33 @@ models:
         description: >
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
-          door_knocking, phone_banking, social, unattributed); null otherwise.
+          door_knocking, phone_banking, social, unattributed, and poll for Serve
+          outreach), the numbered step for a flow step ("3. Party"), what a
+          Payment or Refund was for (outreach_purchase, domain_registration or
+          poll for a product purchase, otherwise subscription, sales_led or
+          unclassified), or the plan interval for a subscription start or end;
+          null otherwise.
       - name: event_value
-        description: Recipients for an outreach send; null for every other event.
+        description: >
+          Recipients for an Outreach send or Serve outreach (a poll's audience
+          size), or seconds since the previous step for a flow step (null on step
+          1); null for every other event and for sends with no recipient count.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: event_amount_usd
+        description: >
+          Dollars, signed so a sum is net revenue: the captured amount for a
+          Payment, minus the refunded amount for a Refund (dated when refunded).
+          Null for every other event, subscription starts and ends included:
+          they move no money, and the plan amount is on user_journey. A Stripe customer shared by two user rows puts
+          its revenue rows on both, so a sum across users filters on
+          user_journey.is_primary_stripe_customer_row.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
       - name: product
         description: >
           user_journey.product for the user (win, serve, both, none). A user

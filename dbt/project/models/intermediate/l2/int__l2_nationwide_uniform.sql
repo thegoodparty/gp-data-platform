@@ -136,22 +136,56 @@ with
             and startswith(
                 assignments.l2_district_name, voters.`Unified_School_District` || ' '
             )
+    ),
+
+    adopted_scopes as (
+        select concat(state, '|', district_type) as scope
+        from {{ ref("district_map_adoption") }}
+        where adopted_source = 'proposed' and is_verified
+    ),
+
+    -- An adopted proposed map replaces the current column. A voter without a
+    -- proposed value keeps the current one, so once L2 folds the map into the
+    -- current column and clears the proposed one, nothing needs to change here.
+    -- Virginia's struck-down proposal never passes the gate.
+    {% set proposed = "voters.`Proposed_District`" %}
+    adopted as (
+        select
+            voters.* except (`US_Congressional_District`, `State_Senate_District`),
+            case
+                when
+                    concat(voters.state_postal_code, '|US_Congressional_District')
+                    in (select scope from adopted_scopes)
+                    and {{ proposed_district_type(proposed) }}
+                    = 'US_Congressional_District'
+                then {{ proposed_district_number(proposed) }}
+                else voters.`US_Congressional_District`
+            end as `US_Congressional_District`,
+            case
+                when
+                    concat(voters.state_postal_code, '|State_Senate_District')
+                    in (select scope from adopted_scopes)
+                    and {{ proposed_district_type(proposed) }} = 'State_Senate_District'
+                then {{ proposed_district_number(proposed) }}
+                else voters.`State_Senate_District`
+            end as `State_Senate_District`
+        from assigned as voters
     )
 
 -- Strip L2's padding here so every consumer agrees on a district's name and id.
 -- Every district column, not just the six that pad today: a no-op on the rest,
 -- and nothing to keep in sync when L2 starts padding a new one.
 select
-    assigned.* except (
+    adopted.* except (
         {{ get_l2_district_columns() }},
         `VoterTelephones_CellPhoneFormatted`,
         `VoterTelephones_LandlineFormatted`
     ),
     {% for column in get_l2_district_types() -%}
-        ltrim('0', assigned.`{{ column }}`) as `{{ column }}`,
+        ltrim('0', adopted.`{{ column }}`) as `{{ column }}`,
     {% endfor %}
-    {{ clean_l2_phone_number("assigned.`VoterTelephones_CellPhoneFormatted`") }}
+    {{ clean_l2_phone_number("adopted.`VoterTelephones_CellPhoneFormatted`") }}
     as `VoterTelephones_CellPhoneFormatted`,
-    {{ clean_l2_phone_number("assigned.`VoterTelephones_LandlineFormatted`") }}
+    {{ clean_l2_phone_number("adopted.`VoterTelephones_LandlineFormatted`") }}
     as `VoterTelephones_LandlineFormatted`
-from assigned
+from adopted

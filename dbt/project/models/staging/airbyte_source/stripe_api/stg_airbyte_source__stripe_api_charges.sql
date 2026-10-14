@@ -34,10 +34,9 @@ select
     get_json_object(payment_method_details, '$.type') as payment_method_type,
 
     -- Metadata our own product writes at checkout. It stopped arriving on
-    -- 2026-02-16, when checkout moved behind a payment intent that this
-    -- connector does not ingest, so every key below is null for later
-    -- charges and the purchase line becomes unclassifiable. Dollars are
-    -- unaffected: the customer id still lands.
+    -- 2026-02-16, when one-off checkout moved to Stripe Checkout Sessions and
+    -- the metadata moved onto the session (int__stripe_checkout_sessions), so
+    -- every key below is null for later checkout charges.
     get_json_object(metadata, '$.paymentType') as payment_type,
     get_json_object(metadata, '$.purchaseType') as purchase_type,
     try_cast(get_json_object(metadata, '$.userId') as bigint) as product_user_id,
@@ -47,6 +46,9 @@ select
     try_cast(get_json_object(metadata, '$.websiteId') as bigint) as product_website_id,
     get_json_object(metadata, '$.domainName') as domain_name,
     get_json_object(metadata, '$.outreachType') as outreach_type,
+    -- Set by the outreach flows that charge directly rather than through
+    -- checkout (from 2026-09), which carry no paymentType.
+    get_json_object(metadata, '$.outreachId') as product_outreach_id,
     try_cast(
         get_json_object(metadata, '$.contactCount') as bigint
     ) as outreach_contact_count,

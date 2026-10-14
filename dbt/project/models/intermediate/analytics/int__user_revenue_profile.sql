@@ -20,63 +20,8 @@ with
 
     pro_state as (select user_id, pro_campaign_count from {{ ref("users") }}),
 
-    -- Succeeded and captured only. A failed or uncaptured charge is an
-    -- attempt, and the two together are a quarter of all charge rows.
-    settled_charges as (
-        select
-            charge_id,
-            stripe_customer_id,
-            product_user_id,
-            invoice_id,
-            payment_type,
-            hs_checkout_session_id,
-            description,
-            created_at,
-            amount_captured_usd,
-            amount_refunded_usd
-        from {{ ref("stg_airbyte_source__stripe_api_charges") }}
-        where charge_status = 'succeeded' and is_captured and is_livemode
-    ),
-
-    -- Two ways a charge reaches a user, unioned on the charge id so a charge
-    -- carrying both is counted once. The metadata leg recovers 98 charges
-    -- taken with no Stripe customer at all, which the customer join cannot
-    -- see.
-    user_charges as (
-        select k.user_id, c.charge_id
-        from keys as k
-        join settled_charges as c on c.stripe_customer_id = k.stripe_customer_id
-        union
-        select p.user_id, c.charge_id
-        from settled_charges as c
-        join pro_state as p on p.user_id = c.product_user_id
-        where c.stripe_customer_id is null
-    ),
-
-    -- Purchase lines. Only the first three are nameable: on 2026-02-16 the
-    -- product's checkout moved behind a payment intent this connector does not
-    -- ingest, and its metadata went with it, so every own-product one-off
-    -- since then arrives with nothing on it but an amount. The dollars are
-    -- still the user's; only the line is unknown.
-    classified as (
-        select
-            uc.user_id,
-            c.charge_id,
-            c.created_at,
-            c.amount_captured_usd,
-            c.amount_refunded_usd,
-            case
-                when c.invoice_id is not null or c.description like 'Subscription%'
-                then 'subscription'
-                when c.hs_checkout_session_id is not null
-                then 'sales_led'
-                when c.payment_type is not null
-                then 'one_off'
-                else 'unclassified'
-            end as revenue_line
-        from user_charges as uc
-        join settled_charges as c using (charge_id)
-    ),
+    -- Typed per charge in one place, so the period events and these totals agree.
+    classified as (select * from {{ ref("int__user_stripe_charges") }}),
 
     revenue as (
         select
