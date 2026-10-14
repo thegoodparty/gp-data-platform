@@ -3289,7 +3289,8 @@ models:
       it (int__user_resolved_keys, int__user_candidacy_profile,
       int__user_hubspot_profile, int__user_first_touch_utm,
       int__user_product_activity, int__user_outreach_intensity,
-      int__user_revenue_profile, users_win_base) and is not restated here. Only the columns
+      int__user_revenue_profile, int__user_power_user, int__user_usage_group,
+      users_win_base) and is not restated here. Only the columns
       this model derives are documented below.
 
       Nulls mean "cannot see", zeros mean "saw nothing happen". Each family has
@@ -3368,6 +3369,15 @@ models:
           The activating send was a legacy self-report the OKR still counts. Most
           of 2025's activations came this way, so split on it before comparing
           years. Null when not activated.
+      - name: usage_group
+        description: >
+          From int__user_usage_group: Power user, Sent, not a power user, Pro,
+          never sent, or Free, never sent. Null for accounts that are not Win
+          users.
+        data_tests:
+          - not_null:
+              config:
+                where: product in ('win', 'both')
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:

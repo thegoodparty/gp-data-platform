@@ -181,6 +181,7 @@ select
             relation_alias="pu",
         )
     }},
+    ug.usage_group,
 
     u.is_serve_user,
     u.eo_activated_at,
@@ -236,4 +237,5 @@ left join active_eos as ae using (user_id)
 left join serve_activation as sa using (user_id)
 left join win_activation as wa using (user_id)
 left join {{ ref("int__user_power_user") }} as pu using (user_id)
+left join {{ ref("int__user_usage_group") }} as ug using (user_id)
 left join internal as i on i.gp_person_id = k.gp_person_id
