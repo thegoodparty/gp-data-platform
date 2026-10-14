@@ -96,6 +96,13 @@ Once a month (a calendar reminder fires on the second Tuesday), check the previo
    check's dead-tuple count. Neither should grow without a reason you can name.
 5. **Spend.** Haiku 4.5 on Bedrock (AWS Cost Explorer, service "Claude Haiku 4.5 (Amazon Bedrock
    Edition)"). A month without a wave costs a few dollars.
+6. **Matches L2 respelled away.** Count matched rows whose `(l2_state, l2_district_type,
+   l2_district_name)` is no longer a row in `m_election_api__district`, leaving out offices already in
+   `l2_br_match_overrides`. L2 drops stray spellings between deliveries, and the office then loses its
+   district without any error. A failing `relationships` test on
+   `m_election_api__district_top_issues.district_id` in a scheduled build can be the first sign.
+   For each one, confirm who votes for the seat and add an override row onto the spelling that carries
+   the voters.
 
 ## Retries
 
