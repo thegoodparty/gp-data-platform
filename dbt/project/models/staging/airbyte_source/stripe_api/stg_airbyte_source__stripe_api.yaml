@@ -165,9 +165,10 @@ models:
       - name: payment_type
         description: >
           What the product says was bought: outreach_purchase,
-          domain_registration, poll. Null on every charge after 2026-02-16,
-          when checkout moved behind a payment intent and the metadata went
-          with it.
+          domain_registration, poll. Null on checkout charges after
+          2026-02-16, when one-off checkout moved to Stripe Checkout Sessions
+          and the metadata moved onto the session; see
+          int__stripe_checkout_sessions.
       - name: purchase_type
         description: The product's coarser label for the same purchase.
       - name: product_user_id
@@ -182,6 +183,10 @@ models:
         description: Domain bought, on a domain registration.
       - name: outreach_type
         description: Channel bought, on an outreach purchase.
+      - name: product_outreach_id
+        description: >
+          Outreach the product charged for directly, outside checkout (from
+          2026-09). These charges carry no payment_type.
       - name: outreach_contact_count
         description: Contacts bought, on an outreach purchase.
       - name: hs_checkout_session_id
