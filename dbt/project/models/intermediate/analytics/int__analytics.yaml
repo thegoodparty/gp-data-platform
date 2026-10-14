@@ -687,7 +687,9 @@ models:
           - not_null
       - name: event_label
         description: >
-          The purchase line for a Payment or Refund, the plan interval for a
+          What a Payment or Refund was for: outreach_purchase,
+          domain_registration or poll for a product purchase, otherwise the
+          line (subscription, sales_led, unclassified). The plan interval for a
           subscription start or end.
       - name: event_amount_usd
         description: >

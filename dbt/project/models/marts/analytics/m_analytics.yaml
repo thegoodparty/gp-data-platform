@@ -3615,10 +3615,11 @@ models:
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
           door_knocking, phone_banking, social, unattributed, and poll for Serve
-          outreach), the numbered step for a flow step ("3. Party"), the
-          purchase line for a Payment or Refund (subscription, one_off,
-          sales_led, unclassified), or the plan interval for a subscription start
-          or end; null otherwise.
+          outreach), the numbered step for a flow step ("3. Party"), what a
+          Payment or Refund was for (outreach_purchase, domain_registration or
+          poll for a product purchase, otherwise subscription, sales_led or
+          unclassified), or the plan interval for a subscription start or end;
+          null otherwise.
       - name: event_value
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience
