@@ -1,19 +1,26 @@
 # Matcha entity-resolution DAG (`matcha_er`)
 
 Design and operational reference for the DAG that runs matcha's Splink entity resolution over the
-three matched entity types (candidacy stages, elected officials, election stages) and swaps the
+four matched entity types (candidacy stages, elected officials, election stages, people) and swaps the
 results into the `er_source` tables dbt reads.
 
 ## What it does
 
 Weekly, on Tuesday at 15:00 UTC (after BallotReady's Monday export and TechSpeed's Tuesday drop), the
-DAG refreshes the three dbt "prematch" models via dbt Cloud, then for each entity type
+DAG refreshes the dbt "prematch" models via dbt Cloud, then for each entity type
 runs the containerized Splink matcher as a Kubernetes pod, quality-gates what it produced, and swaps
-the gated output into the live table dbt reads. Once all three entities have swapped, it rebuilds the
+the gated output into the live table dbt reads. Once all four entities have swapped, it rebuilds the
 downstream `er_source`-dependent dbt models, then runs a cleanup step that drops the prior run's
-renamed-aside tables and any dated vintages past the retention window. The five stages are:
-`dbt_refresh_prematch` -> three parallel `match -> gate -> swap` entity groups -> `dbt_build_er_source`
--> `cleanup`.
+renamed-aside tables and any dated vintages past the retention window. The stages are:
+`dbt_refresh_prematch` -> `ensure_er_schema` -> four parallel `match -> gate -> swap` entity groups ->
+`dbt_build_er_source` -> `cleanup`.
+
+The person lane differs from the other three in one way: it also reads `int__civics_person_links`,
+dbt's deterministic same-person pairs, and clusters them as certain matches alongside the scored pairs.
+Its cluster table carries an `identity_id` (the component over the links alone) next to `cluster_id`,
+and a cluster holding two BallotReady people falls back to its identities (an identity holding two
+falls back to singletons). The person id mint in
+`int__civics_person_canonical_ids` reads both labels.
 
 ## Why dated tables
 
@@ -54,7 +61,7 @@ Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the 
 The match tasks set `retries=0`. A match failure is deterministic, so the default 2 retries turned one
 four-hour `election_stage` timeout into three.
 
-`max_active_tasks=1` is a quota accommodation, not a modeling decision — within this DAG the three
+`max_active_tasks=1` is a quota accommodation, not a modeling decision — within this DAG the four
 entities have no dependency on each other and would otherwise run concurrently. Raising it belongs in the
 same change as a terraform quota bump.
 
@@ -196,7 +203,7 @@ The pod sets `image_pull_policy: Always`, so every pod pulls its tag fresh inste
 whatever a node already has cached. A cache hit would otherwise let a pod run a matcher build older
 than the tag now points at, silently and with nothing in the logs to say so.
 
-What `Always` does not fix is that `latest` is mutable. The DAG runs the three entity pods one after
+What `Always` does not fix is that `latest` is mutable. The DAG runs the four entity pods one after
 another, so a merge touching `matcha/**` landing mid-run republishes `latest` and the later pods
 execute different matcher code than the earlier ones. No output is corrupted by that — each entity's
 tables come from a single pod, and each gate compares that entity's own vintage against its own live
@@ -227,6 +234,16 @@ re-running this DAG alone will not rebuild it: `dbt_refresh_prematch` runs
 with no `+` prefix, so it deliberately rebuilds only those models, not their upstreams. Fix and
 build the upstream layer separately (a manual `dbt build --select <upstream>+` or its own job) before
 re-triggering `matcha_er`.
+
+## Re-running one entity
+
+To re-match a single entity without waiting for Tuesday, clear `<entity>.match` with its downstream
+in the latest run (Airflow UI: Clear, with Downstream; or `clearTaskInstances` with
+`include_downstream`, run as a dry run first). That re-runs the entity's `match`, `gate` and `swap`, then
+`dbt_build_er_source` and `cleanup`. A full manual trigger instead re-matches every entity, which costs
+hours. The match pod reads the prematch and links models straight from the dbt schema, so a merged
+change to them is picked up without `dbt_refresh_prematch`, and the swap's dated-table guard makes
+re-promoting safe.
 
 ## When a swap crashes midway
 

@@ -123,10 +123,26 @@ models:
           This is the earlier of: the creation date of their first Serve
           organization, or the creation date of their first completed poll.
           NULL for users who are not Serve users (is_serve_user = false).
+          For the date someone started Serve use serve_started_at: a migration
+          on 2026-03-12 created hundreds of Serve organizations at once, which
+          this column reads as Serve starts.
         data_tests:
           - not_null:
               config:
                 where: "is_serve_user = true"
+
+      - name: serve_started_at
+        description: >
+          Creation date of the user's first elected office in gp-api: the day
+          they signed up for Serve. NULL for users with no elected office.
+
+      - name: is_serve_icp
+        description: >
+          ICP-Serve: any of the user's elected offices sits in an organization
+          whose position is ICP-Serve in int__icp_offices (state or local
+          executive or legislative, 1,000 to 100,000 constituents, not judicial,
+          not appointed). False when no position is matched; NULL for users with
+          no elected office.
 
   - name: campaigns
     description: >
@@ -704,7 +720,7 @@ models:
         description: >
           Reason why a candidacy is not verified. Only populated when is_verified
           is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
-          Write In.
+          Write In, Ended Pro.
 
       - name: is_partisan
         description: Whether the race is partisan
@@ -3151,7 +3167,8 @@ models:
         state, party: BR > BR officeholder > HubSpot > TS > TS officeholder
           (gp_api carries neither).
       Each source contributes from one representative member record (earliest
-      by first_seen_at), so a source's fields stay internally consistent.
+      by first_seen_at; for HubSpot, a live contact before one merged away), so
+      a source's fields stay internally consistent.
       email adds a final tier: when no rep has one, a sweep of every member
       record supplies the best address (~8.9k people, mostly officeholders).
       BR contact/state/party come from int__ballotready_candidate_identity
@@ -3195,10 +3212,10 @@ models:
         description: >
           HubSpot contact id when unambiguous, else NULL.
 
-          Null when the group holds zero or more than one HubSpot contact, about
-          9,750 persons among those holding a user account, of which only about
-          1,480 are the ambiguous case rather than simple absence. Read
-          person_identifiers, or int__user_resolved_keys at user grain.
+          Null when the group holds zero or more than one live HubSpot contact.
+          A contact merged away in HubSpot (int__hubspot_contact_merges) stays
+          in its group as an alias and does not count. Read person_identifiers,
+          or int__user_resolved_keys at user grain.
       - name: ts_candidate_code
         description: Stage-stripped TechSpeed candidate code when unambiguous, else NULL.
       - name: first_name

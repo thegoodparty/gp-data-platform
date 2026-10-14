@@ -25,7 +25,11 @@
 with
     anchor as (select * from {{ ref("int__user_election_anchor") }}),
 
-    sends as (select * from {{ ref("int__user_outreach_sends") }}),
+    -- Voter outreach is a campaign measure; an elected official's outreach to
+    -- constituents is not reach toward their election.
+    sends as (
+        select * from {{ ref("int__user_outreach_sends") }} where product = 'win'
+    ),
 
     -- A window only exists for these two statuses. Everything downstream keys
     -- its nulls off this flag rather than re-testing the status string.

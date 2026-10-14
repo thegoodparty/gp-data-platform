@@ -47,19 +47,29 @@ with
         from spine_members
     ),
 
-    -- Contacts that still exist. The user row's own hubspot_contact_id is
-    -- carried by 66,664 users but 5,241 of those point at a contact that has
-    -- since been merged or deleted in HubSpot, so a raw join on it reaches
-    -- fewer live contacts than the graph does.
+    -- Contacts that still exist. Staging keeps a merged-away contact's last
+    -- extract, so those are dropped here.
     live_contacts as (
-        select cast(id as string) as hs_contact_id
-        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+        select cast(c.id as string) as hs_contact_id
+        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as c
+        left anti join
+            {{ ref("int__hubspot_contact_merges") }} as m on m.merged_contact_id = c.id
     ),
 
+    -- The user row's own hubspot_contact_id often points at a contact since
+    -- merged or deleted in HubSpot. A merged one is followed to its survivor,
+    -- as HubSpot redirects it; a deleted one leaves the user to the graph.
     own_contact as (
-        select cast(u.id as bigint) as user_id, u.hubspot_contact_id as hs_contact_id
+        select
+            cast(u.id as bigint) as user_id,
+            coalesce(m.surviving_contact_id, u.hubspot_contact_id) as hs_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }} as u
-        inner join live_contacts as lc on lc.hs_contact_id = u.hubspot_contact_id
+        left join
+            {{ ref("int__hubspot_contact_merges") }} as m
+            on m.merged_contact_id = u.hubspot_contact_id
+        inner join
+            live_contacts as lc
+            on lc.hs_contact_id = coalesce(m.surviving_contact_id, u.hubspot_contact_id)
     ),
 
     -- Every HubSpot contact the person group reaches, which is what the graph

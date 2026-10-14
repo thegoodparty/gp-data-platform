@@ -69,7 +69,9 @@ with
             m.serve_poll_preview_at,
 
             -- Serve Onboarding Funnel boolean flags (for easy counting)
-            (m.serve_getting_started_at is not null) as has_started_serve_onboarding,
+            -- Start and completion span both onboarding flows; the per-step
+            -- flags and the step count below describe the poll flow only.
+            (m.serve_onboarding_started_at is not null) as has_started_serve_onboarding,
             (
                 m.serve_constituency_profile_at is not null
             ) as has_viewed_constituency_profile,
@@ -78,8 +80,9 @@ with
             (m.serve_add_image_at is not null) as has_added_image,
             (m.serve_poll_preview_at is not null) as has_previewed_poll,
 
-            -- Funnel completion: reached the end of the onboarding flow.
-            (m.first_sms_poll_sent_at is not null) as has_completed_serve_onboarding,
+            (
+                m.serve_onboarding_completed_at is not null
+            ) as has_completed_serve_onboarding,
 
             -- Serve onboarding funnel step count (0-7 for dashboard segmentation)
             (

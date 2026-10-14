@@ -12,7 +12,7 @@ with
             br_database_id,
             lower(l2_district_type) as l2_district_type,
             lower(l2_district_name) as l2_district_name
-        from {{ ref("stg_model_predictions__llm_l2_br_match") }}
+        from {{ ref("int__l2_br_match_served") }}
         where is_matched
     ),
     llm_unplaceable_overrides as (
