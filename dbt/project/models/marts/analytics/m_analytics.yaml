@@ -3618,8 +3618,7 @@ models:
           outreach), the numbered step for a flow step ("3. Party"), the
           purchase line for a Payment or Refund (subscription, one_off,
           sales_led, unclassified), or the plan interval for a subscription start
-          or end; null otherwise. Since 2026-02-16 product one-offs arrive as
-          unclassified, because Stripe stopped carrying the purchase type.
+          or end; null otherwise.
       - name: event_value
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience

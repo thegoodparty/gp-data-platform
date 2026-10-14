@@ -21,7 +21,9 @@ with
             stripe_customer_id,
             product_user_id,
             invoice_id,
+            payment_intent_id,
             payment_type,
+            product_outreach_id,
             hs_checkout_session_id,
             description,
             created_at,
@@ -44,27 +46,45 @@ with
         from settled_charges as c
         join users as u on u.user_id = c.product_user_id
         where c.stripe_customer_id is null
+    ),
+
+    sessions as (
+        select payment_intent_id, payment_type
+        from {{ ref("int__stripe_checkout_sessions") }}
+        where payment_intent_id is not null
+    ),
+
+    -- Own-product purchases carry their type on the charge until 2026-02-16 and
+    -- on the checkout session after it; outreach charged directly carries only
+    -- an outreach id.
+    typed as (
+        select
+            uc.user_id,
+            c.*,
+            coalesce(
+                c.payment_type,
+                s.payment_type,
+                if(c.product_outreach_id is not null, 'outreach_purchase', null)
+            ) as purchase_payment_type
+        from user_charges as uc
+        join settled_charges as c using (charge_id)
+        left join sessions as s on s.payment_intent_id = c.payment_intent_id
     )
 
--- Purchase lines. Only the first three are nameable: on 2026-02-16 the
--- product's checkout moved behind a payment intent this connector does not
--- ingest, and its metadata went with it, so every own-product one-off since
--- then arrives with nothing on it but an amount. The dollars are still the
--- user's; only the line is unknown.
 select
-    uc.user_id,
-    c.charge_id,
-    c.created_at,
-    c.amount_captured_usd,
-    c.amount_refunded_usd,
+    user_id,
+    charge_id,
+    created_at,
+    amount_captured_usd,
+    amount_refunded_usd,
+    purchase_payment_type as payment_type,
     case
-        when c.invoice_id is not null or c.description like 'Subscription%'
+        when invoice_id is not null or description like 'Subscription%'
         then 'subscription'
-        when c.hs_checkout_session_id is not null
+        when hs_checkout_session_id is not null
         then 'sales_led'
-        when c.payment_type is not null
+        when purchase_payment_type is not null
         then 'one_off'
         else 'unclassified'
     end as revenue_line
-from user_charges as uc
-join settled_charges as c using (charge_id)
+from typed
