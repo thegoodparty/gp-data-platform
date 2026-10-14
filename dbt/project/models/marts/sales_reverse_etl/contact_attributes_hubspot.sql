@@ -1,6 +1,7 @@
 {{ config(materialized="view", tblproperties={}) }}
 
--- Databricks-owned attributes -> EXISTING HubSpot contacts, matched on Record ID.
+-- Databricks-owned attributes -> EXISTING HubSpot contacts, matched on the contact's
+-- HubSpot Record ID (hubspot_contact_id; map it to Record ID on import).
 -- Contact-grained companion to company_viability_hubspot; candidacy_hubspot is the
 -- feed that creates contacts. New contact attributes we own belong here as columns.
 --
@@ -44,7 +45,7 @@ with
     )
 
 select
-    id as `Record ID`,
+    id as hubspot_contact_id,
     serve_priority_segment,
     hs_serve_priority_segment as hubspot_current_serve_priority_segment
 from compared

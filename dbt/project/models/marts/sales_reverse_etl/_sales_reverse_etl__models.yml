@@ -215,17 +215,16 @@ models:
   - name: contact_attributes_hubspot
     description: >
       Databricks-owned attributes synced onto EXISTING HubSpot contacts
-      (reverse-ETL sendable mart). One row per HubSpot contact Record ID where a
+      (reverse-ETL sendable mart). One row per HubSpot contact where a
       published value differs from HubSpot's current value, so the first run after
       a property is created is its backfill and later runs carry only changes.
       Merged-away contacts are excluded. Contact-grained companion to
       company_viability_hubspot. Publishes serve_priority_segment.
     columns:
-      - name: Record ID
-        # Space in the name: dbt emits the identifier unquoted in generic tests
-        # without this, which is a syntax error.
-        quote: true
-        description: HubSpot contact id, the import match key and the model grain.
+      - name: hubspot_contact_id
+        description: >
+          HubSpot contact id (the contact's Record ID), the import match key and
+          the model grain.
         data_tests:
           - unique
           - not_null
