@@ -3137,8 +3137,9 @@ models:
       - name: acs_coverage_share
         description: >
           Share of the district's population living in block groups with a published
-          ACS total, from 0 to 1. Below 1 means suppressed block groups are missing from
-          the acs_* counts, so shares computed from them are less certain.
+          ACS total, from 0 to 1. Below 1 means block groups the ACS does not publish
+          (a Census gap in Suffolk County, NY) are missing from the acs_* counts, so
+          shares computed from them are less certain.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:

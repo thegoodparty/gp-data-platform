@@ -4096,7 +4096,9 @@ models:
               arguments:
                 values: ["150", "040"]
       - name: geoid
-        description: 12-digit block group geoid, or 2-digit state FIPS.
+        description: >
+          12-digit block group geoid under 2020 county codes (Connecticut included),
+          or 2-digit state FIPS.
         data_tests:
           - not_null
 

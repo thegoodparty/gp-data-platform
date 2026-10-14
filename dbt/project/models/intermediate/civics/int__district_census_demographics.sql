@@ -83,7 +83,7 @@ select
         sum(shares.block_group_share * acs.{{ column }}) as acs_{{ column }},
     {%- endfor %}
     -- Share of the district's allocated population living in block groups with a
-    -- published ACS total. Below 1 means suppressed block groups left counts out.
+    -- published ACS total. Below 1 means unpublished block groups left counts out.
     coalesce(
         sum(
             case

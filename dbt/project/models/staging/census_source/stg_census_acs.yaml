@@ -1,6 +1,19 @@
 version: 2
 
 models:
+  - name: stg_census_acs__ct_block_to_planning_region_2022
+    description: >
+      One row per 2020 Connecticut census block, mapping its legacy-county geoid to the
+      planning-region geoid the 2020-2024 ACS uses. The source carries the key and
+      content tests.
+    columns:
+      - name: block_geoid_2020
+        description: 15-character 2020 block geoid under legacy CT county codes.
+      - name: block_geoid_2022
+        description: >
+          The same block under planning-region county codes; its first 12 characters
+          are the ACS block group.
+
   - name: stg_census_acs__geo_estimates
     description: >
       ACS 2020-2024 5-year estimates and 90 percent margins of error at the retained summary

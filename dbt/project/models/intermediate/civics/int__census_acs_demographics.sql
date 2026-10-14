@@ -4,9 +4,21 @@
 -- medians are left out because a median cannot be allocated. Income is collapsed
 -- from sixteen published brackets into the six bands the product shows; a band is
 -- null when any of its brackets is suppressed, matching the staging rule.
+-- The ACS codes Connecticut under planning regions while decennial blocks and L2
+-- geocodes keep the 2020 county codes, so CT block groups are relabelled to 2020
+-- codes (one-to-one at this grain) for every downstream prefix join to match. The
+-- few the crosswalk cannot reach are unpopulated water.
+with
+    ct_block_groups as (
+        select distinct
+            left(block_geoid_2022, 12) as geoid_2022,
+            left(block_geoid_2020, 12) as geoid_2020
+        from {{ ref("stg_census_acs__ct_block_to_planning_region_2022") }}
+    )
+
 select
     summary_level,
-    geoid,
+    coalesce(ct_block_groups.geoid_2020, acs.geoid) as geoid,
     total_population,
     population_under_18,
     population_65_plus,
@@ -41,5 +53,6 @@ select
     + households_income_125k_to_150k as households_income_100k_to_150k,
     households_income_150k_to_200k
     + households_income_200k_plus as households_income_150k_plus
-from {{ ref("stg_census_acs__geo_estimates") }}
+from {{ ref("stg_census_acs__geo_estimates") }} as acs
+left join ct_block_groups on acs.geoid = ct_block_groups.geoid_2022
 where summary_level in ('150', '040')
