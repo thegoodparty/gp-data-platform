@@ -453,11 +453,12 @@ seeds:
           Whether the position counts toward the Serve Priority Segment:
           municipal legislative offices (branch legislative,
           category city, town, township or metro) and mayors (City
-          Executive//Mayor, Township Mayor). City Board of Finance and City Ward
-          Moderator are excluded despite their legislative category: one is a
-          fiscal board and the other presides over ward meetings, neither is a
-          council. A GTM outreach segment, not an ICP gate; int__icp_offices adds
-          the voter-count threshold.
+          Executive//Mayor, Township Mayor). City Board of Finance and the
+          moderator positions (City Ward, Town and Town Assistant Moderator) are
+          excluded despite their legislative category: one is a fiscal board and
+          the others preside over meetings or elections, none is a council. A
+          GTM outreach segment, not an ICP gate; int__icp_offices adds the
+          voter-count threshold.
         data_tests:
           - not_null
           - accepted_values:

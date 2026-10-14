@@ -17,8 +17,8 @@ City Board of Selectmen,legislative,city,true,,true
 City Board of Finance,legislative,city,true,,false
 City Ward Moderator,legislative,city,true,,false
 Town Meeting Board,legislative,town,true,,true
-Town Moderator,legislative,town,true,,true
-Town Assistant Moderator,legislative,town,true,,true
+Town Moderator,legislative,town,true,,false
+Town Assistant Moderator,legislative,town,true,,false
 Township Trustee//Township Council,legislative,township,true,,true
 Metro Council Member,legislative,metro,true,,true
 Metro Council President,legislative,metro,true,,true
