@@ -78,7 +78,7 @@ with
     district_pop as (select * from {{ ref("int__district_population") }}),
 
     icp_position_names as (
-        select name, serve_eligible, win_effective_date
+        select name, serve_eligible, win_effective_date, serve_priority
         from {{ ref("icp_normalized_position_names") }}
     )
 
@@ -148,7 +148,24 @@ select
         else true
     end as icp_win_supersize,
 
-    cast(icp_position_names.win_effective_date as date) as icp_win_effective_date
+    cast(icp_position_names.win_effective_date as date) as icp_win_effective_date,
+
+    -- Serve Priority Segment: a GTM outreach sub-segment, NOT an ICP
+    -- gate. Municipal legislative and mayoral offices (the seed's serve_priority
+    -- column) with more than 5,000 voters. Deliberately independent of
+    -- icp_office_win: no 100K cap. Judicial and appointed offices are excluded,
+    -- matching the ICP gates. Null when voter_count is unknown, like its siblings.
+    case
+        when
+            position.is_judicial
+            or position.is_appointed
+            or icp_position_names.name is null
+            or not icp_position_names.serve_priority
+        then false
+        when voter_count is null
+        then null
+        else voter_count > 5000
+    end as is_serve_priority_segment
 
 from position
 

@@ -414,6 +414,11 @@ seeds:
       BallotReady normalized position names that qualify for ICP flags.
       The serve_eligible column controls whether a position qualifies for
       Serve ICP (false for school board positions, which are Win-only).
+    config:
+      # drop-and-recreate on every run, so adding a column (serve_priority)
+      # applies itself in every environment instead of erroring a
+      # truncate+insert against the old table shape. ~220 rows.
+      full_refresh: true
     columns:
       - name: name
         description: BallotReady normalized position name
@@ -443,6 +448,22 @@ seeds:
           - not_null:
               config:
                 where: "category = 'school_board'"
+      - name: serve_priority
+        description: >
+          Whether the position counts toward the Serve Priority Segment:
+          municipal legislative offices (branch legislative,
+          category city, town, township or metro) and mayors (City
+          Executive//Mayor, Township Mayor). City Board of Finance and the
+          moderator positions (City Ward, Town and Town Assistant Moderator) are
+          excluded despite their legislative category: one is a fiscal board and
+          the others preside over meetings or elections, none is a council. A
+          GTM outreach segment, not an ICP gate; int__icp_offices adds the
+          voter-count threshold.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: hubspot_call_dispositions
     description: >
