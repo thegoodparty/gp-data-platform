@@ -534,3 +534,27 @@ models:
               households_income_75k_to_100k >= 0 and households_income_100k_to_125k >= 0 and
               households_income_125k_to_150k >= 0 and households_income_150k_to_200k >= 0 and
               households_income_200k_plus >= 0
+
+  - name: stg_census_acs__ct_block_planning_region
+    description: >
+      One row per 2020 Connecticut census block with the ACS 2024 block group it
+      falls in. The ACS keys Connecticut by planning region, while the decennial
+      block frame and most L2 geocodes carry legacy counties, so any join from a
+      block to ACS block-group estimates goes through this map. Blocks outside
+      Connecticut are absent; their ACS block group is the first 12 characters of
+      the block geoid.
+    columns:
+      - name: block_geoid
+        description: 15-character 2020 census block geoid with the legacy county code
+        data_tests:
+          - unique
+          - not_null
+      - name: acs_block_group_geoid
+        description: >
+          12-character planning-region block group geoid, the key of the
+          Connecticut block-group rows in stg_census_acs__geo_estimates
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^09[0-9]{10}$"

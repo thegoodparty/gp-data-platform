@@ -4129,6 +4129,102 @@ models:
             combination_of_columns:
               [state_postal_code, district_type, district_name]
 
+  - name: int__district_acs_estimates
+    description: >
+      ACS 2020-2024 5-year counts per district, keyed like district_census_stats:
+      one row per (state_postal_code, district_type, district_name) for every
+      local district in the allocation, plus one district_type = 'State' row per
+      state (50 + DC). Local rows allocate block-group estimates through
+      int__district_census_allocation: each block group gives a district the
+      share of its 2020 census population that the allocation places there
+      (summed allocated_population over the block group's blocks, divided by the
+      block group's full 2020 population, zero-voter blocks included).
+      Connecticut blocks reach their planning-region block group through
+      stg_census_acs__ct_block_planning_region. Statewide rows are the published
+      state estimates, not a rollup. Every count column has the same name and
+      universe as in stg_census_acs__geo_estimates and is fractional on local
+      rows (round for display). Only additive counts are carried: medians cannot
+      be allocated, margins of error are not propagated, and aggregate household
+      income is left out because it is suppressed in some block groups. Local
+      rows carry the allocation's zero-voter-block undercount. Read one
+      district_type at a time, since each type tiles the country.
+    columns:
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: >
+          L2 district column name (the curated allocated type set), or 'State'
+          for the statewide rows
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name; the postal code on statewide rows
+        data_tests:
+          - not_null
+      - name: n_census_block_groups
+        description: >
+          ACS block groups contributing to the district (all of the state's block
+          groups on statewide rows)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: total_population
+        description: ACS total population (B01001_E001), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_race_universe
+        description: >
+          Denominator for the race and ethnicity columns (B03002_E001),
+          allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_25_plus
+        description: Denominator for the education columns (B15002_E001)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households
+        description: Occupied housing units (B25003_E001), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_poverty_universe
+        description: Denominator for population_below_poverty (C17002_E001)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households_income_universe
+        description: >
+          Denominator for the 16 household income brackets (B19001_E001);
+          consumers roll the brackets up to the bands they need
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_acs_estimates_unique_key
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
   - name: int__serve_block_coverage
     description: >
       The count-once engine. One row per (census block,

@@ -38,6 +38,11 @@ with
 
     profiles as (select * from {{ ref("int__l2_area_district_profiles") }}),
 
+    ct_block_groups as (
+        select block_geoid, acs_block_group_geoid
+        from {{ ref("stg_census_acs__ct_block_planning_region") }}
+    ),
+
     -- Every district column comes from one area, so the set stays consistent.
     -- ZIP+4 goes first: placing voters by their own commercial address, it
     -- reproduces their voter-file districts slightly more often than the block.
@@ -91,6 +96,11 @@ select
                         )
                     }}
             end as id,
+        {%- elif name | lower == "census_block_group_geoid" %}
+            coalesce(
+                ct_block_groups.acs_block_group_geoid,
+                left(consumer_only.geocode_full, 12)
+            ) as `{{ name }}`,
         {%- elif name | lower in district_types and name | lower in commercial_columns %}
             {#- The commercial file's own value fills in only where no area
                 matched, so it never mixes into an area's set. #}
@@ -118,3 +128,4 @@ left join
     profiles
     on area_choice.area_type = profiles.area_type
     and area_choice.area_id = profiles.area_id
+left join ct_block_groups on consumer_only.geocode_full = ct_block_groups.block_geoid

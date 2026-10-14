@@ -185,6 +185,18 @@ models:
         data_type: boolean
         tests:
           - not_null
+      - name: Census_Block_Group_Geoid
+        description: >
+          The 12-character ACS block group of the voter's residence, the key of
+          gp_api_block_group_census_demographics. Taken from L2's complete census
+          block geocode; Connecticut's legacy-county blocks map to their
+          planning-region block group, as the ACS keys them. Null when L2 has no
+          geocode for the voter (about 4% of the file).
+        data_type: string
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{12}$"
       - name: hf_ideology_general
         description: >
           Haystaq general-ideology label, passed through from the L2/Haystaq
@@ -273,6 +285,10 @@ models:
                   - census_block
                   - census_block_group
                   - census_tract
+      - name: Census_Block_Group_Geoid
+        description: >
+          The ACS block group of the person's commercial-file block
+          (geocode_full), keyed like gp_api_voters.Census_Block_Group_Geoid.
       - name: geocode_full
         description: >
           The commercial file's 15-digit census block GEOID, joined as-is to the
@@ -313,3 +329,46 @@ models:
 
   - name: gp_api_district_census_stats
     description: Pass-through of district_census_stats
+
+  - name: gp_api_district_census_demographics
+    description: >
+      Pass-through of int__district_acs_estimates: ACS 2020-2024 5-year counts per
+      district, on the same (state_postal_code, district_type, district_name) key
+      as gp_api_district_census_stats, with the same count columns as
+      gp_api_block_group_census_demographics. Local rows are block-group
+      estimates allocated through the district population allocation and are
+      fractional; statewide rows are the published state estimates. Counts only:
+      no medians and no margins of error. Read one district_type at a time.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
+  - name: gp_api_block_group_census_demographics
+    description: >
+      ACS 2020-2024 5-year estimates for every census block group, one row per
+      block_group_geoid, with the columns, margins of error and medians of
+      stg_census_acs__geo_estimates. Join a person through
+      gp_api_voters.Census_Block_Group_Geoid. Null where the Census suppressed a
+      value; there is no sex or gender breakdown.
+    columns:
+      - name: block_group_geoid
+        description: >
+          12-character block group geoid (state, county, tract, block group);
+          Connecticut uses planning-region county codes
+        data_tests:
+          - unique
+          - not_null
+      - name: total_population
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
