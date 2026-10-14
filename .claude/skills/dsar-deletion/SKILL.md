@@ -182,7 +182,9 @@ the marts before matcha has rerun and they carry the person from the previous cl
 Rerun the sweep and expect the same hits to be gone. Pass `--gp-api-user-id` when the
 subject had a gp-api account, because the Amplitude probe otherwise resolves the id from
 the user row that Step 3 deleted. Then check the serving systems directly rather than the
-marts: election-api Postgres, people-db, and gp-api.
+marts: election-api Postgres and gp-api. People-db was retired on 2026-09-25 (DATA-2529).
+gp-api reads voter data from `gp_api_voters` in Databricks, so the marts are the voter check.
+Any people-db snapshots that remain are listed in `docs/ccpa-deletion-inventory.md`.
 
 ## Step 7: respond and close
 
