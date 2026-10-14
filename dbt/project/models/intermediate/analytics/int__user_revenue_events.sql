@@ -7,8 +7,15 @@
 -- no money. A Stripe customer shared by two user rows puts its rows on both;
 -- sum across users with user_journey.is_primary_stripe_customer_row.
 with
+    -- The label is what was bought where the product says so (outreach,
+    -- domain, poll), otherwise the line (subscription, sales-led).
     charges as (
-        select user_id, charge_id, created_at, amount_captured_usd, revenue_line
+        select
+            user_id,
+            charge_id,
+            created_at,
+            amount_captured_usd,
+            coalesce(payment_type, revenue_line) as purchase_label
         from {{ ref("int__user_stripe_charges") }}
     ),
 
@@ -51,7 +58,7 @@ select
     'Payment' as event,
     'charge:' || charge_id as event_key,
     created_at as event_at,
-    revenue_line as event_label,
+    purchase_label as event_label,
     amount_captured_usd as event_amount_usd
 from charges
 union all
@@ -62,7 +69,7 @@ select
     'Refund',
     'refund:' || r.refund_id,
     r.refunded_at,
-    c.revenue_line,
+    c.purchase_label,
     - r.amount_usd
 from refunds as r
 join charges as c using (charge_id)
