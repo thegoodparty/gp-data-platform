@@ -62,6 +62,12 @@ with
         join journey as j using (user_id)
         where s.basis = 'committed' and s.send_at is not null
         group by s.product
+        union all
+        select r.event, count(*)
+        from {{ ref("int__user_revenue_events") }} as r
+        join journey as j using (user_id)
+        where r.event_at is not null
+        group by r.event
     ),
 
     actual as (

@@ -720,7 +720,11 @@ models:
       - name: updated_at
         description: When the subscription record last changed.
       - name: started_at
-        description: When the subscription began billing.
+        description: >
+          When the subscription began billing. Stripe sets it on every
+          subscription, so a null means a broken load.
+        data_tests:
+          - not_null
       - name: trial_started_at
         description: Start of the trial, where there was one.
       - name: trial_ends_at
