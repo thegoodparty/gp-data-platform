@@ -9,7 +9,7 @@ predictably across all three schemas.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -359,14 +359,24 @@ def bulk_insert_from_databricks(
     return total
 
 
-def apply_ddl(conn, statements: Sequence[str]) -> list[int]:
-    """Run `statements` in one transaction, returning each one's rowcount."""
+def apply_ddl(
+    conn,
+    statements: Sequence[str],
+    before_commit: Callable[[list[int]], None] | None = None,
+) -> list[int]:
+    """Run `statements` in one transaction, returning each one's rowcount.
+
+    `before_commit` sees the rowcounts and may raise to roll the whole
+    transaction back.
+    """
     cur = conn.cursor()
     rowcounts: list[int] = []
     try:
         for stmt in statements:
             cur.execute(stmt)
             rowcounts.append(cur.rowcount)
+        if before_commit:
+            before_commit(rowcounts)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -384,19 +394,27 @@ def apply_constraints(conn, spec: TableSyncSpec, loaded_count: int) -> int:
     here is what the quality gate must be given: the load's own count is taken
     before the prune runs, and comparing that against prior live would pass a
     table the prune has since hollowed out.
+
+    The share check runs before the commit. Committed, a refused prune would
+    leave the PK in place, and the retry would fail on adding it again
+    instead of repeating the real error.
     """
-    rowcounts = apply_ddl(conn, spec.constraint_ddl())
+
+    def check_prune_shares(rowcounts: list[int]) -> None:
+        for fk, deleted in zip(spec.pruning_fkeys, rowcounts, strict=False):
+            share = deleted / loaded_count if loaded_count else 1.0
+            if deleted and share > fk.max_missing_share:
+                raise ValueError(
+                    f"{spec.target_table}: {deleted} of {loaded_count} staged rows have no "
+                    f"{fk.ref_table} ({share:.1%}, over {fk.max_missing_share:.0%}) — the key "
+                    f"has changed rather than lagged, refusing to swap"
+                )
+
+    rowcounts = apply_ddl(conn, spec.constraint_ddl(), before_commit=check_prune_shares)
     pruned = 0
     for fk, deleted in zip(spec.pruning_fkeys, rowcounts, strict=False):
         if not deleted:
             continue
-        share = deleted / loaded_count if loaded_count else 1.0
-        if share > fk.max_missing_share:
-            raise ValueError(
-                f"{spec.target_table}: {deleted} of {loaded_count} staged rows have no "
-                f"{fk.ref_table} ({share:.1%}, over {fk.max_missing_share:.0%}) — the key "
-                f"has changed rather than lagged, refusing to swap"
-            )
         logger.info(
             "Pruned %d %s rows with no %s in this vintage",
             deleted,

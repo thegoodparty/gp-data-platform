@@ -472,6 +472,9 @@ TABLES: tuple[MartSync, ...] = (
                     "district_id",
                     "District",
                     on_delete="RESTRICT",
+                    # Scored from the voter file, which refreshes apart from
+                    # District's aggregations; see the density FK below.
+                    on_missing_parent="skip",
                 ),
             ),
         ),
@@ -518,6 +521,9 @@ TABLES: tuple[MartSync, ...] = (
                     "district_id",
                     "District",
                     on_delete="RESTRICT",
+                    # Rebuilt from the turnout model apart from District; see
+                    # the density FK below.
+                    on_missing_parent="skip",
                 ),
             ),
         ),

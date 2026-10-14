@@ -92,6 +92,21 @@ def test_ztp_extra_checks_refuse_partial_state_coverage():
         _ztp_extra_checks(_conn_returning(29), _spec("ZipToPosition"), 1_300_000)
 
 
+def test_district_children_prune_stale_districts_except_position():
+    """Each of these is built from an upstream that refreshes apart from
+    District's, so a few stale districts are expected. Left to fail, they take
+    the whole swap set down. Position is the exception: its ids are held by
+    the product, so a missing district there is a real defect."""
+    pruning = {
+        t.group_id
+        for t in TABLES
+        for fk in t.spec.fkeys
+        if fk.ref_table == "District" and fk.on_missing_parent == "skip"
+    }
+    district_children = {t.group_id for t in TABLES if "district" in t.parents}
+    assert pruning == district_children - {"position"}
+
+
 class TestVoterDensity:
     """The density tables live in this DAG specifically so their FK to District
     can survive. An FK from outside the set points at District_old after the

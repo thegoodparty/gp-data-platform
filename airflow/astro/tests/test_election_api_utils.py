@@ -151,6 +151,15 @@ class TestPruneMissingParents:
         with pytest.raises(ValueError, match="have no District"):
             apply_constraints(self._conn([59_300_000, 0, 0]), self._spec(), 59_300_000)
 
+    def test_a_refused_prune_rolls_back(self):
+        """Committed, the PK is already in place, so the retry fails on adding
+        it again and hides the real error behind "multiple primary keys"."""
+        conn = self._conn([59_300_000, 0, 0])
+        with pytest.raises(ValueError, match="have no District"):
+            apply_constraints(conn, self._spec(), 59_300_000)
+        conn.commit.assert_not_called()
+        conn.rollback.assert_called_once()
+
     def test_a_handful_of_late_districts_pass(self):
         with pytest.raises(ValueError):
             apply_constraints(self._conn([600_000, 0, 0]), self._spec(), 59_300_000)
