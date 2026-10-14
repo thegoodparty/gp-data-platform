@@ -254,6 +254,15 @@ models:
         data_tests:
           - not_null
 
+      - name: first_activation_channel
+        description: >
+          The channel of the send that made the user activated. See
+          int__amplitude_user_milestones.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. See
+          int__amplitude_user_milestones.
+
       - name: product_output_at
         description: >
           When the user first made something with the product that left it.
@@ -3349,6 +3358,16 @@ models:
         description: >
           When is_activated became true, from users_win_base
           first_campaign_sent_at. Null when not activated.
+      - name: first_activation_channel
+        description: >
+          The channel of the activating send (texting, robocall, social,
+          door_knocking, phone_banking, events, unattributed), from
+          users_win_base. Null when not activated.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. Most
+          of 2025's activations came this way, so split on it before comparing
+          years. Null when not activated.
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:
@@ -3487,7 +3506,8 @@ models:
     description: >
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
-      plus each outbound HubSpot touch and each committed outreach send. Win
+      plus each outbound HubSpot touch, each committed outreach send, and each
+      onboarding or Pro upgrade step reached in order. Win
       sends are Outreach send; an elected official's polls and outreach to
       constituents are Serve outreach, so Win counts never include them. Internal
       only. Reshaping only: single moments are user_journey columns, and touches
@@ -3529,13 +3549,17 @@ models:
                   - Filing deadline
                   - Primary election
                   - General election
+                  - Onboarding step
+                  - Pro upgrade step
+                  - Serve onboarding step
       - name: event_category
-        description: acquisition, touch, milestone, send, revenue or election.
+        description: acquisition, touch, milestone, send, revenue, election or flow_step.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [acquisition, touch, milestone, send, revenue, election]
+                values:
+                  [acquisition, touch, milestone, send, revenue, election, flow_step]
       - name: stage
         description: >
           The user_journey_milestones stage key for the four dated funnel stages
@@ -3550,14 +3574,16 @@ models:
           Registered, Onboarded, Free product output, First payment, Pro,
           Activated, Primary election, General election. Moments added later take
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
-          payment, Filing deadline. 14 is Serve outreach. Not chronological; sort
-          a timeline by event_at.
+          payment, Filing deadline. 14 is Serve outreach; 15 to 17 are the Onboarding,
+          Pro upgrade and Serve onboarding steps. Not chronological; sort a timeline
+          by event_at.
         data_tests:
           - not_null
       - name: event_key
         description: >
           Unique within a user: the event name for one-off moments, the HubSpot
-          touch id for touches, the send key for sends.
+          touch id for touches, the send key for sends, the flow and step number
+          for a flow step.
         data_tests:
           - not_null
       - name: event_at
@@ -3572,11 +3598,13 @@ models:
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
           door_knocking, phone_banking, social, unattributed, and poll for Serve
-          outreach); null otherwise.
+          outreach), or the numbered step for a flow step ("3. Party"); null
+          otherwise.
       - name: event_value
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience
-          size); null for every other event and for sends with no recipient count.
+          size), or seconds since the previous step for a flow step (null on step
+          1); null for every other event and for sends with no recipient count.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
