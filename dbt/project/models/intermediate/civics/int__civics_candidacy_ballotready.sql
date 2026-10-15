@@ -1,5 +1,5 @@
 -- BallotReady candidacies → Civics mart candidacy schema
--- Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections)
+-- Source: int__ballotready_s3_candidacies_gated (2026+ elections)
 --
 -- Grain: One row per candidacy (candidate + position + election year)
 --
@@ -14,7 +14,7 @@
 with
     candidacies as (
         select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where election_day >= '2026-01-01'
     ),
 

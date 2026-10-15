@@ -16,6 +16,17 @@ with
         inner join
             {{ ref("m_election_api__race") }} as tbl_race
             on tbl_candidacy.race_database_id = tbl_race.br_database_id
+        -- Same rule the CSV-backed civics readers apply, so the public API and
+        -- civics agree on who is running in an upcoming race.
+        where
+            {{
+                br_candidacy_is_current(
+                    "cast(tbl_race.election_date as date)",
+                    "tbl_candidacy.database_id",
+                    "tbl_candidacy.withdrawn",
+                    "tbl_candidacy.is_hidden",
+                )
+            }}
     ),
     tbl_party as (
         select
