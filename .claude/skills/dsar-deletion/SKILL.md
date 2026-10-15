@@ -104,7 +104,7 @@ Which type each source is filtered on:
   and contacts archive models. HubSpot companies match on the candidate email only,
   because a company phone can be a shared campaign line. First-party only.
 - `br_person_id`, `br_candidacy_id`: BallotReady candidacies and office holders, the
-  Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through
+  Airflow BallotReady person and candidacy feeds, and both TechSpeed feeds, which resolve through
   BallotReady (officeholders by office holder id, candidates by race plus name).
 - `ddhq_candidate_id`: DDHQ election results, valid and invalid.
 
@@ -152,9 +152,9 @@ Copies upstream of the filter that still hold the rows:
 
 - `airbyte_source.*` landing tables and the insert-only `airbyte_internal` raw JSON. The
   gp-api source replicates by Xmin, not CDC, so a Postgres delete never reaches them.
-- `stg_airflow_source__ballotready_person_raw`, an incremental merge. Its filter stops new
-  rows and the downstream model re-filters, but a row already merged stays until a
-  `--full-refresh` of that model.
+- `stg_airflow_source__ballotready_person_raw` and `stg_airflow_source__ballotready_candidacy_raw`,
+  incremental merges. Their filters stop new rows and the downstream `int__` views
+  re-filter, but a row already merged stays until a `--full-refresh` of that model.
 - `snapshot__hubspot_api_*` and `snapshot__m_election_api__person`. A snapshot closes a
   row rather than deleting it.
 - `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`,
@@ -173,9 +173,27 @@ the marts before matcha has rerun and they carry the person from the previous cl
 2. Rerun matcha, so `er_source.*` regenerates without the person.
 3. `dbt build --full-refresh` on the affected selectors downstream, which clears
    `mart_civics` and `mart_analytics`.
-4. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
-   excluding the person from `m_election_api__person` removes them from the serving
-   database.
+4. Rebuild every election-api mart and confirm each one was built after the register
+   insert. The sync copies whatever these tables hold when it runs, and
+   `m_election_api__candidacy` is not always rebuilt alongside
+   `m_election_api__person`; a candidacy that survives keeps the candidate page live
+   even after the person row is gone.
+
+   ```bash
+   dbt build --select "path:models/marts/election_api"
+   ```
+
+   ```sql
+   select table_name, last_altered
+   from goodparty_data_catalog.information_schema.tables
+   where table_schema = 'dbt' and table_name like 'm\_election\_api\_\_%'
+   order by last_altered
+   ```
+
+   Every `last_altered` must be later than the request's `created_at` in the register.
+   Do not rely on the nightly sync until this holds.
+5. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
+   once step 4 holds, the person is removed from the serving database.
 
 ## Step 6: verify
 

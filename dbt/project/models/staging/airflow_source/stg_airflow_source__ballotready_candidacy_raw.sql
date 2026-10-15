@@ -36,3 +36,12 @@ select
     -- obtained this record" stamp.
     loaded_at as feed_extracted_at
 from current_rows
+-- candidate.databaseId is BallotReady's person id, the same id the S3 feeds call
+-- candidate_id; databaseId is the candidacy id.
+where
+    {{
+        dsar_br_not_suppressed(
+            "get_json_object(payload, '$.candidate.databaseId')",
+            "get_json_object(payload, '$.databaseId')",
+        )
+    }}

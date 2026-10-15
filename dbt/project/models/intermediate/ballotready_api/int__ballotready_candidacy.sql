@@ -22,3 +22,5 @@ select
     withdrawn,
     feed_extracted_at
 from {{ ref("stg_airflow_source__ballotready_candidacy_raw") }}
+-- Staging is an incremental merge that keeps already-materialized rows; this rebuilds.
+where {{ dsar_br_not_suppressed("candidate_database_id", "database_id") }}
