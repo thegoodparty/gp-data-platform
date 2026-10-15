@@ -185,6 +185,20 @@ models:
         data_type: boolean
         tests:
           - not_null
+      - name: Census_Block_Group_Geoid
+        description: >
+          The 12-character ACS block group of the voter's residence, the key of
+          gp_api_block_group_census_demographics. Taken from L2's complete census
+          block geocode; Connecticut's legacy-county blocks map to their
+          planning-region block group, as the ACS keys them. Null when L2 has no
+          geocode for the voter (about 4% of the file).
+        data_type: string
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{12}$"
+              config:
+                where: "Census_Block_Group_Geoid is not null"
       - name: hf_ideology_general
         description: >
           Haystaq general-ideology label, passed through from the L2/Haystaq
@@ -273,6 +287,10 @@ models:
                   - census_block
                   - census_block_group
                   - census_tract
+      - name: Census_Block_Group_Geoid
+        description: >
+          The ACS block group of the person's commercial-file block
+          (geocode_full), keyed like gp_api_voters.Census_Block_Group_Geoid.
       - name: geocode_full
         description: >
           The commercial file's 15-digit census block GEOID, joined as-is to the
@@ -313,3 +331,75 @@ models:
 
   - name: gp_api_district_census_stats
     description: Pass-through of district_census_stats
+
+  - name: gp_api_district_census_demographics
+    description: >
+      Pass-through of int__district_acs_estimates: ACS 2020-2024 5-year counts per
+      district, on the same (state_postal_code, district_type, district_name) key
+      as gp_api_district_census_stats, with the same count columns as
+      gp_api_block_group_census_demographics. Local rows are block-group
+      estimates allocated through the district population allocation and are
+      fractional; statewide rows are the published state estimates. Counts only:
+      no medians and no margins of error. Read one district_type at a time.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
+  - name: gp_api_block_group_census_demographics
+    description: >
+      ACS 2020-2024 5-year estimates for every census block group, one row per
+      block_group_geoid, with the columns, margins of error and medians of
+      stg_census_acs__geo_estimates. Join a person through
+      gp_api_voters.Census_Block_Group_Geoid. Null where the Census suppressed a
+      value; there is no sex or gender breakdown.
+    data_tests:
+      # int__district_acs_estimates sums these counts over block groups, so a
+      # suppressed (null) one would quietly undercount a district.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              total_population is not null and population_under_18 is not null and
+              population_65_plus is not null and population_race_universe is not null and
+              population_white_nh is not null and population_black_nh is not null and
+              population_native_american_nh is not null and population_asian_nh is not null
+              and population_other_nh is not null and population_hispanic is not null and
+              population_25_plus is not null and population_hs_or_higher is not null and
+              population_bachelors_or_higher is not null and civilian_labor_force is not null
+              and unemployed_population is not null and households is not null and
+              owner_occupied_households is not null and population_in_households is not null
+              and households_broadband_universe is not null and households_with_broadband is
+              not null and population_poverty_universe is not null and
+              population_below_poverty is not null and households_income_universe is not null
+              and households_income_under_10k is not null and households_income_10k_to_15k is
+              not null and households_income_15k_to_20k is not null and
+              households_income_20k_to_25k is not null and households_income_25k_to_30k is
+              not null and households_income_30k_to_35k is not null and
+              households_income_35k_to_40k is not null and households_income_40k_to_45k is
+              not null and households_income_45k_to_50k is not null and
+              households_income_50k_to_60k is not null and households_income_60k_to_75k is
+              not null and households_income_75k_to_100k is not null and
+              households_income_100k_to_125k is not null and households_income_125k_to_150k
+              is not null and households_income_150k_to_200k is not null and
+              households_income_200k_plus is not null
+    columns:
+      - name: block_group_geoid
+        description: >
+          12-character block group geoid (state, county, tract, block group);
+          Connecticut uses planning-region county codes
+        data_tests:
+          - unique
+          - not_null
+      - name: total_population
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0

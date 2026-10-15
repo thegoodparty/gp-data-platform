@@ -293,6 +293,10 @@ with
             `Democratic_Zone`,
             `Voters_FIPS` as `FIPS`,
             `Precinct`,
+            -- L2 stores the 15-digit block geocode as a number, dropping leading zeros.
+            lpad(
+                cast(`Residence_Addresses_Complete_Census_Geocode` as string), 15, '0'
+            ) as census_block_geoid,
             `Proposed_City`,
             `Proposed_City_Commissioner_District`,
             `Proposed_Community_College`,
@@ -335,6 +339,10 @@ with
     ),
     haystaq_cutoffs as (
         select state, cutoff from {{ ref("indep_openness_haystaq_cutoff") }}
+    ),
+    ct_block_groups as (
+        select block_geoid, acs_block_group_geoid
+        from {{ ref("stg_census_acs__ct_block_planning_region") }}
     ),
     /*
         Note that here we need to list each column individually since we need to
@@ -523,6 +531,11 @@ with
             tbl_updated.`Democratic_Zone`,
             tbl_updated.`FIPS`,
             tbl_updated.`Precinct`,
+            -- Keyed like gp_api_block_group_census_demographics, so Connecticut's
+            -- legacy-county blocks take their planning-region block group.
+            coalesce(
+                tbl_ct.acs_block_group_geoid, left(tbl_updated.census_block_geoid, 12)
+            ) as `Census_Block_Group_Geoid`,
             tbl_updated.`Proposed_City`,
             tbl_updated.`Proposed_City_Commissioner_District`,
             tbl_updated.`Proposed_Community_College`,
@@ -548,6 +561,9 @@ with
             on tbl_updated.`LALVOTERID` = tbl_openness.`LALVOTERID`
         left join
             haystaq_cutoffs as tbl_haystaq on tbl_updated.`State` = tbl_haystaq.state
+        left join
+            ct_block_groups as tbl_ct
+            on tbl_updated.census_block_geoid = tbl_ct.block_geoid
     )
 
 select *
