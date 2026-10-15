@@ -104,7 +104,7 @@ Which type each source is filtered on:
   and contacts archive models. HubSpot companies match on the candidate email only,
   because a company phone can be a shared campaign line. First-party only.
 - `br_person_id`, `br_candidacy_id`: BallotReady candidacies and office holders, the
-  Airflow BallotReady person feed, and both TechSpeed feeds, which resolve through
+  Airflow BallotReady person and candidacy feeds, and both TechSpeed feeds, which resolve through
   BallotReady (officeholders by office holder id, candidates by race plus name).
 - `ddhq_candidate_id`: DDHQ election results, valid and invalid.
 
@@ -152,9 +152,9 @@ Copies upstream of the filter that still hold the rows:
 
 - `airbyte_source.*` landing tables and the insert-only `airbyte_internal` raw JSON. The
   gp-api source replicates by Xmin, not CDC, so a Postgres delete never reaches them.
-- `stg_airflow_source__ballotready_person_raw`, an incremental merge. Its filter stops new
-  rows and the downstream model re-filters, but a row already merged stays until a
-  `--full-refresh` of that model.
+- `stg_airflow_source__ballotready_person_raw` and `stg_airflow_source__ballotready_candidacy_raw`,
+  incremental merges. Their filters stop new rows and the downstream `int__` views
+  re-filter, but a row already merged stays until a `--full-refresh` of that model.
 - `snapshot__hubspot_api_*` and `snapshot__m_election_api__person`. A snapshot closes a
   row rather than deleting it.
 - `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`,
@@ -176,6 +176,12 @@ the marts before matcha has rerun and they carry the person from the previous cl
 4. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
    excluding the person from `m_election_api__person` removes them from the serving
    database.
+
+The sync copies whatever the `m_election_api__*` tables hold when it runs. Before
+triggering it, or before relying on the nightly run, confirm that every one of those
+tables was rebuilt after the register insert. `m_election_api__candidacy` is not always
+rebuilt alongside `m_election_api__person`, and a candidacy that survives keeps the
+candidate page live even after the person row is gone.
 
 ## Step 6: verify
 
