@@ -26,10 +26,12 @@
 {#- Haystaq flags 40-41% of scored voters; unscored voters are false, so ~37.5% of the file. #}
 {% set haystaq_rate_min = 0.365 %}
 {% set haystaq_rate_max = 0.385 %}
-{#- Each state-leg flag is 40% of every state, so 40% nationally; a miss means the join
-    to int__indep_openness_voter_scores lost voters or the table was left unscored. #}
-{% set stateleg_rate_min = 0.39 %}
-{% set stateleg_rate_max = 0.41 %}
+{#- State-leg cuts are a calibrated-probability rule per scenario: three-way columns flag
+    at least ~10% of every state, head-to-head columns flag the voters with at least a 1 in 5
+    chance of backing the independent. A column outside this wide band means the join to
+    int__indep_openness_voter_scores lost voters or the table was left unscored. #}
+{% set stateleg_rate_min = 0.09 %}
+{% set stateleg_rate_max = 0.95 %}
 {% set stateleg_flags = [
     "Indep_Openness_Single_Inc",
     "Indep_Openness_Single_Open",
