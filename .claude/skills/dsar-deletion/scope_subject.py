@@ -210,9 +210,9 @@ def build_probes(
         ),
         (
             "A product",
-            "airbyte_source.stripe_api_customers",
+            "airbyte_source_finance.stripe_api_customers",
             f"""select id, email, name, phone, is_deleted
-                from {CATALOG}.airbyte_source.stripe_api_customers
+                from {CATALOG}.airbyte_source_finance.stripe_api_customers
                 where lower(coalesce(email,'')) = {e} or lower(coalesce(name,'')) like {last_like}""",
         ),
         *[
