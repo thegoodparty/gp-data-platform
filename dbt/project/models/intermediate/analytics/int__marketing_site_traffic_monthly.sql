@@ -13,6 +13,9 @@ with
     page_views as (
         select
             device_id,
+            amplitude_id,
+            -- Amplitude's IP-derived country, as the business's US segment uses.
+            country = 'United States' as is_us,
             -- Amplitude marks an event outside any session with -1.
             if(session_id > 0, session_id, null) as session_id,
             event_time,
@@ -33,7 +36,8 @@ with
             session_id,
             -- A session that crosses a month boundary counts in the month it began.
             cast(date_trunc('month', min(event_time)) as date) as month_start,
-            count(*) as page_view_count
+            count(*) as page_view_count,
+            min_by(is_us, event_time) as is_us
         from page_views
         where session_id is not null
         group by device_id, session_id
@@ -53,7 +57,10 @@ with
             count(*) as page_views,
             count(
                 distinct case when idd.device_id is not null then pv.device_id end
-            ) as visitors_identified
+            ) as visitors_identified,
+            -- Amplitude's user count is distinct amplitude_id, so the US figure
+            -- follows it to reconcile with the business's chart.
+            count(distinct case when pv.is_us then pv.amplitude_id end) as us_visitors
         from page_views as pv
         left join identified_devices as idd on idd.device_id = pv.device_id
         group by pv.month_start
@@ -63,7 +70,9 @@ with
         select
             month_start,
             count(*) as sessions,
-            count_if(page_view_count = 1) as single_page_sessions
+            count_if(page_view_count = 1) as single_page_sessions,
+            count_if(is_us) as us_sessions,
+            count_if(is_us and page_view_count = 1) as us_single_page_sessions
         from sessions
         group by month_start
     )
@@ -76,6 +85,9 @@ select
     coalesce(s.single_page_sessions, 0) as single_page_sessions,
     s.single_page_sessions / nullif(s.sessions, 0) as single_page_session_share,
     v.visitors_identified,
-    v.visitors_identified / nullif(v.visitors, 0) as visitors_identified_share
+    v.visitors_identified / nullif(v.visitors, 0) as visitors_identified_share,
+    v.us_visitors,
+    coalesce(s.us_sessions, 0) as us_sessions,
+    s.us_single_page_sessions / nullif(s.us_sessions, 0) as us_single_page_session_share
 from monthly_views as v
 left join monthly_sessions as s on s.month_start = v.month_start
