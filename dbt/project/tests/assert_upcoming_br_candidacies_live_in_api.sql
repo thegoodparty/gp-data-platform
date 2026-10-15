@@ -24,6 +24,9 @@ with
         select 'int__civics_candidacy_stage_ballotready', br_candidacy_id
         from {{ ref("int__civics_candidacy_stage_ballotready") }}
         union all
+        select 'int__civics_campaign_br_primary_result', br_candidacy_id
+        from {{ ref("int__civics_campaign_br_primary_result") }}
+        union all
         select 'int__er_prematch_candidacy_stages', source_id
         from {{ ref("int__er_prematch_candidacy_stages") }}
         where source_name = 'ballotready'
