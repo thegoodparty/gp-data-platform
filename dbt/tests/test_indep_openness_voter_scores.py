@@ -14,6 +14,7 @@ import pytest
 from dbt.project.models.intermediate.l2.int__indep_openness_voter_scores import (
     ARM_0OR1,
     ARM_2PLUS,
+    FALLBACK_FEATURES,
     FEATURES,
     FLAG_CUT,
     MIN_PRECINCT_CASTERS,
@@ -55,8 +56,26 @@ _CYCLE = dict(
 def test_feature_groups_partition_the_45():
     voter = list(_voter_feature_exprs("2026-11-03", "2026-11-15", 2026))
     assert len(FEATURES) == len(set(FEATURES)) == 45
-    assert len(RACE_FEATURES) == 11 and len(PRECINCT_FEATURES) == 5 and len(voter) == 29
-    assert sorted(RACE_FEATURES + PRECINCT_FEATURES + voter) == sorted(FEATURES)
+    assert (len(RACE_FEATURES), len(voter), len(PRECINCT_FEATURES), len(FALLBACK_FEATURES)) == (11, 32, 1, 1)
+    assert sorted(RACE_FEATURES + voter + PRECINCT_FEATURES + FALLBACK_FEATURES) == sorted(FEATURES)
+
+
+def test_registration_is_the_voters_own_not_the_precincts():
+    exprs = _voter_feature_exprs("2026-11-03", "2026-11-15", 2026)
+    assert exprs["pct_reg_dem"] == "case when Parties_Description = 'Democratic' then 1.0 else 0.0 end"
+    assert exprs["pct_reg_rep"] == "case when Parties_Description = 'Republican' then 1.0 else 0.0 end"
+    assert "or Parties_Description is null then 1.0" in exprs["pct_reg_ind"]
+    assert "avg(case when Parties_Description" not in build_features_sql("_l2", "_to_score", **_CYCLE)
+
+
+def test_partisan_imbalance_is_the_voters_own_with_area_fallback():
+    sql = " ".join(build_features_sql("_l2", "_to_score", **_CYCLE).split())
+    assert (
+        "abs(hs_ideology_partisanship_partisanship_overall_party_dem_strong"
+        " - hs_ideology_partisanship_partisanship_overall_party_gop_strong) as double) as own_partisan_imbalance"
+    ) in sql
+    assert "coalesce(voters.own_partisan_imbalance, case when precinct_eco.n_casters" in sql
+    assert "else statewide_eco.partisan_imbalance end) as double) as partisan_imbalance" in sql
 
 
 def test_features_sql_emits_every_non_race_feature():
@@ -68,7 +87,7 @@ def test_features_sql_emits_every_non_race_feature():
 def test_features_sql_precinct_fallback_and_casters():
     sql = build_features_sql("_l2", "_to_score", **_CYCLE)
     assert f"precinct_eco.n_casters >= {MIN_PRECINCT_CASTERS}" in sql
-    assert "else statewide_eco." in sql
+    assert "else statewide_eco.hhi_ethnicity end" in sql
     # Aggregates read the full state; only the scored relation shrinks.
     assert "from _l2\n            where General_2024" in sql
     assert "from _to_score" in sql
@@ -121,7 +140,7 @@ def test_race_block_values():
 
 
 # ── flags ────────────────────────────────────────────────────────────────────
-def test_flag_is_top_40_percent_and_ties_count():
+def test_flag_is_c60_and_ties_count():
     assert FLAG_CUT == "c60"
     got = flags([0.1, 0.59, 0.6, 0.79, 0.95], [0.2, 0.4, 0.6, 0.8])
     assert got.dtype == bool

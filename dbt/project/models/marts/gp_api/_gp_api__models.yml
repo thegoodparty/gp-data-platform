@@ -98,8 +98,8 @@ models:
       - name: Indep_Openness_Single_Inc
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a Democrat and a Republican running, D or R incumbent in the field. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a Democrat and a Republican running, D or R incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -107,8 +107,8 @@ models:
       - name: Indep_Openness_Single_Open
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a Democrat and a Republican running, no D or R incumbent. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a Democrat and a Republican running, no D or R incumbent. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -116,8 +116,8 @@ models:
       - name: Indep_Openness_Multi_Inc
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          two or more seats, full field (scored at 3 seats), incumbent in the field. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          two or more seats, full field (scored at 3 seats), incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -125,8 +125,8 @@ models:
       - name: Indep_Openness_Multi_Open
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          two or more seats, full field (scored at 3 seats), open. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          two or more seats, full field (scored at 3 seats), open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -134,8 +134,8 @@ models:
       - name: Indep_Openness_DOnly_Inc
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a lone Democrat opponent, incumbent in the field. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a lone Democrat opponent, incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -143,8 +143,8 @@ models:
       - name: Indep_Openness_DOnly_Open
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a lone Democrat opponent, open. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a lone Democrat opponent, open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -152,8 +152,8 @@ models:
       - name: Indep_Openness_ROnly_Inc
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a lone Republican opponent, incumbent in the field. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a lone Republican opponent, incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -161,8 +161,8 @@ models:
       - name: Indep_Openness_ROnly_Open
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          one seat, a lone Republican opponent, open. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          one seat, a lone Republican opponent, open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -170,8 +170,8 @@ models:
       - name: Indep_Openness_DOnly_Multi
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          two or more seats, Democrats and no Republicans. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          two or more seats, Democrats and no Republicans. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
@@ -179,8 +179,8 @@ models:
       - name: Indep_Openness_ROnly_Multi
         description: >
           State-leg-arm flag for the openness-to-an-independent experiment, scenario:
-          two or more seats, Republicans and no Democrats. True when the voter is in the top 40% of their state on the
-          state-leg model's score for this scenario (int__indep_openness_voter_scores).
+          two or more seats, Republicans and no Democrats. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
           Voters with no score are false, so never null.
         data_type: boolean
         tests:
