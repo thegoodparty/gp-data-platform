@@ -17,7 +17,7 @@ This directory is the code only. The parquet caches under `datasets/`, generated
 | Feature layer (75 serving columns) | dbt, on `main`: `int__win_signup_features`, `int__win_position_features`, `int__win_candidate_incumbency`, `int__l2_person_bridge`, `mart_analytics.win_candidate_features` (DATA-2315, PR #1045) |
 | Scores (one run, 2026-08-14) | `model_predictions.win_candidate_scores_20260814`, long-format `win_candidate_scores` + `win_candidate_score_context`, view `win_candidate_scores_latest`; staged in dbt as `stg_model_predictions__win_candidate_scores_latest` |
 | Fitted models | MLflow experiment `/Shared/legit_candidate_predictor`. Serving run `0e3e830fa67a4c78aa69d3f6275390b8` (manifest `21ff4ad08ba3`), profile run `38d903714a5c4829bbe8102eabc61779` (manifest `caffc2f61d1e`) |
-| Unity Catalog | Being registered as `model_predictions.win_legit_candidate_serving` and `win_legit_candidate_profile`, alias `champion`, from the two runs above (not retrained) |
+| Unity Catalog | `model_predictions.win_legit_candidate_serving` (v2) and `win_legit_candidate_profile` (v1), both under alias `champion`; registered 2026-10-15 from the two runs above, not retrained. Load with `mlflow.sklearn.load_model("models:/goodparty_data_catalog.model_predictions.win_legit_candidate_serving@champion")` (needs `boto3`) |
 | Hand-verified labels | `model_predictions.web_verify_verdicts_20260813` (783 rows, DATA-2251) |
 | Experiment history | `results_ledger.jsonl` (mirrored to the MLflow experiment) |
 
