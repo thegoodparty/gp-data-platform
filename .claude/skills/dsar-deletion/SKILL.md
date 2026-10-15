@@ -159,9 +159,14 @@ Copies upstream of the filter that still hold the rows:
   row rather than deleting it.
 - `archives.airbyte_source__hubspot_api_*_20260122`, `historical.ballotready_records_sent_to_*`,
   `model_predictions.candidacy_ddhq_matches_*`.
+- `airbyte_source_finance.*`, the Stripe and QuickBooks landing tables. Finance staging
+  applies no suppression filter, so `mart_finance` carries what they hold. Anonymizing a
+  customer in Stripe reaches its landed row on the next sync, but a finalized Stripe
+  invoice keeps the customer's name, email, phone and address: finalization makes those
+  fields immutable.
 
-Everything from staging down, including PR and dev schemas, is a derived copy that the
-next rebuild clears. Do not chase those by hand.
+Apart from the finance models above, everything from staging down, including PR and dev
+schemas, is a derived copy that the next rebuild clears. Do not chase those by hand.
 
 ## Step 5: rebuild downstream, in this order
 
