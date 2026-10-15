@@ -144,7 +144,6 @@ with
             tbl_stage.updated_at,
             -- TechSpeed puts free text in br_race_id on some stages
             try_cast(tbl_election_stage.br_race_id as int) as race_database_id,
-            tbl_civics.gp_candidate_id,
             tbl_civics.party_affiliation,
             tbl_civics.is_incumbent
         from {{ ref("candidacy_stage") }} as tbl_stage
@@ -154,11 +153,13 @@ with
         inner join
             {{ ref("candidacy") }} as tbl_civics
             on tbl_stage.gp_candidacy_id = tbl_civics.gp_candidacy_id
+        -- checked per stage: a candidacy with outside evidence can still carry a
+        -- gp_api-only stage, which is a product pledge rather than a filing
         where
             tbl_stage.br_candidacy_id is null
             and not (
-                size(tbl_civics.source_systems) = 1
-                and tbl_civics.source_systems[0] = 'gp_api'
+                size(tbl_stage.source_systems) = 1
+                and tbl_stage.source_systems[0] = 'gp_api'
             )
     ),
     civics_fill_candidacy as (
@@ -177,8 +178,8 @@ with
             tbl_stage.updated_at,
             tbl_stage.race_database_id,
             tbl_stage.party_affiliation as party,
-            tbl_candidate.first_name,
-            tbl_candidate.last_name,
+            tbl_person.first_name,
+            tbl_person.last_name,
             cast(null as string) as image,
             cast(null as string) as about,
             cast(array() as array<string>) as urls,
@@ -190,13 +191,13 @@ with
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
             tbl_stage.gp_person_id as gp_candidate_id,
-            tbl_candidate.email,
-            tbl_candidate.website_url,
+            tbl_person.email,
+            cast(null as string) as website_url,
             tbl_stage.is_incumbent,
             concat(
-                coalesce(tbl_candidate.first_name, ''),
+                coalesce(tbl_person.first_name, ''),
                 '-',
-                coalesce(tbl_candidate.last_name, '')
+                coalesce(tbl_person.last_name, '')
             ) as first_last_name_slug,
             tbl_mart_race.id as race_id
         from civics_stage as tbl_stage
@@ -212,9 +213,10 @@ with
         left join
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_mart_race.place_id = tbl_place.id
+        -- names come from the same person the row is published under
         left join
-            {{ ref("candidate") }} as tbl_candidate
-            on tbl_stage.gp_candidate_id = tbl_candidate.gp_candidate_id
+            {{ ref("people") }} as tbl_person
+            on tbl_stage.gp_person_id = tbl_person.gp_person_id
         where br_covered_race.race_database_id is null
     ),
     all_candidacy as (
