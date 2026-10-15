@@ -10,14 +10,9 @@ product. The raw scores stay in the warehouse.
 Features (the 45 the models consume):
   - 11 race features are fixed by the scenario and the state's reference size n_ref
     (seed indep_openness_n_ref), so every voter in a state shares them.
-  - 32 are the voter's own L2 values: the row-level analog of the district
+  - 33 are the voter's own L2 values: the row-level analog of the district
     aggregates (AVG(x) -> x, a ratio -> the voter's own indicator). The registration
-    shares pct_reg_dem/rep/ind are the voter's own registration, not the precinct's:
-    with the precinct mix, every voter in a Democratic precinct was scored as a
-    Democrat, which inverted the lone-party scenarios.
-  - partisan_imbalance is the voter's own |strong-Democrat - strong-Republican|
-    Haystaq score, falling back to the precinct's (then the state's) when the voter
-    has no Haystaq scores.
+    shares pct_reg_dem/rep/ind are the voter's own registration.
   - hhi_ethnicity cannot be taken from one voter, so it comes from the voter's
     precinct, aggregated over its ballot-casters. Precincts under 40 casters, or
     voters with no precinct key, take the statewide caster value instead.
@@ -168,11 +163,7 @@ def raw_score_column(scenario):
 
 def scenario_arm(scenario):
     """The two models rank voters very differently on identical inputs, so route on
-    whether both major parties are on the ballot. The 0-1 model is the combined model,
-    trained on every race, so one-party fields of any seat count are in its sample; the
-    2+ model is the specialist for fields with both parties. Routing on field size
-    instead sent the lone-party multi-seat scenarios to the specialist, which ranked
-    an all-Republican field's Republicans above the Democrats who have no candidate."""
+    whether both major parties are on the ballot."""
     s = SCENARIOS[scenario]
     return ARM_2PLUS if s["n_democrats"] >= 1 and s["n_republicans"] >= 1 else ARM_0OR1
 
