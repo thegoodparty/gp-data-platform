@@ -2,7 +2,7 @@
 
 Scores Win signups on how likely their campaign is to be corroborated by a ballot data vendor (BallotReady, DDHQ or TechSpeed), before that confirmation arrives. BallotReady typically lags signup by about 40 days, so the score fills that gap.
 
-This directory is the code only. The parquet caches under `datasets/`, generated reports (`profiles/`, `intake/`), the MVP notebook and the original working notes are not in git. Every cache is rebuilt by a `build_*.py` script from the warehouse.
+This directory is the code only. The parquet caches under `datasets/`, generated reports (`profiles/`, `intake/`), the MVP notebook and the full working notes are not in git; `SESSION_NOTES.md` is a condensed version of the notes (decisions, measured results, failed ideas, pitfalls). Every cache is rebuilt by a `build_*.py` script from the warehouse.
 
 ## What the score means
 
