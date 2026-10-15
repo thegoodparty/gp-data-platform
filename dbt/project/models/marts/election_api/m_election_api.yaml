@@ -2,10 +2,17 @@ version: 2
 
 models:
   - name: m_election_api__candidacy
-    description: "Mart model that serves the Election API"
+    description: >
+      Mart model that serves the Election API. BallotReady candidacies, plus
+      civics candidacy stages (mostly TechSpeed) for races where BallotReady
+      publishes no candidacies, so those races are not served with an empty
+      roster.
     columns:
       - name: br_database_id
-        description: "Database ID of the candidacy"
+        description: >
+          BallotReady database ID of the candidacy. Negative for civics fills,
+          which have no BallotReady candidacy: a hash of gp_candidacy_stage_id,
+          since election-api requires an int here.
         tests:
           - not_null
           - unique
@@ -13,6 +20,8 @@ models:
               arguments:
                 to: ref('int__ballotready_candidacy')
                 field: database_id
+              config:
+                where: "br_database_id > 0"
       - name: id
         description: "UUID of the place"
         tests:
@@ -30,14 +39,15 @@ models:
           max_by(is_incumbent, updated_at) so the most recently updated
           row's value wins without collapsing all rows into a boolean OR.
           Null when no civics row carries an is_incumbent value for this
-          person + position.
+          person + position. Civics fills take the candidacy's own value.
       - name: gp_candidate_id
         description: >
           Canonical person id (gp_person_id, the earliest-member cluster mint),
           resolved via the int__civics_person_canonical_ids crosswalk
           (record_key 'ballotready|<br_candidate_id>' -> gp_person_id). One id
           per person, so candidacies of the same person share it. Null only
-          when the BR candidate is absent from the person universe.
+          when the BR candidate is absent from the person universe. Civics
+          fills take candidacy_stage.gp_person_id.
         tests:
           # Fill-rate guard: a record_key format drift upstream would silently
           # null this column. A couple of person-universe-absent BR candidates
@@ -63,12 +73,13 @@ models:
           person.contacts email). Keyed on the person, not br_candidate_id, so
           the value can originate from a merged-away br_candidate_id in the
           same person group. Surfaced by the campaign-strategy-context
-          endpoint so the caller can match the requesting user.
+          endpoint so the caller can match the requesting user. Civics fills
+          take people.email for the published person.
       - name: website_url
         description: >
           Candidate website URL, sourced from int__civics_candidate_ballotready
           (extracted from BR person.urls where type='website'). Person-keyed,
-          same as email.
+          same as email. Null for civics fills.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
