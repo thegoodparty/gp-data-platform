@@ -73,12 +73,13 @@ models:
           person.contacts email). Keyed on the person, not br_candidate_id, so
           the value can originate from a merged-away br_candidate_id in the
           same person group. Surfaced by the campaign-strategy-context
-          endpoint so the caller can match the requesting user.
+          endpoint so the caller can match the requesting user. Civics fills
+          take people.email for the published person.
       - name: website_url
         description: >
           Candidate website URL, sourced from int__civics_candidate_ballotready
           (extracted from BR person.urls where type='website'). Person-keyed,
-          same as email.
+          same as email. Null for civics fills.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
