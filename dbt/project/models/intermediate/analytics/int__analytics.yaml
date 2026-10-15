@@ -2037,3 +2037,73 @@ models:
           - not_null
       - name: utm_medium_last_normalized
         description: utm_medium_last lowercased.
+
+  - name: int__marketing_site_traffic_monthly
+    description: >
+      Monthly traffic on the goodparty.org marketing site, the step before
+      signup. Built from the site's own Amplitude page call (Viewed), which
+      starts 2025-04-24, so the first month is partial. Production host only:
+      Vercel preview, local and dev hosts and the product app, which fire the
+      same event, are excluded. Product-agnostic and aggregate only. A visitor
+      is a device, not a person, because most of this traffic is anonymous; one
+      person on two browsers counts twice, and staff cannot be removed.
+
+      Read single_page_session_share before trusting a trend in visitors or
+      sessions. It sits around 75-85% through 2025 and jumps to the mid-90s from
+      March 2026, which looks like bot or broken-client traffic rather than
+      real readers. It is exposed here rather than filtered out.
+    columns:
+      - name: month_start
+        description: First day of the UTC calendar month. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: visitors
+        description: Distinct devices with at least one page view in the month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: sessions
+        description: >
+          Distinct device and Amplitude session pairs, counted in the month the
+          session began. Page views outside any session (session id -1) are left
+          out of sessions but kept in page_views.
+        data_tests:
+          - not_null
+      - name: page_views
+        description: Viewed events on the production host in the month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: single_page_sessions
+        description: Sessions with exactly one page view on the site.
+        data_tests:
+          - not_null
+      - name: single_page_session_share
+        description: >
+          single_page_sessions over sessions. A bounce-rate proxy and the main
+          signal for non-human traffic; see the model description.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: visitors_identified
+        description: >
+          Visitors in the month whose device carries a gp-api user id on any
+          Amplitude event, at any time. A loose site-to-account link, not a
+          conversion count: it does not require the signup to follow the visit,
+          and it misses people who signed up on a different device.
+        data_tests:
+          - not_null
+      - name: visitors_identified_share
+        description: visitors_identified over visitors.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
