@@ -127,14 +127,11 @@ models:
         +schema: mart_finance
         +tags: ["mart", "finance"]
     staging:
-      airbyte_source:
-        stripe_api:
-          +schema: dbt_stripe
       airbyte_source_finance:
         # Ephemeral, not view: these streams carry the general ledger plus vendor
         # and customer PII, and a materialized staging layer would copy that into
         # a schema every catalog-level SELECT holder can read. As CTEs the data
-        # never leaves the Airbyte-owned schema until a mart selects from it.
+        # never leaves the Airbyte-owned schema until a model selects from it.
         +materialized: ephemeral
         +tags: ["staging", "finance"]
       dbt_source:

@@ -29,7 +29,7 @@ with
             created_at,
             amount_captured_usd,
             amount_refunded_usd
-        from {{ ref("stg_airbyte_source__stripe_api_charges") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_charges") }}
         where charge_status = 'succeeded' and is_captured and is_livemode
     ),
 

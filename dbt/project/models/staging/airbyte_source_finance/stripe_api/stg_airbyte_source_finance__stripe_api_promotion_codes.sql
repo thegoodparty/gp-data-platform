@@ -1,6 +1,7 @@
 with
     source as (
-        select * from {{ source("airbyte_source", "stripe_api_promotion_codes") }}
+        select *
+        from {{ source("airbyte_source_finance", "stripe_api_promotion_codes") }}
     ),
     renamed as (
         select

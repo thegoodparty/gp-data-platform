@@ -7,7 +7,8 @@
 with
     orphans as (select count(*) as n from {{ ref("int__key_resolution_exceptions") }}),
     customers as (
-        select count(*) as n from {{ ref("stg_airbyte_source__stripe_api_customers") }}
+        select count(*) as n
+        from {{ ref("stg_airbyte_source_finance__stripe_api_customers") }}
     ),
     ratio as (
         select

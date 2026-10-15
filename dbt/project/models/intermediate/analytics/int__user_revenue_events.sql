@@ -27,7 +27,7 @@ with
             cast(charge as string) as charge_id,
             timestamp_seconds(cast(created as bigint)) as refunded_at,
             cast(amount / 100.0 as decimal(12, 2)) as amount_usd
-        from {{ ref("stg_airbyte_source__stripe_api_refunds") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_refunds") }}
         where status = 'succeeded'
     ),
 
@@ -41,7 +41,7 @@ with
     -- started, so they are neither a start nor a churn.
     subscriptions as (
         select subscription_id, stripe_customer_id, started_at, ended_at, plan_interval
-        from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_subscriptions") }}
         where
             is_livemode
             and subscription_status not in ('incomplete', 'incomplete_expired')

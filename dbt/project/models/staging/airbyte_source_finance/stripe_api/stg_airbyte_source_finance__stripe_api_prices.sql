@@ -1,5 +1,7 @@
 with
-    source as (select * from {{ source("airbyte_source", "stripe_api_prices") }}),
+    source as (
+        select * from {{ source("airbyte_source_finance", "stripe_api_prices") }}
+    ),
     renamed as (
         select
             {{ adapter.quote("_airbyte_raw_id") }},

@@ -1,7 +1,6 @@
 with
     source as (
-        select *
-        from {{ source("airbyte_source", "stripe_api_customer_balance_transactions") }}
+        select * from {{ source("airbyte_source_finance", "stripe_api_refunds") }}
     ),
     renamed as (
         select
@@ -10,19 +9,21 @@ with
             {{ adapter.quote("_airbyte_meta") }},
             {{ adapter.quote("_airbyte_generation_id") }},
             {{ adapter.quote("id") }},
-            {{ adapter.quote("type") }},
             {{ adapter.quote("amount") }},
+            {{ adapter.quote("charge") }},
             {{ adapter.quote("object") }},
+            {{ adapter.quote("reason") }},
+            {{ adapter.quote("status") }},
             {{ adapter.quote("created") }},
-            {{ adapter.quote("invoice") }},
             {{ adapter.quote("updated") }},
             {{ adapter.quote("currency") }},
-            {{ adapter.quote("customer") }},
-            {{ adapter.quote("livemode") }},
             {{ adapter.quote("metadata") }},
-            {{ adapter.quote("credit_note") }},
-            {{ adapter.quote("description") }},
-            {{ adapter.quote("ending_balance") }}
+            {{ adapter.quote("payment_intent") }},
+            {{ adapter.quote("receipt_number") }},
+            {{ adapter.quote("transfer_reversal") }},
+            {{ adapter.quote("balance_transaction") }},
+            {{ adapter.quote("destination_details") }},
+            {{ adapter.quote("source_transfer_reversal") }}
 
         from source
     )

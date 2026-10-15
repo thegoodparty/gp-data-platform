@@ -81,7 +81,7 @@ with
                     end,
                     created_at desc
             ) as rn
-        from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
+        from {{ ref("stg_airbyte_source_finance__stripe_api_subscriptions") }}
         where stripe_customer_id is not null and is_livemode
     ),
 
