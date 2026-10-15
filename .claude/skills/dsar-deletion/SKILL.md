@@ -173,15 +173,27 @@ the marts before matcha has rerun and they carry the person from the previous cl
 2. Rerun matcha, so `er_source.*` regenerates without the person.
 3. `dbt build --full-refresh` on the affected selectors downstream, which clears
    `mart_civics` and `mart_analytics`.
-4. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
-   excluding the person from `m_election_api__person` removes them from the serving
-   database.
+4. Rebuild every election-api mart and confirm each one was built after the register
+   insert. The sync copies whatever these tables hold when it runs, and
+   `m_election_api__candidacy` is not always rebuilt alongside
+   `m_election_api__person`; a candidacy that survives keeps the candidate page live
+   even after the person row is gone.
 
-The sync copies whatever the `m_election_api__*` tables hold when it runs. Before
-triggering it, or before relying on the nightly run, confirm that every one of those
-tables was rebuilt after the register insert. `m_election_api__candidacy` is not always
-rebuilt alongside `m_election_api__person`, and a candidacy that survives keeps the
-candidate page live even after the person row is gone.
+   ```bash
+   dbt build --select "path:models/marts/election_api"
+   ```
+
+   ```sql
+   select table_name, last_altered
+   from goodparty_data_catalog.information_schema.tables
+   where table_schema = 'dbt' and table_name like 'm\_election\_api\_\_%'
+   order by last_altered
+   ```
+
+   Every `last_altered` must be later than the request's `created_at` in the register.
+   Do not rely on the nightly sync until this holds.
+5. Run the `sync_election_api` DAG. It rebuilds all 13 tables and swaps set-wise, so
+   once step 4 holds, the person is removed from the serving database.
 
 ## Step 6: verify
 
