@@ -167,10 +167,14 @@ def raw_score_column(scenario):
 
 
 def scenario_arm(scenario):
-    """The two specialists rank voters very differently on identical inputs, so route
-    strictly on the scenario's major-party field size, as in training."""
+    """The two models rank voters very differently on identical inputs, so route on
+    whether both major parties are on the ballot. The 0-1 model is the combined model,
+    trained on every race, so one-party fields of any seat count are in its sample; the
+    2+ model is the specialist for fields with both parties. Routing on field size
+    instead sent the lone-party multi-seat scenarios to the specialist, which ranked
+    an all-Republican field's Republicans above the Democrats who have no candidate."""
     s = SCENARIOS[scenario]
-    return ARM_2PLUS if s["n_democrats"] + s["n_republicans"] >= 2 else ARM_0OR1
+    return ARM_2PLUS if s["n_democrats"] >= 1 and s["n_republicans"] >= 1 else ARM_0OR1
 
 
 def race_block(scenario, n_ref):
@@ -519,6 +523,7 @@ def scoring_fingerprint(booster_digests, n_ref_by_state, features_sql):
         "boosters": {arm: booster_digests[arm] for arm in sorted(booster_digests)},
         "n_ref": {st: int(v) for st, v in sorted(n_ref_by_state.items())},
         "scenarios": SCENARIOS,
+        "routing": {scenario: scenario_arm(scenario) for scenario in SCENARIOS},
         "features_sql": " ".join(features_sql.split()),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]

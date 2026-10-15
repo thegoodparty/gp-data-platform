@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from dbt.project.models.intermediate.l2 import int__indep_openness_voter_scores as model_file
 from dbt.project.models.intermediate.l2.int__indep_openness_voter_scores import (
     ARM_0OR1,
     ARM_2PLUS,
@@ -115,9 +116,10 @@ def test_primary_columns_and_missing_check():
 
 
 # ── scenarios ────────────────────────────────────────────────────────────────
-def test_ten_scenarios_route_by_major_party_field():
+def test_ten_scenarios_route_on_both_major_parties_present():
     assert len(SCENARIOS) == 10
-    expect_0or1 = {"donly_inc", "donly_open", "ronly_inc", "ronly_open"}
+    # One-party fields go to the combined 0-1 model whatever their seat count.
+    expect_0or1 = {"donly_inc", "donly_open", "ronly_inc", "ronly_open", "donly_multi", "ronly_multi"}
     for name in SCENARIOS:
         assert scenario_arm(name) == (ARM_0OR1 if name in expect_0or1 else ARM_2PLUS), name
 
@@ -227,6 +229,12 @@ def test_fingerprint_is_stable_and_ignores_whitespace():
 )
 def test_fingerprint_moves_with_anything_that_moves_a_score(change):
     assert _fp(**change) != _fp()
+
+
+def test_fingerprint_moves_with_routing(monkeypatch):
+    before = _fp()
+    monkeypatch.setattr(model_file, "scenario_arm", lambda scenario: ARM_2PLUS)
+    assert _fp() != before
 
 
 def test_booster_digest_is_content_based():
