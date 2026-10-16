@@ -122,7 +122,11 @@ with
             ) as cumulative_chars
         from capped
         -- Under 40 characters is a disposition word or "Left VM", not a note.
-        where length(item_text) >= 40
+        -- Links do not count: the model cannot open a bare recording or
+        -- profile URL, and answers by asking for the notes.
+        where
+            length(trim(regexp_replace(item_text, 'https?://\\S+|www\\.\\S+', '')))
+            >= 40
     )
 
 select
