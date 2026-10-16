@@ -179,6 +179,8 @@ sources:
           freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
+      - name: gp_api_db_campaign_experiment_assignment
+        description: raw data load from gp_api_db postgres db from table `campaign_experiment_assignment`
       - name: gp_api_db_chat_conversation
         description: raw data load from gp_api_db postgres db from table `chat_conversation`
       - name: gp_api_db_chat_message

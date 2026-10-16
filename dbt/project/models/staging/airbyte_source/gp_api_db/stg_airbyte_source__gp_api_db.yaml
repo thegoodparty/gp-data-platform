@@ -203,6 +203,63 @@ models:
           - unique:
               config:
                 where: "organization_slug is not null"
+  - name: stg_airbyte_source__gp_api_db_campaign_experiment_assignment
+    description: >
+      A campaign's arm in a gp-api experiment whose arm changes data rather than
+      UI (e.g. which affinity column voter lists resolve to). The arm is resolved
+      on the campaign owner via Amplitude and stored once, so a campaign does not
+      move between arms mid-cycle. Arm values are validated in gp-api per flag.
+      One row per campaign per flag_key.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [campaign_id, flag_key]
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the assignment"
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: "Foreign key to the campaign assigned to the arm"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+      - name: flag_key
+        description: "Amplitude feature flag key identifying the experiment (e.g. independent-model-used)"
+        data_tests:
+          - not_null
+      - name: arm
+        description: "Experiment arm (Amplitude variant) the campaign was assigned to"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["control", "haystaq", "stateleg"]
+              config:
+                where: "flag_key = 'independent-model-used'"
+      - name: owner_user_id
+        description: "Foreign key to the user the arm was resolved for (the campaign owner at assignment time)"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_user')
+                field: id
+              config:
+                severity: warn
+      - name: created_at
+        description: "Timestamp when the campaign was assigned to the arm"
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the assignment was last updated"
   - name: stg_airbyte_source__gp_api_db_campaign_position
     description: raw data load from gp_api_db postgres db from table `campaign_position`
     columns:
