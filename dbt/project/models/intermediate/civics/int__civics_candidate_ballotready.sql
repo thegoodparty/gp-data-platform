@@ -4,7 +4,7 @@
 with
     candidacies as (
         select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where election_day >= '2026-01-01'
     ),
 

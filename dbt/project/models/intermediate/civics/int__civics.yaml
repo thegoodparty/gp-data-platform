@@ -1233,6 +1233,31 @@ models:
         data_tests:
           - not_null
 
+  - name: int__ballotready_s3_candidacies_gated
+    description: >
+      The BallotReady CSV feed with the API status gate applied: every
+      stg_airbyte_source__ballotready_s3_candidacies_v3 row, except an upcoming
+      one (election_day on or after today) whose candidacy has no current
+      int__ballotready_candidacy record or is withdrawn or hidden there. The
+      feed's dedup never forgets a deleted or withdrawn candidacy, so the API
+      decides which upcoming rows still exist. Past and undated rows, and every
+      column, are the feed's own. Read this wherever a CSV row decides that a
+      candidacy exists; id lookups and first_seen_at fallbacks keep reading the
+      staging view, which stays unfiltered for history.
+
+      Grain: One row per br_candidacy_id (a candidacy stage).
+    config:
+      meta:
+        contains_pii: true
+    columns:
+      - name: br_candidacy_id
+        description: BallotReady candidacy (stage) database id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_day
+        description: Stage election date from the feed; the gate's upcoming test.
+
   - name: int__ballotready_candidate_identity
     description: >
       Canonical BallotReady candidate name/contact/party per br_candidate_id: one
@@ -1253,7 +1278,7 @@ models:
 
       Grain: One row per unique person (deduplicated on gp_candidate_id).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections),
       augmented with int__ballotready_person for contact/URL data from API.
 
     columns:
@@ -1311,7 +1336,7 @@ models:
 
       Grain: One row per candidacy (candidate + position + election year).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections),
       rolled up from race-level to candidacy-level by grouping on
       br_candidate_id + br_position_id + br_election_id.
 
@@ -2064,7 +2089,7 @@ models:
       GP API contributes one row per latest-version pledged campaign;
       BR/TS/DDHQ each contribute one row per (candidate, race/stage).
 
-      Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
+      Sources: int__ballotready_s3_candidacies_gated (BR feed, API status gate),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
       campaigns mart (GP API). The gp_api side resolves election_stage and
@@ -2568,7 +2593,7 @@ models:
 
       Grain: One row per candidacy stage (each BallotReady S3 candidacy row is a stage).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections).
 
     columns:
       - name: gp_candidacy_stage_id

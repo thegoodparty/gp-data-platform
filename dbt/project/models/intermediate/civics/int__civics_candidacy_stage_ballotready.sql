@@ -1,5 +1,5 @@
 -- BallotReady candidacy stages → Civics mart candidacy_stage schema
--- Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (all-time)
+-- Source: int__ballotready_s3_candidacies_gated (all-time)
 -- Grain: one row per candidacy stage. Each BR S3 row IS a candidacy stage.
 -- <=2025 rows are emitted so they can enrich the HubSpot archive era in
 -- candidacy_stage; they keep BR-derived ids that are not in the (still
@@ -8,7 +8,7 @@
 with
     candidacies as (
         select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where first_name is not null and last_name is not null and state is not null
     ),
 

@@ -28,7 +28,7 @@ with
     -- BallotReady staging: each row is a candidacy-stage (candidate x race)
     br_staging as (
         select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where
             election_day is not null
             and first_name is not null

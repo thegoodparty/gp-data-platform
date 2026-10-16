@@ -41,7 +41,7 @@ with
             lower(trim(first_name)) as first_name,
             lower(trim(nickname)) as nickname,
             lower(trim(last_name)) as last_name
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where is_primary and not coalesce(is_runoff, false)
     ),
 
