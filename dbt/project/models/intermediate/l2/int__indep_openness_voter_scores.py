@@ -2,29 +2,29 @@
 
 Scores every L2 voter as a "district of 1" under 10 fixed race scenarios with the
 two ballot-caster (voted) state-leg models. For each scenario it keeps the raw score
-and a true/false flag: true when the voter is in the top 40% of their state on that
-score. One row per LALVOTERID; gp_api_voters left-joins only the flags onto the
+and a true/false flag: true when the score is at or above the state's cut for that
+scenario. One row per LALVOTERID; gp_api_voters left-joins only the flags onto the
 voter row, the same way turnout's int__voter_turnout_lgbm_voter_scores reaches the
-product. The raw scores stay in the warehouse: their level is not meaningful on its
-own, only their rank within the state.
+product. The raw scores stay in the warehouse.
 
 Features (the 45 the models consume):
   - 11 race features are fixed by the scenario and the state's reference size n_ref
     (seed indep_openness_n_ref), so every voter in a state shares them.
-  - 29 are the voter's own L2 values: the row-level analog of the district
-    aggregates (AVG(x) -> x, a ratio -> the voter's own indicator).
-  - 5 ecological features (hhi_ethnicity, partisan_imbalance, pct_reg_*) cannot be
-    taken from one voter, so they come from the voter's precinct, aggregated over its
-    ballot-casters. Precincts under 40 casters, or voters with no precinct key, take
-    the statewide caster value instead.
+  - 33 are the voter's own L2 values: the row-level analog of the district
+    aggregates (AVG(x) -> x, a ratio -> the voter's own indicator). The registration
+    shares pct_reg_dem/rep/ind are the voter's own registration.
+  - hhi_ethnicity cannot be taken from one voter, so it comes from the voter's
+    precinct, aggregated over its ballot-casters. Precincts under 40 casters, or
+    voters with no precinct key, take the statewide caster value instead.
 
 Cut points are made during model development, not here. A research notebook scores
-the whole voter file with these same helpers and writes each state's c20/c40/c60/c80
-per scenario, keyed by a scoring fingerprint: a hash of both boosters' contents, the
+the whole voter file with these same helpers and writes each state's cut per
+scenario, keyed by a scoring fingerprint: a hash of both boosters' contents, the
 n_ref seed, the scenarios and the feature SQL. This model computes the same
 fingerprint from what it is about to score with and reads only cuts that match, so
-flags are always cut on the same scores the cuts came from. The flag uses c60; the
-other cuts are kept so analysis can rebuild finer bands.
+flags are always cut on the same scores the cuts came from. The flag uses c60. How
+the notebook chooses the cut (a calibrated-probability rule, see the runbook) does
+not change this model: only the scores and the cut it reads.
 
 The models follow an alias (@production by default). When the fingerprint changes
 (a promoted model, a new seed or feature date), the next run rescores the whole voter
@@ -114,13 +114,10 @@ RACE_FEATURES = [
     "n_voters",
 ]
 
-PRECINCT_FEATURES = [
-    "hhi_ethnicity",
-    "partisan_imbalance",
-    "pct_reg_dem",
-    "pct_reg_rep",
-    "pct_reg_ind",
-]
+PRECINCT_FEATURES = ["hhi_ethnicity"]
+
+# The voter's own value, with the precinct (then statewide) caster value as fallback.
+FALLBACK_FEATURES = ["partisan_imbalance"]
 
 # Below this many ballot-casters a precinct's aggregate is noise; fall back to statewide.
 MIN_PRECINCT_CASTERS = 40
@@ -152,7 +149,7 @@ SCENARIOS = {
 }
 
 CUT_COLUMNS = ["c20", "c40", "c60", "c80"]
-# The flag marks the top 40% of the state: at or above the 60th percentile.
+# The flag is score >= the state's c60 for the scenario.
 FLAG_CUT = "c60"
 
 
@@ -165,10 +162,10 @@ def raw_score_column(scenario):
 
 
 def scenario_arm(scenario):
-    """The two specialists rank voters very differently on identical inputs, so route
-    strictly on the scenario's major-party field size, as in training."""
+    """The two models rank voters very differently on identical inputs, so route on
+    whether both major parties are on the ballot."""
     s = SCENARIOS[scenario]
-    return ARM_2PLUS if s["n_democrats"] + s["n_republicans"] >= 2 else ARM_0OR1
+    return ARM_2PLUS if s["n_democrats"] >= 1 and s["n_republicans"] >= 1 else ARM_0OR1
 
 
 def race_block(scenario, n_ref):
@@ -235,7 +232,9 @@ def _ethnic_onehot_sql(group):
 
 
 def _precinct_feature_aggs_sql():
-    """The 5 ecological features as aggregates, identical to the district training SQL."""
+    """Precinct and statewide caster aggregates, identical to the district training SQL:
+    hhi_ethnicity, and partisan_imbalance as the fallback for voters with no Haystaq
+    scores of their own."""
     hhi = " + ".join(f"pow(avg({_ethnic_onehot_sql(g)}), 2)" for g in [*_ETHNIC_GROUPS, None])
     return {
         "hhi_ethnicity": hhi,
@@ -243,13 +242,14 @@ def _precinct_feature_aggs_sql():
             "abs(avg(hs_ideology_partisanship_partisanship_overall_party_dem_strong)"
             " - avg(hs_ideology_partisanship_partisanship_overall_party_gop_strong))"
         ),
-        "pct_reg_dem": "avg(case when Parties_Description = 'Democratic' then 1.0 else 0.0 end)",
-        "pct_reg_rep": "avg(case when Parties_Description = 'Republican' then 1.0 else 0.0 end)",
-        "pct_reg_ind": (
-            "avg(case when Parties_Description not in ('Democratic', 'Republican')"
-            " or Parties_Description is null then 1.0 else 0.0 end)"
-        ),
     }
+
+
+# The voter's own partisan imbalance, the row-level form of the aggregate above.
+_VOTER_PARTISAN_IMBALANCE_SQL = (
+    "abs(hs_ideology_partisanship_partisanship_overall_party_dem_strong"
+    " - hs_ideology_partisanship_partisanship_overall_party_gop_strong)"
+)
 
 
 def primary_ballot_columns(primary_end_year):
@@ -267,7 +267,7 @@ def missing_l2_columns(l2_columns, primary_end_year, caster_column):
 
 
 def _voter_feature_exprs(election_date, reg_cutoff, primary_end_year):
-    """The 29 per-voter features: row-level forms of the district aggregates."""
+    """The 32 per-voter features: row-level forms of the district aggregates."""
     pri = primary_ballot_columns(primary_end_year)
     has_o = " or ".join(f"{c} = 'O'" for c in pri)
     has_d = " or ".join(f"{c} = 'D'" for c in pri)
@@ -339,6 +339,12 @@ def _voter_feature_exprs(election_date, reg_cutoff, primary_end_year):
         ),
         "pct_O": f"case when ({has_o}) then 1.0 else 0.0 end",
         "pct_DR": f"case when ({has_d}) and ({has_r}) then 1.0 else 0.0 end",
+        "pct_reg_dem": "case when Parties_Description = 'Democratic' then 1.0 else 0.0 end",
+        "pct_reg_rep": "case when Parties_Description = 'Republican' then 1.0 else 0.0 end",
+        "pct_reg_ind": (
+            "case when Parties_Description not in ('Democratic', 'Republican')"
+            " or Parties_Description is null then 1.0 else 0.0 end"
+        ),
     }
 
 
@@ -372,11 +378,20 @@ def build_features_sql(
         f"cast({expr} as double) as {name}" for name, expr in voter_exprs.items()
     )
     passthrough = ",\n        ".join(f"voters.{name}" for name in voter_exprs)
+
+    def area_value(name):
+        return (
+            f"case when precinct_eco.n_casters >= {MIN_PRECINCT_CASTERS}"
+            f" and precinct_eco.{name} is not null then precinct_eco.{name}"
+            f" else statewide_eco.{name} end"
+        )
+
     eco_select = ",\n        ".join(
-        f"cast(case when precinct_eco.n_casters >= {MIN_PRECINCT_CASTERS}"
-        f" and precinct_eco.{name} is not null then precinct_eco.{name}"
-        f" else statewide_eco.{name} end as double) as {name}"
-        for name in PRECINCT_FEATURES
+        [f"cast({area_value(name)} as double) as {name}" for name in PRECINCT_FEATURES]
+        + [
+            f"cast(coalesce(voters.own_{name}, {area_value(name)}) as double) as {name}"
+            for name in FALLBACK_FEATURES
+        ]
     )
     return f"""
     with
@@ -384,7 +399,6 @@ def build_features_sql(
             select
                 state_postal_code,
                 {PRECINCT_KEY_SQL} as precinct_key,
-                Parties_Description,
                 EthnicGroups_EthnicGroup1Desc,
                 hs_ideology_partisanship_partisanship_overall_party_dem_strong,
                 hs_ideology_partisanship_partisanship_overall_party_gop_strong
@@ -421,6 +435,7 @@ def build_features_sql(
                 LALVOTERID,
                 state_postal_code,
                 precinct_key,
+                cast({_VOTER_PARTISAN_IMBALANCE_SQL} as double) as own_partisan_imbalance,
             {voter_select}
             from parsed
         )
@@ -499,6 +514,7 @@ def scoring_fingerprint(booster_digests, n_ref_by_state, features_sql):
         "boosters": {arm: booster_digests[arm] for arm in sorted(booster_digests)},
         "n_ref": {st: int(v) for st, v in sorted(n_ref_by_state.items())},
         "scenarios": SCENARIOS,
+        "routing": {scenario: scenario_arm(scenario) for scenario in SCENARIOS},
         "features_sql": " ".join(features_sql.split()),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]

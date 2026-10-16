@@ -496,11 +496,11 @@ models:
       Per-voter openness to an independent candidate, from the two ballot-caster
       state-leg independent models. Each voter is scored as a district of 1 under 10
       fixed race scenarios (field, seat count, incumbent or open seat) at the state's
-      reference size. Each scenario has a raw score and a flag: true when the voter
-      is in the top 40% of their state on that score. One row per LALVOTERID;
-      gp_api_voters joins only the flags onto the voter row, and gp-api picks
-      the campaign's scenario column at query time. The raw scores stay in the
-      warehouse; only their rank within the state means anything.
+      reference size, using the voter's own registration and partisanship. Each
+      scenario has a raw score and a flag: true when the score is at or above the
+      state's cut for that scenario. One row per LALVOTERID; gp_api_voters joins
+      only the flags onto the voter row, and gp-api picks the campaign's scenario
+      column at query time. The raw scores stay in the warehouse.
       The models follow a registry alias. Cut points come from a research notebook
       that scores the whole voter file, keyed by a fingerprint of everything that
       moves a score; this model reads only the cuts matching its own fingerprint.
@@ -535,7 +535,7 @@ models:
           - not_null
           - unique
       - name: state
-        description: Two-letter state code. Quintiles are cut within it.
+        description: Two-letter state code. Cuts are per state.
         data_tests:
           - not_null
           - relationships:
@@ -543,35 +543,35 @@ models:
                 to: ref('indep_openness_n_ref')
                 field: state
       - name: indep_openness_single_inc
-        description: "In the top 40% of the state. One seat, a Democrat and a Republican running, D or R incumbent in the field."
+        description: "At or above the state cut. One seat, a Democrat and a Republican running, D or R incumbent in the field."
         data_tests: &indep_openness_not_null
           - not_null
       - name: indep_openness_single_open
-        description: "In the top 40% of the state. One seat, a Democrat and a Republican running, no D or R incumbent."
+        description: "At or above the state cut. One seat, a Democrat and a Republican running, no D or R incumbent."
         data_tests: *indep_openness_not_null
       - name: indep_openness_multi_inc
-        description: "In the top 40% of the state. Two or more seats, full field (scored at 3 seats), incumbent in the field."
+        description: "At or above the state cut. Two or more seats, full field (scored at 3 seats), incumbent in the field."
         data_tests: *indep_openness_not_null
       - name: indep_openness_multi_open
-        description: "In the top 40% of the state. Two or more seats, full field (scored at 3 seats), open."
+        description: "At or above the state cut. Two or more seats, full field (scored at 3 seats), open."
         data_tests: *indep_openness_not_null
       - name: indep_openness_donly_inc
-        description: "In the top 40% of the state. One seat, a lone Democrat opponent, incumbent in the field."
+        description: "At or above the state cut. One seat, a lone Democrat opponent, incumbent in the field."
         data_tests: *indep_openness_not_null
       - name: indep_openness_donly_open
-        description: "In the top 40% of the state. One seat, a lone Democrat opponent, open."
+        description: "At or above the state cut. One seat, a lone Democrat opponent, open."
         data_tests: *indep_openness_not_null
       - name: indep_openness_ronly_inc
-        description: "In the top 40% of the state. One seat, a lone Republican opponent, incumbent in the field."
+        description: "At or above the state cut. One seat, a lone Republican opponent, incumbent in the field."
         data_tests: *indep_openness_not_null
       - name: indep_openness_ronly_open
-        description: "In the top 40% of the state. One seat, a lone Republican opponent, open."
+        description: "At or above the state cut. One seat, a lone Republican opponent, open."
         data_tests: *indep_openness_not_null
       - name: indep_openness_donly_multi
-        description: "In the top 40% of the state. Two or more seats, Democrats and no Republicans (incumbent seed only)."
+        description: "At or above the state cut. Two or more seats, Democrats and no Republicans (incumbent seed only)."
         data_tests: *indep_openness_not_null
       - name: indep_openness_ronly_multi
-        description: "In the top 40% of the state. Two or more seats, Republicans and no Democrats (incumbent seed only)."
+        description: "At or above the state cut. Two or more seats, Republicans and no Democrats (incumbent seed only)."
         data_tests: *indep_openness_not_null
       - name: raw_single_inc
         description: Raw model score behind indep_openness_single_inc. Warehouse only.

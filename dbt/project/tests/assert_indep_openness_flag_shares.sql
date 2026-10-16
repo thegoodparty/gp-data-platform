@@ -1,8 +1,10 @@
--- Each flag should be true for 40% of its state's voters in every scenario column,
--- because the cutoff is the state's 60th percentile of the same scores. It is an
--- approximate percentile, so allow half a point. New registrants flagged against the
--- frozen cutoff drift this between rescores, which is expected, hence warn rather
--- than error.
+-- The research notebook sets each state's three-way cut (single_*, multi_*) at the
+-- highest level that still flags at least 10% of every state house district of
+-- 1,000+ voters, so each of those columns flags at least ~10% of the state.
+-- Head-to-head cuts (donly_*, ronly_*) are a fixed probability with no floor.
+-- A column flagging no one or everyone in a state points at a cut that was not
+-- built for these scores. New registrants flagged against the frozen cuts drift
+-- shares between rescores, hence warn rather than error.
 {{ config(severity="warn") }}
 
 with
@@ -32,4 +34,14 @@ with
 
 select state, scenario, share_true
 from shares
-where abs(share_true - 0.4) > 0.005
+where
+    share_true in (0, 1)
+    or (
+        scenario in (
+            'indep_openness_single_inc',
+            'indep_openness_single_open',
+            'indep_openness_multi_inc',
+            'indep_openness_multi_open'
+        )
+        and share_true < 0.09
+    )
