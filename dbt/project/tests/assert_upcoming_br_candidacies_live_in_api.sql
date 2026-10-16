@@ -2,7 +2,8 @@
 -- API lists it as running (a current record, not withdrawn, not hidden). The
 -- CSV readers inherit this from int__ballotready_s3_candidacies_gated; a reader
 -- that goes back to the raw feed fails here. The feed's election_day dates the
--- CSV rows; the public API dates its rows by race.
+-- CSV rows; the public API dates its rows by race and is checked on its
+-- BallotReady rows only.
 with
     feed as (
         select br_candidacy_id, election_day
@@ -45,6 +46,8 @@ with
             cast(race.election_date as date) as election_day
         from {{ ref("m_election_api__candidacy") }} as c
         inner join {{ ref("m_election_api__race") }} as race on c.race_id = race.id
+        -- civics fills carry a negative id and no BallotReady record
+        where c.br_database_id > 0
     ),
 
     reader_rows as (
