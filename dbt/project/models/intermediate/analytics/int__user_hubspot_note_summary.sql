@@ -16,11 +16,11 @@
     "hubspot_note_summary_endpoint", "databricks-claude-haiku-4-5"
 ) -%}
 -- Bump when the prompt changes, so every summary is rewritten under the new one.
-{%- set prompt_version = "v1" -%}
+{%- set prompt_version = "v2" -%}
 {%- set prompt -%}
 You summarize a candidate's history with GoodParty.org staff for an internal account page. Below are HubSpot call summaries, call notes, meeting notes and notes, oldest first, each tagged with its date and type.
 Write at most 4 bullet points of no more than 20 words each, in plain English. Cover what office and election they are running for, where their campaign stands, what they asked for or need, which GoodParty.org products or plans came up and how they reacted, and any commitments or next steps with dates.
-Leave out anything about health, family members, personal finances, legal matters, religion or personal political views, and leave out phone numbers, email addresses and street addresses. Never mention the candidate's relatives, even as campaign help. Only state what the notes say.
+Leave out anything about health, family members, personal finances, legal matters, religion or personal political views, and leave out phone numbers, email addresses and street addresses. Never mention the candidate's relatives, even as campaign help. Only state what the notes say. If they hold nothing campaign-related, write the single bullet "No campaign details recorded." and never explain why or ask for more notes.
 End with one line starting "Last contact:" giving the date and outcome of the most recent item. Output only the bullets and that line.
 
 Notes:

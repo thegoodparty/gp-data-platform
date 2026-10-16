@@ -2219,6 +2219,13 @@ models:
           output: check it against the source items before relying on it.
         data_tests:
           - not_null
+          # A summary without the closing line is the model answering about
+          # the prompt instead of following it.
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "like '%Last contact:%'"
+              config:
+                severity: warn
       - name: item_count
         description: Items the summary was written from.
         data_tests:
@@ -2326,10 +2333,10 @@ unit_tests:
         format: sql
         rows: |
           select 1 as user_id, 'existing' as summary, 1 as item_count, timestamp '2026-05-01 10:00:00' as last_item_at, array('a1') as source_touch_ids,
-            sha2(concat_ws('|', 'v1', 'databricks-claude-haiku-4-5', '[2026-05-01 note] Discussed the campaign plan and the voter file with the rep.'), 256) as input_fingerprint,
-            'databricks-claude-haiku-4-5' as model_endpoint, 'v1' as prompt_version, cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, timestamp '2026-05-02 00:00:00' as summarized_at
+            sha2(concat_ws('|', 'v2', 'databricks-claude-haiku-4-5', '[2026-05-01 note] Discussed the campaign plan and the voter file with the rep.'), 256) as input_fingerprint,
+            'databricks-claude-haiku-4-5' as model_endpoint, 'v2' as prompt_version, cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, timestamp '2026-05-02 00:00:00' as summarized_at
           union all
-          select 2, 'stale', 1, timestamp '2026-05-15 10:00:00', array('b0'), 'an older fingerprint', 'databricks-claude-haiku-4-5', 'v1', cast(100 as bigint), cast(20 as bigint), timestamp '2026-05-16 00:00:00'
+          select 2, 'stale', 1, timestamp '2026-05-15 10:00:00', array('b0'), 'an older fingerprint', 'databricks-claude-haiku-4-5', 'v2', cast(100 as bigint), cast(20 as bigint), timestamp '2026-05-16 00:00:00'
     expect:
       rows:
         - {user_id: 2, item_count: 1}
