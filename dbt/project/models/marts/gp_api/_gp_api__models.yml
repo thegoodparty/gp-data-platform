@@ -63,11 +63,11 @@ models:
                 where: "Voter_Turnout_Probability is not null"
       - name: Early_Vote_Status
         description: >
-          Early-voting bucket from Haystaq's likely-early-voter score
-          (hs_likely_ev, 0-100), on the same cut points as Voter_Status:
-          Very unlikely (<25), Unlikely (<50), Likely (<75), Very likely (>=75),
-          Unknown (no score). The score is a within-state percentile rank, so
-          the buckets are roughly state quartiles, relative to the state.
+          Likelihood of voting before Election Day, early in person or by
+          mail: the higher of Haystaq's hs_likely_ev and hs_likely_vbm
+          (0-100 within-state percentiles), bucketed Very unlikely (<25),
+          Unlikely (<55), Likely (<80), Very likely (>=80), Unknown (no
+          score). Relative to the voter's state, not a probability.
         data_type: varchar
         tests:
           - not_null

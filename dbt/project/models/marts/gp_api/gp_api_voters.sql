@@ -217,18 +217,18 @@ with
                 ),
                 false
             ) as `Indep_Openness_Registration`,
-            -- Same cut points as Voter_Status, on Haystaq's 0-100 score. The score is
-            -- a within-state percentile rank, so each bucket holds about a quarter of
-            -- a state's scored voters and reads as relative to the state, not as a
-            -- probability.
+            -- Voting before Election Day by either route: the higher of Haystaq's
+            -- early-in-person and vote-by-mail scores. Each is a 0-100 within-state
+            -- percentile, so the max skews high, which the 80/55 cuts offset.
+            -- greatest() skips nulls; the two scores are null on the same voters.
             case
-                when `hs_likely_ev` is null
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) is null
                 then 'Unknown'
-                when `hs_likely_ev` < 25
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 25
                 then 'Very unlikely'
-                when `hs_likely_ev` < 50
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 55
                 then 'Unlikely'
-                when `hs_likely_ev` < 75
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 80
                 then 'Likely'
                 else 'Very likely'
             end as `Early_Vote_Status`,
