@@ -2199,6 +2199,9 @@ models:
       summarizes only users who are new or whose input fingerprint changed,
       newest activity first, up to hubspot_note_summary_user_cap users (2,000
       in production, 25 in CI and dev); the rest wait for the next run. The
+      scheduled jobs reach this model through the person lineage several
+      times a day, so a run writes only when the last write is 20 hours old;
+      passing the cap var explicitly, as a backfill does, skips that wait. The
       model is exempt from --full-refresh, and a call that errors writes no
       row, so that user is retried next run.
 
@@ -2340,6 +2343,27 @@ unit_tests:
     expect:
       rows:
         - {user_id: 2, item_count: 1}
+
+  # A write within the last 20 hours holds back every pending user, so no
+  # model call is made.
+  - name: hubspot_note_summary_waits_after_recent_write
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 2 as user_id, 'b1' as touch_id, 'call' as channel, timestamp '2026-06-01 10:00:00' as touch_at, 'Asked how texting works and agreed to a follow-up call next week.' as item_text, 1 as recency_rank, true as is_summary_input
+      - input: this
+        format: sql
+        rows: |
+          select 1 as user_id, 'existing' as summary, 1 as item_count, timestamp '2026-05-01 10:00:00' as last_item_at, array('a1') as source_touch_ids,
+            'any fingerprint' as input_fingerprint, 'databricks-claude-haiku-4-5' as model_endpoint, 'v2' as prompt_version,
+            cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, current_timestamp() - interval 2 hours as summarized_at
+    expect:
+      rows: []
 
   - name: hubspot_note_summary_caps_newest_first
     model: int__user_hubspot_note_summary
