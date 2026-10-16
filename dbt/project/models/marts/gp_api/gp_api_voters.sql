@@ -217,6 +217,21 @@ with
                 ),
                 false
             ) as `Indep_Openness_Registration`,
+            -- Voting before Election Day by either route: the higher of Haystaq's
+            -- early-in-person and vote-by-mail scores. Each is a 0-100 within-state
+            -- percentile, so the max skews high, which the 80/55 cuts offset.
+            -- greatest() skips nulls; the two scores are null on the same voters.
+            case
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) is null
+                then 'Unknown'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 25
+                then 'Very unlikely'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 55
+                then 'Unlikely'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 80
+                then 'Likely'
+                else 'Very likely'
+            end as `Early_Vote_Status`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -480,6 +495,7 @@ with
                 else 'Super'
             end as `Voter_Status`,
             tbl_propensity.`prob_vote` as `Voter_Turnout_Probability`,
+            tbl_updated.`Early_Vote_Status`,
             tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,

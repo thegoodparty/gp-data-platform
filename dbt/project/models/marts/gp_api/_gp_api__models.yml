@@ -61,6 +61,24 @@ models:
                 max_value: 1
               config:
                 where: "Voter_Turnout_Probability is not null"
+      - name: Early_Vote_Status
+        description: >
+          Likelihood of voting before Election Day, early in person or by
+          mail: the higher of Haystaq's hs_likely_ev and hs_likely_vbm
+          (0-100 within-state percentiles), bucketed Very unlikely (<25),
+          Unlikely (<55), Likely (<80), Very likely (>=80), Unknown (no
+          score). Relative to the voter's state, not a probability.
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Very unlikely
+                  - Unlikely
+                  - Likely
+                  - Very likely
+                  - Unknown
       - name: Voter_Independent_Affinity
         description: >
           True when the voter shows any signal of independent-leaning behaviour:
