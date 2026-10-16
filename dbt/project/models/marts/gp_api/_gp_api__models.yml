@@ -61,6 +61,24 @@ models:
                 max_value: 1
               config:
                 where: "Voter_Turnout_Probability is not null"
+      - name: Early_Vote_Status
+        description: >
+          Early-voting bucket from Haystaq's likely-early-voter score
+          (hs_likely_ev, 0-100), on the same cut points as Voter_Status:
+          Very unlikely (<25), Unlikely (<50), Likely (<75), Very likely (>=75),
+          Unknown (no score). The score is a within-state percentile rank, so
+          the buckets are roughly state quartiles, relative to the state.
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Very unlikely
+                  - Unlikely
+                  - Likely
+                  - Very likely
+                  - Unknown
       - name: Voter_Independent_Affinity
         description: >
           True when the voter shows any signal of independent-leaning behaviour:

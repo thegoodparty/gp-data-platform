@@ -217,6 +217,21 @@ with
                 ),
                 false
             ) as `Indep_Openness_Registration`,
+            -- Same cut points as Voter_Status, on Haystaq's 0-100 score. The score is
+            -- a within-state percentile rank, so each bucket holds about a quarter of
+            -- a state's scored voters and reads as relative to the state, not as a
+            -- probability.
+            case
+                when `hs_likely_ev` is null
+                then 'Unknown'
+                when `hs_likely_ev` < 25
+                then 'Very unlikely'
+                when `hs_likely_ev` < 50
+                then 'Unlikely'
+                when `hs_likely_ev` < 75
+                then 'Likely'
+                else 'Very likely'
+            end as `Early_Vote_Status`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -480,6 +495,7 @@ with
                 else 'Super'
             end as `Voter_Status`,
             tbl_propensity.`prob_vote` as `Voter_Turnout_Probability`,
+            tbl_updated.`Early_Vote_Status`,
             tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
