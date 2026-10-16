@@ -16,5 +16,10 @@ select
     associations_dealids as deal_ids,
     metadata_subject as subject,
     metadata_status as status,
+    -- Free text. body is notes, meetings, tasks and SMS; text is the plain
+    -- form of an email, whose body column is always empty.
+    metadata_body as body,
+    metadata_internalmeetingnotes as internal_meeting_notes,
+    metadata_text as email_text,
     _airbyte_extracted_at
 from {{ source("airbyte_source", "hubspot_api_engagements") }}

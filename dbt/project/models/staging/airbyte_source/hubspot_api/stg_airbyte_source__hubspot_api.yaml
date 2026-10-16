@@ -1549,6 +1549,17 @@ models:
         description: Subject line or title, where the engagement type has one.
       - name: status
         description: Engagement status, where the type has one.
+      - name: body
+        description: >
+          Free text on notes, meetings, tasks and SMS, often HTML. Can hold
+          personal details, so read it under the same rules as the contact
+          record.
+      - name: internal_meeting_notes
+        description: Rep-only notes on a meeting, separate from the invite body.
+      - name: email_text
+        description: >
+          Plain text of an email or inbound reply, including any quoted
+          thread below it.
       - name: is_active
         description: HubSpot's active flag on the engagement.
       - name: is_gdpr_deleted
@@ -1736,6 +1747,10 @@ models:
         description: HTTPS URL to the call recording (.mp3 or .wav).
       - name: hs_call_body
         description: Free-text call notes/description.
+      - name: hs_call_summary
+        description: >
+          HubSpot's AI summary of the call recording. On a call that did not
+          connect it describes the voicemail rather than a conversation.
       - name: hs_call_title
         description: Call title/subject.
       - name: hs_call_source

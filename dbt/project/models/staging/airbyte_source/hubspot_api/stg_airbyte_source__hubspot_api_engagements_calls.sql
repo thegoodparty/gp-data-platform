@@ -20,6 +20,7 @@ select
     properties_hs_call_has_voicemail as hs_call_has_voicemail,
     properties_hs_call_recording_url as hs_call_recording_url,
     properties_hs_call_body as hs_call_body,
+    properties_hs_call_summary as hs_call_summary,
     properties_hs_call_title as hs_call_title,
     properties_hs_call_source as hs_call_source,
     properties_hs_activity_type as hs_activity_type,

@@ -2129,3 +2129,225 @@ models:
               arguments:
                 min_value: 0
                 max_value: 1
+
+  - name: int__user_hubspot_note_items
+    description: >
+      The HubSpot calls, notes and meetings behind each user's note summary,
+      at the grain a reader can check the summary against. One row per user
+      per engagement that carries real text.
+
+      Calls keep what the rep typed plus HubSpot's call summary, with dialer
+      boilerplate (sequence headers, "recorded by" stamps, AI-summary banners)
+      removed. On a call that never connected the call summary describes the
+      voicemail, so only rep-typed text is kept. Meetings keep only the rep's
+      internal notes, because the body is the calendar invite. Grain
+      write-ups arrive as notes. Emails are left out: outbound mail is mostly
+      sequence templates and inbound mail mostly quoted threads, together
+      eight times the text of everything kept here.
+
+      Reads int__user_hubspot_touches, so it follows every contact in the
+      user's person group and drops right-to-erasure engagements. Holds free
+      text that can include personal details.
+    columns:
+      - name: user_id
+        description: gp-api user the engagement reaches.
+        data_tests:
+          - not_null
+      - name: touch_id
+        description: HubSpot engagement id, as on int__user_hubspot_touches.
+        data_tests:
+          - not_null
+      - name: channel
+        description: call, note or meeting.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["call", "note", "meeting"]
+      - name: touch_at
+        description: When the call, note or meeting happened.
+      - name: item_text
+        description: >
+          Cleaned text with HTML and whitespace collapsed, cut at 4,000
+          characters so one long write-up cannot crowd out the rest. At least
+          40 characters, since anything shorter is a disposition word.
+        data_tests:
+          - not_null
+      - name: recency_rank
+        description: 1 for the user's most recent item.
+        data_tests:
+          - not_null
+      - name: is_summary_input
+        description: >
+          Whether the summary reads this item: the 20 most recent, stopping
+          once the running total passes 40,000 characters. The newest item is
+          always read.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, touch_id]
+
+  - name: int__user_hubspot_note_summary
+    description: >
+      One row per user with a short model-written summary of their HubSpot
+      calls, notes and meetings, for the user lookup page. The page reads
+      these rows and never calls the model itself.
+
+      Written by ai_query on a Claude Haiku serving endpoint. Each run
+      summarizes only users who are new or whose input fingerprint changed,
+      newest activity first, up to hubspot_note_summary_user_cap users (2,000
+      in production, 25 in CI and dev); the rest wait for the next run. The
+      model is exempt from --full-refresh, and a call that errors writes no
+      row, so that user is retried next run.
+
+      A post-hook deletes a user's summary once any item it was written from
+      leaves int__user_hubspot_note_items, which is what happens when an
+      engagement is erased, so the summary is rewritten from what remains.
+      The prompt asks the model to leave out health, family, finances, legal
+      matters, religion, personal political views and contact details.
+    columns:
+      - name: user_id
+        description: gp-api user.
+        data_tests:
+          - not_null
+          - unique
+      - name: summary
+        description: >
+          Up to four bullet points and a closing "Last contact:" line. Model
+          output: check it against the source items before relying on it.
+        data_tests:
+          - not_null
+      - name: item_count
+        description: Items the summary was written from.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: last_item_at
+        description: When the newest of those items happened.
+      - name: source_touch_ids
+        description: The engagement ids the summary was written from.
+      - name: input_fingerprint
+        description: >
+          Hash of the prompt version, endpoint and input text. A run skips a
+          user whose fingerprint has not changed.
+        data_tests:
+          - not_null
+      - name: model_endpoint
+        description: Databricks serving endpoint that wrote the summary.
+      - name: prompt_version
+        description: Bumped whenever the prompt changes, which rewrites every summary.
+      - name: input_tokens_est
+        description: >
+          Estimated prompt tokens at four characters a token. ai_query returns
+          no usage counts, and the serving usage tables are not readable by
+          the data team, so this is the only cost signal available.
+      - name: output_tokens_est
+        description: Estimated summary tokens, on the same basis.
+      - name: summarized_at
+        description: When the run that wrote this summary started.
+
+  - name: int__user_hubspot_note_summary_runs
+    description: >
+      One row per note summary run that wrote anything: users summarized and
+      estimated tokens. Append-only and exempt from --full-refresh, because
+      the summary table keeps only each user's latest row.
+    columns:
+      - name: run_at
+        description: The summarized_at shared by every row the run wrote.
+        data_tests:
+          - not_null
+          - unique
+      - name: model_endpoint
+        description: Serving endpoint the run called.
+      - name: users_summarized
+        description: Users summarized in the run.
+      - name: input_tokens_est
+        description: >
+          Estimated prompt tokens for the run. Warns above 3M, about one and
+          a half times a full nightly run; a deliberate backfill will warn too.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: 3000000
+              config:
+                severity: warn
+                where: "run_at >= current_date() - interval 2 days"
+      - name: output_tokens_est
+        description: Estimated summary tokens for the run.
+
+unit_tests:
+  - name: hubspot_note_items_drops_stubs_and_voicemail
+    model: int__user_hubspot_note_items
+    given:
+      - input: ref('int__user_hubspot_touches')
+        rows:
+          - {user_id: 1, touch_id: "c1", channel: "call", touch_at: "2026-05-01 10:00:00"}
+          - {user_id: 1, touch_id: "c2", channel: "call", touch_at: "2026-05-02 10:00:00"}
+          - {user_id: 1, touch_id: "c3", channel: "call", touch_at: "2026-05-03 10:00:00"}
+          - {user_id: 1, touch_id: "m1", channel: "meeting", touch_at: "2026-05-04 10:00:00"}
+          - {user_id: 1, touch_id: "n1", channel: "note", touch_at: "2026-05-05 10:00:00"}
+          - {user_id: 1, touch_id: "n2", channel: "note", touch_at: "2026-05-06 10:00:00"}
+          - {user_id: 1, touch_id: "e1", channel: "email", touch_at: "2026-05-07 10:00:00"}
+      - input: ref('int__hubspot_calls')
+        rows:
+          # A dialer stub whose only text is the voicemail summary.
+          - {id: "c1", outcome_family: "not_connected", hs_call_body: "[Nooks] [Sequence: Example - Sales Open]", hs_call_summary: "The call went to voicemail and a message was left for the candidate."}
+          - {id: "c2", outcome_family: "connected_pledge", hs_call_body: "[NOOKS] - Asked about the voter file for the county race.", hs_call_summary: "Candidate wants help with texting."}
+          - {id: "c3", outcome_family: "not_connected", hs_call_body: "Left VM", hs_call_summary: "A long description of the voicemail that was left for the candidate."}
+      - input: ref('stg_airbyte_source__hubspot_api_engagements')
+        rows:
+          - {id: "m1", engagement_type: "MEETING", body: "We'll discuss your campaign and how GoodParty.org can help you win.", internal_meeting_notes: "Wants to run for school board and asked about Pro pricing."}
+          - {id: "n1", engagement_type: "NOTE", body: "<p>Grain: Discussed the path to victory&nbsp;report and next steps.</p>", internal_meeting_notes: null}
+          - {id: "n2", engagement_type: "NOTE", body: "Short note", internal_meeting_notes: null}
+    expect:
+      rows:
+        - {user_id: 1, touch_id: "n1", channel: "note", item_text: "Grain: Discussed the path to victory report and next steps.", recency_rank: 1, is_summary_input: true}
+        - {user_id: 1, touch_id: "m1", channel: "meeting", item_text: "Wants to run for school board and asked about Pro pricing.", recency_rank: 2, is_summary_input: true}
+        - {user_id: 1, touch_id: "c2", channel: "call", item_text: "Asked about the voter file for the county race. Candidate wants help with texting.", recency_rank: 3, is_summary_input: true}
+
+  # Each of these makes one real model call, for the single user it expects.
+  - name: hubspot_note_summary_skips_unchanged_fingerprint
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 1 as user_id, 'a1' as touch_id, 'note' as channel, timestamp '2026-05-01 10:00:00' as touch_at, 'Discussed the campaign plan and the voter file with the rep.' as item_text, 1 as recency_rank, true as is_summary_input
+          union all
+          select 2, 'b1', 'call', timestamp '2026-06-01 10:00:00', 'Asked how texting works and agreed to a follow-up call next week.', 1, true
+      - input: this
+        format: sql
+        rows: |
+          select 1 as user_id, 'existing' as summary, 1 as item_count, timestamp '2026-05-01 10:00:00' as last_item_at, array('a1') as source_touch_ids,
+            sha2(concat_ws('|', 'v1', 'databricks-claude-haiku-4-5', '[2026-05-01 note] Discussed the campaign plan and the voter file with the rep.'), 256) as input_fingerprint,
+            'databricks-claude-haiku-4-5' as model_endpoint, 'v1' as prompt_version, cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, timestamp '2026-05-02 00:00:00' as summarized_at
+          union all
+          select 2, 'stale', 1, timestamp '2026-05-15 10:00:00', array('b0'), 'an older fingerprint', 'databricks-claude-haiku-4-5', 'v1', cast(100 as bigint), cast(20 as bigint), timestamp '2026-05-16 00:00:00'
+    expect:
+      rows:
+        - {user_id: 2, item_count: 1}
+
+  - name: hubspot_note_summary_caps_newest_first
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: false
+      vars:
+        hubspot_note_summary_user_cap: 1
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 1 as user_id, 'a1' as touch_id, 'note' as channel, timestamp '2026-05-01 10:00:00' as touch_at, 'Discussed the campaign plan and the voter file with the rep.' as item_text, 1 as recency_rank, true as is_summary_input
+          union all
+          select 2, 'b1', 'call', timestamp '2026-06-01 10:00:00', 'Asked how texting works and agreed to a follow-up call next week.', 1, true
+    expect:
+      rows:
+        - {user_id: 2, item_count: 1}

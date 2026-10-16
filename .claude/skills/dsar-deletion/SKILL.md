@@ -168,6 +168,11 @@ Copies upstream of the filter that still hold the rows:
 Apart from the finance models above, everything from staging down, including PR and dev
 schemas, is a derived copy that the next rebuild clears. Do not chase those by hand.
 
+- `int__user_hubspot_note_summary` is exempt from `--full-refresh`, so a rebuild does not
+  clear it. Its post-hook deletes a user's summary once any engagement it was written from
+  leaves `int__user_hubspot_note_items`, so the next ordinary build removes the person.
+  Confirm the row is gone after Step 5.
+
 ## Step 5: rebuild downstream, in this order
 
 Entity resolution sits in the middle of the chain: matcha reads the `int__er_prematch_*`
