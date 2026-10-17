@@ -4204,6 +4204,118 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: population_male_18_to_24
+        description: >
+          ACS males 18 to 24 (B01001 E007-E010), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_25_to_34
+        description: >
+          ACS males 25 to 34 (B01001 E011-E012), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_35_to_44
+        description: >
+          ACS males 35 to 44 (B01001 E013-E014), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_45_to_54
+        description: >
+          ACS males 45 to 54 (B01001 E015-E016), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_55_to_64
+        description: >
+          ACS males 55 to 64 (B01001 E017-E019), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_65_plus
+        description: >
+          ACS males 65 and over (B01001 E020-E025), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_plus
+        description: >
+          ACS males 18 and over (B01001 E007-E025), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_to_24
+        description: >
+          ACS females 18 to 24 (B01001 E031-E034), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_25_to_34
+        description: >
+          ACS females 25 to 34 (B01001 E035-E036), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_35_to_44
+        description: >
+          ACS females 35 to 44 (B01001 E037-E038), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_45_to_54
+        description: >
+          ACS females 45 to 54 (B01001 E039-E040), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_55_to_64
+        description: >
+          ACS females 55 to 64 (B01001 E041-E043), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_65_plus
+        description: >
+          ACS females 65 and over (B01001 E044-E049), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_plus
+        description: >
+          ACS females 18 and over (B01001 E031-E049), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: population_race_universe
         description: >
           Denominator for the race and ethnicity columns (B03002_E001),

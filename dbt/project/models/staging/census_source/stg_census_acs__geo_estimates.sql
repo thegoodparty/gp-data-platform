@@ -17,6 +17,28 @@
 -- an empty string. Jam-code, margin, and row-filter semantics live in the
 -- census_acs_* macros: margins are null when not computable and 0 exactly when
 -- the estimate is controlled to an official total.
+--
+-- Adult sex-by-age bands from B01001, as (sex, band, first cell, last cell).
+-- Female cells mirror male ones 24 cells on (male 18-19 is E007, female 18-19
+-- is E031). Each band is a run of consecutive cells; each sex's adult total is
+-- the run from its 18-19 cell to its 85-and-over cell (E007-E025, E031-E049),
+-- so it is the sum of that sex's bands and nulls with any of them.
+{%- set adult_sex_age_bands = [
+    ("male", "18_to_24", 7, 10),
+    ("male", "25_to_34", 11, 12),
+    ("male", "35_to_44", 13, 14),
+    ("male", "45_to_54", 15, 16),
+    ("male", "55_to_64", 17, 19),
+    ("male", "65_plus", 20, 25),
+    ("male", "18_plus", 7, 25),
+    ("female", "18_to_24", 31, 34),
+    ("female", "25_to_34", 35, 36),
+    ("female", "35_to_44", 37, 38),
+    ("female", "45_to_54", 39, 40),
+    ("female", "55_to_64", 41, 43),
+    ("female", "65_plus", 44, 49),
+    ("female", "18_plus", 31, 49),
+] %}
 with
     b01001 as (
         select
@@ -88,6 +110,17 @@ with
                     ]
                 )
             }} as population_65_plus_moe
+            {%- for sex, band, first_cell, last_cell in adult_sex_age_bands %}
+                {%- set estimates = [] %}
+                {%- set margins = [] %}
+                {%- for cell in range(first_cell, last_cell + 1) %}
+                    {%- do estimates.append("b01001_e%03d" % cell) %}
+                    {%- do margins.append("b01001_m%03d" % cell) %}
+                {%- endfor %},
+                {{ census_acs_estimate_sum(estimates) }}
+                as population_{{ sex }}_{{ band }},
+                {{ census_acs_moe_rss(margins) }} as population_{{ sex }}_{{ band }}_moe
+            {%- endfor %}
         from {{ source("census_acs", "acs5y2024_b01001") }}
         where {{ census_acs_retained_geo_rows() }}
     ),
@@ -370,6 +403,10 @@ with
             b01001.population_under_18_moe,
             b01001.population_65_plus,
             b01001.population_65_plus_moe,
+            {%- for sex, band, first_cell, last_cell in adult_sex_age_bands %}
+                b01001.population_{{ sex }}_{{ band }},
+                b01001.population_{{ sex }}_{{ band }}_moe,
+            {%- endfor %}
             b03002.population_race_universe,
             b03002.population_race_universe_moe,
             b03002.population_white_nh,
