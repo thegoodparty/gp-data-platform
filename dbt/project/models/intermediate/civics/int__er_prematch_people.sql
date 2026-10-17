@@ -369,8 +369,8 @@ with
 
     -- A switchboard under the cap still carries unrelated people, while a
     -- family line carries one surname or variants of it. Count each phone's
-    -- surname groups, where surnames sharing a token ("milton" and "anne
-    -- milton") are one group, so the matcher can refuse a phone-only pair
+    -- surname groups, where surnames sharing a token ("smith" and "ann
+    -- smith") are one group, so the matcher can refuse a phone-only pair
     -- across unrelated surnames on a shared line. A record founds a group
     -- unless an earlier one shares a token; multi-token surnames rank first so
     -- they bridge their parts before either part is seen alone.

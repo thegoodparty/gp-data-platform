@@ -93,8 +93,8 @@ def _person_row(**overrides):
         "br_candidate_id_r": None,
         "email_l": "ecarter@cityhall.example.gov",
         "email_r": None,
-        "phone_l": "9795550140",
-        "phone_r": "9795550140",
+        "phone_l": "2175550140",
+        "phone_r": "2175550140",
         "first_name_l": "elizabeth",
         "first_name_r": "melissa",
         "last_name_tokens_l": ["carter"],
@@ -115,8 +115,8 @@ def test_person_filter_keeps_a_phone_only_pair_on_a_family_line():
 
 
 def test_person_filter_keeps_a_shared_line_pair_whose_surnames_share_a_token():
-    """A middle name packed into the surname field ("anne milton" / "milton")."""
-    row = _person_row(last_name_tokens_l=["anne", "milton"], last_name_tokens_r=["milton"])
+    """A middle name packed into the surname field ("ann smith" / "smith")."""
+    row = _person_row(last_name_tokens_l=["ann", "smith"], last_name_tokens_r=["smith"])
     assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
 
 
