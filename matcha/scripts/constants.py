@@ -194,6 +194,18 @@ EO_POST_PREDICTION_FILTER = f"""
 # intersect (antonio/antoinette, dennis/denise, nancy/hannah). Six of fifty
 # sampled were wrong there against none elsewhere; abbreviations
 # (ben/benjamin) were right every time and pass via contains().
+#
+# The shared-line clause refuses a pair tied only by a phone, across surnames
+# with no token in common, when that phone carries four or more unrelated
+# surname groups (phone_surname_groups, from the prematch). Those lines are
+# city halls and school-district offices that slip under the prematch's
+# 25-record cap. A family line carries one or two groups, so a married-name
+# change on a home phone still merges. On the 2026-10 run this removed 310
+# pairs; a hand-labelled sample put about 181 of them wrong against 13 right
+# (most of the rest were internal test accounts), and the right ones were
+# mostly surnames holding an office title. Removing the wrong pairs also
+# spares their clusters from the cannot-link dissolve, which otherwise strands
+# the correct matches around them.
 PERSON_POST_PREDICTION_FILTER = """
     gamma_first_name > 0
       AND NOT (
@@ -207,6 +219,14 @@ PERSON_POST_PREDICTION_FILTER = """
         OR first_name_l = first_name_r
         OR contains(first_name_l, first_name_r)
         OR contains(first_name_r, first_name_l)
+      )
+      AND NOT coalesce(
+        gamma_last_name = 0
+        AND gamma_phone > 0
+        AND gamma_email <= 0
+        AND len(list_intersect(last_name_tokens_l, last_name_tokens_r)) = 0
+        AND try_cast(phone_surname_groups_l AS INTEGER) >= 4,
+        false
       )
 """
 

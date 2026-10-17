@@ -2,7 +2,7 @@
 
 import duckdb
 
-from scripts.constants import EO_POST_PREDICTION_FILTER
+from scripts.constants import EO_POST_PREDICTION_FILTER, PERSON_POST_PREDICTION_FILTER
 
 
 def test_eo_post_filter_includes_position_id_clause():
@@ -80,3 +80,51 @@ def test_eo_filter_keeps_strong_office_name_match_despite_district_diff():
         district_identifier_r="8",
     )
     assert _eval_filter(EO_POST_PREDICTION_FILTER, row) is True
+
+
+def _person_row(**overrides):
+    """A phone-only pair across unrelated surnames on a line with four groups."""
+    base = {
+        "gamma_first_name": 3,
+        "gamma_last_name": 0,
+        "gamma_email": 0,
+        "gamma_phone": 1,
+        "br_candidate_id_l": None,
+        "br_candidate_id_r": None,
+        "email_l": "ecarter@cityhall.example.gov",
+        "email_r": None,
+        "phone_l": "2175550140",
+        "phone_r": "2175550140",
+        "first_name_l": "elizabeth",
+        "first_name_r": "melissa",
+        "last_name_tokens_l": ["carter"],
+        "last_name_tokens_r": ["dunn"],
+        "phone_surname_groups_l": "4",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_person_filter_drops_a_phone_only_pair_on_a_shared_line():
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, _person_row()) is False
+
+
+def test_person_filter_keeps_a_phone_only_pair_on_a_family_line():
+    """Three groups and under is a household or small office, not a switchboard."""
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, _person_row(phone_surname_groups_l="3")) is True
+
+
+def test_person_filter_keeps_a_shared_line_pair_whose_surnames_share_a_token():
+    """A middle name packed into the surname field ("ann smith" / "smith")."""
+    row = _person_row(last_name_tokens_l=["ann", "smith"], last_name_tokens_r=["smith"])
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
+
+
+def test_person_filter_keeps_a_shared_line_pair_with_a_matching_email():
+    row = _person_row(gamma_email=1, email_r="ecarter@cityhall.example.gov")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
+
+
+def test_person_filter_keeps_a_pair_when_the_surname_groups_are_unknown():
+    """A prematch without the column must not start dropping pairs."""
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, _person_row(phone_surname_groups_l=None)) is True
