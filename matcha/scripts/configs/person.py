@@ -82,6 +82,8 @@ PERSON_CONFIG = EntityConfig(
         "suffix_token",
         "br_candidate_id",
         "first_seen_at",
+        # Read by the shared-line clause of the post-prediction filter.
+        "phone_surname_groups",
     ],
     em_training_blocks=[
         ("email",),
