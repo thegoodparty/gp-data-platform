@@ -1,6 +1,58 @@
 version: 2
 
 seeds:
+  - name: census_acs_b01001_cells
+    description: >
+      The 49 cells of ACS table B01001 (sex by age), one row per cell, with the
+      Census Bureau's label for it and the column name staging gives it.
+      stg_census_acs__b01001 generates one estimate and one margin column per
+      row (raw B01001_E### and B01001_M###), so renaming a cell is a change to
+      this seed. Labels are copied verbatim from the Census API for the
+      2020-2024 5-year release
+      (https://api.census.gov/data/2024/acs/acs5/groups/B01001.json), minus the
+      "Estimate!!" prefix; the margin labels are identical apart from that
+      prefix. sex is male or female, blank for the total; age_group is blank
+      for each sex's all-ages total. The table is static per vintage: a new
+      vintage re-checks these labels when the census_acs source is reloaded.
+    config:
+      column_types:
+        cell: int
+        column_name: string
+        sex: string
+        age_group: string
+        census_label: string
+    columns:
+      - name: cell
+        description: B01001 line number, 1 to 49 (the ### in B01001_E### and B01001_M###)
+        data_tests:
+          - unique
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 49
+      - name: column_name
+        description: >
+          The estimate column's name in stg_census_acs__b01001; its margin is
+          column_name || '_moe'
+        data_tests:
+          - unique
+          - not_null
+      - name: sex
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["male", "female"]
+      - name: census_label
+        description: The Census Bureau's label for the cell, levels joined by '!!'
+        data_tests:
+          - unique
+          - not_null
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_equal:
+          arguments:
+            value: 49
+
   - name: fips_codes
     description: >
       Federal Information Processing System (FIPS) Codes for States and Counties
