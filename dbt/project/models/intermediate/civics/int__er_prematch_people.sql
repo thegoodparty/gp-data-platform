@@ -362,8 +362,47 @@ with
                 and last_name not like '%party registrar%'
                 and last_name <> 'user',
                 false
-            ) as is_person
+            ) as is_person,
+            {{ last_name_tokens("last_name") }} as last_name_tokens
         from normalized
+    ),
+
+    -- A switchboard under the cap still carries unrelated people, while a
+    -- family line carries one surname or variants of it. Count each phone's
+    -- surname groups, where surnames sharing a token ("smith" and "ann
+    -- smith") are one group, so the matcher can refuse a phone-only pair
+    -- across unrelated surnames on a shared line. A record founds a group
+    -- unless an earlier one shares a token; multi-token surnames rank first so
+    -- they bridge their parts before either part is seen alone.
+    phone_surnames as (
+        select
+            m.phone,
+            m.last_name_tokens,
+            row_number() over (
+                partition by m.phone order by size(m.last_name_tokens) desc, m.unique_id
+            ) as surname_rank
+        from matchable as m
+        inner join phone_counts as pc on pc.phone = m.phone
+        where
+            m.is_person
+            and size(m.last_name_tokens) > 0
+            and pc.n_records <= {{ contact_key_max_records }}
+    ),
+
+    phone_surname_founders as (
+        select a.phone
+        from phone_surnames as a
+        left anti join
+            phone_surnames as b
+            on a.phone = b.phone
+            and b.surname_rank < a.surname_rank
+            and arrays_overlap(a.last_name_tokens, b.last_name_tokens)
+    ),
+
+    phone_surname_groups as (
+        select phone, count(*) as n_surname_groups
+        from phone_surname_founders
+        group by phone
     )
 
 select
@@ -376,12 +415,11 @@ select
     end as first_name_aliases,
     case when n.is_person then n.first_name_tokens end as first_name_tokens,
     case when n.is_person then n.last_name end as last_name,
-    case
-        when n.is_person then {{ last_name_tokens("n.last_name") }}
-    end as last_name_tokens,
+    case when n.is_person then n.last_name_tokens end as last_name_tokens,
     n.suffix_token,
     case when ec.n_records <= {{ contact_key_max_records }} then n.email end as email,
     case when pc.n_records <= {{ contact_key_max_records }} then n.phone end as phone,
+    psg.n_surname_groups as phone_surname_groups,
     n.state,
     n.city,
     n.zip5,
@@ -393,3 +431,4 @@ from matchable as n
 left join nickname_aliases as a on a.name = n.first_name
 left join email_counts as ec on ec.email = n.email
 left join phone_counts as pc on pc.phone = n.phone
+left join phone_surname_groups as psg on psg.phone = n.phone

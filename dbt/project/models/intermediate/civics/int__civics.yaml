@@ -3542,6 +3542,9 @@ models:
       placeholder phones are nulled, plus-addressing is stripped, phones must
       be 10 digits (or 11 with a leading country code), and any contact key
       on more than 25 records (institutional inboxes, switchboards) is nulled.
+      Each phone also carries its count of unrelated surname groups, which
+      the matcher uses to refuse a phone-only pair across unrelated surnames
+      on a shared line the cap lets through.
     data_tests:
       # Model level so the expression can name the column without the
       # column-test macro prepending it. Guards the tokenizer silently
@@ -3554,6 +3557,13 @@ models:
             expression: "size(last_name_tokens) > 0"
           config:
             where: "last_name rlike '[a-z][a-z]'"
+      # A phone a named record holds always has at least that record's group.
+      - dbt_utils.expression_is_true:
+          name: prematch_people_phone_surname_groups_cover_the_phone
+          arguments:
+            expression: "phone_surname_groups >= 1"
+          config:
+            where: "phone is not null and last_name rlike '[a-z][a-z]'"
     columns:
       - name: unique_id
         description: >
@@ -3587,6 +3597,13 @@ models:
           surname written as one part, or a middle name packed into the surname
           field, still reaches the pair: blocking on the whole surname reaches
           neither.
+      - name: phone_surname_groups
+        description: >
+          Number of unrelated surname groups among the named records holding
+          this phone, where surnames sharing a last_name_tokens entry count as
+          one group. A family line holds one or two; a city or school-district
+          switchboard holds several. Null when the phone is null. The matcher
+          drops a pair whose only tie is a phone holding four or more.
       - name: suffix_token
         description: >
           Generational suffix ('' when none) from explicit source columns

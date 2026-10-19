@@ -878,3 +878,24 @@ def test_person_pipeline_admits_sibling_nickname_collision(person_results):
         "the accepted christopher/christine merge stopped happening; if that is "
         "the intent, update this test and the hazard note rather than deleting them"
     )
+
+
+def test_person_pipeline_refuses_a_phone_only_pair_on_a_shared_line(person_results):
+    """Two unrelated people on a city-hall switchboard that holds four surname
+    groups, first names meeting only through the "lisa" alias. The phone is the
+    only tie, so the pair is filtered and the two stay apart."""
+    pairwise_df, clustered_df, out = person_results
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+    filtered = pd.read_csv(out / "filtered_pairs.csv", dtype=str)
+
+    assert _pair_rows(pairwise_df, "ballotready|140", "hubspot|140").empty
+    assert not _pair_rows(filtered, "ballotready|140", "hubspot|140").empty
+    assert cluster_of["ballotready|140"] != cluster_of["hubspot|140"]
+
+
+def test_person_pipeline_keeps_a_phone_only_pair_on_a_family_line(person_results):
+    """A married-name change on a home phone holding two surname groups is
+    below the shared-line cutoff, so the pair is still scored and kept."""
+    pairwise_df, _, _ = person_results
+
+    assert not _pair_rows(pairwise_df, "hubspot|150", "techspeed|150").empty
