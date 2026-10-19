@@ -12,31 +12,9 @@
 -- number. Deliberate fail-loud posture: no speculative mappings for codes the
 -- authority does not document. Unconsumed margin columns are deliberately out
 -- of scope: the source is static and hash-locked, and staging never reads
--- them.
+-- them. stg_census_acs__b01001 stages every B01001 cell, so all 49 are in.
 {% set consumed_margins = {
-    "acs5y2024_b01001": [
-        1,
-        3,
-        4,
-        5,
-        6,
-        20,
-        21,
-        22,
-        23,
-        24,
-        25,
-        27,
-        28,
-        29,
-        30,
-        44,
-        45,
-        46,
-        47,
-        48,
-        49,
-    ],
+    "acs5y2024_b01001": range(1, 50) | list,
     "acs5y2024_b03002": [1, 3, 4, 5, 6, 7, 8, 9, 12],
     "acs5y2024_b15002": [
         1,

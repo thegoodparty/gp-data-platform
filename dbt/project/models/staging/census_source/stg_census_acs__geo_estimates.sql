@@ -18,111 +18,62 @@
 -- census_acs_* macros: margins are null when not computable and 0 exactly when
 -- the estimate is controlled to an official total.
 --
--- Adult sex-by-age bands from B01001, as (sex, band, first cell, last cell).
--- Female cells mirror male ones 24 cells on (male 18-19 is E007, female 18-19
--- is E031). Each band is a run of consecutive cells; each sex's adult total is
--- the run from its 18-19 cell to its 85-and-over cell (E007-E025, E031-E049),
--- so it is the sum of that sex's bands and nulls with any of them.
-{%- set adult_sex_age_bands = [
-    ("male", "18_to_24", 7, 10),
-    ("male", "25_to_34", 11, 12),
-    ("male", "35_to_44", 13, 14),
-    ("male", "45_to_54", 15, 16),
-    ("male", "55_to_64", 17, 19),
-    ("male", "65_plus", 20, 25),
-    ("male", "18_plus", 7, 25),
-    ("female", "18_to_24", 31, 34),
-    ("female", "25_to_34", 35, 36),
-    ("female", "35_to_44", 37, 38),
-    ("female", "45_to_54", 39, 40),
-    ("female", "55_to_64", 41, 43),
-    ("female", "65_plus", 44, 49),
-    ("female", "18_plus", 31, 49),
+-- B01001 comes through stg_census_acs__b01001, which names its cells, so the
+-- brackets below are lists of those names: each age bracket per sex, and
+-- each sex's adult total as every one of its 18-and-over cells, so it is the
+-- sum of that sex's bands and nulls with any of them. Sums and root-sum-of-
+-- squares margins null when any part is null, as the census_acs_* bracket
+-- macros do for the raw tables.
+{%- set adult_bands = {
+    "18_to_24": ["18_to_19", "20", "21", "22_to_24"],
+    "25_to_34": ["25_to_29", "30_to_34"],
+    "35_to_44": ["35_to_39", "40_to_44"],
+    "45_to_54": ["45_to_49", "50_to_54"],
+    "55_to_64": ["55_to_59", "60_to_61", "62_to_64"],
+    "65_plus": [
+        "65_to_66",
+        "67_to_69",
+        "70_to_74",
+        "75_to_79",
+        "80_to_84",
+        "85_plus",
+    ],
+} %}
+{%- set under_18 = ["under_5", "5_to_9", "10_to_14", "15_to_17"] %}
+{%- set brackets = [
+    ("population_under_18", ["male", "female"], under_18),
+    ("population_65_plus", ["male", "female"], adult_bands["65_plus"]),
 ] %}
+{%- for sex in ["male", "female"] %}
+    {%- set adult_cells = [] %}
+    {%- for band, ages in adult_bands.items() %}
+        {%- do brackets.append(("population_" ~ sex ~ "_" ~ band, [sex], ages)) %}
+        {%- for age in ages %} {%- do adult_cells.append(age) %} {%- endfor %}
+    {%- endfor %}
+    {%- do brackets.append(("population_" ~ sex ~ "_18_plus", [sex], adult_cells)) %}
+{%- endfor %}
 with
     b01001 as (
         select
-            left(geo_id, 3) as summary_level,
-            substring(geo_id, 10) as geoid,
-            {{ census_acs_estimate("b01001_e001") }} as total_population,
-            {{ census_acs_moe("b01001_m001") }} as total_population_moe,
-            {{
-                census_acs_estimate_sum(
-                    [
-                        "b01001_e003",
-                        "b01001_e004",
-                        "b01001_e005",
-                        "b01001_e006",
-                        "b01001_e027",
-                        "b01001_e028",
-                        "b01001_e029",
-                        "b01001_e030",
-                    ]
-                )
-            }} as population_under_18,
-            {{
-                census_acs_moe_rss(
-                    [
-                        "b01001_m003",
-                        "b01001_m004",
-                        "b01001_m005",
-                        "b01001_m006",
-                        "b01001_m027",
-                        "b01001_m028",
-                        "b01001_m029",
-                        "b01001_m030",
-                    ]
-                )
-            }} as population_under_18_moe,
-            {{
-                census_acs_estimate_sum(
-                    [
-                        "b01001_e020",
-                        "b01001_e021",
-                        "b01001_e022",
-                        "b01001_e023",
-                        "b01001_e024",
-                        "b01001_e025",
-                        "b01001_e044",
-                        "b01001_e045",
-                        "b01001_e046",
-                        "b01001_e047",
-                        "b01001_e048",
-                        "b01001_e049",
-                    ]
-                )
-            }} as population_65_plus,
-            {{
-                census_acs_moe_rss(
-                    [
-                        "b01001_m020",
-                        "b01001_m021",
-                        "b01001_m022",
-                        "b01001_m023",
-                        "b01001_m024",
-                        "b01001_m025",
-                        "b01001_m044",
-                        "b01001_m045",
-                        "b01001_m046",
-                        "b01001_m047",
-                        "b01001_m048",
-                        "b01001_m049",
-                    ]
-                )
-            }} as population_65_plus_moe
-            {%- for sex, band, first_cell, last_cell in adult_sex_age_bands %}
-                {%- set estimates = [] %}
-                {%- set margins = [] %}
-                {%- for cell in range(first_cell, last_cell + 1) %}
-                    {%- do estimates.append("b01001_e%03d" % cell) %}
-                    {%- do margins.append("b01001_m%03d" % cell) %}
+            summary_level,
+            geoid,
+            total_population,
+            total_population_moe
+            {%- for name, sexes, ages in brackets %}
+                {%- set parts = [] %}
+                {%- for sex in sexes %}
+                    {%- for age in ages %}
+                        {%- do parts.append("population_" ~ sex ~ "_" ~ age) %}
+                    {%- endfor %}
                 {%- endfor %},
-                {{ census_acs_estimate_sum(estimates) }}
-                as population_{{ sex }}_{{ band }},
-                {{ census_acs_moe_rss(margins) }} as population_{{ sex }}_{{ band }}_moe
+                ({{ parts | join(" + ") }}) as {{ name }},
+                sqrt(
+                    {%- for part in parts %}
+                        pow({{ part }}_moe, 2){{ " +" if not loop.last }}
+                    {%- endfor %}
+                ) as {{ name }}_moe
             {%- endfor %}
-        from {{ source("census_acs", "acs5y2024_b01001") }}
-        where {{ census_acs_retained_geo_rows() }}
+        from {{ ref("stg_census_acs__b01001") }}
     ),
 
     b03002 as (
@@ -403,9 +354,9 @@ with
             b01001.population_under_18_moe,
             b01001.population_65_plus,
             b01001.population_65_plus_moe,
-            {%- for sex, band, first_cell, last_cell in adult_sex_age_bands %}
-                b01001.population_{{ sex }}_{{ band }},
-                b01001.population_{{ sex }}_{{ band }}_moe,
+            {#- the sex-by-age brackets: everything after under-18 and 65+ #}
+            {%- for name, sexes, ages in brackets[2:] %}
+                b01001.{{ name }}, b01001.{{ name }}_moe,
             {%- endfor %}
             b03002.population_race_universe,
             b03002.population_race_universe_moe,
