@@ -512,11 +512,13 @@ models:
           - not_null
       - name: legitimacy_score
         description: >
-          Calibrated probability, 0 to 1: of past signups at the same model rank who
-          signed up about as far ahead of their election, the share whose race was
-          later corroborated by BallotReady, DDHQ or TechSpeed for a completed
-          election. Sharpest for signups within 90 days of their election; treat it
-          as directional for signups a year or more ahead.
+          Probability, 0 to 1, calibrated on completed elections: of past signups at
+          the same model rank who signed up about as far ahead of their election, the
+          share whose race was later corroborated by BallotReady, DDHQ or TechSpeed.
+          Sharpest for signups within 90 days of their election; treat it as
+          directional for signups a year or more ahead. For signups still in their
+          cycle the upper bands ran well above the share later confirmed, so read it
+          as a rank, not a rate.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -530,18 +532,19 @@ models:
                 values: ["p_under_5", "p_5_15", "p_15_35", "p_35_60", "p_60_plus"]
       - name: legitimacy_label
         description: >
-          The bucket in words with its range, for display: 1. [0-5%] very
-          unlikely, 2. [5-15%] unlikely, 3. [15-35%] possible, 4. [35-60%]
-          toss-up, 5. [60-100%] likely. The number prefix makes it sort in score
-          order as text.
+          The bucket as a rank, for display: 1. lowest, 2. low, 3. middle, 4.
+          high, 5. highest. No range or likely/unlikely wording, since the ranges
+          overstate in-cycle and a low band means not yet confirmed rather than not
+          real.
+          The number prefix makes it sort in score order as text.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - "1. [0-5%] very unlikely"
-                  - "2. [5-15%] unlikely"
-                  - "3. [15-35%] possible"
-                  - "4. [35-60%] toss-up"
-                  - "5. [60-100%] likely"
+                  - "1. lowest"
+                  - "2. low"
+                  - "3. middle"
+                  - "4. high"
+                  - "5. highest"
       - name: legitimacy_model_id
         description: The serving model that produced the score.

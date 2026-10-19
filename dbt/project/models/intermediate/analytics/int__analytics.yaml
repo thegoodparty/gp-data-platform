@@ -1791,25 +1791,26 @@ models:
           The anchor campaign's legitimacy score from the candidate legitimacy
           predictor, 0 to 1: the expected rate at which a campaign like this is
           corroborated by a ballot data vendor. Close to but not the same as the
-          person being real. Null for campaigns the model has not scored.
+          person being real. Runs high for signups still in their cycle, so read
+          it as a rank, not a rate. Null for campaigns the model has not scored.
       - name: candidacy_legitimacy_bucket
         description: The score's band, p_under_5 to p_60_plus.
       - name: candidacy_legitimacy_label
         description: >
           6. confirmed when candidacy_has_external_match is true, whether or
-          not the model scored the campaign. Otherwise the score band in words
-          with its range, from 1. [0-5%] very unlikely to 5. [60-100%] likely,
-          or null when unscored. The number prefix makes it sort in order.
-          candidacy_legitimacy_score and _bucket stay the model's raw output.
+          not the model scored the campaign. Otherwise the score band as a
+          rank, from 1. lowest to 5. highest, or null when unscored. The number
+          prefix makes it sort in order. candidacy_legitimacy_score and _bucket
+          stay the model's raw output.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - "1. [0-5%] very unlikely"
-                  - "2. [5-15%] unlikely"
-                  - "3. [15-35%] possible"
-                  - "4. [35-60%] toss-up"
-                  - "5. [60-100%] likely"
+                  - "1. lowest"
+                  - "2. low"
+                  - "3. middle"
+                  - "4. high"
+                  - "5. highest"
                   - "6. confirmed"
       - name: candidacy_legitimacy_scored_at
         description: >
