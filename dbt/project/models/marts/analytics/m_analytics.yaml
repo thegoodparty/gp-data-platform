@@ -3517,7 +3517,8 @@ models:
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
       plus each outbound HubSpot touch, each committed outreach send, and each
-      onboarding or Pro upgrade step reached in order, and each Stripe payment,
+      onboarding or Pro upgrade step reached in order, each core onboarding step
+      (office, party, pledge) in any version of the flow, and each Stripe payment,
       refund and subscription start or end. Win
       sends are Outreach send; an elected official's polls and outreach to
       constituents are Serve outreach, so Win counts never include them. Internal
@@ -3563,6 +3564,7 @@ models:
                   - Onboarding step
                   - Pro upgrade step
                   - Serve onboarding step
+                  - Onboarding core step
                   - Payment
                   - Refund
                   - Subscription started
@@ -3591,8 +3593,8 @@ models:
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
           payment, Filing deadline. 14 is Serve outreach; 15 to 17 are the Onboarding,
           Pro upgrade and Serve onboarding steps; 18 to 21 are Payment, Refund,
-          Subscription started and Subscription ended. Not chronological; sort a
-          timeline by event_at.
+          Subscription started and Subscription ended; 22 is the Onboarding core
+          step. Not chronological; sort a timeline by event_at.
         data_tests:
           - not_null
       - name: event_key
@@ -3624,7 +3626,8 @@ models:
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience
           size), or seconds since the previous step for a flow step (null on step
-          1); null for every other event and for sends with no recipient count.
+          1, and on a core onboarding step that came before the one listed above
+          it); null for every other event and for sends with no recipient count.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:

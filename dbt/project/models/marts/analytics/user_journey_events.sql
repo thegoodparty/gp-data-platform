@@ -175,7 +175,8 @@ with
         where s.basis = 'committed' and s.product = 'serve'
     ),
 
-    -- In-order reach through each flow's current version. The label carries the
+    -- In-order reach through each flow's current version, plus the core onboarding
+    -- steps across every version. The label carries the
     -- step number so a chart sorts by it; the value is seconds since the previous
     -- step, for time spent on each.
     flow_steps as (
@@ -189,6 +190,8 @@ with
                 then 'Pro upgrade step'
                 when 'serve_onboarding'
                 then 'Serve onboarding step'
+                when 'win_onboarding_core'
+                then 'Onboarding core step'
             end as event,
             'flow_step' as event_category,
             cast(null as string) as stage,
@@ -200,6 +203,8 @@ with
                 then 16
                 when 'serve_onboarding'
                 then 17
+                when 'win_onboarding_core'
+                then 22
             end as event_order,
             'step:' || f.flow || ':' || f.step_order as event_key,
             f.step_at as event_at,
