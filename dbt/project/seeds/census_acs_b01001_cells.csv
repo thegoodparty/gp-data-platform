@@ -1,0 +1,50 @@
+cell,column_name,sex,age_group,census_label
+1,total_population,,,Total:
+2,population_male,male,,Total:!!Male:
+3,population_male_under_5,male,Under 5 years,Total:!!Male:!!Under 5 years
+4,population_male_5_to_9,male,5 to 9 years,Total:!!Male:!!5 to 9 years
+5,population_male_10_to_14,male,10 to 14 years,Total:!!Male:!!10 to 14 years
+6,population_male_15_to_17,male,15 to 17 years,Total:!!Male:!!15 to 17 years
+7,population_male_18_to_19,male,18 and 19 years,Total:!!Male:!!18 and 19 years
+8,population_male_20,male,20 years,Total:!!Male:!!20 years
+9,population_male_21,male,21 years,Total:!!Male:!!21 years
+10,population_male_22_to_24,male,22 to 24 years,Total:!!Male:!!22 to 24 years
+11,population_male_25_to_29,male,25 to 29 years,Total:!!Male:!!25 to 29 years
+12,population_male_30_to_34,male,30 to 34 years,Total:!!Male:!!30 to 34 years
+13,population_male_35_to_39,male,35 to 39 years,Total:!!Male:!!35 to 39 years
+14,population_male_40_to_44,male,40 to 44 years,Total:!!Male:!!40 to 44 years
+15,population_male_45_to_49,male,45 to 49 years,Total:!!Male:!!45 to 49 years
+16,population_male_50_to_54,male,50 to 54 years,Total:!!Male:!!50 to 54 years
+17,population_male_55_to_59,male,55 to 59 years,Total:!!Male:!!55 to 59 years
+18,population_male_60_to_61,male,60 and 61 years,Total:!!Male:!!60 and 61 years
+19,population_male_62_to_64,male,62 to 64 years,Total:!!Male:!!62 to 64 years
+20,population_male_65_to_66,male,65 and 66 years,Total:!!Male:!!65 and 66 years
+21,population_male_67_to_69,male,67 to 69 years,Total:!!Male:!!67 to 69 years
+22,population_male_70_to_74,male,70 to 74 years,Total:!!Male:!!70 to 74 years
+23,population_male_75_to_79,male,75 to 79 years,Total:!!Male:!!75 to 79 years
+24,population_male_80_to_84,male,80 to 84 years,Total:!!Male:!!80 to 84 years
+25,population_male_85_plus,male,85 years and over,Total:!!Male:!!85 years and over
+26,population_female,female,,Total:!!Female:
+27,population_female_under_5,female,Under 5 years,Total:!!Female:!!Under 5 years
+28,population_female_5_to_9,female,5 to 9 years,Total:!!Female:!!5 to 9 years
+29,population_female_10_to_14,female,10 to 14 years,Total:!!Female:!!10 to 14 years
+30,population_female_15_to_17,female,15 to 17 years,Total:!!Female:!!15 to 17 years
+31,population_female_18_to_19,female,18 and 19 years,Total:!!Female:!!18 and 19 years
+32,population_female_20,female,20 years,Total:!!Female:!!20 years
+33,population_female_21,female,21 years,Total:!!Female:!!21 years
+34,population_female_22_to_24,female,22 to 24 years,Total:!!Female:!!22 to 24 years
+35,population_female_25_to_29,female,25 to 29 years,Total:!!Female:!!25 to 29 years
+36,population_female_30_to_34,female,30 to 34 years,Total:!!Female:!!30 to 34 years
+37,population_female_35_to_39,female,35 to 39 years,Total:!!Female:!!35 to 39 years
+38,population_female_40_to_44,female,40 to 44 years,Total:!!Female:!!40 to 44 years
+39,population_female_45_to_49,female,45 to 49 years,Total:!!Female:!!45 to 49 years
+40,population_female_50_to_54,female,50 to 54 years,Total:!!Female:!!50 to 54 years
+41,population_female_55_to_59,female,55 to 59 years,Total:!!Female:!!55 to 59 years
+42,population_female_60_to_61,female,60 and 61 years,Total:!!Female:!!60 and 61 years
+43,population_female_62_to_64,female,62 to 64 years,Total:!!Female:!!62 to 64 years
+44,population_female_65_to_66,female,65 and 66 years,Total:!!Female:!!65 and 66 years
+45,population_female_67_to_69,female,67 to 69 years,Total:!!Female:!!67 to 69 years
+46,population_female_70_to_74,female,70 to 74 years,Total:!!Female:!!70 to 74 years
+47,population_female_75_to_79,female,75 to 79 years,Total:!!Female:!!75 to 79 years
+48,population_female_80_to_84,female,80 to 84 years,Total:!!Female:!!80 to 84 years
+49,population_female_85_plus,female,85 years and over,Total:!!Female:!!85 years and over

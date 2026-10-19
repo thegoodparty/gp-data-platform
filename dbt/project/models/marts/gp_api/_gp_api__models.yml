@@ -358,7 +358,9 @@ models:
       gp_api_block_group_census_demographics. Local rows are block-group
       estimates allocated through the district population allocation and are
       fractional; statewide rows are the published state estimates. Counts only:
-      no medians and no margins of error. Read one district_type at a time.
+      no medians and no margins of error. Adult census sex by age (male/female,
+      18-24 through 65+, plus an 18+ total per sex) is included; it is census
+      sex, not gender identity. Read one district_type at a time.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -371,7 +373,9 @@ models:
       block_group_geoid, with the columns, margins of error and medians of
       stg_census_acs__geo_estimates. Join a person through
       gp_api_voters.Census_Block_Group_Geoid. Null where the Census suppressed a
-      value; there is no sex or gender breakdown.
+      value. Sex is the census's male/female (B01001), adults only, in the bands
+      18-24, 25-34, 35-44, 45-54, 55-64 and 65+ plus an 18+ total per sex; it is
+      not gender identity, and there are no children's bands by sex.
     data_tests:
       # int__district_acs_estimates sums these counts over block groups, so a
       # suppressed (null) one would quietly undercount a district.
@@ -401,6 +405,15 @@ models:
               households_income_100k_to_125k is not null and households_income_125k_to_150k
               is not null and households_income_150k_to_200k is not null and
               households_income_200k_plus is not null
+              and population_male_18_to_24 is not null and population_male_25_to_34 is
+              not null and population_male_35_to_44 is not null and
+              population_male_45_to_54 is not null and population_male_55_to_64 is not
+              null and population_male_65_plus is not null and population_male_18_plus
+              is not null and population_female_18_to_24 is not null and
+              population_female_25_to_34 is not null and population_female_35_to_44 is
+              not null and population_female_45_to_54 is not null and
+              population_female_55_to_64 is not null and population_female_65_plus is
+              not null and population_female_18_plus is not null
     columns:
       - name: block_group_geoid
         description: >
@@ -416,6 +429,90 @@ models:
               arguments:
                 min_value: 0
       - name: households
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_to_24
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_25_to_34
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_35_to_44
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_45_to_54
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_55_to_64
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_65_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_to_24
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_25_to_34
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_35_to_44
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_45_to_54
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_55_to_64
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_65_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_plus
         data_tests:
           - not_null
           - dbt_utils.accepted_range:

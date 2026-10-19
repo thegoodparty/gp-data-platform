@@ -1,6 +1,431 @@
 version: 2
 
 models:
+  - name: stg_census_acs__b01001
+    description: >
+      ACS 2020-2024 5-year table B01001 (sex by age), every one of its 49 cells as a named
+      estimate and 90 percent margin of error, one row per (summary_level, geoid) at the
+      same retained summary levels and complete-geography rows as
+      stg_census_acs__geo_estimates. Universe: total population. Sex is the census's male or
+      female, not gender identity. Jam codes map like the rest of census_acs staging: null
+      means suppressed or not computable, and a margin of exactly 0 means the estimate is
+      controlled to an official total. The cells are mutually exclusive within a sex, so any
+      age bracket is a sum of them; stg_census_acs__geo_estimates builds its age and sex-by-
+      age brackets from these columns. Margins must not be summed; combine them by root sum
+      of squares.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [summary_level, geoid]
+    columns:
+      - name: summary_level
+        description: >
+          Census summary level: 150 block group, 040 state, 050 county, 160 place, 010
+          national, 950/960/970 elementary/secondary/unified school district.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["150", "040", "050", "160", "010", "950", "960", "970"]
+      - name: geoid
+        description: >
+          FIPS-based geographic id parsed from GEO_ID, keyed like
+          stg_census_acs__geo_estimates (empty string for the national row).
+        data_tests:
+          - not_null
+      - name: total_population
+        description: >
+          ACS source cell: B01001_E001 (Total population). Null when the Census suppressed
+          or could not compute the value.
+      - name: total_population_moe
+        description: >
+          90 percent margin of error for total_population (B01001_M001). 0 means controlled
+          to an official total; null means not published or not computable.
+      - name: population_male
+        description: >
+          ACS source cell: B01001_E002 (Male, all ages). Null when the Census suppressed or
+          could not compute the value.
+      - name: population_male_moe
+        description: >
+          90 percent margin of error for population_male (B01001_M002). 0 means controlled
+          to an official total; null means not published or not computable.
+      - name: population_male_under_5
+        description: >
+          ACS source cell: B01001_E003 (Male, under 5 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_under_5_moe
+        description: >
+          90 percent margin of error for population_male_under_5 (B01001_M003). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_5_to_9
+        description: >
+          ACS source cell: B01001_E004 (Male, 5 to 9 years). Null when the Census suppressed
+          or could not compute the value.
+      - name: population_male_5_to_9_moe
+        description: >
+          90 percent margin of error for population_male_5_to_9 (B01001_M004). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_10_to_14
+        description: >
+          ACS source cell: B01001_E005 (Male, 10 to 14 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_10_to_14_moe
+        description: >
+          90 percent margin of error for population_male_10_to_14 (B01001_M005). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_15_to_17
+        description: >
+          ACS source cell: B01001_E006 (Male, 15 to 17 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_15_to_17_moe
+        description: >
+          90 percent margin of error for population_male_15_to_17 (B01001_M006). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_18_to_19
+        description: >
+          ACS source cell: B01001_E007 (Male, 18 to 19 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_18_to_19_moe
+        description: >
+          90 percent margin of error for population_male_18_to_19 (B01001_M007). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_20
+        description: >
+          ACS source cell: B01001_E008 (Male, 20 years). Null when the Census suppressed or
+          could not compute the value.
+      - name: population_male_20_moe
+        description: >
+          90 percent margin of error for population_male_20 (B01001_M008). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_21
+        description: >
+          ACS source cell: B01001_E009 (Male, 21 years). Null when the Census suppressed or
+          could not compute the value.
+      - name: population_male_21_moe
+        description: >
+          90 percent margin of error for population_male_21 (B01001_M009). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_22_to_24
+        description: >
+          ACS source cell: B01001_E010 (Male, 22 to 24 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_22_to_24_moe
+        description: >
+          90 percent margin of error for population_male_22_to_24 (B01001_M010). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_25_to_29
+        description: >
+          ACS source cell: B01001_E011 (Male, 25 to 29 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_25_to_29_moe
+        description: >
+          90 percent margin of error for population_male_25_to_29 (B01001_M011). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_30_to_34
+        description: >
+          ACS source cell: B01001_E012 (Male, 30 to 34 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_30_to_34_moe
+        description: >
+          90 percent margin of error for population_male_30_to_34 (B01001_M012). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_35_to_39
+        description: >
+          ACS source cell: B01001_E013 (Male, 35 to 39 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_35_to_39_moe
+        description: >
+          90 percent margin of error for population_male_35_to_39 (B01001_M013). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_40_to_44
+        description: >
+          ACS source cell: B01001_E014 (Male, 40 to 44 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_40_to_44_moe
+        description: >
+          90 percent margin of error for population_male_40_to_44 (B01001_M014). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_45_to_49
+        description: >
+          ACS source cell: B01001_E015 (Male, 45 to 49 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_45_to_49_moe
+        description: >
+          90 percent margin of error for population_male_45_to_49 (B01001_M015). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_50_to_54
+        description: >
+          ACS source cell: B01001_E016 (Male, 50 to 54 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_50_to_54_moe
+        description: >
+          90 percent margin of error for population_male_50_to_54 (B01001_M016). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_55_to_59
+        description: >
+          ACS source cell: B01001_E017 (Male, 55 to 59 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_55_to_59_moe
+        description: >
+          90 percent margin of error for population_male_55_to_59 (B01001_M017). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_60_to_61
+        description: >
+          ACS source cell: B01001_E018 (Male, 60 to 61 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_60_to_61_moe
+        description: >
+          90 percent margin of error for population_male_60_to_61 (B01001_M018). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_62_to_64
+        description: >
+          ACS source cell: B01001_E019 (Male, 62 to 64 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_62_to_64_moe
+        description: >
+          90 percent margin of error for population_male_62_to_64 (B01001_M019). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_65_to_66
+        description: >
+          ACS source cell: B01001_E020 (Male, 65 to 66 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_65_to_66_moe
+        description: >
+          90 percent margin of error for population_male_65_to_66 (B01001_M020). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_67_to_69
+        description: >
+          ACS source cell: B01001_E021 (Male, 67 to 69 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_67_to_69_moe
+        description: >
+          90 percent margin of error for population_male_67_to_69 (B01001_M021). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_70_to_74
+        description: >
+          ACS source cell: B01001_E022 (Male, 70 to 74 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_70_to_74_moe
+        description: >
+          90 percent margin of error for population_male_70_to_74 (B01001_M022). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_75_to_79
+        description: >
+          ACS source cell: B01001_E023 (Male, 75 to 79 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_75_to_79_moe
+        description: >
+          90 percent margin of error for population_male_75_to_79 (B01001_M023). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_80_to_84
+        description: >
+          ACS source cell: B01001_E024 (Male, 80 to 84 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_80_to_84_moe
+        description: >
+          90 percent margin of error for population_male_80_to_84 (B01001_M024). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_male_85_plus
+        description: >
+          ACS source cell: B01001_E025 (Male, 85 years and over). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_male_85_plus_moe
+        description: >
+          90 percent margin of error for population_male_85_plus (B01001_M025). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female
+        description: >
+          ACS source cell: B01001_E026 (Female, all ages). Null when the Census suppressed
+          or could not compute the value.
+      - name: population_female_moe
+        description: >
+          90 percent margin of error for population_female (B01001_M026). 0 means controlled
+          to an official total; null means not published or not computable.
+      - name: population_female_under_5
+        description: >
+          ACS source cell: B01001_E027 (Female, under 5 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_under_5_moe
+        description: >
+          90 percent margin of error for population_female_under_5 (B01001_M027). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_5_to_9
+        description: >
+          ACS source cell: B01001_E028 (Female, 5 to 9 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_5_to_9_moe
+        description: >
+          90 percent margin of error for population_female_5_to_9 (B01001_M028). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_10_to_14
+        description: >
+          ACS source cell: B01001_E029 (Female, 10 to 14 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_10_to_14_moe
+        description: >
+          90 percent margin of error for population_female_10_to_14 (B01001_M029). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_15_to_17
+        description: >
+          ACS source cell: B01001_E030 (Female, 15 to 17 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_15_to_17_moe
+        description: >
+          90 percent margin of error for population_female_15_to_17 (B01001_M030). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_18_to_19
+        description: >
+          ACS source cell: B01001_E031 (Female, 18 to 19 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_18_to_19_moe
+        description: >
+          90 percent margin of error for population_female_18_to_19 (B01001_M031). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_20
+        description: >
+          ACS source cell: B01001_E032 (Female, 20 years). Null when the Census suppressed
+          or could not compute the value.
+      - name: population_female_20_moe
+        description: >
+          90 percent margin of error for population_female_20 (B01001_M032). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_21
+        description: >
+          ACS source cell: B01001_E033 (Female, 21 years). Null when the Census suppressed
+          or could not compute the value.
+      - name: population_female_21_moe
+        description: >
+          90 percent margin of error for population_female_21 (B01001_M033). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_22_to_24
+        description: >
+          ACS source cell: B01001_E034 (Female, 22 to 24 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_22_to_24_moe
+        description: >
+          90 percent margin of error for population_female_22_to_24 (B01001_M034). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_25_to_29
+        description: >
+          ACS source cell: B01001_E035 (Female, 25 to 29 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_25_to_29_moe
+        description: >
+          90 percent margin of error for population_female_25_to_29 (B01001_M035). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_30_to_34
+        description: >
+          ACS source cell: B01001_E036 (Female, 30 to 34 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_30_to_34_moe
+        description: >
+          90 percent margin of error for population_female_30_to_34 (B01001_M036). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_35_to_39
+        description: >
+          ACS source cell: B01001_E037 (Female, 35 to 39 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_35_to_39_moe
+        description: >
+          90 percent margin of error for population_female_35_to_39 (B01001_M037). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_40_to_44
+        description: >
+          ACS source cell: B01001_E038 (Female, 40 to 44 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_40_to_44_moe
+        description: >
+          90 percent margin of error for population_female_40_to_44 (B01001_M038). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_45_to_49
+        description: >
+          ACS source cell: B01001_E039 (Female, 45 to 49 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_45_to_49_moe
+        description: >
+          90 percent margin of error for population_female_45_to_49 (B01001_M039). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_50_to_54
+        description: >
+          ACS source cell: B01001_E040 (Female, 50 to 54 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_50_to_54_moe
+        description: >
+          90 percent margin of error for population_female_50_to_54 (B01001_M040). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_55_to_59
+        description: >
+          ACS source cell: B01001_E041 (Female, 55 to 59 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_55_to_59_moe
+        description: >
+          90 percent margin of error for population_female_55_to_59 (B01001_M041). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_60_to_61
+        description: >
+          ACS source cell: B01001_E042 (Female, 60 to 61 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_60_to_61_moe
+        description: >
+          90 percent margin of error for population_female_60_to_61 (B01001_M042). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_62_to_64
+        description: >
+          ACS source cell: B01001_E043 (Female, 62 to 64 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_62_to_64_moe
+        description: >
+          90 percent margin of error for population_female_62_to_64 (B01001_M043). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_65_to_66
+        description: >
+          ACS source cell: B01001_E044 (Female, 65 to 66 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_65_to_66_moe
+        description: >
+          90 percent margin of error for population_female_65_to_66 (B01001_M044). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_67_to_69
+        description: >
+          ACS source cell: B01001_E045 (Female, 67 to 69 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_67_to_69_moe
+        description: >
+          90 percent margin of error for population_female_67_to_69 (B01001_M045). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_70_to_74
+        description: >
+          ACS source cell: B01001_E046 (Female, 70 to 74 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_70_to_74_moe
+        description: >
+          90 percent margin of error for population_female_70_to_74 (B01001_M046). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_75_to_79
+        description: >
+          ACS source cell: B01001_E047 (Female, 75 to 79 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_75_to_79_moe
+        description: >
+          90 percent margin of error for population_female_75_to_79 (B01001_M047). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_80_to_84
+        description: >
+          ACS source cell: B01001_E048 (Female, 80 to 84 years). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_80_to_84_moe
+        description: >
+          90 percent margin of error for population_female_80_to_84 (B01001_M048). 0 means
+          controlled to an official total; null means not published or not computable.
+      - name: population_female_85_plus
+        description: >
+          ACS source cell: B01001_E049 (Female, 85 years and over). Null when the Census
+          suppressed or could not compute the value.
+      - name: population_female_85_plus_moe
+        description: >
+          90 percent margin of error for population_female_85_plus (B01001_M049). 0 means
+          controlled to an official total; null means not published or not computable.
+
   - name: stg_census_acs__geo_estimates
     description: >
       ACS 2020-2024 5-year estimates and 90 percent margins of error at the retained summary
@@ -69,6 +494,176 @@ models:
           to an official total (no sampling error); null means the margin was not published or
           not computable. Combined by plain root sum of squares, which overstates for
           combinations of many or rare cells.
+      - name: population_male_18_to_24
+        description: >
+          ACS source cell(s): B01001 E007-E010 (Male, 18 to 24 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_18_to_24_moe
+        description: >
+          90 percent margin of error for population_male_18_to_24. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_25_to_34
+        description: >
+          ACS source cell(s): B01001 E011-E012 (Male, 25 to 34 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_25_to_34_moe
+        description: >
+          90 percent margin of error for population_male_25_to_34. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_35_to_44
+        description: >
+          ACS source cell(s): B01001 E013-E014 (Male, 35 to 44 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_35_to_44_moe
+        description: >
+          90 percent margin of error for population_male_35_to_44. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_45_to_54
+        description: >
+          ACS source cell(s): B01001 E015-E016 (Male, 45 to 54 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_45_to_54_moe
+        description: >
+          90 percent margin of error for population_male_45_to_54. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_55_to_64
+        description: >
+          ACS source cell(s): B01001 E017-E019 (Male, 55 to 64 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_55_to_64_moe
+        description: >
+          90 percent margin of error for population_male_55_to_64. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_65_plus
+        description: >
+          ACS source cell(s): B01001 E020-E025 (Male, 65 years and over). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_65_plus_moe
+        description: >
+          90 percent margin of error for population_male_65_plus. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_male_18_plus
+        description: >
+          ACS source cell(s): B01001 E007-E025 (Male, 18 years and over). Universe: Total
+          population. Census sex (male or female), not gender identity. Equals the sum of
+          this sex's five adult age bands and its 65-and-over band. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_male_18_plus_moe
+        description: >
+          90 percent margin of error for population_male_18_plus. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_18_to_24
+        description: >
+          ACS source cell(s): B01001 E031-E034 (Female, 18 to 24 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_18_to_24_moe
+        description: >
+          90 percent margin of error for population_female_18_to_24. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_25_to_34
+        description: >
+          ACS source cell(s): B01001 E035-E036 (Female, 25 to 34 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_25_to_34_moe
+        description: >
+          90 percent margin of error for population_female_25_to_34. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_35_to_44
+        description: >
+          ACS source cell(s): B01001 E037-E038 (Female, 35 to 44 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_35_to_44_moe
+        description: >
+          90 percent margin of error for population_female_35_to_44. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_45_to_54
+        description: >
+          ACS source cell(s): B01001 E039-E040 (Female, 45 to 54 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_45_to_54_moe
+        description: >
+          90 percent margin of error for population_female_45_to_54. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_55_to_64
+        description: >
+          ACS source cell(s): B01001 E041-E043 (Female, 55 to 64 years). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_55_to_64_moe
+        description: >
+          90 percent margin of error for population_female_55_to_64. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_65_plus
+        description: >
+          ACS source cell(s): B01001 E044-E049 (Female, 65 years and over). Universe: Total
+          population. Census sex (male or female), not gender identity. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_65_plus_moe
+        description: >
+          90 percent margin of error for population_female_65_plus. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
+      - name: population_female_18_plus
+        description: >
+          ACS source cell(s): B01001 E031-E049 (Female, 18 years and over). Universe: Total
+          population. Census sex (male or female), not gender identity. Equals the sum of
+          this sex's five adult age bands and its 65-and-over band. Combined from the
+          component brackets; null if any component is suppressed. Null when the Census
+          suppressed or could not compute the value (jam codes).
+      - name: population_female_18_plus_moe
+        description: >
+          90 percent margin of error for population_female_18_plus. 0 means the estimate is
+          controlled to an official total (no sampling error); null means the margin was not
+          published or not computable. Combined by plain root sum of squares, which
+          overstates for combinations of many or rare cells.
       - name: population_race_universe
         description: >
           ACS source cell(s): B03002_E001. Universe: Total population. Denominator for the race
@@ -512,6 +1107,15 @@ models:
               and households_income_75k_to_100k_moe >= 0 and households_income_100k_to_125k_moe
               >= 0 and households_income_125k_to_150k_moe >= 0 and
               households_income_150k_to_200k_moe >= 0 and households_income_200k_plus_moe >= 0
+              and population_male_18_to_24_moe >= 0 and population_male_25_to_34_moe
+              >= 0 and population_male_35_to_44_moe >= 0 and
+              population_male_45_to_54_moe >= 0 and population_male_55_to_64_moe >= 0
+              and population_male_65_plus_moe >= 0 and population_male_18_plus_moe >=
+              0 and population_female_18_to_24_moe >= 0 and
+              population_female_25_to_34_moe >= 0 and population_female_35_to_44_moe
+              >= 0 and population_female_45_to_54_moe >= 0 and
+              population_female_55_to_64_moe >= 0 and population_female_65_plus_moe >=
+              0 and population_female_18_plus_moe >= 0
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
@@ -534,6 +1138,13 @@ models:
               households_income_75k_to_100k >= 0 and households_income_100k_to_125k >= 0 and
               households_income_125k_to_150k >= 0 and households_income_150k_to_200k >= 0 and
               households_income_200k_plus >= 0
+              and population_male_18_to_24 >= 0 and population_male_25_to_34 >= 0 and
+              population_male_35_to_44 >= 0 and population_male_45_to_54 >= 0 and
+              population_male_55_to_64 >= 0 and population_male_65_plus >= 0 and
+              population_male_18_plus >= 0 and population_female_18_to_24 >= 0 and
+              population_female_25_to_34 >= 0 and population_female_35_to_44 >= 0 and
+              population_female_45_to_54 >= 0 and population_female_55_to_64 >= 0 and
+              population_female_65_plus >= 0 and population_female_18_plus >= 0
 
   - name: stg_census_acs__ct_block_planning_region
     description: >
