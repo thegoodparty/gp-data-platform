@@ -2,16 +2,20 @@
 -- notes and meetings, for the user lookup page.
 --
 -- Each run summarizes only users who are new or whose input changed, newest
--- activity first, up to a cap; the rest carry to the next run. Exempt from
+-- activity first, up to a cap; the rest carry to the next run. Several jobs
+-- build this model through the person lineage, so a run writes only once 20
+-- hours have passed since the last write, which makes it about daily. Exempt from
 -- --full-refresh because the on-merge and CI jobs pass it, and a rebuild would
 -- pay to re-summarize every user. To backfill, raise the cap for one watched
--- run: --vars '{hubspot_note_summary_user_cap: 25000}'.
+-- run: --vars '{hubspot_note_summary_user_cap: 25000}'. Passing the cap
+-- explicitly also skips the 20-hour wait.
 --
 -- The post-hook deletes a summary once any item it was written from leaves
 -- the item model, so an erased engagement does not live on in the summary.
 {%- set is_ci = env_var("DBT_CLOUD_PR_ID", "") != "" -%}
 {%- set default_cap = 2000 if target.name == "prod" and not is_ci else 25 -%}
-{%- set user_cap = var("hubspot_note_summary_user_cap", default_cap) | int -%}
+{%- set explicit_cap = var("hubspot_note_summary_user_cap", none) -%}
+{%- set user_cap = (default_cap if explicit_cap is none else explicit_cap) | int -%}
 {%- set endpoint = var(
     "hubspot_note_summary_endpoint", "databricks-claude-haiku-4-5"
 ) -%}
@@ -105,8 +109,22 @@ with
         {% endif %}
     ),
 
+    {% if is_incremental() and explicit_cap is none %}
+        last_write as (
+            select coalesce(max(summarized_at), timestamp '1900-01-01') as last_at
+            from {{ this }}
+        ),
+    {% endif %}
+
     batch as (
-        select * from pending order by last_item_at desc, user_id limit {{ user_cap }}
+        select p.*
+        from pending as p
+        {% if is_incremental() and explicit_cap is none %}
+            cross join last_write as w
+            where w.last_at < current_timestamp() - interval 20 hours
+        {% endif %}
+        order by p.last_item_at desc, p.user_id
+        limit {{ user_cap }}
     ),
 
     summarized as (
