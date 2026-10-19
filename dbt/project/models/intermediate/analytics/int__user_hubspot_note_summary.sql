@@ -51,6 +51,8 @@ Notes:
                 left join current_items as c on c.user_id = s.user_id
                 where c.user_id is null
                     or size(array_except(s.source_touch_ids, c.touch_ids)) > 0
+                    -- Written before the fallback below existed.
+                    or s.summary not like '%Last contact:%'
             )
             """],
     )
@@ -143,7 +145,17 @@ with
 -- A failed call writes no row, so the user is retried on the next run.
 select
     user_id,
-    trim(response.result) as summary,
+    -- On a few short notes the model asks for more notes instead of
+    -- summarizing; a fixed line is stored and the page shows the notes.
+    case
+        when response.result like '%Last contact:%'
+        then trim(response.result)
+        else
+            concat(
+                'No summary could be written from these notes.\n\nLast contact: ',
+                date_format(last_item_at, 'yyyy-MM-dd')
+            )
+    end as summary,
     item_count,
     last_item_at,
     source_touch_ids,
