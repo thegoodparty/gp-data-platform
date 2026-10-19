@@ -20,7 +20,7 @@ PAT is needed and 1Password does not have to be unlocked.
 
 Run: cd analytics && uv run --with pyarrow --with databricks-sql-connector \\
        --with databricks-sdk python \
-       projects/legit_candidate_predictor/load_scores_append.py [--schema private_tristan]
+       projects/legit_candidate_predictor/load_scores_append.py [--schema <your_dev_schema>]
 """
 
 from __future__ import annotations

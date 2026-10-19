@@ -2,7 +2,7 @@
 
 Scores Win signups on how likely their campaign is to be corroborated by a ballot data vendor (BallotReady, DDHQ or TechSpeed), before that confirmation arrives. BallotReady typically lags signup by about 40 days, so the score fills that gap.
 
-This directory is the code only. The parquet caches under `datasets/`, generated reports (`profiles/`, `intake/`), the MVP notebook and the full working notes are not in git; `SESSION_NOTES.md` is a condensed version of the notes (decisions, measured results, failed ideas, pitfalls). Every cache is rebuilt by a `build_*.py` script from the warehouse.
+This directory is the code only. The parquet caches under `datasets/` (gitignored: they hold names), generated reports (`profiles/`, `intake/`), the MVP notebook and the full working notes are not in git; `SESSION_NOTES.md` is a condensed version of the notes (decisions, measured results, failed ideas, pitfalls). Every cache is rebuilt by a `build_*.py` script from the warehouse, and the inputs of the 2026-08-14 run are kept in a Unity Catalog volume (below).
 
 ## What the score means
 
@@ -17,7 +17,8 @@ This directory is the code only. The parquet caches under `datasets/`, generated
 | Feature layer (75 serving columns) | dbt, on `main`: `int__win_signup_features`, `int__win_position_features`, `int__win_candidate_incumbency`, `int__l2_person_bridge`, `mart_analytics.win_candidate_features` (DATA-2315, PR #1045) |
 | Scores (one run, 2026-08-14) | `model_predictions.win_candidate_scores_20260814`, long-format `win_candidate_scores` + `win_candidate_score_context`, view `win_candidate_scores_latest`; staged in dbt as `stg_model_predictions__win_candidate_scores_latest` |
 | Fitted models | MLflow experiment `/Shared/legit_candidate_predictor`. Serving run `0e3e830fa67a4c78aa69d3f6275390b8` (manifest `21ff4ad08ba3`), profile run `38d903714a5c4829bbe8102eabc61779` (manifest `caffc2f61d1e`) |
-| Unity Catalog | `model_predictions.win_legit_candidate_serving` (v2) and `win_legit_candidate_profile` (v1), both under alias `champion`; registered 2026-10-15 from the two runs above, not retrained. Load with `mlflow.sklearn.load_model("models:/goodparty_data_catalog.model_predictions.win_legit_candidate_serving@champion")` (needs `boto3`) |
+| Unity Catalog | `model_predictions.win_legit_candidate_serving` (v2) and `win_legit_candidate_profile` (v1), both under alias `champion`; registered 2026-10-15 from the two runs above, not retrained. Load with `mlflow.sklearn.load_model("models:/goodparty_data_catalog.model_predictions.win_legit_candidate_serving@champion")` (needs `boto3`, and scikit-learn 1.9.0: newer releases fail on the pickled encoder). The profile run and v1 were logged with the serving tier's `tier` param and AUCs; MLflow params are immutable, so the correct values are in its `eval_*` tags (fixed in `score_population.log_model` 2026-10-19) |
+| 08-14 inputs | Volume `/Volumes/goodparty_data_catalog/model_predictions/legit_candidate_predictor_inputs/20260814/`: working set `b04cdd5ac4b1`, its frozen folds, geo and the three family parquets, the scoring population, and the two cached OOF files calibration reads. Hashes pinned in `reproduce_20260814.py` |
 | Hand-verified labels | `model_predictions.web_verify_verdicts_20260813` (783 rows, DATA-2251) |
 | Experiment history | `results_ledger.jsonl` (mirrored to the MLflow experiment) |
 
@@ -28,11 +29,11 @@ Canonical numbers: pass-B baseline HGB 0.8732 OOF AUC on working set `b04cdd5ac4
 ## Two model tiers
 
 - **Serving**: all features (BR position 32 + gp_user_details 12 + incumbency 7, on top of the baseline).
-- **Profile / analysis**: the same model with claim-reserved columns masked (`mvp_model.CLAIM_MASKS`: incumbency, office level, district size, self-reported effort). A variable can't be both a model input and evidence about the group the score defines, so any analysis that wants to say something about one of these uses the profile tier.
+- **Profile / analysis**: the same model with claim-reserved columns masked. The registered profile model uses the combined `sales_profile` mask (state, office type and level, incumbency, district size: 20 columns removed, 55 left); `mvp_model.CLAIM_MASKS` also holds the single masks, including self-reported effort. A variable can't be both a model input and evidence about the group the score defines, so any analysis that wants to say something about one of these uses the profile tier.
 
 ## Run order
 
-All commands run from `analytics/`. Each script's docstring has its exact `uv run --with ...` line. Auth is OAuth through the `~/.databrickscfg` profile via `analytics/lib/databricks_conn.py`.
+All commands run from `analytics/`. Each script's docstring has its exact `uv run --with ...` line. Auth is OAuth through the `~/.databrickscfg` profile via `analytics/lib/databricks_conn.py`; MLflow uses the tracking URI `databricks`, which resolves the same default profile (or `DATABRICKS_CONFIG_PROFILE`), so it works for anyone who has run `databricks auth login`. Set `LCP_DATASETS` to read inputs from somewhere other than `datasets/` (honoured by `harness.py`, `mvp_model.py`, `exp_family.py` and `score_population.py`; the other scripts still read `datasets/`).
 
 1. `build_working_set.py`: labelled population (completed elections). `build_scoring_population.py` reuses the same SQL with the completion filter flipped, so training and scoring rows can't drift.
 2. Feature families: `build_geo.py`, `build_br_position.py`, `build_gp_user_details.py`, `build_incumbency.py` (plus the experimental families: `build_l2_*`, `build_race_priors.py`, `build_derived_wave*.py`, `build_amplitude_scaffold.py`, `build_name_plausibility.py`).
@@ -42,6 +43,28 @@ All commands run from `analytics/`. Each script's docstring has its exact `uv ru
 6. `load_scores_append.py`: appends the run to the long-format score tables and refreshes the view. (`load_scored_population.py` produced the dated 08-14 table.)
 
 `intake.py` and `profile.py` generate the per-source review docs under `intake/` and `profiles/` (not committed). Every new source gets a profile and an intake review before it enters a model.
+
+## Reproducing the 2026-08-14 run
+
+`reproduce_20260814.py` needs no local `datasets/`. It downloads the inputs from the volume to `~/.cache/legit_candidate_predictor/20260814/` on first use, checks every hash, and exits non-zero on any mismatch. Needs read access to the volume and `DATABRICKS_HTTP_PATH` set (for the comparison query). On Databricks compute, set `LCP_DATASETS` to the volume path instead of downloading.
+
+```bash
+cd analytics
+# Scores: loads both @champion models, scores the population, rebuilds bands and calibration
+# from the cached OOF files (nothing is fitted) and compares all 12 score columns of
+# model_predictions.win_candidate_scores_20260814, row by row.
+uv run --with scikit-learn==1.9.0 --with pandas==2.3.3 --with numpy==2.4.6 --with pyarrow \
+    --with mlflow-skinny --with boto3 --with databricks-sdk --with databricks-sql-connector \
+    python projects/legit_candidate_predictor/reproduce_20260814.py scores
+
+# AUCs: frozen-fold evaluation of the serving definition, 0.8819 pooled / 0.8362 decidable /
+# 0.8922 forward; --profile adds 0.8725 / 0.8236 / 0.8901. This one fits (an out-of-fold AUC
+# is a property of the procedure), about a minute on a laptop.
+uv run --with scikit-learn==1.9.0 --with pandas==2.3.3 --with numpy==2.4.6 --with pyarrow \
+    python projects/legit_candidate_predictor/reproduce_20260814.py aucs --profile
+```
+
+Last verified 2026-10-19: 10,463 of 10,463 rows match on every column, and all six AUCs match to four decimals.
 
 ## Rules and gotchas worth knowing
 

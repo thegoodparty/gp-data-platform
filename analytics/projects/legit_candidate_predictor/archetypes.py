@@ -60,7 +60,7 @@ ARCHETYPE_RULES: list[tuple[str, str]] = [
         r"ran for .{0,60}?\bnot\b|,\s*not (city council|school board|mayor|the )|"
         r"a different office|different office|instead ran for",
     ),
-    # Deliberately narrow. "Zip 28451=Leland NC" is the verifiers' standard preamble for
+    # Deliberately narrow. "Zip <zip5>=<town> <state>" is the verifiers' standard preamble for
     # establishing which jurisdiction a zip belongs to, not a finding that the jurisdiction is
     # wrong, and matching on it inflated this class nine-fold. Explicit contrast words only.
     (

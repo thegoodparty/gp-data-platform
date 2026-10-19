@@ -85,7 +85,7 @@ def load(specs: dict[str, FamilySpec]) -> tuple[pd.DataFrame, dict[str, list[str
 
     cols_by_family: dict[str, list[str]] = {}
     for name, spec in specs.items():
-        fam = pd.read_parquet(HERE / "datasets" / spec.file)
+        fam = pd.read_parquet(harness.DATASETS / spec.file)
         # An exclusion that names a column the parquet does not have is a stale list, not a
         # no-op: it means the family was rebuilt and the decision was never revisited.
         stale = sorted(set(spec.exclude) - set(fam.columns))
@@ -266,8 +266,8 @@ if __name__ == "__main__":
     out["decidable"] = eng["decidable"].to_numpy(dtype=bool)
     out["oof_hgb"] = oof
     out["oof_family_only"] = solo
-    out.to_parquet(HERE / "datasets" / f"oof_{stem}.parquet", index=False)
-    print(f"\nsaved datasets/oof_{stem}.parquet")
+    out.to_parquet(harness.DATASETS / f"oof_{stem}.parquet", index=False)
+    print(f"\nsaved {harness.DATASETS / f'oof_{stem}.parquet'}")
 
     # What the model was DENIED is half its definition: registry exclusions (never admissible)
     # and claim masks (admissible, held back so the analysis tier can speak about them).

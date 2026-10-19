@@ -394,7 +394,7 @@ def main() -> None:
         "",
         f"Row-vs-user grain note: {n:,} rows vs {nu:,} users; the accounting CSVs "
         f"count DISTINCT users, results.json counts rows. The single duplicated "
-        f"user ({dup_users} extra row: user 33662, campaigns 26543/26544 with "
+        f"user ({dup_users} extra row: one user with two campaigns, for "
         f"2025 and 2026 elections) reconciles 20,480 vs 20,479 exactly. No "
         f"unexplained mismatch.",
         "",

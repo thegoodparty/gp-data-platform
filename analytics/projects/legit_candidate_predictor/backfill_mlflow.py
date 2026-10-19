@@ -21,7 +21,7 @@ from mlflow.tracking import MlflowClient
 HERE = Path(__file__).resolve().parent
 LEDGER = HERE / "results_ledger.jsonl"
 MANIFESTS = HERE / "manifests"
-TRACKING_URI = "databricks://tristana_goodparty"
+TRACKING_URI = "databricks"  # SDK default auth, same as harness.MLFLOW_TRACKING_URI
 EXPERIMENT = "/Shared/legit_candidate_predictor"
 
 ap = argparse.ArgumentParser()

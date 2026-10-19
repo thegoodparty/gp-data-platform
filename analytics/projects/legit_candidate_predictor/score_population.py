@@ -64,12 +64,14 @@ HGB = dict(
 # without touching a single column name. Hashing the artifacts folds them into model_id.
 FEATURE_ARTIFACTS = ("geo_features.parquet", *(FAMILY_SPECS[f].file for f in COMPOSED_V2))
 
-SCORING_POP = HERE / "datasets" / "scoring_population.parquet"
-OUT = HERE / "datasets" / "scored_population.parquet"
+SCORING_POP = harness.DATASETS / "scoring_population.parquet"
+OUT = harness.DATASETS / "scored_population.parquet"
 
-# Evaluation numbers for this DEFINITION, carried onto the run so a scored row resolves to
-# honest performance. Measured by exp_family on the frozen folds with the refreshed geo.
+# Evaluation numbers for each DEFINITION, carried onto its run so a scored row resolves to
+# honest performance. Measured by exp_family on the frozen folds with the refreshed geo
+# (ledger rows "v2 composed SERVING (geo refreshed...)" and "v2 ANALYSIS tier: sales_profile").
 EVAL_METRICS = {"oof_roc_auc": 0.8819, "oof_decidable_roc_auc": 0.8362, "forward_roc_auc": 0.8922}
+PROFILE_EVAL_METRICS = {"oof_roc_auc": 0.8725, "oof_decidable_roc_auc": 0.8236, "forward_roc_auc": 0.8901}
 
 
 def _oof(x: pd.DataFrame, eng: pd.DataFrame) -> np.ndarray:
@@ -89,7 +91,7 @@ def _oof(x: pd.DataFrame, eng: pd.DataFrame) -> np.ndarray:
 
 def artifact_shas() -> dict[str, str]:
     return {
-        name: hashlib.sha256((HERE / "datasets" / name).read_bytes()).hexdigest()[:12]
+        name: hashlib.sha256((harness.DATASETS / name).read_bytes()).hexdigest()[:12]
         for name in FEATURE_ARTIFACTS
     }
 
@@ -99,7 +101,7 @@ def attach_families(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     cols: list[str] = []
     for name in COMPOSED_V2:
         spec = FAMILY_SPECS[name]
-        fam = pd.read_parquet(HERE / "datasets" / spec.file)
+        fam = pd.read_parquet(harness.DATASETS / spec.file)
         keep = [c for c in fam.columns if c != spec.key and c not in spec.exclude]
         before = len(df)
         df = df.merge(fam[[spec.key, *keep]], on=spec.key, how="left", validate="many_to_one")
@@ -192,13 +194,18 @@ def cohort_bands(
 TIER_LIKELY, TIER_UNLIKELY = 0.60, 0.10
 BUCKET_EDGES = [-0.001, 0.05, 0.15, 0.35, 0.60, 1.01]
 BUCKET_LABELS = ["p_under_5", "p_5_15", "p_15_35", "p_35_60", "p_60_plus"]
-OOF_FILE = HERE / "datasets" / "oof_br_position_gp_user_details_incumbency.parquet"
+OOF_FILE = harness.DATASETS / "oof_br_position_gp_user_details_incumbency.parquet"
 # The combined claim mask the sales/product report needs. One variant, four profilable axes.
 PROFILE_CLAIM = "sales_profile"
 
 
 def calibrate(
-    live: pd.DataFrame, live_pct: pd.Series, *, mask: tuple[str, ...] = (), by_office: bool = True
+    live: pd.DataFrame,
+    live_pct: pd.Series,
+    *,
+    mask: tuple[str, ...] = (),
+    by_office: bool = True,
+    oof: pd.DataFrame | None = None,
 ) -> tuple[np.ndarray, pd.Series, pd.Series]:
     """Turn a within-cohort rank into an expected corroboration RATE, then into a tier.
 
@@ -211,14 +218,21 @@ def calibrate(
     can never map to a lower rate, which the thin long-lead cells violate by noise alone) and
     it does not need every cell to be large.
 
-    The load-bearing assumption: labelled rows in a lead bucket stand in for live rows in the
+    `oof` supplies a masked model's cached out-of-fold predictions (campaign_id, oof_hgb) in
+    place of refitting them, which is how reproduce_20260814.py rebuilds the run without fitting.
+
+    The key assumption: labelled rows in a lead bucket stand in for live rows in the
     same bucket. That is strongest for short lead times and weakest for 365d+, where only 454
     labelled rows exist against 6,353 live ones. Treat long-lead rates as directional.
     """
     from sklearn.isotonic import IsotonicRegression
 
     ws = pd.read_parquet(harness.WORKING_SET)
-    if mask:
+    if mask and oof is not None:
+        lab = ws.merge(oof[["campaign_id", "oof_hgb"]], on="campaign_id", how="inner", validate="one_to_one")
+        lab["corroborated"] = engineer(lab)["corroborated"].astype(int)
+        assert len(lab) == len(ws), "cached OOF does not cover the working set"
+    elif mask:
         # A masked model needs its OWN labelled reference curve: the serving model's OOF
         # scores encode the very columns this variant holds out, so calibrating against them
         # would smuggle the claim variables back in through the calibration.
@@ -309,7 +323,17 @@ def main(allow_unlogged: bool = False) -> None:
     model_id = man["model_id"]
     print(f"\nmodel_id {model_id}   artifacts {shas}")
 
-    run_id = log_model(model, x_train, model_id, shas, allow_unlogged)
+    run_id = log_model(
+        model,
+        x_train,
+        model_id,
+        shas,
+        tier="serving",
+        metrics=EVAL_METRICS,
+        notes="Fitted estimator behind win_candidate_scores_20260814. Metrics are the frozen-fold "
+        "evaluation of this definition, not of this fit.",
+        allow_unlogged=allow_unlogged,
+    )
 
     # --- score the live population -------------------------------------------------------
     sp = pd.read_parquet(SCORING_POP)
@@ -390,7 +414,20 @@ def main(allow_unlogged: bool = False) -> None:
     )
     model_id_p = man_p["model_id"]
     print(f"\nprofile model_id {model_id_p}   {x_train_p.shape[1]} features " f"({len(mask)} masked)")
-    run_id_p = log_model(model_p, x_train_p, model_id_p, shas, allow_unlogged)
+    run_id_p = log_model(
+        model_p,
+        x_train_p,
+        model_id_p,
+        shas,
+        tier="analysis",
+        metrics=PROFILE_EVAL_METRICS,
+        notes=f"Profile fit ({PROFILE_CLAIM} masked) behind the profile_* columns of "
+        "win_candidate_scores_20260814. Use for claims about state, office, incumbency or district "
+        "size, never to prioritise outreach. Metrics are the frozen-fold evaluation of this "
+        "definition, not of this fit.",
+        extra_params={"claim": PROFILE_CLAIM},
+        allow_unlogged=allow_unlogged,
+    )
 
     x_score_p, _ = build_frame(sp, cols, mask)
     x_score_p = align_categories(x_train_p, x_score_p)
@@ -454,9 +491,21 @@ def main(allow_unlogged: bool = False) -> None:
 
 
 def log_model(
-    model, x_train: pd.DataFrame, model_id: str, shas: dict[str, str], allow_unlogged: bool = False
+    model,
+    x_train: pd.DataFrame,
+    model_id: str,
+    shas: dict[str, str],
+    *,
+    tier: str,
+    metrics: dict[str, float],
+    notes: str,
+    extra_params: dict[str, str] | None = None,
+    allow_unlogged: bool = False,
 ) -> str | None:
     """Log the fitted estimator to MLflow under this model_id.
+
+    Tier, metrics and notes come from the caller. They were once hardcoded to the serving
+    values, so the 08-14 profile run (38d903714a5c...) carries the serving tier and AUCs.
 
     Raises on failure by default. The point of this run is that a scored row resolves to a
     loadable artifact; degrading quietly would leave the table pointing at nothing while
@@ -468,23 +517,24 @@ def log_model(
 
         mlflow.set_tracking_uri(harness.MLFLOW_TRACKING_URI)
         mlflow.set_experiment(harness.MLFLOW_EXPERIMENT)
-        with mlflow.start_run(run_name=f"serving fit {model_id}") as run:
+        run_label = "serving" if tier == "serving" else "profile"
+        with mlflow.start_run(run_name=f"{run_label} fit {model_id}") as run:
             mlflow.log_params(
                 {
                     "model_id": model_id,
-                    "tier": "serving",
+                    "tier": tier,
                     "fit_scope": "full_working_set",
                     "ws_version": harness.ws_version(),
                     "families": ",".join(COMPOSED_V2),
                     **shas,
+                    **(extra_params or {}),
                 }
             )
-            mlflow.log_metrics(EVAL_METRICS)
+            mlflow.log_metrics(metrics)
             mlflow.set_tags(
                 {
-                    "area": "serving",
-                    "notes": "Fitted estimator behind win_candidate_scores_20260814. Metrics are "
-                    "the frozen-fold evaluation of this definition, not of this fit.",
+                    "area": tier,
+                    "notes": notes,
                     "score_semantics": "ranks CORROBORATION, not realness; absolute values are "
                     "biased high in-cycle; use within-cohort bands",
                 }

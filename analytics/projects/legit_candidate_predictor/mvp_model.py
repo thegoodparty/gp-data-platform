@@ -5,6 +5,7 @@ deadline anchor. No product-activity, no post-signup candidacy fields, no viabil
 """
 
 import json
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,7 +78,9 @@ NUM_COLS = [
     "geo_missing",
 ]
 
-GEO_FILE = Path(__file__).resolve().parent / "datasets" / "geo_features.parquet"
+# Same LCP_DATASETS override as harness.DATASETS.
+_DATASETS = Path(os.environ.get("LCP_DATASETS", Path(__file__).resolve().parent / "datasets"))
+GEO_FILE = _DATASETS / "geo_features.parquet"
 
 
 # --- Feature-family registry (composition, 86ak0je29) -------------------------------------

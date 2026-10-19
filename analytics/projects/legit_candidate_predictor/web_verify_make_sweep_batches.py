@@ -38,7 +38,7 @@ BLIND_COLS = [
 
 
 def _zip5(z: object) -> str:
-    """Normalize zips: floats like 50005.0 and zip+4 like 44133-3744 -> 5 digits."""
+    """Normalize zips: floats like 12345.0 and zip+4 like 12345-6789 -> 5 digits."""
     if pd.isna(z):
         return ""
     s = str(z).split("-")[0].split(".")[0].strip()

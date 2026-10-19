@@ -6,7 +6,7 @@ is nonetheless safe to re-run — it recreates the table from the parquet each t
 refuses to finish if the landed row count does not match the parquet.
 
 Run: cd analytics && uv run --with pyarrow python \
-       projects/legit_candidate_predictor/load_web_verify_snapshot.py [--schema private_tristan]
+       projects/legit_candidate_predictor/load_web_verify_snapshot.py [--schema <your_dev_schema>]
 """
 
 from __future__ import annotations

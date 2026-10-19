@@ -160,8 +160,7 @@ cells = [
     md(
         "# DATA-2225 MVP — legitimate candidate predictor (pass B)\n\n"
         "**Executed 2026-08-04, rev 2 (post two-reviewer pass).** Brief: "
-        "`2026-08-04_legit-candidate-predictor-mvp_brief.yaml` (this directory). Ticket: "
-        "[DATA-2225](https://goodparty.clickup.com/t/90132012119/DATA-2225).\n\n"
+        "`2026-08-04_legit-candidate-predictor-mvp_brief.yaml` (this directory). Ticket: DATA-2225.\n\n"
         "Can signup-time features (information cutoff = the race's general filing deadline) predict "
         "whether a Win signup is a real candidate (BR/TS/DDHQ-corroborated)? Pass B = **no product-activity "
         "features** (the ticket's leakage constraint); this is the candidate analysis filter.\n\n"

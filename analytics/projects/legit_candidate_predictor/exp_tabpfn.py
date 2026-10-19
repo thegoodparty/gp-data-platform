@@ -34,10 +34,9 @@ sys.path.insert(0, str(HERE))
 import harness  # noqa: E402
 from mvp_model import CAT_COLS, NUM_COLS, engineer  # noqa: E402
 
-SCRATCH = Path(
-    "/private/tmp/claude-501/-Users-tristan-Documents-0-goodparty-0-repos-gp-data-platform/"
-    "c6296bf3-193a-4c3c-a2db-4be11e1627f4/scratchpad"
-)
+# Per-fold outputs, so a crashed multi-hour run resumes instead of restarting.
+SCRATCH = harness.DATASETS / "tabpfn_scratch"
+SCRATCH.mkdir(parents=True, exist_ok=True)
 SUBSAMPLE = 10_000
 SEED = 7
 N_ESTIMATORS = 4  # TabPFN v2 default

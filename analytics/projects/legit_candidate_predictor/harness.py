@@ -21,6 +21,7 @@ so numbers from different data vintages are never compared silently.
 import argparse
 import hashlib
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -32,7 +33,9 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import StratifiedGroupKFold
 
 HERE = Path(__file__).resolve().parent
-DATASETS = HERE / "datasets"
+# LCP_DATASETS points the run at a copy of the inputs elsewhere, e.g. the Unity Catalog volume
+# (see README). The local default is gitignored and exists only on the machine that built it.
+DATASETS = Path(os.environ.get("LCP_DATASETS", HERE / "datasets"))
 WORKING_SET = DATASETS / "working_set.parquet"
 LEDGER = HERE / "results_ledger.jsonl"
 
@@ -180,10 +183,12 @@ def model_manifest(
 
 # --- MLflow dual-write (DATA-2248 Phase 1, 2026-08-11) ---
 # The JSONL stays the human-readable mirror and offline fallback; MLflow is the
-# queryable copy. Auth: the OAuth profile, NOT the PAT (which lacks the mlflow
-# scope). Requires mlflow-skinny (add --with mlflow-skinny to the uv run line);
+# queryable copy. "databricks" resolves auth the way the SDK does (DATABRICKS_HOST and
+# DATABRICKS_TOKEN, else DATABRICKS_CONFIG_PROFILE, else the default ~/.databrickscfg
+# profile), so it works for anyone logged in with `databricks auth login`. A PAT needs the
+# mlflow scope. Requires mlflow-skinny (add --with mlflow-skinny to the uv run line);
 # any failure degrades to a warning so tracking never blocks an experiment.
-MLFLOW_TRACKING_URI = "databricks://tristana_goodparty"
+MLFLOW_TRACKING_URI = "databricks"
 MLFLOW_EXPERIMENT = "/Shared/legit_candidate_predictor"
 
 
