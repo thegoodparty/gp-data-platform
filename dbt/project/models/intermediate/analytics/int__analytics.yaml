@@ -1449,6 +1449,28 @@ models:
           - unique
           - not_null
 
+  - name: int__user_win_engaged_months
+    description: >
+      How many months a candidate engaged with Win before their own election
+      day, one row per user with an election date. A month counts when the user
+      was engaged that month or sent committed Win outreach that month. The
+      months are the activity table's own, so a send month before the user's
+      first tracked product month is not counted. Read by win rate by usage on
+      the user journey dashboard, so that read no longer joins the monthly and
+      send tables per candidate.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: win_engaged_months_before_election
+        description: >
+          Months before the candidacy's election date in which the user was
+          engaged or sent committed Win outreach. Zero when there were none.
+          Null on the journey table for users with no election date.
+        data_tests:
+          - not_null
   - name: int__user_outreach_intensity
     description: >
       How hard a candidate campaigned in the six months running up to their own

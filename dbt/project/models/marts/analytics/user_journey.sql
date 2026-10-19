@@ -161,6 +161,8 @@ select
         )
     }},
 
+    win_eng.win_engaged_months_before_election,
+
     {{
         dbt_utils.star(
             from=ref("int__user_revenue_profile"),
@@ -232,6 +234,7 @@ left join {{ ref("int__user_first_touch_utm") }} as utm using (user_id)
 left join {{ ref("int__user_signup_touch_utm") }} as utm_last using (user_id)
 left join {{ ref("int__user_product_activity") }} as act using (user_id)
 left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
+left join {{ ref("int__user_win_engaged_months") }} as win_eng using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
 left join serve_activation as sa using (user_id)
