@@ -536,10 +536,15 @@ models:
         description: >
           Whether the candidate already holds the position they are running
           for. TRUE whenever a BallotReady office-holder term on the same
-          position covers election day and matches the candidate, on canonical
-          person id or on first+last name, which the position and term window
+          seat covers election day and matches the candidate, on canonical
+          person id or on first+last name, which the seat and term window
           make near-deterministic; that positive proof overrides TechSpeed,
-          whose flag has marked sitting incumbents as challengers. Otherwise
+          whose flag has marked sitting incumbents as challengers. The seat is
+          matched on the position's own id, or on normalized position plus
+          geography with the same position name, since BallotReady mints a new
+          position id for the same seat each cycle. A term won by the
+          candidacy itself does not count, unless it began before the
+          candidacy's first stage, as a special-election win does. Otherwise
           TechSpeed's enrichment where it covered the candidacy, and otherwise
           the office-holder derivation's negative verdict. The name arm
           compensates for a person-resolution gap and is expected to be

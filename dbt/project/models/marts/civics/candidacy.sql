@@ -462,6 +462,12 @@ with
                 d.general_runoff_election_date,
                 d.primary_runoff_election_date
             ) as election_day,
+            least(
+                d.primary_election_date,
+                d.general_election_date,
+                d.primary_runoff_election_date,
+                d.general_runoff_election_date
+            ) as first_election_day,
             least(hp.gp_person_id, gpp.gp_person_id, sp.gp_person_id) as gp_person_id
         from deduplicated as d
         left join
@@ -495,40 +501,159 @@ with
     -- resolved person, like a position with no covering term, stays NULL:
     -- unknown, not challenger.
     --
-    -- A NULL term_end_date reads as "no scheduled end, still serving" and so
-    -- covers election day. A NULL term_start_date carries no such reading -
-    -- assuming the term began before every election day would backdate the
-    -- holder over cycles they may not have served - so those terms are dropped.
-    incumbency as (
+    -- Two seat keys. BR position ids are cycle-specific, so a holder elected
+    -- under an earlier cycle's id is invisible to the exact id; normalized
+    -- position plus geo recovers those.
+    position_seat as (
+        select
+            cast(database_id as bigint) as br_position_id,
+            cast(
+                normalized_position.`databaseId` as bigint
+            ) as br_normalized_position_id,
+            geo_id,
+            lower(trim(name)) as position_name
+        from {{ ref("stg_airbyte_source__ballotready_api_position") }}
+        where database_id is not null
+    ),
+
+    candidacy_seat as (
         select
             cp.gp_candidacy_id,
+            cp.gp_person_id,
+            cp.br_position_database_id,
+            cp.election_day,
+            cp.first_election_day,
+            lower(trim(p.first_name)) as first_name,
+            lower(trim(p.last_name)) as last_name,
+            ps.br_normalized_position_id,
+            ps.geo_id,
+            ps.position_name
+        from candidacy_person as cp
+        left join {{ ref("people") }} as p on cp.gp_person_id = p.gp_person_id
+        left join position_seat as ps on cp.br_position_database_id = ps.br_position_id
+        where cp.gp_person_id is not null
+    ),
+
+    -- A winner's new term can start before the coalesced election_day (a race
+    -- decided at the primary) and would prove they already held the seat, so
+    -- a term minted from the candidacy's own result does not count once it
+    -- starts on or after the candidacy's first stage. One that starts earlier
+    -- came from a special election folded into the candidacy, and its winner
+    -- does hold the seat.
+    own_br_candidacy as (
+        select distinct
+            gp_candidacy_id, cast(br_candidacy_id as string) as br_candidacy_id
+        from {{ ref("candidacy_stage") }}
+        where br_candidacy_id is not null
+    ),
+
+    -- A null term_start_date would backdate the holder across cycles they may
+    -- not have served, so those terms are dropped; a null term_end_date reads
+    -- as no scheduled end, still serving.
+    term_seat as (
+        select
+            t.gp_person_id,
+            lower(trim(t.first_name)) as first_name,
+            lower(trim(t.last_name)) as last_name,
+            t.is_vacant,
+            t.term_start_date,
+            t.term_end_date,
+            t.br_position_id,
+            cast(t.br_candidacy_id as string) as br_candidacy_id,
+            ps.br_normalized_position_id,
+            ps.geo_id,
+            ps.position_name
+        from {{ ref("elected_official_terms") }} as t
+        left join position_seat as ps on t.br_position_id = ps.br_position_id
+        where t.term_start_date is not null
+    ),
+
+    covering_exact as (
+        select
+            cs.gp_candidacy_id,
+            -- Vacancy terms keep the prior holder's name, so they must never
+            -- satisfy the name arm. They still count as coverage, which is
+            -- what makes an empty seat read FALSE.
             max(
                 case
-                    -- Vacancy terms keep the prior holder's name, so they must
-                    -- never satisfy the name arm. They still count as coverage
-                    -- below, which is what makes an empty seat read FALSE.
-                    when t.is_vacant
+                    when ts.is_vacant
                     then 0
                     when
-                        t.gp_person_id = cp.gp_person_id
+                        ts.gp_person_id = cs.gp_person_id
                         or (
-                            lower(trim(t.first_name)) = lower(trim(p.first_name))
-                            and lower(trim(t.last_name)) = lower(trim(p.last_name))
+                            ts.first_name = cs.first_name
+                            and ts.last_name = cs.last_name
                         )
                     then 1
                     else 0
                 end
             )
             = 1 as is_incumbent
-        from candidacy_person as cp
-        left join {{ ref("people") }} as p on cp.gp_person_id = p.gp_person_id
-        join
-            {{ ref("elected_official_terms") }} as t
-            on cp.br_position_database_id = t.br_position_id
-            and t.term_start_date <= cp.election_day
-            and (t.term_end_date is null or t.term_end_date >= cp.election_day)
-        where cp.gp_person_id is not null
-        group by cp.gp_candidacy_id
+        from candidacy_seat as cs
+        inner join
+            term_seat as ts
+            on ts.br_position_id = cs.br_position_database_id
+            and ts.term_start_date <= cs.election_day
+            and (ts.term_end_date is null or ts.term_end_date >= cs.election_day)
+        left join
+            own_br_candidacy as own
+            on own.gp_candidacy_id = cs.gp_candidacy_id
+            and own.br_candidacy_id = ts.br_candidacy_id
+            and ts.term_start_date >= cs.first_election_day
+        where own.gp_candidacy_id is null
+        group by cs.gp_candidacy_id
+    ),
+
+    -- The normalized key spans every seat of that type in the geo, so on a
+    -- multi-seat body it also reaches seats the candidate is not running for.
+    -- Matching position names keeps this leg on the candidate's own seat, and
+    -- the guard sits in the join rather than the max() so another seat's
+    -- holder does not count as coverage and read the candidate as challenger.
+    covering_recovered as (
+        select
+            cs.gp_candidacy_id,
+            max(
+                case
+                    when ts.is_vacant
+                    then 0
+                    when
+                        ts.gp_person_id = cs.gp_person_id
+                        or (
+                            ts.first_name = cs.first_name
+                            and ts.last_name = cs.last_name
+                        )
+                    then 1
+                    else 0
+                end
+            )
+            = 1 as is_incumbent
+        from candidacy_seat as cs
+        inner join
+            term_seat as ts
+            on ts.br_normalized_position_id = cs.br_normalized_position_id
+            and ts.geo_id = cs.geo_id
+            and ts.position_name = cs.position_name
+            and ts.term_start_date <= cs.election_day
+            and (ts.term_end_date is null or ts.term_end_date >= cs.election_day)
+        left join
+            own_br_candidacy as own
+            on own.gp_candidacy_id = cs.gp_candidacy_id
+            and own.br_candidacy_id = ts.br_candidacy_id
+            and ts.term_start_date >= cs.first_election_day
+        where own.gp_candidacy_id is null
+        group by cs.gp_candidacy_id
+    ),
+
+    -- greatest(), not coalesce(): Databricks greatest() skips nulls, so either
+    -- leg can establish TRUE and the exact leg's FALSE cannot mask a
+    -- cross-cycle holder.
+    incumbency as (
+        select
+            cs.gp_candidacy_id,
+            greatest(ex.is_incumbent, rc.is_incumbent) as is_incumbent
+        from candidacy_seat as cs
+        left join covering_exact as ex on cs.gp_candidacy_id = ex.gp_candidacy_id
+        left join covering_recovered as rc on cs.gp_candidacy_id = rc.gp_candidacy_id
     )
 
 select
