@@ -3826,6 +3826,39 @@ models:
           - accepted_values:
               arguments:
                 values: [term, serve_start]
+  - name: user_hubspot_note_summary
+    description: >
+      One row per user with the nightly AI summary of their HubSpot calls,
+      notes and meetings (at most 4 bullets and a "Last contact:" line,
+      written with personal details left out), for the User lookup page.
+      Note text, owners and engagements are not exposed here. Emails and texts
+      are not summarized, so the summary's last contact can be older than
+      HubSpot's. Internal only.
+
+      Per-column meaning of the summary itself lives on
+      int__user_hubspot_note_summary.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - unique
+          - not_null
+      - name: summary
+        description: The summary text, bullets then a "Last contact:" line.
+        data_tests:
+          - not_null
+      - name: item_count
+        description: Notes the summary was written from.
+      - name: last_item_at
+        description: When the latest of those notes was logged.
+      - name: summarized_at
+        description: When the summary was written.
+      - name: notes_added_since
+        description: >
+          Notes logged since the summary was written, which it has not read
+          yet. A later nightly run catches up.
+        data_tests:
+          - not_null
   - name: user_lookup_peer_grids
     description: >
       Each user's own numbers behind the User lookup page's peer medians, with
