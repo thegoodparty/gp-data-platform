@@ -3306,7 +3306,12 @@ models:
         data_tests:
           - not_null
       - name: is_archived
-        description: True when the owner is archived in HubSpot.
+        description: >
+          True when the owner is archived in HubSpot. Archived owners come from
+          their own stream; an id in both streams counts as active. Filter to
+          false to match a rule that only counts current owners.
+        data_tests:
+          - not_null
   - name: user_journey
     description: >
       The end-to-end user view: one row per gp-api user account across
