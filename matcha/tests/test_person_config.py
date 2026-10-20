@@ -55,3 +55,11 @@ def test_no_unbounded_blocking_rule():
         assert any(
             re.search(rf"\b{re.escape(token)}\b", sql) for token in narrowing
         ), f"Blocking rule has no narrowing term beyond name/state: {sql!r}"
+
+
+def test_party_comparison_gives_nonpartisan_its_own_level():
+    party = next(
+        c for c in PERSON_CONFIG.comparisons if c.get_comparison("duckdb").output_column_name == "party"
+    )
+    labels = [lvl.label_for_charts for lvl in party.get_comparison("duckdb").comparison_levels]
+    assert "Both Nonpartisan" in labels

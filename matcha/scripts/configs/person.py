@@ -36,7 +36,21 @@ PERSON_CONFIG = EntityConfig(
         cl.ExactMatch("state"),
         cl.ExactMatch("city"),
         cl.ExactMatch("zip5"),
-        cl.ExactMatch("party"),
+        # Nonpartisan is the default for most local offices, so two people who
+        # both carry it say almost nothing. A level of its own lets EM learn
+        # that low weight instead of pooling it with real party agreement.
+        CustomComparison(
+            output_column_name="party",
+            comparison_levels=[
+                cll.NullLevel("party"),
+                cll.CustomLevel(
+                    sql_condition="party_l = party_r AND party_l = 'Nonpartisan'",
+                    label_for_charts="Both Nonpartisan",
+                ),
+                cll.ExactMatchLevel("party"),
+                cll.ElseLevel(),
+            ],
+        ),
         # Year, not date: HubSpot's birth_date property is year-only (every
         # value lands on Jan 1), so an exact-date comparison would never agree
         # with TechSpeed's full dates.
