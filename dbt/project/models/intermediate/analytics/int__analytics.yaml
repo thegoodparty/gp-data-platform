@@ -1259,6 +1259,73 @@ models:
         description: The week is the current one and still filling.
         data_tests:
           - not_null
+  - name: int__user_product_area_activity_monthly
+    description: >
+      Where each user spends their active days: one row per user, product,
+      product area and calendar month with any activity. Same rule as
+      int__user_activity_monthly (a non-machine Win or Serve event). Win areas
+      are the catalog family; Serve areas are the event name's prefix, because
+      the catalog files every Serve event under one family.
+
+      A day can touch several areas, so area_active_days do not add up to
+      product_active_days; the share of a user's days that touched an area is
+      area_active_days / product_active_days. Both sum exactly across months.
+      Events start at the product_telemetry_start var (2025-04).
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, product, product_area, activity_month]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: product
+        description: win or serve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, serve]
+      - name: product_area
+        description: >
+          The part of the product the events touched: the catalog family on
+          Win (for example win_outreach), the event name's prefix on Serve (for
+          example Polls).
+        data_tests:
+          - not_null
+      - name: activity_month
+        description: First day of the calendar month.
+        data_tests:
+          - not_null
+      - name: area_active_days
+        description: Distinct days in the month with an event in this area.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 31
+      - name: product_active_days
+        description: >
+          Distinct days in the month with any event in this product. Repeats on
+          each area row of the month; take it once per user and month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 31
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+        data_tests:
+          - not_null
   - name: int__user_election_anchor
     description: >
       The one election each user's row speaks for, and the six-month window

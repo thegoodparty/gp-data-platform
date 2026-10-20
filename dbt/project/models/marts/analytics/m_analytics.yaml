@@ -3289,16 +3289,19 @@ models:
           - not_null
   - name: hubspot_owner_teams
     description: >
-      One row per HubSpot owner with their primary team. Joins
+      One row per HubSpot owner with their name and primary team. Joins
       user_journey.hs_owner_id, so contacts can be grouped by the team that
-      owns them (Campaign Success support on the Win results page). Owner
-      names and emails are left out on purpose.
+      owns them (Campaign Success support on the Win results page) and the
+      owner named on the User lookup page. Owner emails are left out on
+      purpose.
     columns:
       - name: hs_owner_id
         description: HubSpot owner id, as a string to match user_journey.hs_owner_id.
         data_tests:
           - unique
           - not_null
+      - name: owner_name
+        description: Owner's first and last name; null when HubSpot has neither.
       - name: primary_team_name
         description: Name of the owner's primary team; null when none is set.
       - name: is_campaign_success
@@ -3767,6 +3770,46 @@ models:
         description: Days with Win activity in the week.
       - name: is_partial_week
         description: The week is the current one and still filling.
+  - name: user_product_area_activity_monthly
+    description: >
+      Where each user spends their active days, by product, product area and
+      month, for the User lookup page's peer comparison. Joins user_journey on
+      user_id. Internal only.
+
+      Per-column meaning lives on int__user_product_area_activity_monthly; this
+      is a passthrough exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: product
+        description: win or serve.
+      - name: product_area
+        description: Product area the day's events touched.
+      - name: activity_month
+        description: First day of the calendar month.
+      - name: area_active_days
+        description: Days in the month with activity in this area.
+      - name: product_active_days
+        description: Days in the month with any activity in this product.
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+  - name: user_elected_office_terms
+    description: >
+      Term start and end for each gp-api user matched to an elected official,
+      for the Serve clock on the User lookup page. One row per user. Public
+      record; nothing else from the civics mart is carried over. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id (elected_officials.gp_api_user_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: term_start_date
+        description: Start of the current or latest term; null when unknown.
+      - name: term_end_date
+        description: End of that term; null when unknown.
   - name: user_journey_refresh_log
     description: >
       One row per build of user_journey: row counts, unresolved identity
