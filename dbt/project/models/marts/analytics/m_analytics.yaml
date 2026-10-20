@@ -3795,6 +3795,122 @@ models:
         description: Days in the month with any activity in this product.
       - name: is_partial_month
         description: The month is the current one and still filling.
+  - name: user_serve_clock
+    description: >
+      The clock each Serve user's journey is measured on, for the User lookup
+      page: their elected-office term start where known, else the day they
+      started Serve. When an official matches several terms, the one their
+      Serve start falls in wins, else the latest. One row per Serve user.
+      Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('user_journey')
+                field: user_id
+      - name: term_start_date
+        description: Start of the chosen term; null without term dates.
+      - name: term_end_date
+        description: End of the chosen term; null when open or unknown.
+      - name: anchor_at
+        description: >
+          Day zero of the Serve clock: the term start, else the Serve start.
+      - name: anchor_kind
+        description: term or serve_start, naming where anchor_at came from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [term, serve_start]
+  - name: user_lookup_peer_grids
+    description: >
+      Each user's own numbers behind the User lookup page's peer medians, with
+      the zeros filled in, so a peer who never touched an area, skipped a
+      month or had not sent yet still counts in the median. The peer group is
+      picked on the page; nothing here depends on it. Long format, one row per
+      user, product, kind and area or step:
+
+      area: share of the user's active days since June 2025 that touched each
+      product area (every area of the product, for every user with activity).
+      month: active days per month, counted back from the election month on
+      Win (step = months before, 0 to 12) and forward from user_serve_clock on
+      Serve (step = months since, 0 to 24), from the signup or Serve start
+      month to today; months before June 2025 are left out. week: outreach
+      sends to date per week, back from election day on Win (step = weeks
+      before, 0 to 26, counting sends up to 52 weeks out) and forward from the
+      Serve clock on Serve (step = weeks since, 0 to 52), weeks that have come
+      only.
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, product, kind, product_area, step]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: product
+        description: win or serve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, serve]
+      - name: kind
+        description: area, month or week; picks which columns are filled.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [area, month, week]
+      - name: product_area
+        description: >
+          The product area on area rows (catalog family on Win, event-name
+          prefix on Serve); null otherwise.
+      - name: step
+        description: >
+          Months or weeks before the election (Win) or since the Serve clock
+          (Serve) on month and week rows; null on area rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 52
+      - name: active_days
+        description: >
+          Days in the area (area rows) or active days in the month (month
+          rows).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: product_active_days
+        description: Active days in the product since June 2025, on area rows.
+      - name: day_share
+        description: active_days / product_active_days, on area rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: sends
+        description: Outreach sends to date at the week, on week rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: voters
+        description: >
+          Voters reached by those sends, on week rows. Recorded for texting
+          only.
+      - name: is_partial_month
+        description: The month is the current one and still filling, on month rows.
   - name: user_elected_office_terms
     description: >
       Term start and end for each gp-api user matched to an elected official,
