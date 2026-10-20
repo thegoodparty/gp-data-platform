@@ -3272,6 +3272,41 @@ models:
           arguments:
             combination_of_columns: [user_id, touch_id]
 
+  - name: marketing_site_traffic_monthly
+    description: >
+      Monthly goodparty.org marketing site traffic, exposed so Sigma can read
+      it (Sigma sees mart_analytics only). Feeds signups per 1,000 US visitors
+      on the user journey dashboard.
+
+      Per-column meaning, the production-host rule and the bot-traffic caveat
+      live on int__marketing_site_traffic_monthly; this is a passthrough
+      exposure and does not restate them.
+    columns:
+      - name: month_start
+        description: First day of the month.
+        data_tests:
+          - unique
+          - not_null
+  - name: hubspot_owner_teams
+    description: >
+      One row per HubSpot owner with their primary team. Joins
+      user_journey.hs_owner_id, so contacts can be grouped by the team that
+      owns them (Campaign Success support on the Win results page). Owner
+      names and emails are left out on purpose.
+    columns:
+      - name: hs_owner_id
+        description: HubSpot owner id, as a string to match user_journey.hs_owner_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: primary_team_name
+        description: Name of the owner's primary team; null when none is set.
+      - name: is_campaign_success
+        description: True when the owner's primary team is Campaign Success.
+        data_tests:
+          - not_null
+      - name: is_archived
+        description: True when the owner is archived in HubSpot.
   - name: user_journey
     description: >
       The end-to-end user view: one row per gp-api user account across
