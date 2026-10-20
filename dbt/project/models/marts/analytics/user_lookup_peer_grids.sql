@@ -93,6 +93,9 @@ with
                 then add_months(trunc(u.anchor_at, 'MM'), s.step)
                 else add_months(trunc(u.candidacy_election_date, 'MM'), - s.step)
             end as month_start,
+            -- Counted from signup (Serve start), not from the clock: a term
+            -- that began before someone joined Serve has no Serve months to
+            -- count, and zeros there would drag the peer median down.
             trunc(
                 case
                     when p.product = 'serve'
