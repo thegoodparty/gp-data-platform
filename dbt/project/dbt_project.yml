@@ -54,6 +54,11 @@ vars:
   # before it: the stream holds junk timestamps (one dated 1978) that would
   # otherwise start a user's monthly history decades early.
   product_telemetry_start: "2025-04-01"
+  # dbt-databricks runs OPTIMIZE after every auto_liquid_cluster table build.
+  # CI builds write throwaway dbt_cloud_pr_* schemas, so the optimize only
+  # rewrites tables that get dropped with the schema (~20 hours of warehouse
+  # compute over 14 days). Skip it there; prod and dev still optimize.
+  databricks_skip_optimize: "{{ target.schema.startswith('dbt_cloud_pr_') }}"
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
