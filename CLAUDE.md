@@ -24,6 +24,12 @@ Each subproject manages its own deps. `cd` into the right one before you install
 
 Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
+## Who reads the marts
+
+- gp-api (omni `packages/gp-api/src/peopleDb/databricks/`) queries voter data live from `gp_api_voters` in Databricks through the Statement Execution API. Nothing copies voters into a Postgres for it.
+- election-api Postgres is loaded from the `m_election_api__*` marts by the `sync_election_api` DAG.
+- People-db (people-api Postgres) and its loader were retired on 2026-09-25 (DATA-2529). Don't plan or verify work against it.
+
 ## ai-rules submodule
 
 `ai-rules/` is a git submodule (`thegoodparty/ai-rules`). After a fresh clone:
