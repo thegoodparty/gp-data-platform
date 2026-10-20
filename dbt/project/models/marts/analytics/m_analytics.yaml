@@ -3745,6 +3745,28 @@ models:
         data_tests:
           - not_null
 
+  - name: user_win_activity_weekly
+    description: >
+      The weeks each user was active in Win, for weekly retention views such as
+      activity in the weeks before an election: one row per user per active
+      week, joining user_journey on user_id. Inactive weeks have no row.
+      Internal only.
+
+      Per-column meaning lives on int__user_win_activity_weekly; this is a
+      passthrough exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: week_start_date
+        description: Monday of the UTC week.
+        data_tests:
+          - not_null
+      - name: win_activity_days
+        description: Days with Win activity in the week.
+      - name: is_partial_week
+        description: The week is the current one and still filling.
   - name: user_journey_refresh_log
     description: >
       One row per build of user_journey: row counts, unresolved identity

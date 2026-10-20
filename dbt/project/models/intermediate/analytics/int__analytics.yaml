@@ -1218,6 +1218,47 @@ models:
           config:
             where: growth_state = 'new'
 
+  - name: int__user_win_activity_weekly
+    description: >
+      The weeks each user was active in Win: one row per user per active week.
+      The weekly grain of the Win half of int__user_activity_monthly, with the
+      same rule: at least one non-machine Win event in the week. Weeks are UTC
+      and start on Monday. Inactive weeks have no row.
+
+      Differs from int__amplitude_win_activity_weekly, which admits only the
+      recurrent allowlist plus dashboard views. Events start at the
+      product_telemetry_start var (2025-04).
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, week_start_date]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: week_start_date
+        description: Monday of the UTC week.
+        data_tests:
+          - not_null
+      - name: win_activity_days
+        description: Distinct days in the week with a non-machine Win event.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 7
+      - name: is_partial_week
+        description: The week is the current one and still filling.
+        data_tests:
+          - not_null
   - name: int__user_election_anchor
     description: >
       The one election each user's row speaks for, and the six-month window
