@@ -128,6 +128,12 @@ updates:
       semver-major-days: 14
       semver-minor-days: 2
       semver-patch-days: 2
+    # splink 5.0.0 rejects zero EM estimates and silently drops EM blocks
+    # (upstream issue 3315). Skip just that release so a fixed 5.x still arrives.
+    ignore:
+      - dependency-name: "splink"
+        versions:
+          - "5.0.0"
     groups:
       minor-and-patch:
         patterns:
