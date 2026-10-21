@@ -64,7 +64,7 @@ uv run --with scikit-learn==1.9.0 --with pandas==2.3.3 --with numpy==2.4.6 --wit
     python projects/legit_candidate_predictor/reproduce_20260814.py aucs --profile
 ```
 
-Last verified 2026-10-19: 10,463 of 10,463 rows match on every column, and all six AUCs match to four decimals.
+Last verified 2026-10-21, downloading from the volume into an empty cache: 10,463 of 10,463 rows match on every column, and all six AUCs match to four decimals.
 
 ## Rules and gotchas worth knowing
 
