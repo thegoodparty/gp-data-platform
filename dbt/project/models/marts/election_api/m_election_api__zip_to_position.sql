@@ -1,26 +1,37 @@
 with
-    future_elections as (
-        -- Some (br_position_database_id, election_date) pairs have multiple
-        -- gp_election_ids when Splink misses clustering BR/TS rows for the
-        -- same position+date; pick one canonical row to prevent fan-out below.
+    -- One election per position supplies the display attributes: the next
+    -- upcoming one, else the most recent past one. Positions are listed
+    -- whether or not they have a race in any window; election-api bounds
+    -- which races it offers off the Race table.
+    elections as (
         select
             election_date,
-            election_year,
             state,
             office_level,
             office_type,
             city,
             district,
             is_judicial,
-            br_position_database_id
+            br_position_database_id,
+            source_systems,
+            gp_election_id,
+            election_date > current_date() as is_upcoming
         from {{ ref("election") }}
-        where
-            election_date > current_date()
-            and election_date <= current_date() + interval 2 years
+        where br_position_database_id is not null
+    ),
+
+    representative_elections as (
+        select *
+        from elections
         qualify
             row_number() over (
-                partition by br_position_database_id, election_date
+                partition by br_position_database_id
                 order by
+                    is_upcoming desc,
+                    case when is_upcoming then election_date end asc,
+                    election_date desc,
+                    -- Splink can leave BR/TS rows for one position and date
+                    -- under separate gp_election_ids; prefer the BR row.
                     case
                         when array_contains(source_systems, 'ballotready')
                         then 1
@@ -65,7 +76,11 @@ with
     positions as (
         -- br_database_id back to numeric: the election-api mart publishes it
         -- as string, but the election feed joins on the numeric BR id
-        select id as position_id, name, cast(br_database_id as bigint) as br_database_id
+        select
+            id as position_id,
+            name,
+            state,
+            cast(br_database_id as bigint) as br_database_id
         from {{ ref("m_election_api__position") }}
         where district_id is not null
     ),
@@ -75,44 +90,45 @@ with
             pos.position_id,
             pos.name,
             zips.zip_code,
-            elec.election_year,
+            -- Next known election only; null when the position has none
+            -- upcoming.
+            case when elec.is_upcoming then elec.election_date end as election_date,
             case
-                when elec.is_judicial
+                when elec.is_upcoming then year(elec.election_date)
+            end as election_year,
+            -- Positions with no election row at all fall back to the same
+            -- BallotReady position derivations the election mart uses.
+            case
+                when coalesce(elec.is_judicial, br_pos.is_judicial)
                 then 'Judicial'
                 -- Normalize case mismatches in upstream office_level (rare
                 -- BR/TS rows surface as LOCAL / local / COUNTY etc. instead
                 -- of the title-cased canonical values).
-                else initcap(lower(elec.office_level))
+                else initcap(lower(coalesce(elec.office_level, br_pos.level)))
             end as display_office_level,
-            elec.office_type,
-            elec.state,
-            elec.city,
-            elec.district,
-            elec.election_date,
-            elec.br_position_database_id as br_database_id,
+            coalesce(elec.office_type, pos_ot.office_type, 'Other') as office_type,
+            coalesce(elec.state, pos.state) as state,
+            coalesce(
+                elec.city, {{ extract_city_from_office_name("br_pos.name") }}
+            ) as city,
+            coalesce(
+                elec.district, {{ extract_district_geographic("br_pos.name") }}, ''
+            ) as district,
+            pos.br_database_id,
             zips.voters_in_zip,
             zips.voters_in_zip_district,
             zips.pct_districtzip_to_zip
-        from future_elections as elec
+        from positions as pos
+        left join zip_to_position as zips on pos.br_database_id = zips.br_database_id
         left join
-            zip_to_position as zips
-            on zips.br_database_id = elec.br_position_database_id
-        inner join positions as pos on pos.br_database_id = elec.br_position_database_id
-        -- Election mart can carry multiple rows per (br_position_database_id,
-        -- election_date) due to upstream duplication in BR/TS sources (same
-        -- race-position-date appearing under different gp_election_ids).
-        -- Pick the row with the most populated descriptive fields per
-        -- (zip, position, date) so the unique-combination test holds.
-        qualify
-            row_number() over (
-                partition by zips.zip_code, pos.position_id, elec.election_date
-                order by
-                    case when elec.office_level is not null then 0 else 1 end,
-                    case when elec.state is not null then 0 else 1 end,
-                    case when elec.district is not null then 0 else 1 end,
-                    elec.election_year desc
-            )
-            = 1
+            representative_elections as elec
+            on pos.br_database_id = elec.br_position_database_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_position") }} as br_pos
+            on pos.br_database_id = br_pos.database_id
+        left join
+            {{ ref("int__civics_position_office_type") }} as pos_ot
+            on pos.br_database_id = pos_ot.br_position_database_id
     )
 
 -- id and the timestamps satisfy the election-api ZipToPosition Postgres
@@ -122,7 +138,7 @@ with
 select
     {{
         generate_salted_uuid(
-            fields=["zip_code", "position_id", "election_date"],
+            fields=["zip_code", "position_id"],
             salt="zip_to_position",
         )
     }} as id, current_timestamp() as created_at, current_timestamp() as updated_at, *
