@@ -123,7 +123,8 @@ with
     ),
 
     -- Race shape for the anchor run's election. Opponent counts arrive as text
-    -- with a "10+" bucket, read as 10.
+    -- with a "10+" bucket, read as 10; through double first because HubSpot
+    -- numbers can arrive as "5.0", which a direct int cast drops.
     anchor_election as (
         select
             gp_election_id,
@@ -132,7 +133,7 @@ with
             is_open_seat,
             seats_available,
             coalesce(
-                try_cast(number_of_opponents as int),
+                try_cast(try_cast(number_of_opponents as double) as int),
                 case when number_of_opponents = '10+' then 10 end
             ) as number_of_opponents,
             number_of_opponents_is_estimated,
