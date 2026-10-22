@@ -144,12 +144,20 @@ with
 
     -- Votes at the stage the result belongs to. Both counts arrive as text, and
     -- an uncontested stage reads "uncontested" for its total, so it stays null.
+    -- A few candidacies hold two rows for one stage on different election
+    -- stages; when their counts disagree there is no right one, so it is null.
     stage_votes as (
         select
             cs.gp_candidacy_id,
             cs.election_stage,
-            max(try_cast(cs.votes_received as bigint)) as votes_received,
-            max(try_cast(es.total_votes_cast as bigint)) as total_votes_cast
+            case
+                when count(distinct try_cast(cs.votes_received as bigint)) = 1
+                then max(try_cast(cs.votes_received as bigint))
+            end as votes_received,
+            case
+                when count(distinct try_cast(es.total_votes_cast as bigint)) = 1
+                then max(try_cast(es.total_votes_cast as bigint))
+            end as total_votes_cast
         from {{ ref("candidacy_stage") }} as cs
         left join
             {{ ref("election_stage") }} as es
