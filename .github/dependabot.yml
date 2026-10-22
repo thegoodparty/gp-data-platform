@@ -212,3 +212,22 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # The Astro Runtime tag is a hand-edited pin that prod Airflow runs on.
+  # Patch only: 3.3-N releases carry fixes, while a new minor is an Airflow upgrade.
+  - package-ecosystem: "docker"
+    directory: "/airflow/astro"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependabot"
+      - "security"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
