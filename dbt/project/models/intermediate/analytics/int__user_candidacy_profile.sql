@@ -77,6 +77,9 @@ with
         select
             a.user_id,
             c.gp_candidacy_id,
+            c.gp_election_id,
+            c.is_open_seat,
+            c.is_partisan,
             c.office_level,
             c.latest_stage_result,
             c.latest_stage_reached,
@@ -117,6 +120,40 @@ with
                     c.gp_candidacy_id
             )
             = 1
+    ),
+
+    -- Race shape for the anchor run's election. Opponent counts arrive as text
+    -- with a "10+" bucket, read as 10.
+    anchor_election as (
+        select
+            gp_election_id,
+            is_uncontested,
+            is_uncontested_is_estimated,
+            is_open_seat,
+            seats_available,
+            coalesce(
+                try_cast(number_of_opponents as int),
+                case when number_of_opponents = '10+' then 10 end
+            ) as number_of_opponents,
+            number_of_opponents_is_estimated,
+            population,
+            is_judicial
+        from {{ ref("election") }}
+    ),
+
+    -- Votes at the stage the result belongs to. Both counts arrive as text, and
+    -- an uncontested stage reads "uncontested" for its total, so it stays null.
+    stage_votes as (
+        select
+            cs.gp_candidacy_id,
+            cs.election_stage,
+            max(try_cast(cs.votes_received as bigint)) as votes_received,
+            max(try_cast(es.total_votes_cast as bigint)) as total_votes_cast
+        from {{ ref("candidacy_stage") }} as cs
+        left join
+            {{ ref("election_stage") }} as es
+            on es.gp_election_stage_id = cs.gp_election_stage_id
+        group by cs.gp_candidacy_id, cs.election_stage
     ),
 
     -- Filing deadline through the position and the election date, the only
@@ -329,6 +366,18 @@ select
         false
     ) as never_filed,
     case when a.has_candidacy then civ.is_incumbent end as candidacy_is_incumbent,
+    ae.is_uncontested as candidacy_is_uncontested,
+    ae.is_uncontested_is_estimated as candidacy_is_uncontested_is_estimated,
+    -- The candidacy's own flag first; the election's fills the gaps.
+    coalesce(cc.is_open_seat, ae.is_open_seat) as candidacy_is_open_seat,
+    ae.seats_available as candidacy_seats_available,
+    ae.number_of_opponents as candidacy_number_of_opponents,
+    ae.number_of_opponents_is_estimated as candidacy_number_of_opponents_is_estimated,
+    ae.population as candidacy_population,
+    cc.is_partisan as candidacy_is_partisan,
+    ae.is_judicial as candidacy_is_judicial,
+    sv.votes_received as candidacy_votes_received,
+    sv.total_votes_cast as candidacy_total_votes_cast,
     case when a.has_candidacy then civ.viability_score end as candidacy_viability_score,
     case when a.has_candidacy then civ.win_number end as candidacy_win_number,
     case
@@ -364,6 +413,11 @@ left join anchor_campaign as ac on ac.campaign_version_id = a.anchor_campaign_ve
 left join anchor_civics as civ on civ.campaign_version_id = a.anchor_campaign_version_id
 left join anchor_candidacy as cc on cc.user_id = a.user_id
 left join primary_results as pr on pr.gp_candidacy_id = cc.gp_candidacy_id
+left join anchor_election as ae on ae.gp_election_id = cc.gp_election_id
+left join
+    stage_votes as sv
+    on sv.gp_candidacy_id = cc.gp_candidacy_id
+    and sv.election_stage = cc.latest_stage_reached
 left join anchor_filing as f on f.user_id = a.user_id
 left join prior_runs as p on p.user_id = a.user_id
 left join wins as w on w.user_id = a.user_id

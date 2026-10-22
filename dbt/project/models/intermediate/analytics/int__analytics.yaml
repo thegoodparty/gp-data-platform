@@ -1912,6 +1912,66 @@ models:
         description: >
           They already hold the office, from the civics candidacy or else the
           office-holder derivation.
+      - name: candidacy_is_uncontested
+        description: >
+          Nobody ran against them, from the anchor run's civics election. A win
+          here says nothing about the campaign, so filter on it before reading
+          a win rate. Null when the run has no civics election (about one in
+          five decided races since 2025), which is unknown, not contested.
+      - name: candidacy_is_uncontested_is_estimated
+        description: >
+          The uncontested flag was inferred rather than reported by a source.
+      - name: candidacy_is_open_seat
+        description: >
+          No incumbent is running for the seat. The candidacy's own flag, or
+          else the election's.
+      - name: candidacy_seats_available
+        description: >
+          Seats filled by the race. Over 40% of decided races since 2025 elect
+          more than one person, which changes the odds of winning, so compare
+          win rates within single-seat races or by seats.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_number_of_opponents
+        description: >
+          Other candidates in the race, from the civics election. Upstream
+          buckets ten or more as "10+", which reads 10 here. Sparse and partly
+          estimated, and known to run low, so it cannot yet give a reliable
+          expected win rate; check candidacy_number_of_opponents_is_estimated.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_number_of_opponents_is_estimated
+        description: The opponent count was inferred rather than reported by a source.
+      - name: candidacy_population
+        description: >
+          Population of the district, from the civics election. For electorate
+          size use candidacy_voter_count, which counts registered voters.
+      - name: candidacy_is_partisan
+        description: >
+          The race is partisan, from the civics candidacy. candidacy_partisan_type
+          is the product's own answer to the same question.
+      - name: candidacy_is_judicial
+        description: The office is judicial, from the civics election.
+      - name: candidacy_votes_received
+        description: >
+          Votes they received at the stage candidacy_result belongs to. Known
+          for about half of decided races.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_total_votes_cast
+        description: >
+          Votes cast in that stage. Rarely populated (a few percent of decided
+          races), so vote share is not yet usable; null for an uncontested stage.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: candidacy_viability_score
         description: Modelled viability of the run, from the civics scorer.
       - name: candidacy_win_number
