@@ -1,4 +1,10 @@
 version: 2
+# Dependabot's proxy only reaches declared or built-in registries. Astro's is public
+# (anonymous pull), so the declaration needs no credentials.
+registries:
+  astro-runtime:
+    type: docker-registry
+    url: https://astrocrpublic.azurecr.io
 updates:
   - package-ecosystem: "uv"
     directory: "/dbt"
@@ -217,6 +223,8 @@ updates:
   # Patch only: 3.3-N releases carry fixes, while a new minor is an Airflow upgrade.
   - package-ecosystem: "docker"
     directory: "/airflow/astro"
+    registries:
+      - astro-runtime
     schedule:
       interval: "weekly"
       day: "sunday"
