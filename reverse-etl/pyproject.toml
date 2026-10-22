@@ -15,7 +15,7 @@ dependencies = [
 retl = "retl.cli:main"
 
 [build-system]
-requires = ["setuptools>=84.0.0"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-dir]
