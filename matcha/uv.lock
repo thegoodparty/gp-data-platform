@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "databricks-sdk"
-version = "0.153.0"
+version = "0.154.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-auth" },
@@ -378,9 +378,9 @@ dependencies = [
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/e3/ccd9ac5a7a482d7c439f90241facd68b5d59f3d9178093d242bcee96a371/databricks_sdk-0.153.0.tar.gz", hash = "sha256:db0f0dc6d60128d39bb9ee219c6991de04b34ce46a04293ac30108332725f4be", size = 1159212, upload-time = "2026-10-15T11:30:37.491Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/37/40bc3745edff2e3ab66cb3adc392bf38cde987f590f2c38b849cb1f0734a/databricks_sdk-0.154.0.tar.gz", hash = "sha256:70af90c889e76ecc0ab62d5df5b2d7c9dca4f4e7bc2caddec3701c47c1719d79", size = 1162776, upload-time = "2026-10-19T04:36:46.235Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/4c/0f687a62b9ae72376e3ed4152260fe4abee29d26c3978fc37ec7c2881fc8/databricks_sdk-0.153.0-py3-none-any.whl", hash = "sha256:5f813d98cf704c20371f940a22ee00975e61e9d255bc02ca0e6f46551e86723e", size = 1102624, upload-time = "2026-10-15T11:30:35.818Z" },
+    { url = "https://files.pythonhosted.org/packages/32/31/5d6f93251dc6c9a2155318182a85e6884f3aeb37c3ea3109d10f77f84f3d/databricks_sdk-0.154.0-py3-none-any.whl", hash = "sha256:a87413ec9469c278104999b1a9f644d52aa97f2307be8f70252eaae3e6e74931", size = 1105420, upload-time = "2026-10-19T04:36:43.767Z" },
 ]
 
 [[package]]
@@ -1185,11 +1185,11 @@ wheels = [
 
 [[package]]
 name = "nameparser"
-version = "2.4.2"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/57/e0/cea18ec62f8c3791d6434681af57544b3eb1fda84fe464a2438dfd2df934/nameparser-2.4.2.tar.gz", hash = "sha256:e64cdc2ddecb321d5f501bb0d541c55d6374e668af721be892f1ce7c51430ba9", size = 986703, upload-time = "2026-10-14T04:20:05.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/d3/c19ffe5fbd507220fc736ff1cc002e7f9555f6d94fd5c5785d1391ba9b78/nameparser-2.5.0.tar.gz", hash = "sha256:b09bda0be6483096c9abc7814039ab26f7a871c6170ad9139931950aace37776", size = 1052183, upload-time = "2026-10-19T08:39:55.791Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/61/1aa5a11d04b2029897c44c46b2f1527e5db0ff4e65c5b22a0c7ee85ba8ee/nameparser-2.4.2-py3-none-any.whl", hash = "sha256:e8fb8365980d84fbb068c31f1bf53f56d56b27c85e2646e307949b1ac3b84457", size = 364898, upload-time = "2026-10-14T04:20:03.695Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/81/a125b6583af7b168c081b28c4ecaf6c651b01ae07d19b8509c708145511b/nameparser-2.5.0-py3-none-any.whl", hash = "sha256:934fe32ea40c0f8caf709b4b6ea2b28a6b71304014c8699ef9c105172dd56f23", size = 379362, upload-time = "2026-10-19T08:39:54.131Z" },
 ]
 
 [[package]]
