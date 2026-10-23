@@ -9,13 +9,14 @@
         webapp event catalog (gp-webapp/helpers/analyticsHelper.ts EVENTS map)
         and the win-analytics-knowledge skill's references/engagement.md.
 
-        Win families are prefixed `win_`; the is_win flag downstream is derived
-        as `family like 'win_%'`. Serve is a single flat family, so is_serve is
-        derived as `family = 'serve'`. Anything unmatched falls through to 'other'
-        so unclassified events surface for triage rather than silently dropping.
-        The catalog then lets a Govern `product:` tag re-sort events left in
-        'other' (see amplitude_govern_tag_value); it never moves an event this
-        macro already places.
+        Win families are prefixed `win_`. Anything unmatched falls through to
+        'other' so unclassified events surface for triage rather than silently
+        dropping. The catalog then lets a Govern `product:` tag re-sort events
+        left in 'other' (see amplitude_govern_tag_value); it never moves an
+        event this macro already places. Downstream is_win and is_serve come
+        from the event's resolved product (int__amplitude_events_classified),
+        not from the family prefix, so shared features count toward the
+        profile they were used from.
 
         Args:
             event_type_col: SQL expression producing the event_type string.

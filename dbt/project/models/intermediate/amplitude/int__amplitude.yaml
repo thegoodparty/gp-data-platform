@@ -679,8 +679,9 @@ models:
           buckets cover serve, shared, auth/settings, navigation, and anonymous
           noise. Equals name_rule_family unless that is 'other' and the Govern
           product tag places the event: win becomes 'win_declared', serve and
-          shared keep their names. Unmatched event_types fall through to 'other'
-          for triage.
+          shared keep their names. 'other' means unlabeled: no name rule matches
+          and no Govern product tag sorts the event, so it surfaces for triage
+          (see amplitude_unsorted_events).
         data_tests:
           - not_null
           - accepted_values:

@@ -75,7 +75,11 @@ Voter Insights), classified `win_onboarding`. Do not count them as Serve.
 Two things to know:
 
 1. `family = 'serve'` now covers both generations, so `analytics/lib/serve_analysis.py` sources
-   Serve membership from the catalog (`family = 'serve'`) with no event-name prefix list.
+   Serve membership from the catalog (`family = 'serve'`) with no event-name prefix list. Events
+   a Govern `product: serve` tag sorts also land in `family = 'serve'`, and shared features
+   (Dictation, Contacts and the like) count as Serve through `event_product = 'serve'` in
+   `int__amplitude_events_classified` (`product_source` says how), so for activity read
+   `event_product` rather than the family alone.
 2. Several new-generation events are **server-emitted, not user actions** (`Briefing Assistant -
    Agenda Created`, `Agenda Not Created`, `Agenda Submitted` — 100% `session_id = -1`, verified
    2026-07-15). They are correctly `family = 'serve'`, but engagement must exclude them via the
