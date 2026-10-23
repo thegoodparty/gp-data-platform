@@ -71,6 +71,8 @@ def _sql_quote(s: str) -> str:
 def _win_event_types_sql(drift_cutoff: str) -> str:
     """Subquery selecting drift-controlled Win event_types from the taxonomy."""
     _require_date("drift_cutoff", drift_cutoff)
+    # Reads catalog family flags, so shared-feature events (resolved per event in
+    # int__amplitude_events_classified.event_product) are not included.
     return (
         f"SELECT event_type FROM {EVENT_TAXONOMY} "
         f"WHERE is_win AND first_seen_date <= DATE'{drift_cutoff}'"

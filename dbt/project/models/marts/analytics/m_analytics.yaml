@@ -1671,19 +1671,50 @@ models:
           - not_null
           - unique
 
+  - name: amplitude_unsorted_events
+    description: >
+      Logged-in events that no name rule or Govern tag has sorted yet
+      (family = 'other', not machine-emitted), one row per day, event_type and
+      user, so new unlabeled events stay visible and Sigma can count distinct
+      users over a rolling window. Anonymous marketing-site events are out by
+      design, and staff and test accounts are dropped (int__civics_internal_persons,
+      the definition user_journey uses). Governance's dismiss list only quiets
+      its own flag; a dismissed event still shows here until it is sorted.
+
+      Source: int__amplitude_events_classified.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [activity_date, event_type, user_id]
+    columns:
+      - name: activity_date
+        description: Calendar day of the events.
+        data_tests:
+          - not_null
+      - name: event_type
+        description: Amplitude event type left in family 'other'.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Logged-in user (numeric id) who fired the event.
+        data_tests:
+          - not_null
+      - name: event_count
+        description: Events of this type by this user on this day.
+
   - name: amplitude_events
     description: >
-      Exposure of stg_airbyte_source__amplitude_api_events into
-      mart_analytics (Sigma reads marts only), enriched with the governed
-      event taxonomy: family, is_win, is_serve, is_recurrent and
-      is_dashboard_view derive from the amplitude_event_taxonomy macros so BI
+      Exposure of int__amplitude_events_classified into mart_analytics (Sigma
+      reads marts only), enriched with the governed event taxonomy so BI
       consumers never re-derive serve/win classification from event_type
-      strings. Passthrough columns
-      are documented at the upstream staging model; the event_type-grain
-      catalog (volume, recency, Govern metadata) is
-      int__amplitude_event_catalog, built from the same macros.
+      strings. family and product_area come from int__amplitude_event_catalog;
+      is_win and is_serve from the event's resolved product; is_recurrent and
+      is_dashboard_view from the amplitude_event_taxonomy macros. Passthrough
+      columns are documented at stg_airbyte_source__amplitude_api_events; the
+      event_type-grain catalog (volume, recency, Govern metadata) is
+      int__amplitude_event_catalog.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: int__amplitude_events_classified.
     columns:
       - name: uuid
         description: Unique identifier for the event (primary key).
@@ -1693,34 +1724,55 @@ models:
 
       - name: family
         description: >
-          Product-feature bucket from the amplitude_event_family macro. Win
-          families are prefixed `win_`; non-Win buckets cover serve,
-          auth/settings, navigation, and anonymous noise. Unmatched
-          event_types fall through to 'other' for triage. Closed set by
-          construction; the accepted_values contract is tested on
-          int__amplitude_event_catalog, which derives from the same macro.
+          Product-feature bucket from int__amplitude_event_catalog. Win
+          families are prefixed `win_`; non-Win buckets cover serve, shared,
+          auth/settings, navigation, and anonymous noise. The name rules decide
+          first; a Govern product tag places only events they leave in 'other'
+          (win becomes 'win_declared'). 'other' means unlabeled: no name rule
+          matches and no Govern tag sorts the event (see
+          amplitude_unsorted_events). The accepted_values contract is tested on the
+          catalog.
         data_tests:
           - not_null
 
       - name: is_win
         description: >
-          True for Win-product candidate-attributed families (family like
-          'win_%'); false for serve / cross-product / noise. Event-level
-          filter only — user-level "Win active" questions belong on
+          True where the event's resolved product is Win (event_product =
+          'win'): Win families, plus shared features used from the Win profile
+          or assumed Win (see product_source). False for Serve and noise.
+          Event-level filter only; user-level "Win active" questions belong on
           users_win_activity / users_win_base, not on raw event counts.
         data_tests:
           - not_null
 
       - name: is_serve
         description: >
-          True for Serve-product events (family = 'serve'). Serve is a single
-          flat family, hence the equality check rather than a prefix like
-          is_win. Superset of Serve user actions: some Serve events are
+          True where the event's resolved product is Serve (event_product =
+          'serve'): the serve family plus shared features used from the Serve
+          profile. Superset of Serve user actions: some Serve events are
           server-emitted (session_id = -1), so engagement filtering stays with
           the consumer. Event-level filter only — user-level "Serve active"
           questions belong on users_serve_base, not on raw event counts.
         data_tests:
           - not_null
+
+      - name: product_area
+        description: >
+          Feature area within a product, from int__amplitude_event_catalog: the
+          family for Win name-rule events, the name prefix for Serve, and for
+          tag-placed Win and shared events the Govern surface tag, else the
+          prefix, else 'unspecified'. Null for events outside Win, Serve and
+          shared.
+
+      - name: product_source
+        description: >
+          How is_win / is_serve were resolved: event_name (name rules),
+          govern_tag, event_property, active_profile, user_product or
+          assumed_win (a shared feature from a logged-in user with both products
+          or neither). Anonymous shared events are null unless a product or
+          activeProduct property is present. Null for events outside both
+          products. The
+          accepted_values contract is tested on int__amplitude_events_classified.
 
       - name: is_recurrent
         description: >

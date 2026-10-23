@@ -10,27 +10,23 @@
 with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
-    catalog as (
-        select event_type, is_machine_emitted, is_serve, is_win
-        from {{ ref("int__amplitude_event_catalog") }}
-    ),
-
+    -- event_product, not the catalog's is_win/is_serve, so shared features count
+    -- toward the product they were used from.
     active_months as (
         select
             try_cast(e.user_id as bigint) as user_id,
             trunc(e.event_time, 'MM') as activity_month,
             count(distinct date(e.event_time)) as activity_days,
             count(
-                distinct case when c.is_serve then date(e.event_time) end
+                distinct case when e.event_product = 'serve' then date(e.event_time) end
             ) as serve_activity_days,
             count(
-                distinct case when c.is_win then date(e.event_time) end
+                distinct case when e.event_product = 'win' then date(e.event_time) end
             ) as win_activity_days
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
-        join catalog as c on c.event_type = e.event_type
+        from {{ ref("int__amplitude_events_classified") }} as e
         where
             try_cast(e.user_id as bigint) is not null
-            and not c.is_machine_emitted
+            and not e.is_machine_emitted
             and e.event_time >= '{{ var("product_telemetry_start") }}'
         group by 1, 2
     ),
