@@ -1674,21 +1674,33 @@ models:
   - name: amplitude_unsorted_events
     description: >
       Logged-in events that no name rule or Govern tag has sorted yet
-      (family = 'other', not machine-emitted), by month and event_type, so
-      new unlabeled events stay visible. Anonymous marketing-site events are
-      out by design. Governance's dismiss list only quiets its own flag; a
-      dismissed event still shows here until it is sorted.
+      (family = 'other', not machine-emitted), one row per day, event_type and
+      user, so new unlabeled events stay visible and Sigma can count distinct
+      users over a rolling window. Anonymous marketing-site events are out by
+      design, and staff and test accounts are dropped (int__civics_internal_persons,
+      the definition user_journey uses). Governance's dismiss list only quiets
+      its own flag; a dismissed event still shows here until it is sorted.
 
       Source: int__amplitude_events_classified.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [activity_date, event_type, user_id]
     columns:
-      - name: activity_month
-        description: Calendar month of the events (first day).
+      - name: activity_date
+        description: Calendar day of the events.
+        data_tests:
+          - not_null
       - name: event_type
         description: Amplitude event type left in family 'other'.
-      - name: user_count
-        description: Distinct logged-in users with the event in the month.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Logged-in user (numeric id) who fired the event.
+        data_tests:
+          - not_null
       - name: event_count
-        description: Events of this type in the month.
+        description: Events of this type by this user on this day.
 
   - name: amplitude_events
     description: >
@@ -1746,8 +1758,11 @@ models:
 
       - name: product_area
         description: >
-          Feature area within a product, from int__amplitude_event_catalog. Null
-          for events outside Win, Serve and shared.
+          Feature area within a product, from int__amplitude_event_catalog: the
+          family for Win name-rule events, the name prefix for Serve, and for
+          tag-placed Win and shared events the Govern surface tag, else the
+          prefix, else 'unspecified'. Null for events outside Win, Serve and
+          shared.
 
       - name: product_source
         description: >

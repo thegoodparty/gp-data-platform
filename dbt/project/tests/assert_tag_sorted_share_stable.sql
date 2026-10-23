@@ -3,8 +3,17 @@
 -- A tag edit in Govern can move users between "active" and "not" overnight.
 -- Warns when the share of a product's active users who rely on a tag or
 -- profile (any event not sorted by name) moves more than 0.10 month to month.
--- Active mirrors int__user_activity_monthly: logged-in, non-machine events.
+-- Counts distinct logged-in users with a non-machine event in the month, minus
+-- staff and test accounts (the person-keyed int__civics_internal_persons set).
 with
+    internal_users as (
+        select k.user_id
+        from {{ ref("int__user_resolved_keys") }} as k
+        inner join
+            {{ ref("int__civics_internal_persons") }} as i
+            on i.gp_person_id = k.gp_person_id
+    ),
+
     months as (
         select
             add_months(trunc(current_date(), 'MM'), -2) as prior_month,
@@ -24,6 +33,7 @@ with
             ) as tag_sorted_users
         from {{ ref("int__amplitude_events_classified") }} as e
         cross join months as m
+        left anti join internal_users as i on i.user_id = try_cast(e.user_id as bigint)
         where
             e.event_product in ('win', 'serve')
             and try_cast(e.user_id as bigint) is not null
