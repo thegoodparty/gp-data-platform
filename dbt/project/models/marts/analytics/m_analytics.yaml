@@ -1673,17 +1673,17 @@ models:
 
   - name: amplitude_events
     description: >
-      Exposure of stg_airbyte_source__amplitude_api_events into
-      mart_analytics (Sigma reads marts only), enriched with the governed
-      event taxonomy: family, is_win, is_serve, is_recurrent and
-      is_dashboard_view derive from the amplitude_event_taxonomy macros so BI
+      Exposure of int__amplitude_events_classified into mart_analytics (Sigma
+      reads marts only), enriched with the governed event taxonomy so BI
       consumers never re-derive serve/win classification from event_type
-      strings. Passthrough columns
-      are documented at the upstream staging model; the event_type-grain
-      catalog (volume, recency, Govern metadata) is
-      int__amplitude_event_catalog, built from the same macros.
+      strings. family and product_area come from int__amplitude_event_catalog;
+      is_win and is_serve from the event's resolved product; is_recurrent and
+      is_dashboard_view from the amplitude_event_taxonomy macros. Passthrough
+      columns are documented at stg_airbyte_source__amplitude_api_events; the
+      event_type-grain catalog (volume, recency, Govern metadata) is
+      int__amplitude_event_catalog.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: int__amplitude_events_classified.
     columns:
       - name: uuid
         description: Unique identifier for the event (primary key).
@@ -1693,34 +1693,49 @@ models:
 
       - name: family
         description: >
-          Product-feature bucket from the amplitude_event_family macro. Win
-          families are prefixed `win_`; non-Win buckets cover serve,
-          auth/settings, navigation, and anonymous noise. Unmatched
-          event_types fall through to 'other' for triage. Closed set by
-          construction; the accepted_values contract is tested on
-          int__amplitude_event_catalog, which derives from the same macro.
+          Product-feature bucket from int__amplitude_event_catalog. Win
+          families are prefixed `win_`; non-Win buckets cover serve, shared,
+          auth/settings, navigation, and anonymous noise. The name rules decide
+          first; a Govern product tag places only events they leave in 'other'
+          (win becomes 'win_declared'). Unmatched event_types fall through to
+          'other' for triage. The accepted_values contract is tested on the
+          catalog.
         data_tests:
           - not_null
 
       - name: is_win
         description: >
-          True for Win-product candidate-attributed families (family like
-          'win_%'); false for serve / cross-product / noise. Event-level
-          filter only — user-level "Win active" questions belong on
+          True where the event's resolved product is Win (event_product =
+          'win'): Win families, plus shared features used from the Win profile
+          or assumed Win (see product_source). False for Serve and noise.
+          Event-level filter only; user-level "Win active" questions belong on
           users_win_activity / users_win_base, not on raw event counts.
         data_tests:
           - not_null
 
       - name: is_serve
         description: >
-          True for Serve-product events (family = 'serve'). Serve is a single
-          flat family, hence the equality check rather than a prefix like
-          is_win. Superset of Serve user actions: some Serve events are
+          True where the event's resolved product is Serve (event_product =
+          'serve'): the serve family plus shared features used from the Serve
+          profile. Superset of Serve user actions: some Serve events are
           server-emitted (session_id = -1), so engagement filtering stays with
           the consumer. Event-level filter only — user-level "Serve active"
           questions belong on users_serve_base, not on raw event counts.
         data_tests:
           - not_null
+
+      - name: product_area
+        description: >
+          Feature area within a product, from int__amplitude_event_catalog. Null
+          for events outside Win, Serve and shared.
+
+      - name: product_source
+        description: >
+          How is_win / is_serve were resolved: event_name (name rules),
+          govern_tag, event_property, active_profile, user_product or
+          assumed_win (a shared feature from a user with both products,
+          neither, or no user id). Null for events outside both products. The
+          accepted_values contract is tested on int__amplitude_events_classified.
 
       - name: is_recurrent
         description: >

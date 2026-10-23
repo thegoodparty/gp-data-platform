@@ -10,22 +10,17 @@
 with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
-    catalog as (
-        select event_type
-        from {{ ref("int__amplitude_event_catalog") }}
-        where is_win and not is_machine_emitted
-    ),
-
     -- Weeks are UTC and Monday-anchored, as date_trunc('week') gives.
     active_weeks as (
         select
             try_cast(e.user_id as bigint) as user_id,
             cast(date_trunc('week', e.event_time) as date) as week_start_date,
             count(distinct date(e.event_time)) as win_activity_days
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
-        join catalog as c on c.event_type = e.event_type
+        from {{ ref("int__amplitude_events_classified") }} as e
         where
             try_cast(e.user_id as bigint) is not null
+            and e.event_product = 'win'
+            and not e.is_machine_emitted
             and e.event_time >= '{{ var("product_telemetry_start") }}'
         group by 1, 2
     )

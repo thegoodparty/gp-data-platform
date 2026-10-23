@@ -1040,8 +1040,10 @@ models:
           - not_null
       - name: serve_first_activity_at
         description: >
-          First Serve product event, machine events excluded. Directional until
-          the Serve activity spine is rebuilt.
+          First Serve product event, machine events excluded. Includes shared
+          features used from the Serve profile (event_product = 'serve' in
+          int__amplitude_events_classified). Directional until the Serve activity
+          spine is rebuilt.
       - name: serve_last_activity_at
         description: Most recent Serve product event, machine events excluded.
       - name: active_m0
@@ -1174,8 +1176,10 @@ models:
           - not_null
       - name: serve_activity_days
         description: >
-          Distinct days in the month with a non-machine Serve event (catalog
-          is_serve). Part of activity_days, not in addition to it.
+          Distinct days in the month with a non-machine Serve event
+          (event_product = 'serve' in int__amplitude_events_classified, so shared
+          features used from the Serve profile count). Part of activity_days, not
+          in addition to it.
         data_tests:
           - not_null
       - name: serve_growth_state
@@ -1202,9 +1206,11 @@ models:
           - not_null
       - name: win_activity_days
         description: >
-          Distinct days in the month with a non-machine Win event (catalog
-          is_win). Part of activity_days; use it for a Win monthly-active count
-          that leaves out days spent only in Serve.
+          Distinct days in the month with a non-machine Win event
+          (event_product = 'win' in int__amplitude_events_classified: name-rule
+          and tag-placed Win events, plus shared features resolved to Win). Part
+          of activity_days; use it for a Win monthly-active count that leaves out
+          days spent only in Serve.
         data_tests:
           - not_null
     data_tests:
@@ -1248,7 +1254,9 @@ models:
         data_tests:
           - not_null
       - name: win_activity_days
-        description: Distinct days in the week with a non-machine Win event.
+        description: >
+          Distinct days in the week with a non-machine Win event (event_product =
+          'win' in int__amplitude_events_classified).
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -1263,9 +1271,10 @@ models:
     description: >
       Where each user spends their active days: one row per user, product,
       product area and calendar month with any activity. Same rule as
-      int__user_activity_monthly (a non-machine Win or Serve event). Win areas
-      are the catalog family; Serve areas are the event name's prefix, because
-      the catalog files every Serve event under one family.
+      int__user_activity_monthly (a non-machine event whose resolved product is
+      Win or Serve). Product and area both come from
+      int__amplitude_events_classified, so a shared feature lands under the
+      product it was used from.
 
       A day can touch several areas, so area_active_days do not add up to
       product_active_days; the share of a user's days that touched an area is
@@ -1295,9 +1304,10 @@ models:
                 values: [win, serve]
       - name: product_area
         description: >
-          The part of the product the events touched: the catalog family on
-          Win (for example win_outreach), the event name's prefix on Serve (for
-          example Polls).
+          The catalog product_area: the family for Win name-rule events (for
+          example win_outreach_planning); for Serve, tag-placed and shared
+          events, the Govern surface tag when the tag placed the event, else the
+          event name's prefix (for example Polls or Dictation).
         data_tests:
           - not_null
       - name: activity_month

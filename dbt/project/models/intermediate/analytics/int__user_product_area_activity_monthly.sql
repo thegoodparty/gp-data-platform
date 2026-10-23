@@ -10,26 +10,17 @@
 with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
-    catalog as (
-        select event_type, family, is_win, is_serve
-        from {{ ref("int__amplitude_event_catalog") }}
-        where (is_win or is_serve) and not is_machine_emitted
-    ),
-
     event_days as (
         select distinct
             try_cast(e.user_id as bigint) as user_id,
-            case when c.is_serve then 'serve' else 'win' end as product,
-            -- The catalog files every Serve event under one family, so Serve
-            -- areas come from the event name's prefix ("Polls - ...").
-            case
-                when c.is_serve then split_part(e.event_type, ' - ', 1) else c.family
-            end as product_area,
+            e.event_product as product,
+            e.product_area,
             date(e.event_time) as activity_date
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
-        join catalog as c on c.event_type = e.event_type
+        from {{ ref("int__amplitude_events_classified") }} as e
         where
             try_cast(e.user_id as bigint) is not null
+            and e.event_product is not null
+            and not e.is_machine_emitted
             and e.event_time >= '{{ var("product_telemetry_start") }}'
     ),
 
