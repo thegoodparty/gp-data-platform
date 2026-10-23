@@ -6,9 +6,11 @@
     Shared features (Dictation, Contacts and the like) have no product of
     their own, so they take the profile they were used from: an explicit
     `product` property, then `activeProduct`, then the user's only product.
-    A user with both products, neither, or no numeric id is assumed Win.
-    assumed_win exists because Serve users are few (Tristan's ruling of
-    2026-10-22). Property values other than win and serve are skipped.
+    A logged-in user with both products or neither is assumed Win, because
+    Serve users are few (Tristan's ruling of 2026-10-22). An event with no
+    numeric user id and no explicit property is anonymous marketing-site
+    traffic, not product use, so it carries no product. Property values other
+    than win and serve are skipped.
 */
 with
     events as (select * from {{ ref("stg_airbyte_source__amplitude_api_events") }}),
@@ -59,7 +61,13 @@ select
     ),
     case
         when is_shared
-        then coalesce(property_product, active_product, user_product, 'win')
+        then
+            coalesce(
+                property_product,
+                active_product,
+                user_product,
+                case when try_cast(user_id as bigint) is not null then 'win' end
+            )
         when is_win
         then 'win'
         when is_serve
@@ -75,7 +83,8 @@ select
                 then 'active_profile'
                 when user_product is not null
                 then 'user_product'
-                else 'assumed_win'
+                when try_cast(user_id as bigint) is not null
+                then 'assumed_win'
             end
         when is_win or is_serve
         then

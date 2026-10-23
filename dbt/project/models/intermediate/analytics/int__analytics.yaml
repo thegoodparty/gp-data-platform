@@ -1305,9 +1305,9 @@ models:
       - name: product_area
         description: >
           The catalog product_area: the family for Win name-rule events (for
-          example win_outreach_planning); for Serve, tag-placed and shared
-          events, the Govern surface tag when the tag placed the event, else the
-          event name's prefix (for example Polls or Dictation).
+          example win_outreach_planning); for Serve, the event name's prefix (for
+          example Polls); for tag-placed Win and shared events, the Govern surface
+          tag, else the prefix, else 'unspecified'.
         data_tests:
           - not_null
       - name: activity_month

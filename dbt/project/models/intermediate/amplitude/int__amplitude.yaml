@@ -718,9 +718,10 @@ models:
       - name: product_area
         description: >
           Feature area within a product. Win name-rule events carry their family.
-          Serve events and tag-placed Win or shared events carry the Govern surface
-          tag when the tag placed them, else the event-name prefix before ' - '.
-          Null for everything else.
+          Serve events (name-rule or tag-placed) carry the event-name prefix before
+          ' - '. Tag-placed Win and shared events carry the Govern surface tag, else
+          the prefix when the name has one, else 'unspecified'. Null for everything
+          else.
 
       - name: is_win
         description: >
@@ -853,8 +854,9 @@ models:
       (family, product_area, is_machine_emitted, is_recurrent) and the product it
       was used from. Shared features take the profile they were used from: an
       explicit product property, then activeProduct, then the user's only
-      product, else Win (assumed_win, because Serve users are few). Win and Serve
-      events take the catalog product. Non-product families carry null.
+      product, else Win for a logged-in user (assumed_win, because Serve users
+      are few). Anonymous shared events carry null. Win and Serve events take the
+      catalog product. Non-product families carry null.
     columns:
       - name: event_product
         description: "win, serve, or null for events outside both products."
@@ -865,7 +867,9 @@ models:
       - name: product_source
         description: >
           How event_product was resolved: event_name (name rules), govern_tag,
-          event_property, active_profile, user_product or assumed_win.
+          event_property, active_profile, user_product or assumed_win (a shared
+          feature from a logged-in user with both products or neither). Null for
+          anonymous shared events with no explicit product property.
         data_tests:
           - accepted_values:
               arguments:
@@ -921,9 +925,9 @@ unit_tests:
         - {n: 5, event_product: "win", product_source: "user_product"}
         - {n: 6, event_product: "win", product_source: "assumed_win"}
         - {n: 7, event_product: "win", product_source: "assumed_win"}
-        - {n: 8, event_product: "win", product_source: "assumed_win"}
         - {n: 9, event_product: "win", product_source: "event_name"}
         - {n: 10, event_product: "win", product_source: "govern_tag"}
+        - {n: 8, event_product: null, product_source: null}
         - {n: 11, event_product: null, product_source: null}
 
   # The Govern tag fills gaps only: it never moves an event the name rules place.
@@ -945,6 +949,7 @@ unit_tests:
           - {event_type: "Ghost - Fired", event_time: "2026-10-01 10:00:00"}
           - {event_type: "Dup - Tagged", event_time: "2026-10-01 10:00:00"}
           - {event_type: "Case - Tagged", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Heartbeat", event_time: "2026-10-01 10:00:00"}
       # format: sql because dict rows cannot express array<string>.
       - input: ref('stg_airbyte_source__amplitude_taxonomy_event_type')
         format: sql
@@ -961,13 +966,14 @@ unit_tests:
             cast(null as boolean) as is_hidden_from_pathfinder,
             cast(null as boolean) as is_hidden_from_timeline,
             cast(null as string) as owner
-          union all select 'Priorities - Priority Added', array('product:serve'), null, null, null, null, null, null, null, null, null
+          union all select 'Priorities - Priority Added', array('product:serve', 'surface:agenda'), null, null, null, null, null, null, null, null, null
           union all select 'Dictation - Started', array('product:shared'), null, null, null, null, null, null, null, null, null
           union all select 'Contacts - Contact Viewed', array('product:shared'), null, null, null, null, null, null, null, null, null
           union all select 'Org Switcher - Organization Switched', array('product:win'), null, null, null, null, null, null, null, null, null
           union all select 'Team - Member Invited', cast(array() as array<string>), null, null, null, null, null, null, null, null, null
           union all select 'Dup - Tagged', array('product:win', 'product:serve'), null, null, null, null, null, null, null, null, null
           union all select 'Case - Tagged', array(' Product:Win '), null, null, null, null, null, null, null, null, null
+          union all select 'Heartbeat', array('product:win'), null, null, null, null, null, null, null, null, null
     expect:
       rows:
         - {event_type: "Win - Opponent Viewed", family: "win_declared", product_area: "know-your-opponent", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
@@ -979,6 +985,7 @@ unit_tests:
         - {event_type: "Ghost - Fired", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: false}
         - {event_type: "Dup - Tagged", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: true}
         - {event_type: "Case - Tagged", family: "win_declared", product_area: "Case", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Heartbeat", family: "win_declared", product_area: "unspecified", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
 
   # A product label outside win/serve/shared is a typo, so it places nothing.
   - name: event_catalog_out_of_set_product_tag_is_ignored

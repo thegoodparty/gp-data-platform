@@ -107,11 +107,18 @@ select
     case
         when family like 'win_%' and name_rule_family = family
         then family
-        when family = 'serve' or family in ('win_declared', 'shared')
+        -- Serve keeps prefix-as-area, tag-placed or not.
+        when family = 'serve'
+        then split_part(event_type, ' - ', 1)
+        when family in ('win_declared', 'shared')
         then
             coalesce(
-                case when name_rule_family = 'other' then govern_surface end,
-                split_part(event_type, ' - ', 1)
+                nullif(govern_surface, ''),
+                case
+                    when event_type like '% - %'
+                    then split_part(event_type, ' - ', 1)
+                    else 'unspecified'
+                end
             )
     end as product_area,
     family like 'win_%' as is_win,
