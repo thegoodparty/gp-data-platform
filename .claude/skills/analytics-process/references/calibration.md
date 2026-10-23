@@ -101,6 +101,9 @@ summary of every substantive run must contain a **read-back block**:
 3. State whether Track 2 was ON (process-design mode) or OFF; if OFF and any Track 2 candidates
    surfaced, they must appear as parked `process` rows in the read-back — a Track 2 candidate
    mentioned in the summary but absent from the read-back is a bug in the run, not a judgment call.
+4. Add one line on the principles in [`analysis-principles.md`](analysis-principles.md): what this run
+   suggests adding, sharpening, merging or removing, or `Principles: no change.` Removals count as
+   much as additions, and a proposed new principle names the one it merges with or replaces.
 
 A closing summary without a read-back block is incomplete; do not end the run on it. (This check
 exists because the failure happened: candidates were parked in personal calibration logs and never
