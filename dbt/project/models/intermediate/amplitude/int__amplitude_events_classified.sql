@@ -34,6 +34,8 @@ with
                 when lower(e.event_properties:product::string) in ('win', 'serve')
                 then lower(e.event_properties:product::string)
             end as property_product,
+            -- The app sends activeProduct; the `:` path is case-insensitive, and
+            -- sqlfmt lowercases it anyway.
             case
                 when lower(e.event_properties:activeproduct::string) in ('win', 'serve')
                 then lower(e.event_properties:activeproduct::string)
