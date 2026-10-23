@@ -53,7 +53,7 @@ with
             s.event_type,
             {{ amplitude_event_family("s.event_type") }} as name_rule_family,
             {{ amplitude_govern_tag_value("g.govern_tags", "product") }}
-            as govern_product,
+            as raw_govern_product,
             {{ amplitude_govern_tag_value("g.govern_tags", "surface") }}
             as govern_surface,
             -- Two product tags is a labelling error that govern_product nulls out.
@@ -78,6 +78,12 @@ with
     declared as (
         select
             *,
+            -- Only the three declared products count; any other label is a typo to
+            -- ignore.
+            case
+                when raw_govern_product in ('win', 'serve', 'shared')
+                then raw_govern_product
+            end as govern_product,
             case
                 when name_rule_family != 'other'
                 then name_rule_family

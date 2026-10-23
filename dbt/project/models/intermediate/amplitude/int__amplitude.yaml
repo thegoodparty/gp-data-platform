@@ -660,6 +660,13 @@ models:
           Value of the Govern `product:` tag ('win', 'serve' or 'shared'), lowercased
           and trimmed. Null when the event has no such tag, more than one, or a value
           outside those three.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - win
+                  - serve
+                  - shared
 
       - name: govern_surface
         description: >
@@ -893,3 +900,36 @@ unit_tests:
         - {event_type: "Ghost - Fired", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: false}
         - {event_type: "Dup - Tagged", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: true}
         - {event_type: "Case - Tagged", family: "win_declared", product_area: "Case", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+
+  # A product label outside win/serve/shared is a typo, so it places nothing.
+  - name: event_catalog_out_of_set_product_tag_is_ignored
+    model: int__amplitude_event_catalog
+    overrides:
+      macros:
+        amplitude_event_is_recurrent: "false"
+    given:
+      - input: ref('stg_airbyte_source__amplitude_api_events')
+        rows:
+          - {event_type: "Bad - Tagged", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Empty - Tagged", event_time: "2026-10-01 10:00:00"}
+      - input: ref('stg_airbyte_source__amplitude_taxonomy_event_type')
+        format: sql
+        rows: |
+          select
+            'Bad - Tagged' as event_type,
+            array('product:both') as tags,
+            cast(null as string) as category_name,
+            cast(null as string) as description,
+            cast(null as string) as display_name,
+            cast(null as boolean) as is_active,
+            cast(null as boolean) as is_hidden_from_dropdowns,
+            cast(null as boolean) as is_hidden_from_persona_results,
+            cast(null as boolean) as is_hidden_from_pathfinder,
+            cast(null as boolean) as is_hidden_from_timeline,
+            cast(null as string) as owner
+          union all select 'Empty - Tagged', array('product:'), null, null, null, null, null, null, null, null, null
+    expect:
+      rows:
+        # Nulls last: dbt reorders null-valued keys per row, which breaks its positional union.
+        - {event_type: "Bad - Tagged", family: "other", is_win: false, is_serve: false, is_shared: false, product_label_conflict: false, govern_product: null, product_area: null}
+        - {event_type: "Empty - Tagged", family: "other", is_win: false, is_serve: false, is_shared: false, product_label_conflict: false, govern_product: null, product_area: null}
