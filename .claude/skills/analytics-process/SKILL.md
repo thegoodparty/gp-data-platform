@@ -10,6 +10,12 @@ facts themselves (which table, which metric, which join), use the product's know
 (**win-analytics-knowledge**, **serve-analytics-knowledge**) — this skill is about *how to
 work*, not *what is true about the data*.
 
+Every analysis is held to six principles: fewer actionable facts, every number compared with
+something, composition checked before a difference is credited, nothing that needs a correction
+step to see, an honest statement of certainty ("we don't know" is an answer), and one definition
+per concept. They are in [`references/analysis-principles.md`](references/analysis-principles.md);
+framing aims for them and the results checkpoint tests against them.
+
 ## The senior-analyst loop
 
 An index, not the specification: each step's operational detail lives in its reference doc,
@@ -43,6 +49,7 @@ Common work that should not be reinvented each run:
 
 ## Reference docs
 
+- [`references/analysis-principles.md`](references/analysis-principles.md) — the six principles every finding is held to before it ships.
 - [`references/framing.md`](references/framing.md) — the framing routine (persona, question set, pre-brief verification) the orchestrator runs in step 1.
 - [`references/pipeline.md`](references/pipeline.md) — stages, agents, handoff contracts (descriptive, not active).
 - [`references/methodology.md`](references/methodology.md) — product-agnostic discipline: scoping checklist, folder patterns, query patterns, binning, verification protocol. Product defaults (scoping decisions, cohorts, working-set builder) live in the product knowledge skill's `methodology_defaults.md`.
