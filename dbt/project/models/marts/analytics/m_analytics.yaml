@@ -1768,8 +1768,10 @@ models:
         description: >
           How is_win / is_serve were resolved: event_name (name rules),
           govern_tag, event_property, active_profile, user_product or
-          assumed_win (a shared feature from a user with both products,
-          neither, or no user id). Null for events outside both products. The
+          assumed_win (a shared feature from a logged-in user with both products
+          or neither). Anonymous shared events are null unless a product or
+          activeProduct property is present. Null for events outside both
+          products. The
           accepted_values contract is tested on int__amplitude_events_classified.
 
       - name: is_recurrent
