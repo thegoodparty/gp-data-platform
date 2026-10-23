@@ -13,6 +13,9 @@
         as `family like 'win_%'`. Serve is a single flat family, so is_serve is
         derived as `family = 'serve'`. Anything unmatched falls through to 'other'
         so unclassified events surface for triage rather than silently dropping.
+        The catalog then lets a Govern `product:` tag re-sort events left in
+        'other' (see amplitude_govern_tag_value); it never moves an event this
+        macro already places.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
@@ -148,6 +151,39 @@
             or {{ event_type_col }} like 'Segment Consent%'
         then 'session_or_browser'
         else 'other'
+    end
+{% endmacro %}
+
+
+{% macro amplitude_govern_tag_value(tags_col, key) %}
+    {#
+        Value of the Govern tag `key:value`, lowercased and trimmed, or null.
+
+        Null unless exactly one tag carries the key: two `product:` tags are a
+        labelling error, and picking one would hide it.
+
+        Args:
+            tags_col: SQL expression producing the array<string> of Govern tags.
+            key: tag key without the colon, e.g. 'product'.
+
+        Usage:
+            {{ amplitude_govern_tag_value('g.govern_tags', 'product') }} as govern_product
+    #}
+    case
+        when size(filter({{ tags_col }}, t -> lower(trim(t)) like '{{ key }}:%')) = 1
+        then
+            trim(
+                substr(
+                    lower(
+                        trim(
+                            filter(
+                                {{ tags_col }}, t -> lower(trim(t)) like '{{ key }}:%'
+                            )[0]
+                        )
+                    ),
+                    {{ key | length + 2 }}
+                )
+            )
     end
 {% endmacro %}
 

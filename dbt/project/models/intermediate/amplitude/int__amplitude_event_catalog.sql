@@ -9,8 +9,11 @@
 
     Notes:
         - Classification is pattern-based, so new event_types in known families
-          classify automatically. family is authoritative; govern_category is
-          descriptive metadata only and is not used in any derived logic.
+          classify automatically. family is authoritative. The Govern `product:`
+          and `surface:` tags fill gaps only: they place an event the name rules
+          leave in 'other' and never move one they already place.
+          govern_category is descriptive metadata only and is not used in any
+          derived logic.
         - Materialized as a table (not a view) because external notebooks SELECT/JOIN
           it directly via databricks-sql-connector and cannot call dbt macros.
 */
@@ -43,26 +46,92 @@ with
             tags as govern_tags,
             owner as govern_owner
         from {{ ref("stg_airbyte_source__amplitude_taxonomy_event_type") }}
+    ),
+
+    classified as (
+        select
+            s.event_type,
+            {{ amplitude_event_family("s.event_type") }} as name_rule_family,
+            {{ amplitude_govern_tag_value("g.govern_tags", "product") }}
+            as govern_product,
+            {{ amplitude_govern_tag_value("g.govern_tags", "surface") }}
+            as govern_surface,
+            -- Two product tags is a labelling error that govern_product nulls out.
+            size(filter(g.govern_tags, t -> lower(trim(t)) like 'product:%'))
+            > 1 as has_many_product_tags,
+            s.first_seen_date,
+            s.last_seen_date,
+            s.event_count,
+            s.event_count_30d,
+            g.govern_category,
+            g.govern_description,
+            g.govern_display_name,
+            g.govern_is_active,
+            g.govern_is_hidden,
+            g.govern_tags,
+            g.govern_owner,
+            g.event_type is not null as in_govern_taxonomy
+        from event_stream as s
+        left join govern as g on s.event_type = g.event_type
+    ),
+
+    declared as (
+        select
+            *,
+            case
+                when name_rule_family != 'other'
+                then name_rule_family
+                when govern_product = 'win'
+                then 'win_declared'
+                when govern_product = 'serve'
+                then 'serve'
+                when govern_product = 'shared'
+                then 'shared'
+                else 'other'
+            end as family
+        from classified
     )
 
 select
-    s.event_type,
-    {{ amplitude_event_family("s.event_type") }} as family,
+    event_type,
+    name_rule_family,
+    govern_product,
+    govern_surface,
+    family,
+    case
+        when family like 'win_%' and name_rule_family = family
+        then family
+        when family = 'serve' or family in ('win_declared', 'shared')
+        then
+            coalesce(
+                case when name_rule_family = 'other' then govern_surface end,
+                split_part(event_type, ' - ', 1)
+            )
+    end as product_area,
     family like 'win_%' as is_win,
     family = 'serve' as is_serve,
-    {{ amplitude_event_is_recurrent("s.event_type") }} as is_recurrent,
-    {{ amplitude_event_is_machine_emitted("s.event_type") }} as is_machine_emitted,
-    s.first_seen_date,
-    s.last_seen_date,
-    s.event_count,
-    s.event_count_30d,
-    g.govern_category,
-    g.govern_description,
-    g.govern_display_name,
-    g.govern_is_active,
-    g.govern_is_hidden,
-    g.govern_tags,
-    g.govern_owner,
-    g.event_type is not null as in_govern_taxonomy
-from event_stream as s
-left join govern as g on s.event_type = g.event_type
+    family = 'shared' as is_shared,
+    coalesce(
+        has_many_product_tags
+        or (
+            govern_product in ('win', 'serve')
+            and (name_rule_family like 'win_%' or name_rule_family = 'serve')
+            and (govern_product = 'win') != (name_rule_family like 'win_%')
+        ),
+        false
+    ) as product_label_conflict,
+    {{ amplitude_event_is_recurrent("event_type") }} as is_recurrent,
+    {{ amplitude_event_is_machine_emitted("event_type") }} as is_machine_emitted,
+    first_seen_date,
+    last_seen_date,
+    event_count,
+    event_count_30d,
+    govern_category,
+    govern_description,
+    govern_display_name,
+    govern_is_active,
+    govern_is_hidden,
+    govern_tags,
+    govern_owner,
+    in_govern_taxonomy
+from declared
