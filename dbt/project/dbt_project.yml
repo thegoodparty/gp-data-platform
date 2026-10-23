@@ -22,6 +22,9 @@ clean-targets: # directories to be removed by `dbt clean`
   - "dbt_packages"
 
 vars:
+  # +auto_liquid_cluster makes dbt-databricks run OPTIMIZE after every table
+  # build. Predictive optimization already compacts and clusters these tables.
+  databricks_skip_optimize: true
   # int__l2_br_match_served withholds matches that fit a known wrong-answer shape for attempts
   # on or after this date: the daily loop's cutover. Earlier matches came from other matchers and
   # stay served until the guards are extended to them by moving this date.
