@@ -846,7 +846,85 @@ models:
           arguments:
             expression: "not (is_win and is_serve)"
 
+  - name: int__amplitude_events_classified
+    description: >
+      Event-grain view: every Amplitude event with its catalog classification
+      (family, product_area, is_machine_emitted, is_recurrent) and the product it
+      was used from. Shared features take the profile they were used from: an
+      explicit product property, then activeProduct, then the user's only
+      product, else Win (assumed_win, because Serve users are few). Win and Serve
+      events take the catalog product. Non-product families carry null.
+    columns:
+      - name: event_product
+        description: "win, serve, or null for events outside both products."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
+      - name: product_source
+        description: >
+          How event_product was resolved: event_name (name rules), govern_tag,
+          event_property, active_profile, user_product or assumed_win.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - event_name
+                  - govern_tag
+                  - event_property
+                  - active_profile
+                  - user_product
+                  - assumed_win
+
 unit_tests:
+  # Shared features split by the profile they were used from; everything else
+  # follows the catalog.
+  - name: events_classified_resolves_shared_product
+    model: int__amplitude_events_classified
+    given:
+      - input: ref('int__amplitude_event_catalog')
+        format: sql
+        rows: |
+          select 'Dictation - Started' as event_type, 'shared' as name_rule_family, 'other' as family, cast(null as string) as product_area, false as is_win, false as is_serve, true as is_shared, false as is_machine_emitted, false as is_recurrent
+          union all select 'Dashboard - Viewed', 'win_dashboard', 'win_dashboard', 'Dashboard', true, false, false, false, false
+          union all select 'Win - Opponent Viewed', 'other', 'win_declared', 'know-your-opponent', true, false, false, false, false
+          union all select 'Navigation - Clicked', 'navigation', 'navigation', null, false, false, false, false, false
+      - input: ref('users')
+        format: sql
+        rows: |
+          select 1 as user_id, true as is_win_user, false as is_serve_user
+          union all select 2, false, true
+          union all select 3, true, true
+          union all select 4, false, false
+      - input: ref('stg_airbyte_source__amplitude_api_events')
+        format: sql
+        rows: |
+          select 1 as n, 'Dictation - Started' as event_type, '3' as user_id, '{"product":"serve","activeProduct":"win"}' as event_properties
+          union all select 2, 'Dictation - Started', '3', '{"product":"both","activeProduct":"serve"}'
+          union all select 3, 'Dictation - Started', '3', '{"activeProduct":"Win"}'
+          union all select 4, 'Dictation - Started', '2', '{}'
+          union all select 5, 'Dictation - Started', '1', '{}'
+          union all select 6, 'Dictation - Started', '3', '{}'
+          union all select 7, 'Dictation - Started', '4', '{}'
+          union all select 8, 'Dictation - Started', cast(null as string), '{}'
+          union all select 9, 'Dashboard - Viewed', '2', '{"activeProduct":"serve"}'
+          union all select 10, 'Win - Opponent Viewed', '1', '{}'
+          union all select 11, 'Navigation - Clicked', '1', '{}'
+    expect:
+      # Nulls last: dbt reorders null-valued keys per row, which breaks its positional union.
+      rows:
+        - {n: 1, event_product: "serve", product_source: "event_property"}
+        - {n: 2, event_product: "serve", product_source: "active_profile"}
+        - {n: 3, event_product: "win", product_source: "active_profile"}
+        - {n: 4, event_product: "serve", product_source: "user_product"}
+        - {n: 5, event_product: "win", product_source: "user_product"}
+        - {n: 6, event_product: "win", product_source: "assumed_win"}
+        - {n: 7, event_product: "win", product_source: "assumed_win"}
+        - {n: 8, event_product: "win", product_source: "assumed_win"}
+        - {n: 9, event_product: "win", product_source: "event_name"}
+        - {n: 10, event_product: "win", product_source: "govern_tag"}
+        - {n: 11, event_product: null, product_source: null}
+
   # The Govern tag fills gaps only: it never moves an event the name rules place.
   - name: event_catalog_tag_fills_gaps_only
     model: int__amplitude_event_catalog
