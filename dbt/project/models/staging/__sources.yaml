@@ -1684,6 +1684,28 @@ sources:
             data_tests:
               - not_null
 
+  - name: l2_eav
+    schema: dbt_hugh
+    description: >
+      L2 early and absentee voter (EAV) lists, downloaded by hand from L2 DataMapping
+      (Atlas) and uploaded by the data team. Each upload is cumulative and overwrites
+      the table, so a drop in row count means a partial file, not voters un-voting.
+      Lives in a personal dev schema for now, because no restricted raw schema accepts
+      manual uploads; move it before that schema is cleaned up.
+    tables:
+      - name: l2_eav_general_2026
+        identifier: eav_20261103
+        description: >
+          LALVOTERIDs L2 reports as having voted early or returned an absentee ballot
+          in the 2026-11-03 General. States that do not report to L2 are absent (as
+          of 2026-10-26: AL, HI, KY, MO, MS, NY, SC), so absence does not mean the
+          voter has not voted.
+        columns:
+          - name: LALVOTERID
+            data_tests:
+              - not_null
+              - unique
+
   - name: airbyte_source_finance
     schema: airbyte_source_finance
     description: >

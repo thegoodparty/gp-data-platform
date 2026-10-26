@@ -518,3 +518,28 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+  - name: gp_api_voter_eav_general_2026
+    description: >
+      Voters L2 reports as having voted early or absentee in the 2026-11-03 General,
+      one row per voter. gp-api uses it to let users include or exclude voters who
+      have already voted. Rebuilt from a cumulative daily upload. Some states do not
+      report to L2, so a voter missing here may still have voted. Voter-level data,
+      so read access is limited to mart_gp_api_readers.
+    columns:
+      - name: id
+        description: Voter id, the same salted LALVOTERID hash as gp_api_voters.id.
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: LALVOTERID
+        description: L2 voter identifier.
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: is_eav_general_2026
+        description: Always true; present so the flag reads clearly where joined.
+        data_type: boolean
+        data_tests:
+          - not_null
