@@ -10,6 +10,8 @@ Switching both paths off leaves `evidence.load_latches` on its degrade branch,
 which is a real branch with its own tests, so nothing here hides a failure.
 """
 
+import os
+
 import pytest
 from semantic_catalog import evidence, notify
 
@@ -21,3 +23,11 @@ def _no_cross_repo_reads(monkeypatch):
     # The degraded branch now tries to DM the owner. A machine that happens to
     # hold a real bot token would post to Slack from a test run.
     monkeypatch.delenv(notify.TOKEN_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_hook_git_env(monkeypatch):
+    # The pre-push hook exports GIT_DIR (absolute from a worktree), which would aim
+    # every git call a test makes at the real repo instead of its tmp_path repo.
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(key)

@@ -2,10 +2,17 @@ version: 2
 
 models:
   - name: m_election_api__candidacy
-    description: "Mart model that serves the Election API"
+    description: >
+      Mart model that serves the Election API. BallotReady candidacies, plus
+      civics candidacy stages (mostly TechSpeed) for races where BallotReady
+      publishes no candidacies, so those races are not served with an empty
+      roster.
     columns:
       - name: br_database_id
-        description: "Database ID of the candidacy"
+        description: >
+          BallotReady database ID of the candidacy. Negative for civics fills,
+          which have no BallotReady candidacy: a hash of gp_candidacy_stage_id,
+          since election-api requires an int here.
         tests:
           - not_null
           - unique
@@ -13,6 +20,8 @@ models:
               arguments:
                 to: ref('int__ballotready_candidacy')
                 field: database_id
+              config:
+                where: "br_database_id > 0"
       - name: id
         description: "UUID of the place"
         tests:
@@ -30,14 +39,15 @@ models:
           max_by(is_incumbent, updated_at) so the most recently updated
           row's value wins without collapsing all rows into a boolean OR.
           Null when no civics row carries an is_incumbent value for this
-          person + position.
+          person + position. Civics fills take the candidacy's own value.
       - name: gp_candidate_id
         description: >
           Canonical person id (gp_person_id, the earliest-member cluster mint),
           resolved via the int__civics_person_canonical_ids crosswalk
           (record_key 'ballotready|<br_candidate_id>' -> gp_person_id). One id
           per person, so candidacies of the same person share it. Null only
-          when the BR candidate is absent from the person universe.
+          when the BR candidate is absent from the person universe. Civics
+          fills take candidacy_stage.gp_person_id.
         tests:
           # Fill-rate guard: a record_key format drift upstream would silently
           # null this column. A couple of person-universe-absent BR candidates
@@ -63,12 +73,13 @@ models:
           person.contacts email). Keyed on the person, not br_candidate_id, so
           the value can originate from a merged-away br_candidate_id in the
           same person group. Surfaced by the campaign-strategy-context
-          endpoint so the caller can match the requesting user.
+          endpoint so the caller can match the requesting user. Civics fills
+          take people.email for the published person.
       - name: website_url
         description: >
           Candidate website URL, sourced from int__civics_candidate_ballotready
           (extracted from BR person.urls where type='website'). Person-keyed,
-          same as email.
+          same as email. Null for civics fills.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
@@ -475,19 +486,21 @@ models:
 
   - name: m_election_api__zip_to_position
     description: >
-      Maps zip codes to future election positions for the OfficePicker product.
-      Joins the civics election mart with the zip-to-BallotReady-office
-      intermediate model, filtered to elections within two years of the
-      current date.
+      Maps zip codes to every district-matched position for the OfficePicker
+      product, whether or not the position has a known past or upcoming race.
+      election-api reads races off its Race table and applies its own date
+      bounds, so a seat whose next race is years out still resolves by zip.
+      Display attributes come from the position's next upcoming election,
+      else its most recent past one, else BallotReady position data.
 
-      Grain: One row per (zip_code, position_id, election_date). Positions
-      without zip coverage will have a null zip_code.
+      Grain: One row per (zip_code, position_id). Positions without zip
+      coverage have one row with a null zip_code.
     columns:
       - name: id
         description: >
-          Deterministic UUID on the natural key (zip_code, position_id,
-          election_date); primary key in the election-api ZipToPosition
-          table, stable across daily rebuilds.
+          Deterministic UUID on the natural key (zip_code, position_id);
+          primary key in the election-api ZipToPosition table, stable across
+          daily rebuilds.
         tests:
           - not_null
           - unique
@@ -503,12 +516,12 @@ models:
                 field: id
       - name: name
         description: "BallotReady position name"
+        tests:
+          - not_null
       - name: zip_code
         description: "5-digit zip code mapped to this office via L2 district matching"
       - name: election_year
-        description: "Year of the election"
-        tests:
-          - not_null
+        description: "Year of election_date. Null when election_date is null."
       - name: display_office_level
         description: >
           Office level for display. Maps judicial positions to 'Judicial',
@@ -528,16 +541,24 @@ models:
                   - Township
       - name: office_type
         description: "Type of office (e.g. City Council, Mayor, Judge)"
+        tests:
+          - not_null
       - name: state
         description: "Two-letter state postal code"
+        tests:
+          - not_null
       - name: city
         description: "City associated with the office"
       - name: district
-        description: "District identifier for the office"
-      - name: election_date
-        description: "Date of the election"
+        description: >
+          District identifier for the office. Empty string when none applies.
         tests:
           - not_null
+      - name: election_date
+        description: >
+          Date of the position's next known upcoming election, at any horizon.
+          Null when none is known. Informational only: election-api picks
+          races from its Race table, not from this column.
       - name: br_database_id
         description: "Database ID of the `position` from BallotReady"
         tests:
@@ -575,7 +596,6 @@ models:
             combination_of_columns:
               - zip_code
               - position_id
-              - election_date
       - dbt_utils.expression_is_true:
           arguments:
             expression: "voters_in_zip_district <= voters_in_zip"
@@ -586,7 +606,7 @@ models:
     description: >
       District-level Haystaq issue scores per L2 district, covering every L2
       district with an `is_matched = true` row in the LLM L2-to-BallotReady
-      district match (`stg_model_predictions__llm_l2_br_match`). Not scoped
+      district match as served (`int__l2_br_match_served`). Not scoped
       to a single election cycle — districts with off-cycle offices are
       included as well.
 

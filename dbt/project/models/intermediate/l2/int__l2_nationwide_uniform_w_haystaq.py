@@ -23,6 +23,14 @@ def _apply_state_allowlist(df: DataFrame, allowlist: set[str] | None) -> DataFra
     return df.filter(col("state_postal_code").isin(sorted(allowlist)))
 
 
+def _clustering_columns_first(df: DataFrame) -> DataFrame:
+    """Delta only collects stats on the first 32 columns by default, and liquid
+    clustering needs stats on its columns, so a fresh build fails unless they lead.
+    Keep in step with liquid_clustered_by below."""
+    clustering_columns = ["Voters_Active", "state_postal_code", "LALVOTERID"]
+    return df.select(*clustering_columns, *[c for c in df.columns if c not in clustering_columns])
+
+
 def _assigned_voter_ids(assignments: DataFrame, uniform: DataFrame) -> DataFrame | None:
     """Voters carrying a manually assigned district, matched on the assigned name.
 
@@ -154,7 +162,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         changed_ids = changed_ids.distinct()
 
         if not changed_ids.take(1):
-            return (
+            return _clustering_columns_first(
                 uniform_df.limit(0)
                 .join(flags_selected.limit(0), on="LALVOTERID", how="left")
                 .join(scores_selected.limit(0), on="LALVOTERID", how="left")
@@ -164,6 +172,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         flags_selected = flags_selected.join(changed_ids, on="LALVOTERID", how="inner")
         scores_selected = scores_selected.join(changed_ids, on="LALVOTERID", how="inner")
 
-    return uniform_df.join(flags_selected, on="LALVOTERID", how="left").join(
-        scores_selected, on="LALVOTERID", how="left"
+    return _clustering_columns_first(
+        uniform_df.join(flags_selected, on="LALVOTERID", how="left").join(
+            scores_selected, on="LALVOTERID", how="left"
+        )
     )

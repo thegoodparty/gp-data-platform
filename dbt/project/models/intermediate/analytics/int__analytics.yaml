@@ -565,6 +565,157 @@ models:
           config:
             where: has_hubspot_contact
 
+  - name: int__stripe_checkout_sessions
+    description: >
+      Completed live-mode Stripe Checkout Sessions, one row per session. Since
+      2026-02-16 the product sells one-offs through Checkout Sessions in
+      payment mode and the purchase metadata lives on the session, so this is
+      how a later charge gets its purchase type, joined on payment_intent_id.
+      Internal only.
+    columns:
+      - name: checkout_session_id
+        description: Stripe Checkout Session id.
+        data_tests:
+          - unique
+          - not_null
+      - name: payment_intent_id
+        description: >
+          The payment intent the session created; joins to the charge. Null for
+          subscription-mode sessions.
+        data_tests:
+          - unique
+      - name: checkout_mode
+        description: payment (one-off purchase) or subscription.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [payment, subscription, setup]
+      - name: payment_type
+        description: What the product says was bought, from the session metadata.
+      - name: purchase_type
+        description: The product's coarser label for the same purchase.
+      - name: amount_total_usd
+        description: Session total in dollars.
+      - name: created_at
+        description: >
+          When the session was created. Stripe records no completion time on
+          the session; completion usually follows within minutes.
+        data_tests:
+          - not_null
+
+  - name: int__user_stripe_charges
+    description: >
+      Each settled Stripe charge that reaches a gp-api user, with its purchase
+      line. One row per user and charge: a charge reaches a user through their
+      Stripe customer, or through the product's own user id on a charge with no
+      customer. The only place a charge is typed, read by both
+      int__user_revenue_profile and int__user_revenue_events. A customer shared
+      by two user rows puts its charges on both. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: charge_id
+        description: Stripe charge id.
+        data_tests:
+          - not_null
+      - name: created_at
+        description: When the charge was taken.
+        data_tests:
+          - not_null
+      - name: amount_captured_usd
+        description: Dollars captured.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: amount_refunded_usd
+        description: Dollars refunded against the charge so far.
+      - name: payment_type
+        description: >
+          What the product says was bought (outreach_purchase,
+          domain_registration, poll), from the charge's metadata before
+          2026-02-16 and from its checkout session after. Charges for outreach
+          taken outside checkout carry only an outreach id and count as
+          outreach_purchase. Null for subscription and sales-led charges.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [outreach_purchase, domain_registration, poll]
+      - name: revenue_line
+        description: >
+          subscription (raised an invoice), sales_led (HubSpot commerce
+          checkout), one_off (any own-product purchase with a payment_type) or
+          unclassified (none of these; a handful of charges).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [subscription, sales_led, one_off, unclassified]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, charge_id]
+
+  - name: int__user_revenue_events
+    description: >
+      Dated money moments per user: each payment, each refund (dated when
+      refunded), and each Pro subscription's start and end. Failed checkouts
+      (incomplete, incomplete_expired) are neither a start nor an end. Amounts
+      are signed so a sum is net revenue. Feeds user_journey_events. Internal
+      only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: event
+        description: Payment, Refund, Subscription started or Subscription ended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Payment, Refund, Subscription started, Subscription ended]
+      - name: event_key
+        description: The Stripe charge, refund or subscription id, prefixed by kind.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: When it happened.
+        data_tests:
+          - not_null
+      - name: event_label
+        description: >
+          What a Payment or Refund was for: outreach_purchase,
+          domain_registration or poll for a product purchase, otherwise the
+          line (subscription, sales_led, unclassified). The plan interval for a
+          subscription start or end.
+      - name: event_amount_usd
+        description: >
+          Captured dollars for a Payment, minus the refunded dollars for a
+          Refund. Null for a subscription start or end, which moves no money,
+          so a sum over every row is net revenue.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, event_key]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd >= 0"
+          config:
+            where: event = 'Payment'
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_amount_usd <= 0"
+          config:
+            where: event = 'Refund'
+
   - name: int__user_revenue_profile
     description: >
       The revenue slice of the end-to-end user view: what a user has paid us
@@ -690,12 +841,10 @@ models:
           - not_null
       - name: unclassified_paid_usd
         description: >
-          Own-product one-offs taken after 2026-02-16, when checkout moved
-          behind a payment intent this connector does not ingest and its
-          metadata went with it. The dollars are the user's and are counted in
-          the lifetime total; only the purchase line is unknown. Kept as its
-          own column so the gap is visible rather than folded into a named
-          line.
+          Charges that match no purchase line: no invoice, no HubSpot checkout,
+          and no purchase type on the charge, its checkout session or an
+          outreach id. A handful of charges. Kept as its own column so any gap
+          stays visible rather than folded into a named line.
         data_tests:
           - not_null
       - name: first_payment_at
@@ -891,8 +1040,10 @@ models:
           - not_null
       - name: serve_first_activity_at
         description: >
-          First Serve product event, machine events excluded. Directional until
-          the Serve activity spine is rebuilt.
+          First Serve product event, machine events excluded. Includes shared
+          features used from the Serve profile (event_product = 'serve' in
+          int__amplitude_events_classified). Directional until the Serve activity
+          spine is rebuilt.
       - name: serve_last_activity_at
         description: Most recent Serve product event, machine events excluded.
       - name: active_m0
@@ -1025,8 +1176,10 @@ models:
           - not_null
       - name: serve_activity_days
         description: >
-          Distinct days in the month with a non-machine Serve event (catalog
-          is_serve). Part of activity_days, not in addition to it.
+          Distinct days in the month with a non-machine Serve event
+          (event_product = 'serve' in int__amplitude_events_classified, so shared
+          features used from the Serve profile count). Part of activity_days, not
+          in addition to it.
         data_tests:
           - not_null
       - name: serve_growth_state
@@ -1053,9 +1206,11 @@ models:
           - not_null
       - name: win_activity_days
         description: >
-          Distinct days in the month with a non-machine Win event (catalog
-          is_win). Part of activity_days; use it for a Win monthly-active count
-          that leaves out days spent only in Serve.
+          Distinct days in the month with a non-machine Win event
+          (event_product = 'win' in int__amplitude_events_classified: name-rule
+          and tag-placed Win events, plus shared features resolved to Win). Part
+          of activity_days; use it for a Win monthly-active count that leaves out
+          days spent only in Serve.
         data_tests:
           - not_null
     data_tests:
@@ -1069,6 +1224,118 @@ models:
           config:
             where: growth_state = 'new'
 
+  - name: int__user_win_activity_weekly
+    description: >
+      The weeks each user was active in Win: one row per user per active week.
+      The weekly grain of the Win half of int__user_activity_monthly, with the
+      same rule: at least one non-machine Win event in the week. Weeks are UTC
+      and start on Monday. Inactive weeks have no row.
+
+      Differs from int__amplitude_win_activity_weekly, which admits only the
+      recurrent allowlist plus dashboard views. Events start at the
+      product_telemetry_start var (2025-04).
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, week_start_date]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: week_start_date
+        description: Monday of the UTC week.
+        data_tests:
+          - not_null
+      - name: win_activity_days
+        description: >
+          Distinct days in the week with a non-machine Win event (event_product =
+          'win' in int__amplitude_events_classified).
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 7
+      - name: is_partial_week
+        description: The week is the current one and still filling.
+        data_tests:
+          - not_null
+  - name: int__user_product_area_activity_monthly
+    description: >
+      Where each user spends their active days: one row per user, product,
+      product area and calendar month with any activity. Same rule as
+      int__user_activity_monthly (a non-machine event whose resolved product is
+      Win or Serve). Product and area both come from
+      int__amplitude_events_classified, so a shared feature lands under the
+      product it was used from.
+
+      A day can touch several areas, so area_active_days do not add up to
+      product_active_days; the share of a user's days that touched an area is
+      area_active_days / product_active_days. Both sum exactly across months.
+      Events start at the product_telemetry_start var (2025-04).
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, product, product_area, activity_month]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__user_resolved_keys')
+                field: user_id
+      - name: product
+        description: win or serve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, serve]
+      - name: product_area
+        description: >
+          The catalog product_area: the family for Win name-rule events (for
+          example win_outreach_planning); for Serve, the event name's prefix (for
+          example Polls); for tag-placed Win and shared events, the Govern surface
+          tag, else the prefix, else 'unspecified'.
+        data_tests:
+          - not_null
+      - name: activity_month
+        description: First day of the calendar month.
+        data_tests:
+          - not_null
+      - name: area_active_days
+        description: Distinct days in the month with an event in this area.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 31
+      - name: product_active_days
+        description: >
+          Distinct days in the month with any event in this product. Repeats on
+          each area row of the month; take it once per user and month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 31
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+        data_tests:
+          - not_null
   - name: int__user_election_anchor
     description: >
       The one election each user's row speaks for, and the six-month window
@@ -1300,6 +1567,28 @@ models:
           - unique
           - not_null
 
+  - name: int__user_win_engaged_months
+    description: >
+      How many months a candidate engaged with Win before their own election
+      day, one row per user with an election date. A month counts when the user
+      was engaged that month (is_engaged, the activation OKR's events), so
+      "reached voters" months never disagree with activation. Read by win rate
+      by usage on
+      the user journey dashboard, so that read no longer joins the monthly and
+      send tables per candidate.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: win_engaged_months_before_election
+        description: >
+          Months before the candidacy's election date in which the user did
+          something that counts toward activation. Zero when there were none.
+          Null on the journey table for users with no election date.
+        data_tests:
+          - not_null
   - name: int__user_outreach_intensity
     description: >
       How hard a candidate campaigned in the six months running up to their own
@@ -1633,6 +1922,66 @@ models:
         description: >
           They already hold the office, from the civics candidacy or else the
           office-holder derivation.
+      - name: candidacy_is_uncontested
+        description: >
+          Nobody ran against them, from the anchor run's civics election. A win
+          here says nothing about the campaign, so filter on it before reading
+          a win rate. Null when the run has no civics election (about one in
+          five decided races since 2025), which is unknown, not contested.
+      - name: candidacy_is_uncontested_is_estimated
+        description: >
+          The uncontested flag was inferred rather than reported by a source.
+      - name: candidacy_is_open_seat
+        description: >
+          No incumbent is running for the seat. The candidacy's own flag, or
+          else the election's.
+      - name: candidacy_seats_available
+        description: >
+          Seats filled by the race. Over 40% of decided races since 2025 elect
+          more than one person, which changes the odds of winning, so compare
+          win rates within single-seat races or by seats.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_number_of_opponents
+        description: >
+          Other candidates in the race, from the civics election. Upstream
+          buckets ten or more as "10+", which reads 10 here. Sparse and partly
+          estimated, and known to run low, so it cannot yet give a reliable
+          expected win rate; check candidacy_number_of_opponents_is_estimated.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_number_of_opponents_is_estimated
+        description: The opponent count was inferred rather than reported by a source.
+      - name: candidacy_population
+        description: >
+          Population of the district, from the civics election. For electorate
+          size use candidacy_voter_count, which counts registered voters.
+      - name: candidacy_is_partisan
+        description: >
+          The race is partisan, from the civics candidacy. candidacy_partisan_type
+          is the product's own answer to the same question.
+      - name: candidacy_is_judicial
+        description: The office is judicial, from the civics election.
+      - name: candidacy_votes_received
+        description: >
+          Votes they received at the stage candidacy_result belongs to. Known
+          for about half of decided races.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: candidacy_total_votes_cast
+        description: >
+          Votes cast in that stage. Rarely populated (a few percent of decided
+          races), so vote share is not yet usable; null for an uncontested stage.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: candidacy_viability_score
         description: Modelled viability of the run, from the civics scorer.
       - name: candidacy_win_number
@@ -1642,25 +1991,26 @@ models:
           The anchor campaign's legitimacy score from the candidate legitimacy
           predictor, 0 to 1: the expected rate at which a campaign like this is
           corroborated by a ballot data vendor. Close to but not the same as the
-          person being real. Null for campaigns the model has not scored.
+          person being real. Runs high for signups still in their cycle, so read
+          it as a rank, not a rate. Null for campaigns the model has not scored.
       - name: candidacy_legitimacy_bucket
         description: The score's band, p_under_5 to p_60_plus.
       - name: candidacy_legitimacy_label
         description: >
           6. confirmed when candidacy_has_external_match is true, whether or
-          not the model scored the campaign. Otherwise the score band in words
-          with its range, from 1. [0-5%] very unlikely to 5. [60-100%] likely,
-          or null when unscored. The number prefix makes it sort in order.
-          candidacy_legitimacy_score and _bucket stay the model's raw output.
+          not the model scored the campaign. Otherwise the score band as a
+          rank, from 1. lowest to 5. highest, or null when unscored. The number
+          prefix makes it sort in order. candidacy_legitimacy_score and _bucket
+          stay the model's raw output.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - "1. [0-5%] very unlikely"
-                  - "2. [5-15%] unlikely"
-                  - "3. [15-35%] possible"
-                  - "4. [35-60%] toss-up"
-                  - "5. [60-100%] likely"
+                  - "1. lowest"
+                  - "2. low"
+                  - "3. middle"
+                  - "4. high"
+                  - "5. highest"
                   - "6. confirmed"
       - name: candidacy_legitimacy_scored_at
         description: >
@@ -1795,6 +2145,34 @@ models:
         data_tests:
           - not_null
 
+  - name: int__user_usage_group
+    description: >
+      Each Win user's usage group, one exclusive label per user, so a dashboard
+      control can filter every page to the same people. One row per Win user.
+      Moves with the build date, because is_power_user does.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: usage_group
+        description: >
+          Power user (is_power_user); Sent, not a power user (reached voters
+          through the product but below the dashboard bar); Pro, never sent
+          (a subscription payment, never reached voters); Free, never sent.
+          Users with no candidacy have no power-user row and fall into the two
+          never-sent groups.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Power user
+                  - Sent, not a power user
+                  - Pro, never sent
+                  - Free, never sent
+
   - name: int__user_first_touch_utm
     description: >
       First-touch UTM attribution per user, from Amplitude's SDK initial_utm_*
@@ -1860,3 +2238,347 @@ models:
           - not_null
       - name: utm_medium_last_normalized
         description: utm_medium_last lowercased.
+
+  - name: int__marketing_site_traffic_monthly
+    description: >
+      Monthly traffic on the goodparty.org marketing site, the step before
+      signup. Built from the site's own Amplitude page call (Viewed), which
+      starts 2025-04-24, so the first month is partial. Production host only:
+      Vercel preview, local and dev hosts and the product app, which fire the
+      same event, are excluded. Product-agnostic and aggregate only. A visitor
+      is a device, not a person, because most of this traffic is anonymous; one
+      person on two browsers counts twice, and staff cannot be removed.
+
+      Read single_page_session_share before trusting a trend in visitors or
+      sessions. It sits around 75-85% through 2025 and jumps to the mid-90s from
+      March 2026, which looks like bot or broken-client traffic rather than
+      real readers. It is exposed here rather than filtered out.
+    columns:
+      - name: month_start
+        description: First day of the UTC calendar month. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: visitors
+        description: Distinct devices with at least one page view in the month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: sessions
+        description: >
+          Distinct device and Amplitude session pairs, counted in the month the
+          session began. Page views outside any session (session id -1) are left
+          out of sessions but kept in page_views.
+        data_tests:
+          - not_null
+      - name: page_views
+        description: Viewed events on the production host in the month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: single_page_sessions
+        description: Sessions with exactly one page view on the site.
+        data_tests:
+          - not_null
+      - name: single_page_session_share
+        description: >
+          single_page_sessions over sessions. A bounce-rate proxy and the main
+          signal for non-human traffic; see the model description.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: visitors_identified
+        description: >
+          Visitors in the month whose device carries a gp-api user id on any
+          Amplitude event, at any time. A loose site-to-account link, not a
+          conversion count: it does not require the signup to follow the visit,
+          and it misses people who signed up on a different device.
+        data_tests:
+          - not_null
+      - name: visitors_identified_share
+        description: visitors_identified over visitors.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: us_visitors
+        description: >
+          Distinct Amplitude users (amplitude_id) whose page view's country is
+          United States. Counted by amplitude_id rather than device so it
+          matches the business's Amplitude chart of Viewed unique users
+          segmented to the US. That chart covers every host, so it runs higher
+          in months with heavy preview-host traffic (March, May and August
+          2026); otherwise the two agree within about 1%. Most of the
+          non-US traffic from December 2025 on is the suspected bot traffic.
+        data_tests:
+          - not_null
+      - name: us_sessions
+        description: Sessions whose first page view's country is United States.
+        data_tests:
+          - not_null
+      - name: us_single_page_session_share
+        description: Single-page share among us_sessions.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: int__user_hubspot_note_items
+    description: >
+      The HubSpot calls, notes and meetings behind each user's note summary,
+      at the grain a reader can check the summary against. One row per user
+      per engagement that carries real text.
+
+      Calls keep what the rep typed plus HubSpot's call summary, with dialer
+      boilerplate (sequence headers, "recorded by" stamps, AI-summary banners)
+      removed. On a call that never connected the call summary describes the
+      voicemail, so only rep-typed text is kept. Meetings keep only the rep's
+      internal notes, because the body is the calendar invite. Grain
+      write-ups arrive as notes. Emails are left out: outbound mail is mostly
+      sequence templates and inbound mail mostly quoted threads, together
+      eight times the text of everything kept here.
+
+      Reads int__user_hubspot_touches, so it follows every contact in the
+      user's person group and drops right-to-erasure engagements. Holds free
+      text that can include personal details.
+    columns:
+      - name: user_id
+        description: gp-api user the engagement reaches.
+        data_tests:
+          - not_null
+      - name: touch_id
+        description: HubSpot engagement id, as on int__user_hubspot_touches.
+        data_tests:
+          - not_null
+      - name: channel
+        description: call, note or meeting.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["call", "note", "meeting"]
+      - name: touch_at
+        description: When the call, note or meeting happened.
+      - name: item_text
+        description: >
+          Cleaned text with HTML and whitespace collapsed, cut at 4,000
+          characters so one long write-up cannot crowd out the rest. At least
+          40 characters, since anything shorter is a disposition word.
+        data_tests:
+          - not_null
+      - name: recency_rank
+        description: 1 for the user's most recent item.
+        data_tests:
+          - not_null
+      - name: is_summary_input
+        description: >
+          Whether the summary reads this item: the 20 most recent, stopping
+          once the running total passes 40,000 characters. The newest item is
+          always read.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, touch_id]
+
+  - name: int__user_hubspot_note_summary
+    description: >
+      One row per user with a short model-written summary of their HubSpot
+      calls, notes and meetings, for the user lookup page. The page reads
+      these rows and never calls the model itself.
+
+      Written by ai_query on a Claude Haiku serving endpoint. Each run
+      summarizes only users who are new or whose input fingerprint changed,
+      newest activity first, up to hubspot_note_summary_user_cap users (2,000
+      in production, 25 in CI and dev); the rest wait for the next run. The
+      scheduled jobs reach this model through the person lineage several
+      times a day, so a run writes only when the last write is 20 hours old;
+      passing the cap var explicitly, as a backfill does, skips that wait. The
+      model is exempt from --full-refresh, and a call that errors writes no
+      row, so that user is retried next run.
+
+      A post-hook deletes a user's summary once any item it was written from
+      leaves int__user_hubspot_note_items, which is what happens when an
+      engagement is erased, so the summary is rewritten from what remains.
+      The prompt asks the model to leave out health, family, finances, legal
+      matters, religion, personal political views and contact details.
+    columns:
+      - name: user_id
+        description: gp-api user.
+        data_tests:
+          - not_null
+          - unique
+      - name: summary
+        description: >
+          Up to four bullet points and a closing "Last contact:" line. Model
+          output: check it against the source items before relying on it.
+          When the model asks for more notes instead of summarizing, which
+          happens on a few very short notes, it holds "No summary could be
+          written from these notes." and the last contact date.
+        data_tests:
+          - not_null
+      - name: item_count
+        description: Items the summary was written from.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: last_item_at
+        description: When the newest of those items happened.
+      - name: source_touch_ids
+        description: The engagement ids the summary was written from.
+      - name: input_fingerprint
+        description: >
+          Hash of the prompt version, endpoint and input text. A run skips a
+          user whose fingerprint has not changed.
+        data_tests:
+          - not_null
+      - name: model_endpoint
+        description: Databricks serving endpoint that wrote the summary.
+      - name: prompt_version
+        description: Bumped whenever the prompt changes, which rewrites every summary.
+      - name: input_tokens_est
+        description: >
+          Estimated prompt tokens at four characters a token. ai_query returns
+          no usage counts, and the serving usage tables are not readable by
+          the data team, so this is the only cost signal available.
+      - name: output_tokens_est
+        description: Estimated summary tokens, on the same basis.
+      - name: summarized_at
+        description: When the run that wrote this summary started.
+
+  - name: int__user_hubspot_note_summary_runs
+    description: >
+      One row per note summary run that wrote anything: users summarized and
+      estimated tokens. Append-only and exempt from --full-refresh, because
+      the summary table keeps only each user's latest row.
+    columns:
+      - name: run_at
+        description: The summarized_at shared by every row the run wrote.
+        data_tests:
+          - not_null
+          - unique
+      - name: model_endpoint
+        description: Serving endpoint the run called.
+      - name: users_summarized
+        description: Users summarized in the run.
+      - name: input_tokens_est
+        description: >
+          Estimated prompt tokens for the run. Warns above 3M, about one and
+          a half times a full nightly run; a deliberate backfill will warn too.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: 3000000
+              config:
+                severity: warn
+                where: "run_at >= current_date() - interval 2 days"
+      - name: output_tokens_est
+        description: Estimated summary tokens for the run.
+
+unit_tests:
+  - name: hubspot_note_items_drops_stubs_and_voicemail
+    model: int__user_hubspot_note_items
+    given:
+      - input: ref('int__user_hubspot_touches')
+        rows:
+          - {user_id: 1, touch_id: "c1", channel: "call", touch_at: "2026-05-01 10:00:00"}
+          - {user_id: 1, touch_id: "c2", channel: "call", touch_at: "2026-05-02 10:00:00"}
+          - {user_id: 1, touch_id: "c3", channel: "call", touch_at: "2026-05-03 10:00:00"}
+          - {user_id: 1, touch_id: "m1", channel: "meeting", touch_at: "2026-05-04 10:00:00"}
+          - {user_id: 1, touch_id: "n1", channel: "note", touch_at: "2026-05-05 10:00:00"}
+          - {user_id: 1, touch_id: "n2", channel: "note", touch_at: "2026-05-06 10:00:00"}
+          - {user_id: 1, touch_id: "n3", channel: "note", touch_at: "2026-05-06 11:00:00"}
+          - {user_id: 1, touch_id: "e1", channel: "email", touch_at: "2026-05-07 10:00:00"}
+      - input: ref('int__hubspot_calls')
+        rows:
+          # A dialer stub whose only text is the voicemail summary.
+          - {id: "c1", outcome_family: "not_connected", hs_call_body: "[Nooks] [Sequence: Example - Sales Open]", hs_call_summary: "The call went to voicemail and a message was left for the candidate."}
+          - {id: "c2", outcome_family: "connected_pledge", hs_call_body: "[NOOKS] - Asked about the voter file for the county race.", hs_call_summary: "Candidate wants help with texting."}
+          - {id: "c3", outcome_family: "not_connected", hs_call_body: "Left VM", hs_call_summary: "A long description of the voicemail that was left for the candidate."}
+      - input: ref('stg_airbyte_source__hubspot_api_engagements')
+        rows:
+          - {id: "m1", engagement_type: "MEETING", body: "We'll discuss your campaign and how GoodParty.org can help you win.", internal_meeting_notes: "Wants to run for school board and asked about Pro pricing."}
+          - {id: "n1", engagement_type: "NOTE", body: "<p>Grain: Discussed the path to victory&nbsp;report and next steps.</p>", internal_meeting_notes: null}
+          - {id: "n2", engagement_type: "NOTE", body: "Short note", internal_meeting_notes: null}
+          # Long enough, but only a link.
+          - {id: "n3", engagement_type: "NOTE", body: "https://grain.com/share/recording/00000000-0000-0000-0000-000000000000", internal_meeting_notes: null}
+    expect:
+      rows:
+        - {user_id: 1, touch_id: "n1", channel: "note", item_text: "Grain: Discussed the path to victory report and next steps.", recency_rank: 1, is_summary_input: true}
+        - {user_id: 1, touch_id: "m1", channel: "meeting", item_text: "Wants to run for school board and asked about Pro pricing.", recency_rank: 2, is_summary_input: true}
+        - {user_id: 1, touch_id: "c2", channel: "call", item_text: "Asked about the voter file for the county race. Candidate wants help with texting.", recency_rank: 3, is_summary_input: true}
+
+  # Each of these makes one real model call, for the single user it expects.
+  - name: hubspot_note_summary_skips_unchanged_fingerprint
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 1 as user_id, 'a1' as touch_id, 'note' as channel, timestamp '2026-05-01 10:00:00' as touch_at, 'Discussed the campaign plan and the voter file with the rep.' as item_text, 1 as recency_rank, true as is_summary_input
+          union all
+          select 2, 'b1', 'call', timestamp '2026-06-01 10:00:00', 'Asked how texting works and agreed to a follow-up call next week.', 1, true
+      - input: this
+        format: sql
+        rows: |
+          select 1 as user_id, 'existing' as summary, 1 as item_count, timestamp '2026-05-01 10:00:00' as last_item_at, array('a1') as source_touch_ids,
+            sha2(concat_ws('|', 'v2', 'databricks-claude-haiku-4-5', '[2026-05-01 note] Discussed the campaign plan and the voter file with the rep.'), 256) as input_fingerprint,
+            'databricks-claude-haiku-4-5' as model_endpoint, 'v2' as prompt_version, cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, timestamp '2026-05-02 00:00:00' as summarized_at
+          union all
+          select 2, 'stale', 1, timestamp '2026-05-15 10:00:00', array('b0'), 'an older fingerprint', 'databricks-claude-haiku-4-5', 'v2', cast(100 as bigint), cast(20 as bigint), timestamp '2026-05-16 00:00:00'
+    expect:
+      rows:
+        - {user_id: 2, item_count: 1}
+
+  # A write within the last 20 hours holds back every pending user, so no
+  # model call is made.
+  - name: hubspot_note_summary_waits_after_recent_write
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 2 as user_id, 'b1' as touch_id, 'call' as channel, timestamp '2026-06-01 10:00:00' as touch_at, 'Asked how texting works and agreed to a follow-up call next week.' as item_text, 1 as recency_rank, true as is_summary_input
+      - input: this
+        format: sql
+        rows: |
+          select 1 as user_id, 'existing' as summary, 1 as item_count, timestamp '2026-05-01 10:00:00' as last_item_at, array('a1') as source_touch_ids,
+            'any fingerprint' as input_fingerprint, 'databricks-claude-haiku-4-5' as model_endpoint, 'v2' as prompt_version,
+            cast(100 as bigint) as input_tokens_est, cast(20 as bigint) as output_tokens_est, current_timestamp() - interval 2 hours as summarized_at
+    expect:
+      rows: []
+
+  - name: hubspot_note_summary_caps_newest_first
+    model: int__user_hubspot_note_summary
+    overrides:
+      macros:
+        is_incremental: false
+      vars:
+        hubspot_note_summary_user_cap: 1
+    given:
+      - input: ref('int__user_hubspot_note_items')
+        format: sql
+        rows: |
+          select 1 as user_id, 'a1' as touch_id, 'note' as channel, timestamp '2026-05-01 10:00:00' as touch_at, 'Discussed the campaign plan and the voter file with the rep.' as item_text, 1 as recency_rank, true as is_summary_input
+          union all
+          select 2, 'b1', 'call', timestamp '2026-06-01 10:00:00', 'Asked how texting works and agreed to a follow-up call next week.', 1, true
+    expect:
+      rows:
+        - {user_id: 2, item_count: 1}

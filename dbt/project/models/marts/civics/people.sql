@@ -315,7 +315,7 @@ with
     -- officeholder-feed row, or a gp_api user with an elected-office record.
     br_candidacy_persons as (
         select distinct cast(br_candidate_id as string) as br_candidate_id
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("int__ballotready_s3_candidacies_gated") }}
         where br_candidate_id is not null
     ),
 

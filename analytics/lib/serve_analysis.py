@@ -106,6 +106,8 @@ def serve_engagement_predicate(events_alias: str = "e", path_expr: str | None = 
     """
     a = events_alias
     path = path_expr or f"{a}.event_properties:path::string"
+    # Reads the catalog's family = 'serve', so shared-feature events (resolved per
+    # event in int__amplitude_events_classified.event_product) are not included.
     return (
         f"({a}.event_type IN (SELECT event_type FROM {EVENT_TAXONOMY} WHERE family = 'serve')\n"
         f"   OR ({a}.event_type = 'Viewed' AND ({_prefix_like_any(path, SERVE_SURFACE_PATH_PREFIXES)})))"

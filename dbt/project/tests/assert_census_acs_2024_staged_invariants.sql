@@ -78,6 +78,25 @@ with
                     and total_population is not null
                     and population_under_18 + population_65_plus > total_population
                 then 'age_brackets_exceed_total_population'
+                -- B01001 cells: the adult sex totals and under-18 partition
+                -- total population, and the two sexes' 65+ make up 65+.
+                when
+                    population_male_18_plus is not null
+                    and population_female_18_plus is not null
+                    and population_under_18 is not null
+                    and total_population is not null
+                    and population_male_18_plus
+                    + population_female_18_plus
+                    + population_under_18
+                    != total_population
+                then 'adult_sex_totals_and_under_18_do_not_sum_to_total'
+                when
+                    population_male_65_plus is not null
+                    and population_female_65_plus is not null
+                    and population_65_plus is not null
+                    and population_male_65_plus + population_female_65_plus
+                    != population_65_plus
+                then 'sex_65_plus_does_not_sum_to_65_plus'
                 when
                     population_hs_or_higher is not null
                     and population_25_plus is not null

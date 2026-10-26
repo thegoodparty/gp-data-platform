@@ -16,6 +16,17 @@ with
         inner join
             {{ ref("m_election_api__race") }} as tbl_race
             on tbl_candidacy.race_database_id = tbl_race.br_database_id
+        -- Same rule the CSV-backed civics readers apply, so the public API and
+        -- civics agree on who is running in an upcoming race.
+        where
+            {{
+                br_candidacy_is_current(
+                    "cast(tbl_race.election_date as date)",
+                    "tbl_candidacy.database_id",
+                    "tbl_candidacy.withdrawn",
+                    "tbl_candidacy.is_hidden",
+                )
+            }}
     ),
     tbl_party as (
         select
@@ -131,6 +142,101 @@ with
             and tbl_int_race.br_position_database_id
             = tbl_civics_attrs.br_position_database_id
     ),
+    -- BallotReady publishes no candidacies for some races the civics layer does
+    -- cover (mostly TechSpeed). Fill those rosters from civics candidacy stages,
+    -- which civics already resolves to a BallotReady race. Stage grain matches
+    -- election-api's one candidacy per race.
+    br_covered_race as (select distinct race_database_id from active_candidacy),
+    civics_stage as (
+        select
+            tbl_stage.gp_candidacy_stage_id,
+            tbl_stage.gp_person_id,
+            tbl_stage.created_at,
+            tbl_stage.updated_at,
+            -- TechSpeed puts free text in br_race_id on some stages
+            try_cast(tbl_election_stage.br_race_id as int) as race_database_id,
+            tbl_civics.party_affiliation,
+            tbl_civics.is_incumbent
+        from {{ ref("candidacy_stage") }} as tbl_stage
+        inner join
+            {{ ref("election_stage") }} as tbl_election_stage
+            on tbl_stage.gp_election_stage_id = tbl_election_stage.gp_election_stage_id
+        inner join
+            {{ ref("candidacy") }} as tbl_civics
+            on tbl_stage.gp_candidacy_id = tbl_civics.gp_candidacy_id
+        -- checked per stage: a candidacy with outside evidence can still carry a
+        -- gp_api-only stage, which is a product pledge rather than a filing
+        where
+            tbl_stage.br_candidacy_id is null
+            and not (
+                size(tbl_stage.source_systems) = 1
+                and tbl_stage.source_systems[0] = 'gp_api'
+            )
+    ),
+    civics_fill_candidacy as (
+        select
+            {{
+                generate_salted_uuid(
+                    fields=["tbl_stage.gp_candidacy_stage_id"], salt="civics"
+                )
+            }} as id,
+            -- election-api requires an int br_database_id; a negative hash keeps
+            -- these clear of real BallotReady ids and of the stance join.
+            cast(
+                -1 - pmod(xxhash64(tbl_stage.gp_candidacy_stage_id), 2147483647) as int
+            ) as br_database_id,
+            tbl_stage.created_at,
+            tbl_stage.updated_at,
+            tbl_stage.race_database_id,
+            tbl_stage.party_affiliation as party,
+            tbl_person.first_name,
+            tbl_person.last_name,
+            cast(null as string) as image,
+            cast(null as string) as about,
+            cast(array() as array<string>) as urls,
+            tbl_place.state,
+            tbl_place.name as place_name,
+            tbl_int_race.position_name,
+            tbl_mart_race.frequency as election_frequency,
+            tbl_mart_race.salary,
+            tbl_mart_race.normalized_position_name,
+            tbl_mart_race.position_description,
+            tbl_stage.gp_person_id as gp_candidate_id,
+            tbl_person.email,
+            cast(null as string) as website_url,
+            tbl_stage.is_incumbent,
+            concat(
+                coalesce(tbl_person.first_name, ''),
+                '-',
+                coalesce(tbl_person.last_name, '')
+            ) as first_last_name_slug,
+            tbl_mart_race.id as race_id
+        from civics_stage as tbl_stage
+        inner join
+            {{ ref("m_election_api__race") }} as tbl_mart_race
+            on tbl_stage.race_database_id = tbl_mart_race.br_database_id
+        left join
+            br_covered_race
+            on tbl_stage.race_database_id = br_covered_race.race_database_id
+        left join
+            {{ ref("int__enhanced_race") }} as tbl_int_race
+            on tbl_mart_race.br_database_id = tbl_int_race.br_database_id
+        left join
+            {{ ref("m_election_api__place") }} as tbl_place
+            on tbl_mart_race.place_id = tbl_place.id
+        -- names come from the same person the row is published under
+        left join
+            {{ ref("people") }} as tbl_person
+            on tbl_stage.gp_person_id = tbl_person.gp_person_id
+        where br_covered_race.race_database_id is null
+    ),
+    all_candidacy as (
+        select *, true as is_ballotready
+        from enhanced_candidacy
+        union all
+        select *, false as is_ballotready
+        from civics_fill_candidacy
+    ),
     -- Downstream consumer (LLM-driven onboarding campaign planner) needs every
     -- candidate in the race regardless of party; the prior major-party filter
     -- excluded Democrat / Republican / Conservative Party / Progressive / DCP
@@ -160,6 +266,7 @@ with
             website_url,
             is_incumbent,
             first_last_name_slug,
+            is_ballotready,
             case
                 when position_name is not null
                 then
@@ -171,19 +278,20 @@ with
                 else {{ slugify("first_last_name_slug") }}
             end as slug,
             race_id
-        from enhanced_candidacy
+        from all_candidacy
         where race_id is not null and first_name is not null and last_name is not null
     ),
     -- Deterministic dedup: with the major-party filter dropped, two unrelated
-    -- candidates can share the same first-last/position slug. Order by
-    -- updated_at first, then break ties on br_database_id so the survivor
-    -- is stable across runs.
+    -- candidates can share the same first-last/position slug. BallotReady rows
+    -- win over civics fills, then updated_at, then br_database_id so the
+    -- survivor is stable across runs.
     deduped_candidacy as (
         select *
         from person_with_slug
         qualify
             row_number() over (
-                partition by slug order by updated_at desc, br_database_id desc
+                partition by slug
+                order by is_ballotready desc, updated_at desc, br_database_id desc
             )
             = 1
     ),

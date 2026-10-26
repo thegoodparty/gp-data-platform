@@ -179,6 +179,8 @@ sources:
           freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
+      - name: gp_api_db_campaign_experiment_assignment
+        description: raw data load from gp_api_db postgres db from table `campaign_experiment_assignment`
       - name: gp_api_db_chat_conversation
         description: raw data load from gp_api_db postgres db from table `chat_conversation`
       - name: gp_api_db_chat_message
@@ -327,86 +329,6 @@ sources:
           HubSpot Feedback Survey submissions ingested via custom Airbyte
           Connector Builder source. Contains responses from all feedback
           surveys (PMF, user satisfaction, research compensation, etc.).
-      - name: stripe_api_accounts
-        description: Stripe account information and settings
-        config:
-          freshness: null
-      - name: stripe_api_application_fees
-        description: Stripe application fees charged on transactions
-        config:
-          freshness: null
-      - name: stripe_api_application_fees_refunds
-        description: Stripe application fee refund transactions
-        config:
-          freshness: null
-      - name: stripe_api_balance_transactions
-        description: Stripe balance transaction history and account movements
-      - name: stripe_api_charges
-        description: Stripe charge transactions and payment processing details
-      - name: stripe_api_customers
-        description: Stripe customer records and account information
-      - name: stripe_api_customer_balance_transactions
-        description: Stripe customer balance transaction history and credit movements
-        config:
-          freshness: null
-      - name: stripe_api_events
-        description: Stripe webhook events and API activity logs
-      - name: stripe_api_invoice_items
-        description: Stripe invoice line items and billing details
-        # Rewritten in bursts, with observed gaps between writes of up to 99
-        # days, so the previous 60/90 bound tripped on normal cadence.
-        config:
-          freshness:
-            warn_after: { count: 120, period: day }
-            error_after: { count: 180, period: day }
-      - name: stripe_api_invoice_line_items
-        description: Stripe invoice line items and detailed billing breakdowns
-      - name: stripe_api_invoices
-        description: Stripe invoice records and billing information
-      - name: stripe_api_payouts
-        description: Stripe payout transactions to connected accounts
-      - name: stripe_api_persons
-        description: Stripe person records for connected accounts and representatives
-        config:
-          freshness: null
-      - name: stripe_api_plans
-        description: Stripe subscription plans and pricing tiers
-        config:
-          freshness: null
-      - name: stripe_api_prices
-        description: Stripe pricing information for products and services
-        config:
-          freshness: null
-      - name: stripe_api_products
-        description: Stripe product catalog and inventory information
-        config:
-          freshness: null
-      - name: stripe_api_promotion_codes
-        description: Stripe promotion codes and discount campaigns
-        config:
-          freshness: null
-      - name: stripe_api_refunds
-        description: Stripe refund transactions and processing details
-      - name: stripe_api_subscription_items
-        description: Stripe subscription line items and plan details
-      - name: stripe_api_subscription_schedule
-        description: Stripe subscription scheduling and recurring payment plans
-        config:
-          freshness: null
-      - name: stripe_api_subscriptions
-        description: Stripe subscription records and recurring billing information
-      - name: stripe_api_transactions
-        description: Stripe financial transactions and payment processing records
-        config:
-          freshness: null
-      - name: stripe_api_transfers
-        description: Stripe transfer transactions between accounts
-        config:
-          freshness: null
-      - name: stripe_api_transfer_reversals
-        description: Stripe transfer reversal transactions and dispute handling
-        config:
-          freshness: null
       - name: techspeed_gdrive_candidates
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
@@ -1762,15 +1684,40 @@ sources:
             data_tests:
               - not_null
 
+  - name: l2_eav
+    schema: dbt_hugh
+    description: >
+      L2 early and absentee voter (EAV) lists, downloaded by hand from L2 DataMapping
+      (Atlas) and uploaded by the data team. Each upload is cumulative and overwrites
+      the table, so a drop in row count means a partial file, not voters un-voting.
+      Lives in a personal dev schema for now, because no restricted raw schema accepts
+      manual uploads; move it before that schema is cleaned up.
+    tables:
+      - name: l2_eav_general_2026
+        identifier: eav_20261103
+        description: >
+          LALVOTERIDs L2 reports as having voted early or returned an absentee ballot
+          in the 2026-11-03 General. States that do not report to L2 are absent (as
+          of 2026-10-26: AL, HI, KY, MO, MS, NY, SC), so absence does not mean the
+          voter has not voted.
+        columns:
+          - name: LALVOTERID
+            data_tests:
+              - not_null
+              - unique
+
   - name: airbyte_source_finance
     schema: airbyte_source_finance
     description: >
-      Raw QuickBooks Online data landed by Airbyte for the finance mart. Airbyte
-      creates and owns this schema on first sync, so unlike the mart schemas it is
-      not Terraform-managed. Held apart from the shared `airbyte_source` schema
-      because these streams carry the general ledger plus vendor and customer PII.
-      Everything downstream of here is ephemeral, so no copy of this data is
-      materialized outside the schema Airbyte owns.
+      Raw QuickBooks Online and Stripe data landed by Airbyte for the finance mart.
+      Airbyte creates and owns this schema on first sync, so unlike the mart schemas
+      it is not Terraform-managed. Held apart from the shared `airbyte_source` schema
+      because these streams carry the general ledger, payments, and vendor and
+      customer PII. The staging models over it are ephemeral, so in production the
+      full rows are materialized only in `mart_finance`. The analytics revenue
+      models also read Stripe through that staging, and publish charge,
+      checkout-session and per-user revenue rows (ids, amounts and purchase types,
+      no contact or card fields) in the shared `dbt` schema.
     config:
       loaded_at_field: "_airbyte_extracted_at"
       freshness:
@@ -1810,3 +1757,77 @@ sources:
         description: Raw QuickBooks Online vendor credits.
       - name: quickbooks_vendors
         description: Raw QuickBooks Online vendors; carries contact PII (email, phone, billing address).
+      - name: stripe_api_accounts
+        description: Stripe account information and settings
+        config:
+          freshness: null
+      - name: stripe_api_application_fees
+        description: Stripe application fees charged on transactions
+        config:
+          freshness: null
+      - name: stripe_api_application_fees_refunds
+        description: Stripe application fee refund transactions
+        config:
+          freshness: null
+      - name: stripe_api_balance_transactions
+        description: Stripe balance transaction history and account movements
+      - name: stripe_api_charges
+        description: Stripe charge transactions and payment processing details
+      - name: stripe_api_checkout_sessions
+        description: >
+          Stripe Checkout Sessions. The connection syncs only id, status, mode,
+          livemode, payment intent, metadata, amount and timestamps.
+      - name: stripe_api_customers
+        description: Stripe customer records and account information
+      - name: stripe_api_customer_balance_transactions
+        description: Stripe customer balance transaction history and credit movements
+        config:
+          freshness: null
+      - name: stripe_api_invoice_items
+        description: Stripe invoice line items and billing details
+        # Rewritten in bursts, with observed gaps between writes of up to 99
+        # days, so the previous 60/90 bound tripped on normal cadence.
+        config:
+          freshness:
+            warn_after: { count: 120, period: day }
+            error_after: { count: 180, period: day }
+      - name: stripe_api_invoice_line_items
+        description: Stripe invoice line items and detailed billing breakdowns
+      - name: stripe_api_invoices
+        description: Stripe invoice records and billing information
+      - name: stripe_api_payouts
+        description: Stripe payout transactions to connected accounts
+      - name: stripe_api_plans
+        description: Stripe subscription plans and pricing tiers
+        config:
+          freshness: null
+      - name: stripe_api_prices
+        description: Stripe pricing information for products and services
+        config:
+          freshness: null
+      - name: stripe_api_products
+        description: Stripe product catalog and inventory information
+        config:
+          freshness: null
+      - name: stripe_api_promotion_codes
+        description: Stripe promotion codes and discount campaigns
+        config:
+          freshness: null
+      - name: stripe_api_refunds
+        description: Stripe refund transactions and processing details
+      - name: stripe_api_subscription_items
+        description: Stripe subscription line items and plan details
+      - name: stripe_api_subscription_schedule
+        description: Stripe subscription scheduling and recurring payment plans
+        config:
+          freshness: null
+      - name: stripe_api_subscriptions
+        description: Stripe subscription records and recurring billing information
+      - name: stripe_api_transfers
+        description: Stripe transfer transactions between accounts
+        config:
+          freshness: null
+      - name: stripe_api_transfer_reversals
+        description: Stripe transfer reversal transactions and dispute handling
+        config:
+          freshness: null

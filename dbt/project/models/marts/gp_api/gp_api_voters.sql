@@ -188,6 +188,50 @@ with
             or coalesce(
                 `Parties_Description` = 'Non-Partisan', false
             ) as `Voter_Independent_Affinity`,
+            -- Control arm of the openness-to-an-independent experiment: evidence from
+            -- official records or L2's own party model only, no Haystaq scores, so it
+            -- stays distinct from the Haystaq and state-leg model arms. In states
+            -- without party registration L2 models the party, which is accepted. An 'O'
+            -- primary ballot does not count on its own: L2 also uses it for top-two and
+            -- nonpartisan-only ballots.
+            coalesce(`Parties_Description` not in ('Democratic', 'Republican'), false)
+            or coalesce(
+                `VoterParties_Change_Changed_Party` in (
+                    'Within Last 1 Year',
+                    'Between 1 and 2 Years Ago',
+                    'Between 2 and 4 Years Ago'
+                ),
+                false
+            )
+            or coalesce(`Residence_HHParties_Description` like '%Independent%', false)
+            or coalesce(
+                (
+                    {%- for y in range(2012, 2025) %}
+                        `PRI_BLT_{{ y }}` = 'D' {%- if not loop.last %} or{% endif %}
+                    {%- endfor %}
+                )
+                and (
+                    {%- for y in range(2012, 2025) %}
+                        `PRI_BLT_{{ y }}` = 'R' {%- if not loop.last %} or{% endif %}
+                    {%- endfor %}
+                ),
+                false
+            ) as `Indep_Openness_Registration`,
+            -- Voting before Election Day by either route: the higher of Haystaq's
+            -- early-in-person and vote-by-mail scores. Each is a 0-100 within-state
+            -- percentile, so the max skews high, which the 80/55 cuts offset.
+            -- greatest() skips nulls; the two scores are null on the same voters.
+            case
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) is null
+                then 'Unknown'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 25
+                then 'Very unlikely'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 55
+                then 'Unlikely'
+                when greatest(`hs_likely_ev`, `hs_likely_vbm`) < 80
+                then 'Likely'
+                else 'Very likely'
+            end as `Early_Vote_Status`,
             -- Possibly add dynamic columns for voter status in later iterations
             -- sum(
             -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
@@ -264,6 +308,10 @@ with
             `Democratic_Zone`,
             `Voters_FIPS` as `FIPS`,
             `Precinct`,
+            -- L2 stores the 15-digit block geocode as a number, dropping leading zeros.
+            lpad(
+                cast(`Residence_Addresses_Complete_Census_Geocode` as string), 15, '0'
+            ) as census_block_geoid,
             `Proposed_City`,
             `Proposed_City_Commissioner_District`,
             `Proposed_Community_College`,
@@ -276,12 +324,40 @@ with
             `Vote_By_Mail_Area`,
             `hf_ideology_general`,
             `hf_most_important_policy_item`,
+            -- Input to Indep_Openness_Haystaq below; final selects by name, so it does
+            -- not reach the output.
+            `hs_partisanship_moderate_third_party_support`,
             loaded_at
         from source_nulled
     ),
     voter_propensity as (
         select `LALVOTERID`, `prob_vote`
         from {{ ref("int__voter_turnout_lgbm_voter_scores") }}
+    ),
+    -- Openness-to-an-independent flags for the state-leg arm, one per race scenario.
+    -- Raw scores stay in the scoring table: only the true/false flags reach the
+    -- product.
+    indep_openness_flags as (
+        select
+            `LALVOTERID`,
+            indep_openness_single_inc,
+            indep_openness_single_open,
+            indep_openness_multi_inc,
+            indep_openness_multi_open,
+            indep_openness_donly_inc,
+            indep_openness_donly_open,
+            indep_openness_ronly_inc,
+            indep_openness_ronly_open,
+            indep_openness_donly_multi,
+            indep_openness_ronly_multi
+        from {{ ref("int__indep_openness_voter_scores") }}
+    ),
+    haystaq_cutoffs as (
+        select state, cutoff from {{ ref("indep_openness_haystaq_cutoff") }}
+    ),
+    ct_block_groups as (
+        select block_geoid, acs_block_group_geoid
+        from {{ ref("stg_census_acs__ct_block_planning_region") }}
     ),
     /*
         Note that here we need to list each column individually since we need to
@@ -369,6 +445,44 @@ with
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
             tbl_updated.`Voter_Independent_Affinity`,
+            tbl_updated.`Indep_Openness_Registration`,
+            -- Non-null like Voter_Independent_Affinity: a voter with no score is not
+            -- flagged. The Haystaq cutoff is frozen per state; see its seed.
+            coalesce(
+                tbl_updated.`hs_partisanship_moderate_third_party_support`
+                >= tbl_haystaq.cutoff,
+                false
+            ) as `Indep_Openness_Haystaq`,
+            coalesce(
+                tbl_openness.indep_openness_single_inc, false
+            ) as `Indep_Openness_Single_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_single_open, false
+            ) as `Indep_Openness_Single_Open`,
+            coalesce(
+                tbl_openness.indep_openness_multi_inc, false
+            ) as `Indep_Openness_Multi_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_multi_open, false
+            ) as `Indep_Openness_Multi_Open`,
+            coalesce(
+                tbl_openness.indep_openness_donly_inc, false
+            ) as `Indep_Openness_DOnly_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_donly_open, false
+            ) as `Indep_Openness_DOnly_Open`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_inc, false
+            ) as `Indep_Openness_ROnly_Inc`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_open, false
+            ) as `Indep_Openness_ROnly_Open`,
+            coalesce(
+                tbl_openness.indep_openness_donly_multi, false
+            ) as `Indep_Openness_DOnly_Multi`,
+            coalesce(
+                tbl_openness.indep_openness_ronly_multi, false
+            ) as `Indep_Openness_ROnly_Multi`,
             case
                 when tbl_propensity.`prob_vote` is null
                 then 'Unknown'
@@ -381,6 +495,7 @@ with
                 else 'Super'
             end as `Voter_Status`,
             tbl_propensity.`prob_vote` as `Voter_Turnout_Probability`,
+            tbl_updated.`Early_Vote_Status`,
             tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
@@ -432,6 +547,11 @@ with
             tbl_updated.`Democratic_Zone`,
             tbl_updated.`FIPS`,
             tbl_updated.`Precinct`,
+            -- Keyed like gp_api_block_group_census_demographics, so Connecticut's
+            -- legacy-county blocks take their planning-region block group.
+            coalesce(
+                tbl_ct.acs_block_group_geoid, left(tbl_updated.census_block_geoid, 12)
+            ) as `Census_Block_Group_Geoid`,
             tbl_updated.`Proposed_City`,
             tbl_updated.`Proposed_City_Commissioner_District`,
             tbl_updated.`Proposed_Community_College`,
@@ -452,6 +572,14 @@ with
         left join
             voter_propensity as tbl_propensity
             on tbl_updated.`LALVOTERID` = tbl_propensity.`LALVOTERID`
+        left join
+            indep_openness_flags as tbl_openness
+            on tbl_updated.`LALVOTERID` = tbl_openness.`LALVOTERID`
+        left join
+            haystaq_cutoffs as tbl_haystaq on tbl_updated.`State` = tbl_haystaq.state
+        left join
+            ct_block_groups as tbl_ct
+            on tbl_updated.census_block_geoid = tbl_ct.block_geoid
     )
 
 select *

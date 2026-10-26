@@ -53,6 +53,31 @@ models:
           outreach_first_sent_at on the user outreach intensity model, which is
           a different number on purpose.
 
+      - name: first_activation_channel
+        description: >
+          The channel of the send that set first_campaign_sent_at, in the outreach
+          sends vocabulary. 'events' only comes from a self-report; 'unattributed'
+          is a send that named no channel. Null exactly when
+          first_campaign_sent_at is.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "texting",
+                    "robocall",
+                    "social",
+                    "door_knocking",
+                    "phone_banking",
+                    "events",
+                    "unattributed",
+                  ]
+
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report (method 'unknown'), which
+          the OKR still counts. Null when not activated.
+
       - name: total_campaigns_sent
         description: >
           Lifetime count of product-performed outreach sends per user, over the
@@ -181,6 +206,62 @@ models:
             expression: "dashboard_view_count >= 1"
           config:
             where: "last_dashboard_viewed_at is not null"
+
+  - name: int__amplitude_user_flow_steps
+    description: >
+      How far each user got through the Win onboarding, Pro upgrade and Serve
+      onboarding flows: one row per step reached in order. A step counts only
+      when every earlier step fired before it, so users per step never rise.
+      Core steps of each flow's current version only, counted from its launch
+      date (Win onboarding 2026-06-08, Pro upgrade 2026-06-17, Serve onboarding
+      2026-06-24). Optional and retired screens are left out, because a step
+      list spanning versions reads renames as drop-off. The exception is
+      win_onboarding_core: office, party and pledge, the three steps every Win
+      onboarding version has had (from 2025-05-28), each counted from that
+      version's own events while it ran. It checks only that earlier steps
+      happened, not their order, because party moved ahead of office in 2026.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: flow
+        description: win_onboarding, pro_upgrade, serve_onboarding or win_onboarding_core.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [win_onboarding, pro_upgrade, serve_onboarding, win_onboarding_core]
+      - name: step_order
+        description: Position in the flow, from 1.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 6
+      - name: step
+        description: The step in display words.
+        data_tests:
+          - not_null
+      - name: step_at
+        description: First time the user reached the step.
+        data_tests:
+          - not_null
+      - name: seconds_from_previous_step
+        description: >
+          Seconds since the latest earlier step. Null on step 1, and on a
+          win_onboarding_core step that came before the one listed above it, so
+          never negative.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, flow, step_order]
 
   - name: int__amplitude_serve_activity
     description: >
@@ -553,7 +634,9 @@ models:
       (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv)
       and the relevance / up-to-dateness judgment is made at check time by an agent
       or the health monitor reconciling that CSV with this table. family is
-      authoritative for classification; govern_category is descriptive metadata only.
+      authoritative for classification. The Govern `product:` and `surface:` tags
+      fill gaps only: they place events the name rules leave in 'other' and never
+      move one they already place. govern_category is descriptive metadata only.
 
       Grain: one row per distinct event_type. Sources:
       stg_airbyte_source__amplitude_api_events (behavior),
@@ -565,11 +648,40 @@ models:
           - unique
           - not_null
 
+      - name: name_rule_family
+        description: >
+          Family from the event-name rules alone (amplitude_event_family), before
+          any Govern tag is applied. 'other' means the name rules do not know the event.
+        data_tests:
+          - not_null
+
+      - name: govern_product
+        description: >
+          Value of the Govern `product:` tag ('win', 'serve' or 'shared'), lowercased
+          and trimmed. Null when the event has no such tag, more than one, or a value
+          outside those three.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - win
+                  - serve
+                  - shared
+
+      - name: govern_surface
+        description: >
+          Value of the Govern `surface:` tag, lowercased and trimmed. Null unless
+          exactly one tag carries the key.
+
       - name: family
         description: >
           Product-feature bucket. Win families are prefixed `win_`; non-Win
-          buckets cover serve, auth/settings, navigation, and anonymous noise.
-          Unmatched event_types fall through to 'other' for triage.
+          buckets cover serve, shared, auth/settings, navigation, and anonymous
+          noise. Equals name_rule_family unless that is 'other' and the Govern
+          product tag places the event: win becomes 'win_declared', serve and
+          shared keep their names. 'other' means unlabeled: no name rule matches
+          and no Govern product tag sorts the event, so it surfaces for triage
+          (see amplitude_unsorted_events).
         data_tests:
           - not_null
           - accepted_values:
@@ -592,7 +704,9 @@ models:
                   - win_briefings
                   - win_contacts
                   - win_resources
+                  - win_declared
                   - serve
+                  - shared
                   - auth_or_settings
                   - navigation
                   - viewed_generic
@@ -601,10 +715,18 @@ models:
                   - session_or_browser
                   - other
 
+      - name: product_area
+        description: >
+          Feature area within a product. Win name-rule events carry their family.
+          Serve events (name-rule or tag-placed) carry the event-name prefix before
+          ' - '. Tag-placed Win and shared events carry the Govern surface tag, else
+          the prefix when the name has one, else 'unspecified'. Null for everything
+          else.
+
       - name: is_win
         description: >
-          True for Win-product candidate-attributed families (family like 'win_%').
-          False for serve / cross-product / noise.
+          True for Win-product candidate-attributed families (family like 'win_%'),
+          including win_declared. False for serve / shared / noise.
         data_tests:
           - not_null
 
@@ -614,6 +736,21 @@ models:
           flat family, hence the equality check rather than a prefix like is_win.
           Superset of Serve user actions: some Serve events are server-emitted
           (session_id = -1), so engagement filtering stays with the consumer.
+        data_tests:
+          - not_null
+
+      - name: is_shared
+        description: >
+          True when the Govern product tag places the event as shared between Win
+          and Serve (family = 'shared'). Never true for an event the name rules place.
+        data_tests:
+          - not_null
+
+      - name: product_label_conflict
+        description: >
+          True when the Govern labelling disagrees with itself or with the name rules:
+          more than one `product:` tag, or a win/serve tag on an event whose name
+          rules give the other product. The name rules win; this flags the label for repair.
         data_tests:
           - not_null
 
@@ -710,3 +847,175 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "not (is_win and is_serve)"
+
+  - name: int__amplitude_events_classified
+    description: >
+      Event-grain view: every Amplitude event with its catalog classification
+      (family, product_area, is_machine_emitted, is_recurrent) and the product it
+      was used from. Shared features take the profile they were used from: an
+      explicit product property, then activeProduct, then the user's only
+      product, else Win for a logged-in user (assumed_win, because Serve users
+      are few). Anonymous shared events carry null. Win and Serve events take the
+      catalog product. Non-product families carry null.
+    columns:
+      - name: event_product
+        description: "win, serve, or null for events outside both products."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
+      - name: product_source
+        description: >
+          How event_product was resolved: event_name (name rules), govern_tag,
+          event_property, active_profile, user_product or assumed_win (a shared
+          feature from a logged-in user with both products or neither). Null for
+          anonymous shared events with no explicit product property.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - event_name
+                  - govern_tag
+                  - event_property
+                  - active_profile
+                  - user_product
+                  - assumed_win
+
+unit_tests:
+  # Shared features split by the profile they were used from; everything else
+  # follows the catalog.
+  - name: events_classified_resolves_shared_product
+    model: int__amplitude_events_classified
+    given:
+      - input: ref('int__amplitude_event_catalog')
+        format: sql
+        rows: |
+          select 'Dictation - Started' as event_type, 'shared' as name_rule_family, 'other' as family, cast(null as string) as product_area, false as is_win, false as is_serve, true as is_shared, false as is_machine_emitted, false as is_recurrent
+          union all select 'Dashboard - Viewed', 'win_dashboard', 'win_dashboard', 'Dashboard', true, false, false, false, false
+          union all select 'Win - Opponent Viewed', 'other', 'win_declared', 'know-your-opponent', true, false, false, false, false
+          union all select 'Navigation - Clicked', 'navigation', 'navigation', null, false, false, false, false, false
+      - input: ref('users')
+        format: sql
+        rows: |
+          select 1 as user_id, true as is_win_user, false as is_serve_user
+          union all select 2, false, true
+          union all select 3, true, true
+          union all select 4, false, false
+      - input: ref('stg_airbyte_source__amplitude_api_events')
+        format: sql
+        rows: |
+          select 1 as n, 'Dictation - Started' as event_type, '3' as user_id, '{"product":"serve","activeProduct":"win"}' as event_properties
+          union all select 2, 'Dictation - Started', '3', '{"product":"both","activeProduct":"serve"}'
+          union all select 3, 'Dictation - Started', '3', '{"activeProduct":"Win"}'
+          union all select 4, 'Dictation - Started', '2', '{}'
+          union all select 5, 'Dictation - Started', '1', '{}'
+          union all select 6, 'Dictation - Started', '3', '{}'
+          union all select 7, 'Dictation - Started', '4', '{}'
+          union all select 8, 'Dictation - Started', cast(null as string), '{}'
+          union all select 9, 'Dashboard - Viewed', '2', '{"activeProduct":"serve"}'
+          union all select 10, 'Win - Opponent Viewed', '1', '{}'
+          union all select 11, 'Navigation - Clicked', '1', '{}'
+    expect:
+      # Nulls last: dbt reorders null-valued keys per row, which breaks its positional union.
+      rows:
+        - {n: 1, event_product: "serve", product_source: "event_property"}
+        - {n: 2, event_product: "serve", product_source: "active_profile"}
+        - {n: 3, event_product: "win", product_source: "active_profile"}
+        - {n: 4, event_product: "serve", product_source: "user_product"}
+        - {n: 5, event_product: "win", product_source: "user_product"}
+        - {n: 6, event_product: "win", product_source: "assumed_win"}
+        - {n: 7, event_product: "win", product_source: "assumed_win"}
+        - {n: 9, event_product: "win", product_source: "event_name"}
+        - {n: 10, event_product: "win", product_source: "govern_tag"}
+        - {n: 8, event_product: null, product_source: null}
+        - {n: 11, event_product: null, product_source: null}
+
+  # The Govern tag fills gaps only: it never moves an event the name rules place.
+  - name: event_catalog_tag_fills_gaps_only
+    model: int__amplitude_event_catalog
+    # The real macro reads graph.metrics, which a unit test's graph does not carry.
+    overrides:
+      macros:
+        amplitude_event_is_recurrent: "false"
+    given:
+      - input: ref('stg_airbyte_source__amplitude_api_events')
+        rows:
+          - {event_type: "Win - Opponent Viewed", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Priorities - Priority Added", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Dictation - Started", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Contacts - Contact Viewed", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Org Switcher - Organization Switched", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Team - Member Invited", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Ghost - Fired", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Dup - Tagged", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Case - Tagged", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Heartbeat", event_time: "2026-10-01 10:00:00"}
+      # format: sql because dict rows cannot express array<string>.
+      - input: ref('stg_airbyte_source__amplitude_taxonomy_event_type')
+        format: sql
+        rows: |
+          select
+            'Win - Opponent Viewed' as event_type,
+            array('product:win', 'surface:know-your-opponent') as tags,
+            cast(null as string) as category_name,
+            cast(null as string) as description,
+            cast(null as string) as display_name,
+            cast(null as boolean) as is_active,
+            cast(null as boolean) as is_hidden_from_dropdowns,
+            cast(null as boolean) as is_hidden_from_persona_results,
+            cast(null as boolean) as is_hidden_from_pathfinder,
+            cast(null as boolean) as is_hidden_from_timeline,
+            cast(null as string) as owner
+          union all select 'Priorities - Priority Added', array('product:serve', 'surface:agenda'), null, null, null, null, null, null, null, null, null
+          union all select 'Dictation - Started', array('product:shared'), null, null, null, null, null, null, null, null, null
+          union all select 'Contacts - Contact Viewed', array('product:shared'), null, null, null, null, null, null, null, null, null
+          union all select 'Org Switcher - Organization Switched', array('product:win'), null, null, null, null, null, null, null, null, null
+          union all select 'Team - Member Invited', cast(array() as array<string>), null, null, null, null, null, null, null, null, null
+          union all select 'Dup - Tagged', array('product:win', 'product:serve'), null, null, null, null, null, null, null, null, null
+          union all select 'Case - Tagged', array(' Product:Win '), null, null, null, null, null, null, null, null, null
+          union all select 'Heartbeat', array('product:win'), null, null, null, null, null, null, null, null, null
+    expect:
+      rows:
+        - {event_type: "Win - Opponent Viewed", family: "win_declared", product_area: "know-your-opponent", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Priorities - Priority Added", family: "serve", product_area: "Priorities", is_win: false, is_serve: true, is_shared: false, product_label_conflict: false}
+        - {event_type: "Dictation - Started", family: "shared", product_area: "Dictation", is_win: false, is_serve: false, is_shared: true, product_label_conflict: false}
+        - {event_type: "Contacts - Contact Viewed", family: "win_contacts", product_area: "win_contacts", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Org Switcher - Organization Switched", family: "serve", product_area: "Org Switcher", is_win: false, is_serve: true, is_shared: false, product_label_conflict: true}
+        - {event_type: "Team - Member Invited", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Ghost - Fired", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Dup - Tagged", family: "other", product_area: null, is_win: false, is_serve: false, is_shared: false, product_label_conflict: true}
+        - {event_type: "Case - Tagged", family: "win_declared", product_area: "Case", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+        - {event_type: "Heartbeat", family: "win_declared", product_area: "unspecified", is_win: true, is_serve: false, is_shared: false, product_label_conflict: false}
+
+  # A product label outside win/serve/shared is a typo, so it places nothing.
+  - name: event_catalog_out_of_set_product_tag_is_ignored
+    model: int__amplitude_event_catalog
+    overrides:
+      macros:
+        amplitude_event_is_recurrent: "false"
+    given:
+      - input: ref('stg_airbyte_source__amplitude_api_events')
+        rows:
+          - {event_type: "Bad - Tagged", event_time: "2026-10-01 10:00:00"}
+          - {event_type: "Empty - Tagged", event_time: "2026-10-01 10:00:00"}
+      - input: ref('stg_airbyte_source__amplitude_taxonomy_event_type')
+        format: sql
+        rows: |
+          select
+            'Bad - Tagged' as event_type,
+            array('product:both') as tags,
+            cast(null as string) as category_name,
+            cast(null as string) as description,
+            cast(null as string) as display_name,
+            cast(null as boolean) as is_active,
+            cast(null as boolean) as is_hidden_from_dropdowns,
+            cast(null as boolean) as is_hidden_from_persona_results,
+            cast(null as boolean) as is_hidden_from_pathfinder,
+            cast(null as boolean) as is_hidden_from_timeline,
+            cast(null as string) as owner
+          union all select 'Empty - Tagged', array('product:'), null, null, null, null, null, null, null, null, null
+    expect:
+      rows:
+        # Nulls last: dbt reorders null-valued keys per row, which breaks its positional union.
+        - {event_type: "Bad - Tagged", family: "other", is_win: false, is_serve: false, is_shared: false, product_label_conflict: false, govern_product: null, product_area: null}
+        - {event_type: "Empty - Tagged", family: "other", is_win: false, is_serve: false, is_shared: false, product_label_conflict: false, govern_product: null, product_area: null}

@@ -159,7 +159,7 @@ def test_coerce_to_string_df_pd_na_stays_null():
 
     assert out["c"].iloc[0] == "x"
     assert pd.isna(out["c"].iloc[1])
-    assert "<NA>" not in out["c"].tolist()
+    assert "<NA>" not in out["c"].dropna().tolist()
 
 
 # --- _coerce_to_string_df value matrix ----------------------------------------

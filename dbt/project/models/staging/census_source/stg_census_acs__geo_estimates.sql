@@ -17,79 +17,63 @@
 -- an empty string. Jam-code, margin, and row-filter semantics live in the
 -- census_acs_* macros: margins are null when not computable and 0 exactly when
 -- the estimate is controlled to an official total.
+--
+-- B01001 comes through stg_census_acs__b01001, which names its cells, so the
+-- brackets below are lists of those names: each age bracket per sex, and
+-- each sex's adult total as every one of its 18-and-over cells, so it is the
+-- sum of that sex's bands and nulls with any of them. Sums and root-sum-of-
+-- squares margins null when any part is null, as the census_acs_* bracket
+-- macros do for the raw tables.
+{%- set adult_bands = {
+    "18_to_24": ["18_to_19", "20", "21", "22_to_24"],
+    "25_to_34": ["25_to_29", "30_to_34"],
+    "35_to_44": ["35_to_39", "40_to_44"],
+    "45_to_54": ["45_to_49", "50_to_54"],
+    "55_to_64": ["55_to_59", "60_to_61", "62_to_64"],
+    "65_plus": [
+        "65_to_66",
+        "67_to_69",
+        "70_to_74",
+        "75_to_79",
+        "80_to_84",
+        "85_plus",
+    ],
+} %}
+{%- set under_18 = ["under_5", "5_to_9", "10_to_14", "15_to_17"] %}
+{%- set brackets = [
+    ("population_under_18", ["male", "female"], under_18),
+    ("population_65_plus", ["male", "female"], adult_bands["65_plus"]),
+] %}
+{%- for sex in ["male", "female"] %}
+    {%- set adult_cells = [] %}
+    {%- for band, ages in adult_bands.items() %}
+        {%- do brackets.append(("population_" ~ sex ~ "_" ~ band, [sex], ages)) %}
+        {%- for age in ages %} {%- do adult_cells.append(age) %} {%- endfor %}
+    {%- endfor %}
+    {%- do brackets.append(("population_" ~ sex ~ "_18_plus", [sex], adult_cells)) %}
+{%- endfor %}
 with
     b01001 as (
         select
-            left(geo_id, 3) as summary_level,
-            substring(geo_id, 10) as geoid,
-            {{ census_acs_estimate("b01001_e001") }} as total_population,
-            {{ census_acs_moe("b01001_m001") }} as total_population_moe,
-            {{
-                census_acs_estimate_sum(
-                    [
-                        "b01001_e003",
-                        "b01001_e004",
-                        "b01001_e005",
-                        "b01001_e006",
-                        "b01001_e027",
-                        "b01001_e028",
-                        "b01001_e029",
-                        "b01001_e030",
-                    ]
-                )
-            }} as population_under_18,
-            {{
-                census_acs_moe_rss(
-                    [
-                        "b01001_m003",
-                        "b01001_m004",
-                        "b01001_m005",
-                        "b01001_m006",
-                        "b01001_m027",
-                        "b01001_m028",
-                        "b01001_m029",
-                        "b01001_m030",
-                    ]
-                )
-            }} as population_under_18_moe,
-            {{
-                census_acs_estimate_sum(
-                    [
-                        "b01001_e020",
-                        "b01001_e021",
-                        "b01001_e022",
-                        "b01001_e023",
-                        "b01001_e024",
-                        "b01001_e025",
-                        "b01001_e044",
-                        "b01001_e045",
-                        "b01001_e046",
-                        "b01001_e047",
-                        "b01001_e048",
-                        "b01001_e049",
-                    ]
-                )
-            }} as population_65_plus,
-            {{
-                census_acs_moe_rss(
-                    [
-                        "b01001_m020",
-                        "b01001_m021",
-                        "b01001_m022",
-                        "b01001_m023",
-                        "b01001_m024",
-                        "b01001_m025",
-                        "b01001_m044",
-                        "b01001_m045",
-                        "b01001_m046",
-                        "b01001_m047",
-                        "b01001_m048",
-                        "b01001_m049",
-                    ]
-                )
-            }} as population_65_plus_moe
-        from {{ source("census_acs", "acs5y2024_b01001") }}
-        where {{ census_acs_retained_geo_rows() }}
+            summary_level,
+            geoid,
+            total_population,
+            total_population_moe
+            {%- for name, sexes, ages in brackets %}
+                {%- set parts = [] %}
+                {%- for sex in sexes %}
+                    {%- for age in ages %}
+                        {%- do parts.append("population_" ~ sex ~ "_" ~ age) %}
+                    {%- endfor %}
+                {%- endfor %},
+                ({{ parts | join(" + ") }}) as {{ name }},
+                sqrt(
+                    {%- for part in parts %}
+                        pow({{ part }}_moe, 2){{ " +" if not loop.last }}
+                    {%- endfor %}
+                ) as {{ name }}_moe
+            {%- endfor %}
+        from {{ ref("stg_census_acs__b01001") }}
     ),
 
     b03002 as (
@@ -370,6 +354,10 @@ with
             b01001.population_under_18_moe,
             b01001.population_65_plus,
             b01001.population_65_plus_moe,
+            {#- the sex-by-age brackets: everything after under-18 and 65+ #}
+            {%- for name, sexes, ages in brackets[2:] %}
+                b01001.{{ name }}, b01001.{{ name }}_moe,
+            {%- endfor %}
             b03002.population_race_universe,
             b03002.population_race_universe_moe,
             b03002.population_white_nh,

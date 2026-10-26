@@ -298,18 +298,6 @@ models:
           - not_null
           - unique
 
-  - name: stripe_events
-    description: >
-      Pass-through of the Stripe events stream for the first cut of the finance mart. The Stripe
-      event log. Largest stream here by an order of magnitude; useful for audit, rarely for
-      reporting.
-    columns:
-      - name: id
-        description: Stripe identifier for the event.
-        data_tests:
-          - not_null
-          - unique
-
   - name: stripe_invoice_items
     description: >
       Pass-through of the Stripe invoice items stream for the first cut of the finance mart. Ad-
@@ -351,18 +339,6 @@ models:
     columns:
       - name: id
         description: Stripe identifier for the payout.
-        data_tests:
-          - not_null
-          - unique
-
-  - name: stripe_persons
-    description: >
-      Pass-through of the Stripe persons stream for the first cut of the finance mart. Connect
-      account representatives. Synced empty. The SSN and ID-number fields are booleans recording
-      whether a value was provided, not the value.
-    columns:
-      - name: id
-        description: Stripe identifier for the person.
         data_tests:
           - not_null
           - unique
@@ -451,17 +427,6 @@ models:
     columns:
       - name: subscription_id
         description: Stripe identifier for the subscription.
-        data_tests:
-          - not_null
-          - unique
-
-  - name: stripe_transactions
-    description: >
-      Pass-through of the Stripe transactions stream for the first cut of the finance mart.
-      Stripe Treasury transactions. Synced empty.
-    columns:
-      - name: id
-        description: Stripe identifier for the transaction.
         data_tests:
           - not_null
           - unique

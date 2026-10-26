@@ -1,6 +1,58 @@
 version: 2
 
 seeds:
+  - name: census_acs_b01001_cells
+    description: >
+      The 49 cells of ACS table B01001 (sex by age), one row per cell, with the
+      Census Bureau's label for it and the column name staging gives it.
+      stg_census_acs__b01001 generates one estimate and one margin column per
+      row (raw B01001_E### and B01001_M###), so renaming a cell is a change to
+      this seed. Labels are copied verbatim from the Census API for the
+      2020-2024 5-year release
+      (https://api.census.gov/data/2024/acs/acs5/groups/B01001.json), minus the
+      "Estimate!!" prefix; the margin labels are identical apart from that
+      prefix. sex is male or female, blank for the total; age_group is blank
+      for each sex's all-ages total. The table is static per vintage: a new
+      vintage re-checks these labels when the census_acs source is reloaded.
+    config:
+      column_types:
+        cell: int
+        column_name: string
+        sex: string
+        age_group: string
+        census_label: string
+    columns:
+      - name: cell
+        description: B01001 line number, 1 to 49 (the ### in B01001_E### and B01001_M###)
+        data_tests:
+          - unique
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 49
+      - name: column_name
+        description: >
+          The estimate column's name in stg_census_acs__b01001; its margin is
+          column_name || '_moe'
+        data_tests:
+          - unique
+          - not_null
+      - name: sex
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["male", "female"]
+      - name: census_label
+        description: The Census Bureau's label for the cell, levels joined by '!!'
+        data_tests:
+          - unique
+          - not_null
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_equal:
+          arguments:
+            value: 49
+
   - name: fips_codes
     description: >
       Federal Information Processing System (FIPS) Codes for States and Counties
@@ -290,6 +342,50 @@ seeds:
                 from {{ ref('m_election_api__race') }}
               )
 
+  - name: candidacy_incumbency_overrides
+    description: >
+      Manual corrections to candidacy.is_incumbent, for a candidacy whose flag
+      is wrong and that no source in the precedence chain can fix: typically a
+      TechSpeed incumbent claim on a seat BallotReady's office-holder file
+      cannot reach. Each row is checked against an official source and takes
+      precedence over every vendor value, including BallotReady's positive
+      proof. Keyed on the mart's gp_candidacy_id, so the correction is scoped
+      to the one contest and a later candidacy for the same seat needs its own
+      row.
+    config:
+      column_types:
+        gp_candidacy_id: STRING
+        is_incumbent: BOOLEAN
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Candidacy to correct. The relationships test fails if entity
+          resolution re-mints the id, which would otherwise leave the override
+          a silent no-op.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: is_incumbent
+        description: Corrected incumbency for the candidacy
+        data_tests:
+          - not_null
+      - name: candidate
+        description: Candidate name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: office
+        description: Office and election date (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the official source
+        data_tests:
+          - not_null
+
   - name: election_api_race_filing_date_overrides
     description: >
       Manual overrides for the candidate filing window shown on election-api race
@@ -414,6 +510,11 @@ seeds:
       BallotReady normalized position names that qualify for ICP flags.
       The serve_eligible column controls whether a position qualifies for
       Serve ICP (false for school board positions, which are Win-only).
+    config:
+      # drop-and-recreate on every run, so adding a column (serve_priority)
+      # applies itself in every environment instead of erroring a
+      # truncate+insert against the old table shape. ~220 rows.
+      full_refresh: true
     columns:
       - name: name
         description: BallotReady normalized position name
@@ -443,6 +544,22 @@ seeds:
           - not_null:
               config:
                 where: "category = 'school_board'"
+      - name: serve_priority
+        description: >
+          Whether the position counts toward the Serve Priority Segment:
+          municipal legislative offices (branch legislative,
+          category city, town, township or metro) and mayors (City
+          Executive//Mayor, Township Mayor). City Board of Finance and the
+          moderator positions (City Ward, Town and Town Assistant Moderator) are
+          excluded despite their legislative category: one is a fiscal board and
+          the others preside over meetings or elections, none is a council. A
+          GTM outreach segment, not an ICP gate; int__icp_offices adds the
+          voter-count threshold.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: hubspot_call_dispositions
     description: >
@@ -995,3 +1112,58 @@ seeds:
         description: The channel it belongs to.
         data_tests:
           - not_null
+
+  - name: indep_openness_n_ref
+    description: >
+      Reference district size per state for int__indep_openness_voter_scores. Every
+      voter in a state is scored as if their race had this many registered voters,
+      and the fundraising features scale from it. n_ref = max(3762, the state's
+      smallest State_House_District registered count), where 3,762 is the median
+      voter count of Win ICP offices. DC has no legislature, so its smallest
+      City_Ward stands in. Part of the scoring fingerprint: after a change the model
+      waits for cut points made with the new values, then rescores every voter.
+    columns:
+      - name: state
+        description: Two-letter state code.
+        data_tests:
+          - unique
+          - not_null
+          # Every state and DC, so no L2 state goes unscored.
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+      - name: n_ref
+        description: Reference registered-voter count.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3762
+
+  - name: indep_openness_haystaq_cutoff
+    description: >
+      Frozen per-state cutoff for Indep_Openness_Haystaq on gp_api_voters: a
+      voter is flagged when hs_partisanship_moderate_third_party_support is at or
+      above their state's cutoff, the state's 60th percentile among voters with a
+      score. The score is an integer 0-100 and about 1% of each state sits exactly on
+      the cutoff, so the flag covers 40-41% of scored voters rather than exactly 40%;
+      voters with identical scores always get the same flag. Frozen so flags do not
+      move with each Haystaq vintage; assert_indep_openness_haystaq_cutoff_shares
+      warns when a new vintage drifts a state out of 40-41%.
+    columns:
+      - name: state
+        description: Two-letter state code.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+      - name: cutoff
+        description: Lowest flagged score in the state.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100

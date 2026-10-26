@@ -128,6 +128,12 @@ updates:
       semver-major-days: 14
       semver-minor-days: 2
       semver-patch-days: 2
+    # splink 5.0.0 rejects zero EM estimates and silently drops EM blocks
+    # (upstream issue 3315). Skip just that release so a fixed 5.x still arrives.
+    ignore:
+      - dependency-name: "splink"
+        versions:
+          - "5.0.0"
     groups:
       minor-and-patch:
         patterns:
@@ -140,3 +146,88 @@ updates:
           - "*"
         update-types:
           - "major"
+
+  - package-ecosystem: "uv"
+    directory: "/reverse-etl"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  # Minor and patch only: gold-match/pyproject.toml holds its ceilings on purpose
+  # (relaxing them is client-PR work), and the two eval-critical SDKs stay on
+  # omni's exact minors. update-types ignores apply to version updates only, so
+  # security fixes still come through.
+  - package-ecosystem: "uv"
+    directory: "/gold-match"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-minor-days: 2
+      semver-patch-days: 2
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "google-genai"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+      - dependency-name: "braintrust"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # The Astro Runtime tag is a hand-edited pin that prod Airflow runs on.
+  # Patch only: 3.3-N releases carry fixes, while a new minor is an Airflow upgrade.
+  - package-ecosystem: "docker"
+    directory: "/airflow/astro"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependabot"
+      - "security"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"

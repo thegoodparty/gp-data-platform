@@ -254,6 +254,15 @@ models:
         data_tests:
           - not_null
 
+      - name: first_activation_channel
+        description: >
+          The channel of the send that made the user activated. See
+          int__amplitude_user_milestones.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. See
+          int__amplitude_user_milestones.
+
       - name: product_output_at
         description: >
           When the user first made something with the product that left it.
@@ -1662,19 +1671,50 @@ models:
           - not_null
           - unique
 
+  - name: amplitude_unsorted_events
+    description: >
+      Logged-in events that no name rule or Govern tag has sorted yet
+      (family = 'other', not machine-emitted), one row per day, event_type and
+      user, so new unlabeled events stay visible and Sigma can count distinct
+      users over a rolling window. Anonymous marketing-site events are out by
+      design, and staff and test accounts are dropped (int__civics_internal_persons,
+      the definition user_journey uses). Governance's dismiss list only quiets
+      its own flag; a dismissed event still shows here until it is sorted.
+
+      Source: int__amplitude_events_classified.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [activity_date, event_type, user_id]
+    columns:
+      - name: activity_date
+        description: Calendar day of the events.
+        data_tests:
+          - not_null
+      - name: event_type
+        description: Amplitude event type left in family 'other'.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Logged-in user (numeric id) who fired the event.
+        data_tests:
+          - not_null
+      - name: event_count
+        description: Events of this type by this user on this day.
+
   - name: amplitude_events
     description: >
-      Exposure of stg_airbyte_source__amplitude_api_events into
-      mart_analytics (Sigma reads marts only), enriched with the governed
-      event taxonomy: family, is_win, is_serve, is_recurrent and
-      is_dashboard_view derive from the amplitude_event_taxonomy macros so BI
+      Exposure of int__amplitude_events_classified into mart_analytics (Sigma
+      reads marts only), enriched with the governed event taxonomy so BI
       consumers never re-derive serve/win classification from event_type
-      strings. Passthrough columns
-      are documented at the upstream staging model; the event_type-grain
-      catalog (volume, recency, Govern metadata) is
-      int__amplitude_event_catalog, built from the same macros.
+      strings. family and product_area come from int__amplitude_event_catalog;
+      is_win and is_serve from the event's resolved product; is_recurrent and
+      is_dashboard_view from the amplitude_event_taxonomy macros. Passthrough
+      columns are documented at stg_airbyte_source__amplitude_api_events; the
+      event_type-grain catalog (volume, recency, Govern metadata) is
+      int__amplitude_event_catalog.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: int__amplitude_events_classified.
     columns:
       - name: uuid
         description: Unique identifier for the event (primary key).
@@ -1684,34 +1724,55 @@ models:
 
       - name: family
         description: >
-          Product-feature bucket from the amplitude_event_family macro. Win
-          families are prefixed `win_`; non-Win buckets cover serve,
-          auth/settings, navigation, and anonymous noise. Unmatched
-          event_types fall through to 'other' for triage. Closed set by
-          construction; the accepted_values contract is tested on
-          int__amplitude_event_catalog, which derives from the same macro.
+          Product-feature bucket from int__amplitude_event_catalog. Win
+          families are prefixed `win_`; non-Win buckets cover serve, shared,
+          auth/settings, navigation, and anonymous noise. The name rules decide
+          first; a Govern product tag places only events they leave in 'other'
+          (win becomes 'win_declared'). 'other' means unlabeled: no name rule
+          matches and no Govern tag sorts the event (see
+          amplitude_unsorted_events). The accepted_values contract is tested on the
+          catalog.
         data_tests:
           - not_null
 
       - name: is_win
         description: >
-          True for Win-product candidate-attributed families (family like
-          'win_%'); false for serve / cross-product / noise. Event-level
-          filter only — user-level "Win active" questions belong on
+          True where the event's resolved product is Win (event_product =
+          'win'): Win families, plus shared features used from the Win profile
+          or assumed Win (see product_source). False for Serve and noise.
+          Event-level filter only; user-level "Win active" questions belong on
           users_win_activity / users_win_base, not on raw event counts.
         data_tests:
           - not_null
 
       - name: is_serve
         description: >
-          True for Serve-product events (family = 'serve'). Serve is a single
-          flat family, hence the equality check rather than a prefix like
-          is_win. Superset of Serve user actions: some Serve events are
+          True where the event's resolved product is Serve (event_product =
+          'serve'): the serve family plus shared features used from the Serve
+          profile. Superset of Serve user actions: some Serve events are
           server-emitted (session_id = -1), so engagement filtering stays with
           the consumer. Event-level filter only — user-level "Serve active"
           questions belong on users_serve_base, not on raw event counts.
         data_tests:
           - not_null
+
+      - name: product_area
+        description: >
+          Feature area within a product, from int__amplitude_event_catalog: the
+          family for Win name-rule events, the name prefix for Serve, and for
+          tag-placed Win and shared events the Govern surface tag, else the
+          prefix, else 'unspecified'. Null for events outside Win, Serve and
+          shared.
+
+      - name: product_source
+        description: >
+          How is_win / is_serve were resolved: event_name (name rules),
+          govern_tag, event_property, active_profile, user_product or
+          assumed_win (a shared feature from a logged-in user with both products
+          or neither). Anonymous shared events are null unless a product or
+          activeProduct property is present. Null for events outside both
+          products. The
+          accepted_values contract is tested on int__amplitude_events_classified.
 
       - name: is_recurrent
         description: >
@@ -3263,6 +3324,49 @@ models:
           arguments:
             combination_of_columns: [user_id, touch_id]
 
+  - name: marketing_site_traffic_monthly
+    description: >
+      Monthly goodparty.org marketing site traffic, exposed so Sigma can read
+      it (Sigma sees mart_analytics only). Feeds signups per 1,000 US visitors
+      on the user journey dashboard.
+
+      Per-column meaning, the production-host rule and the bot-traffic caveat
+      live on int__marketing_site_traffic_monthly; this is a passthrough
+      exposure and does not restate them.
+    columns:
+      - name: month_start
+        description: First day of the month.
+        data_tests:
+          - unique
+          - not_null
+  - name: hubspot_owner_teams
+    description: >
+      One row per HubSpot owner with their name and primary team. Joins
+      user_journey.hs_owner_id, so contacts can be grouped by the team that
+      owns them (Campaign Success support on the Win results page) and the
+      owner named on the User lookup page. Owner emails are left out on
+      purpose.
+    columns:
+      - name: hs_owner_id
+        description: HubSpot owner id, as a string to match user_journey.hs_owner_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: owner_name
+        description: Owner's first and last name; null when HubSpot has neither.
+      - name: primary_team_name
+        description: Name of the owner's primary team; null when none is set.
+      - name: is_campaign_success
+        description: True when the owner's primary team is Campaign Success.
+        data_tests:
+          - not_null
+      - name: is_archived
+        description: >
+          True when the owner is archived in HubSpot. Archived owners come from
+          their own stream; an id in both streams counts as active. Filter to
+          false to match a rule that only counts current owners.
+        data_tests:
+          - not_null
   - name: user_journey
     description: >
       The end-to-end user view: one row per gp-api user account across
@@ -3280,7 +3384,8 @@ models:
       it (int__user_resolved_keys, int__user_candidacy_profile,
       int__user_hubspot_profile, int__user_first_touch_utm,
       int__user_product_activity, int__user_outreach_intensity,
-      int__user_revenue_profile, users_win_base) and is not restated here. Only the columns
+      int__user_revenue_profile, int__user_power_user, int__user_usage_group,
+      users_win_base) and is not restated here. Only the columns
       this model derives are documented below.
 
       Nulls mean "cannot see", zeros mean "saw nothing happen". Each family has
@@ -3349,6 +3454,25 @@ models:
         description: >
           When is_activated became true, from users_win_base
           first_campaign_sent_at. Null when not activated.
+      - name: first_activation_channel
+        description: >
+          The channel of the activating send (texting, robocall, social,
+          door_knocking, phone_banking, events, unattributed), from
+          users_win_base. Null when not activated.
+      - name: first_activation_is_self_reported
+        description: >
+          The activating send was a legacy self-report the OKR still counts. Most
+          of 2025's activations came this way, so split on it before comparing
+          years. Null when not activated.
+      - name: usage_group
+        description: >
+          From int__user_usage_group: Power user, Sent, not a power user, Pro,
+          never sent, or Free, never sent. Null for accounts that are not Win
+          users.
+        data_tests:
+          - not_null:
+              config:
+                where: product in ('win', 'both')
       - name: is_active_eo
         description: Currently an active elected official on Serve.
         data_tests:
@@ -3487,7 +3611,10 @@ models:
     description: >
       Every dated moment on each user's journey, one row per moment: the
       milestones, first contact, payments, the filing deadline and elections,
-      plus each outbound HubSpot touch and each committed outreach send. Win
+      plus each outbound HubSpot touch, each committed outreach send, and each
+      onboarding or Pro upgrade step reached in order, each core onboarding step
+      (office, party, pledge) in any version of the flow, and each Stripe payment,
+      refund and subscription start or end. Win
       sends are Outreach send; an elected official's polls and outreach to
       constituents are Serve outreach, so Win counts never include them. Internal
       only. Reshaping only: single moments are user_journey columns, and touches
@@ -3529,13 +3656,22 @@ models:
                   - Filing deadline
                   - Primary election
                   - General election
+                  - Onboarding step
+                  - Pro upgrade step
+                  - Serve onboarding step
+                  - Onboarding core step
+                  - Payment
+                  - Refund
+                  - Subscription started
+                  - Subscription ended
       - name: event_category
-        description: acquisition, touch, milestone, send, revenue or election.
+        description: acquisition, touch, milestone, send, revenue, election or flow_step.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [acquisition, touch, milestone, send, revenue, election]
+                values:
+                  [acquisition, touch, milestone, send, revenue, election, flow_step]
       - name: stage
         description: >
           The user_journey_milestones stage key for the four dated funnel stages
@@ -3550,14 +3686,18 @@ models:
           Registered, Onboarded, Free product output, First payment, Pro,
           Activated, Primary election, General election. Moments added later take
           9 to 13: First contact, HubSpot touch, Outreach send, First subscription
-          payment, Filing deadline. 14 is Serve outreach. Not chronological; sort
-          a timeline by event_at.
+          payment, Filing deadline. 14 is Serve outreach; 15 to 17 are the Onboarding,
+          Pro upgrade and Serve onboarding steps; 18 to 21 are Payment, Refund,
+          Subscription started and Subscription ended; 22 is the Onboarding core
+          step. Not chronological; sort a timeline by event_at.
         data_tests:
           - not_null
       - name: event_key
         description: >
           Unique within a user: the event name for one-off moments, the HubSpot
-          touch id for touches, the send key for sends.
+          touch id for touches, the send key for sends, the flow and step number
+          for a flow step, and the Stripe charge, refund or subscription id for
+          revenue rows.
         data_tests:
           - not_null
       - name: event_at
@@ -3572,15 +3712,33 @@ models:
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
           door_knocking, phone_banking, social, unattributed, and poll for Serve
-          outreach); null otherwise.
+          outreach), the numbered step for a flow step ("3. Party"), what a
+          Payment or Refund was for (outreach_purchase, domain_registration or
+          poll for a product purchase, otherwise subscription, sales_led or
+          unclassified), or the plan interval for a subscription start or end;
+          null otherwise.
       - name: event_value
         description: >
           Recipients for an Outreach send or Serve outreach (a poll's audience
-          size); null for every other event and for sends with no recipient count.
+          size), or seconds since the previous step for a flow step (null on step
+          1, and on a core onboarding step that came before the one listed above
+          it); null for every other event and for sends with no recipient count.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: event_amount_usd
+        description: >
+          Dollars, signed so a sum is net revenue: the captured amount for a
+          Payment, minus the refunded amount for a Refund (dated when refunded).
+          Null for every other event, subscription starts and ends included:
+          they move no money, and the plan amount is on user_journey. A Stripe customer shared by two user rows puts
+          its revenue rows on both, so a sum across users filters on
+          user_journey.is_primary_stripe_customer_row.
+        data_tests:
+          - not_null:
+              config:
+                where: event in ('Payment', 'Refund')
       - name: product
         description: >
           user_journey.product for the user (win, serve, both, none). A user
@@ -3642,6 +3800,217 @@ models:
         data_tests:
           - not_null
 
+  - name: user_win_activity_weekly
+    description: >
+      The weeks each user was active in Win, for weekly retention views such as
+      activity in the weeks before an election: one row per user per active
+      week, joining user_journey on user_id. Inactive weeks have no row.
+      Internal only.
+
+      Per-column meaning lives on int__user_win_activity_weekly; this is a
+      passthrough exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: week_start_date
+        description: Monday of the UTC week.
+        data_tests:
+          - not_null
+      - name: win_activity_days
+        description: Days with Win activity in the week.
+      - name: is_partial_week
+        description: The week is the current one and still filling.
+  - name: user_product_area_activity_monthly
+    description: >
+      Where each user spends their active days, by product, product area and
+      month, for the User lookup page's peer comparison. Joins user_journey on
+      user_id. Internal only.
+
+      Per-column meaning lives on int__user_product_area_activity_monthly; this
+      is a passthrough exposure and does not restate it.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: product
+        description: win or serve.
+      - name: product_area
+        description: Product area the day's events touched.
+      - name: activity_month
+        description: First day of the calendar month.
+      - name: area_active_days
+        description: Days in the month with activity in this area.
+      - name: product_active_days
+        description: Days in the month with any activity in this product.
+      - name: is_partial_month
+        description: The month is the current one and still filling.
+  - name: user_serve_clock
+    description: >
+      The clock each Serve user's journey is measured on, for the User lookup
+      page: their elected-office term start where known, else the day they
+      started Serve. When an official matches several terms, the one their
+      Serve start falls in wins, else the latest. One row per Serve user.
+      Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('user_journey')
+                field: user_id
+      - name: term_start_date
+        description: Start of the chosen term; null without term dates.
+      - name: term_end_date
+        description: End of the chosen term; null when open or unknown.
+      - name: anchor_at
+        description: >
+          Day zero of the Serve clock: the term start, else the Serve start.
+      - name: anchor_kind
+        description: term or serve_start, naming where anchor_at came from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [term, serve_start]
+  - name: user_hubspot_note_summary
+    description: >
+      One row per user with the nightly AI summary of their HubSpot calls,
+      notes and meetings (at most 4 bullets and a "Last contact:" line,
+      written with personal details left out), for the User lookup page.
+      Note text, owners and engagements are not exposed here. Emails and texts
+      are not summarized, so the summary's last contact can be older than
+      HubSpot's. Internal only.
+
+      Per-column meaning of the summary itself lives on
+      int__user_hubspot_note_summary.
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - unique
+          - not_null
+      - name: summary
+        description: The summary text, bullets then a "Last contact:" line.
+        data_tests:
+          - not_null
+      - name: item_count
+        description: Notes the summary was written from.
+      - name: last_item_at
+        description: When the latest of those notes was logged.
+      - name: summarized_at
+        description: When the summary was written.
+      - name: notes_added_since
+        description: >
+          Notes logged since the summary was written, which it has not read
+          yet. A later nightly run catches up.
+        data_tests:
+          - not_null
+  - name: user_lookup_peer_grids
+    description: >
+      Each user's own numbers behind the User lookup page's peer medians, with
+      the zeros filled in, so a peer who never touched an area, skipped a
+      month or had not sent yet still counts in the median. The peer group is
+      picked on the page; nothing here depends on it. Long format, one row per
+      user, product, kind and area or step:
+
+      area: share of the user's active days since June 2025 that touched each
+      product area (every area of the product, for every user with activity).
+      month: active days per month, counted back from the election month on
+      Win (step = months before, 0 to 12) and forward from user_serve_clock on
+      Serve (step = months since, 0 to 24), from the signup or Serve start
+      month to today; months before June 2025 are left out. week: outreach
+      sends to date per week, back from election day on Win (step = weeks
+      before, 0 to 26, counting sends up to 52 weeks out) and forward from the
+      Serve clock on Serve (step = weeks since, 0 to 52), weeks that have come
+      only.
+
+      Internal only.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, product, kind, product_area, step]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: product
+        description: win or serve.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, serve]
+      - name: kind
+        description: area, month or week; picks which columns are filled.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [area, month, week]
+      - name: product_area
+        description: >
+          The product area on area rows (catalog family on Win, event-name
+          prefix on Serve); null otherwise.
+      - name: step
+        description: >
+          Months or weeks before the election (Win) or since the Serve clock
+          (Serve) on month and week rows; null on area rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 52
+      - name: active_days
+        description: >
+          Days in the area (area rows) or active days in the month (month
+          rows).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: product_active_days
+        description: Active days in the product since June 2025, on area rows.
+      - name: day_share
+        description: active_days / product_active_days, on area rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: sends
+        description: Outreach sends to date at the week, on week rows.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: voters
+        description: >
+          Voters reached by those sends, on week rows. Recorded for texting
+          only.
+      - name: is_partial_month
+        description: The month is the current one and still filling, on month rows.
+  - name: user_elected_office_terms
+    description: >
+      Term start and end for each gp-api user matched to an elected official,
+      for the Serve clock on the User lookup page. One row per user. Public
+      record; nothing else from the civics mart is carried over. Internal only.
+    columns:
+      - name: user_id
+        description: gp-api user id (elected_officials.gp_api_user_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: term_start_date
+        description: Start of the current or latest term; null when unknown.
+      - name: term_end_date
+        description: End of that term; null when unknown.
   - name: user_journey_refresh_log
     description: >
       One row per build of user_journey: row counts, unresolved identity

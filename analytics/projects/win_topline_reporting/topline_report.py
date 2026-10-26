@@ -55,7 +55,6 @@ WORKING_SET_SQL = f"""
 WITH pop AS (
     SELECT
         user_id,
-        LOWER(user_email) AS em,
         hubspot_id,
         CAST(user_created_at AS DATE) AS user_created_date,
         CASE WHEN general_election_date BETWEEN '{_LO}' AND '{_HI}'
@@ -88,17 +87,23 @@ base AS (
     FROM goodparty_data_catalog.mart_analytics.users_win_base
 ),
 stripe_subs AS (
-    -- The subscriptions staging model now names and casts its columns, so the
-    -- epoch conversions that used to live here are gone.
+    -- One interval per user and subscription from the revenue events: the
+    -- start, plus the end once it has ended. The end key is built from the
+    -- start key so the pair matches on user and subscription id; a Stripe
+    -- customer shared by two users puts the same subscription on both. Status
+    -- only decides an open interval, and is the user's current subscription's.
     SELECT
-        LOWER(cu.email) AS em,
-        s.subscription_status AS status,
-        CAST(s.started_at AS DATE) AS sub_start,
-        CAST(s.ended_at AS DATE) AS sub_end
-    FROM goodparty_data_catalog.dbt.stg_airbyte_source__stripe_api_subscriptions s
-    JOIN goodparty_data_catalog.dbt.stg_airbyte_source__stripe_api_customers cu
-        ON s.stripe_customer_id = cu.id
-    WHERE s.is_livemode AND s.subscription_status != 'incomplete_expired'
+        st.user_id,
+        rp.subscription_status AS status,
+        CAST(st.event_at AS DATE) AS sub_start,
+        CAST(en.event_at AS DATE) AS sub_end
+    FROM goodparty_data_catalog.dbt.int__user_revenue_events st
+    LEFT JOIN goodparty_data_catalog.dbt.int__user_revenue_events en
+        ON en.user_id = st.user_id
+        AND en.event_key = REPLACE(st.event_key, 'subscription_start:', 'subscription_end:')
+    LEFT JOIN goodparty_data_catalog.dbt.int__user_revenue_profile rp
+        ON rp.user_id = st.user_id
+    WHERE st.event = 'Subscription started'
 ),
 stripe_flags AS (
     -- Interval test in SQL (complex types don't survive the connector without
@@ -113,7 +118,7 @@ stripe_flags AS (
                       OR (ss.sub_end IS NULL AND ss.status = 'active'))
             THEN 1 ELSE 0 END) = 1 AS stripe_pro_at_d
     FROM dedup d
-    JOIN stripe_subs ss ON d.em = ss.em
+    JOIN stripe_subs ss ON d.user_id = ss.user_id
     GROUP BY d.user_id
 ),
 amp AS (
@@ -464,7 +469,9 @@ def csv_footer(sanity: dict) -> list[str]:
         "'Account - Pro Subscription Canceled' event where one exists). "
         "~42% of today's Pro users still have no timing evidence "
         "(pre-2025-06-27 grants; grants after 2026-04-13 while the Confirmed "
-        "event is silent in-data; billing-email mismatch), so "
+        "event is silent in-data; a payer the revenue models' key resolution "
+        "can't tie to the account, since Stripe history links through it "
+        "rather than the billing email), so "
         "pro_at_election undercounts; pro_today is the as-of-run-date "
         "reference. Restated 2026-07-24: not 1:1 comparable with earlier "
         "runs (see the restatement table).",

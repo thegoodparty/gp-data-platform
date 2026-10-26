@@ -61,6 +61,24 @@ models:
                 max_value: 1
               config:
                 where: "Voter_Turnout_Probability is not null"
+      - name: Early_Vote_Status
+        description: >
+          Likelihood of voting before Election Day, early in person or by
+          mail: the higher of Haystaq's hs_likely_ev and hs_likely_vbm
+          (0-100 within-state percentiles), bucketed Very unlikely (<25),
+          Unlikely (<55), Likely (<80), Very likely (>=80), Unknown (no
+          score). Relative to the voter's state, not a probability.
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Very unlikely
+                  - Unlikely
+                  - Likely
+                  - Very likely
+                  - Unknown
       - name: Voter_Independent_Affinity
         description: >
           True when the voter shows any signal of independent-leaning behaviour:
@@ -74,6 +92,131 @@ models:
         data_type: boolean
         tests:
           - not_null
+      - name: Indep_Openness_Registration
+        description: >
+          Control-arm flag for the openness-to-an-independent experiment, built
+          only from official records and L2's own party model, with no Haystaq
+          scores. True when the voter is registered as neither Democratic nor
+          Republican, changed party registration within ~4 years, lives in a
+          household that includes an Independent, or pulled both a Democratic
+          and a Republican primary ballot between 2012 and 2024. In states without
+          party registration the party is L2's model. Never null; ~45% of the file.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Haystaq
+        description: >
+          Haystaq-arm flag for the openness-to-an-independent experiment: true when
+          hs_partisanship_moderate_third_party_support is at or above the voter's
+          state cutoff (seed indep_openness_haystaq_cutoff), the top 40-41% of voters
+          with a score. Voters with no score are false, so never null; ~37% of the file.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Single_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a Democrat and a Republican running, D or R incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Single_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a Democrat and a Republican running, no D or R incumbent. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Multi_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, full field (scored at 3 seats), incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_Multi_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, full field (scored at 3 seats), open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Democrat opponent, incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Democrat opponent, open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Inc
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Republican opponent, incumbent in the field. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Open
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          one seat, a lone Republican opponent, open. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_DOnly_Multi
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, Democrats and no Republicans. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Indep_Openness_ROnly_Multi
+        description: >
+          State-leg-arm flag for the openness-to-an-independent experiment, scenario:
+          two or more seats, Republicans and no Democrats. True when the voter's state-leg model score
+          for this scenario is at or above the state's cut (int__indep_openness_voter_scores).
+          Voters with no score are false, so never null.
+        data_type: boolean
+        tests:
+          - not_null
+      - name: Census_Block_Group_Geoid
+        description: >
+          The 12-character ACS block group of the voter's residence, the key of
+          gp_api_block_group_census_demographics. Taken from L2's complete census
+          block geocode; Connecticut's legacy-county blocks map to their
+          planning-region block group, as the ACS keys them. Null when L2 has no
+          geocode for the voter (about 4% of the file).
+        data_type: string
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: "^[0-9]{12}$"
+              config:
+                where: "Census_Block_Group_Geoid is not null"
       - name: hf_ideology_general
         description: >
           Haystaq general-ideology label, passed through from the L2/Haystaq
@@ -162,6 +305,10 @@ models:
                   - census_block
                   - census_block_group
                   - census_tract
+      - name: Census_Block_Group_Geoid
+        description: >
+          The ACS block group of the person's commercial-file block
+          (geocode_full), keyed like gp_api_voters.Census_Block_Group_Geoid.
       - name: geocode_full
         description: >
           The commercial file's 15-digit census block GEOID, joined as-is to the
@@ -202,3 +349,197 @@ models:
 
   - name: gp_api_district_census_stats
     description: Pass-through of district_census_stats
+
+  - name: gp_api_district_census_demographics
+    description: >
+      Pass-through of int__district_acs_estimates: ACS 2020-2024 5-year counts per
+      district, on the same (state_postal_code, district_type, district_name) key
+      as gp_api_district_census_stats, with the same count columns as
+      gp_api_block_group_census_demographics. Local rows are block-group
+      estimates allocated through the district population allocation and are
+      fractional; statewide rows are the published state estimates. Counts only:
+      no medians and no margins of error. Adult census sex by age (male/female,
+      18-24 through 65+, plus an 18+ total per sex) is included; it is census
+      sex, not gender identity. Read one district_type at a time.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
+  - name: gp_api_block_group_census_demographics
+    description: >
+      ACS 2020-2024 5-year estimates for every census block group, one row per
+      block_group_geoid, with the columns, margins of error and medians of
+      stg_census_acs__geo_estimates. Join a person through
+      gp_api_voters.Census_Block_Group_Geoid. Null where the Census suppressed a
+      value. Sex is the census's male/female (B01001), adults only, in the bands
+      18-24, 25-34, 35-44, 45-54, 55-64 and 65+ plus an 18+ total per sex; it is
+      not gender identity, and there are no children's bands by sex.
+    data_tests:
+      # int__district_acs_estimates sums these counts over block groups, so a
+      # suppressed (null) one would quietly undercount a district.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              total_population is not null and population_under_18 is not null and
+              population_65_plus is not null and population_race_universe is not null and
+              population_white_nh is not null and population_black_nh is not null and
+              population_native_american_nh is not null and population_asian_nh is not null
+              and population_other_nh is not null and population_hispanic is not null and
+              population_25_plus is not null and population_hs_or_higher is not null and
+              population_bachelors_or_higher is not null and civilian_labor_force is not null
+              and unemployed_population is not null and households is not null and
+              owner_occupied_households is not null and population_in_households is not null
+              and households_broadband_universe is not null and households_with_broadband is
+              not null and population_poverty_universe is not null and
+              population_below_poverty is not null and households_income_universe is not null
+              and households_income_under_10k is not null and households_income_10k_to_15k is
+              not null and households_income_15k_to_20k is not null and
+              households_income_20k_to_25k is not null and households_income_25k_to_30k is
+              not null and households_income_30k_to_35k is not null and
+              households_income_35k_to_40k is not null and households_income_40k_to_45k is
+              not null and households_income_45k_to_50k is not null and
+              households_income_50k_to_60k is not null and households_income_60k_to_75k is
+              not null and households_income_75k_to_100k is not null and
+              households_income_100k_to_125k is not null and households_income_125k_to_150k
+              is not null and households_income_150k_to_200k is not null and
+              households_income_200k_plus is not null
+              and population_male_18_to_24 is not null and population_male_25_to_34 is
+              not null and population_male_35_to_44 is not null and
+              population_male_45_to_54 is not null and population_male_55_to_64 is not
+              null and population_male_65_plus is not null and population_male_18_plus
+              is not null and population_female_18_to_24 is not null and
+              population_female_25_to_34 is not null and population_female_35_to_44 is
+              not null and population_female_45_to_54 is not null and
+              population_female_55_to_64 is not null and population_female_65_plus is
+              not null and population_female_18_plus is not null
+    columns:
+      - name: block_group_geoid
+        description: >
+          12-character block group geoid (state, county, tract, block group);
+          Connecticut uses planning-region county codes
+        data_tests:
+          - unique
+          - not_null
+      - name: total_population
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_to_24
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_25_to_34
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_35_to_44
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_45_to_54
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_55_to_64
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_65_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_to_24
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_25_to_34
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_35_to_44
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_45_to_54
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_55_to_64
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_65_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_plus
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+  - name: gp_api_voter_eav_general_2026
+    description: >
+      Voters L2 reports as having voted early or absentee in the 2026-11-03 General,
+      one row per voter. gp-api uses it to let users include or exclude voters who
+      have already voted. Rebuilt from a cumulative daily upload. Some states do not
+      report to L2, so a voter missing here may still have voted. Voter-level data,
+      so read access is limited to mart_gp_api_readers.
+    columns:
+      - name: id
+        description: Voter id, the same salted LALVOTERID hash as gp_api_voters.id.
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: LALVOTERID
+        description: L2 voter identifier.
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+      - name: is_eav_general_2026
+        description: Always true; present so the flag reads clearly where joined.
+        data_type: boolean
+        data_tests:
+          - not_null

@@ -138,6 +138,56 @@ models:
             to_district_type_column: district_type
             to_district_name_column: district_name
 
+  - name: int__l2_br_match_served
+    description: >
+      The gold-match latest attempt per office as the publishing models see it.
+      A match that fits a known wrong-answer shape is withheld: its district
+      columns are null, is_matched is false, and withheld_reason names the shape.
+      Guards apply to attempts on or after the l2_br_match_guards_from var (the
+      daily loop's cutover); earlier attempts pass through unchanged. An override
+      in l2_br_match_overrides still wins in every consumer. The pending selector
+      reads the results table, so withholding a match does not re-queue its office.
+    columns:
+      - name: br_database_id
+        description: BallotReady position database id.
+        data_tests:
+          - unique
+          - not_null
+      - name: l2_state
+        description: The district's state; null on an abstain or a withheld match.
+      - name: l2_district_type
+        description: L2 district type; null on an abstain or a withheld match.
+      - name: l2_district_name
+        description: L2 district name; null on an abstain or a withheld match.
+      - name: confidence
+        description: The matcher's confidence, kept on withheld rows for audit.
+      - name: attempted_at
+        description: The run key of the attempt.
+      - name: is_matched
+        description: True when a district is served.
+        data_tests:
+          - not_null
+      - name: withheld_reason
+        description: >
+          Why a match was not served. special_district_on_general_row: a special
+          district on a same-named city, town, county, census place or state row.
+          town_seat_on_parent_body: a seat elected by one member town (NJ, AR, MA)
+          matched to the parent board. township_fire_on_county_pool: an NJ township
+          fire commission on a county-numbered fire row that pools several towns.
+          county_judge_off_county: a county judge off the county or county-court row.
+          college_on_k12_row: a college board on a K-12 school district.
+          census_place: a census-designated place, which elects no one.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - special_district_on_general_row
+                  - town_seat_on_parent_body
+                  - township_fire_on_county_pool
+                  - county_judge_off_county
+                  - college_on_k12_row
+                  - census_place
+
   - name: int__l2_br_match_pending_offices
     description: >
       One row per BallotReady office needing an L2 district match attempt:
@@ -441,6 +491,148 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
+  - name: int__indep_openness_voter_scores
+    description: >
+      Per-voter openness to an independent candidate, from the two ballot-caster
+      state-leg independent models. Each voter is scored as a district of 1 under 10
+      fixed race scenarios (field, seat count, incumbent or open seat) at the state's
+      reference size, using the voter's own registration and partisanship. Each
+      scenario has a raw score and a flag: true when the score is at or above the
+      state's cut for that scenario. One row per LALVOTERID; gp_api_voters joins
+      only the flags onto the voter row, and gp-api picks the campaign's scenario
+      column at query time. The raw scores stay in the warehouse.
+      The models follow a registry alias. Cut points come from a research notebook
+      that scores the whole voter file, keyed by a fingerprint of everything that
+      moves a score; this model reads only the cuts matching its own fingerprint.
+      Incremental (merge on LALVOTERID): runs score only new voters until the
+      fingerprint changes (a promoted model, a new seed or date), then rescore every
+      voter. Each incremental run first deletes voters no longer in L2. With no
+      cuts yet for a new fingerprint, an incremental run leaves the table
+      unchanged and a first build or full refresh fails.
+    config:
+      # Monthly, with the L2 refresh: new registrants only arrive with an L2 load.
+      tags: ["monthly"]
+      meta:
+        # A model reaches the product when the alias moves, so rank-compare a new
+        # version against the current one and cut it in the notebook before promoting.
+        # Models and cut points are developed in sandbox and copied here at promotion;
+        # point the two vars at sandbox to test a candidate in dev.
+        indep_openness_models_schema: "{{ var('indep_openness_models_schema', 'model_predictions') }}"
+        indep_openness_model_alias: "{{ var('indep_openness_model_alias', 'production') }}"
+        # Feature dates and the ballot-caster election. Part of the fingerprint, so a
+        # change here waits for matching cuts and then rescores everyone.
+        indep_openness_election_date: "{{ var('indep_openness_election_date', '2026-11-03') }}"
+        indep_openness_reg_cutoff: "{{ var('indep_openness_reg_cutoff', '2026-11-15') }}"
+        indep_openness_primary_end_year: "{{ var('indep_openness_primary_end_year', 2026) }}"
+        indep_openness_caster_column: "{{ var('indep_openness_caster_column', 'General_2024') }}"
+        indep_openness_cutpoints_table: "{{ var('indep_openness_cutpoints_table', 'goodparty_data_catalog.model_predictions.indep_openness_cutpoints') }}"
+        # DEV-ONLY: comma/space list like "WV" to score a subset without a full run.
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns:
+      - name: LALVOTERID
+        description: "L2 voter id; join key to gp_api_voters. One row per voter."
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: Two-letter state code. Cuts are per state.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('indep_openness_n_ref')
+                field: state
+      - name: indep_openness_single_inc
+        description: "At or above the state cut. One seat, a Democrat and a Republican running, D or R incumbent in the field."
+        data_tests: &indep_openness_not_null
+          - not_null
+      - name: indep_openness_single_open
+        description: "At or above the state cut. One seat, a Democrat and a Republican running, no D or R incumbent."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_multi_inc
+        description: "At or above the state cut. Two or more seats, full field (scored at 3 seats), incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_multi_open
+        description: "At or above the state cut. Two or more seats, full field (scored at 3 seats), open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_inc
+        description: "At or above the state cut. One seat, a lone Democrat opponent, incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_open
+        description: "At or above the state cut. One seat, a lone Democrat opponent, open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_inc
+        description: "At or above the state cut. One seat, a lone Republican opponent, incumbent in the field."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_open
+        description: "At or above the state cut. One seat, a lone Republican opponent, open."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_donly_multi
+        description: "At or above the state cut. Two or more seats, Democrats and no Republicans (incumbent seed only)."
+        data_tests: *indep_openness_not_null
+      - name: indep_openness_ronly_multi
+        description: "At or above the state cut. Two or more seats, Republicans and no Democrats (incumbent seed only)."
+        data_tests: *indep_openness_not_null
+      - name: raw_single_inc
+        description: Raw model score behind indep_openness_single_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_single_open
+        description: Raw model score behind indep_openness_single_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_multi_inc
+        description: Raw model score behind indep_openness_multi_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_multi_open
+        description: Raw model score behind indep_openness_multi_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_inc
+        description: Raw model score behind indep_openness_donly_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_open
+        description: Raw model score behind indep_openness_donly_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_inc
+        description: Raw model score behind indep_openness_ronly_inc. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_open
+        description: Raw model score behind indep_openness_ronly_open. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_donly_multi
+        description: Raw model score behind indep_openness_donly_multi. Warehouse only.
+        data_tests: *indep_openness_not_null
+      - name: raw_ronly_multi
+        description: Raw model score behind indep_openness_ronly_multi. Warehouse only.
+        data_tests: *indep_openness_not_null
+      # Version numbers can differ across rows without a rescore: copying a model
+      # between registries renumbers it but leaves its content, and the fingerprint, alone.
+      - name: model_version_2plus
+        description: Registry version of stateleg_ind_2plusmajorparty_voted that scored the row.
+        data_tests:
+          - not_null
+      - name: model_version_0or1
+        description: Registry version of stateleg_ind_voted that scored the row.
+        data_tests:
+          - not_null
+      - name: scoring_fingerprint
+        description: >
+          Hash of the boosters, n_ref seed, scenarios and feature SQL the row was
+          scored with; the key its cut points were read under.
+        data_tests:
+          - not_null
+          # More than one value means a rescore after a change did not complete.
+          - dbt_expectations.expect_column_unique_value_count_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 1
+      - name: n_ref
+        description: Reference size the voter's state was scored at (seed indep_openness_n_ref).
+        data_tests:
+          - not_null
+      - name: scored_at
+        description: When the row was scored.
+        data_tests:
+          - not_null
+
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
@@ -486,9 +678,9 @@ models:
       Zip code to BR office mapping. Rows arrive by two paths: the LLM match,
       and the l2_br_match_overrides seed for positions the LLM placed at the
       wrong district or not at all. To see why a district was chosen, join
-      stg_model_predictions__llm_l2_br_match (a view) on br_database_id; a
-      position absent there, or carrying a different district than the row
-      shows, was placed by the seed.
+      int__l2_br_match_served on br_database_id; a position absent there, or
+      carrying a different district than the row shows, was placed by the seed,
+      and a non-null withheld_reason there says why a match was not served.
     columns:
       - name: zip_code
         description: "Zip code"
@@ -826,3 +1018,63 @@ models:
           name: election_calendar_even_years_only
           arguments:
             expression: "year(election_date) % 2 = 0"
+
+unit_tests:
+  # Each guard fires on the shape the run audits found wrong, and each exception holds:
+  # a county-named district, a row named for the member town, a subdistrict zone, a
+  # state outside the verified set, a county-court district, a K-12 board named College,
+  # an attempt before the cutover, and a plain abstain.
+  - name: l2_br_match_served_guards
+    model: int__l2_br_match_served
+    given:
+      - input: ref('stg_model_predictions__llm_l2_br_match')
+        rows:
+          - {br_database_id: 1, l2_state: "FL", l2_district_type: "State", l2_district_name: "FL", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 2, l2_state: "KS", l2_district_type: "County", l2_district_name: "RAWLINS", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 3, l2_state: "NJ", l2_district_type: "High_School_District", l2_district_name: "KINGSWAY REGIONAL HS DIST (EST.)", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 4, l2_state: "NJ", l2_district_type: "Elementary_School_District", l2_district_name: "NATIONAL PARK ELEM SD (EST.)", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 5, l2_state: "NJ", l2_district_type: "Elementary_School_District", l2_district_name: "SUSSEX-WANTAGE REGIONAL ELEM SD (EST.)", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 6, l2_state: "NJ", l2_district_type: "School_Board_District", l2_district_name: "EXAMPLE REGIONAL BOE DIST 2", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 7, l2_state: "IN", l2_district_type: "School_District", l2_district_name: "WESTVIEW SD", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 8, l2_state: "NJ", l2_district_type: "Fire_District", l2_district_name: "UNION CNTY FD", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 9, l2_state: "NY", l2_district_type: "State", l2_district_name: "NY", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 10, l2_state: "NE", l2_district_type: "Judicial_County_Court_District", l2_district_name: "COUNTY JUDGE DIST 09", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 11, l2_state: "CA", l2_district_type: "County_Unified_School_District", l2_district_name: "EXAMPLE CNTY USD", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 12, l2_state: "CA", l2_district_type: "School_District", l2_district_name: "COLLEGE SD", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 13, l2_state: "SC", l2_district_type: "Hamlet_Community_Area", l2_district_name: "EDISTO ISLAND COMMUNITY", confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: true}
+          - {br_database_id: 14, l2_state: "FL", l2_district_type: "State", l2_district_name: "FL", confidence: 92, attempted_at: "2026-08-31 19:46:39", is_matched: true}
+          - {br_database_id: 15, l2_state: null, l2_district_type: null, l2_district_name: null, confidence: 92, attempted_at: "2026-10-01 14:30:00", is_matched: false}
+      - input: ref('stg_airbyte_source__ballotready_api_position')
+        rows:
+          - {database_id: 1, name: "Park Creek Community Development District Board - Seat 2", state: "FL", sub_area_name: "Seat", sub_area_value: "2"}
+          - {database_id: 2, name: "Rawlins County Hospital District Board - Position 4", state: "KS", sub_area_name: "Position", sub_area_value: "4"}
+          - {database_id: 3, name: "Kingsway Regional School Board - Swedesboro Borough", state: "NJ", sub_area_name: "", sub_area_value: "Swedesboro Borough"}
+          - {database_id: 4, name: "Gateway Regional School Board - National Park Borough", state: "NJ", sub_area_name: "", sub_area_value: "National Park Borough"}
+          - {database_id: 5, name: "Sussex-Wantage Regional School Board - Wantage Township", state: "NJ", sub_area_name: "", sub_area_value: "Wantage Township"}
+          - {database_id: 6, name: "Example Regional School Board - Example Township", state: "NJ", sub_area_name: "", sub_area_value: "Example Township"}
+          - {database_id: 7, name: "Westview School Board - Newbury Township", state: "IN", sub_area_name: "", sub_area_value: "Newbury Township"}
+          - {database_id: 8, name: "Mantua Township Fire Commission Board", state: "NJ", sub_area_name: "", sub_area_value: ""}
+          - {database_id: 9, name: "Broome County Court Judge", state: "NY", sub_area_name: "", sub_area_value: ""}
+          - {database_id: 10, name: "Nebraska County Court Judge - District 9", state: "NE", sub_area_name: "District", sub_area_value: "9"}
+          - {database_id: 11, name: "Example Community College Board", state: "CA", sub_area_name: "", sub_area_value: ""}
+          - {database_id: 12, name: "College School Board", state: "CA", sub_area_name: "", sub_area_value: ""}
+          - {database_id: 13, name: "Edisto Beach Town Mayor", state: "SC", sub_area_name: "", sub_area_value: ""}
+          - {database_id: 14, name: "Park Creek Community Development District Board - Seat 3", state: "FL", sub_area_name: "Seat", sub_area_value: "3"}
+          - {database_id: 15, name: "Example Village Council", state: "OH", sub_area_name: "", sub_area_value: ""}
+    expect:
+      rows:
+        - {br_database_id: 1, withheld_reason: "special_district_on_general_row", is_matched: false, l2_district_name: null}
+        - {br_database_id: 2, withheld_reason: null, is_matched: true, l2_district_name: "RAWLINS"}
+        - {br_database_id: 3, withheld_reason: "town_seat_on_parent_body", is_matched: false, l2_district_name: null}
+        - {br_database_id: 4, withheld_reason: null, is_matched: true, l2_district_name: "NATIONAL PARK ELEM SD (EST.)"}
+        - {br_database_id: 5, withheld_reason: "town_seat_on_parent_body", is_matched: false, l2_district_name: null}
+        - {br_database_id: 6, withheld_reason: null, is_matched: true, l2_district_name: "EXAMPLE REGIONAL BOE DIST 2"}
+        - {br_database_id: 7, withheld_reason: null, is_matched: true, l2_district_name: "WESTVIEW SD"}
+        - {br_database_id: 8, withheld_reason: "township_fire_on_county_pool", is_matched: false, l2_district_name: null}
+        - {br_database_id: 9, withheld_reason: "county_judge_off_county", is_matched: false, l2_district_name: null}
+        - {br_database_id: 10, withheld_reason: null, is_matched: true, l2_district_name: "COUNTY JUDGE DIST 09"}
+        - {br_database_id: 11, withheld_reason: "college_on_k12_row", is_matched: false, l2_district_name: null}
+        - {br_database_id: 12, withheld_reason: null, is_matched: true, l2_district_name: "COLLEGE SD"}
+        - {br_database_id: 13, withheld_reason: "census_place", is_matched: false, l2_district_name: null}
+        - {br_database_id: 14, withheld_reason: null, is_matched: true, l2_district_name: "FL"}
+        - {br_database_id: 15, withheld_reason: null, is_matched: false, l2_district_name: null}

@@ -1,14 +1,15 @@
 {{ config(materialized="view") }}
 
 /*
-    Exposure of stg_airbyte_source__amplitude_api_events into mart_analytics
-    (Sigma reads marts only). View, not table: a thin projection over a large
-    staging table doesn't justify storage duplication.
+    Exposure of int__amplitude_events_classified into mart_analytics (Sigma
+    reads marts only). View, not table: a thin projection over a large event
+    table doesn't justify storage duplication.
 
-    family / is_win / is_recurrent / is_dashboard_view come from the
-    amplitude_event_taxonomy macros so classification has a single source of
-    truth shared with int__amplitude_event_catalog; consumers must not re-derive
-    product classification from event_type strings.
+    family and product_area come from int__amplitude_event_catalog, and is_win /
+    is_serve from the event's resolved product, so a shared feature counts for
+    the product it was used from. is_recurrent and is_dashboard_view come from
+    the amplitude_event_taxonomy macros. Consumers must not re-derive product
+    classification from event_type strings.
 
     is_dashboard_view is exposed separately because is_recurrent cannot express
     it: the dashboard-view union includes a page-path leg ('Viewed' on
@@ -17,10 +18,11 @@
     after 2026-07-31 when the last named dashboard event died.
 */
 select
-    *,
-    {{ amplitude_event_family("event_type") }} as family,
-    family like 'win_%' as is_win,
-    family = 'serve' as is_serve,
+    * except (family, is_machine_emitted, is_recurrent, event_product),
+    -- The catalog skips a null event_type, which the family macro calls 'other'.
+    coalesce(family, 'other') as family,
+    coalesce(event_product = 'win', false) as is_win,
+    coalesce(event_product = 'serve', false) as is_serve,
     -- null-safe: IN-list yields null (not false) on a null event_type
     coalesce({{ amplitude_event_is_recurrent("event_type") }}, false) as is_recurrent,
     -- null-safe for the same reason: the union's OR yields null on a null event_type
@@ -28,4 +30,4 @@ select
         {{ is_dashboard_view_event("event_type", "event_properties:path::string") }},
         false
     ) as is_dashboard_view
-from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+from {{ ref("int__amplitude_events_classified") }}

@@ -1233,6 +1233,31 @@ models:
         data_tests:
           - not_null
 
+  - name: int__ballotready_s3_candidacies_gated
+    description: >
+      The BallotReady CSV feed with the API status gate applied: every
+      stg_airbyte_source__ballotready_s3_candidacies_v3 row, except an upcoming
+      one (election_day on or after today) whose candidacy has no current
+      int__ballotready_candidacy record or is withdrawn or hidden there. The
+      feed's dedup never forgets a deleted or withdrawn candidacy, so the API
+      decides which upcoming rows still exist. Past and undated rows, and every
+      column, are the feed's own. Read this wherever a CSV row decides that a
+      candidacy exists; id lookups and first_seen_at fallbacks keep reading the
+      staging view, which stays unfiltered for history.
+
+      Grain: One row per br_candidacy_id (a candidacy stage).
+    config:
+      meta:
+        contains_pii: true
+    columns:
+      - name: br_candidacy_id
+        description: BallotReady candidacy (stage) database id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: election_day
+        description: Stage election date from the feed; the gate's upcoming test.
+
   - name: int__ballotready_candidate_identity
     description: >
       Canonical BallotReady candidate name/contact/party per br_candidate_id: one
@@ -1253,7 +1278,7 @@ models:
 
       Grain: One row per unique person (deduplicated on gp_candidate_id).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections),
       augmented with int__ballotready_person for contact/URL data from API.
 
     columns:
@@ -1311,7 +1336,7 @@ models:
 
       Grain: One row per candidacy (candidate + position + election year).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections),
       rolled up from race-level to candidacy-level by grouping on
       br_candidate_id + br_position_id + br_election_id.
 
@@ -2064,7 +2089,7 @@ models:
       GP API contributes one row per latest-version pledged campaign;
       BR/TS/DDHQ each contribute one row per (candidate, race/stage).
 
-      Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
+      Sources: int__ballotready_s3_candidacies_gated (BR feed, API status gate),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
       campaigns mart (GP API). The gp_api side resolves election_stage and
@@ -2568,7 +2593,7 @@ models:
 
       Grain: One row per candidacy stage (each BallotReady S3 candidacy row is a stage).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+      Source: int__ballotready_s3_candidacies_gated (2026+ elections).
 
     columns:
       - name: gp_candidacy_stage_id
@@ -3517,6 +3542,9 @@ models:
       placeholder phones are nulled, plus-addressing is stripped, phones must
       be 10 digits (or 11 with a leading country code), and any contact key
       on more than 25 records (institutional inboxes, switchboards) is nulled.
+      Each phone also carries its count of unrelated surname groups, which
+      the matcher uses to refuse a phone-only pair across unrelated surnames
+      on a shared line the cap lets through.
     data_tests:
       # Model level so the expression can name the column without the
       # column-test macro prepending it. Guards the tokenizer silently
@@ -3529,6 +3557,13 @@ models:
             expression: "size(last_name_tokens) > 0"
           config:
             where: "last_name rlike '[a-z][a-z]'"
+      # A phone a named record holds always has at least that record's group.
+      - dbt_utils.expression_is_true:
+          name: prematch_people_phone_surname_groups_cover_the_phone
+          arguments:
+            expression: "phone_surname_groups >= 1"
+          config:
+            where: "phone is not null and last_name rlike '[a-z][a-z]'"
     columns:
       - name: unique_id
         description: >
@@ -3562,6 +3597,13 @@ models:
           surname written as one part, or a middle name packed into the surname
           field, still reaches the pair: blocking on the whole surname reaches
           neither.
+      - name: phone_surname_groups
+        description: >
+          Number of unrelated surname groups among the named records holding
+          this phone, where surnames sharing a last_name_tokens entry count as
+          one group. A family line holds one or two; a city or school-district
+          switchboard holds several. Null when the phone is null. The matcher
+          drops a pair whose only tie is a phone holding four or more.
       - name: suffix_token
         description: >
           Generational suffix ('' when none) from explicit source columns
@@ -4125,6 +4167,214 @@ models:
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           name: district_population_unique_key
+          arguments:
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
+
+  - name: int__district_acs_estimates
+    description: >
+      ACS 2020-2024 5-year counts per district, keyed like district_census_stats:
+      one row per (state_postal_code, district_type, district_name) for every
+      local district in the allocation, plus one district_type = 'State' row per
+      state (50 + DC). Local rows allocate block-group estimates through
+      int__district_census_allocation: each block group gives a district the
+      share of its 2020 census population that the allocation places there
+      (summed allocated_population over the block group's blocks, divided by the
+      block group's full 2020 population, zero-voter blocks included).
+      Connecticut blocks reach their planning-region block group through
+      stg_census_acs__ct_block_planning_region. Statewide rows are the published
+      state estimates, not a rollup. Every count column has the same name and
+      universe as in stg_census_acs__geo_estimates and is fractional on local
+      rows (round for display). Only additive counts are carried: medians cannot
+      be allocated, margins of error are not propagated, and aggregate household
+      income is left out because it is suppressed in some block groups. Local
+      rows carry the allocation's zero-voter-block undercount. Read one
+      district_type at a time, since each type tiles the country.
+    columns:
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: >
+          L2 district column name (the curated allocated type set), or 'State'
+          for the statewide rows
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name; the postal code on statewide rows
+        data_tests:
+          - not_null
+      - name: n_census_block_groups
+        description: >
+          ACS block groups contributing to the district (all of the state's block
+          groups on statewide rows)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: total_population
+        description: ACS total population (B01001_E001), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_to_24
+        description: >
+          ACS males 18 to 24 (B01001 E007-E010), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_25_to_34
+        description: >
+          ACS males 25 to 34 (B01001 E011-E012), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_35_to_44
+        description: >
+          ACS males 35 to 44 (B01001 E013-E014), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_45_to_54
+        description: >
+          ACS males 45 to 54 (B01001 E015-E016), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_55_to_64
+        description: >
+          ACS males 55 to 64 (B01001 E017-E019), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_65_plus
+        description: >
+          ACS males 65 and over (B01001 E020-E025), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_male_18_plus
+        description: >
+          ACS males 18 and over (B01001 E007-E025), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_to_24
+        description: >
+          ACS females 18 to 24 (B01001 E031-E034), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_25_to_34
+        description: >
+          ACS females 25 to 34 (B01001 E035-E036), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_35_to_44
+        description: >
+          ACS females 35 to 44 (B01001 E037-E038), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_45_to_54
+        description: >
+          ACS females 45 to 54 (B01001 E039-E040), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_55_to_64
+        description: >
+          ACS females 55 to 64 (B01001 E041-E043), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_65_plus
+        description: >
+          ACS females 65 and over (B01001 E044-E049), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_female_18_plus
+        description: >
+          ACS females 18 and over (B01001 E031-E049), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_race_universe
+        description: >
+          Denominator for the race and ethnicity columns (B03002_E001),
+          allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_25_plus
+        description: Denominator for the education columns (B15002_E001)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households
+        description: Occupied housing units (B25003_E001), allocated to the district
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: population_poverty_universe
+        description: Denominator for population_below_poverty (C17002_E001)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: households_income_universe
+        description: >
+          Denominator for the 16 household income brackets (B19001_E001);
+          consumers roll the brackets up to the bands they need
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_acs_estimates_unique_key
           arguments:
             combination_of_columns:
               [state_postal_code, district_type, district_name]

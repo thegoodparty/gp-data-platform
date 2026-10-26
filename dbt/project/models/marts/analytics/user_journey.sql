@@ -77,7 +77,12 @@ with
     -- Read from the model the Activated Candidates OKR reads, so this row and
     -- the reported figure cannot drift. Win accounts only; null elsewhere.
     win_activation as (
-        select user_id, is_activated, first_campaign_sent_at as activated_at
+        select
+            user_id,
+            is_activated,
+            first_campaign_sent_at as activated_at,
+            first_activation_channel,
+            first_activation_is_self_reported
         from {{ ref("users_win_base") }}
     ),
 
@@ -156,6 +161,8 @@ select
         )
     }},
 
+    win_eng.win_engaged_months_before_election,
+
     {{
         dbt_utils.star(
             from=ref("int__user_revenue_profile"),
@@ -166,6 +173,8 @@ select
 
     wa.is_activated,
     wa.activated_at,
+    wa.first_activation_channel,
+    wa.first_activation_is_self_reported,
 
     {{
         dbt_utils.star(
@@ -174,6 +183,7 @@ select
             relation_alias="pu",
         )
     }},
+    ug.usage_group,
 
     u.is_serve_user,
     u.eo_activated_at,
@@ -224,9 +234,11 @@ left join {{ ref("int__user_first_touch_utm") }} as utm using (user_id)
 left join {{ ref("int__user_signup_touch_utm") }} as utm_last using (user_id)
 left join {{ ref("int__user_product_activity") }} as act using (user_id)
 left join {{ ref("int__user_outreach_intensity") }} as outr using (user_id)
+left join {{ ref("int__user_win_engaged_months") }} as win_eng using (user_id)
 left join {{ ref("int__user_revenue_profile") }} as rev using (user_id)
 left join active_eos as ae using (user_id)
 left join serve_activation as sa using (user_id)
 left join win_activation as wa using (user_id)
 left join {{ ref("int__user_power_user") }} as pu using (user_id)
+left join {{ ref("int__user_usage_group") }} as ug using (user_id)
 left join internal as i on i.gp_person_id = k.gp_person_id

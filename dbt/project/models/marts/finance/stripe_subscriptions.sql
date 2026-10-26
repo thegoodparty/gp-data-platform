@@ -1,1 +1,1 @@
-select * from {{ ref("stg_airbyte_source__stripe_api_subscriptions") }}
+select * from {{ ref("stg_airbyte_source_finance__stripe_api_subscriptions") }}

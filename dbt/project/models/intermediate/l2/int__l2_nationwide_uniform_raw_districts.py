@@ -655,6 +655,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Extract state from LALVOTERID (substring starting at position 4 with length 2)
     df = df.withColumn("state_from_lalvoterid", col("LALVOTERID").substr(4, 2))
 
+    # Delta only collects stats on the first 32 columns by default, and liquid
+    # clustering needs stats on its columns, so a fresh build fails unless they lead.
+    clustering_columns = ["state_postal_code", "Residence_Addresses_Zip", "LALVOTERID"]
+    df = df.select(*clustering_columns, *[c for c in df.columns if c not in clustering_columns])
+
     if dbt.is_incremental and df.count() == 0:
         return session.createDataFrame(data=[], schema=df.schema)
 

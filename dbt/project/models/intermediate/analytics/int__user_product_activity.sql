@@ -24,27 +24,21 @@
 with
     keys as (select user_id from {{ ref("int__user_resolved_keys") }}),
 
-    catalog as (
-        select event_type, family, is_serve, is_machine_emitted
-        from {{ ref("int__amplitude_event_catalog") }}
-    ),
-
     events as (
         select
             try_cast(e.user_id as bigint) as user_id,
             e.event_type,
             e.event_time,
             date(e.event_time) as event_date,
-            c.is_serve,
+            e.event_product = 'serve' as is_serve,
             e.event_properties:path::string as page_path,
             e.event_properties:method::string as outreach_method,
             -- Win or Serve. Only the events named since 2026-09-29 carry it.
             e.event_properties:product::string as outreach_product
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
-        join catalog as c on c.event_type = e.event_type
+        from {{ ref("int__amplitude_events_classified") }} as e
         where
             try_cast(e.user_id as bigint) is not null
-            and not c.is_machine_emitted
+            and not e.is_machine_emitted
             and e.event_time >= '{{ var("product_telemetry_start") }}'
     ),
 

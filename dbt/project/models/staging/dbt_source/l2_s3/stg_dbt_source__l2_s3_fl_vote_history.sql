@@ -1,4 +1,5 @@
-{% set source_ref = source("dbt_source", "l2_s3_fl_vote_history") %}
+-- Schema evolution lets this view follow columns L2 drops without a rebuild.
+{{ config(post_hook="alter view {{ this }} with schema evolution") }}
 
-select {{ dbt_utils.star(from=source_ref, except=[]) }}  -- use `except` for any columns to transform individually
-from {{ source_ref }}
+select *
+from {{ source("dbt_source", "l2_s3_fl_vote_history") }}
