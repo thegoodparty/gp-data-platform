@@ -1571,9 +1571,9 @@ models:
     description: >
       How many months a candidate engaged with Win before their own election
       day, one row per user with an election date. A month counts when the user
-      was engaged that month or sent committed Win outreach that month. The
-      months are the activity table's own, so a send month before the user's
-      first tracked product month is not counted. Read by win rate by usage on
+      was engaged that month (is_engaged, the activation OKR's events), so
+      "reached voters" months never disagree with activation. Read by win rate
+      by usage on
       the user journey dashboard, so that read no longer joins the monthly and
       send tables per candidate.
     columns:
@@ -1584,8 +1584,8 @@ models:
           - not_null
       - name: win_engaged_months_before_election
         description: >
-          Months before the candidacy's election date in which the user was
-          engaged or sent committed Win outreach. Zero when there were none.
+          Months before the candidacy's election date in which the user did
+          something that counts toward activation. Zero when there were none.
           Null on the journey table for users with no election date.
         data_tests:
           - not_null
