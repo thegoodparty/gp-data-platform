@@ -1684,7 +1684,7 @@ sources:
             data_tests:
               - not_null
 
-  - name: l2_eav
+  - name: dbt_hugh
     schema: dbt_hugh
     description: >
       L2 early and absentee voter (EAV) lists, downloaded by hand from L2 DataMapping
