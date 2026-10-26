@@ -54,6 +54,9 @@ vars:
   # before it: the stream holds junk timestamps (one dated 1978) that would
   # otherwise start a user's monthly history decades early.
   product_telemetry_start: "2025-04-01"
+  # The live Stripe product Pro is sold under. Mirrors LIVE_PRODUCT_ID in omni's
+  # StripeService; move them together. The Stripe and Pro drift test scopes to it.
+  stripe_pro_product_id: "prod_QCGFVVUhD6q2Jo"
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
