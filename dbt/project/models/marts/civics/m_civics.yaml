@@ -535,8 +535,10 @@ models:
       - name: is_incumbent
         description: >
           Whether the candidate already holds the position they are running
-          for. TRUE whenever a BallotReady office-holder term on the same
-          seat covers election day and matches the candidate, on canonical
+          for. A hand-verified row in the candidacy_incumbency_overrides seed
+          beats every source below. TRUE whenever a BallotReady office-holder
+          term on the same seat covers election day and matches the candidate,
+          on canonical
           person id or on first+last name, which the seat and term window
           make near-deterministic; that positive proof overrides TechSpeed,
           whose flag has marked sitting incumbents as challengers. The seat is

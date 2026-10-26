@@ -342,6 +342,50 @@ seeds:
                 from {{ ref('m_election_api__race') }}
               )
 
+  - name: candidacy_incumbency_overrides
+    description: >
+      Manual corrections to candidacy.is_incumbent, for a candidacy whose flag
+      is wrong and that no source in the precedence chain can fix: typically a
+      TechSpeed incumbent claim on a seat BallotReady's office-holder file
+      cannot reach. Each row is checked against an official source and takes
+      precedence over every vendor value, including BallotReady's positive
+      proof. Keyed on the mart's gp_candidacy_id, so the correction is scoped
+      to the one contest and a later candidacy for the same seat needs its own
+      row.
+    config:
+      column_types:
+        gp_candidacy_id: STRING
+        is_incumbent: BOOLEAN
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Candidacy to correct. The relationships test fails if entity
+          resolution re-mints the id, which would otherwise leave the override
+          a silent no-op.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+      - name: is_incumbent
+        description: Corrected incumbency for the candidacy
+        data_tests:
+          - not_null
+      - name: candidate
+        description: Candidate name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: office
+        description: Office and election date (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the official source
+        data_tests:
+          - not_null
+
   - name: election_api_race_filing_date_overrides
     description: >
       Manual overrides for the candidate filing window shown on election-api race

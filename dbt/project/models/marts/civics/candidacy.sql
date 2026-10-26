@@ -666,14 +666,17 @@ select
     deduplicated.hubspot_company_ids,
     deduplicated.candidate_id_source,
     deduplicated.party_affiliation,
-    -- A BR term placing this person in the seat on election day is positive
-    -- proof and beats TS, which has marked sitting incumbents as challengers.
-    -- TS still beats BR's "someone else holds it" verdict: a web audit of
-    -- those disagreements found BR's holder file lagging mid-term
-    -- resignations, appointments and seat renumbering more often than TS was
-    -- wrong, and the name arm above misses middle names and initials. The
-    -- negative verdict fills in where TS is silent.
+    -- A hand-verified override wins outright. Otherwise a BR term placing this
+    -- person in the seat on election day is positive proof and beats TS,
+    -- which has marked sitting incumbents as challengers. TS still beats BR's
+    -- "someone else holds it" verdict: a web audit of those disagreements
+    -- found BR's holder file lagging mid-term resignations, appointments and
+    -- seat renumbering more often than TS was wrong, and the name arm above
+    -- misses middle names and initials. The negative verdict fills in where
+    -- TS is silent.
     case
+        when incumbency_override.is_incumbent is not null
+        then incumbency_override.is_incumbent
         when inc.is_incumbent
         then true
         else coalesce(deduplicated.is_incumbent, inc.is_incumbent)
@@ -854,3 +857,6 @@ left join
 left join race_context as race on deduplicated.gp_candidacy_id = race.gp_candidacy_id
 left join candidacy_person as cp on cp.gp_candidacy_id = deduplicated.gp_candidacy_id
 left join incumbency as inc on inc.gp_candidacy_id = deduplicated.gp_candidacy_id
+left join
+    {{ ref("candidacy_incumbency_overrides") }} as incumbency_override
+    on incumbency_override.gp_candidacy_id = deduplicated.gp_candidacy_id
