@@ -6,6 +6,13 @@
 -- The one place a charge gets its revenue line. int__user_revenue_profile
 -- totals these rows and int__user_revenue_events dates them, so the two always
 -- agree on what counts as subscription money.
+--
+-- Table, not view, so they also agree on which charges exist. As a view the
+-- events picked up each daily Stripe sync at once while the profile table
+-- waited for its next build, and any run in between that built the journey
+-- marts failed their payments test.
+{{ config(materialized="table") }}
+
 with
     keys as (
         select user_id, stripe_customer_id from {{ ref("int__user_resolved_keys") }}
