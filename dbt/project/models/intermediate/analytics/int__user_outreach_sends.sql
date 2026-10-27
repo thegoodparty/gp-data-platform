@@ -170,16 +170,16 @@ with
     -- One row per committed send, not per event. The v2 flows elect a single
     -- committer per outreach id, but a payment-webhook retry can still
     -- re-emit, so the first event for an id is the send and the rest are
-    -- echoes.
+    -- echoes. Partitioned on the id alone, the grain of send_key: on a team
+    -- account the owner's schedule event and a team member's completion event
+    -- carry the same id under different users. Only one-to-many sends carry an
+    -- id, and each id is one gp-api outreach row.
     amplitude_deduped as (
         select *
         from amplitude_events
         qualify
             outreach_id is null
-            or row_number() over (
-                partition by user_id, outreach_id order by event_time asc
-            )
-            = 1
+            or row_number() over (partition by outreach_id order by event_time asc) = 1
     ),
 
     amplitude_sends as (
