@@ -4,9 +4,12 @@
 -- that L2 populates must appear; Haystaq scores every state, so an absence is
 -- the override leg or its spelling resolution failing, not missing scores.
 --
--- Tagged with the Haystaq voter model the mart scores from: a district minted
--- since that model's last build has no scorable voters yet, so where the model
--- is excluded (CI, the nightly) this can only false-fail on a new seed row.
+-- Tagged monthly like the Haystaq voter model the mart scores from, so CI and
+-- the nightly skip it. A failure is a real product gap, not a false-fail:
+-- gp-api reads gp_api_voters live by district name, so an override pointing at
+-- a name only the newest L2 delivery carries empties that district's voter file
+-- and top issues until the monthly voter chain rebuilds. Ship such a seed row
+-- with a rebuild of int__l2_nationwide_uniform_w_haystaq+ in the same deploy.
 {{ config(tags=["monthly"]) }}
 with
     resolved_districts as ({{ l2_district_spelling_resolution() }}),
