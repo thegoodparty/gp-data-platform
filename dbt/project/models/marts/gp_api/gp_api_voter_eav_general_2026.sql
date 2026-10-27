@@ -7,4 +7,4 @@ select
     {{ generate_salted_uuid(fields=["LALVOTERID"], salt="l2") }} as id,
     `LALVOTERID`,
     true as is_eav_general_2026
-from {{ source("l2_eav", "l2_eav_general_2026") }}
+from {{ source("dbt_hugh", "l2_eav_general_2026") }}

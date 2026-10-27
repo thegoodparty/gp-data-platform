@@ -338,7 +338,12 @@ models:
       - name: verified_candidate
         description: >
           Verification status from HubSpot. Empty strings converted to nulls.
+          Downstream reads only whether it is 'Yes' and passes any other value
+          through as the reason.
         data_tests:
+          # Warn, not error: the list mirrors a HubSpot dropdown that gains
+          # options, and a new one breaks nothing here. As an error it skips
+          # every civics and election-api mart downstream.
           - accepted_values:
               arguments:
                 values:
@@ -349,6 +354,9 @@ models:
                   - "Partisan Candidate"
                   - "Write In"
                   - "Ended Pro"
+                  - "Withdrew"
+              config:
+                severity: warn
 
   - name: int__civics_candidacy_techspeed
     description: >
