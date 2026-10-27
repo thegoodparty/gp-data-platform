@@ -3675,6 +3675,15 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+      - name: is_score_only_merge
+        description: >
+          True for a non-BallotReady record whose group holds a BallotReady
+          person that the record's own deterministic identity does not reach,
+          so it joined on a similarity score alone. people and
+          m_election_api__person keep gp_api_user_id and is_pledged off such
+          records.
+        data_tests:
+          - not_null
       - name: first_seen_at
         description: >
           Earliest source-native timestamp for the record, from the prematch
