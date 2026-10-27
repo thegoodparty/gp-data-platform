@@ -347,11 +347,11 @@ seeds:
       Manual corrections to candidacy.is_incumbent, for a candidacy whose flag
       is wrong and that no source in the precedence chain can fix: typically a
       TechSpeed incumbent claim on a seat BallotReady's office-holder file
-      cannot reach. Each row is checked against an official source and takes
-      precedence over every vendor value, including BallotReady's positive
-      proof. Keyed on the mart's gp_candidacy_id, so the correction is scoped
-      to the one contest and a later candidacy for the same seat needs its own
-      row.
+      cannot reach. Each row is checked against a public source (an official
+      one where it exists) and takes precedence over every vendor value,
+      including BallotReady's positive proof. Keyed on the mart's
+      gp_candidacy_id, so the correction is scoped to the one contest and a
+      later candidacy for the same seat needs its own row.
     config:
       column_types:
         gp_candidacy_id: STRING
@@ -382,7 +382,7 @@ seeds:
         data_tests:
           - not_null
       - name: reason
-        description: Why this override is needed, with the official source
+        description: Why this override is needed, with the public source
         data_tests:
           - not_null
 
