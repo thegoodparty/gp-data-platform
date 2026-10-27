@@ -112,10 +112,12 @@ with
         where ddhq_candidate_id is not null and ddhq_race_id is not null
     ),
 
-    -- DDHQ carries no person record, so a row reaches a person only through
-    -- its candidacy cluster: the BallotReady co-member's person first, else
-    -- another member's. Clusters spanning two BR people have no members in
-    -- the lookup, so those rows self-mint like unclustered ones.
+    -- gp_candidate_id comes from the row's candidacy cluster: the BallotReady
+    -- co-member's person first, else another non-DDHQ member's. Clusters
+    -- spanning two BR people have no members in the lookup, so those rows
+    -- self-mint like unclustered ones. The DDHQ record's own person is
+    -- skipped, so a DDHQ-only cluster keeps its self-minted gp_candidate_id;
+    -- candidacy_stage carries that person as gp_person_id instead.
     cluster_person as (
         select cc.source_id, p.gp_person_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cc
@@ -124,7 +126,7 @@ with
         inner join
             {{ ref("int__civics_person_canonical_ids") }} as p
             on p.record_key = m.record_key
-        where cc.source_name = 'ddhq'
+        where cc.source_name = 'ddhq' and m.record_key not like 'ddhq|%'
         qualify
             row_number() over (
                 partition by cc.source_id

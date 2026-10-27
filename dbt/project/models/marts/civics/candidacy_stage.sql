@@ -25,7 +25,8 @@
 -- back to the min over the other native keys: br_candidate_id is the only
 -- person-grain identifier here, so when two native keys reach different people
 -- the BR one decides. Rows whose keys disagree at all are surfaced by a warn
--- test in m_civics.yaml.
+-- test in m_civics.yaml. A 2026+ row with only a DDHQ key takes the DDHQ
+-- record's own person.
 {%- set gp_api_wins_cols = [
     "candidate_name",
     "source_candidate_id",
@@ -350,8 +351,8 @@ with
     ),
 
     -- Resolve gp_person_id (the BR key's person, else the min over the TS and
-    -- gp_api keys; DDHQ carries no person record, so a DDHQ-only row has none)
-    -- and the final election_stage (2026+ keeps election_stage's stage_type
+    -- gp_api keys, else the DDHQ record's own person) and the final
+    -- election_stage (2026+ keeps election_stage's stage_type
     -- for byte-stability; <=2025 falls back to the native stage). BR
     -- precedence is what makes every stage of one br_candidate_id resolve to
     -- one person, which assert_candidacy_stage_one_person_per_br_candidate
@@ -361,7 +362,13 @@ with
             m.*,
             coalesce(es.stage_type, m.native_stage) as election_stage,
             coalesce(
-                bcp.gp_person_id, least(tcp.gp_person_id, gcp.gp_person_id)
+                bcp.gp_person_id,
+                least(tcp.gp_person_id, gcp.gp_person_id),
+                -- 2026+ only: a <=2025 row pairs with the HubSpot archive on
+                -- gp_person_id, and that merge is out of scope here.
+                case
+                    when m.election_stage_date >= '2026-01-01' then dcp.gp_person_id
+                end
             ) as gp_person_id
         from merged_foj as m
         left join
@@ -371,6 +378,9 @@ with
         left join ts_code_person as tcp on tcp.ts_code = m.ts_source_candidate_id
         left join
             gp_api_campaign_person as gcp on gcp.campaign_id = m.gp_api_campaign_id
+        left join
+            person_ids as dcp
+            on dcp.record_key = 'ddhq|' || m.ddhq_candidate_id || '_' || m.ddhq_race_id
     ),
 
     -- Passthrough era: byte-stable 2026+ (plus any null-date rows, unchanged).

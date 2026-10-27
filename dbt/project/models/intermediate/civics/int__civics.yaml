@@ -3433,7 +3433,8 @@ models:
       Candidacy-stage cluster members as person record keys
       (int__er_prematch_people.unique_id): BallotReady via the candidacy's
       person, TechSpeed at candidate-code grain, gp_api via the campaign's
-      user. One row per (cluster_id, record_key). A cluster spanning two
+      user, DDHQ at its own candidacy-stage grain. One row per (cluster_id,
+      record_key). A cluster spanning two
       BallotReady people contributes nothing, so neither the person links nor
       the DDHQ person lookup can assert one of two contradictory identities.
     data_tests:
@@ -3456,9 +3457,10 @@ models:
       are the same person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
       ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
       candidacy-stage cluster co-membership (hub to the cluster's min record
-      key), and E7 a contact merged away in HubSpot to its survivor (only when
+      key), E7 a contact merged away in HubSpot to its survivor (only when
       the merged-away contact has no E1/E3 link of its own, so the edge cannot
-      join two BR people). Both endpoints are prematch records by construction.
+      join two BR people), and E8 the stages of one DDHQ candidacy (hub to
+      the candidacy's min record key). Both endpoints are prematch records by construction.
       matcha's person lane clusters these with the scored pairs as certain
       matches and publishes er_source.clustered_people; no closure happens in
       dbt.
@@ -3488,6 +3490,7 @@ models:
                   - e5_candidacy_cluster
                   - e6_eo_bridge
                   - e7_hubspot_merge
+                  - e8_ddhq_candidacy
 
   - name: int__civics_internal_persons
     description: >
@@ -3536,9 +3539,11 @@ models:
       Entity resolution prematch for the person entity, and the person record
       universe: every HubSpot contact, gp_api user, BallotReady person (any
       candidacy or term), TechSpeed candidate (person grain via the
-      stage-stripped candidate code) and non-reused TechSpeed officeholder, in
-      one standardized schema for Splink. DDHQ has no person id or contact
-      fields and reaches a person only through its candidacy cluster; voter
+      stage-stripped candidate code), non-reused TechSpeed officeholder and
+      DDHQ candidate, in one standardized schema for Splink. DDHQ rows are
+      candidacy-stage grain (candidate_id || '_' || ddhq_race_id, the
+      candidacy-stage prematch key), because DDHQ reuses one candidate_id
+      across same-named people; they carry name, state and party only. Voter
       records are out of scope.
 
       Every record keeps its row because every record needs a person id.
@@ -3588,6 +3593,7 @@ models:
               arguments:
                 values:
                   - ballotready
+                  - ddhq
                   - gp_api
                   - hubspot
                   - techspeed
@@ -3641,7 +3647,8 @@ models:
       Canonical gp_person_id per person record. One row per
       int__er_prematch_people unique_id. The person group is the cluster
       matcha published in er_source.clustered_people; a record the vintage
-      has not seen stands alone under its own key. The id is minted from the
+      has not seen stands alone under its own key, except a DDHQ record,
+      which has no row until a run clusters it. The id is minted from the
       group member earliest by first_seen_at (ties: source_name, source_id)
       via generate_salted_uuid([source_name, source_id], salt=person), so
       first-in wins uniformly and the id survives a later record joining the

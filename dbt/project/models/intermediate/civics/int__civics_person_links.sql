@@ -3,7 +3,8 @@
 -- person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
 -- ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
 -- candidacy-stage cluster co-membership (hub to the cluster's min record key),
--- and E7 a HubSpot merge (merged-away contact->its survivor). matcha clusters
+-- E7 a HubSpot merge (merged-away contact->its survivor), and E8 the stages of
+-- one DDHQ candidacy (hub to the candidacy's min record key). matcha clusters
 -- these with the scored pairs as certain matches; no closure happens in dbt.
 -- Both endpoints must be prematch records, so the universe matcha clusters
 -- over and the one the mint reads are the same set.
@@ -116,6 +117,29 @@ with
         where m.surviving_contact_id is not null
     ),
 
+    -- E8: DDHQ person records are candidacy-stage grain, so a candidacy's
+    -- primary and general are two records. The DDHQ candidacy model already
+    -- groups its stages under one gp_candidacy_id; hub them like E5.
+    ddhq_candidacy_stages as (
+        select distinct
+            gp_candidacy_id,
+            'ddhq|' || source_candidate_id || '_' || source_race_id as record_key
+        from {{ ref("int__civics_candidacy_stage_ddhq") }}
+    ),
+
+    ddhq_candidacy_hub as (
+        select gp_candidacy_id, min(record_key) as hub_key
+        from ddhq_candidacy_stages
+        group by gp_candidacy_id
+    ),
+
+    e8 as (
+        select s.record_key as rk_a, h.hub_key as rk_b
+        from ddhq_candidacy_stages as s
+        inner join ddhq_candidacy_hub as h using (gp_candidacy_id)
+        where s.record_key <> h.hub_key
+    ),
+
     all_pairs as (
         select rk_a, rk_b, 'e1_hubspot_user' as link_type
         from e1
@@ -134,6 +158,9 @@ with
         union all
         select rk_a, rk_b, 'e7_hubspot_merge'
         from e7
+        union all
+        select rk_a, rk_b, 'e8_ddhq_candidacy'
+        from e8
     )
 
 select distinct
