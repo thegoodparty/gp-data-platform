@@ -244,6 +244,17 @@ sources:
         description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
         description: raw data load from gp_api_db postgres db from table `outreach`
+      # The election-eve robocall offer: precinct assignments are written once per
+      # experiment and runs are booked around elections, so both streams go
+      # legitimately quiet for weeks and opt out of the freshness default.
+      - name: gp_api_db_outreach_robocall
+        description: raw data load from gp_api_db postgres db from table `outreach_robocall`
+        config:
+          freshness: null
+      - name: gp_api_db_robocall_experiment_precinct
+        description: raw data load from gp_api_db postgres db from table `robocall_experiment_precinct`
+        config:
+          freshness: null
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
         # The upstream `path_to_victory` table was dropped from gp-api on 2026-04-15

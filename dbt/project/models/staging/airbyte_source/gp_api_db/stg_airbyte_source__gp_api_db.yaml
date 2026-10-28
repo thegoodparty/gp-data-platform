@@ -970,6 +970,130 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: campaignId is not null or organization_slug is not null
+  - name: stg_airbyte_source__gp_api_db_outreach_robocall
+    description: >
+      The robocall run behind a robocall outreach: billing, CallHub dialing and
+      settlement state, plus any promotion code applied on the pay step. One row
+      per outreach. A promotion code is remembered by a draft but only counts as
+      redeemed once promo_redeemed_at is set. The callback phone number and the
+      Stripe ids are not staged.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the robocall run"
+        data_tests:
+          - not_null
+          - unique
+      - name: outreach_id
+        description: "Foreign key to the outreach this robocall run belongs to (one run per outreach)"
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_outreach')
+                field: id
+              config:
+                severity: warn
+      - name: created_at
+        description: "Timestamp when the robocall draft was created"
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the robocall run was last updated"
+        data_tests:
+          - not_null
+      - name: settle_state
+        description: >
+          Payment and send lifecycle state, from draft through hold, dialing and
+          capture to a terminal state (captured, charged, cancelled, send_failed,
+          hold_failed and so on)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - pending_payment
+                  - authorized
+                  - settling
+                  - captured
+                  - charged
+                  - voided
+                  - cancelled
+                  - disputed
+                  - uncollectable
+                  - hold_pending
+                  - hold_failed
+                  - staging
+                  - dialing
+                  - dialed
+                  - capturing
+                  - charging
+                  - send_failed
+                  - draft
+      - name: audio_key
+        description: "S3 object key of the recorded robocall audio"
+      - name: billable_count
+        description: "Landline count of the audience at draft time, used for the pay-step estimate. Null while in draft."
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: amount_in_cents
+        description: "Authorized estimate in cents, net of any promotion discount. Null while in draft."
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: authorized_amount_in_cents
+        description: "Amount actually authorized on the card hold, in cents"
+      - name: captured_amount_in_cents
+        description: "Amount captured off the hold once the dialed count is known, in cents"
+      - name: pay_attempt
+        description: "Number of settlement attempts"
+      - name: capture_before
+        description: "Deadline to capture the hold before it expires"
+      - name: promo_code
+        description: "Human-readable promotion code applied on the pay step (e.g. GPOFFER-... for the free election-eve offer)"
+      - name: promo_discount_in_cents
+        description: "Discount from the promotion code folded into the hold, frozen at redemption"
+      - name: promo_redeemed_at
+        description: "When the promotion code was redeemed (the hold placed, or a fully covered run was scheduled). Null means not redeemed."
+      - name: promo_covers_total
+        description: "True when the promotion code paid for the run in full, so no card hold was placed"
+        data_tests:
+          - not_null
+      - name: callhub_campaign_pk_str
+        description: "CallHub voice-broadcast campaign id the run dials from"
+      - name: staged_calls_per_minute
+        description: "CallHub dialing rate the campaign was created with"
+      - name: callhub_starting_date
+        description: "Start of the scheduled CallHub dial window"
+      - name: callhub_expiration_date
+        description: "End of the scheduled CallHub dial window"
+      - name: compliance_passed_at
+        description: "When the audio passed the server-side compliance check"
+      - name: compliance_audio_etag
+        description: "S3 ETag of the audio that passed compliance"
+      - name: dialing_started_at
+        description: "When the current dialing attempt began"
+      - name: dialed_at
+        description: "When the CallHub voice broadcast was launched. Null until the run dials."
+      - name: permanent_send_failure
+        description: "True when CallHub permanently rejected the launch"
+        data_tests:
+          - not_null
+      - name: completed_call_count
+        description: "CallHub's completed call count once dialing finished; the count the capture charges against"
+      - name: completion_polled_at
+        description: "When CallHub was last polled for the completed count"
+      - name: pool_freed_at
+        description: "When the run's CallHub campaign was stopped to free the shared dialing pool (operational only)"
+      - name: overdue_alerted_at
+        description: "When the overdue alert was sent for a run past its date and not yet dialed"
+      - name: backlog_alerted_at
+        description: "When the backlog alert was sent for a run the send queue would reach late"
+      - name: last_reminder_sent_at
+        description: "When the last fix-your-card reminder was sent for a failed hold"
   - name: stg_airbyte_source__gp_api_db_path_to_victory
     description: raw data load from gp_api_db postgres db from table `path_to_victory`
     columns:
@@ -1268,6 +1392,80 @@ models:
       - name: created_at
       - name: visitor_id
       - name: website_id
+  - name: stg_airbyte_source__gp_api_db_robocall_experiment_precinct
+    description: >
+      Precinct-level random assignment for a gp-api robocall experiment (e.g. the
+      free election-eve robocall offer). A precinct is assigned the first time a
+      campaign's district reaches it and keeps that arm, so the campaign and
+      district columns record who triggered the assignment, not every campaign
+      that covers the precinct. Append-only. One row per experiment_key, state,
+      county and precinct.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [experiment_key, state, county, precinct]
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the precinct assignment"
+        data_tests:
+          - not_null
+          - unique
+      - name: experiment_key
+        description: "Identifier of the experiment (e.g. robocall-free-offer-2026-11)"
+        data_tests:
+          - not_null
+      - name: state
+        description: "State of the precinct"
+        data_tests:
+          - not_null
+      - name: county
+        description: "County of the precinct"
+        data_tests:
+          - not_null
+      - name: precinct
+        description: "Precinct name"
+        data_tests:
+          - not_null
+      - name: arm
+        description: "Experiment arm the precinct was assigned to"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["control", "treatment"]
+      - name: p_treatment
+        description: "Probability of treatment the precinct was randomized with"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: assigned_for_district_id
+        description: "District id whose campaign triggered the assignment"
+        data_tests:
+          - not_null
+      - name: assigned_for_campaign_id
+        description: "Foreign key to the campaign that triggered the assignment"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                severity: warn
+      - name: landlines_at_assignment
+        description: "Landline count in the precinct at assignment time"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: created_at
+        description: "Timestamp when the precinct was assigned"
+        data_tests:
+          - not_null
   - name: stg_airbyte_source__gp_api_db_race_opponent_contrast
     description: >
       AI-generated candidate/opponent contrast statements for a race. One row
