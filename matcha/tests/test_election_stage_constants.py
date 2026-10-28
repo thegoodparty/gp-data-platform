@@ -33,6 +33,11 @@ _BASE_PAIR = {
     # sets overlapping clusters.
     "matched_candidacy_stage_clusters_l": "cast([] as varchar[])",
     "matched_candidacy_stage_clusters_r": "cast([] as varchar[])",
+    # position anchor: NULL by default so it never fires unless a test sets it.
+    "ballotready_position_id_l": "cast(null as bigint)",
+    "ballotready_position_id_r": "cast(null as bigint)",
+    "source_name_l": "'ballotready'",
+    "source_name_r": "'ddhq'",
 }
 
 
@@ -203,3 +208,62 @@ def test_filter_does_not_require_person_signals():
     assert "gamma_last_name" not in ELECTION_STAGE_POST_PREDICTION_FILTER
     assert "gamma_first_name" not in ELECTION_STAGE_POST_PREDICTION_FILTER
     assert "gamma_email" not in ELECTION_STAGE_POST_PREDICTION_FILTER
+
+
+# Position anchor: a DDHQ race's office-matched BR position.
+_DIVERGENT_OFFICE = {
+    "candidate_office_r": "'City Council'",
+    "official_office_name_l": "'durant city council - ward 4'",
+    "official_office_name_r": "'city of durant councilmember 4'",
+}
+
+
+def test_position_anchor_bypasses_office_name_mismatch():
+    """DDHQ<->BR on the same position passes even when the office names and
+    candidate_office disagree."""
+    assert (
+        _pair_passes_filter(
+            **_DIVERGENT_OFFICE,
+            ballotready_position_id_l="cast(101 as bigint)",
+            ballotready_position_id_r="cast(101 as bigint)",
+        )
+        is True
+    )
+
+
+def test_position_anchor_does_not_relax_br_duplicates():
+    """Two BR races of one position are not relaxed by the anchor, so it cannot
+    merge BR duplicates."""
+    assert (
+        _pair_passes_filter(
+            **_DIVERGENT_OFFICE,
+            ballotready_position_id_l="cast(101 as bigint)",
+            ballotready_position_id_r="cast(101 as bigint)",
+            source_name_r="'ballotready'",
+        )
+        is False
+    )
+
+
+def test_position_anchor_requires_equal_positions():
+    assert (
+        _pair_passes_filter(
+            **_DIVERGENT_OFFICE,
+            ballotready_position_id_l="cast(101 as bigint)",
+            ballotready_position_id_r="cast(102 as bigint)",
+        )
+        is False
+    )
+
+
+def test_position_anchor_still_rejects_stage_mismatch():
+    """state/date/stage gates sit above the anchor."""
+    assert (
+        _pair_passes_filter(
+            **_DIVERGENT_OFFICE,
+            ballotready_position_id_l="cast(101 as bigint)",
+            ballotready_position_id_r="cast(101 as bigint)",
+            election_stage_r="'primary'",
+        )
+        is False
+    )

@@ -67,8 +67,9 @@ with
         select
             'ddhq' as source_name,
             source_id,
-            -- V1: leave NULL; DDHQ has no native position FK.
-            cast(null as bigint) as ballotready_position_id,
+            -- The BR position its office matches (int__civics_ddhq_br_position_match),
+            -- an anchor the matcher pairs on when race-level evidence is missing.
+            cast(pm.br_position_id as bigint) as ballotready_position_id,
             state,
             {{ strip_office_name_state_prefix("race_name") }} as official_office_name,
             candidate_office,
@@ -95,6 +96,9 @@ with
             ) as is_runoff,
             cast(null as int) as number_of_seats
         from ddhq_races
+        left join
+            {{ ref("int__civics_ddhq_br_position_match") }} as pm
+            on pm.ddhq_election_stage_key = ddhq_races.source_id
     ),
 
     techspeed_stages as (

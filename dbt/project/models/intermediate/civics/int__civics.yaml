@@ -3759,6 +3759,36 @@ models:
     # Stability (every cluster -> one minted id) is checked by the singular test
     # assert_minted_ids_one_per_cluster.
 
+  - name: int__civics_ddhq_br_position_match
+    description: >
+      DDHQ race to BallotReady position by office identity. One row per 2026+
+      DDHQ election-stage key (generate_ddhq_election_stage_key) that exactly
+      one BR position in its state matches on office_match_keys: locality
+      tokens, office category and seat, where numbered seats must be equal and
+      an unnumbered or at-large race only matches an unnumbered or at-large
+      position. Keys matching two or more positions are left out. Read by
+      int__er_prematch_election_stages as a position anchor for election-stage
+      ER and by int__civics_election_stage_ddhq, so a DDHQ race BR has no race
+      for still resolves its office and ICP.
+    columns:
+      - name: ddhq_election_stage_key
+        description: Primary key. ddhq_race_id || '_' || lowercased stage.
+        data_tests:
+          - unique
+          - not_null
+      - name: ddhq_office_name
+        description: DDHQ official_office_name the key was built from.
+      - name: br_position_id
+        description: BR position database_id the office matches.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+      - name: br_position_name
+        description: BR position name, for review.
+
   - name: int__civics_minted_election_stage_ids
     description: >
       Minted gp_election_stage_id per clustered election-stage record. One row
