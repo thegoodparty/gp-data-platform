@@ -1,0 +1,57 @@
+{
+  "name": "passB_hgb_recency240",
+  "ws_version": "6fd10aa234d3",
+  "features": {
+    "cat": [
+      "br_normalized_position_type",
+      "campaign_party",
+      "campaign_state",
+      "election_level",
+      "email_domain_class",
+      "office_type"
+    ],
+    "num": [
+      "any_br_by_deadline",
+      "br_arrivals_missing",
+      "days_signup_to_deadline",
+      "days_signup_to_election",
+      "geo_country_nonus",
+      "geo_missing",
+      "geo_state_match",
+      "geo_zip_state_match",
+      "has_deadline",
+      "log_voter_count",
+      "n_br_by_deadline",
+      "name_has_digit",
+      "name_has_nonalpha",
+      "name_len",
+      "name_n_tokens",
+      "name_single_char_token",
+      "signed_up_after_deadline",
+      "voter_count_missing",
+      "zip_campaign_state_match"
+    ]
+  },
+  "excluded": {
+    "activity_features": "pass A only; pass B is the analysis filter",
+    "post_signup_candidacy_fields": "PIT allowlist (brief 3b)",
+    "viability_score": "HOLD pending PIT checks (identification-vs-signup date, overwrite rate); see DATA-2279 amendment"
+  },
+  "hyperparams": {
+    "categorical_features": "from_dtype",
+    "early_stopping": true,
+    "max_iter": 400,
+    "random_state": 7,
+    "sample_weight": "recency hl=240d signup clock",
+    "validation_fraction": 0.15
+  },
+  "code_sha": {
+    "mvp_model.py": "c382950c6cbb",
+    "harness.py": "408208ab0635"
+  },
+  "model_id": "9957e9c34fcc",
+  "date": "2026-08-11",
+  "git_commit": "42df7690cd3f7500f8aaceec74ca8c1d82927654",
+  "git_dirty": true,
+  "notes": "Canonical baseline re-base: exponential recency weights folded into training (both models), no hard window cutoff. hl=240 over the sweep's 120 by OOF cost (-0.0012 vs -0.0040) with forward difference within noise; Tristan 2026-08-11."
+}

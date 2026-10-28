@@ -1,0 +1,57 @@
+{
+  "name": "passB_hgb_recency240_b04cdd5ac4b1",
+  "ws_version": "b04cdd5ac4b1",
+  "features": {
+    "cat": [
+      "br_normalized_position_type",
+      "campaign_party",
+      "campaign_state",
+      "election_level",
+      "email_domain_class",
+      "office_type"
+    ],
+    "num": [
+      "any_br_by_deadline",
+      "br_arrivals_missing",
+      "days_signup_to_deadline",
+      "days_signup_to_election",
+      "geo_country_nonus",
+      "geo_missing",
+      "geo_state_match",
+      "geo_zip_state_match",
+      "has_deadline",
+      "log_voter_count",
+      "n_br_by_deadline",
+      "name_has_digit",
+      "name_has_nonalpha",
+      "name_len",
+      "name_n_tokens",
+      "name_single_char_token",
+      "signed_up_after_deadline",
+      "voter_count_missing",
+      "zip_campaign_state_match"
+    ]
+  },
+  "excluded": {
+    "activity_features": "pass A only; pass B is the analysis filter",
+    "post_signup_candidacy_fields": "PIT allowlist (brief 3b)",
+    "viability_score": "HOLD pending PIT checks (see DATA-2279 amendment)"
+  },
+  "hyperparams": {
+    "categorical_features": "from_dtype",
+    "early_stopping": true,
+    "max_iter": 400,
+    "random_state": 7,
+    "sample_weight": "recency hl=240d signup clock",
+    "validation_fraction": 0.15
+  },
+  "code_sha": {
+    "mvp_model.py": "c382950c6cbb",
+    "harness.py": "ff16cc793a0c"
+  },
+  "model_id": "ee4c872ac46a",
+  "date": "2026-08-13",
+  "git_commit": "cbfc39699e4b97591bcc54b7abea8684027b1419",
+  "git_dirty": true,
+  "notes": "DATA-2312 attribution pass 2: pass 1 plus the opponents-only n_br_candidacies_by_deadline fix. Self-subtraction fires on 258 rows (1.2%), 100% corroborated vs a 58.9% base rate, so this removes a narrow but perfectly predictive label channel (br_candidacy_id is a label ingredient). Delta vs pass 1 is the price of that leakage."
+}
