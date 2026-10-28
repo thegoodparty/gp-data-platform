@@ -1,8 +1,7 @@
 -- Entity Resolution prematch for the person entity: one row per person record
 -- across HubSpot contacts, gp_api users, BallotReady people, TechSpeed
--- candidates (person grain), and TechSpeed officeholders. DDHQ carries no
--- person id or contact fields and attaches via candidacy clusters; voter
--- records are out of scope.
+-- candidates (person grain), TechSpeed officeholders, and DDHQ candidates
+-- (candidacy-stage grain). Voter records are out of scope.
 -- Matching happens in Splink. This model normalizes fields and applies hygiene:
 -- it nulls the names of records that are not people, and nulls contact keys
 -- that many people share, so neither chains unrelated people through blocking.
@@ -223,6 +222,31 @@ with
             = 1
     ),
 
+    -- DDHQ at candidacy-stage grain, keyed exactly as the candidacy-stage
+    -- prematch keys it, so candidacy-cluster co-membership (E5) reaches these
+    -- records directly. Not at candidate_id grain: DDHQ reuses one candidate_id
+    -- across same-named people in different states and offices. Name, state
+    -- and party are the only person fields DDHQ carries.
+    ddhq_raw as (
+        select
+            'ddhq' as source_name,
+            source_id,
+            first_name,
+            last_name,
+            cast(null as string) as suffix_raw,
+            cast(null as string) as email,
+            cast(null as string) as phone,
+            state as state_raw,
+            cast(null as string) as city,
+            cast(null as string) as zip_raw,
+            cast(null as date) as birth_date,
+            party as party_raw,
+            cast(null as string) as br_candidate_id,
+            first_seen_at
+        from {{ ref("int__er_prematch_candidacy_stages") }}
+        where source_name = 'ddhq'
+    ),
+
     unioned as (
         select *
         from hubspot_raw
@@ -238,6 +262,9 @@ with
         union all
         select *
         from ts_officeholder_raw
+        union all
+        select *
+        from ddhq_raw
     ),
 
     normalized as (
@@ -350,14 +377,19 @@ with
 
     -- Nameless rows, role inboxes ("<town> party registrar") and signup-form
     -- fixtures ("test user") keep their row, since every record needs a
-    -- person id, but lose their name fields so they pair with nothing.
+    -- person id, but lose their name fields so they pair with nothing. DDHQ
+    -- rows do too: with only name, state and party to score, they chain
+    -- same-named people in a state into one cluster, and the two-BR-people
+    -- rule then dissolves merges that were right. They join a person through
+    -- the native links alone.
     -- Computed outside `normalized`, where a select-list alias loses to the
     -- same-named raw column.
     matchable as (
         select
             *,
             coalesce(
-                first_name <> ''
+                source_name <> 'ddhq'
+                and first_name <> ''
                 and last_name <> ''
                 and last_name not like '%party registrar%'
                 and last_name <> 'user',

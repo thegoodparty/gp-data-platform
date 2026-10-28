@@ -1128,8 +1128,10 @@ models:
           ts_source_candidate_id and gp_api_campaign_id -> user) for FOJ rows,
           and from the HubSpot contact for archive rows. Deterministic min
           when a row's sources reach more than one person (a warn test tracks
-          that). NULL for DDHQ-only rows, since DDHQ carries no person record,
-          and for <=2025 vendor rows outside the person universe.
+          that). A 2026+ row with no other person falls back to the DDHQ
+          record's own person (ddhq_candidate_id || '_' || ddhq_race_id), which
+          exists once a matcha run has clustered it. NULL for <=2025 DDHQ-only
+          rows and for <=2025 vendor rows outside the person universe.
         data_tests:
           - relationships:
               arguments:
@@ -2999,8 +3001,10 @@ models:
       Canonical person mart. One row per gp_person_id, the person groups
       matcha publishes from the deterministic native-id and candidacy-cluster
       links plus the scored person pairs, with no group holding two
-      BallotReady people. DDHQ carries no person record and reaches a person
-      only through its candidacy cluster.
+      BallotReady people. DDHQ records are candidacy-stage grain and join a
+      person through their candidacy cluster or their own candidacy's other
+      stages, never a scored match; a DDHQ record waits for a matcha run
+      before it gets a person.
 
       Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
       ts_candidate_code) are scalar only when the person group carries
@@ -3011,9 +3015,10 @@ models:
 
       Attribute precedence:
         first_name, last_name, email, phone: gp_api > HubSpot > BR >
-          BR officeholder > TS > TS officeholder.
+          BR officeholder > TS > TS officeholder > DDHQ (DDHQ has no email
+          or phone).
         state, party: BR > BR officeholder > HubSpot > TS > TS officeholder
-          (gp_api carries neither).
+          > DDHQ (gp_api carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at; for HubSpot, a live contact before one merged away), so
       a source's fields stay internally consistent.
@@ -3035,6 +3040,8 @@ models:
           record, a br_candidate_id with at least one office_holders_v3 row,
           or a gp_api user with an elected-office record
           (int__civics_elected_official_gp_api).
+        A DDHQ record sets neither flag yet, so a DDHQ-only person stays out
+        of the public person feed (m_election_api__person).
       Resolution status (e.g. CRM contacts unresolved to a BR person) is a
       query over person_identifiers, not a flag.
     columns:
@@ -3151,13 +3158,14 @@ models:
                 to: ref('people')
                 field: gp_person_id
       - name: source_name
-        description: Source system of the record (ballotready, gp_api, hubspot, techspeed, techspeed_officeholder).
+        description: Source system of the record (ballotready, ddhq, gp_api, hubspot, techspeed, techspeed_officeholder).
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
                   - ballotready
+                  - ddhq
                   - gp_api
                   - hubspot
                   - techspeed

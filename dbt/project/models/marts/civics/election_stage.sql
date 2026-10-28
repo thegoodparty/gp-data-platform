@@ -81,7 +81,8 @@ with
                 coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
             br.br_election_id,
-            br.br_position_id,
+            -- DDHQ's office-matched position when BR has no race for the stage.
+            coalesce(br.br_position_id, ddhq.br_position_id) as br_position_id,
             -- ddhq_race_id: DDHQ's own ID is more reliable than BR's
             -- (which is sometimes null for 2026+ rows even when DDHQ has data).
             coalesce(br.ddhq_race_id, ddhq.ddhq_race_id) as ddhq_race_id,

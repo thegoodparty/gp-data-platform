@@ -14,9 +14,14 @@
 with
     clustered as (select * from {{ ref("stg_er_source__clustered_candidacy_stages") }}),
 
-    ddhq_stages as (
-        select gp_election_stage_id, ddhq_race_id, stage_type
-        from {{ ref("int__civics_election_stage_ddhq") }}
+    -- DDHQ election stages are keyed on race and stage (the prematch key), so
+    -- only the 2026+ keys the prematch carries are mapped.
+    ddhq_keys as (
+        select distinct
+            {{ generate_ddhq_election_stage_key("ddhq_race_id", "election_stage") }}
+            as source_id
+        from {{ ref("int__civics_candidacy_stage_ddhq") }}
+        where election_date >= '2026-01-01'
     ),
 
     -- BR: a BR candidacy's br_race_id IS its election_stage source_id (BR
@@ -31,23 +36,21 @@ with
     ),
 
     -- DDHQ: the candidacy source_id is `candidate_id || '_' || ddhq_race_id`;
-    -- recover ddhq_race_id and join the DDHQ election_stage model on
-    -- (ddhq_race_id, stage) to get its gp_election_stage_id (the DDHQ
-    -- election_stage prematch source_id). Joining on stage keeps a primary
-    -- candidacy's cluster off the general stage's row.
+    -- recover ddhq_race_id and pair it with the candidacy's stage. The
+    -- candidacy election_stage is Title Case ("General"); the key lowercases
+    -- it, matching the DDHQ election-stage vocabulary.
     ddhq_map as (
-        select
-            'ddhq' as source_name,
-            cast(es.gp_election_stage_id as string) as source_id,
-            clustered.cluster_id
+        select 'ddhq' as source_name, k.source_id, clustered.cluster_id
         from clustered
-        join
-            ddhq_stages as es
-            on substring_index(clustered.source_id, '_', -1)
-            = cast(es.ddhq_race_id as string)
-            -- candidacy election_stage is Title Case ("General"); the DDHQ
-            -- election_stage model emits lowercase stage_type ("general").
-            and lower(clustered.election_stage) = es.stage_type
+        inner join
+            ddhq_keys as k
+            on k.source_id
+            = {{
+                generate_ddhq_election_stage_key(
+                    "substring_index(clustered.source_id, '_', -1)",
+                    "clustered.election_stage",
+                )
+            }}
         where clustered.source_name = 'ddhq'
     ),
 

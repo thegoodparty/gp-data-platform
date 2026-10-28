@@ -16,7 +16,9 @@ with
 
             cast(null as string) as br_race_id,
             cast(null as string) as br_election_id,
-            cast(null as bigint) as br_position_id,
+            -- The BR position its office matches, so a race BR has no race for
+            -- still resolves its office (and Serve/Win ICP) in election_stage.
+            cast(any_value(pm.br_position_id) as bigint) as br_position_id,
             any_value(source_race_id) as ddhq_race_id,
 
             any_value(election_stage) as stage_type,
@@ -65,6 +67,14 @@ with
             max(updated_at) as updated_at
 
         from source
+        left join
+            {{ ref("int__civics_ddhq_br_position_match") }} as pm
+            on pm.ddhq_election_stage_key
+            = {{
+                generate_ddhq_election_stage_key(
+                    "source.ddhq_race_id", "source.election_stage"
+                )
+            }}
         group by gp_election_stage_id
     )
 
