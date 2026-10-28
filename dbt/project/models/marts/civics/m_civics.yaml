@@ -3000,9 +3000,9 @@ models:
       matcha publishes from the deterministic native-id and candidacy-cluster
       links plus the scored person pairs, with no group holding two
       BallotReady people. DDHQ records are candidacy-stage grain and join a
-      person through their candidacy cluster, their own candidacy's other
-      stages, or a scored match; a DDHQ record waits for a matcha run before
-      it gets a person.
+      person through their candidacy cluster or their own candidacy's other
+      stages, never a scored match; a DDHQ record waits for a matcha run
+      before it gets a person.
 
       Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
       ts_candidate_code) are scalar only when the person group carries

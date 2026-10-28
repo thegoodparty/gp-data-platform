@@ -3543,7 +3543,10 @@ models:
       DDHQ candidate, in one standardized schema for Splink. DDHQ rows are
       candidacy-stage grain (candidate_id || '_' || ddhq_race_id, the
       candidacy-stage prematch key), because DDHQ reuses one candidate_id
-      across same-named people; they carry name, state and party only. Voter
+      across same-named people. Their name fields are nulled so they score
+      no pairs: with only name, state and party they chain same-named people
+      into clusters holding two BR people, which the cannot-link rule then
+      dissolves. They join a person through the E5 and E8 links alone. Voter
       records are out of scope.
 
       Every record keeps its row because every record needs a person id.
