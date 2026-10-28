@@ -377,14 +377,19 @@ with
 
     -- Nameless rows, role inboxes ("<town> party registrar") and signup-form
     -- fixtures ("test user") keep their row, since every record needs a
-    -- person id, but lose their name fields so they pair with nothing.
+    -- person id, but lose their name fields so they pair with nothing. DDHQ
+    -- rows do too: with only name, state and party to score, they chain
+    -- same-named people in a state into one cluster, and the two-BR-people
+    -- rule then dissolves merges that were right. They join a person through
+    -- the native links alone.
     -- Computed outside `normalized`, where a select-list alias loses to the
     -- same-named raw column.
     matchable as (
         select
             *,
             coalesce(
-                first_name <> ''
+                source_name <> 'ddhq'
+                and first_name <> ''
                 and last_name <> ''
                 and last_name not like '%party registrar%'
                 and last_name <> 'user',

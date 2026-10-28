@@ -70,9 +70,16 @@ with
 
     -- E5: hub every member to the cluster's min record key. Hub-and-spoke is
     -- enough because clustering reaches the rest. Clusters spanning two BR
-    -- people are already absent from the members model.
+    -- people are already absent from the members model. The hub skips DDHQ
+    -- when the cluster has another member, so DDHQ only adds spokes and the
+    -- pairs among the other sources stay as they were.
     cluster_hub as (
-        select cluster_id, min(record_key) as hub_key
+        select
+            cluster_id,
+            coalesce(
+                min(case when record_key not like 'ddhq|%' then record_key end),
+                min(record_key)
+            ) as hub_key
         from {{ ref("int__civics_candidacy_cluster_members") }}
         group by cluster_id
     ),
