@@ -3465,8 +3465,11 @@ models:
       candidacy-stage cluster co-membership (hub to the cluster's min record
       key), E7 a contact merged away in HubSpot to its survivor (only when
       the merged-away contact has no E1/E3 link of its own, so the edge cannot
-      join two BR people), and E8 the stages of one DDHQ candidacy (hub to
-      the candidacy's min record key). Both endpoints are prematch records by construction.
+      join two BR people), E8 the stages of one DDHQ candidacy (hub to the
+      candidacy's min record key), and E9 DDHQ records that no other source's
+      person reached through E5 and that share candidate_id, state and office
+      (one person running again for one seat; candidate_id alone is reused
+      across same-named people). Both endpoints are prematch records by construction.
       matcha's person lane clusters these with the scored pairs as certain
       matches and publishes er_source.clustered_people; no closure happens in
       dbt.
@@ -3497,6 +3500,7 @@ models:
                   - e6_eo_bridge
                   - e7_hubspot_merge
                   - e8_ddhq_candidacy
+                  - e9_ddhq_seat
 
   - name: int__civics_internal_persons
     description: >

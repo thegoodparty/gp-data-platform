@@ -3,8 +3,9 @@
 -- person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
 -- ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
 -- candidacy-stage cluster co-membership (hub to the cluster's min record key),
--- E7 a HubSpot merge (merged-away contact->its survivor), and E8 the stages of
--- one DDHQ candidacy (hub to the candidacy's min record key). matcha clusters
+-- E7 a HubSpot merge (merged-away contact->its survivor), E8 the stages of one
+-- DDHQ candidacy (hub to the candidacy's min record key), and E9 unattached
+-- DDHQ records for one seat (same candidate_id, state and office). matcha clusters
 -- these with the scored pairs as certain matches; no closure happens in dbt.
 -- Both endpoints must be prematch records, so the universe matcha clusters
 -- over and the one the mint reads are the same set.
@@ -147,6 +148,51 @@ with
         where s.record_key <> h.hub_key
     ),
 
+    -- E9: DDHQ reuses a candidate_id across same-named people, but keeps it for
+    -- one person running again for one seat, so candidate_id + state + office
+    -- names a person where candidate_id alone does not. Only records no other
+    -- source's person reached through E5: a link between two attached records
+    -- could put two BR people in one identity, which matcha dissolves to
+    -- singletons, taking their correct links with it.
+    ddhq_attached as (
+        select distinct m.record_key
+        from {{ ref("int__civics_candidacy_cluster_members") }} as m
+        inner join
+            {{ ref("int__civics_candidacy_cluster_members") }} as other
+            on other.cluster_id = m.cluster_id
+            and other.record_key not like 'ddhq|%'
+        where m.record_key like 'ddhq|%'
+    ),
+
+    ddhq_seats as (
+        select distinct
+            'ddhq|' || s.source_candidate_id || '_' || s.source_race_id as record_key,
+            s.source_candidate_id,
+            s.state_postal_code,
+            lower(trim(s.official_office_name)) as office
+        from {{ ref("int__civics_candidacy_stage_ddhq") }} as s
+        left anti join
+            ddhq_attached as a
+            on a.record_key
+            = 'ddhq|' || s.source_candidate_id || '_' || s.source_race_id
+        where s.official_office_name is not null and s.state_postal_code is not null
+    ),
+
+    ddhq_seat_hub as (
+        select
+            source_candidate_id, state_postal_code, office, min(record_key) as hub_key
+        from ddhq_seats
+        group by 1, 2, 3
+    ),
+
+    e9 as (
+        select s.record_key as rk_a, h.hub_key as rk_b
+        from ddhq_seats as s
+        inner join
+            ddhq_seat_hub as h using (source_candidate_id, state_postal_code, office)
+        where s.record_key <> h.hub_key
+    ),
+
     all_pairs as (
         select rk_a, rk_b, 'e1_hubspot_user' as link_type
         from e1
@@ -168,6 +214,9 @@ with
         union all
         select rk_a, rk_b, 'e8_ddhq_candidacy'
         from e8
+        union all
+        select rk_a, rk_b, 'e9_ddhq_seat'
+        from e9
     )
 
 select distinct
