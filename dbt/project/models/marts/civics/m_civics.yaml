@@ -1128,8 +1128,10 @@ models:
           ts_source_candidate_id and gp_api_campaign_id -> user) for FOJ rows,
           and from the HubSpot contact for archive rows. Deterministic min
           when a row's sources reach more than one person (a warn test tracks
-          that). NULL for DDHQ-only rows, since DDHQ carries no person record,
-          and for <=2025 vendor rows outside the person universe.
+          that). A 2026+ row with no other person falls back to the DDHQ
+          record's own person (ddhq_candidate_id || '_' || ddhq_race_id), which
+          exists once a matcha run has clustered it. NULL for <=2025 DDHQ-only
+          rows and for <=2025 vendor rows outside the person universe.
         data_tests:
           - relationships:
               arguments:
