@@ -1,16 +1,16 @@
-{% set families = {
-    "age": [
+{#- Age has two band sets that never share an audience, so it gets its own rule
+    below. The newer set adds an unknown option; the older one had none. -#}
+{% set age_bands = {
+    "old": ["age_18_25", "age_25_35", "age_35_50", "age_50_plus"],
+    "new": [
         "age_18_24",
-        "age_18_25",
         "age_25_34",
-        "age_25_35",
         "age_35_49",
-        "age_35_50",
         "age_50_64",
-        "age_50_plus",
         "age_65_plus",
-        "age_unknown",
     ],
+} %}
+{% set families = {
     "gender": ["gender_male", "gender_female", "gender_unknown"],
     "homeowner": [
         "homeowner_yes",
@@ -74,6 +74,12 @@ with
                     cast(coalesce({{ col }}, false) as int){{ " + " if not loop.last }}
                 {%- endfor %} as {{ family }}_ticked,
             {%- endfor %}
+            {%- for band_set, cols in age_bands.items() %}
+                {% for col in cols -%}
+                    cast(coalesce({{ col }}, false) as int){{ " + " if not loop.last }}
+                {%- endfor %} as age_{{ band_set }}_ticked,
+            {%- endfor %}
+            cast(coalesce(age_unknown, false) as int) as age_unknown_ticked,
             coalesce(
                 size(from_json(income_ranges, 'array<string>')), 0
             ) as income_ticked,
@@ -87,9 +93,17 @@ with
         select
             * except (
                 {%- for family in families %}{{ family }}_ticked, {% endfor -%}
+                age_old_ticked,
+                age_new_ticked,
+                age_unknown_ticked,
                 income_ticked,
                 language_ticked
             ),
+            case
+                when age_new_ticked > 0
+                then age_new_ticked + age_unknown_ticked between 1 and 5
+                else age_old_ticked between 1 and 3
+            end as has_age_filter,
             {%- for family, cols in families.items() %}
                 {{ family }}_ticked
                 between 1 and {{ cols | length - 1 }} as has_{{ family }}_filter,
@@ -102,7 +116,8 @@ with
 
 select
     *,
-    {%- for family in families %} cast(has_{{ family }}_filter as int) + {%- endfor %}
+    cast(has_age_filter as int)
+    + {%- for family in families %} cast(has_{{ family }}_filter as int) + {%- endfor %}
     cast(has_income_filter as int)
     + cast(has_language_filter as int) as demographic_dimension_count
 from flagged
