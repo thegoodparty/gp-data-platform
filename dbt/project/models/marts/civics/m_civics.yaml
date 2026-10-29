@@ -1948,12 +1948,6 @@ models:
       source_systems is join-based: 'ballotready' is always present;
       'techspeed' is added when has_direct_ts_term_match = true.
 
-      DDHQ: a term that covers a 2026+ DDHQ win of its position
-      (int__civics_elected_official_ddhq_terms) carries the win's
-      ddhq_term_id and elected_date and lists 'ddhq' in source_systems. Wins
-      BR has no term for are not added, so every term stays keyed on its BR
-      id.
-
       gp-api attachment: each BR term that the EO Splink bridge
       attached to a gp-api elected_office record exposes
       `gp_api_elected_office_id`, `gp_api_user_id`, `gp_api_campaign_id`,
@@ -2211,8 +2205,7 @@ models:
         description: |
           Array of source systems contributing to this row, join-based per the
           candidacy mart convention. Always contains 'ballotready'; contains
-          'techspeed' when has_direct_ts_term_match = true, and 'ddhq' when
-          the term covers a DDHQ win (ddhq_term_id is set).
+          'techspeed' when has_direct_ts_term_match = true.
 
           Note: 'techspeed' membership means a TS ts_officeholder_id matched
           this term — NOT that trusted TS enrichment was applied. For
@@ -2287,23 +2280,6 @@ models:
         data_tests:
           - not_null
 
-
-      - name: ddhq_term_id
-        description: |
-          Id of the 2026+ DDHQ win this BR term covers: same position, same
-          person or surname, starting within 60 days before to 400 days after
-          the election. A salted hash of the win's DDHQ candidate and race, so
-          the DDHQ result stays traceable from the term. NULL when no DDHQ win
-          maps to the term.
-        data_tests:
-          - unique:
-              config:
-                where: "ddhq_term_id is not null"
-          - is_uuid:
-              config:
-                where: "ddhq_term_id is not null"
-      - name: elected_date
-        description: Date of the DDHQ election the term covers. NULL when ddhq_term_id is.
     tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -2335,7 +2311,7 @@ models:
       # source_systems values are limited to known sources (array-aware row-level test)
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api', 'ddhq'))) = 0"
+            expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 0"
           name: term_mart_source_systems_known_values
           config:
             severity: error
