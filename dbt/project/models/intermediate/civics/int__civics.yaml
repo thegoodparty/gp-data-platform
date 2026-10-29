@@ -1159,11 +1159,7 @@ models:
           - not_null
 
       - name: gp_election_stage_id
-        description: >
-          Election stage ID. The candidacy ER crosswalk's id when the row's
-          candidacy matched; else the BR race's id when election-stage ER
-          clustered this DDHQ race with exactly one BR race; else a self-mint
-          from ddhq_race_id.
+        description: Election stage ID (one per DDHQ race)
         data_tests:
           - not_null
 
@@ -2335,11 +2331,9 @@ models:
       Grain: One row per source race record (election stage).
 
       Sources: int__civics_election_stage_ballotready (BR, joined to BR
-      position staging for state), int__civics_candidacy_stage_ddhq (DDHQ,
-      aggregated to one row per race and stage; source_id is
-      generate_ddhq_election_stage_key, not gp_election_stage_id, because the
-      DDHQ feeder adopts this ER's mint and keying on the id would move the
-      key every run), int__civics_election_stage_techspeed (TS; state
+      position staging for state), int__civics_election_stage_ddhq (DDHQ;
+      ddhq_race_id can repeat across stages, so source_id uses
+      gp_election_stage_id), int__civics_election_stage_techspeed (TS; state
       extracted from race_name's `STATE ` prefix).
 
       ballotready_position_id is NULL on the DDHQ and TS branches in V1.
@@ -2376,9 +2370,9 @@ models:
 
       - name: source_id
         description: >
-          Source-specific identifier. BR: br_race_id; DDHQ: ddhq_race_id ||
-          '_' || lowercased stage (generate_ddhq_election_stage_key; see
-          model docstring); TS: gp_election_stage_id.
+          Source-specific identifier. BR: br_race_id; DDHQ:
+          gp_election_stage_id (not ddhq_race_id; see model docstring);
+          TS: gp_election_stage_id.
         data_tests:
           - not_null
 
@@ -3439,8 +3433,7 @@ models:
       Candidacy-stage cluster members as person record keys
       (int__er_prematch_people.unique_id): BallotReady via the candidacy's
       person, TechSpeed at candidate-code grain, gp_api via the campaign's
-      user, DDHQ at its own candidacy-stage grain. One row per (cluster_id,
-      record_key). A cluster spanning two
+      user. One row per (cluster_id, record_key). A cluster spanning two
       BallotReady people contributes nothing, so neither the person links nor
       the DDHQ person lookup can assert one of two contradictory identities.
     data_tests:
@@ -3463,13 +3456,9 @@ models:
       are the same person: E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy, E4
       ts_officeholder->BR, E6 the gp_api->BR elected-official bridge, E5
       candidacy-stage cluster co-membership (hub to the cluster's min record
-      key), E7 a contact merged away in HubSpot to its survivor (only when
+      key), and E7 a contact merged away in HubSpot to its survivor (only when
       the merged-away contact has no E1/E3 link of its own, so the edge cannot
-      join two BR people), E8 the stages of one DDHQ candidacy (hub to the
-      candidacy's min record key), and E9 DDHQ records that no other source's
-      person reached through E5 and that share candidate_id, state and office
-      (one person running again for one seat; candidate_id alone is reused
-      across same-named people). Both endpoints are prematch records by construction.
+      join two BR people). Both endpoints are prematch records by construction.
       matcha's person lane clusters these with the scored pairs as certain
       matches and publishes er_source.clustered_people; no closure happens in
       dbt.
@@ -3499,8 +3488,6 @@ models:
                   - e5_candidacy_cluster
                   - e6_eo_bridge
                   - e7_hubspot_merge
-                  - e8_ddhq_candidacy
-                  - e9_ddhq_seat
 
   - name: int__civics_internal_persons
     description: >
@@ -3549,14 +3536,9 @@ models:
       Entity resolution prematch for the person entity, and the person record
       universe: every HubSpot contact, gp_api user, BallotReady person (any
       candidacy or term), TechSpeed candidate (person grain via the
-      stage-stripped candidate code), non-reused TechSpeed officeholder and
-      DDHQ candidate, in one standardized schema for Splink. DDHQ rows are
-      candidacy-stage grain (candidate_id || '_' || ddhq_race_id, the
-      candidacy-stage prematch key), because DDHQ reuses one candidate_id
-      across same-named people. Their name fields are nulled so they score
-      no pairs: with only name, state and party they chain same-named people
-      into clusters holding two BR people, which the cannot-link rule then
-      dissolves. They join a person through the E5 and E8 links alone. Voter
+      stage-stripped candidate code) and non-reused TechSpeed officeholder, in
+      one standardized schema for Splink. DDHQ has no person id or contact
+      fields and reaches a person only through its candidacy cluster; voter
       records are out of scope.
 
       Every record keeps its row because every record needs a person id.
@@ -3606,7 +3588,6 @@ models:
               arguments:
                 values:
                   - ballotready
-                  - ddhq
                   - gp_api
                   - hubspot
                   - techspeed
@@ -3660,8 +3641,7 @@ models:
       Canonical gp_person_id per person record. One row per
       int__er_prematch_people unique_id. The person group is the cluster
       matcha published in er_source.clustered_people; a record the vintage
-      has not seen stands alone under its own key, except a DDHQ record,
-      which has no row until a run clusters it. The id is minted from the
+      has not seen stands alone under its own key. The id is minted from the
       group member earliest by first_seen_at (ties: source_name, source_id)
       via generate_salted_uuid([source_name, source_id], salt=person), so
       first-in wins uniformly and the id survives a later record joining the
@@ -3762,36 +3742,6 @@ models:
           - not_null
     # Stability (every cluster -> one minted id) is checked by the singular test
     # assert_minted_ids_one_per_cluster.
-
-  - name: int__civics_ddhq_br_position_match
-    description: >
-      DDHQ race to BallotReady position by office identity. One row per 2026+
-      DDHQ election-stage key (generate_ddhq_election_stage_key) that exactly
-      one BR position in its state matches on office_match_keys: locality
-      tokens, office category and seat, where numbered seats must be equal and
-      an unnumbered or at-large race only matches an unnumbered or at-large
-      position. Keys matching two or more positions are left out. Read by
-      int__er_prematch_election_stages as a position anchor for election-stage
-      ER and by int__civics_election_stage_ddhq, so a DDHQ race BR has no race
-      for still resolves its office and ICP.
-    columns:
-      - name: ddhq_election_stage_key
-        description: Primary key. ddhq_race_id || '_' || lowercased stage.
-        data_tests:
-          - unique
-          - not_null
-      - name: ddhq_office_name
-        description: DDHQ official_office_name the key was built from.
-      - name: br_position_id
-        description: BR position database_id the office matches.
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_airbyte_source__ballotready_api_position')
-                field: database_id
-      - name: br_position_name
-        description: BR position name, for review.
 
   - name: int__civics_minted_election_stage_ids
     description: >

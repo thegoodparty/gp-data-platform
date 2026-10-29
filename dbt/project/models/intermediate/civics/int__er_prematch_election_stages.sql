@@ -41,36 +41,18 @@ with
         where bp.state is not null
     ),
 
-    -- Keyed on the DDHQ race and stage, not gp_election_stage_id: the DDHQ
-    -- feeder adopts the election-stage mint this ER produces, so keying on
-    -- the id would change the key every run. Aggregated from the candidacy
-    -- stages (office fields are constant per race), 2026+ like the DDHQ
-    -- election_stage model.
-    ddhq_races as (
-        select
-            {{ generate_ddhq_election_stage_key("ddhq_race_id", "election_stage") }}
-            as source_id,
-            any_value(state_postal_code) as state,
-            any_value(race_name) as race_name,
-            any_value(candidate_office) as candidate_office,
-            any_value(office_level) as office_level,
-            any_value(office_type) as office_type,
-            any_value(district) as district,
-            any_value(election_date) as election_date,
-            any_value(election_stage) as election_stage
-        from {{ ref("int__civics_candidacy_stage_ddhq") }}
-        where election_date >= '2026-01-01' and state_postal_code is not null
-        group by 1
-    ),
-
     ddhq_stages as (
         select
             'ddhq' as source_name,
-            source_id,
-            -- The BR position its office matches (int__civics_ddhq_br_position_match),
-            -- an anchor the matcher pairs on when race-level evidence is missing.
-            cast(pm.br_position_id as bigint) as ballotready_position_id,
-            state,
+            -- gp_election_stage_id is 1:1 with rows in the DDHQ int model
+            -- (it's the dedupe key). A given ddhq_race_id can map to >1 stage
+            -- when DDHQ surfaces e.g. primary + general for the same race id,
+            -- so we cannot use ddhq_race_id as the source PK without losing
+            -- uniqueness in this view.
+            cast(gp_election_stage_id as string) as source_id,
+            -- V1: leave NULL; DDHQ has no native position FK.
+            cast(null as bigint) as ballotready_position_id,
+            state_postal_code as state,
             {{ strip_office_name_state_prefix("race_name") }} as official_office_name,
             candidate_office,
             office_level,
@@ -80,25 +62,16 @@ with
                 try_cast(regexp_extract(district, '([0-9]+)') as int),
                 try_cast(regexp_extract(race_name, ' ([0-9]+)$') as int)
             ) as district_identifier,
-            cast(null as string) as seat_name,
+            seat_name,
             cast(null as int) as br_race_id_int,
             election_date,
-            election_stage,
-            election_stage like '%special%' as is_special,
-            election_stage in (
-                'primary', 'primary runoff', 'primary special', 'primary special runoff'
-            ) as is_primary,
-            election_stage in (
-                'general runoff',
-                'primary runoff',
-                'general special runoff',
-                'primary special runoff'
-            ) as is_runoff,
+            stage_type as election_stage,
+            stage_type like '%special%' as is_special,
+            is_primary,
+            is_runoff,
             cast(null as int) as number_of_seats
-        from ddhq_races
-        left join
-            {{ ref("int__civics_ddhq_br_position_match") }} as pm
-            on pm.ddhq_election_stage_key = ddhq_races.source_id
+        from {{ ref("int__civics_election_stage_ddhq") }}
+        where state_postal_code is not null
     ),
 
     techspeed_stages as (

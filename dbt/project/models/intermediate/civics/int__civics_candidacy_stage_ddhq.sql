@@ -112,29 +112,10 @@ with
         where ddhq_candidate_id is not null and ddhq_race_id is not null
     ),
 
-    -- Race-level ER: a DDHQ race that election-stage ER clustered with
-    -- exactly one BallotReady race adopts that race's published ids, so a race
-    -- none of whose candidates matched a BR candidacy still merges with its BR
-    -- race. Same sole-BR rule the BR feeder applies to itself. Inner joined to
-    -- the BR feeder so only a published BR stage is adopted.
-    race_mint as (
-        select
-            m.source_id as ddhq_election_stage_key,
-            br.gp_election_stage_id,
-            br.gp_election_id
-        from {{ ref("int__civics_minted_election_stage_ids") }} as m
-        inner join
-            {{ ref("int__civics_election_stage_ballotready") }} as br
-            on br.gp_election_stage_id = m.minted_gp_election_stage_id
-        where m.source_name = 'ddhq' and m.cluster_br_members = 1
-    ),
-
-    -- gp_candidate_id comes from the row's candidacy cluster: the BallotReady
-    -- co-member's person first, else another non-DDHQ member's. Clusters
-    -- spanning two BR people have no members in the lookup, so those rows
-    -- self-mint like unclustered ones. The DDHQ record's own person is
-    -- skipped, so a DDHQ-only cluster keeps its self-minted gp_candidate_id;
-    -- candidacy_stage carries that person as gp_person_id instead.
+    -- DDHQ carries no person record, so a row reaches a person only through
+    -- its candidacy cluster: the BallotReady co-member's person first, else
+    -- another member's. Clusters spanning two BR people have no members in
+    -- the lookup, so those rows self-mint like unclustered ones.
     cluster_person as (
         select cc.source_id, p.gp_person_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cc
@@ -143,7 +124,7 @@ with
         inner join
             {{ ref("int__civics_person_canonical_ids") }} as p
             on p.record_key = m.record_key
-        where cc.source_name = 'ddhq' and m.record_key not like 'ddhq|%'
+        where cc.source_name = 'ddhq'
         qualify
             row_number() over (
                 partition by cc.source_id
@@ -201,11 +182,8 @@ with
                 )
             ) as gp_candidacy_id,
 
-            -- Candidacy ER first (person-level evidence), then race-level ER,
-            -- then self-mint.
             coalesce(
                 xw.canonical_gp_election_stage_id,
-                rm.gp_election_stage_id,
                 {{
                     generate_salted_uuid(
                         fields=["'ddhq'", "cast(s.ddhq_race_id as string)"],
@@ -216,7 +194,6 @@ with
 
             coalesce(
                 xw.canonical_gp_election_id,
-                rm.gp_election_id,
                 {{
                     generate_gp_election_id(
                         "elec_lookup", is_special_expr="elec_lookup.is_special"
@@ -315,11 +292,6 @@ with
             canonical_ids as xw
             on cast(s.candidate_id as bigint) = xw.ddhq_candidate_id
             and cast(s.ddhq_race_id as bigint) = xw.ddhq_race_id
-        left join
-            race_mint as rm
-            on rm.ddhq_election_stage_key
-            =
-            {{ generate_ddhq_election_stage_key("s.ddhq_race_id", "s.election_stage") }}
         left join
             cluster_person as p
             on cast(s.candidate_id as string) || '_' || cast(s.ddhq_race_id as string)

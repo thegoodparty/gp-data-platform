@@ -1,13 +1,11 @@
 -- Canonical person mart. One row per gp_person_id. Identifier columns are
 -- scalar only when the group carries exactly one value for that source; the
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
--- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder > DDHQ for
--- contact fields, BR > others for civic fields (email adds a group-wide
--- fallback). DDHQ records are candidacy-stage grain and carry only name,
--- state and party, so they sit last; they set no role flag yet (a DDHQ-only
--- person stays out of the public person feed until that is decided). Role
--- flags derive from the member records, not from a stored status, so they
--- stay re-derivable on every run.
+-- gp_api > HubSpot > BR > BR officeholder > TS > TS officeholder for contact
+-- fields, BR > others for civic fields (email adds a group-wide fallback).
+-- DDHQ carries no person record and reaches a person only through its
+-- candidacy cluster. Role flags derive from the member records, not from a
+-- stored status, so they stay re-derivable on every run.
 with
     records as (
         select
@@ -241,31 +239,6 @@ with
             = 1
     ),
 
-    -- DDHQ attributes: the earliest DDHQ stage record represents the group.
-    ddhq_attrs as (
-        select
-            r.gp_person_id,
-            nullif(trim(d.candidate_first_name), '') as first_name,
-            nullif(trim(d.candidate_last_name), '') as last_name,
-            nullif(trim(d.state_postal_code), '') as state,
-            d.party_affiliation as party
-        from records as r
-        inner join
-            {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }} as d
-            on cast(d.candidate_id as string) || '_' || cast(d.ddhq_race_id as string)
-            = r.source_id
-        where r.source_name = 'ddhq'
-        qualify
-            row_number() over (
-                partition by r.gp_person_id
-                order by
-                    r.first_seen_at asc nulls last,
-                    r.source_id,
-                    d._airbyte_extracted_at desc
-            )
-            = 1
-    ),
-
     -- The per-source reps each read one member record, so an address on a
     -- sibling record is dropped (~8.9k people). Last in the coalesce.
     group_email_candidates as (
@@ -410,15 +383,14 @@ select
     ids.gp_api_user_ids,
 
     -- Contact attributes: gp_api > HubSpot > BR > BR officeholder > TS > TS
-    -- officeholder > DDHQ.
+    -- officeholder.
     coalesce(
         ga.first_name,
         ha.first_name,
         ba.first_name,
         boa.first_name,
         ta.first_name,
-        toa.first_name,
-        da.first_name
+        toa.first_name
     ) as first_name,
     coalesce(
         ga.last_name,
@@ -426,8 +398,7 @@ select
         ba.last_name,
         boa.last_name,
         ta.last_name,
-        toa.last_name,
-        da.last_name
+        toa.last_name
     ) as last_name,
     coalesce(
         ga.email, ha.email, ba.email, boa.email, ta.email, toa.email, ge.email
@@ -435,8 +406,8 @@ select
     coalesce(ga.phone, ha.phone, ba.phone, boa.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
-    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state, da.state) as state,
-    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party, da.party) as party,
+    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state) as state,
+    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party) as party,
 
     pb.first_seen_at,
     pb.group_size,
@@ -456,5 +427,4 @@ left join br_attrs as ba using (gp_person_id)
 left join br_officeholder_attrs as boa using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
 left join ts_officeholder_attrs as toa using (gp_person_id)
-left join ddhq_attrs as da using (gp_person_id)
 left join group_emails as ge using (gp_person_id)
