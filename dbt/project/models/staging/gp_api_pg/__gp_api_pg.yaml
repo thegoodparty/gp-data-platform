@@ -1,0 +1,29 @@
+version: 2
+
+# gp-api Postgres read live through Lakehouse Federation (foreign catalogs
+# managed in gp-terraform-dataplatform). Every query runs against Postgres, so
+# read these only from views that filter by organization.
+sources:
+  - name: gp_api_pg
+    database: gp_api_pg
+    schema: public
+    description: gp-api prod Postgres (gpdb), read live and read-only.
+    tables:
+      - name: contact_upload
+        description: One row per contact CSV a Serve organization uploaded.
+      - name: contact_upload_match
+        description: >
+          One row per CSV row of a contact upload, with the person it matched
+          (person_id) once matching has decided.
+
+  - name: gp_api_pg_dev
+    database: gp_api_pg_dev
+    schema: public
+    description: gp-api dev Postgres (gpdb), read live and read-only.
+    tables:
+      - name: contact_upload
+        description: One row per contact CSV a Serve organization uploaded.
+      - name: contact_upload_match
+        description: >
+          One row per CSV row of a contact upload, with the person it matched
+          (person_id) once matching has decided.

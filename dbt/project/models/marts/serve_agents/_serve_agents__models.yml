@@ -45,3 +45,66 @@ models:
           voter_file for voter rows; for consumer-only rows, the area whose
           voters supplied the district columns (zip_plus_4, census_block,
           census_block_group, census_tract), or null when none matched.
+
+  - name: serve_agent_contact_overlay
+    description: >
+      The people each Serve organization has uploaded as contacts, from
+      gp_api_contact_overlay, keyed by voter_key so an agent can join them to
+      serve_agent_constituents. No names, emails or phones.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, voter_key]
+    columns:
+      - name: organization_slug
+        description: The Serve organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: voter_key
+        description: >
+          serve_agent_constituents' voter_key for a person in
+          gp_api_constituents (sha2 of LALVOTERID, else of 'commercial:' and
+          the commercial individual_id). For a new person, the sha2 of
+          'upload:' followed by the gp-api person id, which no constituent key
+          can equal.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when the person exists only through uploads; they have no row in
+          serve_agent_constituents.
+      - name: on_uploaded_list
+        description: Always true; present so the flag reads clearly where joined.
+      - name: has_email
+        description: True when an upload supplied an email for the person.
+
+  - name: serve_agent_contact_overlay_dev
+    description: >
+      serve_agent_contact_overlay over gp_api_contact_overlay_dev (gp-api dev
+      Postgres).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, voter_key]
+    columns:
+      - name: organization_slug
+        description: The Serve organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: voter_key
+        description: >
+          serve_agent_constituents' voter_key for a person in
+          gp_api_constituents (sha2 of LALVOTERID, else of 'commercial:' and
+          the commercial individual_id). For a new person, the sha2 of
+          'upload:' followed by the gp-api person id, which no constituent key
+          can equal.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when the person exists only through uploads; they have no row in
+          serve_agent_constituents.
+      - name: on_uploaded_list
+        description: Always true; present so the flag reads clearly where joined.
+      - name: has_email
+        description: True when an upload supplied an email for the person.
