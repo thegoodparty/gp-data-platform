@@ -73,13 +73,8 @@ with
             t.term_start_date,
             t.term_end_date
         from {{ ref("elected_official_terms") }} as t
-        -- BR terms only: a DDHQ win has no term dates yet, and counting it here
-        -- would be a separate decision about incumbency.
         where
-            t.br_office_holder_id is not null
-            and t.first_name is not null
-            and t.last_name is not null
-            and t.state is not null
+            t.first_name is not null and t.last_name is not null and t.state is not null
     ),
 
     matched as (

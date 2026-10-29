@@ -98,6 +98,3 @@ left join
     on terms.br_office_holder_id = office_holder_source.br_office_holder_id
 left join positions on terms.br_position_id = positions.br_database_id
 left join next_elections on terms.br_position_id = next_elections.br_position_id
--- BR terms only. A DDHQ-only win has no BR term yet, and whether election-api
--- shows one is a separate decision.
-where terms.br_office_holder_id is not null

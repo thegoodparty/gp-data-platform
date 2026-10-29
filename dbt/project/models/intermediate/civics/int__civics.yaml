@@ -3803,7 +3803,9 @@ models:
       that already covers the win (same position, same person or surname,
       starting within 60 days before to 400 days after the election), if any.
       gp_person_id is null until a matcha person run clusters the DDHQ record.
-      Read by elected_official_terms and elected_officials.
+      Read by elected_official_terms, which stamps covering BR terms with
+      ddhq_term_id; wins with no covering BR term are kept here but not
+      published.
     columns:
       - name: ddhq_record_id
         description: Primary key. candidate_id || '_' || ddhq_race_id of the winning stage.
@@ -3811,7 +3813,7 @@ models:
           - unique
           - not_null
       - name: ddhq_term_id
-        description: Salted hash of ('ddhq_winner', ddhq_record_id). The term id of a DDHQ row.
+        description: Salted hash of ('ddhq_winner', ddhq_record_id). The id elected_official_terms stamps on the covering BR term.
         data_tests:
           - unique
           - not_null

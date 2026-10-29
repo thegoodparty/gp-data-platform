@@ -1,5 +1,6 @@
--- DDHQ election winners as elected-official terms, for wins BallotReady has a
--- seat for but no term. Grain: one row per 2026+ DDHQ candidacy that won its
+-- DDHQ election wins matched to a BallotReady position and, where BR has
+-- published it, the BR term the win began. Grain: one row per 2026+ DDHQ candidacy
+-- that won its
 -- general or runoff (its latest winning stage), keyed on the DDHQ candidacy-stage
 -- record of that win.
 --
@@ -7,14 +8,12 @@
 -- failing that, its office match. The position carries the office fields and ICP
 -- flags. A win without one has no comparable office and waits for a later pass.
 --
--- br_office_holder_id marks a BR term that already covers the win: same position,
--- same person or surname, starting within 60 days before to 400 days after the
--- election. elected_official_terms adds only uncovered wins and stamps the covering
--- BR term with this row's ddhq_term_id. BR rarely publishes these terms (about 1%
--- of DDHQ-only winners), so the DDHQ id usually stays the term's id.
---
--- gp_person_id is null until a matcha person run clusters the DDHQ record; the
--- marts carry a win only once it has a person.
+-- br_office_holder_id is the BR term that covers the win: same position, same
+-- person or surname, starting within 60 days before to 400 days after the
+-- election. elected_official_terms stamps that term with the win's ddhq_term_id;
+-- a win with no covering BR term is kept here but not published, so every term
+-- stays keyed on its BR id. gp_person_id is null until a matcha person run
+-- clusters the DDHQ record; the surname arm covers the match until then.
 with
     winning_stages as (
         select
