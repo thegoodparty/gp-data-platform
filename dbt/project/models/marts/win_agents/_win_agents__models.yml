@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: win_agent_contact_overlay
+    description: >
+      The people each organization has uploaded as contacts, from
+      gp_api_contact_overlay, keyed by voter_key so the Win agent can join them
+      to win_agent_voters. No names, emails or phones.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, voter_key]
+    columns:
+      - name: organization_slug
+        description: The organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: voter_key
+        description: >
+          win_agent_voters' voter_key for a person in gp_api_voters (sha2 of
+          LALVOTERID). For a new person, the sha2 of 'upload:' followed by the
+          gp-api person id, which no voter key can equal.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when the person exists only through uploads; they have no row in
+          win_agent_voters.
+      - name: on_uploaded_list
+        description: Always true; present so the flag reads clearly where joined.
+      - name: has_email
+        description: True when an upload supplied an email for the person.
+
+  - name: win_agent_contact_overlay_dev
+    description: >
+      win_agent_contact_overlay over gp_api_contact_overlay_dev (gp-api dev
+      Postgres).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, voter_key]
+    columns:
+      - name: organization_slug
+        description: The organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: voter_key
+        description: >
+          win_agent_voters' voter_key for a person in gp_api_voters (sha2 of
+          LALVOTERID). For a new person, the sha2 of 'upload:' followed by the
+          gp-api person id, which no voter key can equal.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when the person exists only through uploads; they have no row in
+          win_agent_voters.
+      - name: on_uploaded_list
+        description: Always true; present so the flag reads clearly where joined.
+      - name: has_email
+        description: True when an upload supplied an email for the person.
