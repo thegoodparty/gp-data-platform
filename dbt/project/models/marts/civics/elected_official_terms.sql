@@ -9,6 +9,11 @@
 -- ICP flags pass through from int__civics_elected_official_ballotready, where Win ICP /
 -- Win Supersize ICP are gated by the candidacy's election_day (NULL election_day yields
 -- NULL flag); is_serve_icp has no date gate. source_systems is join-based.
+--
+-- DDHQ: a BR term that covers a 2026+ DDHQ win of its position
+-- (int__civics_elected_official_ddhq_terms) carries the win's ddhq_term_id and
+-- elected_date, and lists 'ddhq' in source_systems. Wins BR has no term for are
+-- not added: every term here stays keyed on its BR id.
 with
     br_terms as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
 
@@ -36,6 +41,20 @@ with
     person_ids as (
         select record_key, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    ddhq_wins as (select * from {{ ref("int__civics_elected_official_ddhq_terms") }}),
+
+    -- The DDHQ win a BR term covers, if any (one per BR term: the earliest win).
+    ddhq_covered as (
+        select br_office_holder_id, ddhq_term_id, elected_date
+        from ddhq_wins
+        where br_office_holder_id is not null
+        qualify
+            row_number() over (
+                partition by br_office_holder_id order by elected_date, ddhq_term_id
+            )
+            = 1
     )
 
 select
@@ -135,19 +154,23 @@ select
     -- DDHQ winner. Feeds the election_api support score.
     dv.ddhq_winning_votes,
 
-    -- source_systems: join-based per the candidacy mart convention. BR is always
-    -- present (this mart is BR-spine); TS is added when the term has a
-    -- direct ts_officeholder_id match; gp_api when the bridge attached a record.
+    -- source_systems: join-based per the candidacy mart convention. BR is
+    -- always present (this mart is BR-spine); TS is added when the term
+    -- has a direct ts_officeholder_id match; gp_api when the bridge
+    -- attached a record; ddhq when the term covers a DDHQ win.
     array_compact(
         array(
             'ballotready',
             case when ts.ts_officeholder_id is not null then 'techspeed' end,
-            case when gp.gp_api_elected_office_id is not null then 'gp_api' end
+            case when gp.gp_api_elected_office_id is not null then 'gp_api' end,
+            case when dc.ddhq_term_id is not null then 'ddhq' end
         )
     ) as source_systems,
 
     br.created_at,
-    br.updated_at
+    br.updated_at,
+    dc.ddhq_term_id,
+    dc.elected_date
 
 from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
@@ -158,3 +181,4 @@ left join
     on bp.record_key = 'ballotready|' || cast(br.br_candidate_id as string)
 left join
     person_ids as gpp on gpp.record_key = 'gp_api|' || cast(gp.gp_api_user_id as string)
+left join ddhq_covered as dc on br.br_office_holder_id = dc.br_office_holder_id
