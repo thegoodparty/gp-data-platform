@@ -143,20 +143,128 @@ with
     person_ids as (
         select record_key, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- gp_person_id: min over the person ids reached by br_candidate_id,
+    -- gp_api_user_id, and hubspot_contact_id (one person by construction; min
+    -- guards residual multi-source disagreement).
+    existing as (
+        select
+            merged.*,
+            least(bp.gp_person_id, gpp.gp_person_id, hp.gp_person_id) as gp_person_id
+        from merged
+        left join
+            person_ids as bp
+            on bp.record_key = 'ballotready|' || cast(merged.br_candidate_id as string)
+        left join
+            person_ids as gpp
+            on gpp.record_key = 'gp_api|' || cast(merged.gp_api_user_id as string)
+        left join
+            person_ids as hp
+            on hp.record_key = 'hubspot|' || cast(merged.hubspot_contact_id as string)
+    ),
+
+    -- DDHQ winners of a seat BR has no term for, whose person has no official
+    -- row yet: one row per person, from their latest such win. A person who
+    -- already has a row keeps it, and their DDHQ term attaches to it.
+    ddhq_officials as (
+        select
+            {{
+                generate_salted_uuid(
+                    fields=["'elected_official_ddhq'", "d.gp_person_id"]
+                )
+            }} as gp_elected_official_id, d.*
+        from {{ ref("int__civics_elected_official_ddhq_terms") }} as d
+        left anti join existing as e on e.gp_person_id = d.gp_person_id
+        where d.br_office_holder_id is null and d.gp_person_id is not null
+        qualify
+            row_number() over (
+                partition by d.gp_person_id
+                order by d.elected_date desc, d.ddhq_record_id
+            )
+            = 1
     )
 
--- gp_person_id: min over the person ids reached by br_candidate_id,
--- gp_api_user_id, and hubspot_contact_id (one person by construction; min
--- guards residual multi-source disagreement).
+    {%- set ddhq_cols = {
+        "gp_elected_official_id": "gp_elected_official_id",
+        "first_name": "first_name",
+        "last_name": "last_name",
+        "full_name": "full_name",
+        "candidate_office": "candidate_office",
+        "office_level": "office_level",
+        "office_type": "office_type",
+        "state": "state",
+        "created_at": "created_at",
+        "updated_at": "updated_at",
+        "party_affiliation": "party_affiliation",
+        "city": "city",
+        "district": "district",
+        "is_judicial": "is_judicial",
+        "selected_gp_elected_official_term_id": "ddhq_term_id",
+        "ts_incumbent_conflict": "false",
+        "source_systems": "array('ddhq')",
+        "gp_person_id": "gp_person_id",
+    } %}
+    {%- set out_cols = [
+        ("gp_elected_official_id", "string"),
+        ("br_candidate_id", "int"),
+        ("first_name", "string"),
+        ("last_name", "string"),
+        ("full_name", "string"),
+        ("candidate_office", "string"),
+        ("office_level", "string"),
+        ("office_type", "string"),
+        ("state", "string"),
+        ("created_at", "timestamp"),
+        ("updated_at", "timestamp"),
+        ("party_affiliation", "string"),
+        ("email", "string"),
+        ("city", "string"),
+        ("district", "string"),
+        ("is_judicial", "boolean"),
+        ("mailing_address_line_1", "string"),
+        ("mailing_city", "string"),
+        ("mailing_state", "string"),
+        ("mailing_zip", "string"),
+        ("tier", "int"),
+        ("phone", "string"),
+        ("middle_name", "string"),
+        ("suffix", "string"),
+        ("selected_gp_elected_official_term_id", "string"),
+        ("selected_br_office_holder_id", "int"),
+        ("office_phone", "string"),
+        ("central_phone", "string"),
+        ("term_start_date", "date"),
+        ("term_end_date", "date"),
+        ("website_url", "string"),
+        ("linkedin_url", "string"),
+        ("facebook_url", "string"),
+        ("twitter_url", "string"),
+        ("mailing_address_line_2", "string"),
+        ("selected_ts_officeholder_id", "string"),
+        ("selected_ts_position_id", "string"),
+        ("is_incumbent", "boolean"),
+        ("ts_incumbent_conflict", "boolean"),
+        ("gp_api_user_id", "bigint"),
+        ("selected_gp_api_elected_office_id", "string"),
+        ("selected_gp_api_campaign_id", "bigint"),
+        ("selected_gp_api_organization_slug", "string"),
+        ("gp_api_email", "string"),
+        ("gp_api_phone", "string"),
+        ("gp_api_party_affiliation", "string"),
+        ("hubspot_contact_id", "string"),
+        ("source_systems", "array<string>"),
+        ("gp_person_id", "string"),
+    ] %}
+
+select {% for col, _ in out_cols %} {{ col }}{{ "," if not loop.last }} {% endfor %}
+from existing
+union all
 select
-    merged.*, least(bp.gp_person_id, gpp.gp_person_id, hp.gp_person_id) as gp_person_id
-from merged
-left join
-    person_ids as bp
-    on bp.record_key = 'ballotready|' || cast(merged.br_candidate_id as string)
-left join
-    person_ids as gpp
-    on gpp.record_key = 'gp_api|' || cast(merged.gp_api_user_id as string)
-left join
-    person_ids as hp
-    on hp.record_key = 'hubspot|' || cast(merged.hubspot_contact_id as string)
+    {% for col, dtype in out_cols -%}
+        {%- if col in ddhq_cols -%}
+            cast({{ ddhq_cols[col] }} as {{ dtype }}) as {{ col }}
+        {%- else -%} cast(null as {{ dtype }}) as {{ col }}
+        {%- endif %} {{ "," if not loop.last }}
+    {% endfor %}
+from ddhq_officials
