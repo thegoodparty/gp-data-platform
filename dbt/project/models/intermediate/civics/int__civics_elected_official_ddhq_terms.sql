@@ -9,8 +9,9 @@
 -- flags. A win without one has no comparable office and waits for a later pass.
 --
 -- br_office_holder_id is the BR term that covers the win: same position, same
--- person or surname, starting within 60 days before to 400 days after the
--- election. elected_official_terms stamps that term with the win's ddhq_term_id;
+-- person, or same surname and a compatible first name (initial or nickname),
+-- starting within 60 days before to 400 days after the election.
+-- elected_official_terms stamps that term with the win's ddhq_term_id;
 -- a win with no covering BR term is kept here but not published, so every term
 -- stays keyed on its BR id. gp_person_id is null until a matcha person run
 -- clusters the DDHQ record; the surname arm covers the match until then.
@@ -88,6 +89,8 @@ with
                 then 'office'
             end as br_position_source,
             w.candidate_first_name as first_name,
+            {{ first_name_normalized("w.candidate_first_name") }}
+            as first_name_normalized,
             w.candidate_last_name as last_name,
             w.candidate_full_name as full_name,
             w.state_postal_code as state,
@@ -114,6 +117,7 @@ with
             t.br_position_id,
             t.term_start_date,
             lower(trim(t.last_name)) as last_name,
+            {{ first_name_normalized("t.first_name") }} as first_name,
             pid.gp_person_id
         from {{ ref("int__civics_elected_official_ballotready") }} as t
         left join
@@ -122,7 +126,21 @@ with
         where t.br_position_id is not null and t.term_start_date is not null
     ),
 
+    -- Nickname pairs in both directions (Bob/Robert, Libby/Elizabeth).
+    nicknames as (
+        select
+            {{ first_name_normalized("name1") }} as name_a,
+            {{ first_name_normalized("name2") }} as name_b
+        from {{ ref("nicknames") }}
+        union
+        select
+            {{ first_name_normalized("name2") }}, {{ first_name_normalized("name1") }}
+        from {{ ref("nicknames") }}
+    ),
+
     -- One covering BR term per win; the earliest start is the term the win began.
+    -- Without a shared person the surname must agree and the first names must
+    -- too, by initial or nickname: one family can hold one seat in turn.
     covered as (
         select wins.ddhq_record_id, b.br_office_holder_id
         from wins
@@ -131,9 +149,18 @@ with
             on b.br_position_id = wins.br_position_id
             and b.term_start_date
             between date_sub(wins.elected_date, 60) and date_add(wins.elected_date, 400)
-            and (
-                b.gp_person_id = wins.gp_person_id
-                or b.last_name = lower(trim(wins.last_name))
+        left join
+            nicknames as n
+            on n.name_a = wins.first_name_normalized
+            and n.name_b = b.first_name
+        where
+            b.gp_person_id = wins.gp_person_id
+            or (
+                b.last_name = lower(trim(wins.last_name))
+                and (
+                    left(b.first_name, 1) = left(wins.first_name_normalized, 1)
+                    or n.name_a is not null
+                )
             )
         qualify
             row_number() over (
