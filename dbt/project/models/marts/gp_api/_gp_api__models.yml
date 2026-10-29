@@ -543,3 +543,96 @@ models:
         data_type: boolean
         data_tests:
           - not_null
+
+  - name: gp_api_contact_overlay
+    description: >
+      One row per person an organization has uploaded as a contact, collapsing
+      every matched or new row of gp-api prod's contact_upload_match onto the
+      person it points at. A view, read live from Postgres through federation,
+      so gp-api sees an upload as soon as matching finishes. gp-api joins it to
+      gp_api_constituents (or gp_api_voters) filtered to one organization, and
+      uploaded contact values take precedence over L2's. Holds names, emails
+      and phones, so read access is limited to mart_gp_api_readers.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, id]
+    columns:
+      - name: organization_slug
+        description: The Serve organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: id
+        description: >
+          gp-api person id: the L2 id (gp_api_constituents.id) of a matched
+          person, or a uuid gp-api minted for a new person.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when no upload row points this id at an L2 person, so the
+          person exists only through uploads.
+      - name: first_name
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: last_name
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: email
+        description: >
+          The latest non-null uploaded value, by upload time then row. Lowercased
+          by gp-api.
+      - name: cell_phone
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: landline
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: address_line
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: city
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: zip
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: last_uploaded_at
+        description: When the latest upload naming this person was created.
+
+  - name: gp_api_contact_overlay_dev
+    description: >
+      gp_api_contact_overlay over gp-api dev Postgres, for gp-api's dev
+      environment.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [organization_slug, id]
+    columns:
+      - name: organization_slug
+        description: The Serve organization that uploaded the contacts.
+        data_tests:
+          - not_null
+      - name: id
+        description: >
+          gp-api person id: the L2 id (gp_api_constituents.id) of a matched
+          person, or a uuid gp-api minted for a new person.
+        data_tests:
+          - not_null
+      - name: is_new
+        description: >
+          True when no upload row points this id at an L2 person, so the
+          person exists only through uploads.
+      - name: first_name
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: last_name
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: email
+        description: >
+          The latest non-null uploaded value, by upload time then row. Lowercased
+          by gp-api.
+      - name: cell_phone
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: landline
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: address_line
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: city
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: zip
+        description: The latest non-null uploaded value, by upload time then row.
+      - name: last_uploaded_at
+        description: When the latest upload naming this person was created.
