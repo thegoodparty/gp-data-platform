@@ -3560,6 +3560,57 @@ models:
           arguments:
             compare_model: ref("users")
 
+  - name: user_election_result_reports
+    description: >
+      Which ballot data sources reported each user's election result, and the
+      day each report reached us. One row per user per source, for users whose
+      current run has a result. Internal only.
+
+      The result is the latest stage with a result on the user's anchor
+      candidacy. A DDHQ day is the date of the first delivery file holding the
+      result; results only the one-time master backfill holds have none. A BallotReady day is its last update of the
+      record, so a later edit moves it. A TechSpeed day is its latest load.
+    columns:
+      - name: user_id
+        description: gp-api user. Join to user_journey.user_id.
+        data_tests:
+          - not_null
+      - name: gp_candidacy_id
+        description: Civics candidacy the result belongs to.
+        data_tests:
+          - not_null
+      - name: gp_candidacy_stage_id
+        description: Civics candidacy stage the result comes from.
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Stage of that result, for example general or primary.
+      - name: election_stage_date
+        description: Election day of that stage.
+      - name: election_result
+        description: Won or Lost, as the civics mart shows it.
+        data_tests:
+          - not_null
+      - name: source
+        description: >
+          The source of this report: ddhq, ballotready or techspeed (hubspot
+          for archive results shown without a feed row).
+        data_tests:
+          - not_null
+      - name: reported_on
+        description: >
+          Day the report reached us. Null when the feed gives no date, or the
+          shown source's feed row could not be found.
+      - name: is_shown_source
+        description: >
+          This source supplies the result the civics mart shows. Exactly one
+          row per user is true.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, source]
   - name: user_journey_milestones
     description: >
       The journey stages from user_journey, one row per user per stage reached,

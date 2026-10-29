@@ -1,5 +1,29 @@
 models:
 
+  - name: stg_airbyte_source__ddhq_gdrive_election_result_deliveries
+    description: >
+      DDHQ result rows as delivered in the Google Drive feed, one row per row
+      of each file, with the file's date. The delivery feed only, without the
+      master backfill, so the date is when DDHQ sent the row.
+    columns:
+      - name: candidate_id
+        description: DDHQ candidate id.
+        data_tests:
+          - not_null
+      - name: ddhq_race_id
+        description: DDHQ race id.
+        data_tests:
+          - not_null
+      - name: is_winner
+        description: DDHQ winner flag; null when the row carries no result yet.
+      - name: source_file
+        description: The delivery file the row came in.
+        data_tests:
+          - not_null
+      - name: delivered_on
+        description: Last-modified date of that file, which is when DDHQ delivered it.
+        data_tests:
+          - not_null
   - name: stg_airbyte_source__ddhq_gdrive_election_results
     description: Election results data load from ddhq google drive
     columns:
