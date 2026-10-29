@@ -292,14 +292,6 @@ ELECTION_STAGE_POST_PREDICTION_FILTER = f"""
             matched_candidacy_stage_clusters_l, matched_candidacy_stage_clusters_r
           )
         ) > 0
-        -- Position anchor: a DDHQ race's office-matched BR position equal to
-        -- the BR race's position IS the office identity. DDHQ<->BR only, so
-        -- two BR races of one position (duplicates) are not relaxed by it.
-        OR (
-          ballotready_position_id_l IS NOT NULL
-          AND ballotready_position_id_l = ballotready_position_id_r
-          AND (source_name_l = 'ddhq' OR source_name_r = 'ddhq')
-        )
         OR (
           candidate_office_l = candidate_office_r
           -- Require locality-token SET EQUALITY, not subset or overlap. A

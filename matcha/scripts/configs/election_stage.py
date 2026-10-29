@@ -70,25 +70,12 @@ ELECTION_STAGE_CONFIG = EntityConfig(
             " r.matched_candidacy_stage_clusters)",
             sql_dialect="duckdb",
         ),
-        # 6. Position anchor -- a DDHQ race carries the BR position its office
-        # matches (dbt's office-key crosswalk, unique matches only). Pairs it
-        # with that position's BR races on the same date, which rules 1-3 miss
-        # when the office names diverge. DDHQ<->BR only, so it adds no pairs
-        # among BR's own records; the filter still gates state, date, stage,
-        # district and seat.
-        CustomRule(
-            "l.ballotready_position_id = r.ballotready_position_id"
-            " AND l.election_date = r.election_date"
-            " AND (l.source_name = 'ddhq' OR r.source_name = 'ddhq')",
-            sql_dialect="duckdb",
-        ),
     ],
     additional_columns_to_retain=[
         "source_name",
         "source_id",
-        # Retained rather than compared: BR's own position, plus DDHQ's
-        # office-matched one, which the position anchor (rule 6 and the filter)
-        # reads. stg_er_source__clustered_election_stages also selects it.
+        # Retained rather than compared: BallotReady-only, so no cross-source pair
+        # can agree on it, but stg_er_source__clustered_election_stages selects it.
         "ballotready_position_id",
         "district_raw",
         "br_race_id",

@@ -14,10 +14,7 @@
 -- Known one-time churn: the live clustered table's TS/DDHQ source_ids are the
 -- feeders' pre-swap hash-derived ids. The next election-stage matcha run
 -- (phase 2) rewrites them, so vendor-minted clusters re-mint once at that
--- transition. Expected relabel, not a regression. DDHQ source_ids are the
--- race-and-stage key (generate_ddhq_election_stage_key), and the DDHQ feeder
--- adopts this mint from sole-BR clusters; until a run keys DDHQ that way, the
--- lookup finds nothing and DDHQ keeps its earlier ids.
+-- transition. Expected relabel, not a regression.
 with
     br_race_created as (
         select cast(database_id as string) as br_race_id, created_at

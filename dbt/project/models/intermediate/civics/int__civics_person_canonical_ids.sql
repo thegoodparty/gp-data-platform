@@ -1,11 +1,7 @@
 -- Canonical gp_person_id per person record. One row per
 -- int__er_prematch_people unique_id (the record_key). The person group is the
 -- cluster matcha published in er_source.clustered_people; a record the vintage
--- has not seen stands alone under its own key until the next run. DDHQ is the
--- exception: an unseen DDHQ record waits for a run instead. Each DDHQ load
--- lands a batch of candidacy-stage records, most of which a run attaches to
--- an existing person, so a standalone id for them would be published for a
--- day and then retired.
+-- has not seen stands alone under its own key until the next run.
 --
 -- The id is minted from the group member earliest by first_seen_at, ties
 -- broken by (source_name, source_id): first-in wins uniformly across sources,
@@ -28,7 +24,6 @@ with
             p.first_seen_at
         from {{ ref("int__er_prematch_people") }} as p
         left join published as c using (unique_id)
-        where p.source_name <> 'ddhq' or c.cluster_id is not null
     ),
 
     -- How many deterministic identities the published clustering fused; 1

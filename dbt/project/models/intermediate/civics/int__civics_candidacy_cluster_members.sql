@@ -1,10 +1,9 @@
 -- Candidacy-stage cluster members as person record keys (unique_id in
 -- int__er_prematch_people): BallotReady via the candidacy's person,
--- TechSpeed at candidate-code grain, gp_api via the campaign's user, DDHQ at
--- its own candidacy-stage grain. One row per (cluster_id, record_key),
--- restricted to the person universe so the person links and the DDHQ person
--- lookup read one set. A cluster spanning two BallotReady people cannot name a
--- person, so it contributes no members.
+-- TechSpeed at candidate-code grain, gp_api via the campaign's user. One row
+-- per (cluster_id, record_key), restricted to the person universe so the
+-- person links and the DDHQ person lookup read one set. A cluster spanning
+-- two BallotReady people cannot name a person, so it contributes no members.
 with
     prematch as (select unique_id from {{ ref("int__er_prematch_people") }}),
 
@@ -48,10 +47,6 @@ with
         select cluster_id, 'techspeed|' || {{ strip_ts_stage_suffix("source_id") }}
         from clustered
         where source_name = 'techspeed'
-        union
-        select cluster_id, 'ddhq|' || source_id
-        from clustered
-        where source_name = 'ddhq'
     ),
 
     resolvable as (
