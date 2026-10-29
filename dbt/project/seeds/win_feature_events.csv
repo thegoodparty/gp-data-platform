@@ -1,0 +1,25 @@
+feature,event_type,match_type,is_user_action,feature_label
+onboarding_path_to_victory,Onboarding - Path To Victory Completed,exact,true,Completed path to victory in onboarding
+onboarding_path_to_victory,Onboarding V2 - Votes Needed Completed,exact,true,Completed path to victory in onboarding
+onboarding_v2,Onboarding V2 - ,prefix,true,Saw the new onboarding (v2)
+plan_task,Dashboard - Campaign Task Completed,exact,true,Completed a campaign plan task
+plan_task,Campaign Plan - Task Action Taken,exact,true,Completed a campaign plan task
+plan_opposition_research,Campaign Plan V2 - Opposition Research Generation Started,exact,false,Plan generated an opposition research section
+story_rewrite,Campaign Story - Rewrite Accepted,exact,true,Accepted a campaign story rewrite
+opponent_lookup,Win - Opponent Profile Viewed,exact,true,Looked up their opponent
+opponent_lookup,Win - Opponent Research Started,exact,true,Looked up their opponent
+opponent_lookup,Win - Opponent Standout Actions Viewed,exact,true,Looked up their opponent
+ai_help,AI Assistant,prefix,true,"Used AI help (AI Assistant, Campaign Manager, Chief of Staff)"
+ai_help,Campaign Manager,prefix,true,"Used AI help (AI Assistant, Campaign Manager, Chief of Staff)"
+ai_help,Chief Of Staff,prefix,true,"Used AI help (AI Assistant, Campaign Manager, Chief of Staff)"
+ai_help,question_complete,exact,true,"Used AI help (AI Assistant, Campaign Manager, Chief of Staff)"
+ai_help,Contacts - Assistant Message Sent,exact,true,"Used AI help (AI Assistant, Campaign Manager, Chief of Staff)"
+content_builder,Content Builder: Generation Started,exact,true,Generated content in Content Builder
+segment_build,Contacts - Segment Created,exact,true,Built a custom voter segment
+segment_build,Custom Voter file created,exact,true,Built a custom voter segment
+segment_build,Voter Data - List Created,exact,true,Built a custom voter segment
+voter_file_download,Download Voter File Success,exact,true,Downloaded a voter file
+team_invite,Team - Member Invited,exact,true,Invited a teammate
+team_invite,Team - Invite Submitted,exact,true,Invited a teammate
+website_publish,Candidate Website - Published,exact,true,Published a campaign website
+profile_complete,Profile - Candidate Profile: Click Submit,exact,true,Completed their candidate profile

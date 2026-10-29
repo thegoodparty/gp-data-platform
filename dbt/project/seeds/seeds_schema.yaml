@@ -1167,3 +1167,32 @@ seeds:
               arguments:
                 min_value: 0
                 max_value: 100
+  - name: win_feature_events
+    description: >
+      Which Amplitude events count as using each Win feature: one row per
+      feature and event. The single definition behind int__user_feature_use,
+      so "did they use AI help" reads the same in every analysis. match_type
+      prefix matches every event name starting with event_type. Add a row when
+      a feature ships a new event; a renamed event that is missing here
+      silently reads as non-use.
+    config:
+      column_types:
+        feature: string
+        event_type: string
+        match_type: string
+        is_user_action: boolean
+        feature_label: string
+    columns:
+      - name: feature
+        data_tests:
+          - not_null
+      - name: event_type
+        data_tests:
+          - not_null
+      - name: match_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["exact", "prefix"]
+      - name: is_user_action
+        description: False where the event fires without the candidate choosing it.

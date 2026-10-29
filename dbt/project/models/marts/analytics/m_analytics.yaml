@@ -4150,3 +4150,205 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: row_count = user_count
+  - name: win_election_frame
+    description: >
+      One row per Win user with a 2026 race: the race, its result, and what the
+      candidate did in the product before it. Built for the post-election
+      analysis, which reads nothing else, so every count it prints traces to a
+      flag here.
+
+      Behavior is cut off at race_date. A primary loser's race is the primary,
+      so they are measured up to it. Result columns are null until a result is
+      matched; has_result is the share of results in so far.
+
+      The "who is counted" flags are applied in this order: is_real_user,
+      is_confirmed, has_result, contest_status = 'contested',
+      incumbency_status = 'challenger'. Unknown contest or incumbency status is
+      kept as its own value rather than folded into either side.
+    columns:
+      - name: user_id
+        description: gp-api user. The candidacy is user_journey's, one per user.
+        data_tests:
+          - not_null
+          - unique
+      - name: race_date
+        description: >
+          The date the race was decided for this candidate: the primary for a
+          primary loss, else the election date. Every behavioral column stops
+          the day before.
+        data_tests:
+          - not_null
+      - name: is_real_user
+        description: Not staff, internal or demo-only.
+        data_tests:
+          - not_null
+      - name: is_confirmed
+        description: Legitimacy label is "6. confirmed", the corroboration gate used across Win reporting.
+      - name: has_result
+        description: A won or lost result is matched. The results coverage measure.
+      - name: contest_status
+        description: >-
+          contested, uncontested, or unknown when the race facts are missing. Taken from the race's
+          actual candidate list in win_race_field where it exists, since the journey's opponent count
+          misses real opponents in some races; the journey otherwise.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["contested", "uncontested", "unknown"]
+      - name: contest_source
+        description: Where contest_status came from, race or journey; null when neither knows.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["race", "journey"]
+      - name: baseline_win_chance
+        description: The race's baseline_win_chance from win_race_field, when the race is in the civics mart.
+      - name: incumbency_status
+        description: incumbent, challenger, or unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["incumbent", "challenger", "unknown"]
+      - name: is_race_past
+        description: race_date is today or earlier. A past race without a result is a coverage gap, not a pending one.
+      - name: is_winner
+        description: True for won, false for lost, null with no result.
+      - name: is_primary_loss
+        description: Lost at the primary stage. Counted as a loss and also shown apart.
+      - name: is_self_signup
+        description: Marketing-sourced rather than sales-sourced.
+      - name: is_paid_source
+        description: HubSpot original source is paid search or paid social.
+      - name: months_signup_to_race
+        description: Lead time from signup to race_date.
+      - name: is_pro_before_race
+        description: Pro, upgraded before race_date.
+      - name: is_pro_3_months_out
+        description: Upgraded to Pro 90 or more days before race_date.
+      - name: is_activated_before_race
+        description: Activated before race_date, on the governed activation definition.
+      - name: is_power_user
+        description: The governed power user flag, measured to the election as it defines.
+      - name: used_plan_opposition_research
+        description: >
+          The plan generated an opposition research section. It fires on plan
+          generation, so it marks having a v2 plan, not reading the research.
+          Every used_* column reads the shared feature definitions in
+          user_feature_use, cut at race_date.
+      - name: used_ai_help
+        description: Used AI help before race_date.
+      - name: first_ai_help_date
+        description: First AI help use, any date, for before/after comparisons.
+      - name: active_days_last_12_weeks
+        description: Win active days in the 12 weeks before race_date.
+        data_tests:
+          - not_null
+      - name: reach_per_1000_voters
+        description: Recipients across sends before race_date per 1,000 voters in the district. Null without a voter count.
+      - name: send_weeks_last_8
+        description: Distinct weeks with a Win send in the 8 weeks before race_date.
+      - name: channels_used
+        description: Distinct named channels sent on before race_date. Unattributed sends do not count as a channel.
+      - name: did_send_to_own_segment
+        description: Sent to an audience the candidate built or changed, not an untouched recommended list.
+      - name: demographic_audiences
+        description: Distinct sent audiences that narrow on at least one demographic family.
+      - name: demographic_messages
+        description: Distinct message texts sent to those audiences.
+      - name: is_targeted_messaging
+        description: Two or more demographic audiences and two or more distinct messages to them.
+      - name: team_touches_before_race
+        description: Outbound HubSpot touches before race_date.
+      - name: had_team_meeting
+        description: A HubSpot meeting before race_date.
+      - name: built_at
+        description: When this table was built. Pin it beside any count.
+  - name: user_feature_use
+    description: >
+      When each user first and last used each Win feature, and on how many
+      days. One row per user per feature used. Which events make up a feature
+      is the win_feature_events seed, so every analysis reads one definition;
+      apply your own cutoff to the dates. Per-column meaning lives on
+      int__user_feature_use.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, feature]
+    columns:
+      - name: user_id
+        data_tests:
+          - not_null
+      - name: feature
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('win_feature_events')
+                field: feature
+  - name: win_race_field
+    description: >
+      Every candidate in every 2026 race where a Win user ran, users and not:
+      one row per candidacy-stage. For comparing Win users with the rest of
+      their own field and with the odds each race gave.
+
+      Context columns are knowable before the race and outside the product's
+      reach. prior_candidacies and prior_wins only see the history the civics
+      mart holds, which starts in 2024, so they undercount for long-serving
+      candidates. prior_race_margin needs vote counts for the office's last
+      race and is rarely available.
+    columns:
+      - name: gp_candidacy_stage_id
+        data_tests:
+          - not_null
+          - unique
+      - name: gp_election_stage_id
+        data_tests:
+          - not_null
+      - name: is_win_user
+        description: The candidacy matches a gp-api campaign.
+        data_tests:
+          - not_null
+      - name: user_id
+        description: The Win user, when is_win_user.
+      - name: candidates_in_race
+        description: Candidacies the civics mart holds for this stage.
+        data_tests:
+          - not_null
+      - name: seats_in_race
+        description: >-
+          Seats on offer. Some multi-seat races are recorded with one seat, so once a race is decided
+          this is at least its number of winners.
+        data_tests:
+          - not_null
+      - name: is_contested
+        description: More candidates than seats, or a recorded loss (civics can miss a race's other candidates).
+        data_tests:
+          - not_null
+      - name: baseline_win_chance
+        description: >-
+          seats_in_race divided by candidates, capped at 1. The win rate if seats went to candidates at
+          random. Null when civics is missing the race's opponents (a loss with no more candidates than seats).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_november_general
+        description: A November general-stage race, the on-cycle date with the highest turnout.
+      - name: prior_candidacies
+        description: The person's earlier candidacies in the civics mart, other than this one.
+      - name: prior_wins
+        description: How many of those earlier candidacies won a stage.
+      - name: prior_race_margin
+        description: >
+          The same office's most recent earlier race of the same stage type:
+          vote share of the last seat won minus the first seat lost. Null
+          without vote counts for that race.
+      - name: is_winner
+        description: Won this stage. Null until a result is matched.
+      - name: vote_share
+        description: Votes received over total votes cast in the stage, where both are known.
+      - name: built_at
+        description: When this table was built.
