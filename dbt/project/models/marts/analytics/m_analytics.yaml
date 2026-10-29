@@ -3560,6 +3560,50 @@ models:
           arguments:
             compare_model: ref("users")
 
+  - name: user_election_stages
+    description: >
+      The stages of each user's current election (primary, runoffs, general)
+      and whether any candidate in each stage has a result yet. One row per
+      user per election stage, for users whose anchor run matches a civics
+      candidacy. Internal only.
+
+      Count distinct gp_election_stage_id for a race-level figure, since
+      several users can share a stage. Runoffs are listed as scheduled,
+      including "if needed" runoffs that never took place.
+    columns:
+      - name: user_id
+        description: gp-api user. Join to user_journey.user_id.
+        data_tests:
+          - not_null
+      - name: gp_candidacy_id
+        description: The user's anchor civics candidacy.
+        data_tests:
+          - not_null
+      - name: gp_election_id
+        description: The election that candidacy is in.
+        data_tests:
+          - not_null
+      - name: gp_election_stage_id
+        description: One stage of that election.
+        data_tests:
+          - not_null
+      - name: stage_type
+        description: Primary, general, runoff or special, as the civics mart names it.
+      - name: stage_date
+        description: Election day of the stage.
+      - name: is_runoff
+        description: The stage is a runoff.
+        data_tests:
+          - not_null
+      - name: has_result
+        description: >
+          Any candidacy in this stage has a result (won or lost), ours or not.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, gp_election_stage_id]
   - name: user_election_result_reports
     description: >
       Which ballot data sources reported each user's election result, and the
