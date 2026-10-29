@@ -4,9 +4,9 @@
 -- The civics stage row says which source the result shows (DDHQ before
 -- BallotReady); the days come from the feeds. A DDHQ day is the date of the
 -- first delivery file holding the result; results only the one-time master
--- backfill holds have no day. BallotReady keeps only the latest version of a record,
--- so its
--- day is the last update: a later edit moves it. TechSpeed's is its latest load.
+-- backfill holds have no day. BallotReady keeps only the latest version of a
+-- record, so its day is the last update: a later edit moves it. TechSpeed's is
+-- its latest load.
 with
     journey as (
         select
