@@ -35,6 +35,14 @@
     "is_open_seat",
 ] %}
 
+{%- set roster_outcounts_source -%}
+    est_opp.estimated_number_of_opponents > coalesce(
+        try_cast(try_cast(deduplicated.number_of_opponents as double) as int),
+        case when deduplicated.number_of_opponents = '10+' then 10 end,
+        -1
+    )
+{%- endset %}
+
 with
     archive_2025 as (
         select
@@ -177,24 +185,27 @@ select
     deduplicated.seats_available,
     deduplicated.term_start_date,
     -- number_of_opponents / is_uncontested come only from TS/DDHQ (BR hardcodes
-    -- them NULL). Fall back to the candidacy-stage estimate in the contested
-    -- direction only: an estimate is present just when >= 2 active candidacies
-    -- were loaded, so it only ever fills a positive opponent count / a
-    -- contested (false) flag. It never asserts 0 opponents or uncontested.
+    -- them NULL). The loaded roster corrects them in the contested direction
+    -- only: more named candidates than seats, or a recorded loss, outranks a
+    -- vendor "uncontested" that was counted before the filing close. A roster
+    -- at or under the seats never asserts uncontested, since it may be missing
+    -- candidates.
+    case
+        when est_opp.is_roster_contested then false else deduplicated.is_uncontested
+    end as is_uncontested,
     coalesce(
-        deduplicated.is_uncontested,
-        case when est_opp.estimated_number_of_opponents is not null then false end
-    ) as is_uncontested,
-    deduplicated.is_uncontested is null
-    and est_opp.estimated_number_of_opponents
-    is not null as is_uncontested_is_estimated,
-    coalesce(
-        deduplicated.number_of_opponents,
-        cast(est_opp.estimated_number_of_opponents as string)
-    ) as number_of_opponents,
-    deduplicated.number_of_opponents is null
-    and est_opp.estimated_number_of_opponents
-    is not null as number_of_opponents_is_estimated,
+        est_opp.is_roster_contested
+        and deduplicated.is_uncontested is distinct from false,
+        false
+    ) as is_uncontested_is_estimated,
+    -- Opponents as candidates - 1, the TechSpeed convention. The roster count
+    -- replaces a smaller source count; "10+" reads as 10.
+    case
+        when {{ roster_outcounts_source }}
+        then cast(est_opp.estimated_number_of_opponents as string)
+        else deduplicated.number_of_opponents
+    end as number_of_opponents,
+    coalesce({{ roster_outcounts_source }}, false) as number_of_opponents_is_estimated,
     deduplicated.is_open_seat,
     deduplicated.has_ddhq_match,
     deduplicated.br_position_database_id,

@@ -975,10 +975,15 @@ models:
   - name: int__civics_election_estimated_opponents
     description: >
       Estimated opponent count per election, from counting the active
-      candidacies loaded within an election-stage. Feeds a contested-direction
-      fallback for number_of_opponents / is_uncontested on the election mart
-      (both come only from TechSpeed/DDHQ today; BallotReady hardcodes them
-      NULL).
+      candidacies loaded within an election-stage. Corrects number_of_opponents
+      / is_uncontested on the election mart in the contested direction (both
+      come only from TechSpeed/DDHQ today; BallotReady hardcodes them NULL),
+      including over a source value, since a vendor count can predate the
+      filing close.
+
+      A stage can hold candidates for sibling seats of the same body, so a
+      candidate counts only when their candidacy's election, or its
+      BallotReady position, matches the stage's election.
 
       Grain: One row per gp_election_id that has at least one loaded
       candidacy-stage row.
@@ -1026,6 +1031,18 @@ models:
           - accepted_values:
               arguments:
                 values: ["general", "largest_stage"]
+
+      - name: is_roster_contested
+        description: >
+          True when the chosen stage's roster has more active candidates than
+          seats, or records a loss or runoff. Seats are the stage's
+          number_of_seats, raised to its winner count when more won. NULL
+          otherwise, never false: a roster at or under the seats may be missing
+          candidates.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
 
   - name: int__civics_candidate_ddhq
     description: >

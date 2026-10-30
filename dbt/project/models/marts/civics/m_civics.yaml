@@ -1487,11 +1487,12 @@ models:
       - name: is_uncontested
         description: >
           Whether the election is uncontested. Sourced from TechSpeed (with
-          DDHQ fallback). Where those are NULL, filled to false only when the
-          candidacy-stage estimate finds >= 1 opponent
-          (int__civics_election_estimated_opponents). Never filled to true from
-          the estimate: a sparse roster is unknown, not uncontested. See
-          is_uncontested_is_estimated.
+          DDHQ fallback), and set to false whenever the loaded roster shows
+          more active candidates than seats or a recorded loss
+          (int__civics_election_estimated_opponents.is_roster_contested), even
+          over a source "true": a vendor count can predate the filing close.
+          Never set to true from the roster: a sparse roster is unknown, not
+          uncontested. See is_uncontested_is_estimated.
         data_tests:
           - accepted_values:
               arguments:
@@ -1499,8 +1500,8 @@ models:
 
       - name: is_uncontested_is_estimated
         description: >
-          True when is_uncontested was filled (to false) from the
-          candidacy-stage estimate rather than a source system.
+          True when the roster set is_uncontested to false where the source
+          systems said true or had no value.
         data_tests:
           - not_null
           - accepted_values:
@@ -1509,16 +1510,17 @@ models:
 
       - name: number_of_opponents
         description: >
-          Number of opponents in the race (may contain string values like
-          '10+'). Sourced from TechSpeed (with BR/DDHQ fallback). Where those
-          are NULL, filled from the candidacy-stage estimate but only when it
-          finds >= 1 opponent (>= 2 active candidacies in a stage); a field of
-          <= 1 stays NULL rather than assert 0. See number_of_opponents_is_estimated.
+          Number of opponents in the race, as candidates - 1 (may contain
+          string values like '10+'). Sourced from TechSpeed (with BR/DDHQ
+          fallback), replaced by the candidacy-stage estimate when that is
+          larger or the sources have none. The estimate needs >= 2 active
+          candidacies in a stage; a field of <= 1 never asserts 0. See
+          number_of_opponents_is_estimated.
 
       - name: number_of_opponents_is_estimated
         description: >
-          True when number_of_opponents was filled from the candidacy-stage
-          estimate rather than a source system.
+          True when number_of_opponents came from the candidacy-stage estimate
+          rather than a source system.
         data_tests:
           - not_null
           - accepted_values:
