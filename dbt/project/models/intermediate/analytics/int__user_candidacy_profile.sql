@@ -366,6 +366,16 @@ select
     pr.primary_result as candidacy_primary_result,
     cc.general_election_date as candidacy_general_election_date,
     cc.general_election_result as candidacy_general_result,
+    -- The day the race was decided for this candidate. A primary loss ends it
+    -- at the primary, so anything measured "before the race" stops there.
+    case
+        when
+            cc.latest_stage_result = 'Lost'
+            and cc.latest_stage_reached like 'primary%'
+            and cc.primary_election_date is not null
+        then cc.primary_election_date
+        else a.election_date
+    end as candidacy_race_date,
     -- Never null. A user with no candidacy is neither running nor a
     -- non-filer, and a null would drop them out of a `where not` filter.
     coalesce(a.election_date >= current_date(), false) as is_still_running,

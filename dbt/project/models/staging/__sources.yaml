@@ -244,6 +244,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
         description: raw data load from gp_api_db postgres db from table `outreach`
+      - name: gp_api_db_voter_file_filter
+        description: raw data load from gp_api_db postgres db from table `voter_file_filter`
+        config:
+          freshness: null
       # The election-eve robocall offer: precinct assignments are written once per
       # experiment and runs are booked around elections, so both streams go
       # legitimately quiet for weeks and opt out of the freshness default.

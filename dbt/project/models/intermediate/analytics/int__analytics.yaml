@@ -1904,6 +1904,12 @@ models:
           candidacy_election_date is the only date.
       - name: candidacy_general_result
         description: The general's result on the civics candidacy.
+      - name: candidacy_race_date
+        description: >
+          The day the race was decided for this candidate: the primary date for
+          a primary loss, else candidacy_election_date. Cut any "before the
+          election" measure here, so a primary loser is not credited with
+          activity after they were out. Null with no candidacy.
       - name: is_still_running
         description: >
           The anchor election is today or later, so no outcome exists yet.
@@ -2485,6 +2491,51 @@ models:
                 where: "run_at >= current_date() - interval 2 days"
       - name: output_tokens_est
         description: Estimated summary tokens for the run.
+  - name: int__user_feature_use
+    description: >
+      First use, last use and use days per user per Win feature, from the
+      win_feature_events seed. Impersonated and machine-emitted events are
+      dropped.
+    columns:
+      - name: user_id
+        data_tests:
+          - not_null
+      - name: feature
+        description: Feature key from win_feature_events.
+        data_tests:
+          - not_null
+      - name: is_user_action
+        description: >
+          False where the event fires without the candidate choosing it (plan
+          opposition research fires on plan generation). Do not read those as
+          use.
+      - name: first_used_at
+        data_tests:
+          - not_null
+      - name: last_used_at
+        data_tests:
+          - not_null
+      - name: use_days
+        description: Distinct days with a matching event.
+  - name: int__user_outreach_audiences
+    description: >
+      One row per gp-api outreach send with a saved audience: how many
+      demographic families it narrows on, whether the candidate built it, and
+      the message sent. Social posts carry no audience and are absent.
+    columns:
+      - name: outreach_id
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        data_tests:
+          - not_null
+      - name: send_at
+        description: The scheduled date, else when the row was created.
+      - name: message_text
+        description: The message, else the script.
+      - name: is_own_audience
+        description: The candidate built or changed it, rather than sending an untouched recommended list.
 
 unit_tests:
   - name: hubspot_note_items_drops_stubs_and_voicemail

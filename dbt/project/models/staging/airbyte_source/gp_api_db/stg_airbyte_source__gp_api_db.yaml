@@ -2033,3 +2033,20 @@ models:
         description: "The frozen number this person is reachable at"
         data_tests:
           - not_null
+  - name: stg_airbyte_source__gp_api_db_voter_file_filter
+    description: >
+      The saved audience behind an outreach send, with the demographic
+      families it narrows on. A family narrows only when some but not all of
+      its options are ticked.
+    columns:
+      - name: voter_file_filter_id
+        description: Primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: is_recommended_modified
+        description: The candidate changed a recommended list.
+      - name: demographic_dimension_count
+        description: Demographic families the audience narrows on, counted once each.
+        data_tests:
+          - not_null
