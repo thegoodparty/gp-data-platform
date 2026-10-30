@@ -981,6 +981,10 @@ models:
       including over a source value, since a vendor count can predate the
       filing close.
 
+      A stage can hold candidates for sibling seats of the same body, so a
+      candidate counts only when their candidacy's election, or its
+      BallotReady position, matches the stage's election.
+
       Grain: One row per gp_election_id that has at least one loaded
       candidacy-stage row.
 

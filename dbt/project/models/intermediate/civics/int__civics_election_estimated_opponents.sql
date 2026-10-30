@@ -17,6 +17,18 @@
 -- (deciding) contest and falls back to the largest loaded stage only when no
 -- general-stage candidacies exist.
 with
+    candidacies as (
+        select gp_candidacy_id, gp_election_id, br_position_database_id
+        from {{ ref("candidacy") }}
+    ),
+
+    election_position as (
+        select gp_election_id, max(br_position_database_id) as br_position_database_id
+        from candidacies
+        where gp_election_id is not null
+        group by gp_election_id
+    ),
+
     stage_candidates as (
         -- Active candidates per election-stage. "Active" = actually competed in
         -- the stage: drop Withdrew / Not on Ballot so a name that filed but never
@@ -48,8 +60,19 @@ with
         inner join
             {{ ref("election_stage") }} as es
             on cs.gp_election_stage_id = es.gp_election_stage_id
+        inner join candidacies as c on c.gp_candidacy_id = cs.gp_candidacy_id
+        left join election_position as eo on eo.gp_election_id = es.gp_election_id
         where
             es.gp_election_id is not null
+            -- A stage can hold candidates for sibling seats of the same body
+            -- (Seat C filed on the Seat A stage). The candidacy's own position
+            -- says which seat they run for. Its election id alone is too
+            -- strict: one candidacy can span a special and a regular election
+            -- for the same seat. Office names are generic ("School Board").
+            and (
+                c.gp_election_id = es.gp_election_id
+                or c.br_position_database_id = eo.br_position_database_id
+            )
             and (
                 cs.election_result is null
                 or cs.election_result not in ('Withdrew', 'Not on Ballot')
