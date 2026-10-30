@@ -68,6 +68,10 @@ The signup-anchored, forward-window analog is **"one-and-done"**: signed up but 
 
 **Accounts with no election date on file are outside the funnel.** 18,238 of 61,684 latest non-demo accounts (2026-10-01) carry no in-range `election_date`; they hold 17 Pro and zero activated users (first seen 2026-07-22 at 6,939 accounts, same zeros). The election-date base in [segmentation.md](segmentation.md) is therefore the Win funnel's denominator; report the no-date remainder separately rather than pooling it.
 
+### Opening an area is not using it
+
+Count feature-area use on action events (a send or draft, a voter list built or exported, an AI message, a story rewrite or issue edit, opponent research started), not on page views. In outreach and voter data, views run about double the actions: of onboarded users who signed up from 2026-07-01, 61% opened outreach but 29% acted, and 60% opened voter data but 33% acted (AI assistant, story and opponents were roughly equal). Grouping users by their view mix and by their action mix gives different groups. Exclude `Win - Opponent Upgrade Viewed` from opponent research: it is the paywall, and counting it more than doubles opponent users (529 vs 230). Reference action list: `ACTION_EVENTS` in `analytics/projects/win_usage_archetypes/build_working_set.py`. *Figures measured 2026-10-28.*
+
 ## Amplitude event landscape
 
 ### The modeling layers
