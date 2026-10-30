@@ -3,7 +3,6 @@ onboarding_path_to_victory,Onboarding - Path To Victory Completed,exact,true,Com
 onboarding_path_to_victory,Onboarding V2 - Votes Needed Completed,exact,true,Completed path to victory in onboarding
 onboarding_v2,Onboarding V2 - ,prefix,true,Saw the new onboarding (v2)
 plan_task,Dashboard - Campaign Task Completed,exact,true,Completed a campaign plan task
-plan_task,Campaign Plan - Task Action Taken,exact,true,Completed a campaign plan task
 plan_opposition_research,Campaign Plan V2 - Opposition Research Generation Started,exact,false,Plan generated an opposition research section
 story_rewrite,Campaign Story - Rewrite Accepted,exact,true,Accepted a campaign story rewrite
 opponent_lookup,Win - Opponent Profile Viewed,exact,true,Looked up their opponent

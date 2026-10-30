@@ -1174,7 +1174,9 @@ seeds:
       so "did they use AI help" reads the same in every analysis. match_type
       prefix matches every event name starting with event_type. Add a row when
       a feature ships a new event; a renamed event that is missing here
-      silently reads as non-use.
+      silently reads as non-use. plan_task leaves out "Campaign Plan - Task
+      Action Taken": it mostly fires when a candidate dismisses a task
+      ("not for me", "put off"), not when they complete one.
     config:
       column_types:
         feature: string
