@@ -1,0 +1,218 @@
+brief_id: win-usage-archetypes-v1-2026h2
+created: 2026-10-26
+author: framing routine (refined with Tristan)
+ticket: DATA-2690 (capture map DATA-2697; fix plan TDD ClickUp doc 2ky4jq2q-169473 page 2ky4jq2q-156993)
+
+decision:
+  what_action: |
+    Give the company a shared description of the kinds of Win users we have, beyond counts:
+    named usage groups with sizes, what each group does and skips, and how deep they go.
+    Product uses it to decide where to cut friction and what to build next; growth uses it
+    to target acquisition and messaging at the groups that use Win well; leadership and later
+    forecasts use the groups as a segmentation. It also sets which per-area deep dive runs
+    first (ranked by votes in the Win usage question bank, artifact 6aqis9tqXGvB9K94vV7E3Y).
+  who_acts: |
+    Product (Bryan) for in-product changes; marketing and growth for acquisition targeting;
+    product analytics (Tristan) for the deep-dive order and for handing the groups to
+    DATA-2678, which joins them to election outcomes.
+
+question:
+  one_sentence: |
+    Among Win candidates who signed up from July 1, 2026, what distinct usage patterns exist
+    across outreach, voter data, the AI assistant, story and issues, opponent research and the
+    website, and how do onboarded and activated users divide among them?
+  type: descriptive
+  underlying_hypothesis: |
+    Candidates are not one population that uses Win more or less. They form recognizable
+    groups (heavy messenger, in-depth researcher, issues-focused, and so on) that differ in
+    which features they combine and how deep they go, and those groups are not just a
+    restatement of tenure, Pro status or how close the election is.
+
+population:
+  included: |
+    Win users whose account was created on or after 2026-07-01T00:00:00 UTC and who have at
+    least 14 days on Win before the earlier of their election date or the run date.
+    Reported as two side-by-side cohorts:
+      - onboarded: viewed the dashboard within 14 days of signup, recomputed from raw events
+        on the three-era union (Dashboard - Candidate Dashboard Viewed, Dashboard - Campaign
+        Plan Viewed, Campaign Plan - Campaign Tracker Viewed), never the stored flags.
+      - activated: users_win_base.is_activated (governed win_activated_users definition).
+    Expected N, verified 2026-10-26 21:20 UTC: 1,947 signups since July 1; 1,776 eligible.
+  excluded: |
+    Staff (@goodparty.org emails), demo accounts (is_demo), non-latest campaign versions,
+    51 users who signed up less than 14 days before their election, 151 users who signed up
+    in the last 14 days (31 overlap; 171 excluded in total).
+  source_model: |
+    goodparty_data_catalog.mart_analytics.users_win_candidacy (population, election dates,
+    Pro, office level), users_win_base (activation), user journey wide table (has run before,
+    election_year_count), stg_airbyte_source__amplitude_api_events (events), and raw gp-api
+    tables in goodparty_data_catalog.airbyte_source: gp_api_db_outreach, gp_api_db_voter_file_filter,
+    gp_api_db_chat_conversation, gp_api_db_chat_message, gp_api_db_experiment_run,
+    gp_api_db_website, gp_api_db_campaign, gp_api_db_campaign_position.
+
+data_provenance:
+  schema_status: prod
+  coverage_start: |
+    Verified 2026-10-26: amplitude events usable from well before the 2026-07-01 floor (raw MIN
+    is a junk 1978 timestamp, so the floor is applied explicitly); gp_api_db_outreach
+    2025-06-26; voter_file_filter 2025-06-26; chat_conversation and chat_message 2026-06-19;
+    experiment_run 2026-05-28; website 2025-07-11; campaign 2023-04-02; campaign_position
+    2023-06-27. Every source starts before the 2026-07-01 population floor.
+  coverage_end: |
+    All sources current to 2026-10-26 except campaign_position (MAX created_at 2026-09-09:
+    issue positions are no longer created there, so issue counts after that date come from
+    the campaign details instead; verify at execution).
+  post_merge_swap: N/A, all sources are prod.
+
+eligibility:
+  tenure_requirement: |
+    At least 14 days between signup and the earlier of election date or run date.
+  reference_event: |
+    Signup (user_created_at), with election_date as the end anchor.
+  rationale: |
+    Two weeks is the least time in which a candidate can plausibly try more than one area.
+    Without it, recent signups read as "light users" only because they have had no time.
+
+target:
+  definition: |
+    No single outcome. Per user, a feature vector of in-product behavior (see cohorts and
+    measures below), then (a) rule-based labels, which can overlap, and (b) clusters, which
+    cannot. Success means in-product completion (sent, published, ran), not election outcome.
+    Clustering inputs, measured over each user's full eligible window:
+      - Outreach: channels used, campaigns sent, median audience size, median message length,
+        weeks with a send, days before election of first send.
+      - Voter data: lists built, median list size, return visits to voter data.
+      - AI assistant: conversations, messages, topic mix (AI-classified, aggregated).
+      - Story and issues: story completed, issue count.
+      - Opponent research: opened it, runs completed.
+      - Website: published by the candidate (automatic compliance publishes excluded).
+    Intensity inputs are normalized per week on Win so tenure does not drive the clusters.
+    Rule-based labels: the seven agreed in framing, plus experienced vs newcomer
+    (has_run_before or election_year_count > 1), plus tech-savvy (see assumptions).
+  censoring: |
+    Each user is observed from signup to the earlier of election date or run date. Users whose
+    election is still ahead are right-censored; days to election at run time is carried as
+    context, and every group is checked for being mostly pre-election users.
+  absorbing_states: |
+    Election passed: observation stops at the election date. Deleted or demo accounts are
+    excluded. A user who stops using Win stays in with their observed behavior; inactivity is
+    a pattern, not a drop.
+
+comparison:
+  type: descriptive_cut
+  comparison_group: |
+    Groups against each other and against the whole eligible population; onboarded against
+    activated; each finding against what the Sigma dashboards already show.
+  notes: |
+    Descriptive only: no claim that a group causes anything. Group membership is compared on
+    context it was not built from (tenure, days to election, Pro, office level, signup month,
+    device, experienced vs newcomer) to make sure a group is not just one of those in disguise.
+
+observation_window:
+  start: |
+    The user's signup (user_created_at), with a hard floor of 2026-07-01T00:00:00 UTC.
+  end: |
+    The earlier of election_date (exclusive: strictly before 00:00 UTC on the election date)
+    or the run timestamp, which is pinned and printed with every number.
+  anchored_to: Signup.
+  boundary_semantics: |
+    Signup floor: user_created_at >= 2026-07-01T00:00:00 UTC.
+    Eligibility: datediff(least(election_date, run_date), date(user_created_at)) >= 14 (days,
+    whole dates).
+    Onboarded: a dashboard event at or after user_created_at and strictly before
+    user_created_at + 14 days.
+    Events: event_time >= user_created_at and event_time < window end. No pre-signup events.
+
+cohorts:
+  - dimension: cohort
+    values: onboarded, activated (overlapping; reported side by side)
+  - dimension: cluster
+    values: all observed (k chosen by stability, expected 4 to 8)
+  - dimension: rule_label
+    values: the seven framing labels, experienced vs newcomer, tech-savvy vs not
+  - dimension: context (describe groups, never inputs)
+    values: Pro vs free, office level, signup month, tenure band, days to election band, device
+
+sample_size:
+  expected_n_total: 1,776 eligible.
+  expected_n_per_cohort: |
+    Onboarded roughly 750 to 800; activated roughly 200 to 250 (233 of all 1,947 ever sent
+    outreach). Clusters of 1,776 at k = 6 average about 300, smallest likely under 100.
+  power_concern: |
+    The activated cohort is small for clustering on its own. Clusters are built once on all
+    eligible users; activated users are then described within them, not re-clustered.
+    Any group under 30 users is reported as a count with no rates.
+
+falsification:
+  what_would_change_belief: |
+    1. Clusters are unstable (membership changes a lot across resamples or seeds): then there
+       are no real groups, only a usage gradient, and we report that instead.
+    2. Clusters line up almost entirely with tenure, days to election or Pro: then they
+       restate context and are not usage types.
+    3. Every finding can already be read off a Sigma dashboard page: then this adds nothing
+       and the deliverable is cut back.
+
+assumptions:
+  - |
+    Tech-savvy is inferred, not measured. It is built from three signals: the share of a
+    user's AI chat questions that ask how to use Win itself (main signal; only available for
+    chat users), the share of flows they start but do not finish (abandoning can be a choice,
+    not confusion), and time to finish onboarding (also reflects motivation and free time).
+    Device is context only. Dictation is dropped. Candidate age is not used: none of the
+    1,947 users have a birth date in product or candidate data, the only source is the
+    restricted L2 voter file, and age describes who someone is rather than how they use Win.
+    The label stays "inferred" in every output until the customer-notes phase can check it.
+  - |
+    Experienced vs newcomer uses has_run_before or more than one election year; has_run_before
+    alone misses most repeat candidates (DATA-2478).
+  - |
+    AI topic classification of chat and message text is reported only as aggregates. No
+    candidate-written text appears in any output.
+  - |
+    Measures that need a tracking fix (suggested vs own message, tone, AI rewrite use,
+    which opponent was viewed, story versions) are not inputs to v1. Partial-coverage fields
+    (list source on text, robocall and phone banking) are not inputs either.
+  - |
+    Campaign plan behavior is left out until its tables arrive in the warehouse.
+  - |
+    Website publishes by the compliance agent are not candidate behavior and are excluded.
+
+known_concerns:
+  - |
+    August onboarded counts are low partly because of the Jul 31 to Aug 6 dashboard tracking
+    gap. It affects the onboarded flag for early-August signups, not the usage inputs.
+  - |
+    Features launched in June and July 2026, so July signups saw a slightly different product
+    than September signups. Signup month is checked as context for every group.
+  - |
+    Many elections are on 2026-11-03, a week after the run date, so outreach for those users
+    is still in progress. Days to election is carried for every group.
+  - |
+    Product decisions on the open fix-plan items (Bryan) do not block v1; they matter for
+    the deep dives.
+
+dashboard_rule: |
+  Before a finding ships it is checked against the live Sigma pages (Start here, Win at a
+  glance, Activation, Acquisition, Retention, Revenue, Win results). Anything already readable
+  there is cut. What v1 adds: feature combinations per user, depth inside a feature, order of
+  adoption, content mix, and what each group skips.
+
+execution_notes:
+  preferred_format: notebook
+  output_location: |
+    analytics/projects/win_usage_archetypes/: build script (working set built once via
+    analytics/lib, then sliced in pandas), notebook, results. Findings page in ClickUp under
+    DATA-2690 after the reviewers land.
+  reruns: |
+    One-off for v1, but the working-set builder is written to rerun after the 2026-11-03
+    election and once the data mirror lands, so the deep dives reuse it.
+
+checkpoint_2026_10_28: |
+  Results checkpoint decisions (Tristan):
+  - Archetypes reported per tier (Pro and free clustered separately); pooled clusters mostly restate Pro.
+  - Tech-savvy: not reported. Inferred composite failed (signals |rho| <= 0.13); stated as an
+    open problem with no good leads yet, not as a finding.
+  - "Community-issues focused" redefined post hoc as "Story and positions focused" (story share of
+    action-days >= 0.5 and >= 2 story days, mirroring AI-led) because the median rule collapsed to
+    any story action. Result: 12 users, under the 30-user floor, so count only.
+  - Reviewer agents waived by Tristan for v1.
