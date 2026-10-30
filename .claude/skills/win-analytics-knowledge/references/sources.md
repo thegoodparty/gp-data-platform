@@ -93,7 +93,10 @@ BR-roster-derived models carry the current counts:
 - `int__civics_election_estimated_opponents` — election-grain, a count of active `candidacy_stage`
   records per stage (general preferred). **One-directional:** a roster of <= 1 means BallotReady has
   not loaded the field yet, so it never asserts 0 opponents. Carries no viability inputs, so it is
-  safe under the viability-never-in-lead-scoring constraint.
+  safe under the viability-never-in-lead-scoring constraint. Its `is_roster_contested` (more active
+  candidates than seats, or a recorded loss or runoff) overrides a TechSpeed or DDHQ "uncontested" on
+  `election`, and a larger roster count replaces the source `number_of_opponents`: TechSpeed counts
+  at its processing date, often before filing closes. It still never sets uncontested to true.
 - `int__civics_viability_opponents_fallback` — candidacy-grain, selected by roster **membership**
   (the candidacy's own BR candidacy ids found inside exactly one clean race), never by
   `matched_br_race_id`, which is a position+date min-pick and is not roster-verified. **Fail-closed:**
