@@ -1,0 +1,239 @@
+Win usage archetypes, run 2026-10-28 17:34:12 UTC. Eligible users: 1,802 (onboarded 789, activated 214, Pro 345).
+
+== 1. How much there is to describe ==
+  all        n= 1802  0 area-days: 48%  1-2: 31%  3-9: 11%  10+: 10%
+  onboarded  n=  789  0 area-days: 34%  1-2: 29%  3-9: 19%  10+: 18%
+  activated  n=  214  0 area-days: 0%  1-2: 2%  3-9: 33%  10+: 65%
+  (area-days = distinct days with an action in outreach, voter data, AI assistant, story, opponents: sending, building, asking, rewriting, researching; page visits, onboarding, plan, paywall and compliance screens excluded)
+  share who opened each area vs share who did something there:
+  Outreach           opened 41%  acted 16%  | onboarded opened 61% acted 29%
+  Voter data         opened 41%  acted 20%  | onboarded opened 60% acted 33%
+  AI assistant       opened 42%  acted 41%  | onboarded opened 56% acted 54%
+  Story and issues   opened 27%  acted 26%  | onboarded opened 38% acted 36%
+  Opponent research  opened 13%  acted 13%  | onboarded opened 24% acted 24%
+  acted in Outreach           all 16%  onboarded 29%  activated 99%  | free 3% Pro 74%
+  acted in Voter data         all 20%  onboarded 33%  activated 97%  | free 4% Pro 88%
+  acted in AI assistant       all 41%  onboarded 54%  activated 84%  | free 31% Pro 83%
+  acted in Story and issues   all 26%  onboarded 36%  activated 63%  | free 17% Pro 63%
+  acted in Opponent research  all 13%  onboarded 24%  activated 67%  | free 1% Pro 61%
+
+== 2. Rule-based labels (overlapping; thresholds = median among onboarded users who did it) ==
+  thresholds: messages_per_week=0.26, field_actions=2.00, lists_per_week=0.52, opponent_days=2.00
+  Heavy messenger            all  107 (6%)  onboarded   87  activated  105  Pro share 95%
+  Field organizer            all   76 (4%)  onboarded   65  activated   65  Pro share 95%
+  List builder               all  163 (9%)  onboarded  127  activated  133  Pro share 93%
+  AI-led                     all   95 (5%)  onboarded   64  activated   11  Pro share 27%
+  Researcher                 all  164 (9%)  onboarded  135  activated  105  Pro share 91%
+  Story and positions focused all   12 (1%)  onboarded    6  activated    0  Pro share 8%
+  Dabbler                    all  431 (24%)  onboarded  161  activated    1  Pro share 5%
+  Experienced                all  106 (6%)
+  labels per user: 0 = 58%, 1 = 31%, 2+ = 11%
+  co-occurrence (users holding both):
+                                 Heavy messenger  Field organizer  List builder  AI-led  Researcher  Story and positions focused  Dabbler
+    Heavy messenger                          107               31            89       3          54                            0        0
+    Field organizer                           31               76            57       3          40                            0        0
+    List builder                              89               57           163       9          88                            0        0
+    AI-led                                     3                3             9      95           7                            2       28
+    Researcher                                54               40            88       7         164                            0        1
+    Story and positions focused                0                0             0       2           0                           12        6
+    Dabbler                                    0                0             0      28           1                            6      431
+
+== 3. Tech comfort (inferred) ==
+  signal coverage: chat how-to share 394, abandon rate 349, onboarding minutes 1387; scored (2+ signals) 498
+  signal correlations (Spearman, pairwise):
+                        howto_share  abandon_rate  onboarding_minutes
+    howto_share                1.00         -0.13                0.09
+    abandon_rate              -0.13          1.00               -0.06
+    onboarding_minutes         0.09         -0.06                1.00
+  label counts: {'not observable': 1304, 'comfortable': 166, 'middle': 166, 'less comfortable': 166}
+  comfortable       activated 41%, AI user 87%, experienced 13%, mobile share 0.27, median area-days/week 0.61
+  less comfortable  activated 34%, AI user 89%, experienced 5%, mobile share 0.27, median area-days/week 0.70
+
+== 4. Usage groups, free and Pro clustered separately (users with 3+ area-days) ==
+  Pro: 300 users; k selection:
+     k  silhouette  stability_ari  stability_min  smallest
+     3       0.242          0.766          0.271        63
+     4       0.252          0.855          0.513        48
+     5       0.258          0.769          0.617        23
+     6       0.256          0.587          0.344        16
+     7       0.254          0.559          0.383        16
+     8       0.265          0.657          0.407        15
+  Pro: chose k=4 (stability 0.86)
+  Free: 80 users; k selection:
+     k  silhouette  stability_ari  stability_min  smallest
+     3       0.414          0.973          0.924        21
+     4       0.418          0.821          0.558        15
+     5       0.463          0.801          0.517        11
+     6       0.476          0.801          0.558         6
+     7       0.503          0.804          0.665         3
+     8       0.538          0.791          0.643         3
+  Free: chose k=3 (stability 0.97)
+  mean mix by group (groups under 30 users: counts only in write-ups):
+                                                Outreach  Voter data  AI assistant  Story and issues  Opponent research    n
+    group
+    Pro: All-rounders                               0.24        0.32          0.21              0.05               0.19  129
+    Pro: Voter data, AI and outreach                0.27        0.32          0.32              0.09               0.00   71
+    Pro: Everything but outreach                    0.02        0.23          0.35              0.19               0.21   52
+    Pro: Voter data and outreach, no AI             0.35        0.44          0.01              0.11               0.09   48
+    Free: Voter data, AI and opponent research      0.14        0.36          0.22              0.10               0.17   30
+    Free: AI and story, no outreach                 0.05        0.01          0.53              0.39               0.01   29
+    Free: AI only                                   0.11        0.00          0.88              0.00               0.02   21
+
+== 5. Is it more than volume or timing? (Pro groups) ==
+  volume (log area-days/week) explained by group: eta^2 = 0.19
+  tenure (days on Win) explained by group: eta^2 = 0.06
+  days to election at run explained by group: eta^2 = 0.02
+  signup_month vs group: Cramer's V = 0.20
+  office_level vs group: Cramer's V = 0.08
+  experienced vs group: Cramer's V = 0.07
+  label lift by group (share holding label / share among all clustered users; >1.5 = over-represented):
+                                                Heavy messenger  Field organizer  List builder  AI-led  Researcher  Story and positions focused  Dabbler
+    Free: AI and story, no outreach                         0.0              0.0           0.1     4.3         0.2                         13.1      NaN
+    Free: AI only                                           0.0              0.0           0.0     5.4         0.0                          0.0      NaN
+    Free: Voter data, AI and opponent research              0.2              0.7           0.7     0.0         1.0                          0.0      NaN
+    Pro: All-rounders                                       1.5              1.6           1.5     0.2         1.9                          0.0      NaN
+    Pro: Everything but outreach                            0.0              0.1           0.1     1.1         1.2                          0.0      NaN
+    Pro: Voter data and outreach, no AI                     1.9              1.1           1.6     0.0         0.7                          0.0      NaN
+    Pro: Voter data, AI and outreach                        1.3              1.4           1.2     0.9         0.1                          0.0      NaN
+
+== 5b. Robustness ==
+  pooled (free and Pro together): k=3, stability 0.90; Pro vs pooled group Cramer's V = 0.55 (why the tiers are split)
+    is_pro                       Pro  free
+    row_0
+    AI and story, no outreach     26    50
+    All-rounders                 156    17
+    Voter data, outreach and AI  118    13
+  agreement between pooled and per-tier groups: ARI 0.37
+  clustering on visit-days instead of action-days (pooled): 605 users clear the floor; agreement with the action-day clusters on the 380 in both: ARI 0.14
+
+== 6. Group profiles (all eligible users) ==
+
+  [No area use] n=869 (48% of eligible); onboarded 268, activated 0; Pro 0%; experienced 4%; city office 62%
+    median days on Win 71; median area-days/week 0.00
+    never used: Outreach 100%, Voter data 100%, AI assistant 100%, Story and issues 100%, Opponent research 100%
+    outreach: sent 0%; channels if sent nan; text length nan chars; text audience nan; first send nan days before election
+    voter data: lists if any nan; recommended share n/a; filters per list nan
+    AI: chat users 0%; msgs if any nan; top topics
+    story rewrites 0%; opponent research started 0%; plan task actions 2%
+
+  [Light touch (1-2 days)] n=553 (31% of eligible); onboarded 231, activated 5; Pro 8%; experienced 6%; city office 63%
+    median days on Win 63; median area-days/week 0.15
+    never used: Outreach 97%, Voter data 93%, AI assistant 28%, Story and issues 60%, Opponent research 99%
+    outreach: sent 2%; channels if sent 1.0; text length nan chars; text audience nan; first send 30.0 days before election
+    voter data: lists if any 1.0; recommended share 11%; filters per list 1.5
+    AI: chat users 64%; msgs if any 2.0; top topics other 27%, story, issues and positions 24%, voter outreach and messaging 13%, campaign strategy 9%
+    story rewrites 37%; opponent research started 1%; plan task actions 8%
+
+  [Pro: All-rounders] n=129 (7% of eligible); onboarded 108, activated 102; Pro 100%; experienced 9%; city office 71%
+    median days on Win 65; median area-days/week 1.75
+    never used: Outreach 0%, Voter data 0%, AI assistant 2%, Story and issues 40%, Opponent research 0%
+    outreach: sent 96%; channels if sent 2.0; text length 770 chars; text audience 4252; first send 39.0 days before election
+    voter data: lists if any 6.0; recommended share 16%; filters per list 2.5357142857142856
+    AI: chat users 96%; msgs if any 9.0; top topics other 22%, voter outreach and messaging 19%, voter data and targeting 15%, how to use the app 15%
+    story rewrites 33%; opponent research started 40%; plan task actions 60%
+
+  [Pro: Voter data, AI and outreach] n=71 (4% of eligible); onboarded 45, activated 47; Pro 100%; experienced 10%; city office 77%
+    median days on Win 55; median area-days/week 1.21
+    never used: Outreach 3%, Voter data 0%, AI assistant 0%, Story and issues 37%, Opponent research 89%
+    outreach: sent 86%; channels if sent 1.0; text length 626 chars; text audience 3648; first send 27.0 days before election
+    voter data: lists if any 5.0; recommended share 20%; filters per list 2.0
+    AI: chat users 100%; msgs if any 8.0; top topics voter outreach and messaging 22%, story, issues and positions 21%, other 19%, how to use the app 9%
+    story rewrites 28%; opponent research started 4%; plan task actions 56%
+
+  [Pro: Everything but outreach] n=52 (3% of eligible); onboarded 37, activated 5; Pro 100%; experienced 6%; city office 71%
+    median days on Win 70; median area-days/week 0.54
+    never used: Outreach 81%, Voter data 23%, AI assistant 2%, Story and issues 13%, Opponent research 25%
+    outreach: sent 15%; channels if sent 1.0; text length 408 chars; text audience 1147; first send 51.0 days before election
+    voter data: lists if any 2.0; recommended share 11%; filters per list 3.0
+    AI: chat users 87%; msgs if any 5.0; top topics voter outreach and messaging 31%, other 25%, story, issues and positions 17%, how to use the app 6%
+    story rewrites 40%; opponent research started 35%; plan task actions 25%
+
+  [Pro: Voter data and outreach, no AI] n=48 (3% of eligible); onboarded 36, activated 40; Pro 100%; experienced 12%; city office 77%
+    median days on Win 48; median area-days/week 1.60
+    never used: Outreach 6%, Voter data 0%, AI assistant 77%, Story and issues 31%, Opponent research 46%
+    outreach: sent 88%; channels if sent 1.5; text length 810 chars; text audience 4722; first send 27.0 days before election
+    voter data: lists if any 4.0; recommended share 20%; filters per list 3.0
+    AI: chat users 21%; msgs if any 2.0; top topics voter data and targeting 26%, other 19%, story, issues and positions 16%, voter outreach and messaging 16%
+    story rewrites 31%; opponent research started 15%; plan task actions 42%
+
+  [Free: Voter data, AI and opponent research] n=30 (2% of eligible); onboarded 24, activated 12; Pro 0%; experienced 17%; city office 73%
+    median days on Win 86; median area-days/week 0.70
+    never used: Outreach 47%, Voter data 3%, AI assistant 13%, Story and issues 40%, Opponent research 40%
+    outreach: sent 40%; channels if sent 2.0; text length 84 chars; text audience 4036; first send 88.0 days before election
+    voter data: lists if any 4.0; recommended share 5%; filters per list 2.5
+    AI: chat users 70%; msgs if any 3.0; top topics other 27%, voter outreach and messaging 22%, story, issues and positions 16%, how to use the app 13%
+    story rewrites 7%; opponent research started 20%; plan task actions 13%
+
+  [Free: AI and story, no outreach] n=29 (2% of eligible); onboarded 25, activated 1; Pro 0%; experienced 10%; city office 59%
+    median days on Win 67; median area-days/week 0.42
+    never used: Outreach 79%, Voter data 93%, AI assistant 3%, Story and issues 0%, Opponent research 93%
+    outreach: sent 7%; channels if sent 1.0; text length nan chars; text audience nan; first send 53.0 days before election
+    voter data: lists if any 1.5; recommended share 25%; filters per list 1.0
+    AI: chat users 90%; msgs if any 6.5; top topics story, issues and positions 28%, other 23%, how to use the app 15%, filing, compliance and legal 12%
+    story rewrites 97%; opponent research started 7%; plan task actions 21%
+
+  [Free: AI only] n=21 (1% of eligible); onboarded 15, activated 2; Pro 0%; experienced 5%; city office 57%
+    median days on Win 88; median area-days/week 0.33
+    never used: Outreach 71%, Voter data 100%, AI assistant 0%, Story and issues 100%, Opponent research 95%
+    outreach: sent 10%; channels if sent 1.0; text length nan chars; text audience nan; first send 48.5 days before election
+    voter data: lists if any nan; recommended share n/a; filters per list nan
+    AI: chat users 90%; msgs if any 12.0; top topics story, issues and positions 27%, other 26%, voter outreach and messaging 20%, campaign strategy 6%
+    story rewrites 0%; opponent research started 0%; plan task actions 5%
+
+== 7. Groups among onboarded vs activated, split free vs Pro ==
+                                                all onboarded activated free  Pro
+    group
+    No area use                                 48%       34%        0%  60%   0%
+    Light touch (1-2 days)                      31%       29%        2%  35%  13%
+    Pro: All-rounders                            7%       14%       48%   0%  37%
+    Pro: Voter data, AI and outreach             4%        6%       22%   0%  21%
+    Pro: Everything but outreach                 3%        5%        2%   0%  15%
+    Pro: Voter data and outreach, no AI          3%        5%       19%   0%  14%
+    Free: Voter data, AI and opponent research   2%        3%        6%   2%   0%
+    Free: AI and story, no outreach              2%        3%        0%   2%   0%
+    Free: AI only                                1%        2%        1%   1%   0%
+    n: all 1802, onboarded 789, activated 214, free 1457, Pro 345
+
+== 8. Journeys: order areas were first used (top 8 paths, first three areas) ==
+  onboarded (users with any area use: 521)
+     119  AI assistant
+      62  AI assistant > Story and issues
+      48  Story and issues
+      23  Outreach > Voter data > AI assistant
+      21  Voter data > AI assistant > Story and issues
+      17  AI assistant > Story and issues > Voter data
+      16  AI assistant > Story and issues > Opponent research
+      16  AI assistant > Story and issues > Outreach
+  activated (users with any area use: 214)
+      19  Outreach > Voter data > AI assistant
+      16  AI assistant > Story and issues > Outreach
+      16  AI assistant > Outreach > Voter data
+      12  Voter data > AI assistant > Story and issues
+      12  AI assistant > Story and issues > Voter data
+      11  Story and issues > Outreach > Voter data
+      10  AI assistant > Story and issues > Opponent research
+       9  Voter data > Story and issues > Outreach
+  days from signup to first outreach action: median 14, p25 3, p75 34 (n=296)
+  activation by first area used (descriptive, not causal):
+                         n  activated   pro
+    first_area
+    AI assistant       539       0.14  0.26
+    Story and issues   204       0.23  0.32
+    Voter data         109       0.41  0.78
+    Outreach            68       0.56  0.66
+    Opponent research   13       0.54  0.85
+
+== 9. Chat topics overall (classified messages, totals only) ==
+  other                           1672 (23%); users 305
+  story, issues and positions     1440 (20%); users 293
+  voter outreach and messaging    1427 (20%); users 264
+  how to use the app               706 (10%); users 278
+  voter data and targeting         645 (9%); users 209
+  campaign strategy                370 (5%); users 168
+  filing, compliance and legal     334 (5%); users 137
+  events and community             226 (3%); users 47
+  complaint or frustration         199 (3%); users 89
+  opponents                        126 (2%); users 47
+  fundraising                       93 (1%); users 52
+  experienced: other 21%, voter outreach and messaging 17%, story, issues and positions 16%, how to use the app 14%, voter data and targeting 14%
+  newcomer: other 23%, story, issues and positions 20%, voter outreach and messaging 20%, how to use the app 9%, voter data and targeting 9%
