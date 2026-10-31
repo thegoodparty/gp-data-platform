@@ -276,6 +276,36 @@ models:
       - name: top_issue_id
         data_tests:
           - not_null
+  - name: stg_airbyte_source__gp_api_db_campaign_story
+    description: >
+      The candidate's "Your Story" background, one row per campaign. The other
+      two story fields, the why and the policy priorities, live on the website
+      record (`content.about.bio` and `content.about.issues`), not here.
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                severity: warn
+      - name: background
+        description: "Candidate-written background, saved from onboarding, the Your Story page or the campaign manager chat. Null until the candidate writes one"
+      - name: rewrite_count
+        description: "Lifetime count of AI rewrite attempts, capped server-side"
+      - name: created_at
+        data_tests:
+          - not_null
+      - name: updated_at
+        data_tests:
+          - not_null
   - name: stg_airbyte_source__gp_api_db_chat_conversation
     description: >
       Chat conversations collected from EO Meeting Briefings. One row per
