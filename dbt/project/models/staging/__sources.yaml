@@ -259,6 +259,16 @@ sources:
         description: raw data load from gp_api_db postgres db from table `robocall_experiment_precinct`
         config:
           freshness: null
+      # Social posts are almost all Win and can go quiet for weeks after an
+      # election; the connection's busier gp-api streams still catch a stalled sync.
+      - name: gp_api_db_outreach_social
+        description: raw data load from gp_api_db postgres db from table `outreach_social`
+        config:
+          freshness: null
+      - name: gp_api_db_outreach_social_asset
+        description: raw data load from gp_api_db postgres db from table `outreach_social_asset`
+        config:
+          freshness: null
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
         # The upstream `path_to_victory` table was dropped from gp-api on 2026-04-15

@@ -1094,6 +1094,109 @@ models:
         description: "When the backlog alert was sent for a run the send queue would reach late"
       - name: last_reminder_sent_at
         description: "When the last fix-your-card reminder was sent for a failed hold"
+  - name: stg_airbyte_source__gp_api_db_outreach_social
+    description: >
+      The social media post behind a social outreach: the purpose picked at the
+      "What do you want to do?" step and the draft the per-platform posts were
+      generated from. One row per outreach, written once when the post is saved
+      (saving is the send, so the outreach is completed from the start). Both
+      Win campaigns and Serve organizations save here; the outreach's campaign
+      or organization says which.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the social post"
+        data_tests:
+          - not_null
+          - unique
+      - name: outreach_id
+        description: "Foreign key to the outreach this social post belongs to (one post per outreach)"
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_outreach')
+                field: id
+              config:
+                severity: warn
+      - name: created_at
+        description: "Timestamp when the social post was saved"
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the social post was last updated"
+        data_tests:
+          - not_null
+      - name: purpose
+        description: >
+          What the post is for, from the purpose picker. Win and Serve have
+          separate vocabularies (the social purpose lists in the outreach
+          contracts) that share some slugs, such as introduce_myself and
+          custom, so tell the product apart by the outreach's campaign or
+          organization, not by the value.
+        data_tests:
+          - not_null
+      - name: draft_message
+        description: "The draft message the per-platform posts were generated from"
+  - name: stg_airbyte_source__gp_api_db_outreach_social_asset
+    description: >
+      One generated post per platform for a social post: post copy for the
+      text platforms, or a video script and caption for the video platforms.
+      Written with its social post in one transaction.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - outreach_social_id
+              - platform
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the platform post"
+        data_tests:
+          - not_null
+          - unique
+      - name: outreach_social_id
+        description: "Foreign key to the social post this platform post belongs to"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_outreach_social')
+                field: id
+              config:
+                severity: warn
+      - name: created_at
+        description: "Timestamp when the platform post was generated"
+        data_tests:
+          - not_null
+      - name: platform
+        description: "The social platform the post was written for"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - facebook
+                  - instagram
+                  - nextdoor
+                  - x
+                  - tiktok
+                  - youtube_shorts
+      - name: kind
+        description: "post_copy for the text platforms, video_script for the video platforms"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - post_copy
+                  - video_script
+      - name: text
+        description: "The post copy, or the video script"
+        data_tests:
+          - not_null
+      - name: caption
+        description: "Caption to post with a video script. Null for post copy"
   - name: stg_airbyte_source__gp_api_db_path_to_victory
     description: raw data load from gp_api_db postgres db from table `path_to_victory`
     columns:
