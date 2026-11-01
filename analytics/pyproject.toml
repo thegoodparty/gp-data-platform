@@ -6,14 +6,14 @@ requires-python = ">=3.14"
 dependencies = [
     "pandas>=3.1.0,<4.0.0",
     "pyyaml>=6.0",
-    "databricks-sql-connector>=4.6.0",
-    "databricks-sdk>=0.156.0",
+    "databricks-sql-connector>=4.8.0",
+    "databricks-sdk>=0.158.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "mypy>=2.4.0",
+    "pytest>=9.2.0",
+    "mypy>=2.4.1",
     # The anchor guard renders dbt's own macro source with Jinja stubs, so it can
     # check the emitted predicate against the declaration without dbt or a warehouse.
     "jinja2>=3.1",
