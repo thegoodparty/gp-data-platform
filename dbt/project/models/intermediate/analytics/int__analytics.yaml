@@ -2536,6 +2536,28 @@ models:
         description: The message, else the script.
       - name: is_own_audience
         description: The candidate built or changed it, rather than sending an untouched recommended list.
+  - name: int__outreach_purpose
+    description: >
+      What each outreach send was for, one row per gp-api outreach row: the
+      sender's pick where the product kept it, else a template key, a
+      recommended list's intent, or a model's reading of the message.
+      purpose_source says which.
+    columns:
+      - name: outreach_id
+        data_tests:
+          - not_null
+          - unique
+      - name: purpose
+        description: The best available purpose; 'unknown' when nothing above applies.
+        data_tests:
+          - not_null
+      - name: purpose_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["reading", "picked", "template", "recommended", "model", "unknown"]
+      - name: model_purpose
+        description: The model's guess, kept even when not trusted so a later reading can promote it.
 
 unit_tests:
   - name: hubspot_note_items_drops_stubs_and_voicemail

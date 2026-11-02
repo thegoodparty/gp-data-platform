@@ -1167,6 +1167,28 @@ seeds:
               arguments:
                 min_value: 0
                 max_value: 100
+  - name: outreach_purpose_labels
+    description: >
+      A model's reading of what each outreach message was for, plus hand
+      readings, one row per gp-api outreach id. Frozen here so builds never
+      call the model; regenerated from the labeling script when new sends
+      need a purpose. Ids and labels only, no message text.
+    config:
+      column_types:
+        outreach_id: bigint
+        model_purpose: string
+        model_confidence: string
+        read_purpose: string
+    columns:
+      - name: outreach_id
+        data_tests:
+          - not_null
+          - unique
+      - name: model_confidence
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["high", "medium", "low"]
   - name: win_feature_events
     description: >
       Which Amplitude events count as using each Win feature: one row per
