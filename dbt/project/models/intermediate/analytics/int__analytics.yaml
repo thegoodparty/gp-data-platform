@@ -2548,7 +2548,7 @@ models:
           - not_null
           - unique
       - name: purpose
-        description: The best available purpose; 'unknown' when nothing above applies.
+        description: The best available purpose. 'custom' when the sender picked custom and nothing else says more; 'unknown' when there is nothing at all.
         data_tests:
           - not_null
       - name: purpose_source
