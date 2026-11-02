@@ -82,6 +82,7 @@ with
             c.is_partisan,
             c.office_level,
             c.latest_stage_result,
+            c.candidacy_result as final_result,
             c.latest_stage_reached,
             c.primary_election_date,
             c.general_election_date,
@@ -361,6 +362,7 @@ select
     end as candidacy_voter_count_bucket,
 
     cc.latest_stage_result as candidacy_result,
+    cc.final_result as candidacy_final_result,
     cc.latest_stage_reached as candidacy_latest_stage_reached,
     cc.primary_election_date as candidacy_primary_election_date,
     pr.primary_result as candidacy_primary_result,

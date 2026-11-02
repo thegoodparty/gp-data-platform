@@ -4185,7 +4185,10 @@ models:
       - name: is_confirmed
         description: Legitimacy label is "6. confirmed", the corroboration gate used across Win reporting.
       - name: has_result
-        description: A won or lost result is matched. The results coverage measure.
+        description: >
+          The race has a settled won or lost outcome (civics candidacy_result).
+          A primary win with the general still ahead is not a result. The
+          results coverage measure.
       - name: contest_status
         description: >-
           contested, uncontested, or unknown when the race facts are missing. Taken from the race's

@@ -21,7 +21,7 @@ with
             candidacy_election_date as election_date,
             candidacy_primary_election_date as primary_election_date,
             candidacy_latest_stage_reached as latest_stage_reached,
-            candidacy_result,
+            candidacy_final_result as final_result,
             candidacy_legitimacy_label as legitimacy_label,
             candidacy_is_incumbent as is_incumbent,
             candidacy_is_uncontested as is_uncontested,
@@ -266,7 +266,7 @@ select
     -- Who is counted, in the order the report applies them
     not c.is_staff_or_demo as is_real_user,
     c.legitimacy_label = '6. confirmed' as is_confirmed,
-    c.candidacy_result in ('Won', 'Lost') as has_result,
+    c.final_result in ('Won', 'Lost') as has_result,
     case
         when coalesce(r.is_contested, not c.is_uncontested)
         then 'contested'
@@ -291,10 +291,8 @@ select
     c.race_date <= current_date() as is_race_past,
 
     -- Outcome, null until matched
-    case
-        c.candidacy_result when 'Won' then true when 'Lost' then false
-    end as is_winner,
-    c.candidacy_result = 'Lost'
+    case c.final_result when 'Won' then true when 'Lost' then false end as is_winner,
+    c.final_result = 'Lost'
     and c.latest_stage_reached like 'primary%' as is_primary_loss,
 
     -- How they came and what they bought
