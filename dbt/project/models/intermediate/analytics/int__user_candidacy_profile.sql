@@ -248,7 +248,7 @@ with
         select distinct k.user_id
         from keys as k
         inner join {{ ref("candidacy") }} as c using (gp_person_id)
-        where c.latest_stage_result = 'Won'
+        where c.candidacy_result = 'Won'
     )
 
 select
