@@ -13,7 +13,7 @@ These apply by default to Win-product analyses. Document deviations in your proj
 | Decision | Default |
 |---|---|
 | Unit of analysis | Candidacy (`gp_candidacy_id`) |
-| Outcome variable | `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy` (NOT `general_election_result`) |
+| Outcome variable | `candidacy_result` from `mart_civics.candidacy` (NOT `latest_stage_result`, which reads a primary win as Won, and NOT `general_election_result`, which drops primary losers) |
 | Cycle window | `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'` (adjust per project) |
 | Engagement window | Same as candidacy window unless analysis specifically wants trailing features |
 | Baseline | All registered Win users; engagement-zero is a valid predictor value (not an exclusion) |

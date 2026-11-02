@@ -9,11 +9,11 @@ Owns the detail for two canonical concepts defined in [canonical_metrics.md](can
 
 - **Business context:** two parallel success measures — electoral outcome (did they win the race) and self-reported PMF/satisfaction (did the product work for them).
 - **Entity grain:** outcomes at `gp_candidacy_id` (or per-stage at `candidacy_stage`); survey responses at `submission_id`.
-- **Standard hygiene filter:** for binary outcomes, `latest_stage_result IN ('Won', 'Lost')`; for surveys, dedupe at `submission_id` and read rates as directional (severe self-selection).
+- **Standard hygiene filter:** for binary outcomes, `candidacy_result IN ('Won', 'Lost')`; for surveys, dedupe at `submission_id` and read rates as directional (severe self-selection).
 
 ## Routing triggers
 
-- IF the question is binary win/loss → use `latest_stage_result` + `latest_stage_reached` (NOT `candidacy_result`; see Gotchas).
+- IF the question is binary win/loss → use `candidacy_result` (the settled outcome). Use `latest_stage_result` + `latest_stage_reached` only for funnel position; see Gotchas.
 - IF the question is about the general-election stage specifically → `general_election_result`.
 - IF the question compares primary vs general dynamics → per-stage `candidacy_stage.election_result`.
 - IF the question is about vote share → `candidacy_stage.votes_received` / `vote_percentage` (STRING; clean before casting).
@@ -24,18 +24,18 @@ Owns the detail for two canonical concepts defined in [canonical_metrics.md](can
 
 | Column | Grain | When to use | Caveat |
 |---|---|---|---|
-| **`candidacy.latest_stage_result`** + `latest_stage_reached` | candidacy | **Preferred** (governed; see [canonical_metrics.md](canonical_metrics.md)). Captures the deepest stage reached + result there. Candidates eliminated at primary still get a labeled outcome. | Resolved scope for analyses going forward (DATA-1935, 2026-05-27). |
-| `candidacy.general_election_result` | candidacy | Strict general-stage outcome only. Use when the analytical question is "did they win the general?" specifically. | Excludes candidates who never reached the general. ~28% fewer labels than `latest_stage_result`. |
+| **`candidacy.candidacy_result`** | candidacy | **Preferred** for won/lost (see [canonical_metrics.md](canonical_metrics.md)). The settled outcome: Won = won the seat, Lost = eliminated at any stage (so primary losers are labeled), null while still open. Same meaning in `users_win_candidacy`, `leads_win_candidacy` and `user_journey`. | Final-outcome field since 2026-07-15 (DATA-2042). Known gap: where a primary majority wins the seat outright, it reads null until the general resolves. |
+| `candidacy.latest_stage_result` + `latest_stage_reached` | candidacy | Funnel position: the deepest stage reached and the result there. | A primary winner waiting on the general reads Won here, so it is not an outcome. In `user_journey` it is `candidacy_latest_stage_result`. |
+| `candidacy.general_election_result` | candidacy | Strict general-stage outcome only. Use when the analytical question is "did they win the general?" specifically. | Excludes candidates who never reached the general, including primary losers. |
 | `candidacy_stage.election_result` | stage | Per-stage analyses. Use when comparing primary vs general dynamics. | Funnel-aware. `accepted_values` test enforces a constrained set. |
 | `candidacy_stage.is_winner` | stage | Boolean form of the above. DDHQ-authoritative when present. | Boolean. Same domain as `election_result`. |
 | `candidacy_stage.votes_received` / `vote_percentage` | stage | Vote-share analyses. | `votes_received` is STRING — may contain literal "uncontested". Cast/clean before aggregating. |
-| `candidacy.candidacy_result` | candidacy | **AVOID** for binary win/loss. Rolled-up with cross-stage fallback (general_runoff > general > primary_runoff > primary). | Contamination hazard: a primary winner who lost the general can show `candidacy_result = 'Won'`. Documented at `m_civics.yaml:516-545`. |
 
 ### Domain values (per `m_civics.yaml:543-602`)
 
 `Won`, `Lost`, `Runoff`, `Withdrew`, `Not on Ballot`, `Cannot Determine`
 
-The `accepted_values` test on per-stage `election_result` excludes `Cannot Determine`. For binary outcomes, filter to `latest_stage_result IN ('Won', 'Lost')`.
+The `accepted_values` test on per-stage `election_result` excludes `Cannot Determine`. For binary outcomes, filter to `candidacy_result IN ('Won', 'Lost')`.
 
 ## Amplitude self-reported outcome supplement
 
@@ -107,4 +107,4 @@ See `analytics/projects/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7
 
 - [canonical_metrics.md](canonical_metrics.md) — governed definitions of the preferred outcome and KR2.
 - [joins.md](joins.md) — the 2-hop survey join and the campaign→candidacy join.
-- [gotchas.md](gotchas.md) — `candidacy_result` contamination, `votes_received` STRING trap, self-report bias, Option 1/2 labels.
+- [gotchas.md](gotchas.md) — `latest_stage_result` reads a primary win as Won, `votes_received` STRING trap, self-report bias, Option 1/2 labels.

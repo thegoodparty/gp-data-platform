@@ -38,7 +38,7 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 ```
 users_win_candidacy.campaign_id = candidacy.product_campaign_id
 ```
-Use `users_win_candidacy` if you only need outcomes + segmentation that's already denormalized. Join out to `candidacy` for `latest_stage_reached`, `latest_stage_result`, `is_incumbent`, `is_open_seat`, `is_partisan`.
+Use `users_win_candidacy` if you only need outcomes + segmentation that's already denormalized. Its `candidacy_result` is already the settled outcome. Join out to `candidacy` for `latest_stage_reached` (funnel position), `is_incumbent`, `is_open_seat`, `is_partisan`.
 
 **Win user → engagement (Amplitude weekly):**
 ```
