@@ -54,7 +54,10 @@ models:
           - not_null
 
       - name: serve_organization_count
-        description: Number of Serve organizations (linked to an elected office)
+        description: >
+          Number of Serve organizations the user started. A Serve org a win
+          created that its holder never opened is not counted, so this is
+          lower than counting organization_type = 'serve' in organizations.
         data_tests:
           - not_null
 
@@ -101,11 +104,13 @@ models:
 
       - name: is_serve_user
         description: >
-          Whether the user is a Serve user. True if the user has a Serve
-          organization (organization_type = 'serve') or has ever completed a
-          poll through an elected office. The organization check is the
-          authoritative source; the poll check preserves backwards compatibility
-          for users who used Serve before the Organization entity was introduced.
+          Whether the user started Serve. True if the user owns a Serve
+          organization they started (serve_organization_count > 0) or has
+          ever completed a poll through an elected office. Since 2026-11-02 a
+          candidate win creates a Serve office whether or not the winner uses
+          Serve; until they open it, that office does not count. The poll
+          check covers users who used Serve before the Organization entity
+          existed.
         data_tests:
           - not_null
 
@@ -120,8 +125,9 @@ models:
       - name: eo_activated_at
         description: >
           Earliest timestamp indicating when the user became a Serve user.
-          This is the earlier of: the creation date of their first Serve
-          organization, or the creation date of their first completed poll.
+          This is the earlier of: the creation date of their first started
+          Serve organization (for a win-created office, when its holder
+          started it), or the creation date of their first completed poll.
           NULL for users who are not Serve users (is_serve_user = false).
           For the date someone started Serve use serve_started_at: a migration
           on 2026-03-12 created hundreds of Serve organizations at once, which
@@ -131,18 +137,39 @@ models:
               config:
                 where: "is_serve_user = true"
 
+      - name: serve_start_status
+        description: >
+          started when the user started any of their elected offices
+          themselves; never_started when every office they have was created by
+          a candidate win and never opened; NULL with no elected office. See
+          int__serve_office_start for the rule. Not a completion flag: for
+          finished onboarding use the Amplitude-based
+          serve_onboarding_completed_at.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["started", "never_started"]
+          # a Serve user must rest on a started office, or the two drift
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "= 'started'"
+              config:
+                where: "is_serve_user"
+
       - name: serve_started_at
         description: >
-          Creation date of the user's first elected office in gp-api: the day
-          they signed up for Serve. NULL for users with no elected office.
+          When the user started Serve: the creation date of their first
+          elected office they started themselves, or, for an office a win
+          created, when they first finished onboarding or sent a poll on it.
+          NULL for users with no started office.
 
       - name: is_serve_icp
         description: >
-          ICP-Serve: any of the user's elected offices sits in an organization
-          whose position is ICP-Serve in int__icp_offices (state or local
-          executive or legislative, 1,000 to 100,000 constituents, not judicial,
-          not appointed). False when no position is matched; NULL for users with
-          no elected office.
+          ICP-Serve: any of the user's started elected offices sits in an
+          organization whose position is ICP-Serve in int__icp_offices (state
+          or local executive or legislative, 1,000 to 100,000 constituents, not
+          judicial, not appointed). False when no position is matched; NULL for
+          users with no started office.
 
   - name: campaigns
     description: >
@@ -382,7 +409,9 @@ models:
       - name: organization_type
         description: >
           Whether this organization is a Win (campaign) or Serve (elected office)
-          organization.
+          organization, as the app has it. Since 2026-11-02 a candidate win
+          also creates a Serve organization, used or not, so do not count
+          'serve' rows as Serve users: filter on serve_start_status = 'started'.
         data_tests:
           # Orgs with no campaign or elected office (incomplete/abandoned) leave this null
           - not_null:
@@ -392,6 +421,20 @@ models:
           - accepted_values:
               arguments:
                 values: ["win", "serve"]
+
+      - name: serve_start_status
+        description: >
+          For Serve organizations: started when the holder started the office
+          themselves, never_started when a candidate win created it and the
+          holder never opened it. NULL for Win organizations. See
+          int__serve_office_start for the rule.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["started", "never_started"]
+          - not_null:
+              config:
+                where: "organization_type = 'serve'"
 
       - name: created_at
         description: Timestamp when the organization was created

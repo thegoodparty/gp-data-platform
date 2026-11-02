@@ -588,18 +588,27 @@ models:
           onboarding. NULL when they have not pledged.
       - name: onboarding_completed_at
         description: >
-          Timestamp the holder finished Serve onboarding. NULL means the office
-          is dormant: every candidate win now creates an elected office, even
-          when the person never uses Serve, so Serve user counts should only
-          count offices where this is set.
+          When gp-api recorded the end of Serve onboarding. gp-api set it to
+          created_at for every office that existed before the field was added,
+          so on older offices it means "had an office", not "finished
+          onboarding". For finished onboarding use the Amplitude-based
+          serve_onboarding_completed_at. NULL while onboarding is unfinished
+          or was never started, which includes an office a candidate win
+          created that its holder never opened. Do not count Serve users from
+          this column: use users.is_serve_user, or serve_start_status (rule in
+          int__serve_office_start).
       - name: onboarding_step
         description: >
           Last Serve onboarding step the holder reached (e.g. `party`,
-          `pledge`, `confirm`). NULL when no step was recorded.
+          `pledge`, `confirm`). NULL when no step was recorded. An office a
+          candidate win created starts at `confirm` and moves only when the
+          holder continues onboarding.
       - name: win_source
         description: >
           Which source created the office from a candidate win (gp-api enum
           `ElectedOfficeWinSource`). NULL for offices not created from a win.
+          It marks where the office came from, not whether it is used: a Pro
+          winner who opens Serve themselves also gets `self_reported`.
         data_tests:
           - accepted_values:
               arguments:

@@ -22,8 +22,11 @@ with
     serve_orgs as (
         -- the cohort predicate lives here and only here: "ever-serve" by
         -- default. A future ever-vs-active decision lands as one more
-        -- predicate in this CTE.
-        select * from {{ ref("organizations") }} where organization_type = 'serve'
+        -- predicate in this CTE. Orgs a win created and nobody opened are
+        -- not Serve use.
+        select *
+        from {{ ref("organizations") }}
+        where organization_type = 'serve' and serve_start_status = 'started'
     ),
 
     districts as (select * from {{ ref("m_election_api__district") }}),
