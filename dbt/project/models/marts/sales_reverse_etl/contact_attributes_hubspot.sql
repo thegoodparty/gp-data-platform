@@ -24,25 +24,31 @@ with
     -- numeric id (ids are monotonic) as the tie-break and for companies absent
     -- from the ingest. Null when the contact has no associated company. A fallback
     -- import match key for when the contact id fails to match.
+    -- a lateral view cannot be followed by a join, so explode in its own CTE
+    contact_companies as (
+        select ours.id as contact_id, try_cast(cid as bigint) as company_id
+        from {{ ref("int__hubspot_contacts") }} as ours
+        lateral view explode(ours.companies) as cid
+    ),
+
+    ranked_companies as (
+        select
+            cc.contact_id,
+            cc.company_id,
+            row_number() over (
+                partition by cc.contact_id
+                order by co.created_at desc nulls last, cc.company_id desc
+            ) as rn
+        from contact_companies as cc
+        left join
+            {{ ref("stg_airbyte_source__hubspot_api_companies") }} as co
+            on cc.company_id = co.id
+        where cc.company_id is not null
+    ),
+
     newest_company as (
-        select contact_id, hubspot_company_id
-        from
-            (
-                select
-                    ours.id as contact_id,
-                    cast(try_cast(cid as bigint) as string) as hubspot_company_id,
-                    row_number() over (
-                        partition by ours.id
-                        order by
-                            co.created_at desc nulls last, try_cast(cid as bigint) desc
-                    ) as rn
-                from {{ ref("int__hubspot_contacts") }} as ours
-                lateral view explode(ours.companies) as cid
-                left join
-                    {{ ref("stg_airbyte_source__hubspot_api_companies") }} as co
-                    on try_cast(cid as bigint) = co.id
-                where try_cast(cid as bigint) is not null
-            )
+        select contact_id, cast(company_id as string) as hubspot_company_id
+        from ranked_companies
         where rn = 1
     ),
 
