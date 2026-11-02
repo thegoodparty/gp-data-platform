@@ -586,6 +586,23 @@ models:
         description: >
           Timestamp the holder took the GoodParty pledge during serve
           onboarding. NULL when they have not pledged.
+      - name: onboarding_completed_at
+        description: >
+          When gp-api recorded the end of Serve onboarding. gp-api set it to
+          created_at for every office that existed before the field was added,
+          so on older offices it means "had an office", not "finished
+          onboarding". For finished onboarding use the Amplitude-based
+          serve_onboarding_completed_at. NULL while onboarding is unfinished
+          or was never started.
+      - name: onboarding_step
+        description: >
+          Last Serve onboarding step the holder reached (e.g. pledge, office,
+          term-dates). NULL on most offices, including ones whose onboarding
+          finished.
+      - name: self_reported
+        description: >
+          gp-api's self_reported flag on the office, passed through as is.
+          NULL on older offices.
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:

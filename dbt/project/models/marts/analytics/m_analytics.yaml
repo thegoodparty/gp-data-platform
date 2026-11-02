@@ -44,15 +44,18 @@ models:
 
       - name: is_serve_user
         description: >
-          Whether user is a Serve product user (has completed a poll through
-          an elected office). Source: mart_civics.users.is_serve_user
+          Whether the user started Serve: owns a Serve organization they
+          started, or completed a poll. An office a win created that its
+          holder never opened does not count. Source:
+          mart_civics.users.is_serve_user
         data_tests:
           - not_null
 
       - name: eo_activated_at
         description: >
-          Timestamp when user became a Serve user (first completed poll).
-          NULL for non-Serve users.
+          Earlier of the user's first started Serve organization and first
+          completed poll. NULL for non-Serve users. For when someone started
+          Serve use serve_started_at. Source: mart_civics.users.eo_activated_at
 
       - name: campaign_count
         description: Total number of campaigns created by this user.
@@ -509,8 +512,9 @@ models:
 
       - name: eo_activated_at
         description: >
-          Timestamp when user became a Serve user (first completed poll).
-          NULL if not matched in civics or not yet activated.
+          Earlier of the user's first started Serve organization and first
+          completed poll, per mart_civics.users. NULL if not matched in civics
+          or not a Serve user.
 
       - name: registered_at
         description: User account creation timestamp from civics. NULL if not matched.
@@ -703,15 +707,18 @@ models:
 
       - name: is_serve_user
         description: >
-          Whether user is a Serve product user (has completed a poll through
-          an elected office). Source: mart_civics.users.is_serve_user
+          Whether the user started Serve: owns a Serve organization they
+          started, or completed a poll. An office a win created that its
+          holder never opened does not count. Source:
+          mart_civics.users.is_serve_user
         data_tests:
           - not_null
 
       - name: eo_activated_at
         description: >
-          Timestamp when user became a Serve user (first completed poll).
-          NULL for non-Serve users.
+          Earlier of the user's first started Serve organization and first
+          completed poll. NULL for non-Serve users. For when someone started
+          Serve use serve_started_at. Source: mart_civics.users.eo_activated_at
 
       - name: last_serve_activity_at
         description: >
@@ -1038,12 +1045,19 @@ models:
                 values: [true]
 
       - name: is_serve_user
-        description: Whether the user is a Serve platform user (has created and completed a poll through an elected office)
+        description: >
+          Whether the user started Serve: owns a Serve organization they
+          started, or completed a poll. An office a win created that its
+          holder never opened does not count. Source:
+          mart_civics.users.is_serve_user
         data_tests:
           - not_null
 
       - name: eo_activated_at
-        description: Timestamp when the user became a Serve user (first completed poll creation date). NULL for non-Serve users.
+        description: >
+          Earlier of the user's first started Serve organization and first
+          completed poll. NULL for non-Serve users. Source:
+          mart_civics.users.eo_activated_at
 
       - name: icp_office_win
         description: Whether the office meets Ideal Customer Profile criteria for the Win product
@@ -1506,6 +1520,9 @@ models:
       - name: has_win_org
         data_tests: [not_null]
       - name: has_serve_org
+        description: >
+          Owns a Serve organization they started. A Serve org a win created
+          and nobody opened does not count.
         data_tests: [not_null]
       - name: is_winner_or_eo
         data_tests: [not_null]
@@ -3429,7 +3446,9 @@ models:
       - name: product
         description: >
           win, serve or both by organization membership; none for an account
-          that never joined an organization in either product.
+          that never joined an organization in either product. Serve means
+          is_serve_user, so a Serve office a win created and its holder never
+          opened leaves a winner as win.
         data_tests:
           - not_null
           - accepted_values:
@@ -3479,10 +3498,22 @@ models:
           - not_null
       - name: serve_started_at
         description: >
-          When the official started Serve: their first elected office in gp-api.
-          Use this, not eo_activated_at, for when someone became a Serve user;
-          eo_activated_at takes the first poll when that came first, and a
-          migration created hundreds of Serve organizations on one day.
+          When the official started Serve: their first elected office they
+          started in gp-api. Use this, not eo_activated_at, for when someone
+          became a Serve user; eo_activated_at takes the first poll when that
+          came first, and a migration created hundreds of Serve organizations
+          on one day.
+      - name: serve_start_status
+        description: >
+          started when the user started any Serve office themselves;
+          never_started when every Serve office they have was created by a win
+          and never opened; NULL with no Serve office. Not a completion flag:
+          started includes people who began onboarding and stopped. For
+          finished onboarding use serve_onboarding_completed_at.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["started", "never_started"]
       - name: is_serve_icp
         description: >
           ICP-Serve: the office behind the official's Serve organization is a

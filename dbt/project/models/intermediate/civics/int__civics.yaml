@@ -3853,6 +3853,67 @@ models:
           arguments:
             expression: "is_active_serve_user = has_reached_constituents"
 
+  - name: int__serve_office_start
+    description: >
+      Whether each gp-api elected office was started by its holder. Since
+      2026-11-02 gp-api creates an office for every candidate win (from the
+      candidate, staff or DDHQ), whether or not the winner uses Serve. Such an
+      office starts at the 'confirm' onboarding step with the earlier steps
+      prefilled, and the step only moves when its holder clicks Continue. An
+      office is never_started while it is linked to a campaign, has not
+      finished onboarding, still sits at 'confirm' and has sent no poll; every
+      other office is started. Every Serve user count reads serve_start_status
+      from here.
+
+      Grain: one row per elected office.
+    columns:
+      - name: elected_office_id
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        data_tests:
+          - not_null
+      - name: organization_slug
+      - name: campaign_id
+      - name: created_at
+      - name: onboarding_completed_at
+        description: >
+          gp-api's end of onboarding (the pledge). Set to created_at for every
+          office that existed before the field was added, so it is not a
+          completion signal on older offices.
+      - name: onboarding_step
+      - name: first_poll_at
+        description: Creation time of the office's first poll, completed or not.
+      - name: is_win_created
+        description: >
+          Campaign-linked office created on or after 2026-10-28, when gp-api
+          began creating offices for wins (the Pro winner handoff first). Used
+          only to date a win office its holder later starts.
+        data_tests:
+          - not_null
+      - name: serve_start_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["started", "never_started"]
+      - name: serve_started_at
+        description: >
+          When the holder started Serve on this office: its creation for an
+          office they created; for a win office, when they finished onboarding
+          or first sent a poll, else its creation. NULL when never_started.
+        data_tests:
+          - not_null:
+              config:
+                where: "serve_start_status = 'started'"
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "serve_started_at is null"
+          config:
+            where: "serve_start_status = 'never_started'"
+
   - name: int__serve_district_resolution
     description: >
       Resolves each serve org to its L2 district: the serve-cohort entry point

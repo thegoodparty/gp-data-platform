@@ -5,9 +5,7 @@ with
 
     campaigns as (select * from {{ ref("stg_airbyte_source__gp_api_db_campaign") }}),
 
-    elected_offices as (
-        select * from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }}
-    ),
+    elected_offices as (select * from {{ ref("int__serve_office_start") }}),
 
     users as (select * from {{ ref("stg_airbyte_source__gp_api_db_user") }}),
 
@@ -44,12 +42,17 @@ with
 
             -- Linked entities
             c.id as campaign_id,
-            eo.id as elected_office_id,
+            eo.elected_office_id,
 
-            -- Organization type
+            -- Organization type, as the app has it. A win creates a Serve org
+            -- too, so counting Serve use needs serve_start_status as well.
             case
-                when eo.id is not null then 'serve' when c.id is not null then 'win'
+                when eo.elected_office_id is not null
+                then 'serve'
+                when c.id is not null
+                then 'win'
             end as organization_type,
+            eo.serve_start_status,
 
             o.created_at,
             o.updated_at

@@ -40,6 +40,7 @@ with
             campaign_count > 0 and non_demo_campaign_count = 0 as is_demo_only,
             is_serve_user,
             eo_activated_at,
+            serve_start_status,
             serve_started_at,
             is_serve_icp
         from {{ ref("users") }}
@@ -188,6 +189,7 @@ select
     u.is_serve_user,
     u.eo_activated_at,
     ae.user_id is not null as is_active_eo,
+    u.serve_start_status,
     u.serve_started_at,
     u.is_serve_icp,
     sa.first_serve_activated_at,

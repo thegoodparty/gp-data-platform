@@ -46,8 +46,13 @@ with
             max(
                 case when organization_type = 'win' then true else false end
             ) as has_win_org,
+            -- an org a win created and nobody opened is not Serve use
             max(
-                case when organization_type = 'serve' then true else false end
+                case
+                    when organization_type = 'serve' and serve_start_status = 'started'
+                    then true
+                    else false
+                end
             ) as has_serve_org
         from {{ ref("organizations") }}
         where user_id is not null

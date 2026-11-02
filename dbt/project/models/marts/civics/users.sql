@@ -7,8 +7,10 @@ with
         select * from {{ ref("stg_airbyte_source__gp_api_db_organization") }}
     ),
 
-    elected_offices as (
-        select * from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }}
+    elected_offices as (select * from {{ ref("int__serve_office_start") }}),
+
+    started_offices as (
+        select * from elected_offices where serve_start_status = 'started'
     ),
 
     polls as (select * from {{ ref("stg_airbyte_source__gp_api_db_poll") }}),
@@ -22,21 +24,33 @@ with
 
     /*
         When the official started Serve, and whether their office is ICP-Serve.
-        The elected office row is the Serve signup itself. eo_activated_at is
-        not: it takes the first poll when that came earlier, and a 2026-03-12
-        migration created hundreds of Serve organizations at once.
+        Only offices the holder started count: a win also creates an office,
+        which says nothing about Serve use. eo_activated_at differs: it takes
+        the first poll when that came earlier, and a 2026-03-12 migration
+        created hundreds of Serve organizations at once.
     */
     serve_offices as (
         select
             eo.user_id,
-            min(eo.created_at) as serve_started_at,
+            min(eo.serve_started_at) as serve_started_at,
             -- An office with no matched position reads false, not unknown.
             bool_or(coalesce(icp.icp_office_serve, false)) as is_serve_icp
-        from elected_offices as eo
+        from started_offices as eo
         left join organizations as o on o.slug = eo.organization_slug
         left join positions as pos on pos.id = o.position_id
         left join icp_offices as icp on icp.br_database_position_id = pos.br_database_id
         group by eo.user_id
+    ),
+
+    -- The user's furthest office: any started office makes them started.
+    serve_start as (
+        select
+            user_id,
+            if(
+                bool_or(serve_start_status = 'started'), 'started', 'never_started'
+            ) as serve_start_status
+        from elected_offices
+        group by user_id
     ),
 
     poll_users as (
@@ -46,7 +60,7 @@ with
         */
         select eo.user_id, min(p.created_at) as eo_activated_at
         from elected_offices eo
-        inner join polls p on eo.id = p.elected_office_id
+        inner join polls p on eo.elected_office_id = p.elected_office_id
         where p.is_completed
         group by eo.user_id
     ),
@@ -56,13 +70,20 @@ with
             o.owner_id as user_id,
             count(*) as organization_count,
             count(c.id) as win_organization_count,
-            count(eo.id) as serve_organization_count,
+            count(eo.elected_office_id) as serve_organization_count,
+            -- A win-created office's org appears on the win date, not when
+            -- its holder opened Serve.
             min(
-                case when eo.id is not null then o.created_at end
+                case
+                    when eo.is_win_created
+                    then eo.serve_started_at
+                    when eo.elected_office_id is not null
+                    then o.created_at
+                end
             ) as first_serve_org_created_at
         from organizations o
         left join campaigns c on o.slug = c.organization_slug
-        left join elected_offices eo on o.slug = eo.organization_slug
+        left join started_offices eo on o.slug = eo.organization_slug
         group by o.owner_id
     ),
 
@@ -119,6 +140,7 @@ with
             ) as is_serve_user,
             case when pu.user_id is not null then true else false end as is_poll_user,
             least(pu.eo_activated_at, os.first_serve_org_created_at) as eo_activated_at,
+            ss.serve_start_status,
             so.serve_started_at,
             so.is_serve_icp
         from users u
@@ -126,6 +148,7 @@ with
         left join campaign_stats cs on u.id = cs.user_id
         left join poll_users pu on u.id = pu.user_id
         left join serve_offices so on u.id = so.user_id
+        left join serve_start ss on u.id = ss.user_id
     ),
 
     person_ids as (
