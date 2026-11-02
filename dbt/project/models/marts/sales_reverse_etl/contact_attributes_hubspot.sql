@@ -28,7 +28,16 @@ with
                 when theirs.serve_priority_segment
                 then false
             end as serve_priority_segment,
-            theirs.serve_priority_segment as hs_serve_priority_segment
+            theirs.serve_priority_segment as hs_serve_priority_segment,
+            -- HubSpot has no primary-company field and the association array is
+            -- unordered, so take the lowest numeric company id: deterministic.
+            -- Null when the contact has no associated company. A fallback import
+            -- match key for when the contact id fails to match.
+            cast(
+                array_min(
+                    transform(ours.companies, c -> try_cast(c as bigint))
+                ) as string
+            ) as hubspot_company_id
         from {{ ref("int__hubspot_contacts") }} as ours
         -- INNER join: a contact missing from the ingest no longer exists in
         -- HubSpot and would only error on import.
@@ -46,6 +55,7 @@ with
 
 select
     id as hubspot_contact_id,
+    hubspot_company_id,
     serve_priority_segment,
     hs_serve_priority_segment as hubspot_current_serve_priority_segment
 from compared

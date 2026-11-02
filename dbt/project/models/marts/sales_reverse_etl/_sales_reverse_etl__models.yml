@@ -228,6 +228,15 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: hubspot_company_id
+        description: >
+          Fallback import match key for when the contact id fails to match. The
+          lowest numeric id among the contact's associated HubSpot companies
+          (HubSpot has no primary-company field and the association order is not
+          stable, so the lowest id keeps it deterministic); null when the contact
+          has no associated company. A contact in several companies gets only one,
+          so it may not be the company a user considers primary. Not for upload
+          as a property.
       - name: serve_priority_segment
         description: >
           Value to write to the HubSpot `serve_priority_segment` contact property.
