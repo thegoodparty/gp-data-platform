@@ -361,8 +361,8 @@ select
         else '8. over 100K'
     end as candidacy_voter_count_bucket,
 
-    cc.latest_stage_result as candidacy_result,
-    cc.final_result as candidacy_final_result,
+    cc.final_result as candidacy_result,
+    cc.latest_stage_result as candidacy_latest_stage_result,
     cc.latest_stage_reached as candidacy_latest_stage_reached,
     cc.primary_election_date as candidacy_primary_election_date,
     pr.primary_result as candidacy_primary_result,

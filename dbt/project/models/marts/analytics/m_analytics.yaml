@@ -4165,6 +4165,14 @@ models:
       is_confirmed, has_result, contest_status = 'contested',
       incumbency_status = 'challenger'. Unknown contest or incumbency status is
       kept as its own value rather than folded into either side.
+    data_tests:
+      # A result on a race not yet held is usually a mislabeled stage, but an
+      # unopposed candidate can be declared early, so this warns.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (has_result and not is_race_past)"
+          config:
+            severity: warn
     columns:
       - name: user_id
         description: gp-api user. The candidacy is user_journey's, one per user.

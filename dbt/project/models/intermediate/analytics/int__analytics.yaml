@@ -1878,27 +1878,26 @@ models:
                   ]
       - name: candidacy_result
         description: >
-          The result at the deepest stage reached, from the civics candidacy's
-          latest_stage_result. Always read with candidacy_latest_stage_reached:
-          a primary win reads Won here while the general is still ahead. For
-          the settled outcome use candidacy_final_result.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
-      - name: candidacy_final_result
-        description: >
-          The run's settled outcome, the civics candidacy's candidacy_result.
-          Null while it is still open, so a primary winner waiting on the
-          general reads null here even though candidacy_result says Won. Use
-          this, not candidacy_result, for won or lost.
+          How the run ended, the civics candidacy's candidacy_result. Null
+          until the outcome is settled, so a primary winner waiting on the
+          general is null, not Won. Use this for won or lost.
         data_tests:
           - accepted_values:
               arguments:
                 values:
                   ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot", "Cannot Determine"]
+      - name: candidacy_latest_stage_result
+        description: >
+          The result at the deepest stage reached, the civics candidacy's
+          latest_stage_result. A primary win reads Won here while the general
+          is still ahead, so this is funnel position, not the outcome. Read
+          with candidacy_latest_stage_reached.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
       - name: candidacy_latest_stage_reached
-        description: The stage candidacy_result belongs to.
+        description: The stage candidacy_latest_stage_result belongs to.
       - name: candidacy_primary_election_date
         description: >
           The primary's date on the civics candidacy. Null with no primary or no
@@ -1986,7 +1985,7 @@ models:
         description: The office is judicial, from the civics election.
       - name: candidacy_votes_received
         description: >
-          Votes they received at the stage candidacy_result belongs to. Known
+          Votes they received at the stage candidacy_latest_stage_result belongs to. Known
           for about half of decided races.
         data_tests:
           - dbt_utils.accepted_range:
