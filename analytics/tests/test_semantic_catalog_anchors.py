@@ -34,7 +34,6 @@ def test_parse_anchors_normalises_missing_qualifiers():
             "path": "/dashboard",
             "era": None,
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
         {
@@ -42,7 +41,6 @@ def test_parse_anchors_normalises_missing_qualifiers():
             "path": None,
             "era": "historical",
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
     ]
@@ -65,7 +63,6 @@ def test_parse_anchors_carries_a_property_exclusion():
             "path": None,
             "era": None,
             "excluding": {"method": "manual"},
-            "paywalled": False,
             "unit": None,
         }
     ]
@@ -91,7 +88,6 @@ def test_real_sem_files_declare_anchors_for_the_okr_metrics():
     assert set(declared) == {
         "win_active_candidates_30d",
         "win_activated_users",
-        "win_product_output_users",
         "activated_serve_users",
     }
 
@@ -107,7 +103,6 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "path": "/dashboard",
             "era": None,
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
         {
@@ -115,7 +110,6 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "path": None,
             "era": "historical",
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
         {
@@ -123,7 +117,6 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "path": None,
             "era": "historical",
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
         {
@@ -131,7 +124,6 @@ def test_dashboard_anchor_keeps_the_path_leg_live_and_the_dead_names_historical(
             "path": None,
             "era": None,
             "excluding": {},
-            "paywalled": False,
             "unit": None,
         },
     ]
@@ -201,15 +193,10 @@ def test_win_activation_excludes_serve_on_every_leg_that_can_say_so():
     # carry `product`, so every leg that is not historical must exclude it, except
     # the send terminal, whose emitters are all keyed on a Win campaign.
     doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    for metric in ("win_activated_users", "win_product_output_users"):
-        for leg in parse_anchors(doc)[metric]:
-            if leg["era"] == "historical" or leg["event"] in (
-                "Voter Outreach - Campaign Scheduled",
-                "Candidate Website - Published",
-                "Voter Data - List Exported",
-            ):
-                continue
-            assert leg["excluding"].get("product") == "serve", f"{metric}: {leg['event']}"
+    for leg in parse_anchors(doc)["win_activated_users"]:
+        if leg["era"] == "historical" or leg["event"] == "Voter Outreach - Campaign Scheduled":
+            continue
+        assert leg["excluding"].get("product") == "serve", leg["event"]
 
 
 def test_win_activation_marks_every_per_person_leg_as_contact():
@@ -249,38 +236,6 @@ def test_win_activation_declares_no_preparation_event():
     )
 
 
-def test_product_output_declares_the_exact_event_string():
-    # Pinned for the same reason the outreach anchor is, plus one of its own: this
-    # is the broader of two things both once called activation, and the point of
-    # separating them is that neither list can move by accident.
-    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    legs = parse_anchors(doc)["win_product_output_users"]
-    assert [leg["event"] for leg in legs] == [
-        "Candidate Website - Published",
-        "Voter Outreach - Campaign Completed",
-        "Outreach - Campaign Completed",
-        "Voter Data - List Exported",
-        "Voter Outreach - Phone Banking Call Sheet Downloaded",
-        "Outreach - Phone Banking Call Sheet Downloaded",
-        "Voter Outreach - Campaign Scheduled",
-        "Door Knocking - Door Logged",
-        "Outreach - Door Knocking Door Logged",
-        "Outreach - Phone Banking: Call Logged",
-        "Outreach - Phone Banking Call Logged",
-    ]
-
-
-def test_product_output_follows_the_okr_on_self_report_and_the_robocall_draft():
-    # Where the outreach OKR has settled a question, product output follows it
-    # rather than diverging. Self-report produced no output here, and the robocall
-    # draft fires on an unpaid row, so nothing left the product in either case.
-    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    legs = parse_anchors(doc)["win_product_output_users"]
-    by_event = {leg["event"]: leg for leg in legs}
-    assert by_event["Voter Outreach - Campaign Completed"]["excluding"] == {"method": "manual"}
-    assert "Robocall - Scheduled" not in by_event
-
-
 def test_every_self_report_exclusion_names_the_live_spelling():
     # Self-report is excluded in two sem files. 'manual' is the spelling the
     # product still emits, so every leg that excludes self-report must name it.
@@ -298,13 +253,3 @@ def test_every_self_report_exclusion_names_the_live_spelling():
                 if "manual" not in values:
                     missing.append(f"{metric}: {leg['event']}")
     assert not missing, f"self-report exclusions missing 'manual': {missing}"
-
-
-def test_product_output_leaves_one_free_leg_for_use_as_a_label():
-    # A label drawn from the paywalled legs teaches a model who paid and lets it
-    # report that as who engaged. If every leg were marked paywalled the free
-    # variant would read zero for everyone, so the floor is asserted, not assumed.
-    doc = yaml.safe_load((MODELS / "sem_analytics__users_win.yml").read_text())
-    legs = parse_anchors(doc)["win_product_output_users"]
-    free = [leg["event"] for leg in legs if not leg["paywalled"]]
-    assert free == ["Candidate Website - Published"]

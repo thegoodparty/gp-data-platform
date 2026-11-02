@@ -318,7 +318,7 @@
 {% macro metric_anchored_events(metric_name) %}
     {#
         Legs of a governed metric's `config.meta.anchored_on`, as dicts with keys
-        event / path / era / excluding / paywalled / unit. The semantic layer is the
+        event / path / era / excluding / unit. The semantic layer is the
         kernel: this reads the declaration rather than restating it, so the macro
         cannot drift from the metric it serves.
 
@@ -327,9 +327,7 @@
         each consuming macro decides which property keys it can compile and must
         raise on one it cannot, so an exclusion can never be silently ignored.
         `era` is documentation, not a filter: dead legs stay in the predicate so
-        history is preserved. `paywalled` marks a leg only a paying user can
-        reach, so a consumer building a model label can drop those legs and
-        avoid learning who paid. `unit: contact` marks a leg that fires once per
+        history is preserved. `unit: contact` marks a leg that fires once per
         person reached (a door, a call) rather than once per campaign, so a
         consumer counting campaigns can drop it while one asking whether the
         user acted keeps it.
@@ -373,7 +371,6 @@
                     "path": leg.get("path"),
                     "era": leg.get("era"),
                     "excluding": leg.get("excluding") or {},
-                    "paywalled": leg.get("paywalled") or false,
                     "unit": leg.get("unit"),
                 }
             ) -%}
@@ -615,8 +612,8 @@
         product: the legs of `activated_serve_users`, compiled from its declaration.
 
         The Serve counterpart of is_outreach_activation_event, kept as its own body
-        for the same reason product_output_predicate is: that macro is the Win OKR's
-        compile path and is pinned by its own source-level guards. The outreach
+        because that macro is the Win OKR's compile path and is pinned by its own
+        source-level guards. The outreach
         events are shared by both products and told apart by `product`, so a Serve
         leg excludes Win the way the Win legs exclude Serve.
 
@@ -723,210 +720,90 @@
     {%- endif -%}
 {% endmacro %}
 
-{% macro is_product_output_event(event_type_col, method_col, product_col=none) %}
+{% macro is_product_output_event(event_type_col, method_col, product_col) %}
     {#
         Membership test for Product Output: the candidate made something with the
-        product that left it.
+        product that left it. Backs int__user_product_activity.has_product_output.
 
-        A broader concept than activation and a different one. `win_activated_users`
+        Not an OKR, so the leg list lives here rather than in the semantic layer.
+        It was declared there as win_product_output_users by mistake in #1082 and
+        later withdrawn; the legs are unchanged.
+
+        A broader concept than activation and a different one. win_activated_users
         asks whether we reached voters for them; this asks whether they got value
-        out. A published website is not voter outreach, which is why the two are
-        separate metrics rather than one widened metric, and why nothing may report
-        one as the other.
+        out. A published website is not voter outreach, so nothing may report one
+        as the other.
 
-        Where the outreach metric has already settled a question, this follows it
-        rather than diverging. Self-reported outreach is excluded by the same
-        `method` qualifier, because a candidate recording what they did elsewhere
-        produced no output here. The robocall draft event is not a leg for the same
-        reason it stopped being one for outreach: it fires at draft-create on an
-        unpaid row, and an unpaid draft never left the product.
+        Where the outreach OKR has settled a question this follows it. Self-reported
+        outreach (method 'manual') is excluded, because a candidate recording what
+        they did elsewhere produced no output here. 'Robocall - Scheduled' is not a
+        leg: it fires at draft-create on an unpaid row. Serve outreach is excluded
+        on every leg that carries `product`, which is the events named since
+        2026-09-29.
 
-        Two caveats ride on any series over this: three legs went live between July
-        and September 2026, so a pre-2026-07 series carries an instrumentation step
-        and not growth; and some legs sit behind a paywall, so a model using this as
-        a label must use the free-action variant instead or it learns who paid.
-
-        Args:
-            event_type_col: SQL expression producing the event_type string.
-            method_col: SQL expression producing the event's `method` property
-                (event_properties:method::string).
-            product_col: SQL expression producing the event's `product` property.
-    #}
-    {{
-        product_output_predicate(
-            event_type_col,
-            method_col,
-            "is_product_output_event",
-            product_col=product_col,
-        )
-    }}
-{% endmacro %}
-
-{% macro is_product_output_free_event(event_type_col, method_col, product_col=none) %}
-    {#
-        Product Output restricted to the legs a non-paying user can reach.
-
-        Use this, never the full predicate, as the label for any model predicting
-        who engages. Most Product Output legs sit behind Pro, so a model trained on
-        the full definition learns who paid and reports it as who engaged. Which
-        legs are paywalled is declared on the metric rather than listed here, so
-        adding a leg forces the question to be answered once, in the declaration.
-
-        The gating behind this is code-verified: the voter-contact channels and the
-        voter file require Pro, and the website builder does not. Worth knowing that
-        current Pro state disagrees — only 8.8% of list-export users and none of the
-        call-sheet users hold Pro today — which is either churn plus undatable Pro
-        or a gate that has moved. Marking a leg paywalled is the conservative
-        direction for a label, so the disagreement does not block it.
+        Three legs went live between July and September 2026, so a pre-2026-07
+        series carries an instrumentation step and not growth. Most legs sit behind
+        Pro, so a model using this as a label must use is_product_output_free_event
+        instead or it learns who paid.
 
         Args:
             event_type_col: SQL expression producing the event_type string.
             method_col: SQL expression producing the event's `method` property.
             product_col: SQL expression producing the event's `product` property.
     #}
-    {{
-        product_output_predicate(
-            event_type_col,
-            method_col,
-            "is_product_output_free_event",
-            free_only=true,
-            product_col=product_col,
+    (
+        {{ is_product_output_free_event(event_type_col, method_col, product_col) }}
+        -- Historical names (renamed in omni #2215, last fired 2026-09-27/29)
+        -- stay so history is preserved. They carry no `product`.
+        or (
+            {{ event_type_col }} = 'Voter Outreach - Campaign Completed'
+            and coalesce({{ method_col }}, '') not in ('manual')
         )
-    }}
+        or (
+            {{ event_type_col }} = 'Outreach - Campaign Completed'
+            and coalesce({{ method_col }}, '') not in ('manual')
+            and coalesce({{ product_col }}, '') not in ('serve')
+        )
+        or (
+            {{ event_type_col }} in (
+                'Outreach - Door Knocking Door Logged',
+                'Outreach - Phone Banking Call Logged',
+                'Outreach - Phone Banking Call Sheet Downloaded'
+            )
+            and coalesce({{ product_col }}, '') not in ('serve')
+        )
+        -- The send terminal carries no `product` and needs none: every emitter
+        -- is keyed on a Win campaign. A call sheet counts here though it is
+        -- preparation for the OKR: the sheet is a file the candidate holds.
+        or {{ event_type_col }} in (
+            'Door Knocking - Door Logged',
+            'Outreach - Phone Banking: Call Logged',
+            'Voter Data - List Exported',
+            'Voter Outreach - Campaign Scheduled',
+            'Voter Outreach - Phone Banking Call Sheet Downloaded'
+        )
+    )
 {% endmacro %}
 
-{% macro product_output_predicate(
-    event_type_col,
-    method_col,
-    caller_macro,
-    free_only=false,
-    product_col=none
-) %}
+{% macro is_product_output_free_event(event_type_col, method_col, product_col) %}
     {#
-        Compile the product-output legs into an event-membership predicate,
-        honouring a `method` or `product` exclusion on any leg that declares one.
-        `unit` is ignored: this predicate feeds first-output timestamps, never a
-        count of campaigns.
+        Product Output restricted to the legs a non-paying user can reach. Every
+        leg is_product_output_event adds on top of this one is paywalled.
 
-        Shared by the full and free-subset macros above, which differ only in
-        whether they drop the paywalled legs. It deliberately does NOT serve
-        is_outreach_activation_event: that macro is the OKR's compile path and is
-        pinned by its own source-level guards, so it keeps its own body rather
-        than depending on this one.
+        Use this, never the full predicate, as the label for any model predicting
+        who engages. Most Product Output legs sit behind Pro, so a model trained on
+        the full definition learns who paid and reports it as who engaged.
 
-        Raises on a leg this cannot express — a page path, an exclusion on any
-        property other than `method` or `product`, or a `product` exclusion with no
-        product column — so a declaration that outruns the compiler fails the build
-        instead of quietly widening the metric.
+        The gating is code-verified: the voter-contact channels and the voter file
+        require Pro, and the website builder does not. Current Pro state disagrees
+        (only 8.8% of list-export users and none of the call-sheet users hold Pro
+        today), which is either churn plus undatable Pro or a gate that has moved.
+        Treating a leg as paywalled is the conservative direction for a label.
 
-        Args:
-            event_type_col / method_col: SQL expressions for the event name and its
-                `method` property.
-            caller_macro: the calling macro's name, for error messages.
-            free_only: drop legs the declaration marks `paywalled`, for a label that
-                must not encode who paid.
-            product_col: SQL expression for the `product` property. Required once
-                any leg excludes on `product`.
+        method_col and product_col are unused, kept so both macros share a call
+        shape.
     #}
-    {%- set declared = metric_anchored_events("win_product_output_users") -%}
-    {%- set legs = (
-        declared | rejectattr("paywalled") | list if free_only else declared
-    ) -%}
-    {%- set columns = {"method": method_col, "product": product_col} -%}
-    {%- if not execute -%}
-        {#- Parse time only: graph is empty. Gate on `not execute`, never on an
-            empty leg list, which must raise at execute time. -#}
-        (false)
-    {%- elif legs | length == 0 -%}
-        {{
-            exceptions.raise_compiler_error(
-                caller_macro
-                ~ ": win_product_output_users resolved to zero legs at execute "
-                "time. Refusing to emit a predicate that would read product "
-                "output as zero."
-            )
-        }}
-    {%- else -%}
-        {%- set plain = [] -%}
-        {%- set qualified = [] -%}
-        {%- for leg in legs -%}
-            {%- if leg["path"] -%}
-                {{
-                    exceptions.raise_compiler_error(
-                        caller_macro
-                        ~ ": leg '"
-                        ~ leg["event"]
-                        ~ "' declares a page path, which this macro cannot compile."
-                    )
-                }}
-            {%- elif leg["excluding"] -%}
-                {%- set conditions = [] -%}
-                {%- for property_key, excluded in leg["excluding"].items() -%}
-                    {%- if property_key not in columns -%}
-                        {{
-                            exceptions.raise_compiler_error(
-                                caller_macro
-                                ~ ": leg '"
-                                ~ leg["event"]
-                                ~ "' excludes on '"
-                                ~ property_key
-                                ~ "', but this macro only compiles a 'method' or "
-                                "'product' exclusion."
-                            )
-                        }}
-                    {%- elif columns[property_key] is none -%}
-                        {{
-                            exceptions.raise_compiler_error(
-                                caller_macro
-                                ~ ": leg '"
-                                ~ leg["event"]
-                                ~ "' excludes on '"
-                                ~ property_key
-                                ~ "', but the caller passed no column for it."
-                            )
-                        }}
-                    {%- endif -%}
-                    {%- do conditions.append(
-                        {
-                            "column": columns[property_key],
-                            "values": (
-                                excluded
-                                if excluded is sequence
-                                and excluded is not string
-                                else [excluded]
-                            ),
-                        }
-                    ) -%}
-                {%- endfor -%}
-                {%- do qualified.append(
-                    {"event": leg["event"], "conditions": conditions}
-                ) -%}
-            {%- else -%} {%- do plain.append(leg["event"]) -%}
-            {%- endif -%}
-        {%- endfor -%}
-        (
-            {%- for leg in qualified %}
-                (
-                    {{ event_type_col }} = '{{ leg["event"] }}'
-                    {%- for condition in leg["conditions"] %}
-                        and coalesce({{ condition["column"] }}, '') not in (
-                            {%- for value in condition["values"] %}
-                                '{{ value }}'{{ "," if not loop.last }}
-                            {%- endfor %}
-                        )
-                    {%- endfor %}
-                )
-                {%- if not loop.last or plain | length > 0 %} or {% endif -%}
-            {%- endfor %}
-            {%- if plain | length > 0 %}
-                {{ event_type_col }} in (
-                    {%- for event in plain | sort %}
-                        '{{ event }}'{{ "," if not loop.last }}
-                    {%- endfor %}
-                )
-            {%- endif %}
-        )
-    {%- endif -%}
+    ({{ event_type_col }} = 'Candidate Website - Published')
 {% endmacro %}
 
 {% macro dashboard_view_is_new(event_time_col, partition_col, gap_seconds=30) %}
