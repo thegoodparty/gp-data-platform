@@ -6,4 +6,6 @@
 #
 # Routing is decided by which YAML keys moved, in the `routing` job of
 # .github/workflows/semantic-layer-composition-check.yml. It is still advisory:
-# it requests review, it does not block merge. See the semantic-layer SOP.
+# it requests review once the PR is marked ready, and never blocks merge. When the
+# request fails it leaves a note on the PR naming the teams to add by hand. See
+# the semantic-layer SOP.

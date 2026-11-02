@@ -112,8 +112,10 @@ To change a definition:
    is what gets recorded as `value_at_signing`. CI cannot compute it — that
    needs a live warehouse query — so a build sign-off with no declared value is
    not recorded at all, and the merge says so.
-3. Open a pull request. CI classifies the diff by **which keys moved** and
-   requests only the group that owns them:
+3. Open a pull request. When it is marked ready for review, CI classifies the
+   diff by **which keys moved** and requests only the group that owns them. If
+   the request fails, CI leaves a note on the pull request naming the groups to
+   add as reviewers by hand:
 
    | What moved | Who is asked |
    |---|---|
@@ -232,9 +234,8 @@ deletes that history from the metric.
    2. The `sem_*.yml` pull request: the new leg, the old leg kept with
       `era: historical` and its date, the pin tests updated, and the metric's new
       value in the body, and the catalog regenerated. Open it as a draft;
-      marking it ready starts the review routing above. Then confirm the review
-      groups were actually requested, and add by hand any the routing job named
-      but did not request.
+      marking it ready starts the review routing above. If the routing job
+      leaves a note that it could not request a group, add that group by hand.
 
       **If it merges before both groups approve, do not revert it.** A revert is
       a second change to the layer and notifies the same people again. Instead,

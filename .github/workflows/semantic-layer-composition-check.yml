@@ -39,6 +39,9 @@ jobs:
         run: uv sync --frozen
       - name: Classify the diff into review lanes
         id: lanes
+        # A classifier failure must not skip the request: the next step falls
+        # back to both teams instead.
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -48,71 +51,98 @@ jobs:
             uv run python -m semantic_catalog.cli --classify-lanes --base-dir /tmp/base)
           echo "lanes=$LANES" >> "$GITHUB_OUTPUT"
           echo "$LANES" | jq -r '.summary // .reason'
-      - name: Request the review teams that lane needs
+      - name: Decide which review teams to request
+        id: teams
+        # always(): CODEOWNERS was the unconditional fallback and this job
+        # replaced it, so a runner failure earlier in the job (a uv sync blip, a
+        # base sha that will not check out) must still end in a request.
+        if: always()
         env:
-          # ORG_READ_TOKEN first: the default GITHUB_TOKEN is repo-scoped and
-          # cannot always resolve an org team, which comes back as a 422 on a
-          # team id rather than as a permission error. Falls back to the default
-          # token so the step still runs before that secret is provisioned.
-          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN || github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
           LANES: ${{ steps.lanes.outputs.lanes }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
-          WANT=$(echo "$LANES" | jq -c '.teams')
+          # The SOP promises a draft asks no review group; ready_for_review
+          # re-runs this job, which is when the request belongs.
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Draft PR; requesting no review team until it is marked ready."
+            echo 'want=[]' >> "$GITHUB_OUTPUT"
+          elif [ -z "$LANES" ]; then
+            echo "::warning::lane routing could not classify this diff; requesting both review teams as the fallback."
+            echo 'want=["semantic-layer-data","semantic-layer-business"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "want=$(echo "$LANES" | jq -c '.teams')" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Request the review teams
+        id: request
+        if: always() && steps.teams.outcome == 'success'
+        env:
+          ORG_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          REPO_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          WANT: ${{ steps.teams.outputs.want }}
+        run: |
+          set -euo pipefail
           if [ "$WANT" = "[]" ]; then
             echo "No governed layer moved; requesting no review team."
             exit 0
           fi
-          # Re-requesting a team that is already a requested reviewer is a 422,
-          # so ask only for the ones that are missing. Until this PR's own
-          # CODEOWNERS removal reaches main, the base branch's rule still
-          # requests both groups on every sem file, and every request here would
-          # otherwise fail on that alone.
-          HAVE=$(gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+          # Re-requesting a team that is already requested is a 422, so ask only
+          # for the missing ones. Only ever ADDS: a reviewer a human added stays.
+          HAVE=$(GH_TOKEN="${ORG_TOKEN:-$REPO_TOKEN}" gh api \
+                   "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
                    --jq '[.teams[].slug]' || echo '[]')
           TEAMS=$(jq -cn --argjson want "$WANT" --argjson have "$HAVE" '$want - $have')
           if [ "$TEAMS" = "[]" ]; then
             echo "Already requested: $WANT"
             exit 0
           fi
-          # Only ADDS reviewers. A team already requested stays requested and a
-          # human who added a reviewer by hand is never removed: the lane says
-          # who MUST look, not who may.
-          # No `|| echo` here, deliberately. Swallowing the failure would keep
-          # this step green, so `failure()` below would be false and the
-          # fail-safe would never fire — leaving a governed PR with no reviewer
-          # at all, which is the exact gap the fail-safe exists to close. The
-          # job's continue-on-error keeps the PR green either way.
-          echo "{\"team_reviewers\": $TEAMS}" \
-            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input -
-      - name: Fail-safe, request both teams when routing could not classify
-        # CODEOWNERS was the unconditional fallback and this job replaced it, so
-        # without this a transient runner failure — a network blip on uv sync, a
-        # base sha that will not check out, or the request POST itself failing —
-        # leaves a governed PR with nobody requested, and `continue-on-error`
-        # hides it by reporting the job green. Falling back to both teams is
-        # exactly what the removed line did.
-        if: failure() || steps.lanes.outputs.lanes == ''
-        env:
-          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN || github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -uo pipefail
-          echo "::warning::lane routing could not classify this diff; requesting both review teams as the fallback."
-          HAVE=$(gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
-                   --jq '[.teams[].slug]' || echo '[]')
-          TEAMS=$(jq -cn --argjson have "$HAVE" \
-                    '["semantic-layer-data","semantic-layer-business"] - $have')
-          if [ "$TEAMS" = "[]" ]; then
-            echo "Both teams already requested."
+          echo "teams=$TEAMS" >> "$GITHUB_OUTPUT"
+          request() {
+            echo "{\"team_reviewers\": $TEAMS}" \
+              | GH_TOKEN="$1" gh api --method POST \
+                  "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - >/dev/null
+          }
+          # ORG_READ_TOKEN can resolve org teams; a 404 from it means the token
+          # lacks Pull requests: write on this repo (DATA-2593). The workflow
+          # token is the second try: it can write, but may not resolve a team.
+          if [ -n "${ORG_TOKEN:-}" ]; then
+            if request "$ORG_TOKEN"; then
+              echo "Requested $TEAMS."
+              exit 0
+            fi
+            echo "::warning::ORG_READ_TOKEN could not request $TEAMS (a 404 means it lacks Pull requests: write); retrying with the workflow token."
+          fi
+          if request "$REPO_TOKEN"; then
+            echo "Requested $TEAMS with the workflow token."
             exit 0
           fi
-          echo "{\"team_reviewers\": $TEAMS}" \
-            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - \
-            || echo "::warning::could not request fallback reviewers; request them by hand."
+          echo "::error::Could not request $TEAMS with either token. Add them as reviewers by hand."
+          exit 1
+      - name: Say on the PR which teams to add by hand
+        # The job is continue-on-error, so a failed request shows as a green
+        # check. Without this note the PR simply has no reviewer and nobody
+        # notices, which is how the request failed unseen from 10-01 to 11-02.
+        if: always() && steps.request.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          TEAMS: ${{ steps.request.outputs.teams || steps.teams.outputs.want }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- semantic-layer-routing -->'
+          # One note per PR, not one per push.
+          if gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+               --jq '.[].body' | grep -qF "$MARKER"; then
+            echo "Note already on the PR."
+            exit 0
+          fi
+          LIST=$(echo "$TEAMS" | jq -r 'map("`" + . + "`") | join(" and ")')
+          printf '%s\nReview routing could not request %s automatically. Add them as reviewers by hand when this PR is ready for review.\n' \
+            "$MARKER" "$LIST" > /tmp/note.md
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/note.md
       - name: Clean up base tree
         if: always()
         run: git worktree remove --force /tmp/base || true
