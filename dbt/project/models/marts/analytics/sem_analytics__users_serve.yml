@@ -41,7 +41,10 @@ semantic_models:
           time_granularity: day
       # Governed flags surfaced straight from the mart (definition lives there).
       - name: is_serve_user
-        description: Serve product user (completed a poll through an elected office).
+        description: >
+          Started Serve: owns a Serve organization they started, or completed a
+          poll. A Serve office a candidate win created that its holder never
+          opened does not count.
         type: categorical
       - name: is_active_eo
         description: Viewed the Serve polls dashboard in the trailing 30 days.
@@ -176,7 +179,10 @@ metrics:
       Count of Serve product user accounts, excluding internal
       @goodparty.org accounts. Definition owned by
       users_serve_base.is_serve_user, which resolves to holding a Serve
-      organization or being a poll user, and is currently 1:1 with
+      organization the user started or being a poll user. Since 2026-11-02
+      gp-api creates a Serve office for every candidate win; one its holder
+      never opened does not count (rule in int__serve_office_start). It is
+      currently 1:1 with
       eo_activated_at being set (a data-state fact that may diverge). This is
       the broad account population, NOT an activity or engagement measure:
       it is strictly larger than activated_serve_users, which additionally
@@ -196,7 +202,10 @@ metrics:
         detail_doc: sources.md
         business_rule:
           counts: >
-            Anyone holding a Serve account, whether or not they have used it.
+            Anyone who has started Serve themselves, whether or not they
+            finished setting it up or have used it since. A Serve account set
+            up automatically for a winning candidate counts only once they
+            open it.
           excludes:
             - Internal staff accounts.
           known_gaps:
