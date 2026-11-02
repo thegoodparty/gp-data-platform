@@ -119,10 +119,30 @@ SERVE_PREDICATE = ENV.from_string(
     macro_source("is_serve_activation_event")
     + f"\n{{{{ is_serve_activation_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}') }}}}"
 )
+# Product Output is not an OKR, so its legs live in the macro rather than in a
+# declaration. These render the literal SQL and check it directly.
+PRODUCT_OUTPUT_MACROS = macro_source("is_product_output_event") + macro_source("is_product_output_free_event")
 PRODUCT_OUTPUT_PREDICATE = ENV.from_string(
-    macro_source("product_output_predicate")
-    + f"\n{{{{ product_output_predicate('{EVENT_COL}', '{METHOD_COL}', 'caller', product_col='{PRODUCT_COL}') }}}}"
+    PRODUCT_OUTPUT_MACROS
+    + f"\n{{{{ is_product_output_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}') }}}}"
 )
+PRODUCT_OUTPUT_FREE_PREDICATE = ENV.from_string(
+    PRODUCT_OUTPUT_MACROS
+    + f"\n{{{{ is_product_output_free_event('{EVENT_COL}', '{METHOD_COL}', '{PRODUCT_COL}') }}}}"
+)
+PRODUCT_OUTPUT_LEGS = {
+    "Candidate Website - Published",
+    "Voter Outreach - Campaign Completed",
+    "Outreach - Campaign Completed",
+    "Voter Data - List Exported",
+    "Voter Outreach - Phone Banking Call Sheet Downloaded",
+    "Outreach - Phone Banking Call Sheet Downloaded",
+    "Voter Outreach - Campaign Scheduled",
+    "Door Knocking - Door Logged",
+    "Outreach - Door Knocking Door Logged",
+    "Outreach - Phone Banking: Call Logged",
+    "Outreach - Phone Banking Call Logged",
+}
 
 
 def declared_meta(metric: str = METRIC, sem: Path = SEM) -> dict:
@@ -168,12 +188,13 @@ def render_serve(execute: bool, meta: dict) -> str:
     return " ".join(sql.split())
 
 
-def render_product_output(meta: dict) -> str:
-    sql = PRODUCT_OUTPUT_PREDICATE.render(
-        execute=True,
-        metric_anchored_events=lambda _name: anchored_events(True, meta, "win_product_output_users"),
-    )
-    return " ".join(sql.split())
+def render_product_output(template=PRODUCT_OUTPUT_PREDICATE) -> str:
+    return " ".join(template.render().split())
+
+
+def product_output_events(template=PRODUCT_OUTPUT_PREDICATE) -> set[str]:
+    """Event names in the rendered predicate, i.e. every literal but the excluded values."""
+    return set(SQL_LITERAL.findall(render_product_output(template))) - {"", "manual", "serve"}
 
 
 def declared_legs() -> dict:
@@ -379,18 +400,36 @@ def test_every_model_counting_campaigns_drops_contact_legs():
             assert drops == (call.group(2) in counts), f"{name}.{call.group(2)}"
 
 
-def test_the_product_output_predicate_compiles_a_product_exclusion():
-    sql = render_product_output(SERVE_EXCLUDED)
-    assert f"and coalesce({PRODUCT_COL}, '') not in ( 'serve' )" in sql
+def test_product_output_keeps_its_legs():
+    # Pinned by exact string, historical names included: dropping a dead name
+    # silently rewrites history, so changing this list has to be deliberate.
+    assert product_output_events() == PRODUCT_OUTPUT_LEGS
+
+
+def test_product_output_follows_the_okr_on_self_report_serve_and_the_robocall_draft():
+    # Self-report produced no output here, Serve outreach is not Win output, and the
+    # robocall draft fires on an unpaid row, so nothing left the product.
+    sql = render_product_output()
+    for event in ("Voter Outreach - Campaign Completed", "Outreach - Campaign Completed"):
+        assert f"{EVENT_COL} = '{event}' and coalesce({METHOD_COL}, '') not in ('manual')" in sql
+    assert sql.count(f"coalesce({PRODUCT_COL}, '') not in ('serve')") == 2
+    assert "Robocall - Scheduled" not in sql
+
+
+def test_product_output_free_subset_is_the_website_alone():
+    # A label drawn from the paywalled legs teaches a model who paid. If the free
+    # subset were empty it would read zero for everyone, so its content is asserted.
+    free = product_output_events(PRODUCT_OUTPUT_FREE_PREDICATE)
+    assert free == {"Candidate Website - Published"}
+    assert free < product_output_events()
 
 
 def test_the_milestone_filter_admits_every_declared_anchor_event():
     """The filter upstream of the predicate must not drop an event the metrics anchor on.
 
-    Scoped to the metrics this model actually serves. `win_product_output_users` is
-    anchored too but is computed in `int__user_product_activity`, which admits events
-    by classification rather than by name; its own intake guard is the machine-emitted
-    test below.
+    Scoped to the metrics this model actually serves. Product Output is computed in
+    `int__user_product_activity`, which admits events by classification rather than by
+    name; its own intake guard is the machine-emitted test below.
     """
     admitted = milestone_filter()
     served = (METRIC, ACTIVATION_METRIC, "activated_serve_users")
@@ -415,13 +454,13 @@ def test_no_product_output_leg_is_classified_machine_emitted():
         + '\n{{ amplitude_event_is_machine_emitted("\'" ~ event ~ "\'") }}'
     )
     caught = []
-    for leg in declared_legs()["win_product_output_users"]:
-        rendered = " ".join(machine.render(event=leg["event"]).split())
+    for event in sorted(product_output_events()):
+        rendered = " ".join(machine.render(event=event).split())
         # The predicate is a disjunction of literal comparisons against the event
         # name, so it is decidable here without a warehouse: a leg is caught only
         # if one of its own literals matches.
-        if f"= '{leg['event']}'" in rendered or f"'{leg['event']}'," in rendered:
-            caught.append(leg["event"])
+        if f"= '{event}'" in rendered or f"'{event}'," in rendered:
+            caught.append(event)
     assert not caught, f"product-output legs the machine classifier drops: {caught}"
 
 

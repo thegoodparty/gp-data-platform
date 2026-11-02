@@ -148,21 +148,6 @@ win_active_candidates_30d:
     value_at_signing: 919
     approved_by_pr: 1046
 
-win_product_output_users:
-  # First sign-off. The build was never ratified before #1120, which added the
-  # renamed outreach events, door and call logs and the Serve exclusion. It has
-  # no business_rule, so there is no rule half to sign.
-  #
-  # Hand-authored for the same reason as win_activated_users: #1120 merged
-  # before review. value_at_signing is the build's count on 2026-10-01, measured
-  # from the compiled model because the prod table behind has_product_output had
-  # not yet rebuilt on the new definition and still read 2,077.
-  data:
-    approved: 2026-10-01
-    build_sha: 'bc41c9e'
-    value_at_signing: 2080
-    approved_by_pr: 1123
-
 win_users:
   # Was recorded as 2026-08-03, the date the line was typed. Coverage actually
   # completed 2026-08-04 when the data group approved #749.
@@ -196,5 +181,6 @@ win_users:
 # different reason: both were added pre-epic in #471 with a data-group approval
 # only, and no business-group approval exists for either definition.
 #
-# win_product_output_users has no entry at all, and DATA-2556 owns withdrawing it
-# from the layer.
+# win_product_output_users was withdrawn from the layer. It was declared by
+# mistake in #1082 and was never an OKR; its data sign-off (#1123, 2026-10-01)
+# went with it. has_product_output stays as a plain dimension.

@@ -1020,8 +1020,8 @@ models:
           downloaded call sheet. Broader than users_win_base.is_activated, which
           asks only whether we reached voters for them, and a different question
           rather than a better version of the same one. Never report one as the
-          other. Definition owned by the win_product_output_users metric's
-          anchored_on declaration.
+          other. Definition owned by the is_product_output_event macro. Not an
+          OKR and not in the semantic layer.
 
           Three of its legs went live between July and September 2026, so any
           series reaching back before 2026-07 carries an instrumentation step
@@ -1107,8 +1107,8 @@ models:
           arguments:
             expression: last_activity_at >= first_activity_at
       # Free output is a subset of output, so it can never reach a user the
-      # broader column does not. A failure here means the paywalled markers and
-      # the leg list have drifted apart.
+      # broader column does not. A failure here means the two product output
+      # macros have drifted apart.
       - dbt_utils.expression_is_true:
           arguments:
             expression: has_product_output
