@@ -586,6 +586,34 @@ models:
         description: >
           Timestamp the holder took the GoodParty pledge during serve
           onboarding. NULL when they have not pledged.
+      - name: onboarding_completed_at
+        description: >
+          Timestamp the holder finished Serve onboarding. NULL means the office
+          is dormant: every candidate win now creates an elected office, even
+          when the person never uses Serve, so Serve user counts should only
+          count offices where this is set.
+      - name: onboarding_step
+        description: >
+          Last Serve onboarding step the holder reached (e.g. `party`,
+          `pledge`, `confirm`). NULL when no step was recorded.
+      - name: win_source
+        description: >
+          Which source created the office from a candidate win (gp-api enum
+          `ElectedOfficeWinSource`). NULL for offices not created from a win.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["self_reported", "staff", "ddhq"]
+      - name: self_reported
+        description: "Whether the holder self-reported the office during Serve onboarding"
+      - name: party
+        description: "Party the holder entered during Serve onboarding, as free text"
+      - name: elected_date
+        description: "Date the holder was elected to the office"
+      - name: term_start_date
+        description: "Date the holder's term starts"
+      - name: term_end_date
+        description: "Date the holder's term ends"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:

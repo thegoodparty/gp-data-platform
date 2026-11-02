@@ -15,7 +15,15 @@ with
             campaign_id,
             sworn_in_date,
             organization_slug,
-            pledged_at
+            pledged_at,
+            onboarding_completed_at,
+            onboarding_step,
+            win_source,
+            self_reported,
+            party,
+            elected_date,
+            term_start_date,
+            term_end_date
         from source
     )
 select *
