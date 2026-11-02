@@ -2060,8 +2060,9 @@ models:
                 min_value: 1
       - name: ever_won
         description: >
-          This person won at least one race, in any cycle, on any account.
-          Person grain on purpose.
+          This person won at least one race, in any cycle, on any account:
+          a settled Won, so a primary win with the general still ahead does
+          not count. Person grain on purpose.
         data_tests:
           - not_null
     data_tests:

@@ -593,16 +593,36 @@ models:
           so on older offices it means "had an office", not "finished
           onboarding". For finished onboarding use the Amplitude-based
           serve_onboarding_completed_at. NULL while onboarding is unfinished
-          or was never started.
+          or was never started, which includes an office a candidate win
+          created that its holder never opened. Do not count Serve users from
+          this column: use users.is_serve_user, or serve_start_status (rule in
+          int__serve_office_start).
       - name: onboarding_step
         description: >
-          Last Serve onboarding step the holder reached (e.g. pledge, office,
-          term-dates). NULL on most offices, including ones whose onboarding
-          finished.
-      - name: self_reported
+          Last Serve onboarding step the holder reached (e.g. `party`,
+          `pledge`, `confirm`). NULL when no step was recorded. An office a
+          candidate win created starts at `confirm` and moves only when the
+          holder continues onboarding.
+      - name: win_source
         description: >
-          gp-api's self_reported flag on the office, passed through as is.
-          NULL on older offices.
+          Which source created the office from a candidate win (gp-api enum
+          `ElectedOfficeWinSource`). NULL for offices not created from a win.
+          It marks where the office came from, not whether it is used: a Pro
+          winner who opens Serve themselves also gets `self_reported`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["self_reported", "staff", "ddhq"]
+      - name: self_reported
+        description: "Whether the holder self-reported the office during Serve onboarding"
+      - name: party
+        description: "Party the holder entered during Serve onboarding, as free text"
+      - name: elected_date
+        description: "Date the holder was elected to the office"
+      - name: term_start_date
+        description: "Date the holder's term starts"
+      - name: term_end_date
+        description: "Date the holder's term ends"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:

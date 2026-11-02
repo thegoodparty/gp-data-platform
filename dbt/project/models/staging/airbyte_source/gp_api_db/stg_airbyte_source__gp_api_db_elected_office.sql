@@ -18,7 +18,12 @@ with
             pledged_at,
             onboarding_completed_at,
             onboarding_step,
-            self_reported
+            win_source,
+            self_reported,
+            party,
+            elected_date,
+            term_start_date,
+            term_end_date
         from source
     )
 select *
