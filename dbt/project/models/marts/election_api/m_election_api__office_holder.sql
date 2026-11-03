@@ -39,30 +39,27 @@ with
     -- predecessor's term open (no end date) after a replacement is seated under a
     -- new office-holder id, so the older start date loses. Ties on start date and
     -- multi-member seats are left alone.
+    current_single_seat_terms as (
+        select
+            terms.br_office_holder_id,
+            terms.term_start_date,
+            max(terms.term_start_date) over (
+                partition by terms.br_position_id
+            ) as newest_start_date
+        from {{ ref("elected_official_terms") }} as terms
+        inner join
+            office_holder_source
+            on terms.br_office_holder_id = office_holder_source.br_office_holder_id
+        where
+            office_holder_source.number_of_seats = 1
+            and not coalesce(terms.is_vacant, false)
+            and terms.term_start_date <= current_date()
+            and (terms.term_end_date is null or terms.term_end_date >= current_date())
+    ),
+
     superseded_terms as (
         select br_office_holder_id
-        from
-            (
-                select
-                    terms.br_office_holder_id,
-                    terms.term_start_date,
-                    max(terms.term_start_date) over (
-                        partition by terms.br_position_id
-                    ) as newest_start_date
-                from {{ ref("elected_official_terms") }} as terms
-                inner join
-                    office_holder_source
-                    on terms.br_office_holder_id
-                    = office_holder_source.br_office_holder_id
-                where
-                    office_holder_source.number_of_seats = 1
-                    and not coalesce(terms.is_vacant, false)
-                    and terms.term_start_date <= current_date()
-                    and (
-                        terms.term_end_date is null
-                        or terms.term_end_date >= current_date()
-                    )
-            )
+        from current_single_seat_terms
         where term_start_date < newest_start_date
     ),
 
