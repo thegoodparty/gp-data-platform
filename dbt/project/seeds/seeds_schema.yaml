@@ -434,9 +434,12 @@ seeds:
       one term to the election-api office-holder mart for a person who is
       already in m_election_api__person (for example through a candidacy).
       Seat attributes come from the newest BallotReady term on the same
-      position. Each row is checked against a public source. The redundancy
-      test warns once BallotReady carries a term for the same person on the
-      same position, so the row can be removed.
+      position. Each row is checked against a public source. An added term
+      does not retire the predecessor's BallotReady term, so pair it with an
+      office_holder_term_end_overrides row when that term is still open, or the
+      seat shows two current holders. The redundancy test warns once
+      BallotReady carries a term for the same person on the same position, so
+      the row can be removed.
     config:
       column_types:
         gp_person_id: STRING
