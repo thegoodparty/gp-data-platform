@@ -386,6 +386,111 @@ seeds:
         data_tests:
           - not_null
 
+  - name: office_holder_term_end_overrides
+    description: >
+      Manual end dates for BallotReady office-holder terms that ended early
+      (a resignation, removal or death) while the feed still carries the full
+      term. The end date replaces BallotReady's in the election-api
+      office-holder mart, so is_current follows from it and the profile shows
+      the real term. Each row is checked against a public source. Keyed on
+      br_office_holder_id; the relationships test fails if the term leaves the
+      feed, and the redundancy test warns once BallotReady records the same or
+      an earlier end date, so the row can be removed.
+    config:
+      column_types:
+        br_office_holder_id: BIGINT
+        end_at: DATE
+    columns:
+      - name: br_office_holder_id
+        description: BallotReady office-holder term to correct
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('elected_official_terms')
+                field: br_office_holder_id
+      - name: end_at
+        description: Date the term actually ended
+        data_tests:
+          - not_null
+      - name: holder
+        description: Office holder name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: office
+        description: Office name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the public source
+        data_tests:
+          - not_null
+
+  - name: office_holder_term_additions
+    description: >
+      Office-holder terms BallotReady's office-holder file is missing,
+      typically an appointee seated mid-term to fill a vacancy. Each row adds
+      one term to the election-api office-holder mart for a person who is
+      already in m_election_api__person (for example through a candidacy).
+      Seat attributes come from the newest BallotReady term on the same
+      position. Each row is checked against a public source. The redundancy
+      test warns once BallotReady carries a term for the same person on the
+      same position, so the row can be removed.
+    config:
+      column_types:
+        gp_person_id: STRING
+        br_position_id: BIGINT
+        start_at: DATE
+        end_at: DATE
+        is_appointed: BOOLEAN
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gp_person_id, br_position_id, start_at]
+    columns:
+      - name: gp_person_id
+        description: >
+          Canonical person id of the holder. The relationships test fails if
+          entity resolution re-mints the id, which would otherwise drop the
+          term silently.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+      - name: br_position_id
+        description: >
+          BallotReady position of the seat. Must have at least one BallotReady
+          term, which supplies the seat attributes.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('elected_official_terms')
+                field: br_position_id
+      - name: start_at
+        description: Date the term started
+        data_tests:
+          - not_null
+      - name: end_at
+        description: Date the term ends, if known
+      - name: is_appointed
+        description: Whether the holder was appointed rather than elected
+      - name: holder
+        description: Office holder name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: office
+        description: Office name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the public source
+        data_tests:
+          - not_null
+
   - name: election_api_race_filing_date_overrides
     description: >
       Manual overrides for the candidate filing window shown on election-api race
