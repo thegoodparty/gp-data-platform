@@ -37,12 +37,15 @@ with
 
     -- A seat with one holder can't have two current terms. The feed can keep a
     -- predecessor's term open (no end date) after a replacement is seated under a
-    -- new office-holder id, so the older start date loses. Ties on start date and
+    -- new office-holder id, so an open-ended term with an older start date
+    -- loses. A term with an end date is never retired here: on staggered boards
+    -- mislabeled as one seat, both dated terms are real. Ties on start date and
     -- multi-member seats are left alone.
     current_single_seat_terms as (
         select
             terms.br_office_holder_id,
             terms.term_start_date,
+            terms.term_end_date,
             max(terms.term_start_date) over (
                 partition by terms.br_position_id
             ) as newest_start_date
@@ -60,7 +63,7 @@ with
     superseded_terms as (
         select br_office_holder_id
         from current_single_seat_terms
-        where term_start_date < newest_start_date
+        where term_start_date < newest_start_date and term_end_date is null
     ),
 
     -- Earliest upcoming election on the same BR position: "next election" for
