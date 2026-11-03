@@ -967,12 +967,15 @@ models:
           - is_uuid
       - name: party_names
         description: >
-          BallotReady office party for the term. When the office party is
-          Democratic or Republican and the member's latest run during the term
-          is filed as independent (Independent, Unaffiliated, No Party
-          Preference, Petitioning Candidate) with no major line, the run's
-          independent lines are published instead, because the office-holder
-          feed keeps the old party after a mid-term switch.
+          BallotReady office party for the term, corrected after a mid-term
+          switch, which the office-holder feed misses. When the member's latest
+          run during the term states a different affiliation (Democratic,
+          Republican, or independent: Independent, Unaffiliated, No Party
+          Preference, Petitioning Candidate) and that is still their latest
+          stated affiliation, the run's lines for it are published instead.
+          Runs with both major lines, or only nonpartisan, minor-party or town
+          lines, state no affiliation and change nothing. A row in the
+          office_holder_party_overrides seed wins over both.
       - name: person_id
         description: "Canonical person UUID. Required FK to m_election_api__person."
         tests:

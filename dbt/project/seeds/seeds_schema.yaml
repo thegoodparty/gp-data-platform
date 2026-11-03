@@ -386,6 +386,48 @@ seeds:
         data_tests:
           - not_null
 
+  - name: office_holder_party_overrides
+    description: >
+      Manual party lines for BallotReady office-holder terms whose party the
+      feed gets wrong and the run-based correction in the election-api
+      office-holder mart cannot fix: a member who switched party without a
+      new run, or a correction that misreads a run (for example a
+      registration label). The value replaces both the feed's party and the
+      correction. party_names is pipe-separated in display order (e.g.
+      "Republican|Conservative Party"); an empty value publishes no party.
+      Each row is checked against a public source. Keyed on
+      br_office_holder_id. There is no redundancy check: a row that blocks a
+      wrong correction pins the feed's own party, so a feed match does not
+      mean the row can go. Review rows by hand when the term ends.
+    config:
+      column_types:
+        br_office_holder_id: BIGINT
+        party_names: STRING
+    columns:
+      - name: br_office_holder_id
+        description: BallotReady office-holder term to correct
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('elected_official_terms')
+                field: br_office_holder_id
+      - name: party_names
+        description: Pipe-separated party lines to publish for the term
+      - name: holder
+        description: Office holder name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: office
+        description: Office name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed, with the public source
+        data_tests:
+          - not_null
+
   - name: office_holder_term_end_overrides
     description: >
       Manual end dates for BallotReady office-holder terms that ended early
