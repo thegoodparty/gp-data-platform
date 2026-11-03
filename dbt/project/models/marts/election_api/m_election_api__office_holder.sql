@@ -4,6 +4,10 @@
 -- office_holder_term_additions seed. person_id is NOT NULL in the API, so the
 -- mart inner-joins m_election_api__person: vacancies and no-name people drop
 -- here rather than failing the FK at load time.
+{% set independent_lines %}
+    ('Independent', 'Unaffiliated', 'No Party Preference', 'Petitioning Candidate')
+{% endset %}
+
 with
     persons as (select id from {{ ref("m_election_api__person") }}),
 
@@ -27,6 +31,7 @@ with
             nullif(sub_area_name, '') as sub_area_name,
             nullif(sub_area_value, '') as sub_area_value,
             nullif(mtfcc, '') as mtfcc,
+            br_candidate_id,
             case when size(party_names) > 0 then party_names end as party_names
         from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
         qualify
@@ -72,7 +77,8 @@ with
             terms.state,
             terms.br_geo_id as geo_id,
             office_holder_source.mtfcc,
-            terms.gp_person_id
+            terms.gp_person_id,
+            office_holder_source.br_candidate_id
         from {{ ref("elected_official_terms") }} as terms
         left join
             office_holder_source
@@ -148,7 +154,8 @@ with
             seat.state,
             seat.geo_id,
             seat.mtfcc,
-            additions.gp_person_id
+            additions.gp_person_id,
+            cast(null as int) as br_candidate_id
         from {{ ref("office_holder_term_additions") }} as additions
         inner join
             seat_attributes as seat on additions.br_position_id = seat.br_position_id
@@ -188,6 +195,125 @@ with
         where term_start_date < newest_start_date and term_end_date is null
     ),
 
+    -- Each BallotReady run (candidate and election day), with every party line
+    -- on every candidacy row that day: the candidacy mart keeps only
+    -- parties[0], which hides the major line on fusion tickets.
+    run_lines as (
+        select
+            br_candidate_id,
+            election_day,
+            array_distinct(
+                flatten(
+                    collect_list(regexp_extract_all(parties, '"name"=>"([^"]+)"', 1))
+                )
+            ) as run_parties
+        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        where br_candidate_id is not null and election_day is not null
+        group by br_candidate_id, election_day
+    ),
+
+    -- The affiliation a run states, and the lines that state it. A run with
+    -- both major lines (cross-filing) is its own class, so it never reads as a
+    -- switch. Nonpartisan, minor-party and town lines state no affiliation:
+    -- they describe the seat or the ballot line, not the person.
+    candidate_runs as (
+        select
+            br_candidate_id,
+            election_day,
+            case
+                when
+                    exists (run_parties, p -> p rlike '^Democratic')
+                    and exists (run_parties, p -> p rlike '^Republican')
+                then 'both_major'
+                when exists (run_parties, p -> p rlike '^Democratic')
+                then 'democratic'
+                when exists (run_parties, p -> p rlike '^Republican')
+                then 'republican'
+                when exists (run_parties, p -> p in {{ independent_lines }})
+                then 'independent'
+            end as affiliation,
+            case
+                affiliation
+                when 'democratic'
+                then filter(run_parties, p -> p rlike '^Democratic')
+                when 'republican'
+                then filter(run_parties, p -> p rlike '^Republican')
+                when 'independent'
+                then filter(run_parties, p -> p in {{ independent_lines }})
+            end as affiliation_lines
+        from run_lines
+    ),
+
+    latest_affiliation as (
+        select br_candidate_id, affiliation
+        from candidate_runs
+        where affiliation is not null
+        qualify
+            row_number() over (partition by br_candidate_id order by election_day desc)
+            = 1
+    ),
+
+    -- The latest run made while the term was being served. Matching runs to
+    -- the term they fall in, rather than to the current term, keeps the
+    -- correction after the term ends (profiles fall back to the last term held)
+    -- and leaves earlier terms with the party they were served under.
+    term_runs as (
+        select
+            terms.gp_elected_official_term_id,
+            terms.br_candidate_id,
+            case
+                when
+                    exists (terms.party_names, p -> p rlike '^Democratic')
+                    and exists (terms.party_names, p -> p rlike '^Republican')
+                then 'both_major'
+                when exists (terms.party_names, p -> p rlike '^Democratic')
+                then 'democratic'
+                when exists (terms.party_names, p -> p rlike '^Republican')
+                then 'republican'
+                when exists (terms.party_names, p -> p in {{ independent_lines }})
+                then 'independent'
+            end as office_affiliation,
+            runs.affiliation,
+            runs.affiliation_lines
+        from br_terms as terms
+        inner join
+            candidate_runs as runs
+            on terms.br_candidate_id = runs.br_candidate_id
+            and runs.election_day >= terms.term_start_date
+            and (
+                terms.term_end_date is null or runs.election_day <= terms.term_end_date
+            )
+        where runs.affiliation is not null
+        qualify
+            row_number() over (
+                partition by terms.gp_elected_official_term_id
+                order by runs.election_day desc
+            )
+            = 1
+    ),
+
+    -- BallotReady's office-holder feed keeps the party a member was elected
+    -- under after a mid-term switch, while its candidacy feed is current. A run
+    -- during the term that states a different affiliation wins, in either
+    -- direction, but only while it is still the member's latest stated
+    -- affiliation: profiles read eligibility off the last term held, so a term
+    -- must not carry an affiliation the member has since moved on from.
+    party_corrections as (
+        select term_runs.gp_elected_official_term_id, term_runs.affiliation_lines
+        from term_runs
+        inner join
+            latest_affiliation
+            on term_runs.br_candidate_id = latest_affiliation.br_candidate_id
+        where
+            term_runs.affiliation in ('democratic', 'republican', 'independent')
+            and term_runs.affiliation = latest_affiliation.affiliation
+            and term_runs.office_affiliation != term_runs.affiliation
+            and not (
+                term_runs.office_affiliation = 'both_major'
+                and term_runs.affiliation != 'independent'
+            )
+    ),
+
     -- Earliest upcoming election on the same BR position: "next election" for
     -- the seat in the profile's About Office section.
     next_elections as (
@@ -206,7 +332,12 @@ select
     terms.position_name,
     terms.normalized_position_name,
     terms.office_title,
-    terms.party_names,
+    -- A hand-checked party override wins over the feed and the correction.
+    case
+        when party_override.br_office_holder_id is not null
+        then split(nullif(party_override.party_names, ''), '\\|')
+        else coalesce(party_corrections.affiliation_lines, terms.party_names)
+    end as party_names,
     terms.term_start_date as start_at,
     terms.term_end_date as end_at,
     terms.term_date_specificity,
@@ -248,5 +379,11 @@ from all_terms as terms
 inner join persons on terms.gp_person_id = persons.id
 left join
     superseded_terms on terms.br_office_holder_id = superseded_terms.br_office_holder_id
+left join
+    party_corrections
+    on terms.gp_elected_official_term_id = party_corrections.gp_elected_official_term_id
+left join
+    {{ ref("office_holder_party_overrides") }} as party_override
+    on terms.br_office_holder_id = party_override.br_office_holder_id
 left join positions on terms.br_position_id = positions.br_database_id
 left join next_elections on terms.br_position_id = next_elections.br_position_id
