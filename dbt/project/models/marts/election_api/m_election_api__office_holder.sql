@@ -1,8 +1,9 @@
 -- Office terms for public /people profiles (election-api "OfficeHolder" table).
 -- Grain: one row per BallotReady office-holder term (id =
--- gp_elected_official_term_id). person_id is NOT NULL in the API, so the mart
--- inner-joins m_election_api__person: vacancies and no-name people drop here
--- rather than failing the FK at load time.
+-- gp_elected_official_term_id), plus one row per hand-added term from the
+-- office_holder_term_additions seed. person_id is NOT NULL in the API, so the
+-- mart inner-joins m_election_api__person: vacancies and no-name people drop
+-- here rather than failing the FK at load time.
 with
     persons as (select id from {{ ref("m_election_api__person") }}),
 
@@ -35,6 +36,132 @@ with
             = 1
     ),
 
+    -- BallotReady terms, with a hand-verified end date replacing the feed's
+    -- where a term ended early and the feed still carries the full term.
+    br_terms as (
+        select
+            terms.gp_elected_official_term_id,
+            terms.br_office_holder_id,
+            terms.br_position_id,
+            terms.position_name,
+            terms.normalized_position_name,
+            office_holder_source.office_title,
+            office_holder_source.party_names,
+            terms.term_start_date,
+            coalesce(end_override.end_at, terms.term_end_date) as term_end_date,
+            office_holder_source.term_date_specificity,
+            terms.is_appointed,
+            terms.is_vacant,
+            office_holder_source.number_of_seats,
+            terms.mailing_address_line_1,
+            terms.mailing_address_line_2,
+            terms.mailing_city,
+            terms.mailing_state,
+            terms.mailing_zip,
+            terms.office_phone,
+            terms.email as office_email,
+            terms.website_url,
+            terms.linkedin_url,
+            terms.facebook_url,
+            terms.twitter_url,
+            get(
+                filter(terms.urls, x -> x.type = 'instagram' and x.url is not null), 0
+            ).url as instagram_url,
+            office_holder_source.sub_area_name,
+            office_holder_source.sub_area_value,
+            terms.state,
+            terms.br_geo_id as geo_id,
+            office_holder_source.mtfcc,
+            terms.gp_person_id
+        from {{ ref("elected_official_terms") }} as terms
+        left join
+            office_holder_source
+            on terms.br_office_holder_id = office_holder_source.br_office_holder_id
+        left join
+            {{ ref("office_holder_term_end_overrides") }} as end_override
+            on terms.br_office_holder_id = end_override.br_office_holder_id
+    ),
+
+    -- Seat attributes for a hand-added term, from the newest BallotReady term
+    -- on the same position.
+    seat_attributes as (
+        select
+            br_position_id,
+            position_name,
+            normalized_position_name,
+            office_title,
+            number_of_seats,
+            sub_area_name,
+            sub_area_value,
+            state,
+            geo_id,
+            mtfcc
+        from br_terms
+        qualify
+            row_number() over (
+                partition by br_position_id
+                order by term_start_date desc nulls last, br_office_holder_id desc
+            )
+            = 1
+    ),
+
+    -- Terms BallotReady's office-holder file is missing. Holder-specific
+    -- contact fields stay null; the seat fields come from seat_attributes.
+    added_terms as (
+        select
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "additions.gp_person_id",
+                        "additions.br_position_id",
+                        "additions.start_at",
+                    ],
+                    salt="office_holder_term_additions",
+                )
+            }} as gp_elected_official_term_id,
+            cast(null as bigint) as br_office_holder_id,
+            additions.br_position_id,
+            seat.position_name,
+            seat.normalized_position_name,
+            seat.office_title,
+            cast(null as array<string>) as party_names,
+            additions.start_at as term_start_date,
+            additions.end_at as term_end_date,
+            cast(null as string) as term_date_specificity,
+            additions.is_appointed,
+            false as is_vacant,
+            seat.number_of_seats,
+            cast(null as string) as mailing_address_line_1,
+            cast(null as string) as mailing_address_line_2,
+            cast(null as string) as mailing_city,
+            cast(null as string) as mailing_state,
+            cast(null as string) as mailing_zip,
+            cast(null as string) as office_phone,
+            cast(null as string) as office_email,
+            cast(null as string) as website_url,
+            cast(null as string) as linkedin_url,
+            cast(null as string) as facebook_url,
+            cast(null as string) as twitter_url,
+            cast(null as string) as instagram_url,
+            seat.sub_area_name,
+            seat.sub_area_value,
+            seat.state,
+            seat.geo_id,
+            seat.mtfcc,
+            additions.gp_person_id
+        from {{ ref("office_holder_term_additions") }} as additions
+        inner join
+            seat_attributes as seat on additions.br_position_id = seat.br_position_id
+    ),
+
+    all_terms as (
+        select *
+        from br_terms
+        union all
+        select *
+        from added_terms
+    ),
+
     -- A seat with one holder can't have two current terms. The feed can keep a
     -- predecessor's term open (no end date) after a replacement is seated under a
     -- new office-holder id, so an open-ended term with an older start date
@@ -43,21 +170,16 @@ with
     -- multi-member seats are left alone.
     current_single_seat_terms as (
         select
-            terms.br_office_holder_id,
-            terms.term_start_date,
-            terms.term_end_date,
-            max(terms.term_start_date) over (
-                partition by terms.br_position_id
-            ) as newest_start_date
-        from {{ ref("elected_official_terms") }} as terms
-        inner join
-            office_holder_source
-            on terms.br_office_holder_id = office_holder_source.br_office_holder_id
+            br_office_holder_id,
+            term_start_date,
+            term_end_date,
+            max(term_start_date) over (partition by br_position_id) as newest_start_date
+        from br_terms
         where
-            office_holder_source.number_of_seats = 1
-            and not coalesce(terms.is_vacant, false)
-            and terms.term_start_date <= current_date()
-            and (terms.term_end_date is null or terms.term_end_date >= current_date())
+            number_of_seats = 1
+            and not coalesce(is_vacant, false)
+            and term_start_date <= current_date()
+            and (term_end_date is null or term_end_date >= current_date())
     ),
 
     superseded_terms as (
@@ -83,11 +205,11 @@ select
     terms.br_office_holder_id,
     terms.position_name,
     terms.normalized_position_name,
-    office_holder_source.office_title,
-    office_holder_source.party_names,
+    terms.office_title,
+    terms.party_names,
     terms.term_start_date as start_at,
     terms.term_end_date as end_at,
-    office_holder_source.term_date_specificity,
+    terms.term_date_specificity,
     case
         when terms.term_end_date < current_date()
         then false
@@ -101,7 +223,7 @@ select
     end as is_current,
     terms.is_appointed,
     terms.is_vacant,
-    office_holder_source.number_of_seats,
+    terms.number_of_seats,
     next_elections.next_election_date,
     terms.mailing_address_line_1,
     terms.mailing_address_line_2,
@@ -109,26 +231,21 @@ select
     terms.mailing_state,
     terms.mailing_zip,
     terms.office_phone,
-    terms.email as office_email,
+    terms.office_email,
     terms.website_url,
     terms.linkedin_url,
     terms.facebook_url,
     terms.twitter_url,
-    get(
-        filter(terms.urls, x -> x.type = 'instagram' and x.url is not null), 0
-    ).url as instagram_url,
-    office_holder_source.sub_area_name,
-    office_holder_source.sub_area_value,
+    terms.instagram_url,
+    terms.sub_area_name,
+    terms.sub_area_value,
     terms.state,
-    terms.br_geo_id as geo_id,
-    office_holder_source.mtfcc,
+    terms.geo_id,
+    terms.mtfcc,
     terms.gp_person_id as person_id,
     positions.id as position_id
-from {{ ref("elected_official_terms") }} as terms
+from all_terms as terms
 inner join persons on terms.gp_person_id = persons.id
-left join
-    office_holder_source
-    on terms.br_office_holder_id = office_holder_source.br_office_holder_id
 left join
     superseded_terms on terms.br_office_holder_id = superseded_terms.br_office_holder_id
 left join positions on terms.br_position_id = positions.br_database_id
