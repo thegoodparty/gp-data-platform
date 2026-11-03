@@ -35,6 +35,37 @@ with
             = 1
     ),
 
+    -- A seat with one holder can't have two current terms. The feed can keep a
+    -- predecessor's term open (no end date) after a replacement is seated under a
+    -- new office-holder id, so an open-ended term with an older start date
+    -- loses. A term with an end date is never retired here: on staggered boards
+    -- mislabeled as one seat, both dated terms are real. Ties on start date and
+    -- multi-member seats are left alone.
+    current_single_seat_terms as (
+        select
+            terms.br_office_holder_id,
+            terms.term_start_date,
+            terms.term_end_date,
+            max(terms.term_start_date) over (
+                partition by terms.br_position_id
+            ) as newest_start_date
+        from {{ ref("elected_official_terms") }} as terms
+        inner join
+            office_holder_source
+            on terms.br_office_holder_id = office_holder_source.br_office_holder_id
+        where
+            office_holder_source.number_of_seats = 1
+            and not coalesce(terms.is_vacant, false)
+            and terms.term_start_date <= current_date()
+            and (terms.term_end_date is null or terms.term_end_date >= current_date())
+    ),
+
+    superseded_terms as (
+        select br_office_holder_id
+        from current_single_seat_terms
+        where term_start_date < newest_start_date and term_end_date is null
+    ),
+
     -- Earliest upcoming election on the same BR position: "next election" for
     -- the seat in the profile's About Office section.
     next_elections as (
@@ -61,6 +92,8 @@ select
         when terms.term_end_date < current_date()
         then false
         when terms.term_start_date > current_date()
+        then false
+        when superseded_terms.br_office_holder_id is not null
         then false
         when terms.term_start_date is null and terms.term_end_date is null
         then cast(null as boolean)
@@ -96,5 +129,7 @@ inner join persons on terms.gp_person_id = persons.id
 left join
     office_holder_source
     on terms.br_office_holder_id = office_holder_source.br_office_holder_id
+left join
+    superseded_terms on terms.br_office_holder_id = superseded_terms.br_office_holder_id
 left join positions on terms.br_position_id = positions.br_database_id
 left join next_elections on terms.br_position_id = next_elections.br_position_id
