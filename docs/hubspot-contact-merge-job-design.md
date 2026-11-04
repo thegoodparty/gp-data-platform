@@ -282,8 +282,8 @@ below.
 | 10 | DATA-2786 | 2, 7-8 |
 | 11 | DATA-2787 | 7-8 |
 | 12 | DATA-2788 | 7-8 |
-| 13 | DATA-2789 | 9, 10, 11, 12 |
-| 14 | DATA-2790 | 13 |
+| 13 | DATA-2789 | 9, 10, 11 |
+| 14 | DATA-2790 | 12, 13 |
 | 15 | DATA-2791 | 2, 13 |
 | 16 | DATA-2792 | 14, 15 |
 | 17 | DATA-2793 | 14 |
@@ -294,12 +294,18 @@ below.
 | 22-23 | DATA-2521 | 1, 3, 16, 20, 21 |
 | 24 | DATA-2798 | 14 |
 | 25 | DATA-2799 | 20 |
-| 26 | DATA-2800 | 22-23, 24 |
-| 27-28 | DATA-2562 | 25, 26, and the two gates under "Related work outside this job" |
+| 26 | DATA-2800 | 24 |
+| 27-28 | DATA-2562 | 22-23, 25, 26, and the two gates under "Related work outside this job" |
 | 29 | DATA-2757 | nothing; must finish before the reverse-ETL HubSpot sync is first enabled |
 
-Steps 1 to 6 and 7 to 14 can run in parallel. The critical path is 7 and 8, then 9 to 12,
-13, 14, then 17 to 20, then 22 and 23. Some tickets cover two steps that ship together.
+Steps 1 to 6 and 7 to 14 can run in parallel. The critical path is 7 and 8, then 9 to 11,
+13, 14, then 17 to 20, then 22 and 23. Steps 24 to 26 can be built while 22 and 23 run;
+only enabling (27) waits on the first production merges. Some tickets cover two steps that
+ship together.
+
+Ticket names carry the zero-padded step number ("Merge step 07-08: ..."), so sorting the
+epic's subtasks by name gives this order. Tickets that can start now are in "to do"; the
+rest stay in "backlog" until what they wait on is done.
 
 ### Phase 0: decisions and access
 
