@@ -3,275 +3,452 @@
 ## Why
 
 The HubSpot Data Flow TDD commits Data Platform to an automated nightly job that merges
-duplicate HubSpot Contacts. The merge candidates already exist as a dbt mart
-(`hubspot_contact_merge_candidates`), which ranks a person's live contacts and names one
-primary. Nothing consumes it yet: today a human reads reviewed pairs and runs
+duplicate HubSpot Contacts (Workstream B, item 8). The merge candidates already exist as a
+dbt mart (`hubspot_contact_merge_candidates`), which ranks a person's live contacts and
+names one primary. Nothing consumes it yet. Today a human reads reviewed pairs and runs
 `reverse-etl/probes/merge_pairs.py` by hand.
 
-This document covers the job that consumes those pairs. It is deliberately narrow.
+This document covers the job that consumes those pairs, and the dbt changes around it. It
+is deliberately narrow.
 
 ## Scope
 
-In scope: HubSpot Contacts only.
+In scope: HubSpot Contacts only. The job takes the object type as configuration and records
+it in the log, so a later increment can add Companies without a schema change. Until
+then, the job rejects any type other than `contacts`.
 
-Out of scope, each a later increment: Companies, the Office Holder custom object, the
-merge-candidate report for human review, and any change to how candidates are computed
-beyond the ranking change in step 6 below.
+Out of scope, each a later increment: Companies, the Office Holder custom object, a
+merge-candidate review UI, and changes to the person graph itself.
 
 ## Goals
 
-- Merge a reviewed pair list through HubSpot's contacts merge endpoint, unattended, on a
+- Merge the pairs in a dbt relation through HubSpot's merge endpoint, unattended, on a
   schedule.
-- Be safe to retry: a rerun after a partial failure completes the remaining pairs and
-  re-attempts nothing that already succeeded.
-- Fail gracefully on every expected race: a secondary that no longer exists, a pair whose
-  survivor already absorbed the secondary, a primary that was itself merged away.
-- Leave an append-only record of what was merged, in Databricks, so merges can be audited
-  and later excluded from the candidate model.
+- Be safe to rerun at any point. A rerun after a crash completes the remaining pairs, and a
+  pair that is already merged is recorded as such, never merged twice.
+- Handle every expected race without failing the run: a secondary that no longer exists, a
+  secondary that was already merged into the primary or into some other contact, and a
+  primary that was itself merged away.
+- Leave an append-only record of every attempt in Databricks. dbt reads it so every model
+  that excludes merged contacts excludes these ones at once, without waiting for Airbyte.
 
-## Non-goals and anti-goals
+## Non-goals
 
-- It does not decide who should merge. All identity resolution and survivor ranking stays
-  in dbt. The job merges exactly what the pair relation says to merge.
-- It is not a general HubSpot client and not a reverse-ETL path. `reverse-etl` ships
-  desired state outward; this job is destructive and separate on purpose.
-- A merge cannot be undone. Anything that makes the job merge a pair outside the reviewed
-  relation is a failure even if the merge itself succeeds.
+- The job does not decide who should merge. Eligibility, survivor ranking and every
+  guardrail live in dbt. The job merges each row of its input relation, up to a cap, and
+  applies no filter of its own.
+- It is not a general HubSpot client and not a reverse-ETL flow. `reverse-etl` sends
+  desired state. This job is destructive, so it has its own package, image, credential and
+  DAG.
+- A merge cannot be undone. Anything that makes the job merge a pair outside its input
+  relation is a failure, even if the merge itself succeeds.
+
+## Decisions that differ from the TDD
+
+The TDD was written before the Primary ID Preservation beta. These points supersede it, and
+the TDD is updated to match in step 1.
+
+1. **The primary keeps its record ID and its place in workflows.** Verified in the sandbox:
+   with the beta on, the survivor keeps `primaryObjectId` and stays enrolled where it was,
+   delays and pending actions included. Only the absorbed record is unenrolled. The
+   workflow guardrail in the TDD's Phase 2 (defer pairs found in a workflow's
+   `activeIlsListId`) is therefore dropped. A secondary that was mid-sequence still leaves
+   that sequence. We accept that.
+2. **Order of merges does not matter.** Because the primary ID is stable, every secondary
+   of a person merges straight into `primary_hs_contact_id`. No chain, no ordering, and a
+   failed pair affects only itself.
+3. **Primary email comes from the ranking, not from a write.** A merge keeps the primary's
+   `email` and adds the secondary's to `hs_additional_emails`. If the most recently active
+   app-linked contact is ranked primary, the TDD's "primary email is the most recently
+   active account's" rule holds without the job writing anything. Step 3 changes the
+   ranking to do that. The job never writes `email` or `hs_additional_emails`.
+4. **Retired external keys are avoided, not tracked.** A merge silently drops one value of
+   a unique property when both records hold different values. On contacts today that is
+   `br_candidacy_id`, in 15 pairs. The queue excludes those pairs (steps 5 and 20) instead of
+   building the `retired_keys` table now.
+5. **Primary Company re-assertion is deferred.** The TDD's post-merge step to re-set the
+   primary Company is not part of this job. We record the decision and measure the
+   population before the cap rises past the first increments (step 25).
+6. **Human rejections live in a seed.** The TDD's `merge_decisions` table becomes a dbt
+   seed of contacts or persons that must never be auto-merged, with a reason. Rejections
+   are rare and reviewed in a PR, so a seed is enough.
 
 ## Constraints
 
-**No batch merge endpoint.** HubSpot merges one pair per call:
-`POST /crm/v3/objects/contacts/merge` with `primaryObjectId` and `objectIdToMerge`. The
-burst limit is per app key, 100 or 190 requests per 10 seconds depending on tier, with a
-daily cap of 250,000 or more. There is no bulk form of the call, so "batching" is about
-pacing and checkpointing, never about fewer calls.
+**One pair per call.** `POST /crm/v3/objects/contacts/merge` with `primaryObjectId` and
+`objectIdToMerge`. There is no batch merge. The burst limit is per app, 100 or 190 requests
+per 10 seconds by tier. Reads can be batched (`batch/read`, 100 ids per call), so the job
+reads 50 pairs at a time and merges them one by one.
 
-**The primary ID is preserved.** Primary ID Preservation for Merged Records is a public
-beta, enabled in sandbox and production. The survivor keeps the primary's record ID instead
-of receiving a new one. This makes secondaries independent: every secondary of a person can
-be merged into `primary_hs_contact_id` in any order, so a failed pair does not cascade and a
-retry is a single pair. The beta is also what preserves workflow enrollment on the survivor,
-verified in sandbox.
+**The beta is a beta.** The job records the ID each merge returns, and treats "the ID I got
+back is not the primary" as its own status that alerts. If HubSpot withdraws the beta,
+merges still work, and the log shows where each survivor went.
 
-The beta is a beta. The job therefore reads the returned ID from each merge response and
-records it, and treats "the ID I asked for is not the ID I got back" as a distinct state
-rather than an impossibility. If the beta is withdrawn, merges still work and the log shows
-where survivor IDs moved.
+**Merging changes more than duplicates.** The merge applies HubSpot's own rules: the
+primary's value wins for any property it has set, lifecycle stage keeps the furthest stage,
+`createdate` keeps the earliest. Owner is the large one: in 22,146 of 40,485 pairs the two
+contacts have different owners, and the secondary's owner loses. Sales signs off on that
+before the first production merge (step 1).
 
-**Merging is destructive.** It also changes behaviour silently: a merge unenrolls the
-absorbed record, folds its email in as a secondary address, and applies HubSpot's own merge
-rules to properties. Nothing in the job may write `hs_additional_emails`; doing so releases
-an absorbed address and recreates the duplicate.
+**Airbyte lags HubSpot.** A merged-away contact keeps its last extract in staging and looks
+live. The only sign it is gone is the survivor's `hs_merged_object_ids`, which arrives on
+the next sync, and the candidates mart is rebuilt only twice a day. Until then, any model
+that writes to HubSpot by contact ID can write the secondary's values onto the survivor,
+because HubSpot redirects writes to merged IDs. `contact_attributes_hubspot` already guards
+against this through `int__hubspot_contact_merges`. Step 19 makes that model read the
+merge log too, which closes the gap for every consumer at once.
 
-## What the population actually looks like
+## The population
 
-Measured against the mart on 2026-11-03, which sets the shape of the safety model:
+Measured against the mart on 2026-11-04.
 
 | | count |
 |---|---|
 | secondary rows (merge operations) | 40,485 |
-| distinct primaries (people) | 31,146 |
-| rows where `matched_on = 'splink'` | 39,872 (98.5%) |
-| rows where `matched_on = 'native_ids'` | 613 |
-| rows where `match_evidence = 'same_phone'` | 14,508 |
-| rows where `match_evidence = 'name_differs'` | 3,885 |
-| rows where `match_evidence = 'name_incomplete'` | 12 |
+| distinct persons | 31,146 |
+| persons with 3 or more live contacts (largest: 14) | 6,282 |
+| `matched_on = 'splink'` | 39,872 (98.5%) |
+| `matched_on = 'native_ids'` | 613 |
+| `match_evidence = 'same_phone'` | 14,508 |
+| `match_evidence = 'name_differs'` | 3,885 |
+| shared native ID or same phone, and last names agree | 13,731 |
+| owner differs between the pair | 22,146 |
+| `br_candidacy_id` differs between the pair | 15 |
+| both contacts app-linked | 955 |
+| both app-linked and the secondary was more recently active | 49 |
+| only the secondary is app-linked | 16 |
+| persons holding more than one gp_api account | 1,313 |
 
-Two consequences. At roughly 10 requests per second, the full population is about 1.1 hours
-of API time, so the whole back catalogue fits in a few scheduled nights rather than a
-month-long drip. And 98.5% of candidate pairs come from the probabilistic matcher, not from
-a shared native id, with 11,682 pairs resting on a name comparison alone. The TDD says only
-exact matches merge unattended. Closing that gap belongs to dbt, not to this job: add
-`exact_match` to the mart in step 3 below, and let the job's default filter read it.
+The TDD says only exact matches merge unattended, and 98.5% of pairs come from the
+probabilistic matcher. The 13,731 row is a first cut of "exact": a shared native ID or a
+shared normalised phone, with agreeing last names. Step 4 defines it in the mart. At a few
+merges per second, all of it is a few hours of API time, so the cap, not throughput, sets
+the pace.
 
 ## The parts
 
-### 1. The pair relation
+### 1. dbt: candidates, queue and log
 
-Input contract, and the whole interface between dbt and the job. One row per merge
-operation:
+Three relations, each with one job.
+
+- `hubspot_contact_merge_candidates` (existing table): the review surface. One row per
+  live contact in a multi-contact person, with the ranking, the evidence and the review
+  flags. Gains `exact_match` and `has_unique_key_conflict`.
+- `hubspot_contact_merge_queue` (new view): the job's input and the whole interface
+  between dbt and the job. One row per merge that is eligible to run now. It reads the
+  candidates mart and applies every rule: secondary rows only, `exact_match`, no unique key
+  conflict, a person-size cap, not in the exclusion seed, and not already terminal in the
+  merge log. A view, so a merge logged a minute ago drops out on the next read.
+- `airflow_source.hubspot_contact_merge_log` (new table, job-owned): the job's append-only
+  record, declared as a dbt source. `int__hubspot_contact_merges` unions its successful
+  rows with what it derives from `hs_merged_object_ids` today.
+
+Queue columns:
 
 | column | meaning |
 |---|---|
 | `primary_hs_contact_id` | merge target (string) |
 | `hs_contact_id` | the secondary to absorb (string) |
-| `gp_person_id` | audit key, not used by the job |
-| `contact_rank` | ordering within a person, 2 upward |
+| `gp_person_id` | carried into the log for audit; the job does not use it |
+| `match_evidence` | carried into the log for audit |
+| `latest_election_date` | the person's latest candidacy election date; sets the merge order |
 
-Default source is `hubspot_contact_merge_candidates` filtered to `merge_role = 'secondary'`.
-The relation name is configuration, not code, so one image serves a narrowed view, a
-sandbox mirror, and a hand-built table of chosen IDs.
+The job merges the oldest elections first, since those contacts matter least. A person
+with no election date goes last.
+
+The relation name is configuration. A sandbox run, a narrowed production run and the
+scheduled run differ only in which relation the job reads.
 
 ### 2. The merger
 
-A small Python package with one responsibility: given an iterable of pairs, merge them and
-report outcomes. It knows nothing about dbt, Airflow, or where pairs come from.
+A small Python package, `hubspot-merge/`, beside `reverse-etl/`. It knows nothing about
+dbt or Airflow. Its core takes an iterable of pairs, a HubSpot client and a log writer, so
+tests pass a list and fakes, and the CLI passes a Databricks reader and real clients.
 
-- Input is a reader that yields legs of pairs, so the same code paths serve a CSV of
-  hand-picked IDs and a Databricks relation.
-- Per pair: one batch-read of both contacts (confirms both exist, neither is already merged
-  away, and fetches the properties the log wants), then the merge call.
-- Per attempt: a status, evidence and timestamps, appended to the log.
-- Pacing: a token-bucket limiter sized below the portal's burst limit, plus bounded
-  concurrency. Retries with backoff on 429 and 5xx.
-- A hard cap on pairs per run, defaulting well below the full population, so production
-  exposure is a configuration value rather than a property of the table's size.
-- A portal guard: the first call is `GET /account-info/v3/details`, and the job refuses to
-  run when the portal does not match what its configuration declares. A service key carries
-  no portal in its text, so asking the API is the only way to know which portal a credential
-  opens.
+Per run:
 
-Statuses, one row per attempted pair:
+1. Confirm the portal: `GET /account-info/v3/details` must return the portal the
+   configuration names. A service key carries no portal in its text, so asking the API is
+   the only check.
+2. Read up to `MERGE_MAX_PAIRS` rows from the relation, oldest `latest_election_date`
+   first (`ORDER BY` and `LIMIT` in SQL).
+3. For each chunk of 50 pairs, one `batch/read` of the 100 IDs with the properties the
+   snapshot keeps. Classify each pair from the read. Merge only the pairs that read as
+   two live, distinct contacts.
+4. Merge serially, at no more than `MERGE_MAX_RPS`, honouring `Retry-After` on 429, and
+   retrying 5xx with backoff. Concurrency is not needed at the volumes the cap allows, and
+   serial merges cannot collide on the same primary.
+5. Append one log row per pair, chunk by chunk.
 
-| status | meaning | retry? |
+There is no resumption logic in the job. A rerun reads the queue, which already excludes
+logged pairs. A pair that was merged but whose log row was lost in a crash reads as
+`already_merged` on the next run. The pre-merge read is what makes the job idempotent.
+
+`--dry-run` does steps 1 to 3 and prints the classification. It merges nothing and writes
+no log.
+
+Statuses, one log row per pair attempted:
+
+| status | meaning | queue excludes it? |
 |---|---|---|
-| `merged` | merge returned success, survivor id recorded | no |
-| `already_merged` | secondary no longer resolves as itself; absorbed previously | no |
-| `secondary_missing` | secondary does not exist as a contact at all | no |
-| `primary_merged_away` | primary resolves to a different contact | no, flag for review |
-| `mismatch` | merge succeeded but the returned id is not the primary | no, log and alert |
-| `skipped` | filtered before any write (same id twice, cap reached, filter rule) | no |
-| `failed` | non-retryable error, with the HubSpot message | next run, unless malformed |
+| `merged` | merge succeeded and returned the primary's ID | yes |
+| `already_merged` | the secondary already resolves to the primary | yes |
+| `merged_elsewhere` | the secondary resolves to a third contact | yes, and review |
+| `secondary_missing` | the secondary does not resolve at all | yes |
+| `primary_merged_away` | the primary resolves to another contact | no; the mart re-ranks after the next sync |
+| `primary_missing` | the primary does not resolve at all | no; the mart drops it after the next sync |
+| `id_changed` | merge succeeded but returned an ID other than the primary | yes, and alert |
+| `failed` | HubSpot refused the merge, or retries ran out | no; retried next run |
 
 ### 3. The log
 
-Append-only table, written as batched INSERTs, one Delta commit per chunk. The chunk is
-appended when full and at the end of the run, so a container that dies mid-run loses at most
-one chunk rather than the run's whole record.
+Append-only Delta table, one INSERT per chunk, following `reverse-etl/src/retl/sent_log.py`
+(rows packed into one JSON parameter, since each INSERT is its own commit of about 2.5
+seconds). A crash loses at most one chunk, and the pre-merge read recovers it.
 
-Columns: `run_id`, `batch_id`, `primary_hs_contact_id`, `hs_contact_id`,
-`survivor_hs_contact_id`, `status`, `error`, `attempted_at`, `merged_at`.
+Columns: `run_id`, `object_type`, `primary_id`, `secondary_id`, `status`,
+`survivor_id` (the ID the merge returned, or what the secondary resolved to),
+`gp_person_id`, `match_evidence`, `error`, `primary_snapshot` and `secondary_snapshot`
+(JSON of the pre-merge read, for manual reconstruction of a wrong merge), `attempted_at`.
 
-Location: `goodparty_data_catalog.reverse_etl`, beside the existing send-log tables, which
-that schema's description already records as job-created and outside the marts and
-shared-marts rollups. The name is configuration, so a sandbox deployment points elsewhere.
+Location: `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log` in
+production and `goodparty_data_catalog.airflow_source_dev.hubspot_contact_merge_log` for
+sandbox and dev runs. The log is ingest, since dbt reads it as a source. It follows the
+repo's ingest convention:
 
-Two consumers follow immediately: the next run excludes recently completed pairs, and the
-candidate model skips pairs already merged while the mart catches up.
+- It sits in a `<writer>_source` schema, never in a schema dbt builds into (`dbt`,
+  `mart_*`, personal or PR schemas).
+- Prod and dev are separated by schema, not by table name, as `extract_ballotready` and
+  matcha do. There is one catalog, so the schema is all that keeps a dev run off prod data.
+- The writing service principal owns the table: `airflow` in `airflow_source`,
+  `airflow_dev` in `airflow_source_dev`.
 
-`reverse-etl/src/retl/sent_log.py` already implements this shape, including why rows are
-packed per chunk (each INSERT is its own Delta commit, roughly 2.5s). Follow that file
-rather than invent a second pattern.
+The job creates the table only in an explicit `init-log` command, never during a run, as
+`retl --init-log` does. A table created by a person is then transferred to the service
+principal (steps 16 and 17). The full name is configuration. The DAG sets it from a
+Variable, so astro-dev points at `airflow_source_dev`, and astro-prod points at
+`airflow_source`.
 
 ### 4. The runner
 
 An Airflow DAG shaped like `reverse_etl_hubspot`: one KubernetesPodOperator running the
-job's image, image tag pinned by an Airflow Variable with no mutable default, token and
-relation name passed through the environment, deployed paused, unpaused as the explicit
-enable step. The job package does not import Airflow.
+job's image, the image tag pinned by an Airflow Variable with no mutable default, the
+token, relation, log table, cap and expected portal passed through the environment,
+deployed paused. Unpausing is the explicit enable step. The log table Variable has no
+default, so a dev deployment cannot write to the production log by omission.
 
 ## Verification
 
-Three stages, differing in what is verified rather than in what runs.
+**Unit tests.** Every status is reachable without HubSpot. Classification is a pure
+function of the read and merge responses. The client's pacing and retry, the log's
+chunking and the reader's SQL are tested with fakes.
 
-**In the merger's own tests.** Every status is reachable without HubSpot: the pre-merge read
-and the merge call are faked, and statuses are asserted from response shapes. Pacing, attempt
-accounting, resumption from a partially written log, and the cap are unit-tested.
+**Sandbox.** A marked test (`pytest -m sandbox`, run by hand, never in CI) creates
+throwaway contacts in the sandbox, builds pairs for every reachable status, runs the
+executor against them, and asserts the outcome by reading HubSpot back: the primary still
+exists with its ID, the secondary resolves to the primary, the survivor's
+`hs_merged_object_ids` names the secondary, and a contact enrolled in a throwaway workflow
+stays enrolled. The same run is then repeated through the CLI against a hand-built pair
+table, with the log in `airflow_source_dev`, to exercise the real reader and log writer.
 
-**Against sandbox, on chosen pairs.** Run the image with a fixed list of IDs created for the
-purpose. Confirm per pair: the primary still exists, the secondary ID resolves to the primary,
-the survivor shows the merge in its merge history, the survivor kept its workflow enrollment,
-and the log rows match what the API did.
+**Production, narrowed.** The CLI's `verify --run-id` command reads a run's log rows and
+re-checks the first three assertions against HubSpot for each `merged` pair. It is used
+after the hand-run production batches and is never part of the scheduled run. Workflow
+enrollment in production is checked by hand on the few pairs where it applies.
 
-**Against production, on a handful of low-risk IDs.** Same assertions on a small slice, with
-the pair relation narrowed rather than the job changed. Only after that does the cap rise.
+## Steps
 
-**Not on every run.** The five assertions are a `--verify` mode and a manual checklist. A
-steady-state run does one batch-read and one merge call per pair and nothing else; five reads
-per pair would not scale past a few thousand merges.
+Each step is one PR or one recorded action, reviewable on its own, with its own tests or
+evidence. "Done when" is the exit check.
 
-## Numbered steps
+### Phase 0: decisions and access
 
-Each step is one commit, independently reviewable, with its own tests. Steps 1 to 4 and 6 to
-14 are code; 5, 15 and 16 need hubspot access and a human.
+1. **Update the TDD and get sign-off.** Record the "Decisions that differ from the TDD"
+   section in the ClickUp TDD: ID and workflow preservation confirmed, workflow guardrail
+   dropped, primary email by ranking, retired keys avoided, primary Company deferred,
+   rejections in a seed. Get Sales sign-off that the primary's owner wins (22,146 pairs
+   differ). Done when the TDD reflects this and the sign-off is on the ticket.
+2. **Create the service keys and confirm merge behaviour the job relies on.** One
+   dedicated service key per portal (sandbox 51780263, production 21589597), scoped
+   `crm.objects.contacts.read` and `crm.objects.contacts.write`. Add a probe to
+   `reverse-etl/probes/checks.py` that records, on sandbox contacts: what `batch/read`
+   returns for a merged-away ID (the survivor's record, or nothing), what the merge
+   endpoint returns for an already-merged pair and for a missing ID, and the response
+   shape of a successful merge. Done when the findings are in the probes README and the
+   status table above is confirmed or corrected.
 
-### Prerequisite: the ranking change (dbt)
+### Phase 1: dbt, candidates
 
-1. **Change the ranking that picks the survivor.** In
-   `dbt/project/models/marts/sales_reverse_etl/hubspot_contact_merge_candidates.sql`, move
-   `is_app_linked` and `app_user_last_active_at` ahead of `is_pro_candidate` in the
-   `row_number()` `order by`, so the most recently active gp-api account wins even when the
-   contact is not Pro. Update the `primary_decided_by` CASE in the same order. Add a dbt test
-   asserting that when a person has at least one app-linked contact, the primary is one of
-   them.
-2. **Document the new order.** Update the model's `description` in
-   `_sales_reverse_etl__models.yml` to state the rule in words, and note that
-   `primary_decided_by` can now report `is_app_linked` first.
-3. **Add the exact-match filter column.** Add `exact_match` (boolean) to the mart: true when
-   the pair shares a deterministic native id, or a normalised phone, and the last names agree.
-   Document it and test that `exact_match` is false for every `match_evidence` of
-   `name_differs` or `name_incomplete`. This is what the TDD's "exact matches only" means,
-   and what the job's default filter reads.
-4. **Confirm the mart still builds and its tests pass** with `--favor-state` against dev, and
-   record the new counts.
+3. **Change the survivor ranking.** In `hubspot_contact_merge_candidates.sql`, move
+   `is_app_linked` and `app_user_last_active_at` ahead of `is_pro_candidate`, and reorder
+   the `primary_decided_by` CASE to match. Update the model description in
+   `_sales_reverse_etl__models.yml`. Add a test: when a person has an app-linked contact,
+   the primary is the most recently active one. Done when the mart builds with
+   `--favor-state`, the test passes, and the 65 affected pairs (49 plus 16) have the
+   app-linked contact as primary.
+4. **Add `exact_match`.** True when the secondary shares the primary's deterministic
+   identity (`matched_on = 'native_ids'`) or normalised phone, and the last names agree.
+   Document it, and test that it is never true for `name_differs` or `name_incomplete`.
+   Done when the count is recorded on the ticket (about 13,700 expected).
+5. **Add `has_unique_key_conflict`.** True when both contacts hold different
+   `br_candidacy_id` values. Done when documented, tested on the 15 known pairs, and the
+   list of unique contact properties it covers is written in the column description.
+6. **Add the exclusion seed.** `seeds/hubspot_contact_merge_exclusions.csv` with
+   `hs_contact_id`, `gp_person_id`, `reason`, `added_by`, either ID optional. Start it
+   empty. Done when the seed builds and its schema tests pass.
 
-### The merger package
+### Phase 2: the merger package
 
-5. **Scaffold the subproject.** Create `hubspot-merge/` beside `reverse-etl/`: `pyproject.toml`
-   (uv, Python 3.14, `requests`, `tenacity`, `databricks-sql-connector[pyarrow]`,
-   `databricks-sdk`; dev group `pytest`, `mypy`, `types-requests`, `ruff`), `src/mergejob/`
-   package, `tests/`, `.env.example`, `README.md`. Console script `hsm`. Nothing runs yet.
-6. **Define the pair and status types.** `Pair(primary_id: str, secondary_id: str,
-   gp_person_id: str | None, contact_rank: int | None)` and a `Status` enum with exactly the
-   seven values in the table above. Test: constructing a `Pair` from a dict of mart columns
-   ignores unknown keys.
-7. **Add config loading from the environment.** `Config.from_env(env)`: `HUBSPOT_TOKEN`,
-   `HUBSPOT_BASE_URL`, `HUBSPOT_EXPECTED_PORTAL_ID`, `MERGE_PAIR_RELATION`,
-   `MERGE_PAIR_FILTER` (default `exact_match`), `MERGE_LOG_TABLE`, `MERGE_MAX_PAIRS`,
-   `MERGE_MAX_RPS`. Missing required values raise a named error, and a non-positive
-   `MERGE_MAX_PAIRS` is rejected at load time, mirroring `retl/config.py`. Test each branch.
-8. **Add the portal guard.** `verify_portal(client, expected_id)` calls
-   `GET /account-info/v3/details` and raises `WrongPortalError` on mismatch, naming both ids.
-   Every write path calls it first. Test with a faked client for match, mismatch, and a
-   non-200.
-9. **Add the HubSpot client with pacing.** `HubSpotClient.read_contacts(ids)` over
-   `POST /crm/v3/objects/contacts/batch/read` and `merge(primary, secondary)` over
-   `POST /crm/v3/objects/contacts/merge`, both under a token bucket enforcing
-   `MERGE_MAX_RPS`, with `tenacity` retry on 429 and 5xx and no retry on 4xx. Test: the
-   bucket refuses to exceed the rate; a 429 retries and then succeeds; a 400 does not retry.
-10. **Classify one pair's outcome.** `classify(pair, read_result, merge_result) -> Outcome`
-    covering all seven statuses. Tests are the status table: one test per status, with the
-    response shapes that produce it, including the case where the read shows the secondary
-    resolving to the primary (`already_merged`) and where the merge returns an id other than
-    the primary (`mismatch`).
-11. **Execute pairs with a cap and resumption.** `execute(pairs, client, log, max_pairs)`:
-    takes the first `max_pairs`, checks the log for pairs already recorded as terminal, runs
-    the rest through classify, appends outcomes. Test: a second run over the same list
-    re-attempts nothing already logged; the cap truncates and logs `skipped` for the
-    remainder; a mid-run exception still leaves the completed chunk appended.
-12. **Write the log.** `LogWriter` over `databricks-sql-connector`, batched INSERTs of the
-    nine columns, plus `terminal_pairs_since(run_cutoff) -> set[Pair]` for resumption. Mirror
-    `retl/sent_log.py`'s chunking. Tests with a faked cursor: rows arrive in chunks, the
-    flush happens on exit, and the resumption query's SQL names the right columns.
-13. **Add the two readers.** `CsvReader` (local pairs of ids, for sandbox runs) and
-    `DatabricksReader(relation, filter)` emitting `SELECT primary_hs_contact_id, hs_contact_id,
-    gp_person_id, contact_rank FROM {relation} WHERE {filter}` in legs. Test the SQL string
-    and the leg chunking.
-14. **Wire the CLI.** `hsm run --source=csv|databricks [--limit N] [--verify] [--dry-run]`.
-    `--dry-run` reads and classifies nothing that writes; `--verify` runs the five assertions
-    on each merged pair and appends them as evidence. Test each flag's wiring with the
-    executor faked.
+7. **Scaffold `hubspot-merge/`.** `pyproject.toml` (uv, Python 3.14, `requests`,
+   `tenacity`, `databricks-sql-connector[pyarrow]`, `databricks-sdk`; dev group `pytest`,
+   `mypy`, `types-requests`), `src/hsmerge/`, `tests/`, `.env.example`, `README.md`,
+   console script `hsm`, a `pytest-hubspot-merge` pre-push hook and a
+   `.github/workflows/hubspot-merge.yml` test workflow. Done when `uv run pytest` passes on
+   an empty suite in CI.
+8. **Define types and configuration.** `Pair`, `Status` (the eight values above),
+   `Outcome`, and `Config.from_env` reading `HUBSPOT_TOKEN`, `HUBSPOT_BASE_URL`,
+   `HUBSPOT_EXPECTED_PORTAL_ID`, `MERGE_OBJECT_TYPE`, `MERGE_PAIR_RELATION`,
+   `MERGE_LOG_TABLE`, `MERGE_MAX_PAIRS`, `MERGE_MAX_RPS`, plus the Databricks variables.
+   Missing values raise a named error, a non-positive cap is rejected, and an object type
+   other than `contacts` is rejected. Done when each branch has a test.
+9. **Add the HubSpot client.** `verify_portal`, `batch_read(ids, properties)` and
+   `merge(primary, secondary)`, over an injectable transport, with a minimum interval
+   between calls, `Retry-After` on 429 and backoff on 5xx, and no retry on other 4xx. The
+   token stays out of the repr. Done when tests cover a portal mismatch, a 429 that then
+   succeeds, a 400 that does not retry, and the pacing.
+10. **Write classification.** `classify_read(pair, read)` and `classify_merge(pair,
+    response)` as pure functions, built on the shapes recorded in step 2. Done when every
+    status has a test using a recorded response shape.
+11. **Write the log writer and its DDL.** `create_log_table_sql`, `init_log_table` and a
+    chunked `MergeLogWriter`, reusing the JSON-parameter INSERT pattern from
+    `retl/sent_log.py` (copied, since subprojects do not share code). Done when tests show
+    rows arrive in chunks, the remainder flushes on exit including after an exception, and
+    the DDL is `create table if not exists` only. The writer has no UPDATE, DELETE or
+    MERGE path: the current state of each pair is derived in dbt, never stored.
+12. **Write the pair reader.** `read_pairs(connection, relation, limit)` emitting
+    `select primary_hs_contact_id, hs_contact_id, gp_person_id, match_evidence from
+    {relation} order by latest_election_date nulls last, hs_contact_id limit {limit}`.
+    Done when the SQL and the row mapping are tested.
+13. **Write the executor.** `execute(pairs, client, log)`: chunk, batch-read, classify,
+    merge, log. Done when tests with fakes show a mixed chunk produces the right status
+    per pair, a merge exception logs `failed` and continues, and a crash mid-run leaves
+    every finished chunk logged.
+14. **Wire the CLI.** `hsm run [--dry-run]`, `hsm init-log`, `hsm verify --run-id ID`.
+    Done when each command's wiring is tested with the executor faked, and `--dry-run`
+    is shown to call neither `merge` nor the log writer.
 
-### Sandbox, then production
+### Phase 3: sandbox
 
-15. **Sandbox verification.** Create a dozen throwaway contacts in the sandbox with a known
-    duplicate shape, run `hsm run --source=csv` against them with `--verify`, and record per
-    pair: primary still exists, secondary resolves to primary, merge history on the survivor,
-    workflow enrollment preserved, log rows correct. Write the findings into
+15. **Add the sandbox end-to-end test.** `tests/test_sandbox.py`, marked `sandbox` and
+    skipped unless the sandbox key is set. It creates tagged contacts, builds pairs for
+    `merged`, `already_merged`, `merged_elsewhere`, `secondary_missing` and
+    `primary_merged_away`, runs `execute` with an in-memory log, asserts statuses and the
+    read-back checks, and archives what it created. A workflow check enrolls one primary
+    in a throwaway delay workflow built for the purpose and asserts it stays enrolled.
+    Done when it passes twice in a row against the sandbox.
+16. **Run the CLI against the sandbox through Databricks.** Run `hsm init-log` against
+    `airflow_source_dev.hubspot_contact_merge_log`, transfer its ownership to the
+    `airflow_dev` service principal, and grant yourself `MODIFY` on that table. Hand-build
+    a pair table of sandbox IDs in your dev schema (it is input, not a log). Run `hsm run
+    --dry-run`, then `hsm run`, then `hsm verify`. Done when the log rows match what
+    HubSpot shows, and the results are written to
     `docs/hubspot-contact-merge-job-verification.md`.
-16. **Build and publish the image.** `Dockerfile` and
+
+### Phase 4: dbt, queue and log
+
+17. **Create the production log table.** Run `hsm init-log` against
+    `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log`, then transfer its
+    ownership to the `airflow` service principal (`alter table ... owner to`, which a
+    data-engineers member can do through the catalog-level `MANAGE`). Grant `MODIFY` on
+    that one table to the people who will run the manual batches in steps 22 and 23, and
+    revoke it after step 23. The dbt principals already read the schema through
+    catalog-level grants. Done when the table is owned by the service principal and each
+    identity can do what it needs.
+18. **Declare the log as a dbt source.** Add the table to the existing `airflow_source`
+    source in `models/staging/__sources.yaml`, with its own freshness setting (`null`
+    until step 27, since the log only grows when the job runs), and a staging model
+    `stg_airflow_source__hubspot_contact_merge_log` that types the columns and parses the
+    snapshots. Done when `dbt build` passes on the empty table.
+19. **Union the log into `int__hubspot_contact_merges`.** Rows with status `merged`,
+    `already_merged` or `id_changed` add `secondary_id` merged into `survivor_id`;
+    `merged_elsewhere` adds it merged into the contact it resolved to. Keep the existing
+    `hs_merged_object_ids` derivation and deduplicate. Then switch the candidates mart's
+    own `merged_away` CTE to read this model. Done when existing tests pass and a test
+    seeded with a log row shows the contact excluded from the candidates mart and from
+    `contact_attributes_hubspot`.
+20. **Add `hubspot_contact_merge_queue`.** A view over the candidates mart: secondary rows
+    only, `exact_match`, no unique key conflict, `live_contact_count` under an agreed cap,
+    not in the exclusion seed, and the secondary not in the log with a status the queue
+    excludes. Add `latest_election_date` from the person's candidacies in `mart_civics`.
+    Document every rule in the model YAML. Test that it has no duplicate secondaries and
+    that no secondary equals its primary. Done when its row count, by election year, is
+    recorded on the ticket.
+21. **Add log health tests.** dbt tests on the log source: error on any `id_changed` row,
+    warn when a pair has failed in three or more runs, warn on any `merged_elsewhere`.
+    Done when the tests run in the scheduled build.
+
+### Phase 5: production, by hand
+
+22. **Run five hand-checked pairs in production.** Pick five low-risk pairs from the queue
+    (same phone, same name, no owner conflict, no app account) and check each in the
+    HubSpot UI. Point `MERGE_PAIR_RELATION` at a scratch view selecting only those five,
+    set the production key and portal, and run `hsm run --dry-run`, then `hsm run`, then
+    `hsm verify`. Check the survivors in the UI, including any workflow enrollment. Done
+    when the results are on the ticket and the five secondaries have left the queue.
+23. **Run a batch of 100 from the queue.** Same procedure, with the scratch view taking
+    100 rows from the queue across a mix of `match_evidence` values. Spot-check ten in the
+    UI. Done when there is no `failed` or `id_changed` row, or each one is explained.
+
+### Phase 6: automation
+
+24. **Build and publish the image.** `hubspot-merge/Dockerfile` and
     `.github/workflows/hubspot-merge-container.yml`, copied in shape from `reverse-etl`:
-    two-stage build, `uv sync --frozen --no-dev --no-editable`, entrypoint `hsm`, GHCR image
-    at `ghcr.io/thegoodparty/gp-data-platform/hubspot-merge`, sha tag beside `latest`.
-17. **Add the DAG.** `airflow/astro/dags/hubspot_contact_merge.py` with a
-    configuration table (relation, log table, cap, image tag, pull secret, token, expected
-    portal id) and `is_paused_upon_creation=True`, plus a dag test asserting the env surface
-    and the no-mutable-tag rule. `airflow/astro/docs/hubspot_contact_merge.md` documents it.
-18. **Narrowed production run.** Point the relation at a view selecting a small hand-checked
-    set of pairs with `exact_match` true, run with `--verify`, confirm the five assertions on
-    real records, and record the result on the ticket.
-19. **Raise the cap.** Step `MERGE_MAX_PAIRS` up in agreed increments, watching the log's
-    `failed` and `mismatch` counts, and confirm the mart's candidate count falls.
-20. **Wire the feedback loop.** Add `hubspot_contact_merge_candidates`' exclusion of pairs the
-    log records as merged, so the mart stops proposing pairs the job already handled while the
-    source extract catches up.
+    two-stage build, `uv sync --frozen --no-dev --no-editable`, entrypoint `hsm`, published
+    to `ghcr.io/thegoodparty/gp-data-platform/hubspot-merge` with a sha tag beside
+    `latest`. Done when a merge to main publishes an image that runs `hsm --help`.
+25. **Measure the primary Company population.** Count the queued pairs where both
+    contacts have a primary Company association and they differ. Decide on the ticket
+    whether re-assertion is needed before the cap passes 1,000. Done when the decision is
+    recorded.
+26. **Add the DAG.** `airflow/astro/dags/hubspot_contact_merge.py`, with Variables for the
+    image tag, pull secret, token, relation, log table (no default), cap and expected
+    portal, scheduled after the 12:02 UTC dbt build and before the 17:00 UTC reverse-ETL
+    send, `is_paused_upon_creation=True`, plus a DAG test of the env surface and the pinned-tag
+    rule. Document it in `airflow/astro/docs/hubspot_contact_merge.md`. Done when the DAG
+    tests pass and the DAG is deployed paused.
+27. **Enable with a small cap.** Set the Variables with the cap at 100 and unpause. Done
+    when three scheduled runs complete with clean logs.
+28. **Raise the cap in agreed steps.** For example 500, then 2,000, then the full queue,
+    each after a clean week of runs. Watch the log tests and confirm the candidates count
+    falls. Done when the exact-match queue is empty apart from rows explained in the log.
+
+### Housekeeping
+
+Independent of the merge job. Do it before `reverse_etl_hubspot` is first unpaused, while
+the `reverse_etl` schema is still empty (it was on 2026-11-04).
+
+29. **Move the reverse-ETL send logs to an ingest schema.** retl's send logs are
+    append-only logs read back by a job, so they follow the same ingest rule. The
+    `reverse_etl` schema puts dev and prod in one schema, separated only by table name.
+    It is also owned by the `github-action` principal rather than the writer.
+    - Point the default in `reverse-etl/.env.example` at
+      `goodparty_data_catalog.airflow_source.sent_log_hubspot`. Update `reverse-etl/README.md`,
+      `airflow/astro/docs/reverse_etl_hubspot.md`, and the table names in the retl and DAG
+      tests.
+    - Set the `reverse_etl_hubspot_log_table` Variable to
+      `airflow_source.sent_log_hubspot` on astro-prod and to
+      `airflow_source_dev.sent_log_hubspot` on astro-dev. The `_orphans` companion table
+      follows automatically, because its name derives from the log table.
+    - Run `retl --init-log` against each, and transfer ownership to the matching service
+      principal.
+    - If any table exists in `reverse_etl` by then, copy it with
+      `create table ... deep clone`, verify the row counts, and drop the original. Then
+      drop the `reverse_etl` schema.
+
+    Done when both deployments write to their own ingest schema, and `reverse_etl` no
+    longer exists.
+
+### After this job
+
+Widening the queue past `exact_match` (for example probabilistic pairs with a human review
+round) is a change to the queue view and the exclusion seed, not to the job.
