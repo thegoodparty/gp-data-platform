@@ -1,11 +1,21 @@
 /*
 Though each Race object has a single Position, the location of a place can have multiple positions.
 */
+-- The merge never removes a race that leaves staging, as a superseded BallotReady
+-- race does, so the post-hook drops those rows after each run.
 {{
     config(
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="race_database_id",
+        post_hook=["""
+            delete from {{ this }}
+            where race_database_id not in (
+                select database_id
+                from {{ ref('stg_airbyte_source__ballotready_api_race') }}
+                where database_id is not null
+            )
+            """],
     )
 }}
 

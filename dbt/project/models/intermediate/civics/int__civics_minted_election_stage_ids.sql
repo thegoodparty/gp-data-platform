@@ -16,9 +16,12 @@
 -- (phase 2) rewrites them, so vendor-minted clusters re-mint once at that
 -- transition. Expected relabel, not a regression.
 with
+    -- Superseded races included: the clustered table still holds their ids, and a
+    -- BR member that lost its first_seen_at would hand a mixed cluster's mint to a
+    -- vendor co-member and churn published ids.
     br_race_created as (
         select cast(database_id as string) as br_race_id, created_at
-        from {{ ref("stg_airbyte_source__ballotready_api_race") }}
+        from {{ ref("stg_airbyte_source__ballotready_api_race_with_superseded") }}
     ),
 
     -- least() pins the first-load anchor: both connectors re-sync in overwrite

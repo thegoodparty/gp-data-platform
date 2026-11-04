@@ -1,5 +1,6 @@
 -- Product campaigns with the BallotReady position and race filled in for
--- signups that never picked one.
+-- signups that never picked one, and a pinned race BallotReady replaced
+-- followed to its replacement.
 --
 -- Without a position or race the candidacy prematch and the gp_api civics
 -- models drop the campaign, even when BallotReady lists the same person that
@@ -76,6 +77,17 @@ with
         from matched
         group by campaign_id
         having count(distinct br_candidacy_id) = 1
+    ),
+
+    -- A campaign can be pinned to a race BallotReady has since deleted and
+    -- re-created. Follow it to the race kept in its place, so the campaign still
+    -- resolves to its own stage instead of the nearest one by date.
+    superseded_race as (
+        select
+            cast(database_id as bigint) as superseded_race_id,
+            cast(superseded_by_database_id as bigint) as kept_race_id
+        from {{ ref("stg_airbyte_source__ballotready_api_race_with_superseded") }}
+        where is_superseded
     )
 
 select
@@ -86,7 +98,9 @@ select
         normalized_position_name
     ),
     coalesce(c.ballotready_position_id, i.br_position_id) as ballotready_position_id,
-    coalesce(c.ballotready_race_id, i.br_race_id) as ballotready_race_id,
+    coalesce(
+        sr.kept_race_id, c.ballotready_race_id, i.br_race_id
+    ) as ballotready_race_id,
     -- BR's position name over the user's custom office: a short custom label
     -- ("school board") fails the matcher's office checks against the BR record
     -- the position came from.
@@ -96,6 +110,7 @@ select
     i.match_key as inferred_br_match_key
 from campaigns as c
 left join inferred as i on c.campaign_id = i.campaign_id and c.is_latest_version
+left join superseded_race as sr on c.ballotready_race_id = sr.superseded_race_id
 left join
     {{ ref("int__ballotready_normalized_position") }} as np
     on i.br_normalized_position_id = np.database_id
