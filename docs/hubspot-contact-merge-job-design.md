@@ -54,14 +54,18 @@ the TDD is updated to match in step 1.
    workflow guardrail in the TDD's Phase 2 (defer pairs found in a workflow's
    `activeIlsListId`) is therefore dropped. A secondary that was mid-sequence still leaves
    that sequence. We accept that.
-2. **Order of merges does not matter.** Because the primary ID is stable, every secondary
-   of a person merges straight into `primary_hs_contact_id`. No chain, no ordering, and a
-   failed pair affects only itself.
+2. **Order of merges does not affect correctness.** Because the primary ID is stable,
+   every secondary of a person merges straight into `primary_hs_contact_id`. No chain,
+   and a failed pair affects only itself. The queue still sets an order, oldest elections
+   first, to put the lowest-risk merges first.
 3. **Primary email comes from the ranking, not from a write.** A merge keeps the primary's
    `email` and adds the secondary's to `hs_additional_emails`. If the most recently active
    app-linked contact is ranked primary, the TDD's "primary email is the most recently
    active account's" rule holds without the job writing anything. Step 3 changes the
-   ranking to do that. The job never writes `email` or `hs_additional_emails`.
+   ranking to do that. The job never writes `email` or `hs_additional_emails`. Known gap:
+   216 app-linked primaries have a HubSpot email that differs from their gp-api user's
+   email, which the ranking does not change. The Segment-to-HubSpot primary email test
+   (see "Related work outside this job") is what would close it.
 4. **Retired external keys are avoided, not tracked.** A merge silently drops one value of
    a unique property when both records hold different values. On contacts today that is
    `br_candidacy_id`, in 15 pairs. The queue excludes those pairs (steps 5 and 20) instead of
@@ -259,7 +263,43 @@ enrollment in production is checked by hand on the few pairs where it applies.
 ## Steps
 
 Each step is one PR or one recorded action, reviewable on its own, with its own tests or
-evidence. "Done when" is the exit check.
+evidence. "Done when" is the exit check. Each step, or small group of steps, has its own
+ticket in the [HubSpot Data Flow via Data Platform](https://app.clickup.com/t/86ak1txhk)
+epic. The ticket names the steps it covers, and its ClickUp dependencies match the table
+below.
+
+### Order
+
+| Steps | Ticket | Waits on |
+|---|---|---|
+| 1 | DATA-2779 | nothing |
+| 2 | DATA-2780 | nothing |
+| 3 | DATA-2781 | nothing |
+| 4-5 | DATA-2782 | nothing |
+| 6 | DATA-2783 | nothing |
+| 7-8 | DATA-2784 | nothing |
+| 9 | DATA-2785 | 7-8 |
+| 10 | DATA-2786 | 2, 7-8 |
+| 11 | DATA-2787 | 7-8 |
+| 12 | DATA-2788 | 7-8 |
+| 13 | DATA-2789 | 9, 10, 11, 12 |
+| 14 | DATA-2790 | 13 |
+| 15 | DATA-2791 | 2, 13 |
+| 16 | DATA-2792 | 14, 15 |
+| 17 | DATA-2793 | 14 |
+| 18 | DATA-2794 | 17 |
+| 19 | DATA-2795 | 18 |
+| 20 | DATA-2796 | 4-5, 6, 19 |
+| 21 | DATA-2797 | 18 |
+| 22-23 | DATA-2521 | 1, 3, 16, 20, 21 |
+| 24 | DATA-2798 | 14 |
+| 25 | DATA-2799 | 20 |
+| 26 | DATA-2800 | 22-23, 24 |
+| 27-28 | DATA-2562 | 25, 26, and the two gates under "Related work outside this job" |
+| 29 | DATA-2757 | nothing; must finish before the reverse-ETL HubSpot sync is first enabled |
+
+Steps 1 to 6 and 7 to 14 can run in parallel. The critical path is 7 and 8, then 9 to 12,
+13, 14, then 17 to 20, then 22 and 23. Some tickets cover two steps that ship together.
 
 ### Phase 0: decisions and access
 
@@ -267,7 +307,9 @@ evidence. "Done when" is the exit check.
    section in the ClickUp TDD: ID and workflow preservation confirmed, workflow guardrail
    dropped, primary email by ranking, retired keys avoided, primary Company deferred,
    rejections in a seed. Get Sales sign-off that the primary's owner wins (22,146 pairs
-   differ). Done when the TDD reflects this and the sign-off is on the ticket.
+   differ). Get the primary rule re-confirmed with the step 3 ranking change, which moves
+   the primary in 65 merges. Done when the TDD reflects this and both sign-offs are on
+   the ticket.
 2. **Create the service keys and confirm merge behaviour the job relies on.** One
    dedicated service key per portal (sandbox 51780263, production 21589597), scoped
    `crm.objects.contacts.read` and `crm.objects.contacts.write`. Add a probe to
@@ -389,6 +431,9 @@ evidence. "Done when" is the exit check.
 
 ### Phase 5: production, by hand
 
+Before the first production merge: the step 1 sign-offs are on record, the step 3 ranking
+is in production, and the sandbox runs in step 16 were clean.
+
 22. **Run five hand-checked pairs in production.** Pick five low-risk pairs from the queue
     (same phone, same name, no owner conflict, no app account) and check each in the
     HubSpot UI. Point `MERGE_PAIR_RELATION` at a scratch view selecting only those five,
@@ -420,7 +465,9 @@ evidence. "Done when" is the exit check.
     when three scheduled runs complete with clean logs.
 28. **Raise the cap in agreed steps.** For example 500, then 2,000, then the full queue,
     each after a clean week of runs. Watch the log tests and confirm the candidates count
-    falls. Done when the exact-match queue is empty apart from rows explained in the log.
+    falls. Before the cap passes 100, the gp-api lookup audit and the merged-away
+    verification decision must both be done (see "Related work outside this job"). Done
+    when the exact-match queue is empty apart from rows explained in the log.
 
 ### Housekeeping
 
@@ -447,6 +494,34 @@ the `reverse_etl` schema is still empty (it was on 2026-11-04).
 
     Done when both deployments write to their own ingest schema, and `reverse_etl` no
     longer exists.
+
+## Related work outside this job
+
+These have their own tickets in the same epic. They are not steps of this plan, but
+some of them gate it, and some of them wait on it.
+
+Gates for step 28:
+
+- **Audit gp-api's HubSpot Contact lookups for merge tolerance** (DATA-2572). Engineering confirms
+  every lookup accepts a different Contact back, and that nothing writes
+  `hs_additional_emails`.
+- **Decide whether a merged-away contact still verifies a campaign** (DATA-2647). A gp-api user whose
+  saved contact ID is merged away has their campaign verification read a frozen copy of
+  the old contact. The job grows that group: 971 secondaries are app-linked, 581 of them
+  exact matches. The fix, if Product wants it, reads through
+  `int__hubspot_contact_merges`, which carries the merge log from step 19.
+
+Not a gate:
+
+- **Segment-to-HubSpot primary email test** (DATA-2571). Would close the gap in decision 3.
+
+Waiting on this plan:
+
+- **Make `gp_person_id` unique on Contacts** (DATA-2522). Proposed: stamp it only on each person's
+  ranked primary contact, leaving the others null. That makes the property unique without
+  waiting for every merge, and a later merge keeps the primary's value. If agreed, it can
+  start once step 3 is in production. The reverse-ETL HubSpot sync's enable (DATA-2412) waits on it.
+- **The Office Holder work** (DATA-2683, DATA-2645, DATA-2684). Its first production writes wait on the first merges (steps 22 and 23).
 
 ### After this job
 
