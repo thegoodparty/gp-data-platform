@@ -4329,6 +4329,69 @@ models:
               arguments:
                 to: ref('win_feature_events')
                 field: feature
+  - name: win_election_geography
+    description: >
+      Where each win_election_frame candidate ran, aggregated to district or county so no
+      voter-level value appears: the district's lean toward independents, other Win users
+      running in the same county, and how many partisan-race candidates in that county are
+      neither Democrat nor Republican. The post-election analysis joins it on user_id.
+    columns:
+      - name: user_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('win_election_frame')
+                field: user_id
+      - name: district_id
+        description: The L2 district the candidacy's position matches to, via the position mart.
+      - name: district_match
+        description: district, statewide (lean from the state's voters, no county), or unmatched.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["district", "statewide", "unmatched"]
+      - name: district_scored_voters
+        description: Voters in the district with an independent-openness score.
+      - name: independent_lean
+        description: >
+          Share of the district's scored voters flagged open to an independent under the
+          single-seat, open-seat setup. Null below 500 scored voters. The flag cut is per
+          state, so compare within a state or hold state steady.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: nearby_county
+        description: The county holding at least half the district's voters; null otherwise and for statewide races.
+      - name: main_county_share
+        description: Share of the district's voters in its largest county.
+      - name: win_users_nearby
+        description: >
+          Other real Win users with a 2026 race whose nearby_county is the same, in a
+          different race. Null when nearby_county is null.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: partisan_candidates_nearby
+        description: >
+          2026 partisan-race candidates on the ballot in nearby_county (their district has
+          at least 10% of its voters there), outside the user's own race. One per person per
+          race; unknown party labels excluded.
+      - name: independents_nearby
+        description: Of partisan_candidates_nearby, those neither Democrat nor Republican on any party line.
+      - name: independent_share_nearby
+        description: independents_nearby over partisan_candidates_nearby; null when there are none.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: built_at
   - name: win_race_field
     description: >
       Every candidate in every 2026 race where a Win user ran, users and not:
