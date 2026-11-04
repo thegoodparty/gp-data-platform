@@ -84,6 +84,9 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 
 ## Code Conventions
 
+- Job logs are sources in ingest schemas, never models, and never written into a
+  schema dbt builds into. Derive current state from them in a model (latest event
+  per key, or an anti-join against terminal events). See `README.md`.
 - Keep comments brief and explain *why*, not *what*. The SQL already says what
   it does; a comment should capture non-obvious rationale, business rules, or
   data caveats. Skip long headers, background, and ticket references.

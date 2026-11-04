@@ -24,6 +24,16 @@ Each subproject manages its own deps. `cd` into the right one before you install
 
 Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
+## Job logs
+
+Any job that records what it did (sends, merges, loads), in any subproject:
+
+- Append one row per event. Never UPDATE, DELETE or MERGE rows in place. dbt rebuilds the current state from the log.
+- Write the log to an ingest schema: `<writer>_source` (e.g. `airflow_source`), with a `_dev` sibling for dev runs, owned by the writing service principal. Declare it as a dbt source.
+- Never write a log to a schema dbt builds into (`dbt`, `dbt_staging`, `dbt_preview`, `mart_*`, `dbt_<user>`, `dbt_cloud_pr_*`).
+
+The reasons and the query patterns are in `dbt/project/README.md`.
+
 ## ai-rules submodule
 
 `ai-rules/` is a git submodule (`thegoodparty/ai-rules`). After a fresh clone:
