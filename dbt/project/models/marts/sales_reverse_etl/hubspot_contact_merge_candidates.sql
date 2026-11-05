@@ -99,10 +99,13 @@ with
             nullif(trim(c.candidate_office), '') as candidate_office,
             -- Comparison keys for match_evidence.
             nullif(right(regexp_replace(c.phone, '[^0-9]', ''), 10), '') as phone_key,
-            lower(nullif(trim(c.first_name), ''))
-            || ' '
-            || lower(nullif(trim(c.last_name), '')) as name_key,
+            -- Split out of name_key: a pair is an exact match only when the last
+            -- names agree, whatever the rest of the name does.
+            lower(nullif(trim(c.last_name), '')) as last_key,
+            lower(nullif(trim(c.first_name), '')) || ' ' || last_key as name_key,
             nullif(lower(trim(c.candidate_office)), '') as office_key,
+            -- A unique property on Contacts, so a merge keeps only one value.
+            c.br_candidacy_id,
             c.goodparty_user_id,
             nullif(trim(c.hubspot_owner_id), '') as hubspot_owner_id,
             c.lifecycle_stage,
@@ -310,6 +313,37 @@ select
         then 'same_name_state_unknown_or_differs'
         else 'name_differs'
     end as match_evidence,
+
+    -- The pairs the merge job can run unattended. A shared phone can be a household
+    -- and a native id can be stamped on the wrong contact, so the identity evidence
+    -- only counts once the last names agree; a differing first name is how a
+    -- household shows up, and name_differs and name_incomplete are never exact.
+    -- Null on the primary, like the evidence columns.
+    case
+        when r.contact_rank = 1
+        then null
+        when
+            (matched_on = 'native_ids' or match_evidence = 'same_phone')
+            and match_evidence not in ('name_differs', 'name_incomplete')
+            and r.last_key = pr.last_key
+        then true
+        else false
+    end as exact_match,
+
+    -- A merge keeps the primary's value of a unique property, so a differing one
+    -- on the secondary is dropped and cannot be recovered. The job skips these.
+    -- Null on the primary.
+    case
+        when r.contact_rank = 1
+        then null
+        when
+            r.br_candidacy_id is not null
+            and pr.br_candidacy_id is not null
+            and r.br_candidacy_id != pr.br_candidacy_id
+        then true
+        else false
+    end as has_unique_key_conflict,
+    r.br_candidacy_id,
     r.linked_via,
 
     -- Ranking inputs.
