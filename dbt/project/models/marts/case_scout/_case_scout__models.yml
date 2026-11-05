@@ -1,0 +1,72 @@
+version: 2
+
+# Every test here runs live against gp-api Postgres, which caps statements at
+# 60 seconds, so each one reads only the last day of messages.
+models:
+  - name: case_scout_messages
+    description: >
+      One row per message of gp-api prod's assistant conversations, read live
+      from Postgres through federation, for the case scout. Each night the scout
+      reads the messages since its last run, turns failed sessions into
+      fictional eval cases for omni's universal judge, and checks every draft
+      against the conversation's denylist. Deleted conversations are left out.
+      No email, phone or user id is a column: the owner's email is used only to
+      compute is_internal. Holds chat transcripts, so read access is limited to
+      mart_case_scout_readers. Filter on created_at against a constant, never a
+      function of the column, so the filter reaches Postgres.
+    columns: &case_scout_messages_columns
+      - name: conversation_id
+        description: The gp-api chat conversation id.
+        data_tests:
+          - not_null:
+              config:
+                where: "created_at >= date_sub(current_date(), 1)"
+      - name: scope
+        description: >
+          The assistant the conversation is with, a gp-api ChatScope value,
+          which is also the universal judge's agent id.
+      - name: message_id
+        description: The gp-api chat message id.
+        data_tests:
+          - not_null:
+              config:
+                where: "created_at >= date_sub(current_date(), 1)"
+          - unique:
+              config:
+                where: "created_at >= date_sub(current_date(), 1)"
+      - name: role
+        description: user, assistant, system or tool.
+      - name: content
+        description: The message text.
+      - name: created_at
+        description: When gp-api wrote the message, in UTC.
+      - name: tool_calls
+        description: >
+          The message's tool calls in order, each the tool's name and its
+          arguments as JSON. Never the tool's result, which gp-api does not
+          store. Empty when the message called no tool; input is null when the
+          tool refused the call.
+      - name: is_internal
+        description: >
+          True when the conversation's owner is staff or a test account: their
+          email ends in @goodparty.org or contains +test or mailinator, ignoring
+          case. The product chats digest uses the same rule.
+        data_tests:
+          - not_null:
+              config:
+                where: "created_at >= date_sub(current_date(), 1)"
+      - name: denylist
+        description: >
+          Names and places tied to the conversation's account, which a case
+          drafted from it must not contain: the first and last names of the
+          conversation's owner and of its organization's owner, the campaign
+          committee, the office (election-api position name, the office the
+          user typed, the legacy campaign office), the campaign's city, county
+          and district, and the election-api names of the position's district
+          and of any override district. Trimmed, without blanks or repeats.
+
+  - name: case_scout_messages_dev
+    description: >
+      case_scout_messages over gp-api dev Postgres, for the case scout's dev
+      environment.
+    columns: *case_scout_messages_columns
