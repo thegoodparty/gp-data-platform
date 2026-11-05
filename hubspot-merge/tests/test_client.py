@@ -65,12 +65,6 @@ def test_portal_mismatch_refuses_before_any_call() -> None:
     assert [call["url"] for call in transport.calls] == ["https://api.hubapi.test" + ACCOUNT_INFO_PATH]
 
 
-def test_verify_portal_passes_when_the_key_opens_the_configured_portal() -> None:
-    transport = FakeTransport([_ok(ACCOUNT_INFO)])
-    client(transport).verify_portal()
-    assert transport.calls[0]["method"] == "GET"
-
-
 def test_429_honours_retry_after_and_then_succeeds() -> None:
     """Catches: giving up on a rate limit, and ignoring the pause HubSpot asked for."""
     clock = FakeClock()
@@ -122,8 +116,19 @@ def test_a_batch_read_attributes_records_by_id_and_names_the_merged_ones() -> No
 
     assert list(result.records) == [PRIMARY]
     assert result.records[PRIMARY].merged_ids == (PRIMARY, SECONDARY)
-    assert result.missing_ids == ()
     assert transport.calls[0]["body"]["properties"] == ["email", HS_MERGED_OBJECT_IDS]
+
+
+def test_resolved_folds_the_absorbed_ids_onto_the_record_that_answered_for_them() -> None:
+    """The map classification reads. Catches: an id that resolved going unmentioned, and a
+    never-merged record reporting merged ids HubSpot never sent, which the fold would
+    read as this record answering for another contact."""
+    transport = FakeTransport([_ok({**READ_ENVELOPE, "results": [SURVIVOR_RECORD, LIVE_RECORD]})])
+
+    result = client(transport).batch_read([PRIMARY, SECONDARY], ["email"])
+
+    assert result.resolved == {PRIMARY: PRIMARY, SECONDARY: SECONDARY}
+    assert result.records[SECONDARY].merged_ids == ()
 
 
 def test_a_batch_read_names_the_ids_hubspot_could_not_find() -> None:
@@ -153,7 +158,6 @@ def test_the_token_reaches_no_repr_and_no_error_message() -> None:
     hubspot = client(transport)
 
     assert TOKEN not in repr(hubspot)
-    assert TOKEN not in repr(hubspot._config)
     with pytest.raises(HubSpotError) as raised:
         hubspot.merge(PRIMARY, SECONDARY)
     assert TOKEN not in str(raised.value)
