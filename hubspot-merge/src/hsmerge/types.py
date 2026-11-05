@@ -1,9 +1,7 @@
-"""The values the job passes between its parts: one pair to merge, the status vocabulary
-its log records, and what happened to one pair.
+"""The values the job passes between its parts: one pair, its status, and what happened.
 
-The status strings are the log's contract. dbt reads them back (`hubspot_contact_merge_queue`
-excludes pairs by status), so a value here is a value in the warehouse, not an internal
-label.
+The status strings are the log's contract: dbt filters the queue on them, so changing one
+changes a warehouse value.
 """
 
 from __future__ import annotations
@@ -13,12 +11,6 @@ from enum import StrEnum
 
 
 class Status(StrEnum):
-    """The outcome of one attempted pair. Every pair attempted gets exactly one.
-
-    Which of these the queue excludes is dbt's rule, not this package's; the table in
-    the design doc is the reference for both sides.
-    """
-
     MERGED = "merged"
     ALREADY_MERGED = "already_merged"
     MERGED_ELSEWHERE = "merged_elsewhere"
@@ -31,10 +23,10 @@ class Status(StrEnum):
 
 @dataclass(frozen=True)
 class Pair:
-    """One merge operation: the contact to absorb and the contact that must survive.
+    """One merge: `secondary_id` is absorbed into `primary_id`.
 
-    `gp_person_id` and `match_evidence` are audit fields carried from the queue into the
-    log; the merge itself does not use them, so a pair built by hand may omit them.
+    The audit fields are carried from the queue into the log; a pair built by hand may
+    omit them.
     """
 
     primary_id: str
@@ -45,11 +37,7 @@ class Pair:
 
 @dataclass(frozen=True)
 class Outcome:
-    """What became of one pair, ready to log.
-
-    `survivor_id` is the contact the secondary resolved to or the id the merge returned;
-    `error` carries HubSpot's own message on `failed`, and stays None otherwise.
-    """
+    """What became of one pair, ready to log. `error` is set only on `failed`."""
 
     status: Status
     survivor_id: str | None = None

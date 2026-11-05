@@ -1,10 +1,8 @@
-"""The job's whole environment surface, read and validated once at startup.
+"""The job's environment surface, read and validated at startup.
 
-Nothing here reaches an Airflow Variable or Connection: the DAG passes every value
-through the environment, so the console script works the same in a pod, in a shell and
-under pytest. The Databricks names match what the DAGs already set for reverse-etl
-(`DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_CLIENT_ID`,
-`DATABRICKS_CLIENT_SECRET`, `DATABRICKS_SCOPES`), so the same connection supplies both.
+Nothing here reaches an Airflow Variable or Connection: the DAG passes every value through
+the environment. The Databricks names are the ones the reverse-etl DAGs already set, so one
+connection supplies both jobs.
 """
 
 from __future__ import annotations
@@ -15,17 +13,11 @@ from dataclasses import dataclass
 
 SUPPORTED_OBJECT_TYPE = "contacts"
 
-# HubSpot's own default for every private app; named so a shell run needs one variable,
-# not two.
 DEFAULT_HUBSPOT_BASE_URL = "https://api.hubapi.com"
 
 
 class MissingConfigError(ValueError):
-    """A required variable is absent, unparseable, or carries a rejected value.
-
-    One error for all three, because they are one failure: the environment cannot
-    produce a usable run. `env_var` names the variable so the operator knows what to set.
-    """
+    """A required variable is absent, unparseable, or carries a rejected value."""
 
     def __init__(self, env_var: str, reason: str):
         self.env_var = env_var
@@ -54,15 +46,7 @@ class Config:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
-        """Build the config from `env`, or raise `MissingConfigError` naming what is wrong."""
-
-        def require(name: str) -> str:
-            value = env.get(name, "").strip()
-            if not value:
-                raise MissingConfigError(name, "is required and unset")
-            return value
-
-        object_type = require("MERGE_OBJECT_TYPE")
+        object_type = _require(env, "MERGE_OBJECT_TYPE")
         if object_type != SUPPORTED_OBJECT_TYPE:
             raise MissingConfigError(
                 "MERGE_OBJECT_TYPE",
@@ -70,44 +54,48 @@ class Config:
             )
 
         return cls(
-            hubspot_token=require("HUBSPOT_TOKEN"),
+            hubspot_token=_require(env, "HUBSPOT_TOKEN"),
             hubspot_base_url=env.get("HUBSPOT_BASE_URL", "").strip() or DEFAULT_HUBSPOT_BASE_URL,
-            expected_portal_id=require("HUBSPOT_EXPECTED_PORTAL_ID"),
+            expected_portal_id=_require(env, "HUBSPOT_EXPECTED_PORTAL_ID"),
             object_type=object_type,
-            pair_relation=require("MERGE_PAIR_RELATION"),
-            log_table=require("MERGE_LOG_TABLE"),
+            pair_relation=_require(env, "MERGE_PAIR_RELATION"),
+            log_table=_require(env, "MERGE_LOG_TABLE"),
             max_pairs=_positive_int(env, "MERGE_MAX_PAIRS"),
             max_rps=_positive_float(env, "MERGE_MAX_RPS"),
-            databricks_host=require("DATABRICKS_HOST"),
-            databricks_http_path=require("DATABRICKS_HTTP_PATH"),
-            databricks_client_id=require("DATABRICKS_CLIENT_ID"),
-            databricks_client_secret=require("DATABRICKS_CLIENT_SECRET"),
+            databricks_host=_require(env, "DATABRICKS_HOST"),
+            databricks_http_path=_require(env, "DATABRICKS_HTTP_PATH"),
+            databricks_client_id=_require(env, "DATABRICKS_CLIENT_ID"),
+            databricks_client_secret=_require(env, "DATABRICKS_CLIENT_SECRET"),
             databricks_scopes=env.get("DATABRICKS_SCOPES", "").strip(),
         )
 
 
-def _positive_int(env: Mapping[str, str], name: str) -> int:
-    raw = env.get(name, "").strip()
-    if not raw:
+def _require(env: Mapping[str, str], name: str) -> str:
+    value = env.get(name, "").strip()
+    if not value:
         raise MissingConfigError(name, "is required and unset")
+    return value
+
+
+def _positive_int(env: Mapping[str, str], name: str) -> int:
+    raw = _require(env, name)
     try:
         value = int(raw)
     except ValueError as exc:
         raise MissingConfigError(name, f"must be a whole number, got {raw!r}") from exc
     if value <= 0:
-        # A cap of zero would merge nothing forever while the run reports success.
+        # A cap of zero merges nothing forever while the run reports success.
         raise MissingConfigError(name, f"must be positive, got {value}")
     return value
 
 
 def _positive_float(env: Mapping[str, str], name: str) -> float:
-    raw = env.get(name, "").strip()
-    if not raw:
-        raise MissingConfigError(name, "is required and unset")
+    raw = _require(env, name)
     try:
         value = float(raw)
     except ValueError as exc:
         raise MissingConfigError(name, f"must be a number, got {raw!r}") from exc
+    # nan passes every positive comparison, so it needs its own check.
     if value <= 0 or not math.isfinite(value):
         raise MissingConfigError(name, f"must be positive, got {value}")
     return value

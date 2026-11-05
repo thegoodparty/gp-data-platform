@@ -29,9 +29,6 @@ dev = [
     "pytest>=9.2.0",
     "mypy>=2.4.1",
     "types-requests",
-    # pre-commit runs ruff in its own environment; declaring it here keeps `uv run ruff`
-    # working locally, which is how this subproject is linted by hand.
-    "ruff>=0.7.4",
 ]
 
 [tool.ruff]

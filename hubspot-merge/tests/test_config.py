@@ -20,7 +20,7 @@ FULL_ENV = {
 
 
 def test_from_env_reads_every_setting() -> None:
-    """Catches: a setting read from the wrong variable, or a name drifting from the DAG's."""
+    """A setting read from the wrong variable, or a name drifting from the DAG's."""
     config = Config.from_env(FULL_ENV)
     assert config.hubspot_token == "pat-na1-test"
     assert config.expected_portal_id == "51780263"
@@ -35,19 +35,14 @@ def test_from_env_reads_every_setting() -> None:
     assert config.databricks_client_secret == "client-secret"
 
 
-def test_from_env_defaults_the_base_url_to_hubspots_own() -> None:
-    """Catches: a shell run needing a variable that has one obvious value."""
+def test_base_url_defaults_to_hubspots_own_unless_overridden() -> None:
     assert Config.from_env(FULL_ENV).hubspot_base_url == DEFAULT_HUBSPOT_BASE_URL
-
-
-def test_from_env_keeps_an_overridden_base_url() -> None:
-    """Catches: the sandbox or a proxy being unreachable because the default always wins."""
-    env = {**FULL_ENV, "HUBSPOT_BASE_URL": "https://api.hubapi.com"}
-    assert Config.from_env(env).hubspot_base_url == "https://api.hubapi.com"
+    env = {**FULL_ENV, "HUBSPOT_BASE_URL": "https://hubspot.example.test"}
+    assert Config.from_env(env).hubspot_base_url == "https://hubspot.example.test"
 
 
 def test_repr_does_not_carry_the_token() -> None:
-    """Catches: the token reaching a log line or a traceback through the dataclass repr."""
+    """The token reaching a log line or traceback through the dataclass repr."""
     assert "pat-na1-test" not in repr(Config.from_env(FULL_ENV))
 
 
@@ -68,7 +63,7 @@ def test_repr_does_not_carry_the_token() -> None:
     ],
 )
 def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:
-    """Catches: an unset variable read as a default the run then acts on."""
+    """An unset variable read as a default the run then acts on."""
     env = {key: value for key, value in FULL_ENV.items() if key != missing}
     with pytest.raises(MissingConfigError, match=missing):
         Config.from_env(env)
@@ -76,32 +71,27 @@ def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:
 
 @pytest.mark.parametrize("cap", ["0", "-3"])
 def test_a_non_positive_cap_is_rejected(cap: str) -> None:
-    """Catches: a cap that merges nothing on every run while reporting success."""
+    """A cap that merges nothing on every run while reporting success."""
     with pytest.raises(MissingConfigError, match="MERGE_MAX_PAIRS"):
         Config.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": cap})
 
 
 @pytest.mark.parametrize("value", ["lots", "1.5"])
 def test_an_unparseable_cap_is_rejected(value: str) -> None:
-    """Catches: a malformed cap reaching SQL as text."""
     with pytest.raises(MissingConfigError, match="MERGE_MAX_PAIRS"):
         Config.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": value})
 
 
 @pytest.mark.parametrize("rate", ["0", "-1", "fast", "nan"])
 def test_a_non_positive_or_unparseable_rate_is_rejected(rate: str) -> None:
-    """Catches: a pacing value that either floods HubSpot or never lets a call through.
-
-    `nan` compares false against every bound, so without an explicit finite check it would
-    pass validation and then sleep for no interval at all.
-    """
+    """A rate that floods HubSpot or never lets a call through; nan passes every bound."""
     with pytest.raises(MissingConfigError, match="MERGE_MAX_RPS"):
         Config.from_env({**FULL_ENV, "MERGE_MAX_RPS": rate})
 
 
 @pytest.mark.parametrize("object_type", ["companies", "Contacts", ""])
 def test_an_object_type_other_than_contacts_is_rejected(object_type: str) -> None:
-    """Catches: a run pointed at an object type the log schema was not built for."""
+    """A run pointed at an object type the log schema was not built for."""
     env = {**FULL_ENV, "MERGE_OBJECT_TYPE": object_type}
     with pytest.raises(MissingConfigError, match="MERGE_OBJECT_TYPE"):
         Config.from_env(env)
