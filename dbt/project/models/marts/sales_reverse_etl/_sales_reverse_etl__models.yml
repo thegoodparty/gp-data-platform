@@ -350,8 +350,9 @@ models:
           or the same normalised phone (match_evidence is same_phone), and the last
           names agree. So a shared phone across a household does not qualify, and
           neither does a native id on a contact whose surname differs. Never true for
-          name_differs or name_incomplete, which carry no name agreement by
-          definition. Null on the primary, as with matched_on and match_evidence.
+          name_differs or name_incomplete, which are excluded because the first names
+          differ or a name part is missing, either way leaving no matching full name.
+          Null on the primary, as with matched_on and match_evidence.
       - name: has_unique_key_conflict
         description: >
           On a secondary, true when the two contacts hold different values of a unique
@@ -364,10 +365,6 @@ models:
           accumulates the values, gp_user_id and gp_person_id because no contact sets
           them, and hs_unique_creation_key because it is a system-assigned idempotent
           create key with no meaning after creation. Null on the primary.
-      - name: br_candidacy_id
-        description: >
-          The BallotReady candidacy id stamped on the contact; the value
-          has_unique_key_conflict compares. Null when the contact carries none.
       - name: linked_via
         description: The person-link types touching this contact.
       - name: is_app_linked
