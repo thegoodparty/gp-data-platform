@@ -14,6 +14,7 @@ from tests._fakes import (
     LIVE_RECORD,
     MERGED_SURVIVOR,
     OTHER_SURVIVOR,
+    PRE_MERGE_RECORD,
     SURVIVOR_RECORD,
     parse_record,
 )
@@ -80,8 +81,11 @@ def test_primary_merged_away_when_the_primary_reads_as_another_contact() -> None
 
 
 def test_merged_when_the_read_allows_it_and_the_merge_returns_the_primary() -> None:
-    # The only read that merges: two records, each its own, so the read settles nothing.
-    assert classify_read(PAIR, _read(SURVIVOR_RECORD, LIVE_RECORD)) is None
+    # The only read that merges: two live records, each speaking only for itself, so the
+    # read settles nothing. Both orders, since attribution must not depend on the order the
+    # records come back in.
+    assert classify_read(PAIR, _read(PRE_MERGE_RECORD, LIVE_RECORD)) is None
+    assert classify_read(PAIR, _read(LIVE_RECORD, PRE_MERGE_RECORD)) is None
 
     outcome = classify_merge(PAIR, MERGED_SURVIVOR)
 

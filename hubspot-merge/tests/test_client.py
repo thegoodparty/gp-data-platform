@@ -119,15 +119,24 @@ def test_a_batch_read_attributes_records_by_id_and_names_the_merged_ones() -> No
     assert transport.calls[0]["body"]["properties"] == ["email", HS_MERGED_OBJECT_IDS]
 
 
-def test_resolved_folds_the_absorbed_ids_onto_the_record_that_answered_for_them() -> None:
-    """The map classification reads. Catches: an id that resolved going unmentioned, and a
-    never-merged record reporting merged ids HubSpot never sent, which the fold would
-    read as this record answering for another contact."""
-    transport = FakeTransport([_ok({**READ_ENVELOPE, "results": [SURVIVOR_RECORD, LIVE_RECORD]})])
+def test_resolved_folds_an_absorbed_id_onto_the_record_that_answered_for_it() -> None:
+    """The map classification reads. Catches: an absorbed id going unmentioned, since the
+    response names it only on the survivor's record and never returns a record of its own."""
+    transport = FakeTransport([_ok({**READ_ENVELOPE, "results": [SURVIVOR_RECORD]})])
 
     result = client(transport).batch_read([PRIMARY, SECONDARY], ["email"])
 
-    assert result.resolved == {PRIMARY: PRIMARY, SECONDARY: SECONDARY}
+    assert result.resolved == {PRIMARY: PRIMARY, SECONDARY: PRIMARY}
+
+
+def test_resolved_keeps_a_never_merged_record_speaking_only_for_itself() -> None:
+    """Catches: reading HubSpot's null hs_merged_object_ids as an id, which would make a
+    live contact appear to answer for another one."""
+    transport = FakeTransport([_ok({**READ_ENVELOPE, "results": [LIVE_RECORD]})])
+
+    result = client(transport).batch_read([SECONDARY], ["email"])
+
+    assert result.resolved == {SECONDARY: SECONDARY}
     assert result.records[SECONDARY].merged_ids == ()
 
 
