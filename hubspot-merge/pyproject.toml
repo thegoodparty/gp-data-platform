@@ -45,3 +45,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+# The sandbox test merges real contacts, so it runs only when asked for: `pytest -m sandbox`.
+addopts = "-m 'not sandbox'"
+markers = ["sandbox: merges throwaway contacts in the HubSpot sandbox portal"]
