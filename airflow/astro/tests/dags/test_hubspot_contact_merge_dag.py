@@ -3,6 +3,7 @@
 import logging
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -105,3 +106,40 @@ def test_init_log_and_verify_need_no_pair_relation_or_cap():
         env = _env(command, {"pair_relation": "", "max_pairs": None}, variables)
         assert "MERGE_PAIR_RELATION" not in env
         assert "MERGE_MAX_PAIRS" not in env
+
+
+def _pre_execute(run_type, params):
+    """Run the operator's pre_execute with fake Variables, and return what the pod gets."""
+    task = _DAG.get_task("hsm")
+    context = {"params": params, "dag_run": SimpleNamespace(run_type=run_type)}
+    variables = {**VARIABLES, "hubspot_merge_image_pull_secret": "ghcr-pull"}
+
+    def get(name, default=None):
+        if name in variables:
+            return variables[name]
+        if default is not None:
+            return default
+        raise KeyError(name)
+
+    with (
+        patch.object(dag_module.Variable, "get", side_effect=get),
+        patch.object(dag_module, "conn_kwargs", return_value=CONN),
+        patch.object(dag_module.KubernetesPodOperator, "pre_execute"),
+    ):
+        task.pre_execute(context)
+    return task.arguments, {var.name: var.value for var in task.env_vars}, task.image_pull_secrets
+
+
+def test_a_manual_trigger_with_the_default_form_dry_runs():
+    defaults = {name: param.value for name, param in _DAG.params.items()}
+    arguments, env, secrets = _pre_execute("manual", defaults)
+    assert arguments == ["run", "--dry-run"]
+    assert env["MERGE_PAIR_RELATION"] == VARIABLES["hubspot_merge_pair_relation"]
+    assert [secret.name for secret in secrets] == ["ghcr-pull"]
+
+
+def test_a_scheduled_run_merges_whatever_the_params_say():
+    params = {"command": "dry_run", "pair_relation": "", "max_pairs": None, "run_id": ""}
+    arguments, env, _ = _pre_execute("scheduled", params)
+    assert arguments == ["run"]
+    assert env["MERGE_MAX_PAIRS"] == "100"
