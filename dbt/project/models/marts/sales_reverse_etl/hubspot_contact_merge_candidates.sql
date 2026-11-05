@@ -171,10 +171,10 @@ with
             row_number() over (
                 partition by gp_person_id
                 order by
-                    is_pro_candidate desc,
                     is_app_linked desc,
-                    app_user_has_pro_campaign desc,
                     app_user_last_active_at desc nulls last,
+                    is_pro_candidate desc,
+                    app_user_has_pro_campaign desc,
                     win_stage_rank desc,
                     has_sales_activity desc,
                     last_engagement_at desc nulls last,
@@ -194,14 +194,14 @@ with
             p.hs_contact_id as primary_hs_contact_id,
             -- The first ranking key on which the primary beat the runner-up.
             case
-                when p.is_pro_candidate != r.is_pro_candidate
-                then 'is_pro_candidate'
                 when p.is_app_linked != r.is_app_linked
                 then 'is_app_linked'
-                when p.app_user_has_pro_campaign != r.app_user_has_pro_campaign
-                then 'app_user_has_pro_campaign'
                 when not p.app_user_last_active_at <=> r.app_user_last_active_at
                 then 'app_user_last_active_at'
+                when p.is_pro_candidate != r.is_pro_candidate
+                then 'is_pro_candidate'
+                when p.app_user_has_pro_campaign != r.app_user_has_pro_campaign
+                then 'app_user_has_pro_campaign'
                 when p.win_stage_rank != r.win_stage_rank
                 then 'win_stage'
                 when p.has_sales_activity != r.has_sales_activity

@@ -251,8 +251,9 @@ models:
       merged_object_ids) is excluded, as are staff and test persons. A HubSpot merge
       keeps the primary's value for every property the primary has set and fills the
       rest from the secondary, so the ranking puts first the contact whose values
-      should survive: currently Pro, then linked from a gp_api account (most recently
-      active account first), then furthest Win stage, then any sales activity, then
+      should survive: linked from a gp_api account (most recently active account
+      first, since the app writes to that contact and its email is the account's
+      login email), then Pro, then furthest Win stage, then any sales activity, then
       most recent engagement, then oldest. Secondary rows are the merge operations.
     data_tests:
       - dbt_utils.expression_is_true:
