@@ -9,11 +9,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from hsmerge.client import HttpResponse, ReadResult
-from hsmerge.client import _record as parse_record
+from hsmerge.client import HttpResponse
 
 # A contact as `batch/read` returns it: the record carries its own id, and the merged ids
-# of anything absorbed into it (its own included). Trimmed to the keys the client reads.
+# of anything absorbed into it. Trimmed to the keys the client reads.
 SURVIVOR_RECORD: dict[str, Any] = {
     "id": "260560930060",
     "properties": {
@@ -62,7 +61,6 @@ READ_ENVELOPE: dict[str, Any] = {
 }
 
 ABSENT_ID = "999999999999"
-THIRD_ID = "260561111111"
 
 # A single absent id answers 207 with an empty result set and the id named in the error.
 ABSENT_READ: dict[str, Any] = {
@@ -159,10 +157,3 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.now += seconds
-
-
-# Built through the client's own parse, so a fixture cannot drift from the shape the
-# client reads.
-LIVE_HANDSHAKE = ReadResult(records={SURVIVOR_RECORD["id"]: parse_record(SURVIVOR_RECORD)}, missing_ids=())
-MERGED_SURVIVOR = parse_record(MERGED_RECORD)
-OTHER_SURVIVOR = parse_record({**MERGED_RECORD, "id": THIRD_ID})

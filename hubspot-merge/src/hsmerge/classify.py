@@ -2,8 +2,7 @@
 
 The statuses that look like races are settled before the merge, by the read: a merged-away
 id reads back as its survivor, and the merge endpoint refuses such a pair with a 400. Both
-functions are pure, over the response shapes recorded in `reverse-etl/probes/README.md`,
-and both take what the client parsed instead of re-reading a raw body.
+functions are pure, and both take what the client parsed.
 """
 
 from __future__ import annotations
@@ -35,10 +34,9 @@ def classify_read(pair: Pair, read: ReadResult) -> Outcome | None:
 def classify_merge(pair: Pair, survivor: Record) -> Outcome:
     """The status of a merge the read allowed through.
 
-    `survivor` is the record the merge endpoint returned, so a refusal never reaches here:
-    the client raises `HubSpotError` for it. A refusal is `failed`, and it is answered 404
-    for an id that does not exist and 400 for an already-resolved pair, so a refusal would
-    mean the read was wrong about the pair.
+    `survivor` is the record the merge endpoint returned. The client raises `HubSpotError`
+    when HubSpot refuses the pair, so the executor logs that as `failed` and never reaches
+    here.
     """
     if survivor.id == pair.primary_id:
         return Outcome(Status.MERGED, survivor_id=survivor.id)
