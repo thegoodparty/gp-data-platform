@@ -13,11 +13,14 @@ This is the shared copy of the analytics owner's personal `data-analysis-princip
 ## 2. No fact exists in isolation
 - A number means nothing without a comparison. 50 users tells you nothing; 50 users against 10 last year tells you growth.
 - Default comparison is the same period last year. For a group, compare with everyone else; for one person, with people like them.
+- Use the best comparison available, and say which way it leans. Records (payments, accounts, sends) compare as is. Changed features compare at the level of the job they do (AI assistant and AI chat are both "got AI help"). Other behavior compares as active days, over events tracked in both years. When none of these fit, show this year only and say why. Name the direction of any known bias; a comparison is usable when the finding holds despite it.
 - State the comparison next to the number, not in a footnote.
 
 ## 3. Check what a group is made of before crediting the difference
 - A gap between two groups is often just a gap in who is in them.
 - Before saying X drives Y, split by the obvious variables (signup channel, activation, incumbency, election date) and see if the gap survives.
+- Pick the denominator that leaves out people who never had the chance. Stages after onboarding divide by the onboarded; a rate over all signups moves with who signed up, not with the product.
+- Before crediting a change over time, list what else changed in the same window (new flows, launches, sales motions) and name any that could share the credit.
 - Example: what moved Pro users on Win only made sense once channel and activation were in view. The challenger depth gap disappeared once we accounted for composition.
 - Don't filter on something the outcome causes and then study the outcome's other causes. That produces confident, backwards findings.
 
