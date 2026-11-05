@@ -1,60 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
-
 import pytest
 
-from hsmerge.client import ReadResult, Record
-from hsmerge.execute import execute, preview
-from hsmerge.types import LogEntry, Pair, Status
-
-
-@dataclass
-class FakeHubSpot:
-    """Contacts that are live or absorbed into another, read and merged the way HubSpot does."""
-
-    live: set[str]
-    absorbed: dict[str, str] = field(default_factory=dict)
-    refuse: set[str] = field(default_factory=set)
-    fail_read_after: int | None = None
-    reads: int = 0
-    merges: list[tuple[str, str]] = field(default_factory=list)
-
-    def batch_read(self, ids: Sequence[str], properties: Sequence[str]) -> ReadResult:
-        self.reads += 1
-        if self.fail_read_after is not None and self.reads > self.fail_read_after:
-            raise TimeoutError("read timed out")
-        records = {}
-        missing = []
-        for contact_id in ids:
-            survivor = self.absorbed.get(contact_id, contact_id)
-            if survivor not in self.live:
-                missing.append(contact_id)
-                continue
-            merged = tuple(i for i, s in self.absorbed.items() if s == survivor)
-            records[survivor] = Record(survivor, merged, {"email": f"{survivor}@example.test"})
-        return ReadResult(records, tuple(missing))
-
-    def merge(self, primary_id: str, secondary_id: str) -> Record:
-        self.merges.append((primary_id, secondary_id))
-        if secondary_id in self.refuse:
-            raise TimeoutError("merge timed out")
-        self.live.discard(secondary_id)
-        self.absorbed[secondary_id] = primary_id
-        return Record(primary_id, (secondary_id,), {})
-
-
-@dataclass
-class FakeLog:
-    writes: list[list[LogEntry]] = field(default_factory=list)
-
-    def write(self, entries: Sequence[LogEntry]) -> None:
-        self.writes.append(list(entries))
-
-    @property
-    def rows(self) -> list[LogEntry]:
-        return [entry for write in self.writes for entry in write]
+from hsmerge.execute import execute, preview, verify
+from hsmerge.types import Pair, Status
+from tests._fakes import FakeHubSpot, FakeLog
 
 
 def test_a_mixed_chunk_gets_the_right_status_per_pair() -> None:
@@ -125,3 +75,11 @@ def test_preview_merges_nothing() -> None:
 
     assert [outcome.status if outcome else None for _, outcome in result] == [None, Status.ALREADY_MERGED]
     assert hubspot.merges == []
+
+
+def test_verify_names_a_pair_hubspot_does_not_show_as_merged() -> None:
+    hubspot = FakeHubSpot(live={"p1", "p2", "s2"}, absorbed={"s1": "p1"})
+
+    problems = list(verify([Pair("p1", "s1"), Pair("p2", "s2")], hubspot))
+
+    assert problems == [(Pair("p2", "s2"), "the secondary does not resolve to the primary")]

@@ -54,3 +54,15 @@ def read_pairs(connection: _Connection, relation: str, limit: int) -> list[Pair]
         )
         for row in rows
     ]
+
+
+def read_merged_pairs(connection: _Connection, log_table: str, run_id: str) -> list[Pair]:
+    """The pairs one run logged as `merged`, for `hsm verify`."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"select primary_id, secondary_id from {log_table} "
+            "where run_id = :run_id and status = 'merged' order by secondary_id",
+            {"run_id": run_id},
+        )
+        rows = cursor.fetchall()
+    return [Pair(primary_id=row["primary_id"], secondary_id=row["secondary_id"]) for row in rows]

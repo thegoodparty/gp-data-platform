@@ -58,8 +58,6 @@ def test_repr_does_not_carry_the_token() -> None:
         "MERGE_MAX_RPS",
         "DATABRICKS_HOST",
         "DATABRICKS_HTTP_PATH",
-        "DATABRICKS_CLIENT_ID",
-        "DATABRICKS_CLIENT_SECRET",
     ],
 )
 def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:

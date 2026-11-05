@@ -37,8 +37,10 @@ class Config:
     max_rps: float
     databricks_host: str
     databricks_http_path: str
-    databricks_client_id: str
-    databricks_client_secret: str
+    # Unset, the Databricks SDK finds credentials itself, such as a CLI login for a
+    # hand run. The DAG always sets them.
+    databricks_client_id: str = ""
+    databricks_client_secret: str = ""
     databricks_scopes: str = ""
 
     def __repr__(self) -> str:
@@ -64,8 +66,8 @@ class Config:
             max_rps=_positive_float(env, "MERGE_MAX_RPS"),
             databricks_host=_require(env, "DATABRICKS_HOST"),
             databricks_http_path=_require(env, "DATABRICKS_HTTP_PATH"),
-            databricks_client_id=_require(env, "DATABRICKS_CLIENT_ID"),
-            databricks_client_secret=_require(env, "DATABRICKS_CLIENT_SECRET"),
+            databricks_client_id=env.get("DATABRICKS_CLIENT_ID", "").strip(),
+            databricks_client_secret=env.get("DATABRICKS_CLIENT_SECRET", "").strip(),
             databricks_scopes=env.get("DATABRICKS_SCOPES", "").strip(),
         )
 

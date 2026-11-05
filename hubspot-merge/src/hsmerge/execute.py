@@ -63,6 +63,18 @@ def execute(pairs: Iterable[Pair], hubspot: HubSpot, log: Log) -> Counter[Status
     return counts
 
 
+def verify(pairs: Iterable[Pair], hubspot: HubSpot) -> Iterator[tuple[Pair, str]]:
+    """Each pair logged as `merged` that HubSpot does not show as merged, with the reason."""
+    for chunk, read in _read_chunks(pairs, hubspot):
+        for pair in chunk:
+            primary = read.record_for(pair.primary_id)
+            secondary = read.record_for(pair.secondary_id)
+            if primary is None or primary.id != pair.primary_id:
+                yield pair, "the primary no longer reads as itself"
+            elif secondary is None or secondary.id != pair.primary_id:
+                yield pair, "the secondary does not resolve to the primary"
+
+
 def _read_chunks(pairs: Iterable[Pair], hubspot: HubSpot) -> Iterator[tuple[Sequence[Pair], ReadResult]]:
     for chunk in batched(pairs, CHUNK_SIZE):
         ids = [contact_id for pair in chunk for contact_id in (pair.primary_id, pair.secondary_id)]
