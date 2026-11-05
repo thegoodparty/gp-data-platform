@@ -44,9 +44,12 @@ COMMANDS = {
 }
 
 
-def hsm_arguments(params: dict, *, scheduled: bool) -> list[str]:
+def hsm_command(params: dict, *, scheduled: bool) -> str:
     # A manual trigger defaults to a dry run, so a trigger with the default form merges nothing.
-    command = "run" if scheduled else params["command"]
+    return "run" if scheduled else params["command"]
+
+
+def hsm_arguments(command: str, params: dict) -> list[str]:
     if command == "verify":
         if not params.get("run_id"):
             raise ValueError("the verify command needs a run_id")
@@ -54,10 +57,10 @@ def hsm_arguments(params: dict, *, scheduled: bool) -> list[str]:
     return COMMANDS[command]
 
 
-def hsm_env(params: dict) -> dict[str, str]:
+def hsm_env(command: str, params: dict) -> dict[str, str]:
     """The container's environment. A non-empty trigger param wins over its Variable."""
     fields = conn_kwargs()
-    return {
+    env = {
         "DATABRICKS_HOST": fields["host"],
         "DATABRICKS_HTTP_PATH": fields["http_path"],
         "DATABRICKS_CLIENT_ID": fields["client_id"],
@@ -66,11 +69,14 @@ def hsm_env(params: dict) -> dict[str, str]:
         "HUBSPOT_TOKEN": Variable.get(TOKEN_VARIABLE),
         "HUBSPOT_EXPECTED_PORTAL_ID": Variable.get(PORTAL_VARIABLE),
         "MERGE_OBJECT_TYPE": "contacts",
-        "MERGE_PAIR_RELATION": params.get("pair_relation") or Variable.get(PAIR_RELATION_VARIABLE),
         "MERGE_LOG_TABLE": Variable.get(LOG_TABLE_VARIABLE),
-        "MERGE_MAX_PAIRS": str(params.get("max_pairs") or Variable.get(MAX_PAIRS_VARIABLE)),
         "MERGE_MAX_RPS": Variable.get(MAX_RPS_VARIABLE, default=DEFAULT_MAX_RPS),
     }
+    # Only a run reads pairs, so init_log and verify work before the queue exists.
+    if command in ("run", "dry_run"):
+        env["MERGE_PAIR_RELATION"] = params.get("pair_relation") or Variable.get(PAIR_RELATION_VARIABLE)
+        env["MERGE_MAX_PAIRS"] = str(params.get("max_pairs") or Variable.get(MAX_PAIRS_VARIABLE))
+    return env
 
 
 class _HsmPodOperator(KubernetesPodOperator):
@@ -82,8 +88,11 @@ class _HsmPodOperator(KubernetesPodOperator):
         secret_name = Variable.get(IMAGE_PULL_SECRET_VARIABLE, default="")
         if secret_name:
             self.image_pull_secrets = [k8s.V1LocalObjectReference(name=secret_name)]
-        self.arguments = hsm_arguments(params, scheduled=context["dag_run"].run_type == "scheduled")
-        self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in hsm_env(params).items()]
+        command = hsm_command(params, scheduled=context["dag_run"].run_type == "scheduled")
+        self.arguments = hsm_arguments(command, params)
+        self.env_vars = [
+            k8s.V1EnvVar(name=name, value=value) for name, value in hsm_env(command, params).items()
+        ]
         tag = (self.image or "").rpartition(":")[2]
         if not _PINNED_TAG.fullmatch(tag):
             t_log.warning("hubspot-merge image %s is not pinned to a commit sha", self.image)

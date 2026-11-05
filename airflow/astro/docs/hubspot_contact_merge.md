@@ -34,7 +34,9 @@ Databricks credentials come from the connection the `databricks_conn_id` Variabl
 ## First run on a deployment
 
 Trigger with `command` = `init_log`. The deployment's service principal creates the log
-table, so it owns it. A rerun changes nothing.
+table, so it owns it. A rerun changes nothing. `init_log` and `verify` do not need the
+pair relation or the cap, so `hubspot_merge_pair_relation` and `hubspot_merge_max_pairs`
+can stay unset until the queue exists.
 
 ## A hand-checked batch
 

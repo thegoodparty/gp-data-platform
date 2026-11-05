@@ -29,7 +29,7 @@ VARIABLES = {
 CONN = {"host": "h", "http_path": "/p", "client_id": "id", "client_secret": "secret", "scopes": ["sql"]}
 
 
-def _env(params, variables=VARIABLES):
+def _env(command, params, variables=VARIABLES):
     def get(name, default=None):
         if name in variables:
             return variables[name]
@@ -41,7 +41,7 @@ def _env(params, variables=VARIABLES):
         patch.object(dag_module.Variable, "get", side_effect=get),
         patch.object(dag_module, "conn_kwargs", return_value=CONN),
     ):
-        return dag_module.hsm_env(params)
+        return dag_module.hsm_env(command, params)
 
 
 def test_dag_deploys_paused_with_one_run_at_a_time():
@@ -68,22 +68,22 @@ def test_the_image_tag_has_no_default_and_no_credential_is_rendered():
     ],
 )
 def test_each_command_maps_to_its_hsm_arguments(params, arguments):
-    assert dag_module.hsm_arguments(params, scheduled=False) == arguments
+    assert dag_module.hsm_arguments(params["command"], params) == arguments
 
 
 def test_a_manual_trigger_defaults_to_a_dry_run_and_a_scheduled_run_merges():
     defaults = {name: param.value for name, param in _DAG.params.items()}
-    assert dag_module.hsm_arguments(defaults, scheduled=False) == ["run", "--dry-run"]
-    assert dag_module.hsm_arguments(defaults, scheduled=True) == ["run"]
+    assert dag_module.hsm_command(defaults, scheduled=False) == "dry_run"
+    assert dag_module.hsm_command(defaults, scheduled=True) == "run"
 
 
 def test_verify_without_a_run_id_fails_before_the_pod_starts():
     with pytest.raises(ValueError, match="run_id"):
-        dag_module.hsm_arguments({"command": "verify", "run_id": ""}, scheduled=False)
+        dag_module.hsm_arguments("verify", {"run_id": ""})
 
 
 def test_a_scheduled_run_reads_the_variables():
-    env = _env({"command": "run", "pair_relation": "", "max_pairs": None})
+    env = _env("run", {"pair_relation": "", "max_pairs": None})
     assert env["MERGE_PAIR_RELATION"] == VARIABLES["hubspot_merge_pair_relation"]
     assert env["MERGE_MAX_PAIRS"] == "100"
     assert env["MERGE_MAX_RPS"] == "5"
@@ -91,6 +91,19 @@ def test_a_scheduled_run_reads_the_variables():
 
 
 def test_trigger_params_override_the_relation_and_the_cap():
-    env = _env({"command": "run", "pair_relation": "dbt_dball.five_pairs", "max_pairs": 5})
-    assert env["MERGE_PAIR_RELATION"] == "dbt_dball.five_pairs"
+    env = _env("run", {"pair_relation": "goodparty_data_catalog.dbt_dball.five_pairs", "max_pairs": 5})
+    assert env["MERGE_PAIR_RELATION"] == "goodparty_data_catalog.dbt_dball.five_pairs"
     assert env["MERGE_MAX_PAIRS"] == "5"
+
+
+def test_init_log_and_verify_need_no_pair_relation_or_cap():
+    """A fresh deployment creates its log table before the queue exists."""
+    variables = {
+        k: v
+        for k, v in VARIABLES.items()
+        if k not in ("hubspot_merge_pair_relation", "hubspot_merge_max_pairs")
+    }
+    for command in ("init_log", "verify"):
+        env = _env(command, {"pair_relation": "", "max_pairs": None}, variables)
+        assert "MERGE_PAIR_RELATION" not in env
+        assert "MERGE_MAX_PAIRS" not in env
