@@ -1,0 +1,47 @@
+[project]
+name = "hubspot-merge"
+version = "0.1.0"
+description = "Merge duplicate HubSpot contacts from a Databricks relation, appending one log row per attempt."
+requires-python = ">=3.14"
+dependencies = [
+    "databricks-sdk>=0.158.0",
+    # pyarrow lets the connector fetch results as Arrow/CloudFetch; without it, large reads are much slower.
+    "databricks-sql-connector[pyarrow]>=4.8.0",
+    "requests>=2.32.0",
+    "tenacity>=9.2.1",
+]
+
+[project.scripts]
+hsm = "hsmerge.cli:main"
+
+[build-system]
+requires = ["setuptools>=84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "mypy>=2.4.1",
+    "types-requests",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

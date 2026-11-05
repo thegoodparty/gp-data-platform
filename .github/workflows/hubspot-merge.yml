@@ -1,0 +1,13 @@
+name: hubspot-merge
+on:
+  pull_request:
+    paths: ['hubspot-merge/**', '.github/workflows/hubspot-merge.yml', '.github/workflows/uv-subproject.yml']
+  push:
+    branches: [main]
+    paths: ['hubspot-merge/**', '.github/workflows/hubspot-merge.yml', '.github/workflows/uv-subproject.yml']
+jobs:
+  test:
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: hubspot-merge
+      mypy-targets: src tests
