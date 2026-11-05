@@ -342,6 +342,31 @@ models:
                   - same_name_state_unknown_or_differs
                   - name_incomplete
                   - name_differs
+      - name: exact_match
+        description: >
+          On a secondary, true when the pair is strong enough to merge unattended:
+          it shares the primary's deterministic identity (matched_on is native_ids)
+          or the same normalised phone (match_evidence is same_phone), and the last
+          names agree. So a shared phone across a household does not qualify, and
+          neither does a native id on a contact whose surname differs. Never true for
+          name_differs or name_incomplete, which carry no name agreement by
+          definition. Null on the primary, as with matched_on and match_evidence.
+      - name: has_unique_key_conflict
+        description: >
+          On a secondary, true when the two contacts hold different values of a unique
+          property. A merge keeps the primary's value and silently drops the
+          secondary's, and a unique value cannot be recovered afterwards, so the merge
+          job skips these pairs. HubSpot Contacts carry six unique properties, and the
+          flag covers br_candidacy_id, the only one where a merge can lose a value:
+          email is excluded because the merge adds the secondary's address to the
+          primary as an additional one, hs_additional_emails because the merge
+          accumulates the values, gp_user_id and gp_person_id because no contact sets
+          them, and hs_unique_creation_key because it is a system-assigned idempotent
+          create key with no meaning after creation. Null on the primary.
+      - name: br_candidacy_id
+        description: >
+          The BallotReady candidacy id stamped on the contact; the value
+          has_unique_key_conflict compares. Null when the contact carries none.
       - name: linked_via
         description: The person-link types touching this contact.
       - name: is_app_linked
