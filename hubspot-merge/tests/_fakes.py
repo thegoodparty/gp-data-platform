@@ -30,6 +30,15 @@ SURVIVOR_RECORD: dict[str, Any] = {
     "url": "https://app.hubspot.com/contacts/51780263/record/0-1/260560930060",
 }
 
+# The same contact before any merge: HubSpot leaves hs_merged_object_ids null, so this
+# record speaks only for itself. SURVIVOR_RECORD is what it looks like after absorbing
+# LIVE_RECORD, and a read cannot return both.
+PRE_MERGE_RECORD: dict[str, Any] = {
+    **SURVIVOR_RECORD,
+    "properties": {**SURVIVOR_RECORD["properties"], "hs_merged_object_ids": None},
+    "updatedAt": "2026-11-05T04:34:08.765Z",
+}
+
 LIVE_RECORD: dict[str, Any] = {
     "id": "260546473623",
     "properties": {
