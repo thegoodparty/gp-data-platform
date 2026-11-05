@@ -34,7 +34,7 @@ from retl.hubspot_destination import (
 )
 from retl.hubspot_destination import HttpResponse as RetlHttpResponse
 
-from .client import SandboxClient, settle
+from .client import Response, SandboxClient, settle
 
 # An address HubSpot's own validation rejects, used to force one row of a batch to fail
 # so the 207 envelope has something to report.
@@ -592,6 +592,193 @@ def check_12_merge_property_precedence(client: SandboxClient) -> Finding:
     )
 
 
+BATCH_READ_PATH = "/crm/v3/objects/contacts/batch/read"
+# An id no portal holds, for the does-not-exist cases.
+ABSENT_CONTACT_ID = "999999999999"
+MERGE_PROBE_PROPERTIES = ("email", HUBSPOT_ID_PROPERTY, *MERGE_HISTORY_PROPERTIES)
+
+
+def _batch_read(client: SandboxClient, ids: list[str]) -> Response:
+    return client.request(
+        "POST",
+        BATCH_READ_PATH,
+        json={"inputs": [{"id": i} for i in ids], "properties": list(MERGE_PROBE_PROPERTIES)},
+    )
+
+
+def _merge_pair(client: SandboxClient, primary_id: str, secondary_id: str) -> tuple[Response, str]:
+    response = client.request(
+        "POST", V3_MERGE_PATH, json={"primaryObjectId": primary_id, "objectIdToMerge": secondary_id}
+    )
+    survivor_id = str(response.body.get("id") or "")
+    if survivor_id and survivor_id not in (primary_id, secondary_id):
+        client.created_contact_ids.append(survivor_id)
+    return response, survivor_id
+
+
+def _answered(response: Response) -> dict[str, Any]:
+    """What an answer found: the ids it returned, and the ids it named as not found."""
+    errors = response.body.get("errors") or []
+    return {
+        "status": response.status_code,
+        "returned_ids": [str(r.get("id")) for r in response.body.get("results") or []],
+        "error_categories": [e.get("category") for e in errors],
+        "not_found_ids": [i for e in errors for i in (e.get("context") or {}).get("ids") or []],
+        "raw_body": response.body,
+    }
+
+
+def check_13_merge_endpoint_responses(client: SandboxClient) -> Finding:
+    """The five answers a merge job's classification rests on: what a merged-away id reads
+    as, what the merge endpoint says for an already-merged pair and for an id that is not
+    there, the shape of a successful merge, and a merge whose primary was merged away.
+    """
+    primary = client.create_contact({"email": f"{client.tag('mr-a')}@example.com"}, label="mr-a")
+    secondary = client.create_contact({"email": f"{client.tag('mr-b')}@example.com"}, label="mr-b")
+    elsewhere_primary = client.create_contact({"email": f"{client.tag('mr-c')}@example.com"}, label="mr-c")
+    elsewhere_secondary = client.create_contact({"email": f"{client.tag('mr-d')}@example.com"}, label="mr-d")
+    third = client.create_contact({"email": f"{client.tag('mr-e')}@example.com"}, label="mr-e")
+    chain_primary = client.create_contact({"email": f"{client.tag('mr-f')}@example.com"}, label="mr-f")
+    chain_secondary = client.create_contact({"email": f"{client.tag('mr-g')}@example.com"}, label="mr-g")
+    chain_target = client.create_contact({"email": f"{client.tag('mr-h')}@example.com"}, label="mr-h")
+    settle()
+
+    # Asked for all eight while all eight are still themselves: one record per id, but the
+    # classification cannot assume the records come back in the order the pairs went in.
+    live_ids = [
+        primary,
+        secondary,
+        elsewhere_primary,
+        elsewhere_secondary,
+        third,
+        chain_primary,
+        chain_secondary,
+        chain_target,
+    ]
+    live_read = _answered(_batch_read(client, live_ids))
+    order_preserved = [i for i in live_read["returned_ids"] if i in live_ids] == live_ids
+
+    merged, survivor = _merge_pair(client, primary, secondary)
+    settle()
+    merged_away_alone = _batch_read(client, [secondary])
+    pair_after_merge = _batch_read(client, [primary, secondary])
+    mixed_missing = _batch_read(client, [secondary, ABSENT_CONTACT_ID])
+    absent_alone = _batch_read(client, [ABSENT_CONTACT_ID])
+    repeat, _ = _merge_pair(client, primary, secondary)
+    absent_secondary, _ = _merge_pair(client, primary, ABSENT_CONTACT_ID)
+    absent_primary, _ = _merge_pair(client, ABSENT_CONTACT_ID, secondary)
+
+    # A secondary absorbed by a third contact is what `merged_elsewhere` names, and the read
+    # is the only thing that can see it: the merge call refuses such a pair.
+    _merge_pair(client, third, elsewhere_secondary)
+    settle()
+    elsewhere_read = _batch_read(client, [elsewhere_primary, elsewhere_secondary])
+
+    _merge_pair(client, chain_primary, chain_secondary)
+    settle()
+    chain_merge, _ = _merge_pair(client, chain_secondary, chain_target)
+    settle()
+    chain_target_read = _batch_read(client, [chain_target])
+
+    resolved = _answered(merged_away_alone)
+    pair_ids = _answered(pair_after_merge)["returned_ids"]
+    verdict = [
+        f"a merged-away id reads as {resolved['returned_ids'] or 'nothing'} "
+        f"(status {resolved['status']}, errors {resolved['error_categories'] or 'none'})",
+        f"re-merging the same pair gives {repeat.status_code} {repeat.body.get('category', '')}",
+        f"a merge naming an absent id gives {absent_secondary.status_code} "
+        f"{absent_secondary.body.get('category', '')} from either side",
+        f"a successful merge returned {survivor}, "
+        f"{'the primary' if survivor == primary else 'NOT the primary'}",
+        f"a merge whose primary was merged away gives {chain_merge.status_code} "
+        f"{chain_merge.body.get('category', '')}",
+        f"a read of {len(live_ids)} live ids came back "
+        f"{'in the order asked' if order_preserved else 'in a different order'}",
+    ]
+    return Finding(
+        check=13,
+        title="What the merge endpoint and batch read return",
+        verdict="; ".join(verdict),
+        implication=(
+            "The design's status table holds, and one part of it needs saying out loud. A merged-away "
+            "id does not read as missing: it reads as its survivor, so `secondary_missing` only ever "
+            "means an archived or never-existent contact, and the read distinguishes "
+            "`already_merged` (secondary resolves to the primary) from `merged_elsewhere` (it "
+            "resolves to anything else). The read answers with one record per distinct resolved "
+            "object, in no input order and with no echo of the ids asked for, so a pair whose two "
+            "ids resolve differently is attributed through `hs_merged_object_ids` on the returned "
+            "records. The merge endpoint refuses a secondary that is already merged away, whether "
+            "into the primary or a third contact, with a 400 forward reference; it refuses an "
+            "absent id with 404. Both of those must be settled by the pre-merge read, because a "
+            "merge call on either logs `failed` rather than the status the pair earned."
+        ),
+        evidence={
+            "successful_merge": {
+                "status": merged.status_code,
+                "returned_id": survivor,
+                "returned_id_is_primary": survivor == primary,
+                "response_keys": sorted(merged.body),
+                "property_count": len(merged.body.get("properties") or {}),
+                "merge_history": {
+                    prop: merged_contact_ids((merged.body.get("properties") or {}).get(prop))
+                    for prop in MERGE_HISTORY_PROPERTIES
+                },
+                "raw_body": merged.body,
+            },
+            "read_of_live_ids": {
+                "asked_for": live_ids,
+                "returned_ids": live_read["returned_ids"],
+                "order_preserved": order_preserved,
+            },
+            "read_of_merged_away_id": {
+                "asked_for": secondary,
+                "survivor": primary,
+                **resolved,
+            },
+            "read_of_both_ids_after_merge": {
+                "asked_for": [primary, secondary],
+                "returned_ids": pair_ids,
+                "raw_body": pair_after_merge.body,
+            },
+            "read_of_merged_away_and_absent": {
+                "asked_for": [secondary, ABSENT_CONTACT_ID],
+                **_answered(mixed_missing),
+            },
+            "read_of_absent_id": {"asked_for": ABSENT_CONTACT_ID, **_answered(absent_alone)},
+            "merge_of_already_merged_pair": {
+                "status": repeat.status_code,
+                "category": repeat.body.get("category"),
+                "raw_body": repeat.body,
+            },
+            "merge_with_absent_secondary": {
+                "status": absent_secondary.status_code,
+                "category": absent_secondary.body.get("category"),
+                "raw_body": absent_secondary.body,
+            },
+            "merge_with_absent_primary": {
+                "status": absent_primary.status_code,
+                "category": absent_primary.body.get("category"),
+                "raw_body": absent_primary.body,
+            },
+            "secondary_merged_elsewhere": {
+                "primary_id": elsewhere_primary,
+                "secondary_id": elsewhere_secondary,
+                "third_id": third,
+                **_answered(elsewhere_read),
+            },
+            "primary_merged_away": {
+                "primary_id": chain_secondary,
+                "survivor_of_the_primary": chain_primary,
+                "secondary_id": chain_target,
+                "status": chain_merge.status_code,
+                "category": chain_merge.body.get("category"),
+                "secondary_untouched": _answered(chain_target_read)["returned_ids"] == [chain_target],
+                "raw_body": chain_merge.body,
+            },
+        },
+    )
+
+
 CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     1: check_01_merged_contact_ids,
     2: check_02_omitted_properties_untouched,
@@ -604,6 +791,7 @@ CHECKS: dict[int, Callable[[SandboxClient], Finding]] = {
     10: check_10_dated_api_version,
     11: check_11_merge_record_id_stability,
     12: check_12_merge_property_precedence,
+    13: check_13_merge_endpoint_responses,
 }
 
 
