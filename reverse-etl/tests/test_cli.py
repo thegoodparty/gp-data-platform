@@ -13,7 +13,7 @@ from retl.run import RunSummary
 from retl.sent_log import FLOW_ID_PROPERTY
 from tests._fakes import FakeConnection, flow_tables, stamped_table
 
-LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
+LOG_TABLE = "goodparty_data_catalog.airflow_source.sent_log_hubspot_leads"
 CSV_ENV = {
     "RETL_FLOW_HUBSPOT_LEADS_SOURCE_RELATION": "goodparty_data_catalog.mart_sales_reverse_etl.contact_desired_state",
     "RETL_FLOW_HUBSPOT_LEADS_KEY_COLUMN": "gp_person_id",

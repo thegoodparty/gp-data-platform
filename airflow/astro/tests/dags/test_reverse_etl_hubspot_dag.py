@@ -341,7 +341,7 @@ def test_rows_logged_since_binds_the_since_parameter_by_name():
         patch.object(module, "get_databricks_connection", return_value=connection) as mock_connect,
         patch.object(module, "conn_kwargs", return_value=_FAKE_CONN_FIELDS),
     ):
-        result = module._rows_logged_since("goodparty_data_catalog.reverse_etl.sent_log_hubspot", since)
+        result = module._rows_logged_since("goodparty_data_catalog.airflow_source.sent_log_hubspot", since)
     assert result == 7
     sql, params = cursor.execute.call_args.args
     assert ":since" in sql
@@ -361,7 +361,7 @@ _FAKE_VARIABLES = {
     "reverse_etl_hubspot_source_relation": "goodparty_data_catalog.mart_sales_reverse_etl.hubspot",
     "reverse_etl_hubspot_excluded_columns": "added_to_mart_at",
     "reverse_etl_hubspot_cap": "80000",
-    "reverse_etl_hubspot_log_table": "goodparty_data_catalog.reverse_etl.sent_log_hubspot",
+    "reverse_etl_hubspot_log_table": "goodparty_data_catalog.airflow_source.sent_log_hubspot",
 }
 _FAKE_CONN_FIELDS = {
     "host": "https://dbc-fake.cloud.databricks.com",

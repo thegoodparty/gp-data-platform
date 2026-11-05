@@ -19,8 +19,8 @@ from retl.sent_log import (
 )
 from tests._fakes import FakeConnection, FakeTable, stamped_table
 
-LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
-OTHER_LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_techspeed_leads"
+LOG_TABLE = "goodparty_data_catalog.airflow_source.sent_log_hubspot_leads"
+OTHER_LOG_TABLE = "goodparty_data_catalog.airflow_source.sent_log_techspeed_leads"
 
 
 def test_create_log_table_sql_has_three_columns_and_the_flow_id_stamp() -> None:

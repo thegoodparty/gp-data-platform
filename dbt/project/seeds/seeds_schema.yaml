@@ -1370,3 +1370,35 @@ seeds:
                 values: ["exact", "prefix"]
       - name: is_user_action
         description: False where the event fires without the candidate choosing it.
+
+  - name: hubspot_contact_merge_exclusions
+    description: >
+      Contacts and persons the merge job must never merge automatically, one
+      row per rejection. A row names a contact, a person, or both: a contact
+      blocks that one merge, and a person blocks every merge among their
+      contacts. Rejections are rare and reviewed in the pull request that adds
+      the row, so a seed is the whole record. Nothing reads it yet; the merge
+      queue does, and removing a row re-admits its candidate on the next read.
+    config:
+      column_types:
+        hs_contact_id: STRING
+        gp_person_id: STRING
+        reason: STRING
+        added_by: STRING
+    columns:
+      - name: hs_contact_id
+        description: >
+          HubSpot contact ID to keep out of merges. A string, the type the
+          candidates mart carries, so a join needs no cast.
+      - name: gp_person_id
+        description: Canonical person id whose contacts are never merged together.
+      - name: reason
+        description: Why the contacts are not duplicates, with the evidence.
+      - name: added_by
+        description: Who rejected the merge, so a later review knows who to ask.
+    data_tests:
+      # A row with neither id matches no candidate, so it blocks nothing while
+      # looking like a decision. Cross-column, so it cannot sit on a column.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: hs_contact_id is not null or gp_person_id is not null
