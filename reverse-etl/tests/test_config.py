@@ -9,7 +9,7 @@ FULL_ENV = {
     "RETL_FLOW_HUBSPOT_LEADS_KEY_COLUMN": "gp_person_id",
     "RETL_FLOW_HUBSPOT_LEADS_EXCLUDED_COLUMNS": "added_to_mart_at, candidate_id_source",
     "RETL_FLOW_HUBSPOT_LEADS_CAP": "80000",
-    "RETL_FLOW_HUBSPOT_LEADS_LOG_TABLE": "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads",
+    "RETL_FLOW_HUBSPOT_LEADS_LOG_TABLE": "goodparty_data_catalog.airflow_source.sent_log_hubspot_leads",
 }
 
 
@@ -69,9 +69,9 @@ def test_load_flow_config_is_independent_per_flow_name() -> None:
         "RETL_FLOW_OTHER_FLOW_SOURCE_RELATION": "goodparty_data_catalog.other.model",
         "RETL_FLOW_OTHER_FLOW_KEY_COLUMN": "some_key",
         "RETL_FLOW_OTHER_FLOW_CAP": "10",
-        "RETL_FLOW_OTHER_FLOW_LOG_TABLE": "goodparty_data_catalog.reverse_etl.sent_log_other_flow",
+        "RETL_FLOW_OTHER_FLOW_LOG_TABLE": "goodparty_data_catalog.airflow_source.sent_log_other_flow",
     }
     other = load_flow_config("other_flow", env)
     assert other.source_relation == "goodparty_data_catalog.other.model"
     assert other.cap == 10
-    assert other.log_table == "goodparty_data_catalog.reverse_etl.sent_log_other_flow"
+    assert other.log_table == "goodparty_data_catalog.airflow_source.sent_log_other_flow"

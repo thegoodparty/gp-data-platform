@@ -72,6 +72,9 @@ real run against a genuinely empty log — the first convergence, the sales prev
 post-reset run). Force-resending a person is deleting their rows from the flow's own log table, not
 re-running any ceremony.
 
+Transfer ownership of both tables `--init-log` creates, the log and its `_orphans` companion, to that
+deployment's writing service principal (`airflow`, `airflow_dev`); see `reverse-etl/README.md`.
+
 ## Variables and connections
 
 Set on the Astro deployment:
@@ -85,7 +88,7 @@ Set on the Astro deployment:
 | `reverse_etl_hubspot_source_relation` | The desired-state model's fully qualified relation name. |
 | `reverse_etl_hubspot_excluded_columns` | Comma-separated columns the payload never carries — must include the model's build-clock column, or every build resends its entire population. |
 | `reverse_etl_hubspot_cap` | The flow's send-cap; sized at enable time to admit the full eligible population without tripping on a legitimate recompute day. |
-| `reverse_etl_hubspot_log_table` | This flow's own send-log table. No default: a default would point a dev deployment at the production log. |
+| `reverse_etl_hubspot_log_table` | This flow's own send-log table. No default: a default would point a dev deployment at the production log. It belongs in the deployment's own ingest schema (`airflow_source.sent_log_hubspot` on astro-prod, `airflow_source_dev.sent_log_hubspot` on astro-dev); see `reverse-etl/README.md`. |
 
 **Connections:** `databricks` / `databricks_dev` (Generic, OAuth M2M), shared with the other DAGs.
 The pod's credentials resolve in `pre_execute` (never in the rendered-template snapshot), mapped to

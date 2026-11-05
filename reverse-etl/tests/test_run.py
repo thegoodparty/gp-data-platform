@@ -21,7 +21,7 @@ from retl.run import (
 from retl.sent_log import PARAM_CHAR_LIMIT, WrongLogTableError
 from tests._fakes import FakeConnection, flow_tables, stamped_table
 
-LOG_TABLE = "goodparty_data_catalog.reverse_etl.sent_log_hubspot_leads"
+LOG_TABLE = "goodparty_data_catalog.airflow_source.sent_log_hubspot_leads"
 FLOW = FlowConfig(
     flow_id="hubspot_leads",
     source_relation="goodparty_data_catalog.mart_sales_reverse_etl.contact_desired_state",
