@@ -34,9 +34,7 @@ class Config:
     hubspot_base_url: str
     expected_portal_id: str
     object_type: str
-    pair_relation: str
     log_table: str
-    max_pairs: int
     max_rps: float
     databricks_host: str
     databricks_http_path: str
@@ -63,15 +61,28 @@ class Config:
             hubspot_base_url=env.get("HUBSPOT_BASE_URL", "").strip() or DEFAULT_HUBSPOT_BASE_URL,
             expected_portal_id=_require(env, "HUBSPOT_EXPECTED_PORTAL_ID"),
             object_type=object_type,
-            pair_relation=_table_name(env, "MERGE_PAIR_RELATION"),
             log_table=_table_name(env, "MERGE_LOG_TABLE"),
-            max_pairs=_positive_int(env, "MERGE_MAX_PAIRS"),
             max_rps=_positive_float(env, "MERGE_MAX_RPS"),
             databricks_host=_require(env, "DATABRICKS_HOST"),
             databricks_http_path=_require(env, "DATABRICKS_HTTP_PATH"),
             databricks_client_id=env.get("DATABRICKS_CLIENT_ID", "").strip(),
             databricks_client_secret=env.get("DATABRICKS_CLIENT_SECRET", "").strip(),
             databricks_scopes=env.get("DATABRICKS_SCOPES", "").strip(),
+        )
+
+
+@dataclass(frozen=True)
+class RunSettings:
+    """What only `hsm run` reads, so `init-log` and `verify` work before a queue exists."""
+
+    pair_relation: str
+    max_pairs: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> RunSettings:
+        return cls(
+            pair_relation=_table_name(env, "MERGE_PAIR_RELATION"),
+            max_pairs=_positive_int(env, "MERGE_MAX_PAIRS"),
         )
 
 
