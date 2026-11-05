@@ -1,6 +1,5 @@
 """Structure and wiring of the HubSpot contact merge DAG."""
 
-import importlib.util
 import logging
 import sys
 from pathlib import Path
@@ -14,10 +13,8 @@ logging.getLogger("airflow").disabled = True
 _DAG = DagBag(dag_folder=str(_DAG_FILE)).dags.get("hubspot_contact_merge")
 logging.getLogger("airflow").disabled = False
 
-_spec = importlib.util.spec_from_file_location("hubspot_contact_merge", _DAG_FILE)
-dag_module = importlib.util.module_from_spec(_spec)
-sys.modules["hubspot_contact_merge"] = dag_module
-_spec.loader.exec_module(dag_module)
+# The module the DagBag imported the file as.
+dag_module = sys.modules[type(_DAG.get_task("hsm")).__module__]
 
 VARIABLES = {
     "hubspot_merge_hubspot_token": "pat-test",
