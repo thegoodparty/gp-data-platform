@@ -83,12 +83,12 @@ PERFORMANCE_PERCENTAGE_COLUMNS = [
     "Voters_VotingPerformanceMinorElection",
 ]
 
-# Identifier/code columns that L2 types inconsistently across states (INT in most,
-# STRING in the states where a non-numeric value showed up). These are codes, not
-# quantities: ZIPs, precincts, district codes, and voter IDs. Cast every state to
-# STRING before the union so the reconciliation never coerces a state's STRING
-# value into INT (which fails under ANSI on a value like the ZIP '8731-') and so
-# leading zeros are preserved (e.g. a New Jersey ZIP 08731 is not stored as 8731).
+# Identifier/code columns: ZIPs, precincts, district codes and voter IDs. They are
+# codes, not quantities, so they must arrive as STRING; the loader reads every L2
+# column as text for this reason. Casting a numeric copy back to STRING cannot
+# restore leading zeros it already dropped (a New Jersey ZIP 08731 would stay
+# "8731"), so a state that arrives with one of these as a number fails the build
+# instead of being cast.
 IDENTIFIER_STRING_COLUMNS = [
     "Residence_Addresses_Zip",
     "Voters_FIPS",
@@ -114,13 +114,28 @@ IDENTIFIER_STRING_COLUMNS = [
 ]
 
 
-def cast_identifier_columns_to_string(df: DataFrame) -> DataFrame:
-    """Cast identifier/code columns to STRING when present, so unioning states with
-    mixed source types produces a consistent STRING column instead of a failing or
-    lossy INT cast. Guarded on presence to respect unionByName(allowMissingColumns)."""
-    for column in IDENTIFIER_STRING_COLUMNS:
-        if column in df.columns:
-            df = df.withColumn(column, col(column).cast(StringType()))
+def non_string_identifier_columns(dtypes: list[tuple[str, str]]) -> list[str]:
+    """Identifier columns present with a type other than STRING, as "name (type)".
+    A missing column is not an error: unionByName(allowMissingColumns) fills it."""
+    return [
+        f"{name} ({dtype})"
+        for name, dtype in dtypes
+        if name in IDENTIFIER_STRING_COLUMNS and dtype != "string"
+    ]
+
+
+def require_identifier_columns_as_strings(df: DataFrame) -> DataFrame:
+    """Fail when a state arrives with an identifier column typed as anything but STRING."""
+    bad_columns = non_string_identifier_columns(df.dtypes)
+    if bad_columns:
+        # Only on the failure path, to name the state in the error.
+        rows = df.select("state_postal_code").limit(1).collect()
+        state = rows[0][0] if rows else "unknown (no rows)"
+        raise ValueError(
+            f"L2 state {state} has identifier columns that are not STRING: "
+            f"{', '.join(bad_columns)}. A numeric load drops leading zeros that a cast "
+            "cannot restore; reload the state with every column read as text."
+        )
     return df
 
 
@@ -624,7 +639,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         wi_df,
         wy_df,
     ]
-    state_dfs = [cast_identifier_columns_to_string(state_df) for state_df in state_dfs]
+    state_dfs = [require_identifier_columns_as_strings(state_df) for state_df in state_dfs]
 
     # Use unionByName with allowMissingColumns=True to handle schema drift
     # when L2 delivers state updates with new columns in a staggered fashion
