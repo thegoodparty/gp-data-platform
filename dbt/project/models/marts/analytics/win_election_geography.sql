@@ -54,36 +54,23 @@ with
             on position.district_id = district.id
     ),
 
+    -- Statewide districts have no district-voter rows (by design upstream), so
+    -- their lean comes from the state's voters directly.
     voter_districts as (
         select distinct district_id from position_district where not is_statewide
     ),
 
-    -- The district-voter mart keys voters by the same salted id the voter mart mints.
-    l2_voters as (
-        select
-            {{ generate_salted_uuid(fields=["LALVOTERID"], salt="l2") }} as voter_id,
-            lalvoterid,
-            county
-        from {{ ref("int__l2_nationwide_uniform_w_haystaq") }}
-    ),
-
-    -- Statewide districts have no district-voter rows (by design upstream), so
-    -- their lean comes from the state's voters directly.
     district_county as (
         select
-            district_voter.district_id,
-            voter.county,
-            count(*) as voters,
-            count(score.lalvoterid) as scored_voters,
-            count_if(score.indep_openness_single_open) as flagged_voters
-        from {{ ref("m_people_api__districtvoter") }} as district_voter
+            district_county_lean.district_id,
+            district_county_lean.county,
+            district_county_lean.voters,
+            district_county_lean.scored_voters,
+            district_county_lean.flagged_voters
+        from {{ ref("int__l2_district_county_lean") }} as district_county_lean
         inner join
-            voter_districts on district_voter.district_id = voter_districts.district_id
-        inner join l2_voters as voter on district_voter.voter_id = voter.voter_id
-        left join
-            {{ ref("int__indep_openness_voter_scores") }} as score
-            on voter.lalvoterid = score.lalvoterid
-        group by 1, 2
+            voter_districts
+            on district_county_lean.district_id = voter_districts.district_id
     ),
 
     district_summary as (
