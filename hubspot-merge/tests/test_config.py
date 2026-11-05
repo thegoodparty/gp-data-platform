@@ -58,8 +58,6 @@ def test_repr_does_not_carry_the_token() -> None:
         "MERGE_MAX_RPS",
         "DATABRICKS_HOST",
         "DATABRICKS_HTTP_PATH",
-        "DATABRICKS_CLIENT_ID",
-        "DATABRICKS_CLIENT_SECRET",
     ],
 )
 def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:
@@ -95,3 +93,11 @@ def test_an_object_type_other_than_contacts_is_rejected(object_type: str) -> Non
     env = {**FULL_ENV, "MERGE_OBJECT_TYPE": object_type}
     with pytest.raises(MissingConfigError, match="MERGE_OBJECT_TYPE"):
         Config.from_env(env)
+
+
+@pytest.mark.parametrize("variable", ["MERGE_PAIR_RELATION", "MERGE_LOG_TABLE"])
+@pytest.mark.parametrize("value", ["queue", "a.b.c; delete from x", "a.b.c --"])
+def test_a_table_name_must_be_three_plain_parts(variable: str, value: str) -> None:
+    """Both names are interpolated into SQL, and a DAG trigger can set the relation."""
+    with pytest.raises(MissingConfigError, match=variable):
+        Config.from_env({**FULL_ENV, variable: value})

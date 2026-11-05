@@ -8,12 +8,15 @@ connection supplies both jobs.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 SUPPORTED_OBJECT_TYPE = "contacts"
 
 DEFAULT_HUBSPOT_BASE_URL = "https://api.hubapi.com"
+
+_TABLE_NAME = re.compile(r"\w+\.\w+\.\w+")
 
 
 class MissingConfigError(ValueError):
@@ -37,8 +40,10 @@ class Config:
     max_rps: float
     databricks_host: str
     databricks_http_path: str
-    databricks_client_id: str
-    databricks_client_secret: str
+    # Unset, the Databricks SDK finds credentials itself, such as a CLI login for a
+    # hand run. The DAG always sets them.
+    databricks_client_id: str = ""
+    databricks_client_secret: str = ""
     databricks_scopes: str = ""
 
     def __repr__(self) -> str:
@@ -58,14 +63,14 @@ class Config:
             hubspot_base_url=env.get("HUBSPOT_BASE_URL", "").strip() or DEFAULT_HUBSPOT_BASE_URL,
             expected_portal_id=_require(env, "HUBSPOT_EXPECTED_PORTAL_ID"),
             object_type=object_type,
-            pair_relation=_require(env, "MERGE_PAIR_RELATION"),
-            log_table=_require(env, "MERGE_LOG_TABLE"),
+            pair_relation=_table_name(env, "MERGE_PAIR_RELATION"),
+            log_table=_table_name(env, "MERGE_LOG_TABLE"),
             max_pairs=_positive_int(env, "MERGE_MAX_PAIRS"),
             max_rps=_positive_float(env, "MERGE_MAX_RPS"),
             databricks_host=_require(env, "DATABRICKS_HOST"),
             databricks_http_path=_require(env, "DATABRICKS_HTTP_PATH"),
-            databricks_client_id=_require(env, "DATABRICKS_CLIENT_ID"),
-            databricks_client_secret=_require(env, "DATABRICKS_CLIENT_SECRET"),
+            databricks_client_id=env.get("DATABRICKS_CLIENT_ID", "").strip(),
+            databricks_client_secret=env.get("DATABRICKS_CLIENT_SECRET", "").strip(),
             databricks_scopes=env.get("DATABRICKS_SCOPES", "").strip(),
         )
 
@@ -74,6 +79,14 @@ def _require(env: Mapping[str, str], name: str) -> str:
     value = env.get(name, "").strip()
     if not value:
         raise MissingConfigError(name, "is required and unset")
+    return value
+
+
+def _table_name(env: Mapping[str, str], name: str) -> str:
+    # Interpolated into SQL, and a DAG trigger param can set it.
+    value = _require(env, name)
+    if not _TABLE_NAME.fullmatch(value):
+        raise MissingConfigError(name, f"must be catalog.schema.table, got {value!r}")
     return value
 
 
