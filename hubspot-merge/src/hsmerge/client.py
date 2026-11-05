@@ -142,6 +142,11 @@ class ReadResult:
             for contact_id in (record.id, *record.merged_ids)
         }
 
+    def record_for(self, contact_id: str) -> Record | None:
+        """The record `contact_id` resolved to, or None if it resolved to nothing."""
+        record_id = self.resolved.get(contact_id)
+        return None if record_id is None else self.records[record_id]
+
 
 def _retryable(error: BaseException) -> bool:
     """429 and 5xx only. Every other 4xx is HubSpot's answer about this pair."""
