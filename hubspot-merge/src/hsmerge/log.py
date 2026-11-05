@@ -26,7 +26,7 @@ from .types import Outcome, Pair
 # packs as many rows as the warehouse allows: it rejects any statement whose parameters
 # total more than this.
 PARAM_CHAR_LIMIT = 1_048_576
-_CHUNK_CHAR_BUDGET = PARAM_CHAR_LIMIT - 100_000  # headroom for the struct schema and the [] framing
+_CHUNK_CHAR_BUDGET = PARAM_CHAR_LIMIT - 100_000  # headroom for the [] framing
 
 # The log's contract with dbt: column order, name and type as the staging model reads
 # them. The DDL and the INSERT are both built from this one list.
@@ -44,10 +44,7 @@ _COLUMNS: tuple[tuple[str, str], ...] = (
     ("secondary_snapshot", "string"),
     ("attempted_at", "timestamp not null"),
 )
-LOG_COLUMNS = tuple(name for name, _ in _COLUMNS)
-
-# Rows travel as JSON strings, so the one non-string column needs an explicit cast.
-_TIMESTAMP_COLUMNS = frozenset({"attempted_at"})
+_LOG_COLUMNS = tuple(name for name, _ in _COLUMNS)
 
 _DDL_COMMENT = "One row per HubSpot merge attempt. Append-only: current state comes from dbt."
 
@@ -86,13 +83,14 @@ def _insert_rows_sql(log_table: str) -> str:
     silently. Values are never inlined: quote-escaping SQL by hand is a known trap, and
     json.dumps plus from_json round-trips any string byte-identically.
     """
-    schema = "array<struct<" + ",".join(f"{column}:string" for column in LOG_COLUMNS) + ">>"
+    schema = "array<struct<" + ",".join(f"{column}:string" for column in _LOG_COLUMNS) + ">>"
+    # Rows travel as JSON strings, so the one non-string column needs an explicit cast.
     selected = ", ".join(
-        f"cast(r.{column} as timestamp)" if column in _TIMESTAMP_COLUMNS else f"r.{column}"
-        for column in LOG_COLUMNS
+        f"cast(r.{column} as timestamp)" if column == "attempted_at" else f"r.{column}"
+        for column in _LOG_COLUMNS
     )
     return (
-        f"insert into {log_table} ({', '.join(LOG_COLUMNS)}) "
+        f"insert into {log_table} ({', '.join(_LOG_COLUMNS)}) "
         f"select {selected} from (select explode(from_json(:rows, '{schema}')) as r)"
     )
 
@@ -153,17 +151,31 @@ class MergeLogWriter:
             "attempted_at": _encode_timestamp(datetime.now(UTC)),
         }
         encoded = json.dumps(row, separators=(",", ":"))
-        # A single row over budget still goes alone, and the warehouse rejects it loudly.
+        # Buffer the new row before the flush, so a failed INSERT cannot drop the row for the
+        # merge that just happened: `__exit__` retries whatever the buffer holds, and the batch
+        # the warehouse refused goes back in alongside it.
         if self._rows and self._size + len(encoded) + 1 > _CHUNK_CHAR_BUDGET:
-            self._flush()
-        self._rows.append(encoded)
-        self._size += len(encoded) + 1
+            batch = self._rows
+            self._rows = [encoded]
+            try:
+                self._insert(batch)
+            except Exception:
+                self._rows = [*batch, encoded]
+                self._size = sum(len(r) + 1 for r in self._rows)
+                raise
+            self._size = len(encoded) + 1
+        else:
+            self._rows.append(encoded)
+            self._size += len(encoded) + 1
 
-    def _flush(self) -> None:
-        if not self._rows:
+    def _insert(self, rows: list[str]) -> None:
+        if not rows:
             return
         with self._connection.cursor() as cursor:
-            cursor.execute(self._sql, {"rows": "[" + ",".join(self._rows) + "]"})
+            cursor.execute(self._sql, {"rows": "[" + ",".join(rows) + "]"})
+
+    def _flush(self) -> None:
+        self._insert(self._rows)
         self._rows, self._size = [], 0
 
     def __enter__(self) -> Self:

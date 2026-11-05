@@ -39,7 +39,6 @@ class FakeCursor:
         if param_size > PARAM_CHAR_LIMIT:
             raise ValueError(f"parameters too large: {param_size} > {PARAM_CHAR_LIMIT}")
         self.connection.param_sizes.append(param_size)
-        self.connection.executed_sql.append(sql)
         lowered = sql.lower()
         if lowered.startswith("create table if not exists"):
             self._create_table(sql)
@@ -58,6 +57,9 @@ class FakeCursor:
 
     def _insert(self, sql: str, params: dict[str, Any]) -> None:
         """Decodes the rows from the one JSON `rows` param, as the statement's `from_json` does."""
+        if self.connection.insert_failures:
+            self.connection.insert_failures -= 1
+            raise RuntimeError("insert failed")
         table_name = sql.split("insert into", 1)[1].split("(", 1)[0].strip()
         columns = [c.strip() for c in sql.split("(", 1)[1].split(")", 1)[0].split(",")]
         table = self.connection.tables.get(table_name)
@@ -83,7 +85,8 @@ class FakeConnection:
     tables: dict[str, FakeTable] = field(default_factory=dict)
     insert_call_count: int = 0
     param_sizes: list[int] = field(default_factory=list)
-    executed_sql: list[str] = field(default_factory=list)
+    # Counts down: the next N inserts fail as a warehouse would, leaving their rows unwritten.
+    insert_failures: int = 0
 
     def cursor(self) -> FakeCursor:
         return FakeCursor(connection=self)

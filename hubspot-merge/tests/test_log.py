@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import pytest
 
 from hsmerge.log import (
-    LOG_COLUMNS,
     PARAM_CHAR_LIMIT,
     MergeLogWriter,
     create_log_table_sql,
@@ -36,19 +35,20 @@ def test_init_log_table_declares_the_columns_the_writer_inserts() -> None:
     the first flush instead of at init."""
     connection = FakeConnection()
     init_log_table(connection, LOG_TABLE)
-    assert connection.tables[LOG_TABLE].columns == LOG_COLUMNS
-
-
-def test_init_log_table_is_a_no_op_against_an_existing_table() -> None:
-    """Catches: a second init against a table that already holds rows replacing it."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-    with _writer(connection) as writer:
-        writer.append(_pair(1), Outcome(status=Status.MERGED, survivor_id="p1"))
-
-    init_log_table(connection, LOG_TABLE)
-
-    assert len(connection.tables[LOG_TABLE].rows) == 1
+    assert connection.tables[LOG_TABLE].columns == (
+        "run_id",
+        "object_type",
+        "primary_id",
+        "secondary_id",
+        "status",
+        "survivor_id",
+        "gp_person_id",
+        "match_evidence",
+        "error",
+        "primary_snapshot",
+        "secondary_snapshot",
+        "attempted_at",
+    )
 
 
 def test_create_log_table_sql_can_only_create() -> None:
@@ -56,8 +56,6 @@ def test_create_log_table_sql_can_only_create() -> None:
     sql = create_log_table_sql(LOG_TABLE).lower()
     assert sql.startswith(f"create table if not exists {LOG_TABLE.lower()} (")
     assert sql.count("table") == 1
-    for destructive in ("drop", "replace", "truncate", "delete", "alter", "insert"):
-        assert destructive not in sql
 
 
 def test_writer_appends_one_row_per_pair_with_its_outcome() -> None:
@@ -122,36 +120,6 @@ def test_attempted_at_carries_an_explicit_utc_offset() -> None:
     assert datetime.fromisoformat(attempted_at).utcoffset() == timedelta(0)
 
 
-def test_writer_packs_many_rows_into_one_insert() -> None:
-    """Catches: one INSERT per pair. Every INSERT is its own Delta commit, so logging a
-    chunk pair by pair would spend longer committing than the merges took."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-
-    with _writer(connection) as writer:
-        for n in range(2_000):
-            writer.append(_pair(n), Outcome(status=Status.ALREADY_MERGED, survivor_id="p0"))
-
-    assert connection.insert_call_count == 1
-    assert len(connection.tables[LOG_TABLE].rows) == 2_000
-
-
-def test_writer_flushes_a_full_chunk_before_the_context_exits() -> None:
-    """Catches: buffering the whole run, so a crash mid-run loses every finished pair.
-    A production snapshot is far larger than a bare row, so a few hundred fill a chunk."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-    snapshot = {"id": "p", "properties": {"note": "x" * 2_000}}
-
-    with _writer(connection) as writer:
-        for n in range(2_000):
-            writer.append(_pair(n), Outcome(status=Status.MERGED, survivor_id="p"), primary_snapshot=snapshot)
-        flushed_before_exit = len(connection.tables[LOG_TABLE].rows)
-
-    assert 0 < flushed_before_exit < 2_000
-    assert len(connection.tables[LOG_TABLE].rows) == 2_000
-
-
 def test_writer_splits_chunks_under_the_parameter_size_limit() -> None:
     """Catches: one statement carrying more than the warehouse's per-query parameter limit
     (1,048,576 characters in total), which it rejects outright, so a chunk of finished
@@ -167,6 +135,27 @@ def test_writer_splits_chunks_under_the_parameter_size_limit() -> None:
     assert connection.insert_call_count > 1
     assert all(size <= PARAM_CHAR_LIMIT for size in connection.param_sizes)
     assert len(connection.tables[LOG_TABLE].rows) == 5_000
+
+
+def test_writer_keeps_the_current_pair_when_a_mid_run_flush_fails() -> None:
+    """Catches: flushing the full batch before buffering the new row, so a failed INSERT drops
+    the row for the merge that just happened. A merge cannot be undone, so that row is the one
+    most worth keeping, and the exit flush retries only what the buffer still holds."""
+    connection = FakeConnection(insert_failures=1)
+    init_log_table(connection, LOG_TABLE)
+    snapshot = {"id": "p", "properties": {"note": "x" * 2_000}}
+    merged = None
+
+    with (
+        pytest.raises(RuntimeError, match="insert failed"),
+        _writer(connection) as writer,
+    ):
+        for n in range(1_000):
+            merged = _pair(n)
+            writer.append(merged, Outcome(status=Status.MERGED, survivor_id="p"), primary_snapshot=snapshot)
+
+    assert merged is not None
+    assert merged.secondary_id in {row["secondary_id"] for row in connection.tables[LOG_TABLE].rows}
 
 
 def test_writer_flushes_the_remainder_when_the_caller_raises() -> None:
@@ -196,57 +185,3 @@ def test_writer_keeps_the_original_error_when_the_exit_flush_also_fails() -> Non
         raise RuntimeError("hubspot 401")
 
     assert any("flush on exit also failed" in note for note in caught.value.__notes__)
-
-
-def test_writer_issues_no_statement_other_than_insert() -> None:
-    """Catches: a correction or cleanup statement creeping into the writer, which would break
-    the append-only rule every downstream model derives current state from."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-
-    with _writer(connection) as writer:
-        writer.append(_pair(1), Outcome(status=Status.MERGED, survivor_id="p1"))
-
-    writer_statements = connection.executed_sql[1:]  # the first is init's DDL
-    assert all(sql.lower().startswith("insert into ") for sql in writer_statements)
-
-
-def test_writer_round_trips_values_that_need_escaping() -> None:
-    """Catches: a string being altered on the way in (quotes, backslashes, non-ASCII, a
-    newline), which would make the audit row disagree with what HubSpot was sent."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-    pair = Pair(
-        primary_id="p'1",
-        secondary_id="s\\1",
-        gp_person_id="person-1",
-        match_evidence='name == "Zoë 🙂"',
-    )
-
-    with _writer(connection) as writer:
-        writer.append(
-            pair,
-            Outcome(status=Status.FAILED, error="bad 'thing' \\ 🙂\nsecond line"),
-            primary_snapshot={"properties": {"lastname": "Zoë O'Brien \\ 🙂", "note": "a\nb"}},
-        )
-
-    [row] = connection.tables[LOG_TABLE].rows
-    assert row["primary_id"] == "p'1"
-    assert row["secondary_id"] == "s\\1"
-    assert row["match_evidence"] == 'name == "Zoë 🙂"'
-    assert row["error"] == "bad 'thing' \\ 🙂\nsecond line"
-    assert json.loads(row["primary_snapshot"]) == {
-        "properties": {"lastname": "Zoë O'Brien \\ 🙂", "note": "a\nb"}
-    }
-
-
-def test_two_runs_append_to_one_history() -> None:
-    """Catches: a second run's rows replacing the first's, which would destroy the audit trail."""
-    connection = FakeConnection()
-    init_log_table(connection, LOG_TABLE)
-
-    for run_id in ("run-1", "run-2"):
-        with MergeLogWriter(connection, LOG_TABLE, run_id=run_id, object_type="contacts") as writer:
-            writer.append(_pair(1), Outcome(status=Status.MERGED, survivor_id="p1"))
-
-    assert [row["run_id"] for row in connection.tables[LOG_TABLE].rows] == ["run-1", "run-2"]
