@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from hsmerge.config import DEFAULT_HUBSPOT_BASE_URL, Config, MissingConfigError
+from hsmerge.config import DEFAULT_HUBSPOT_BASE_URL, Config, MissingConfigError, RunSettings
 
 FULL_ENV = {
     "HUBSPOT_TOKEN": "pat-na1-test",
@@ -25,9 +25,7 @@ def test_from_env_reads_every_setting() -> None:
     assert config.hubspot_token == "pat-na1-test"
     assert config.expected_portal_id == "51780263"
     assert config.object_type == "contacts"
-    assert config.pair_relation == "goodparty_data_catalog.dbt_staging.hubspot_contact_merge_queue"
     assert config.log_table == "goodparty_data_catalog.airflow_source_dev.hubspot_contact_merge_log"
-    assert config.max_pairs == 50
     assert config.max_rps == 8.0
     assert config.databricks_host == "https://example.cloud.databricks.com"
     assert config.databricks_http_path == "/sql/1.0/warehouses/abc"
@@ -52,14 +50,10 @@ def test_repr_does_not_carry_the_token() -> None:
         "HUBSPOT_TOKEN",
         "HUBSPOT_EXPECTED_PORTAL_ID",
         "MERGE_OBJECT_TYPE",
-        "MERGE_PAIR_RELATION",
         "MERGE_LOG_TABLE",
-        "MERGE_MAX_PAIRS",
         "MERGE_MAX_RPS",
         "DATABRICKS_HOST",
         "DATABRICKS_HTTP_PATH",
-        "DATABRICKS_CLIENT_ID",
-        "DATABRICKS_CLIENT_SECRET",
     ],
 )
 def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:
@@ -73,13 +67,13 @@ def test_a_missing_setting_raises_and_names_the_variable(missing: str) -> None:
 def test_a_non_positive_cap_is_rejected(cap: str) -> None:
     """A cap that merges nothing on every run while reporting success."""
     with pytest.raises(MissingConfigError, match="MERGE_MAX_PAIRS"):
-        Config.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": cap})
+        RunSettings.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": cap})
 
 
 @pytest.mark.parametrize("value", ["lots", "1.5"])
 def test_an_unparseable_cap_is_rejected(value: str) -> None:
     with pytest.raises(MissingConfigError, match="MERGE_MAX_PAIRS"):
-        Config.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": value})
+        RunSettings.from_env({**FULL_ENV, "MERGE_MAX_PAIRS": value})
 
 
 @pytest.mark.parametrize("rate", ["0", "-1", "fast", "nan"])
@@ -95,3 +89,25 @@ def test_an_object_type_other_than_contacts_is_rejected(object_type: str) -> Non
     env = {**FULL_ENV, "MERGE_OBJECT_TYPE": object_type}
     with pytest.raises(MissingConfigError, match="MERGE_OBJECT_TYPE"):
         Config.from_env(env)
+
+
+@pytest.mark.parametrize("value", ["queue", "a.b.c; delete from x", "a.b.c --"])
+def test_a_table_name_must_be_three_plain_parts(value: str) -> None:
+    """Both names are interpolated into SQL, and a DAG trigger can set the relation."""
+    with pytest.raises(MissingConfigError, match="MERGE_LOG_TABLE"):
+        Config.from_env({**FULL_ENV, "MERGE_LOG_TABLE": value})
+    with pytest.raises(MissingConfigError, match="MERGE_PAIR_RELATION"):
+        RunSettings.from_env({**FULL_ENV, "MERGE_PAIR_RELATION": value})
+
+
+def test_run_settings_read_the_relation_and_the_cap() -> None:
+    settings = RunSettings.from_env(FULL_ENV)
+    assert settings.pair_relation == "goodparty_data_catalog.dbt_staging.hubspot_contact_merge_queue"
+    assert settings.max_pairs == 50
+
+
+@pytest.mark.parametrize("missing", ["MERGE_PAIR_RELATION", "MERGE_MAX_PAIRS"])
+def test_a_missing_run_setting_raises_and_names_the_variable(missing: str) -> None:
+    env = {key: value for key, value in FULL_ENV.items() if key != missing}
+    with pytest.raises(MissingConfigError, match=missing):
+        RunSettings.from_env(env)
