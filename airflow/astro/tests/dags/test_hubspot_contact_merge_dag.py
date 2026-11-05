@@ -13,6 +13,7 @@ logging.getLogger("airflow").disabled = True
 _DAG = DagBag(dag_folder=str(_DAG_FILE)).dags.get("hubspot_contact_merge")
 logging.getLogger("airflow").disabled = False
 
+assert _DAG is not None, f"hubspot_contact_merge failed to load from {_DAG_FILE}"
 # The module the DagBag imported the file as.
 dag_module = sys.modules[type(_DAG.get_task("hsm")).__module__]
 
