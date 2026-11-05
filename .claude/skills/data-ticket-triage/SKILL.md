@@ -1,6 +1,6 @@
 ---
 name: data-ticket-triage
-description: Investigate a ClickUp data ticket end to end and ship the fix — read the ticket, trace the symptom through the dbt DAG in Databricks, post a root-cause note on the ticket, implement the smallest fix that reuses an existing repair pattern, verify in dev, open the PR, and iterate with the delegate reviewer until it approves. Use when given a ClickUp ticket ID or URL (DATA-XXXX) and asked to investigate, diagnose, or resolve it — production data bugs, missing or wrong records in a mart, a value the product should show but does not.
+description: Investigate a ClickUp data ticket end to end and ship the fix — read the ticket, trace the symptom through the dbt DAG in Databricks, post a root-cause note on the ticket, implement the smallest fix that reuses an existing repair pattern, verify in dev, open the PR, and iterate with the delegate reviewer until it approves. Use when given a ClickUp ticket ID or URL (DATA-XXXX or ENG-XXXXX) and asked to investigate, diagnose, or resolve it — production data bugs, missing or wrong records in a mart, a value the product should show but does not.
 ---
 
 # Data ticket triage
@@ -125,7 +125,7 @@ Skip the narrative of how you found it.
 
 ## 6. Implement and verify in dev
 
-Branch and PR conventions are in `dbt/project/CLAUDE.md` — read it. Summary: branch `data-XXXX/short-slug`, PR title `[DATA-XXXX] Short title`, and the ticket ID never appears in committed code, only in the branch name and PR title. No real colleague names anywhere in the repo.
+Branch and PR conventions are in `dbt/project/CLAUDE.md` — read it. Summary: branch `{data|eng}-<number>/short-slug`, PR title `[{DATA|ENG}-<number>] Short title`, using the ticket's own prefix, and the ticket ID never appears in committed code, only in the branch name and PR title. No real colleague names anywhere in the repo.
 
 Build only what you modified. Never use the `+` upstream selector — dbt Cloud defers to prod artifacts for everything you did not touch.
 
