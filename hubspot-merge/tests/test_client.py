@@ -116,6 +116,7 @@ def test_a_batch_read_attributes_records_by_id_and_names_the_merged_ones() -> No
 
     assert list(result.records) == [PRIMARY]
     assert result.records[PRIMARY].merged_ids == (PRIMARY, SECONDARY)
+    assert result.missing_ids == ()
     assert transport.calls[0]["body"]["properties"] == ["email", HS_MERGED_OBJECT_IDS]
 
 

@@ -108,8 +108,8 @@ class Record:
 
     `merged_ids` is what HubSpot names in `hs_merged_object_ids`, and it is empty for a
     contact that was never merged, because HubSpot leaves that property null. A merged
-    record does name its own id there, beside the ids it absorbed; either way the record's
-    own id is a key in `ReadResult.resolved`.
+    record may also name its own id there, and most do not; `ReadResult.resolved` adds the
+    record's own id either way.
     """
 
     id: str

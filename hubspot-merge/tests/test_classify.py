@@ -1,23 +1,16 @@
-"""Classification against the response bodies recorded in `reverse-etl/probes/README.md`.
+"""What a status means, over trimmed dicts shaped like the sandbox's recorded answers.
 
-Reads are built through the client's own fixtures, so the parse has one test suite, in
-`test_client.py`, and this file only asks what a status means.
+The parse rule is tested once, in `test_client.py`; this file builds records through the
+client's own parser and asks only what a status means.
 """
 
 from __future__ import annotations
 
 from hsmerge.classify import classify_merge, classify_read
 from hsmerge.client import ReadResult
+from hsmerge.client import _record as parse_record
 from hsmerge.types import Pair, Status
-from tests._fakes import (
-    LIVE_HANDSHAKE,
-    LIVE_RECORD,
-    MERGED_SURVIVOR,
-    OTHER_SURVIVOR,
-    PRE_MERGE_RECORD,
-    SURVIVOR_RECORD,
-    parse_record,
-)
+from tests._fakes import LIVE_RECORD, MERGED_RECORD, PRE_MERGE_RECORD, SURVIVOR_RECORD
 
 PRIMARY = SURVIVOR_RECORD["id"]
 SECONDARY = LIVE_RECORD["id"]
@@ -35,7 +28,7 @@ def _read(*records: dict, missing: str | None = None) -> ReadResult:
 
 def test_already_merged_when_the_secondary_reads_as_the_primary() -> None:
     # A read of both ids after the merge: one record, the survivor naming both ids.
-    outcome = classify_read(PAIR, LIVE_HANDSHAKE)
+    outcome = classify_read(PAIR, _read(SURVIVOR_RECORD))
 
     assert outcome is not None
     assert outcome.status is Status.ALREADY_MERGED
@@ -87,14 +80,14 @@ def test_merged_when_the_read_allows_it_and_the_merge_returns_the_primary() -> N
     assert classify_read(PAIR, _read(PRE_MERGE_RECORD, LIVE_RECORD)) is None
     assert classify_read(PAIR, _read(LIVE_RECORD, PRE_MERGE_RECORD)) is None
 
-    outcome = classify_merge(PAIR, MERGED_SURVIVOR)
+    outcome = classify_merge(PAIR, parse_record(MERGED_RECORD))
 
     assert outcome.status is Status.MERGED
     assert outcome.survivor_id == PRIMARY
 
 
 def test_id_changed_when_the_merge_returns_a_new_record() -> None:
-    outcome = classify_merge(PAIR, OTHER_SURVIVOR)
+    outcome = classify_merge(PAIR, parse_record({**MERGED_RECORD, "id": THIRD}))
 
     assert outcome.status is Status.ID_CHANGED
-    assert outcome.survivor_id == OTHER_SURVIVOR.id
+    assert outcome.survivor_id == THIRD
