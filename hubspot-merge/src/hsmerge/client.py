@@ -104,7 +104,13 @@ class RequestsTransport:
 
 @dataclass(frozen=True)
 class Record:
-    """One contact as HubSpot returned it. `merged_ids` includes the record's own id."""
+    """One contact as HubSpot returned it, with the ids that resolved to it.
+
+    `merged_ids` is what HubSpot names in `hs_merged_object_ids`, and it is empty for a
+    contact that was never merged, because HubSpot leaves that property null. A merged
+    record does name its own id there, beside the ids it absorbed; either way the record's
+    own id is a key in `ReadResult.resolved`.
+    """
 
     id: str
     merged_ids: tuple[str, ...]
@@ -115,13 +121,26 @@ class Record:
 class ReadResult:
     """A batch read, keyed by the record each id resolved to.
 
-    Neither id of an already-merged pair is a key here: the survivor's record is, and its
-    `merged_ids` names which requested ids landed on it. A requested id that resolved to
-    nothing is in `missing_ids` and has no record.
+    Neither id of an already-merged pair is a key in `records`: the survivor's record is,
+    and `resolved` names which requested ids landed on it. A requested id that resolved to
+    nothing is in `missing_ids` and appears in no record.
     """
 
     records: Mapping[str, Record]
     missing_ids: tuple[str, ...]
+
+    @property
+    def resolved(self) -> Mapping[str, str]:
+        """Every contact id the read can speak for, mapped to the record it came back as.
+
+        The rule classification reads: a record speaks for its own id and for the ids it
+        absorbed, and an id absent from this map did not resolve at all.
+        """
+        return {
+            contact_id: record.id
+            for record in self.records.values()
+            for contact_id in (record.id, *record.merged_ids)
+        }
 
 
 def _retryable(error: BaseException) -> bool:
