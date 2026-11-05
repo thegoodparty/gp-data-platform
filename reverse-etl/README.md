@@ -20,8 +20,9 @@ destination config (no HubSpot token, no output dir).
 Without it, every destination is a real delivery and writes the log. `--destination=csv` writes
 each run's diff to a new `<flow>_<utc timestamp>.csv` in `RETL_CSV_OUTPUT_DIR`, so a rerun writes
 nothing (no file at all) until a row is added or changed. `--destination=hubspot_contacts` requires
-`RETL_HUBSPOT_TOKEN`. Point `RETL_FLOW_<FLOW>_LOG_TABLE` at a scratch table unless you mean to send
-for real.
+`RETL_HUBSPOT_TOKEN`. Point `RETL_FLOW_<FLOW>_LOG_TABLE` at `airflow_source_dev` for a dev or
+sandbox run, or at a scratch table of your own for a throwaway local one, unless you mean to send
+for real against production.
 
 A flow's log table and its `<log_table>_orphans` table must exist before its first non-init run.
 The orphans table's name derives from the log table, so pointing the log table at a schema moves
@@ -35,11 +36,12 @@ This is a one-time (or post-reset) setup ceremony, run by a human. It is never p
 run.
 
 The log is append-only and read back by the next run, so it belongs in the writing deployment's own
-ingest schema: `airflow_source` in production, `airflow_source_dev` for dev and sandbox runs. Dev and
-production are separated by schema, not by table name. Never point it at a schema dbt builds into
-(`dbt`, `dbt_staging`, `dbt_preview`, `mart_*`, `dbt_<user>`, `dbt_cloud_pr_*`), because dbt replaces
-those schemas' tables and a log there can be lost. The writing service principal owns the tables, so a
-table created by `--init-log` is transferred to it afterwards.
+ingest schema: `airflow_source` in production, `airflow_source_dev` for dev and sandbox runs. The
+schema is what keeps them apart, since there is one catalog. Never point it at a schema dbt builds
+into (`dbt`, `dbt_staging`, `dbt_preview`, `mart_*`, `dbt_<user>`, `dbt_cloud_pr_*`), because dbt
+replaces those schemas' tables and a log there can be lost. The writing service principal owns the
+tables, so transfer ownership of **both** tables `--init-log` created, the log and its `_orphans`
+companion; a service principal that owns only the log cannot append the orphan events.
 
 ## Deleted rows
 
