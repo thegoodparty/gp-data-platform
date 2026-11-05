@@ -316,9 +316,9 @@ select
 
     -- The pairs the merge job can run unattended. A shared phone can be a household
     -- and a native id can be stamped on the wrong contact, so the identity evidence
-    -- only counts once the last names agree; a differing first name is how a
-    -- household shows up, and name_differs and name_incomplete are never exact.
-    -- Null on the primary, like the evidence columns.
+    -- only counts once the last names agree. Null on the primary, like the evidence
+    -- columns. The not-in clause only bites on native_ids: same_phone is the first
+    -- branch of match_evidence, so a pair with name evidence is never also same_phone.
     case
         when r.contact_rank = 1
         then null
@@ -343,7 +343,6 @@ select
         then true
         else false
     end as has_unique_key_conflict,
-    r.br_candidacy_id,
     r.linked_via,
 
     -- Ranking inputs.

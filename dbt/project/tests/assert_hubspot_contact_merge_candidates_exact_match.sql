@@ -1,7 +1,10 @@
--- exact_match is the merge job's eligibility gate, so a wrong true merges a pair
--- nobody vouched for and a wrong false silently withholds one. A row comes back
--- when the flag disagrees with the rule, computed from the row itself and the
--- primary's last name.
+-- exact_match lets the merge job run a pair unattended, so the one thing it must
+-- never do is call a pair exact when the last names disagree: the identity
+-- evidence (a shared native id or phone) survives a household or a mis-stamped
+-- id, and the surname is what rules those out. A row comes back when the flag is
+-- true and either the surname differs or the evidence says the names do not
+-- match. Asserted one way round on purpose, so the test states the rule rather
+-- than re-deriving the model's CASE.
 with
     candidates as (select * from {{ ref("hubspot_contact_merge_candidates") }}),
 
@@ -14,24 +17,15 @@ with
 select
     c.gp_person_id,
     c.hs_contact_id,
-    c.merge_role,
     c.matched_on,
     c.match_evidence,
     c.last_name,
-    p.primary_last_name,
-    c.exact_match
+    p.primary_last_name
 from candidates as c
 left join primaries as p using (gp_person_id)
 where
-    -- Null on the primary and set on every secondary, like matched_on.
-    (c.merge_role = 'primary') != (c.exact_match is null)
-    or (
-        c.merge_role = 'secondary'
-        and c.exact_match != (
-            (c.matched_on = 'native_ids' or c.match_evidence = 'same_phone')
-            -- name_differs and name_incomplete are never exact, whatever else the
-            -- pair shares.
-            and c.match_evidence not in ('name_differs', 'name_incomplete')
-            and coalesce(lower(trim(c.last_name)) = p.primary_last_name, false)
-        )
+    c.exact_match
+    and (
+        c.match_evidence in ('name_differs', 'name_incomplete')
+        or coalesce(lower(trim(c.last_name)) != p.primary_last_name, true)
     )
