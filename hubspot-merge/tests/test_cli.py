@@ -69,7 +69,11 @@ def test_dry_run_neither_merges_nor_logs(wired: dict[str, Any], capsys: pytest.C
     assert "already_merged=1, secondary_missing=1, would_merge=1" in capsys.readouterr().out
 
 
-def test_init_log_creates_the_table_and_calls_no_hubspot(wired: dict[str, Any]) -> None:
+def test_init_log_needs_no_pair_relation_or_cap(
+    wired: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MERGE_PAIR_RELATION")
+    monkeypatch.delenv("MERGE_MAX_PAIRS")
     assert cli.main(["init-log"]) == 0
     assert wired["init"] == [FULL_ENV["MERGE_LOG_TABLE"]]
     assert wired["hubspot"].reads == 0
