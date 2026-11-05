@@ -212,6 +212,31 @@ models:
           the diff is auditable after the import. Deliberately excluded from the import
           file: mapped by mistake it would write the stale score back.
 
+  - name: company_attributes_hubspot
+    description: >
+      Databricks-owned attributes synced onto EXISTING HubSpot companies
+      (reverse-ETL sendable mart). A company is one campaign in one cycle, which is
+      the grain the Serve Priority Segment belongs to. One row per HubSpot company
+      whose candidacy resolves to a BallotReady position with a known segment value.
+      A snapshot rather than a diff: the company staging model does not yet expose
+      HubSpot's current value, because the company property does not exist yet.
+      Companion to contact_attributes_hubspot.
+    columns:
+      - name: hubspot_company_id
+        description: >
+          HubSpot company id (the company's Record ID), the import match key and the
+          model grain.
+        data_tests:
+          - unique
+          - not_null
+      - name: serve_priority_segment
+        description: >
+          Value for the HubSpot `serve_priority_segment` company property. From
+          int__icp_offices.is_serve_priority_segment via the live-cycle candidacy's
+          BallotReady position. Rows with an unknown value are not emitted.
+        data_tests:
+          - not_null
+
   - name: contact_attributes_hubspot
     description: >
       Databricks-owned attributes synced onto EXISTING HubSpot contacts
@@ -228,6 +253,14 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: hubspot_company_id
+        description: >
+          Fallback import match key for when the contact id fails to match. The
+          newest associated HubSpot company by HubSpot createdate, ties and
+          companies absent from the ingest broken by highest numeric id (HubSpot
+          has no primary-company field and the association order is not stable;
+          ids are monotonic); null when the contact has no associated company. A
+          contact in several companies gets only one. Not for upload as a property.
       - name: serve_priority_segment
         description: >
           Value to write to the HubSpot `serve_priority_segment` contact property.
