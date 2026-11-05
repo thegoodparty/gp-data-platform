@@ -6,8 +6,10 @@ changes a warehouse value.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class Status(StrEnum):
@@ -42,3 +44,14 @@ class Outcome:
     status: Status
     survivor_id: str | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class LogEntry:
+    """One log row. A snapshot is the pre-merge read of that contact, or None when its id
+    resolved to nothing."""
+
+    pair: Pair
+    outcome: Outcome
+    primary_snapshot: Mapping[str, Any] | None = None
+    secondary_snapshot: Mapping[str, Any] | None = None
