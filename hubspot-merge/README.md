@@ -9,6 +9,13 @@ view. What happened comes from the log, which dbt reads.
 
 The `hsm` console script is a stub that exits non-zero; the commands are a later step.
 
+`hsmerge/client.py` wraps the three HubSpot calls the job makes: portal confirmation,
+a batch read and a merge, over an injectable transport. It paces calls at
+`MERGE_MAX_RPS`, honours `Retry-After` on 429, retries 5xx with backoff, and lets any
+other 4xx through as HubSpot's answer about that pair. The read returns records keyed by
+the id each one resolved to, because a merged-away id reads as its survivor and the
+response carries no echo of the ids requested.
+
 ## Local
 
 ```bash
