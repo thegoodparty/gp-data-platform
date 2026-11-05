@@ -12,7 +12,7 @@ from typing import Any
 from hsmerge.client import HttpResponse
 
 # A contact as `batch/read` returns it: the record carries its own id, and the merged ids
-# of anything absorbed into it (its own included). Trimmed to the keys the client reads.
+# of anything absorbed into it. Trimmed to the keys the client reads.
 SURVIVOR_RECORD: dict[str, Any] = {
     "id": "260560930060",
     "properties": {
@@ -27,6 +27,15 @@ SURVIVOR_RECORD: dict[str, Any] = {
     "updatedAt": "2026-11-05T04:34:11.946Z",
     "archived": False,
     "url": "https://app.hubspot.com/contacts/51780263/record/0-1/260560930060",
+}
+
+# The same contact before any merge: HubSpot leaves hs_merged_object_ids null, so this
+# record speaks only for itself. SURVIVOR_RECORD is what it looks like after absorbing
+# LIVE_RECORD, and a read cannot return both.
+PRE_MERGE_RECORD: dict[str, Any] = {
+    **SURVIVOR_RECORD,
+    "properties": {**SURVIVOR_RECORD["properties"], "hs_merged_object_ids": None},
+    "updatedAt": "2026-11-05T04:34:08.765Z",
 }
 
 LIVE_RECORD: dict[str, Any] = {
@@ -148,6 +157,3 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.now += seconds
-
-    def __repr__(self) -> str:
-        return f"FakeClock(now={self.now}, sleeps={self.sleeps})"
