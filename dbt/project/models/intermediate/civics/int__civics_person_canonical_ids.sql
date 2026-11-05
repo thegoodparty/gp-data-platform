@@ -34,6 +34,23 @@ with
         group by 1
     ),
 
+    -- A product record (gp_api, HubSpot) in a group that holds a BallotReady
+    -- person its own deterministic identity does not reach got there on a
+    -- similarity score alone. Such a record must not hand its user id or
+    -- pledge to the BallotReady person's public profile.
+    score_merges as (
+        select
+            record_key,
+            source_name <> 'ballotready'
+            and bool_or(source_name = 'ballotready') over (
+                partition by person_group_key
+            )
+            and not bool_or(source_name = 'ballotready') over (
+                partition by person_group_key, identity_key
+            ) as is_score_only_merge
+        from records
+    ),
+
     -- Earliest member mints the id. nulls last keeps a stray missing timestamp
     -- from hijacking a mint; the first_seen_at not_null test surfaces the gap.
     minting_member as (
@@ -57,6 +74,7 @@ select
     r.person_group_key,
     r.identity_key,
     ic.identity_count,
+    sm.is_score_only_merge,
     r.first_seen_at,
     m.minting_source_name,
     m.minting_source_id,
@@ -69,3 +87,4 @@ select
 from records as r
 inner join minting_member as m using (person_group_key)
 inner join identity_counts as ic using (person_group_key)
+inner join score_merges as sm on sm.record_key = r.record_key

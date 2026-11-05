@@ -16,9 +16,15 @@ with
             ci.first_seen_at,
             ci.group_size,
             ci.identity_count,
+            ci.is_score_only_merge,
             -- Per-source native identifiers (TechSpeed's is the candidate code).
             case when ci.source_name = 'ballotready' then source_id end as br_id_val,
-            case when ci.source_name = 'gp_api' then source_id end as gp_api_id_val,
+            -- Not through a score-only merge into a BallotReady person: the user
+            -- id would put someone else's account on that public profile.
+            case
+                when ci.source_name = 'gp_api' and not ci.is_score_only_merge
+                then source_id
+            end as gp_api_id_val,
             -- A contact merged away in HubSpot stays in its group as an alias,
             -- but it is no longer anyone's contact.
             case
