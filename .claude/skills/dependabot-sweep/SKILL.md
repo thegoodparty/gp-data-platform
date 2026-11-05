@@ -370,7 +370,7 @@ name before concluding the sync did not work.
 
 One PR covers every subproject, since it is one advisory set. Branch as
 `chore/$PKG-security-bump`; these sweeps have no ClickUp ticket, so the
-`data-XXXX/` convention does not apply. Hand off to the `pull-request` skill to
+`{data|eng}-<number>/` convention does not apply. Hand off to the `pull-request` skill to
 open it and drive the delegate reviewer.
 
 The PR body should name each advisory it closes (GHSA id, severity, one-line

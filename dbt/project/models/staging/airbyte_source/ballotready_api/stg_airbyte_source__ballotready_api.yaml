@@ -177,8 +177,38 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__ballotready_api_race_with_superseded
+    description: >
+      Every race the Airbyte `races` stream has landed, including copies BallotReady
+      has since deleted. The stream is incremental, so a race BallotReady deletes and
+      re-creates for the same position, election and stage lands twice.
+      `is_superseded` flags the extra copies. Most consumers want
+      `stg_airbyte_source__ballotready_api_race`, which excludes them.
+    columns:
+      - name: database_id
+        data_tests:
+          - not_null
+          - unique
+      - name: is_superseded
+        description: >
+          True for every race but one in its position, election, primary, runoff,
+          recall and unexpired-term group. The kept race is one with candidacies if
+          any has them, then the newest. A race with candidacies is never flagged.
+        data_tests:
+          - not_null
+      - name: superseded_by_database_id
+        description: >
+          For a superseded race, the race kept in its place. Null otherwise.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_race')
+                field: database_id
   - name: stg_airbyte_source__ballotready_api_race
-    description: Race data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
+    description: >
+      Race data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races),
+      one race per stage: copies BallotReady deleted and re-created are excluded
+      (see `stg_airbyte_source__ballotready_api_race_with_superseded`).
     columns:
       - name: database_id
         description: Identifies the primary key from the database.

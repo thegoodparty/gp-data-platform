@@ -131,7 +131,7 @@ Product-specific source pointers (contributing project scouts, authoritative dbt
 - `ai-rules/` (submodule) — broader AI-assisted-development rules.
 
 **External tickets / documentation:**
-- ClickUp tickets are tagged `DATA-XXXX` and surfaced in commit messages + branch names. Search by ticket ID.
+- ClickUp tickets are tagged `DATA-XXXX` or `ENG-XXXXX` and surfaced in commit messages + branch names. Search by ticket ID.
 - For data platform issues that span multiple subprojects, prefer linking the ticket / PR over re-explaining the issue here.
 
 ## Cross-references
