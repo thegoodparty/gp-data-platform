@@ -628,13 +628,6 @@ def _answered(response: Response) -> dict[str, Any]:
     }
 
 
-def _answered_in_order(response: Response, asked_for: list[str]) -> dict[str, Any]:
-    """`_answered`, plus whether the records came back in the order they were asked for."""
-    answered = _answered(response)
-    answered["order_preserved"] = [i for i in answered["returned_ids"] if i in asked_for] == asked_for
-    return answered
-
-
 def check_13_merge_endpoint_responses(client: SandboxClient) -> Finding:
     """The five answers a merge job's classification rests on: what a merged-away id reads
     as, what the merge endpoint says for an already-merged pair and for an id that is not
@@ -662,7 +655,8 @@ def check_13_merge_endpoint_responses(client: SandboxClient) -> Finding:
         chain_secondary,
         chain_target,
     ]
-    live_read = _answered_in_order(_batch_read(client, live_ids), live_ids)
+    live_read = _answered(_batch_read(client, live_ids))
+    order_preserved = [i for i in live_read["returned_ids"] if i in live_ids] == live_ids
 
     merged, survivor = _merge_pair(client, primary, secondary)
     settle()
@@ -699,7 +693,7 @@ def check_13_merge_endpoint_responses(client: SandboxClient) -> Finding:
         f"a merge whose primary was merged away gives {chain_merge.status_code} "
         f"{chain_merge.body.get('category', '')}",
         f"a read of {len(live_ids)} live ids came back "
-        f"{'in the order asked' if live_read['order_preserved'] else 'in a different order'}",
+        f"{'in the order asked' if order_preserved else 'in a different order'}",
     ]
     return Finding(
         check=13,
@@ -734,7 +728,7 @@ def check_13_merge_endpoint_responses(client: SandboxClient) -> Finding:
             "read_of_live_ids": {
                 "asked_for": live_ids,
                 "returned_ids": live_read["returned_ids"],
-                "order_preserved": live_read["order_preserved"],
+                "order_preserved": order_preserved,
             },
             "read_of_merged_away_id": {
                 "asked_for": secondary,

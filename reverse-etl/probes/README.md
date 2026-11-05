@@ -107,9 +107,12 @@ merged-id list on a record names the ids that resolved to it.
 **The merge call refuses a secondary that is merged away, with 400.** Already merged into the
 primary, already merged into a third contact, and a primary that was itself merged away all answer
 `400 VALIDATION_ERROR` and `Cannot merge ... because it has a forward reference to <id>. Only
-canonical objects can be merged.` So none of the four resolved statuses can be read from the merge
-response; the pre-merge read is the only thing that can name them, and a merge call attempted
-anyway logs `failed` for a pair that earned something better.
+canonical objects can be merged.` So none of the resolved statuses (`already_merged`,
+`merged_elsewhere`, `primary_merged_away`, `primary_missing`, `secondary_missing`) can be read
+from the merge response; the pre-merge read is the only thing that can name them, and a merge call
+attempted anyway logs `failed` for a pair that earned something better. This generalises against
+the absorbed id rather than the side it was on: a pair whose primary was absorbed by its own
+secondary answers the same 400, with the secondary named as the forward reference.
 
 **The merge call answers 404 for an absent id, without saying which side.** A missing primary and
 a missing secondary produce the same `404 OBJECT_NOT_FOUND` and `Failed to find objects with
@@ -118,5 +121,4 @@ provided ids`. `primary_missing` and `secondary_missing` are therefore also the 
 **A successful merge returns the primary, and its whole record.** Status 200 with `id`,
 `createdAt`, `updatedAt`, `archived`, `url` and the full property set, the id being the primary's.
 The absorbed id appears in `hs_merged_object_ids` and `hs_calculated_merged_vids` on the returned
-record. That is the primary ID preservation the design relies on, observed again rather than taken
-on trust.
+record. That is the primary ID preservation the design relies on.
