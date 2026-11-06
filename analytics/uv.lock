@@ -30,7 +30,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "databricks-sdk", specifier = ">=0.158.0" },
+    { name = "databricks-sdk", specifier = ">=0.160.0" },
     { name = "databricks-sql-connector", specifier = ">=4.8.0" },
     { name = "pandas", specifier = ">=3.1.0,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -271,7 +271,7 @@ wheels = [
 
 [[package]]
 name = "databricks-sdk"
-version = "0.158.0"
+version = "0.160.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -280,9 +280,9 @@ dependencies = [
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/97/4cd3f7b54ba16f8326efef15c56f9d0fb36349c6f4b70b0bea9c2ab5772e/databricks_sdk-0.158.0.tar.gz", hash = "sha256:977a9338995cf10bbe2d66bdc64a53e0c4b0dfd4cf3b1c9d36f4aca9bdac55c6", size = 1179896, upload-time = "2026-10-29T05:24:45.177Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/1a/a2bb0cd95a5dc47701cd8844acc39c82ecd02d9311e1d1df08688044ca86/databricks_sdk-0.160.0.tar.gz", hash = "sha256:f63c65cdf0240f62a94667f6c6727f510f60df61cbb73fc7e5381b59b1474ae4", size = 1209795, upload-time = "2026-11-03T04:24:01.582Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/55/c28bb321f5c3323ad90f8c7bc2e055c5b4d483f0f21bc249201531a1fe2e/databricks_sdk-0.158.0-py3-none-any.whl", hash = "sha256:fc4a4b215734648114e8c1799e80f8343fffaf58a046b05671a1aeadfd342de8", size = 1121428, upload-time = "2026-10-29T05:24:43.308Z" },
+    { url = "https://files.pythonhosted.org/packages/69/b2/dbd3795e09aa4ca7f0697acec9e5f9be06f55761305682641b9069c40fc5/databricks_sdk-0.160.0-py3-none-any.whl", hash = "sha256:c17f98be10f3a3f4624477d802018a187c72be3c7ef02ef041bb8c74ad611569", size = 1151379, upload-time = "2026-11-03T04:23:59.894Z" },
 ]
 
 [[package]]
