@@ -845,6 +845,34 @@ models:
           The L2 commercial Individual_Id on consumer-only rows; null on voter
           rows.
 
+  - name: int__l2_district_county_lean
+    description: >
+      Voters per L2 district and county, with how many have an independent-openness
+      score and how many are flagged under the single-seat, open-seat setup. Aggregated
+      so no voter-level value leaves it. Feeds win_election_geography; built monthly
+      with the L2 refresh because joining every district voter is the costly step.
+      Statewide districts have no district-voter rows, so they are absent here.
+    config:
+      materialized: table
+      tags: ["monthly"]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [district_id, county]
+    columns:
+      - name: district_id
+        data_tests:
+          - not_null
+      - name: county
+        description: The voter's L2 county; null when L2 has none.
+      - name: voters
+        data_tests:
+          - not_null
+      - name: scored_voters
+        description: Voters with an independent-openness score.
+      - name: flagged_voters
+        description: Scored voters flagged open to an independent (single seat, open seat).
+
   - name: int__l2_area_district_profiles
     description: >
       For each census block, block group, tract and ZIP+4 in a state with an L2
