@@ -35,18 +35,6 @@ Any job that records what it did (sends, merges, loads), in any subproject:
 
 The reasons and the query patterns are in `dbt/project/README.md`.
 
-## ai-rules submodule
-
-`ai-rules/` is a git submodule (`thegoodparty/ai-rules`). After a fresh clone:
-
-```bash
-git submodule update --init --recursive
-```
-
-Don't edit files under `ai-rules/` directly. Changes belong in the submodule's upstream repo.
-
-When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or any code-review pass), consult the rule files under `ai-rules/` in addition to this file and the per-subproject `CLAUDE.md` files.
-
 ## pre-commit
 
 Driven by `pre-commit`:

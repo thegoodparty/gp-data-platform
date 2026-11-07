@@ -15,21 +15,3 @@ parameter, so there is no hardcoded entity logic. The matcher reads a prematch
 table (CSV or Databricks) and writes clustered + pairwise output. The person
 lane also reads dbt's deterministic links (`--links`) and clusters over them
 together with the scored pairs; see `pipeline.cluster_with_links`.
-
-## ai-rules submodule
-
-The `ai-rules/` submodule (`thegoodparty/ai-rules`) lives at the **monorepo
-root**, not under `matcha/`. It carries the org-wide AI context layer (system
-map, repo index, cross-repo flows, templates) and the review-time critics.
-After a fresh clone:
-
-```bash
-git submodule update --init --recursive
-```
-
-Do not edit files under `ai-rules/` directly. Changes belong in the submodule's
-upstream repo.
-
-When reviewing changed code under `matcha/` (for example during `/simplify`,
-`/review`, or any code-review pass), consult the rule files under the root
-`ai-rules/` alongside this file.
