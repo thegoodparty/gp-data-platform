@@ -243,6 +243,13 @@ models:
       The voter file, with l2_manual_district_assignments applied and, for each
       (state, district type) district_map_adoption puts on its proposed map, the
       proposed map in place of the current column.
+    columns:
+      - name: Voters_BirthYearMonth
+        description: >
+          Year and month of birth, derived from Voters_BirthDate. Open by design.
+        config:
+          databricks_tags:
+            open: "true"
 
   - name: int__voter_turnout_inference
     description: >
