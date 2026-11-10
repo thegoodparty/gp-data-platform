@@ -554,7 +554,7 @@ requires-dist = [
     { name = "click" },
     { name = "databricks-sdk", specifier = ">=0.128.0,<1.0.0" },
     { name = "databricks-sql-connector", specifier = ">=4.4.0,<5.0.0" },
-    { name = "duckdb" },
+    { name = "duckdb", specifier = ">=1.5.4,<2.0.0" },
     { name = "nameparser" },
     { name = "pandas", specifier = ">=2.3.1,<4.0.0" },
     { name = "pyarrow" },
