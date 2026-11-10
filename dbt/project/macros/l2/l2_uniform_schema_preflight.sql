@@ -174,7 +174,11 @@ Fallback: override catalog with --vars '{"preflight_metadata_catalog":"<catalog>
             {% do expected_primary_columns.append(source_column_name) %}
         {% endif %}
     {% endfor %}
-    {% for derived_column_name in ["state_postal_code", "state_from_lalvoterid"] %}
+    {% for derived_column_name in [
+        "state_postal_code",
+        "state_from_lalvoterid",
+        "Voters_BirthYearMonth",
+    ] %}
         {% if derived_column_name not in expected_primary_columns %}
             {% do expected_primary_columns.append(derived_column_name) %}
         {% endif %}
