@@ -38,6 +38,7 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 - Is the question causal, correlational, or descriptive? Is the user treating it as one when it's actually another?
 - Is the outcome variable downstream of the "treatment" in a way that creates selection (e.g., "do users who send a message win more" — sending a message may be a proxy for being an engaged candidate, not a cause of winning)?
 - Is there a clear decision attached, or is this fishing?
+- Does the target variable match what the deliverable is called? A new data capability is usually a filter on the existing question, not the new target: a "power-user report" framed with corroboration as its target had to be rewritten.
 - Does the chosen outcome metric actually move the falsification statement? If the falsification is framed on one construct (e.g. "do users return across months") but the metric measures another (e.g. within-month active days), the brief is internally inconsistent — a falsifying result is unreachable by construction. State the metric and the falsification side by side and confirm the metric can move the falsification, before any query. This is a paper check, not a data check: it costs nothing here and is the cheapest place to catch a construct-validity error.
 
 **Population and eligibility:**
@@ -60,6 +61,8 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 ## Pre-brief verification checklist
 
 Before producing the final brief, verify the following against the actual codebase and data. Don't trust runbook references alone.
+
+**Query before you ask.** If a scoping fork turns on a fact about the data (how many users clear a gate, cohort size, lead time), pull that distribution first and bring the choice back with numbers. Save open questions for product-intent forks data cannot settle.
 
 **Keep framing queries coarse.** Verification and fork-sizing queries stop at existence, coverage windows, and order-of-magnitude counts — enough to resolve a fork, never the analysis's own deliverable. On a simple census-style metric the exact per-bucket table *is* the answer: computing it during framing empties the approval gate, because by the time the human is asked, there is nothing left for their decision to redirect. Leave exact tables to execution.
 

@@ -14,7 +14,7 @@ These apply by default to Serve-product analyses. Document deviations in your pr
 |---|---|
 | Unit of analysis | User (`user_id`); Serve has no candidacy-version grain |
 | Canonical population | `users_serve_base` filtered `is_serve_user` (1,869 as of 2026-07, a figure that still includes internal accounts; currently 1:1 with `eo_activated_at IS NOT NULL`). A Serve office a candidate win created is excluded until its holder starts it (`serve_start_status`); see the gotcha "A Serve organization is not a Serve user" |
-| Population counts | Any reported count of Serve users excludes `@goodparty.org` accounts (staff/test), same convention as Win. `is_serve_user` alone retains them — apply the email exclusion on top. |
+| Population counts | Any reported count of Serve users excludes `@goodparty.org` accounts (staff/test), same convention as Win. The `is_serve_user` flag alone retains them, so apply the email exclusion on top when reading the column; the governed Serve Users metric already applies it in its measure. |
 | Engagement definition | **Broad Serve engagement** (below) is the analysis default; poll-anchored series (`users_serve_activity` MAU, `is_active_eo`) are continuity-only |
 | Outcome | People Served (decision level); retention on broad engagement (per user); re-election parked until officeholder data lands |
 | Engagement time-scope | Events at `event_time >= eo_activated_at` — pre-activation activity is campaigning (Win), not serving; ~all Serve users are also Win candidates |
@@ -98,8 +98,7 @@ reviewer doc pointers, Serve's are:
 
 ## Source pointers
 
-- `analytics/planning/2026-07-14-serve-scoping-prep.md` (git-excluded) — the DATA-2115
-  scoping profile, forks, and decisions this file is seeded from.
+- DATA-2115 (ClickUp): the scoping profile, forks, and decisions this file is seeded from.
 - `dbt/project/models/marts/analytics/users_serve_base.sql` and
   `dbt/project/models/intermediate/civics/int__serve_active_user.sql` — the governed
   definitions, with single-source-of-truth comments.

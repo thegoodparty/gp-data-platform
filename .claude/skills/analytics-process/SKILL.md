@@ -50,6 +50,7 @@ Common work that should not be reinvented each run:
 ## Reference docs
 
 - [`references/analysis-principles.md`](references/analysis-principles.md) — the six principles every finding is held to before it ships.
+- [`references/practices.md`](references/practices.md): the everyday mechanics behind the principles (populations, statistics, dating numbers, checking the work).
 - [`references/framing.md`](references/framing.md) — the framing routine (persona, question set, pre-brief verification) the orchestrator runs in step 1.
 - [`references/pipeline.md`](references/pipeline.md) — stages, agents, handoff contracts (descriptive, not active).
 - [`references/methodology.md`](references/methodology.md) — product-agnostic discipline: scoping checklist, folder patterns, query patterns, binning, verification protocol. Product defaults (scoping decisions, cohorts, working-set builder) live in the product knowledge skill's `methodology_defaults.md`.
