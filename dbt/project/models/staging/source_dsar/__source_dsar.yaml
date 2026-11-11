@@ -10,4 +10,17 @@ sources:
 
     tables:
       - name: suppressed_identifiers
+        columns:
+          - name: subject_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: identifier_value
+            config:
+              meta:
+                sensitive: confidential
+          - name: notes
+            config:
+              meta:
+                sensitive: confidential
         description: One row per identifier per request. The dsar-deletion skill describes intake.

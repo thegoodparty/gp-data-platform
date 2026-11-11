@@ -11,7 +11,9 @@ returns
         nickname:string
     >
 language
-    python environment(dependencies = '["nameparser"]', environment_version = 'None')
+    python environment(
+        dependencies = '["nameparser>=2,<3"]', environment_version = 'None'
+    )
 as $$
 if not full_name:
     return None

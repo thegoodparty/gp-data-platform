@@ -20,6 +20,35 @@ sources:
       - name: amplitude_api_cohorts
         description: raw data load from amplitude api cohorts
       - name: amplitude_api_events
+        columns:
+          - name: ip_address
+            config:
+              meta:
+                sensitive: identifier
+          - name: location_lat
+            config:
+              meta:
+                sensitive: confidential
+          - name: location_lng
+            config:
+              meta:
+                sensitive: confidential
+          - name: adid
+            config:
+              meta:
+                sensitive: confidential
+          - name: idfa
+            config:
+              meta:
+                sensitive: confidential
+          - name: user_properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: event_properties
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from amplitude api events
       - name: amplitude_api_events_list
         description: raw data load from amplitude api events list
@@ -51,6 +80,11 @@ sources:
             warn_after: { count: 2, period: day }
             error_after: { count: 5, period: day }
       - name: anthropic_api_user_cost_report
+        columns:
+          - name: actor
+            config:
+              meta:
+                sensitive: confidential
         description: >
           One row per seat user per day of Claude cost from
           `/v1/organizations/analytics/user_cost_report` (bucket_width=1d, ungrouped).
@@ -59,6 +93,11 @@ sources:
             warn_after: { count: 2, period: day }
             error_after: { count: 5, period: day }
       - name: anthropic_api_users
+        columns:
+          - name: user
+            config:
+              meta:
+                sensitive: confidential
         description: >
           One row per seat user per day of Claude activity from
           `/v1/organizations/analytics/users`; the connector stamps the requested
@@ -178,12 +217,38 @@ sources:
         config:
           freshness: null
       - name: gp_api_db_campaign
+        columns:
+          - name: data
+            config:
+              meta:
+                sensitive: confidential
+          - name: details
+            config:
+              meta:
+                sensitive: confidential
+          - name: vendor_ts_data
+            config:
+              meta:
+                sensitive: confidential
+          - name: campaign_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: formatted_address
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_experiment_assignment
         description: raw data load from gp_api_db postgres db from table `campaign_experiment_assignment`
       - name: gp_api_db_chat_conversation
         description: raw data load from gp_api_db postgres db from table `chat_conversation`
       - name: gp_api_db_chat_message
+        columns:
+          - name: content
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `chat_message`
       - name: gp_api_db_meeting_briefing
         description: raw data load from gp_api_db postgres db from table `meeting_briefing`
@@ -200,12 +265,60 @@ sources:
       - name: gp_api_db_elected_office
         description: raw data load from gp_api_db postgres db from table `elected_office`
       - name: gp_api_db_ecanvasser
+        columns:
+          - name: api_key
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `ecanvas`
       - name: gp_api_db_ecanvasser_contact
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: home_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: mobile_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: date_of_birth
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `ecanvas_contact`
       - name: gp_api_db_ecanvasser_house
+        columns:
+          - name: address
+            config:
+              meta:
+                sensitive: confidential
+          - name: latitude
+            config:
+              meta:
+                sensitive: confidential
+          - name: longitude
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `ecanvasser_house`
       - name: gp_api_db_ecanvasser_interaction
+        columns:
+          - name: notes
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
         config:
           freshness: null
@@ -213,10 +326,20 @@ sources:
       # door-knocking channel is still behind a feature flag, so its streams go
       # legitimately quiet for days and opt out of the freshness default.
       - name: gp_api_db_contact_interaction_door_knock
+        columns:
+          - name: note
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `contact_interaction_door_knock`
         config:
           freshness: null
       - name: gp_api_db_contact_interaction_phone_banking
+        columns:
+          - name: note
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `contact_interaction_phone_banking`
       - name: gp_api_db_contact_status_event
         description: raw data load from gp_api_db postgres db from table `contact_status_event`
@@ -225,24 +348,89 @@ sources:
         config:
           freshness: null
       - name: gp_api_db_door_knocking_stop
+        columns:
+          - name: lat
+            config:
+              meta:
+                sensitive: confidential
+          - name: lng
+            config:
+              meta:
+                sensitive: confidential
+          - name: display_address
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `door_knocking_stop`
         config:
           freshness: null
       - name: gp_api_db_door_knocking_stop_target
+        columns:
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: address_key
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `door_knocking_stop_target`
         config:
           freshness: null
       - name: gp_api_db_phone_banking_list
         description: raw data load from gp_api_db postgres db from table `phone_banking_list`
       - name: gp_api_db_phone_banking_list_entry
+        columns:
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
         description: raw data load from gp_api_db postgres db from table `phone_banking_list_entry`
       - name: gp_api_db_phone_banking_list_entry_person
+        columns:
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `phone_banking_list_entry_person`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         config:
           freshness: null
       - name: gp_api_db_tcr_compliance
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: candidate_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: filing_address_line1
+            config:
+              meta:
+                sensitive: confidential
+          - name: filing_address_line2
+            config:
+              meta:
+                sensitive: confidential
+          - name: postalAddress
+            config:
+              meta:
+                sensitive: confidential
+          - name: pin_delivery_destination
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
         description: raw data load from gp_api_db postgres db from table `outreach`
@@ -292,14 +480,69 @@ sources:
       - name: gp_api_db_poll_issues
         description: raw data load from gp_api_db postgres db from table `poll_issues`
       - name: gp_api_db_poll_individual_message
+        columns:
+          - name: person_cell_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: content
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `poll_individual_message`
       - name: gp_api_db_organization
         description: raw data load from gp_api_db postgres db from table `organization`
       - name: gp_api_db_user
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: password
+            config:
+              meta:
+                sensitive: confidential
+          - name: password_reset_token
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `user`
       - name: gp_api_db_website
         description: raw data load from gp_api_db postgres db from table `website`
       - name: gp_api_db_website_contact
+        columns:
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: message
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `website_contact`
       - name: gp_api_db_website_view
         description: raw data load from gp_api_db postgres db from table `website_view`
@@ -325,8 +568,62 @@ sources:
         config:
           freshness: null
       - name: hubspot_api_companies
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_candidate_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_candidate_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_address
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_firstname
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_lastname
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_address
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_birth_date
+            config:
+              meta:
+                sensitive: confidential
         description: >
           raw data load from HubSpot data model. Never reset this stream or run
           Airbyte's "refresh and remove records" on it: a contact HubSpot merged
@@ -334,10 +631,133 @@ sources:
           its survivor (int__hubspot_contact_merges). Removing those rows
           re-mints every person one of them mints, with no PersonMerge forward.
       - name: hubspot_api_deals
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_deal_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_description
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_last_message_received_content
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_cross_account_note
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_last_gs_shared_message
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from HubSpot data model
       - name: hubspot_api_engagements
+        columns:
+          - name: metadata
+            config:
+              meta:
+                sensitive: confidential
+          - name: bodyPreview
+            config:
+              meta:
+                sensitive: confidential
+          - name: bodyPreviewHtml
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_from
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_to
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_cc
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_bcc
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_guestEmails
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_toNumber
+            config:
+              meta:
+                sensitive: identifier
+          - name: metadata_fromNumber
+            config:
+              meta:
+                sensitive: identifier
+          - name: metadata_recordingUrl
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata_internalMeetingNotes
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from HubSpot data model
       - name: hubspot_api_engagements_calls
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_call_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_call_summary
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_call_to_number
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_hs_call_from_number
+            config:
+              meta:
+                sensitive: identifier
+          - name: properties_hs_call_recording_url
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_call_video_recording_url
+            config:
+              meta:
+                sensitive: confidential
         description: >
           HubSpot Call engagements ingested via the Airbyte HubSpot
           source's "Engagements Calls" stream. One row per call activity
@@ -350,13 +770,64 @@ sources:
       - name: hubspot_api_owners
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_content
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_notes
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_last_email_details
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_all_associated_contact_emails
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_all_associated_contact_phones
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_all_associated_contact_mobilephones
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_all_associated_contact_firstnames
+            config:
+              meta:
+                sensitive: confidential
+          - name: properties_hs_all_associated_contact_lastnames
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from HubSpot data model
       - name: hubspot_api_feedback_submissions
+        columns:
+          - name: properties
+            config:
+              meta:
+                sensitive: confidential
         description: >
           HubSpot Feedback Survey submissions ingested via custom Airbyte
           Connector Builder source. Contains responses from all feedback
           surveys (PMF, user satisfaction, research compensation, etc.).
       - name: techspeed_gdrive_candidates
+        columns:
+          - name: date_of_birth_mmddyyyy
+            config:
+              meta:
+                sensitive: confidential
+          - name: date_of_birth_mm_dd_yyyy_
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
@@ -1491,6 +1962,11 @@ sources:
       dated name so the original can be dropped. No freshness check on purpose.
     tables:
       - name: airbyte_internal__airbyte_source_raw__stream_gp_api_db_campaign_20260918
+        columns:
+          - name: _airbyte_data
+            config:
+              meta:
+                sensitive: confidential
         description: >
           Archive of Airbyte's insert-only raw stream for the gp_api_db campaign
           table, copied after the Databricks destination's Direct-Load upgrade
@@ -1516,6 +1992,15 @@ sources:
           unmatched records.
 
       - name: clustered_people
+        columns:
+          - name: phone_surname_groups
+            config:
+              meta:
+                sensitive: confidential
+          - name: birth_date
+            config:
+              meta:
+                sensitive: confidential
         # Jinja so a dated vintage can be built and audited in dev before the
         # matcha_er DAG swaps it live:
         #   dbt build --vars '{clustered_people_identifier: clustered_people_20261007}'
@@ -1785,6 +2270,19 @@ sources:
       - name: quickbooks_vendors
         description: Raw QuickBooks Online vendors; carries contact PII (email, phone, billing address).
       - name: stripe_api_accounts
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: individual
+            config:
+              meta:
+                sensitive: confidential
+          - name: external_accounts
+            config:
+              meta:
+                sensitive: confidential
         description: Stripe account information and settings
         config:
           freshness: null
@@ -1799,12 +2297,74 @@ sources:
       - name: stripe_api_balance_transactions
         description: Stripe balance transaction history and account movements
       - name: stripe_api_charges
+        columns:
+          - name: receipt_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: card
+            config:
+              meta:
+                sensitive: confidential
+          - name: source
+            config:
+              meta:
+                sensitive: confidential
+          - name: payment_method_details
+            config:
+              meta:
+                sensitive: confidential
+          - name: receipt_url
+            config:
+              meta:
+                sensitive: confidential
         description: Stripe charge transactions and payment processing details
       - name: stripe_api_checkout_sessions
         description: >
           Stripe Checkout Sessions. The connection syncs only id, status, mode,
           livemode, payment intent, metadata, amount and timestamps.
       - name: stripe_api_customers
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: confidential
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: address
+            config:
+              meta:
+                sensitive: confidential
+          - name: shipping
+            config:
+              meta:
+                sensitive: confidential
+          - name: cards
+            config:
+              meta:
+                sensitive: confidential
+          - name: sources
+            config:
+              meta:
+                sensitive: confidential
+          - name: tax_info
+            config:
+              meta:
+                sensitive: confidential
+          - name: tax_info_verification
+            config:
+              meta:
+                sensitive: confidential
+          - name: metadata
+            config:
+              meta:
+                sensitive: confidential
         description: Stripe customer records and account information
       - name: stripe_api_customer_balance_transactions
         description: Stripe customer balance transaction history and credit movements
@@ -1821,8 +2381,50 @@ sources:
       - name: stripe_api_invoice_line_items
         description: Stripe invoice line items and detailed billing breakdowns
       - name: stripe_api_invoices
+        columns:
+          - name: customer_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: customer_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: customer_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: customer_address
+            config:
+              meta:
+                sensitive: confidential
+          - name: customer_shipping
+            config:
+              meta:
+                sensitive: confidential
+          - name: shipping_details
+            config:
+              meta:
+                sensitive: confidential
+          - name: customer_tax_ids
+            config:
+              meta:
+                sensitive: confidential
+          - name: hosted_invoice_url
+            config:
+              meta:
+                sensitive: confidential
+          - name: invoice_pdf
+            config:
+              meta:
+                sensitive: confidential
         description: Stripe invoice records and billing information
       - name: stripe_api_payouts
+        columns:
+          - name: bank_account
+            config:
+              meta:
+                sensitive: confidential
         description: Stripe payout transactions to connected accounts
       - name: stripe_api_plans
         description: Stripe subscription plans and pricing tiers
