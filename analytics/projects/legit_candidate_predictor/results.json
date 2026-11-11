@@ -1,0 +1,22 @@
+{
+  "executed": "2026-08-05",
+  "sklearn": "1.9.0",
+  "n": 20480,
+  "positive_rate": 0.5937,
+  "pooled": {
+    "lr": {
+      "roc_auc": 0.857,
+      "pr_auc": 0.8725
+    },
+    "hgb": {
+      "roc_auc": 0.875,
+      "pr_auc": 0.8878
+    }
+  },
+  "decidable_population": {
+    "n": 18021,
+    "base_rate": 0.673,
+    "hgb_roc_auc": 0.8258,
+    "lr_roc_auc": 0.8005
+  }
+}

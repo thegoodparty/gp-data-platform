@@ -80,3 +80,12 @@ entity_resolution/results/*.csv
 
 # Claude Code scheduled-tasks lock — machine/session-local runtime state, never tracked.
 .claude/scheduled_tasks.lock
+
+# Legit candidate predictor local files. The input caches and generated reports can hold names,
+# and the repo is public; the 08-14 inputs live in the Unity Catalog volume named in the README.
+analytics/projects/legit_candidate_predictor/datasets/
+analytics/projects/legit_candidate_predictor/profiles/
+analytics/projects/legit_candidate_predictor/intake/
+analytics/projects/legit_candidate_predictor/notebooks/
+analytics/projects/legit_candidate_predictor/missingness_report.md
+analytics/projects/legit_candidate_predictor/era_drift_report.md
