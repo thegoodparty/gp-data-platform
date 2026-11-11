@@ -23,7 +23,7 @@ Before writing any code:
 2. **What's the unit of analysis?** Candidacy / user / campaign-version / event. Mismatching grain is the most common methodological bug.
 3. **What's the time window?** Apply at the right grain. Election-cycle vs engagement-feature windows may differ. A flat calendar filter is not a neutral choice: if two populations sit at different points in their lifecycle, the same filter hands one a complete outcome and the other a truncated one. Give the **outcome** variable the point-in-time discipline that model features and labels already get. An outcome the analysis invented gets no PIT scrutiny by default, which is how DATA-2247 shipped five versions comparing a fully-observed frame against one truncated 96 days before its elections.
 4. **What's the comparison baseline?** Cohort A vs cohort B requires both to be in scope, and requires a **comparability pre-flight**: before any cut runs, print both populations' distributions on every dimension the comparison rests on (observation window, lead time or maturity, base rates) as a table, not a sentence. DATA-2247 compared its two frames across five report versions before anyone printed their lead times side by side: 84 days median against 421. An incomparability nobody has measured reads exactly like a finding.
-5. **What confounders matter?** Office level, ICP, Pro, incumbency, opponent count. List explicitly.
+5. **What confounders matter?** Office level, ICP, Pro, incumbency, opponent count. List explicitly. If a model score is in play, a variable that fed the score cannot be evidence about the group it defines; reserve any variable you will want to make claims about for an analysis-tier model, and keep model exclusion lists in code, never retyped per run.
 6. **What does success look like?** A specific number / chart you want to produce, OR a specific question to answer.
 
 If any of these is ambiguous, surface it to the analytics owner via `AskUserQuestion` (or equivalent) BEFORE writing code. Do not list as "open questions" in the deliverable — that wastes a review cycle.
@@ -91,9 +91,14 @@ For inspection / scoping queries, use `dbt show --inline` (from `dbt/project/`) 
 dbt show --inline "SELECT ... FROM goodparty_data_catalog.<schema>.<table> WHERE ..." --limit 50
 ```
 
-Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve to stale dev artifacts. Prod schemas: `dbt` (staging + intermediates; the legacy `dbt_staging` schema is being retired, everything is consolidating into `dbt`), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
+Hit `goodparty_data_catalog.*` directly. `ref()` resolves to your dev schema whenever a build of the model exists there, however stale: one dev `candidacy` returned 9,201 rows against 50,249 in prod, and the wrong answer did not look wrong. Prod schemas: `dbt` (staging + intermediates; the legacy `dbt_staging` schema is being retired, everything is consolidating into `dbt`), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
 
 For larger query results that exceed `dbt show` truncation, run SQL through the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query(sql) -> DataFrame`, authenticates via the `~/.databrickscfg` profile, set up with `databricks auth login`). Pull-script pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
+
+### Query traps
+
+- **NULL-unsafe exclusions.** `not (col = 'x')` silently drops every row where `col` is NULL, often the oldest era of an event. Write `coalesce(col, '') <> 'x'` or `col is distinct from 'x'`, and count the NULLs in the excluded property before quoting a number. This once read Product Output as 2,178 against a true 2,513.
+- **Spark decimals in pandas.** Decimal division (`x * 1.0 / nullif(y, 0)`) arrives in pandas as `object` dtype and breaks plots and numpy. `CAST(... AS DOUBLE)` in the SQL.
 
 ## Binning and thresholds
 
@@ -118,8 +123,9 @@ A scout / analysis is "done" when:
 1. Every numeric claim in the deliverable points to a notebook cell (or query) that reproduces it.
 2. Cycle / scope parameters are parameterized so the work re-runs under a different scope.
 3. Open scoping questions are RESOLVED (not deferred to the reader).
-4. Reusable insights (joins, gotchas, source-system precedence rules) that emerged are routed through the calibration pass (step 5), not written directly into the reference docs.
-5. **Calibration pass done.** Findings that pass the promotion test are triaged into a dated `CALIBRATION_<date>.md`, observations below that bar are appended to the shared `analytics/runbook/CANDIDATES.md` ledger, OR you have explicitly recorded that none were needed — the expected outcome of most runs (see [calibration.md](calibration.md)). The closing step is required, not optional — it's how the process self-corrects across runs.
+4. Every number is dated and checked per [practices.md](practices.md) (environment and timestamp, row counts against the prior count). Pin `current_timestamp()` beside activation counts: `users_win_base` reads hourly Amplitude loads and moves within a session.
+5. Reusable insights (joins, gotchas, source-system precedence rules) that emerged are routed through the calibration pass (item 6), not written directly into the reference docs.
+6. **Calibration pass done.** Findings that pass the promotion test are triaged into a dated `CALIBRATION_<date>.md`, observations below that bar are appended to the shared `analytics/runbook/CANDIDATES.md` ledger, OR you have explicitly recorded that none were needed — the expected outcome of most runs (see [calibration.md](calibration.md)). The closing step is required, not optional — it's how the process self-corrects across runs.
 
 ## Source pointers & references
 

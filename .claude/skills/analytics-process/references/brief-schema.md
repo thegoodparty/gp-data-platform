@@ -46,7 +46,7 @@ data_provenance:
     Actual MAX of the time column.
   post_merge_swap: |
     If schema_status = dev or pending_merge: what to change after merge
-    (e.g., "swap WIN_ACTIVITY_WEEKLY_SCHEMA from 'private_tristan' to 'dbt'").
+    (e.g., "swap WIN_ACTIVITY_WEEKLY_SCHEMA from 'private_<you>' to 'dbt'").
 
 eligibility:
   tenure_requirement: |
