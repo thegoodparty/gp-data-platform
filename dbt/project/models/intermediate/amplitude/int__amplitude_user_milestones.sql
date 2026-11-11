@@ -361,15 +361,23 @@ with
 
             -- Start and end of onboarding across both flows. The flow launched
             -- 2026-06-24 opens on Welcome and ends on the pledge, with no poll.
-            min(
-                case
-                    when
-                        event_type in (
-                            'Serve Onboarding - Getting Started Viewed',
-                            'Serve Onboarding - Welcome Viewed'
-                        )
-                    then event_time
-                end
+            -- A user whose first onboarding event is not one of the start events
+            -- (for example, a later flow that opens mid-funnel) starts at that
+            -- first onboarding event, so a completed user always has a start.
+            coalesce(
+                min(
+                    case
+                        when
+                            event_type in (
+                                'Serve Onboarding - Getting Started Viewed',
+                                'Serve Onboarding - Welcome Viewed'
+                            )
+                        then event_time
+                    end
+                ),
+                min(
+                    case when event_type like 'Serve Onboarding - %' then event_time end
+                )
             ) as serve_onboarding_started_at,
             min(
                 case
