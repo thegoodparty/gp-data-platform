@@ -1,6 +1,6 @@
 """Shared fakes: in-memory stand-ins for a Databricks connection and an HTTP transport.
 
-Fakes over mocks (ai-rules/test-engineer.md #6): these behave like the real thing at
+Fakes over mocks: these behave like the real thing at
 the boundary retl talks to, so a test failure means retl's own logic is wrong, not
 that a mock's script drifted from what the real dependency does.
 """

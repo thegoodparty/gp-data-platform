@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "Reverse-ETL: daily diff of a Databricks desired-state model against a destination, keyed on a stable person id."
 requires-python = ">=3.14"
 dependencies = [
-    "databricks-sdk>=0.158.0",
+    "databricks-sdk>=0.162.0",
     # pyarrow lets the connector fetch results as Arrow/CloudFetch; without it, large reads are much slower.
-    "databricks-sql-connector[pyarrow]>=4.8.0",
+    "databricks-sql-connector[pyarrow]>=4.9.0",
     "requests>=2.32.0",
     "tenacity>=9.2.1",
 ]
