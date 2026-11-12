@@ -1152,7 +1152,12 @@ models:
         description: Model-generated viability rating for the candidacy
 
       - name: win_number
-        description: Estimated votes needed to win
+        description: >
+          Votes needed to win, from the 2023-2025 HubSpot archive only. Empty
+          for every 2026 and later election (measured 2026-11-12): gp-api stores no win
+          number and computes it live from election-api projected turnout.
+          Rebuild it that way (win-analytics-knowledge sources.md, "Votes
+          needed to win is not stored") rather than reading this column.
 
       - name: primary_election_date
         description: Date of the primary election
@@ -1300,7 +1305,12 @@ models:
         description: Model-generated viability rating for the candidacy
 
       - name: win_number
-        description: Estimated votes needed to win
+        description: >
+          Votes needed to win, from the 2023-2025 HubSpot archive only. Empty
+          for every 2026 and later election (measured 2026-11-12): gp-api stores no win
+          number and computes it live from election-api projected turnout.
+          Rebuild it that way (win-analytics-knowledge sources.md, "Votes
+          needed to win is not stored") rather than reading this column.
 
       - name: icp_office_win
         description: Whether the office meets ICP criteria for the Win product
