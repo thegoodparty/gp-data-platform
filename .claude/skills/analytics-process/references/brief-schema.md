@@ -111,7 +111,7 @@ known_concerns:
     Limitations of the data or design.
 
 execution_notes:
-  preferred_format: notebook  # default
+  preferred_format: notebook  # default; or script, findings_page, or a combination
   output_location: |
     Where the executed analysis should be saved.
   reruns: |

@@ -91,6 +91,7 @@ Build each reviewer's invocation prompt from this template — and nothing more:
 
 - **Brief:** YAML, format in [brief-schema.md](brief-schema.md). For ad-hoc work it lands at `analytics/ad_hoc/<YYYY-MM-DD>_<brief_id>_brief.yaml`; for scout projects, alongside the project notebook. The brief is durable — it travels with the executed notebook so the framing is retrievable later.
 - **Executed notebook:** lands next to its brief (ad-hoc) or under `analytics/projects/<project>/notebooks/` (scout). Per-contributor working artifacts are gitignored by default; promote a specific analysis with `git add -f`.
+- **Findings page** (when the brief asks for one): built after the reviews by a `build_page.py` beside the notebook, from the same analysis functions, and published as a private artifact. Layout and design in [findings-page.md](findings-page.md).
 - **Review notes:** delivered in-conversation; durable lessons are routed via the calibration log (see [calibration.md](calibration.md)).
 
 ## Closing the loop

@@ -55,5 +55,6 @@ Common work that should not be reinvented each run:
 - [`references/pipeline.md`](references/pipeline.md) — stages, agents, handoff contracts (descriptive, not active).
 - [`references/methodology.md`](references/methodology.md) — product-agnostic discipline: scoping checklist, folder patterns, query patterns, binning, verification protocol. Product defaults (scoping decisions, cohorts, working-set builder) live in the product knowledge skill's `methodology_defaults.md`.
 - [`references/brief-schema.md`](references/brief-schema.md) — the analysis-brief YAML contract + amend-vs-reframe rule.
+- [`references/findings-page.md`](references/findings-page.md) — the optional HTML findings page for readers outside the data team: layout (TL;DR, recommendations, appendix with the question, framing and assumptions) and design rules.
 - [`references/calibration.md`](references/calibration.md) — the calibration-log convention, the candidates ledger, the ledger read-back, consolidation mode, and the over-calibration / bloat cautions.
 - [`references/event-lifecycle-assets.md`](references/event-lifecycle-assets.md) — the omni event-lifecycle assets (provenance CSV, health log, gp-meta): cross-product source material consumed by the framing version-continuity check and every product's knowledge skill.
