@@ -1,44 +1,40 @@
-"""Load the Bifrost gateway's request log into the warehouse.
+"""Land the Bifrost gateway's request log in the warehouse from the export's Parquet files.
 
-The gateway (maximhq/bifrost, pinned at ``transports/v2.4.0``) keeps one row per model request
-in its own Postgres ``logs`` table, with the tokens and the cost it computed for that request.
-That table is reachable only from inside the workbench account, so the data reaches us as a
-daily Parquet export an in-VPC job writes to S3 (``thegoodparty/ops`` owns that job). This
-module is the other half: Parquet in S3 to an append-only landing table in ``airflow_source``.
+The gateway (maximhq/bifrost, pinned at ``transports/v2.4.0``) keeps one row per model request in
+its own Postgres ``logs`` table, with the tokens and the cost it computed for that request. That
+table is reachable only from inside the workbench account, so a job there writes Parquet to S3
+(``thegoodparty/ops`` owns it) and this module lands those files in ``airflow_source``.
 
 The export/loader contract
 --------------------------
-**Layout.** ``s3://<bucket>/<prefix>/dt=<YYYY-MM-DD>/part-*.parquet``, one partition per UTC day
-of ``timestamp``, plus ``dt=<YYYY-MM-DD>/_SUCCESS`` written only once that day is complete. A
-day without the marker is skipped: an export run re-emits whole days, so a load that overlaps
-one would otherwise read a half-written partition, and nothing on the data side would notice.
+**The export never rewrites a file.** Each run writes one new Parquet object whose name carries
+the run's timestamp, holding that run's window of rows (7 days, or all 90 on the monthly run), in
+a single PUT. Every row carries ``exported_at``. Nothing is partitioned by day and nothing is
+rewritten in place, which means:
 
-**Projection.** ``LANDING_COLUMNS`` below is the contract. It is 28 of the source table's 121
-columns; the rest are payload and debug columns (``input_history``, ``output_message``,
-``token_usage``, ``raw_response`` and friends) that content logging being off makes empty today
-and that we do not want to start carrying if that setting ever changes. The export's read-only
-Postgres role holds a *column-level* SELECT over exactly these, so the projection holds at the
-source rather than only in the query.
+- a run's file is complete or absent, so there is no half-written day to skip;
+- no completion marker is needed, because a file only appears once it is whole;
+- earlier runs' files stay, so any day's numbers can be reproduced as of any run.
 
-**Why the insert is a no-op for unchanged rows.** A gateway row is written ``status =
-'processing'`` and later updated in place to a terminal status with its cost and tokens. So the
-export re-emits a trailing window rather than only new rows, or it would capture requests
-mid-flight and never see what they cost. That means the same request is presented again on every
-run, which is why the insert is guarded by an anti-join on ``(id, status, cost)``: a row observed
-again unchanged is not inserted again, and a row that changed (a new status, a repriced cost) is.
-The table therefore grows with *changes* rather than with windows, and it stays append-only: no
-DELETE, no UPDATE, no MERGE in place, so delta history shows nothing was rewritten.
+**COPY INTO does the landing.** It is idempotent by design: Databricks documents it as
+"retriable and idempotent - files in the source location that have already been loaded are
+skipped on subsequent runs", true "even if the files have been modified since they were loaded",
+with ``COPY_OPTIONS ('force' = 'true')`` as the only way to disable that. So the loader names the
+prefix once and lets COPY INTO decide what is new: a re-run loads nothing, and a new run's single
+new object is the only thing picked up. That replaces a file-listing task, a per-day mapped task
+and an anti-join, and it is why Airflow needs **no AWS credentials at all** here: the listing and
+the reading both happen inside Databricks, against the one Unity Catalog storage credential.
 
-``cost <=> s.cost`` is Databricks' null-safe equality. A plain ``=`` never matches NULL, so every
-unpriced ``processing`` row would be re-inserted on every run.
+**Why this and not the alternatives.** A ``dt=`` partition scheme with a completion marker needs
+the writer to publish atomically and the reader to check the marker, which is two S3 permissions
+for two different principals on the engineer's bucket. An append-only file per run needs one.
 
 Reading the gateway's database
 ------------------------------
 The RDS instance is a ``t4g.micro`` behind the one gateway every engineer codes through, which
 bounds what the export may do: a predicate on ``timestamp`` (so it reads through
 ``idx_logs_timestamp`` rather than scanning), only the projected columns, and an off-peak hour.
-That last is why the export runs about 09:00 UTC, which is 1-2am Pacific, rather than at 00:02
-UTC, which is 4pm Pacific.
+Those are requirements on the export, recorded in the spec's ask list.
 """
 
 import contextlib
@@ -51,18 +47,23 @@ logger = logging.getLogger("airflow.task")
 
 TABLE_NAME = "bifrost_request_log"
 
-# The export's projection and this table's schema, in table order. One constant so the DDL,
-# the INSERT column list and the cross-subproject drift test cannot disagree; a column added
-# to one and not the others would silently shift every later value by a position.
+# The export's projection and this table's schema, in table order. One constant so the DDL, the
+# COPY INTO column list and the cross-subproject drift test cannot disagree; a column added to
+# one and not the others silently shifts every later value by a position.
 #
 # Types are Databricks SQL types. Money columns are DECIMAL, never DOUBLE: these are summed
 # across hundreds of thousands of rows in the mart, and binary floating point accumulates an
 # error a finance reader would eventually notice. `latency` is a measurement, not money.
+#
+# `exported_at` comes from the file and `loaded_at` is stamped here. Both are kept because they
+# answer different questions: "which export run last observed this row" decides which observation
+# is current, and "when did this loader read it" is the pipeline's own freshness signal.
 LANDING_COLUMNS: tuple[tuple[str, str], ...] = (
-    # identity and the two clocks
+    # identity and the two source clocks, plus the export's own stamp
     ("id", "STRING"),
     ("timestamp", "TIMESTAMP"),
     ("created_at", "TIMESTAMP"),
+    ("exported_at", "TIMESTAMP"),
     # what was called and how it went
     ("provider", "STRING"),
     ("model", "STRING"),
@@ -93,30 +94,26 @@ LANDING_COLUMNS: tuple[tuple[str, str], ...] = (
     ("total_tokens", "BIGINT"),
     ("cached_read_tokens", "BIGINT"),
     ("latency", "DOUBLE"),
-    # when this load observed it. Server-set, never bound: it is the loader's own clock, and
-    # the staging model's dedupe orders on it.
+    # when this load read the file. Server-set, never in the Parquet.
     ("loaded_at", "TIMESTAMP"),
 )
 
-# Set by the INSERT rather than read from the file, so it never collides with a source column.
+# Set by the loader rather than read from the file.
 _SERVER_SET_COLUMNS: dict[str, str] = {"loaded_at": "current_timestamp()"}
 
-INSERT_COLUMNS: tuple[str, ...] = tuple(
-    name for name, _ in LANDING_COLUMNS if name not in _SERVER_SET_COLUMNS
+# The columns the file actually carries.
+EXPORTED_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    (name, column_type) for name, column_type in LANDING_COLUMNS if name not in _SERVER_SET_COLUMNS
 )
-
-# The columns the anti-join compares to decide whether a row is new. Together with `id` these
-# are exactly the columns that change when a request finalizes or is repriced, so comparing them
-# is what makes "unchanged" mean unchanged rather than "looks the same at a glance".
-_DEDUPE_KEY: tuple[str, ...] = ("status", "cost")
 
 
 class BifrostRow(NamedTuple):
-    """One landing row, minus `loaded_at`, which the INSERT stamps server-side."""
+    """One landing row, minus `loaded_at`, which COPY INTO stamps server-side."""
 
     id: str | None
     timestamp: str | None
     created_at: str | None
+    exported_at: str | None
     provider: str | None
     model: str | None
     canonical_model_name: str | None
@@ -148,36 +145,24 @@ class BifrostRow(NamedTuple):
 # A BifrostRow field that stopped lining up with its column would bind every later value one
 # position off, which no test of either alone would catch. Raised rather than asserted so the
 # check survives `python -O`.
-if BifrostRow._fields != INSERT_COLUMNS:
+if BifrostRow._fields != tuple(name for name, _ in EXPORTED_COLUMNS):
     raise RuntimeError(
-        f"BifrostRow fields {BifrostRow._fields} must match the landing columns {INSERT_COLUMNS}, in order"
+        f"BifrostRow fields {BifrostRow._fields} must match the exported columns "
+        f"{tuple(name for name, _ in EXPORTED_COLUMNS)}, in order"
     )
 
-# Bound as strings because the connector handles them predictably that way; the INSERT casts
-# them back, so the column type is stated once in LANDING_COLUMNS rather than twice.
-_TIMESTAMP_COLUMNS = frozenset({"timestamp", "created_at"})
 
+def export_prefix(bucket: str, prefix: str) -> str:
+    """The S3 location COPY INTO reads, without a trailing slash.
 
-def partition_path(bucket: str, prefix: str, partition_day: str) -> str:
-    """The S3 path of one day's Parquet files, without a trailing slash.
-
-    `partition_day` is an ISO date. It is interpolated into a path rather than bound, so it is
-    validated first: this string reaches the warehouse inside a `read_files()` call.
+    The export writes one file per run into this prefix and never rewrites one. COPY INTO is
+    given the prefix rather than a list of files, so it can compare what is there against what it
+    has already loaded; that comparison is the whole reason there is no other bookkeeping here.
     """
-    if not _is_iso_date(partition_day):
-        raise ValueError(f"partition day is not an ISO date: {partition_day!r}")
-    return f"s3://{bucket}/{prefix.strip('/')}/dt={partition_day}"
-
-
-def success_marker_path(bucket: str, prefix: str, partition_day: str) -> str:
-    """The completion marker for one day. Its presence is what makes a partition readable."""
-    return f"{partition_path(bucket, prefix, partition_day)}/_SUCCESS"
-
-
-def _is_iso_date(value: str) -> bool:
-    if not isinstance(value, str) or len(value) != 10 or value[4] != "-" or value[7] != "-":
-        return False
-    return value.replace("-", "").isdigit()
+    cleaned = prefix.strip().strip("/")
+    if not cleaned:
+        raise ValueError("export prefix must not be empty")
+    return f"s3://{bucket}/{cleaned}"
 
 
 def ensure_landing_table(connection, catalog: str, schema: str) -> None:
@@ -193,11 +178,15 @@ def ensure_landing_table(connection, catalog: str, schema: str) -> None:
     """
     _validate_identifier("catalog", catalog)
     _validate_identifier("schema", schema)
-    table = f"`{catalog}`.`{schema}`.`{TABLE_NAME}`"
+    table = _table(catalog, schema)
     columns = ", ".join(f"`{name}` {column_type}" for name, column_type in LANDING_COLUMNS)
     with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
         execute_with_retry(cursor, f"CREATE TABLE IF NOT EXISTS {table} ({columns}) CLUSTER BY AUTO")
+
+
+def _table(catalog: str, schema: str) -> str:
+    return f"`{catalog}`.`{schema}`.`{TABLE_NAME}`"
 
 
 def _validate_identifier(name: str, value: str) -> str:
@@ -206,32 +195,22 @@ def _validate_identifier(name: str, value: str) -> str:
     return value
 
 
-def build_insert_sql(catalog: str, schema: str, source_path: str) -> str:
-    """The INSERT for one day's Parquet files.
+def build_copy_sql(catalog: str, schema: str, path: str) -> str:
+    """The COPY INTO that lands whatever the prefix holds and has not landed before.
 
-    The anti-join is the whole point of this statement rather than a `CREATE OR REPLACE`: the
-    landing table is append-only so that history survives, and the window is re-emitted on every
-    run, so unchanged rows must be filtered out rather than allowed to accumulate.
+    Three choices worth stating, because each one is a failure mode:
 
-    `read_files` is given an explicit schema so a Parquet type that widens upstream (or a file
-    written by a different writer version) fails at this statement with a readable message
-    instead of landing a column of nulls.
-
-    The path is the day's directory rather than a file list. Spark ignores files whose names
-    start with `_` or `.`, so the `_SUCCESS` marker is skipped without needing a glob, and
-    listing the files first would be a second S3 call that can disagree with what the next one
-    reads.
-
-    The anti-join compares against the **current observation per id**, not against every row
-    already landed. Comparing against all history looks equivalent and is not: a cost that goes
-    A -> B -> A would find its final observation in the table from the first time round and never
-    be appended, so the mart would keep B for a request that ended at A. Selecting the current
-    row with the same terminal-first ordering the staging model uses makes the comparison
-    "has this changed since we last looked", which is the question being asked.
+    - **The path is bound, not interpolated.** `read_files`-style string interpolation into a
+      statement that reaches cloud storage is how a prefix becomes a second statement.
+    - **The projection is explicit, cast to the declared types.** A Parquet type that widens
+      upstream then fails here with a readable message rather than landing a column of nulls.
+    - **No `COPY_OPTIONS ('force' = 'true')`.** That flag turns idempotency off and would reload
+      every file on every run. It is the one option here that must stay false, so there is a test
+      asserting it is absent.
     """
     _validate_identifier("catalog", catalog)
     _validate_identifier("schema", schema)
-    table = f"`{catalog}`.`{schema}`.`{TABLE_NAME}`"
+    table = _table(catalog, schema)
 
     select_list = []
     for name, column_type in LANDING_COLUMNS:
@@ -240,92 +219,57 @@ def build_insert_sql(catalog: str, schema: str, source_path: str) -> str:
         else:
             select_list.append(f"cast(source.`{name}` as {column_type}) as `{name}`")
 
-    # Server-set columns are not in the files, so declaring them here would read a column the
-    # Parquet does not have. The read schema is the exported projection, exactly.
-    schema_clause = ", ".join(
-        f"`{name}` {column_type}" for name, column_type in LANDING_COLUMNS if name not in _SERVER_SET_COLUMNS
-    )
-    columns = ", ".join(f"`{name}`" for name, _ in LANDING_COLUMNS)
-    match = " and ".join(
-        ["landed.`id` = source.`id`"] + [f"landed.`{column}` <=> source.`{column}`" for column in _DEDUPE_KEY]
-    )
+    target = ", ".join(f"`{name}`" for name, _ in LANDING_COLUMNS)
 
-    # Must match the staging model's ordering, or "current" means two different things on the
-    # two sides of the comparison and a row can be dropped here that staging would have used.
     return (
-        f"insert into {table} ({columns})\n"
-        f"select {', '.join(select_list)}\n"
-        f"from read_files(:path, format => 'parquet', schema => '{schema_clause}') as source\n"
-        f"where not exists (\n"
-        f"    select 1 from (\n"
-        f"        select {', '.join(f'`{c}`' for c in ('id', *_DEDUPE_KEY))}\n"
-        f"        from {table}\n"
-        f"        qualify row_number() over (\n"
-        f"            partition by `id`\n"
-        f"            order by case when `status` = 'processing' then 1 else 0 end,\n"
-        f"                     `loaded_at` desc, `id`\n"
-        f"        ) = 1\n"
-        f"    ) as landed where {match}\n"
-        f")"
+        f"copy into {table} ({target})\n"
+        f"from (select {', '.join(select_list)} from :path)\n"
+        f"fileformat = parquet"
     )
 
 
-def insert_day(
-    connection,
-    catalog: str,
-    schema: str,
-    bucket: str,
-    prefix: str,
-    partition_day: str,
-    s3_conn=None,
-) -> int:
-    """Insert one day's new rows, returning how many were inserted.
+def land_export(connection, catalog: str, schema: str, bucket: str, prefix: str) -> int:
+    """Run one COPY INTO over the export prefix, returning how many rows it loaded.
 
-    The caller has already established that the day is complete (its `_SUCCESS` marker exists)
-    and inside the window; this function does not re-check either, so that the decisions live in
-    one place and are testable without a cursor.
+    A re-run loads nothing: COPY INTO remembers which files it has read. That is why there is no
+    listing step, no per-run file bookkeeping and no anti-join here — the only thing this needs to
+    get right is the prefix and the projection.
     """
-    path = partition_path(bucket, prefix, partition_day)
-    sql = build_insert_sql(catalog, schema, path)
+    path = export_prefix(bucket, prefix)
+    sql = build_copy_sql(catalog, schema, path)
     with contextlib.closing(connection.cursor()) as cursor:
         execute_with_retry(cursor, sql, parameters={"path": path})
-        row = cursor.fetchone()
-    inserted = int(row[0]) if row and row[0] is not None else 0
-    logger.info("bifrost %s: %d new row(s) landed", partition_day, inserted)
-    return inserted
+        rows = cursor.fetchall() or []
+        columns = [description[0] for description in (cursor.description or [])]
+
+    count = rows_inserted(rows, columns)
+    logger.info("bifrost: %d row(s) landed from %s", count, path)
+    return count
 
 
-def days_in_window(days: list[str], lookback_days: int, today: str, full_reload: bool = False) -> list[str]:
-    """The partitions to load, newest first.
+def rows_inserted(rows, columns) -> int:
+    """Total rows loaded from a COPY INTO result set.
 
-    Every marked day inside the window, every run. There is deliberately no "newest landed"
-    watermark: the export re-emits whole days, so filtering by what has already landed would
-    skip the re-emitted copy of a day and a request first seen `processing` would never be
-    re-read as its terminal self. Re-loading is cheap because the INSERT's anti-join drops the
-    rows that did not change.
+    COPY INTO returns one row per source file, with a per-file count. The column is named
+    `rows_inserted`, but the set also carries `num_skipped_corrupt_files` and friends, and the
+    positions are not something to hard-code against a service that may reorder them. So: find the
+    count column by name, and fall back to summing whatever numeric column is there rather than
+    returning a confident zero.
+
+    A re-run that skips every file returns `rows_inserted = 0` per file, and that is the normal
+    steady state rather than a failure, so zero is a legitimate answer here.
     """
-    if not _is_iso_date(today):
-        raise ValueError(f"today is not an ISO date: {today!r}")
-    if lookback_days < 1:
-        raise ValueError(f"lookback_days must be >= 1, got {lookback_days}")
-
-    selected = []
-    for day in days:
-        if not _is_iso_date(day) or day > today:
-            continue
-        if full_reload or _days_between(day, today) < lookback_days:
-            selected.append(day)
-    return sorted(set(selected), reverse=True)
-
-
-def _days_between(earlier: str, later: str) -> int:
-    """Whole days from `earlier` to `later`, both ISO dates.
-
-    Parsed by hand rather than through `datetime` so the arithmetic cannot pick up a local
-    timezone: these are partition labels in UTC, and the window is a count of them.
-    """
-    from datetime import date
-
-    y1, m1, d1 = (int(part) for part in earlier.split("-"))
-    y2, m2, d2 = (int(part) for part in later.split("-"))
-    return (date(y2, m2, d2) - date(y1, m1, d1)).days
+    if not rows:
+        return 0
+    index = None
+    for position, name in enumerate(columns):
+        if str(name).lower() in {"rows_inserted", "num_inserted_rows"}:
+            index = position
+            break
+    if index is None:
+        logger.warning(
+            "bifrost: COPY INTO returned columns %s with no rows_inserted; not reporting a count",
+            columns,
+        )
+        return 0
+    return sum(int(row[index] or 0) for row in rows)

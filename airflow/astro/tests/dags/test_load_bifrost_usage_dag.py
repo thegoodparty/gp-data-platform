@@ -5,14 +5,13 @@ test_gold_match_daily_dag.py: CI does not point dags_folder at astro/dags, and b
 DagBag at collection time keeps this on real Airflow with no metastore dependency.
 
 These call the task callables rather than reading the DAG file as text. A source-grep test
-passes just as happily against a DAG that does nothing, which is the failure mode worth
-avoiding in the one test that is supposed to prove the loader behaves.
+passes just as happily against a DAG that does nothing.
 """
 
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -32,6 +31,14 @@ def suppress_logging(namespace):
 
 _DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_bifrost_usage.py")
 
+# The names the DAG reads, with values that pass the loader's identifier validation: a dry run
+# builds the statement for real, so `v-<name>` would fail it for the right reason.
+_VARIABLES = {
+    "databricks_catalog": "goodparty_data_catalog",
+    "bifrost_landing_schema": "airflow_source",
+    "bifrost_export_bucket": "bucket",
+    "bifrost_export_prefix": "bifrost/logs",
+}
 with suppress_logging("airflow"):
     _DAG = DagBag(dag_folder=_DAG_FILE).dags.get("load_bifrost_usage")
 
@@ -54,7 +61,7 @@ def test_dag_loads():
 
 
 def test_serialised_and_paused_on_creation():
-    """`max_active_runs=1` because two runs loading the same day would race on the anti-join.
+    """`max_active_runs=1` so two runs cannot race COPY INTO's own bookkeeping.
     `is_paused_upon_creation=True` because BUILD must not schedule anything: the export does not
     exist yet, so an unpaused DAG would just fail nightly until ops delivers."""
     assert _DAG.max_active_runs == 1
@@ -62,68 +69,70 @@ def test_serialised_and_paused_on_creation():
     assert _DAG.catchup is False
 
 
-def test_runs_after_the_export_and_clear_of_the_dbt_build():
-    """The export lands about 09:00 UTC; this follows at 10:30. The 00:02 UTC dbt build is 4pm
-    Pacific, the gateway's busiest hour, so neither job goes near it."""
+def test_runs_after_the_export():
     assert _DAG.timetable.expression == "30 10 * * *"
 
 
-def test_mapped_loads_are_serialised():
-    """Every instance appends to the same unpartitioned Delta table and reads it to decide what
-    changed; in parallel those read-modify-write cycles can raise ConcurrentAppendException."""
-    assert _DAG.get_task("load_day").max_active_tis_per_dagrun == 1
+def test_one_load_task_and_no_aws_dependency():
+    """COPY INTO owns the file bookkeeping, so there is no listing task and no per-day mapped
+    task. Nothing here lists or reads S3, which is what keeps Astro out of the engineer's
+    bucket."""
+    assert sorted(task.task_id for task in _DAG.tasks) == ["load", "report"]
+
+    source = Path(_DAG_FILE).read_text()
+    for forbidden in ("boto3", "head_object", "botocore", "list_objects", "hive_partition"):
+        assert forbidden not in source, f"{forbidden} would need AWS access for Airflow"
 
 
 def test_a_failed_load_fails_the_run():
-    """`summarize` is the only leaf. With `all_done` it would end the run green after a failed
-    load, and that day's spend would be missing with nothing red to show for it."""
-    assert _DAG.get_task("summarize").trigger_rule == "all_success"
+    """`report` is the only leaf, and it must not run on a failed load: a green run that landed
+    nothing is the failure this loader exists to avoid."""
+    assert _DAG.get_task("report").trigger_rule == "all_success"
 
 
-def test_load_day_creates_the_table_before_it_inserts():
-    """The DAG owns the landing table. If this ordering inverted, the first insert would fail on
-    a missing relation."""
+def test_load_creates_the_table_before_it_lands():
+    """The DAG owns the landing table. If this ordering inverted, the first COPY INTO would fail
+    on a missing relation."""
     calls = []
     connection = MagicMock()
     connection.__enter__ = MagicMock(return_value=connection)
     connection.__exit__ = MagicMock(return_value=False)
 
-    load_day = _callable("load_day")
-    globals_ = load_day.__globals__
-
-    def record_ensure(*args, **kwargs):
-        calls.append("ensure")
-
-    def record_insert(*args, **kwargs):
-        calls.append("insert")
-        return 3
+    load = _callable("load")
+    globals_ = load.__globals__
 
     with (
         patch.dict(
             globals_,
             {
                 "connect_from_conn_id": MagicMock(return_value=connection),
-                "ensure_landing_table": record_ensure,
-                "insert_day": record_insert,
+                "ensure_landing_table": lambda *a, **k: calls.append("ensure"),
+                "land_export": lambda *a, **k: (calls.append("land"), 7)[1],
             },
         ),
-        patch.object(globals_["Variable"], "get", side_effect=lambda name, **kw: f"v-{name}"),
+        patch.dict(
+            globals_,
+            {
+                "Variable": MagicMock(get=Mock(side_effect=lambda name, **kw: f"v-{name}")),
+                "get_current_context": Mock(return_value={"params": {}}),
+            },
+        ),
     ):
-        inserted = load_day({"day": "2026-11-04", "bucket": "b", "prefix": "p"})
+        loaded = load()
 
-    assert calls == ["ensure", "insert"]
-    assert inserted == 3
+    assert calls == ["ensure", "land"]
+    assert loaded == 7
 
 
-def test_load_day_resolves_the_databricks_connection_by_variable_name():
+def test_load_resolves_the_databricks_connection_by_variable_name():
     """`connect_from_conn_id` does its own Variable lookup; passing it a resolved value makes it
     treat a connection id as another Variable name and fails before the DDL."""
     connection = MagicMock()
     connection.__enter__ = MagicMock(return_value=connection)
     connection.__exit__ = MagicMock(return_value=False)
 
-    load_day = _callable("load_day")
-    globals_ = load_day.__globals__
+    load = _callable("load")
+    globals_ = load.__globals__
     connect = MagicMock(return_value=connection)
 
     with (
@@ -132,56 +141,39 @@ def test_load_day_resolves_the_databricks_connection_by_variable_name():
             {
                 "connect_from_conn_id": connect,
                 "ensure_landing_table": MagicMock(),
-                "insert_day": MagicMock(return_value=0),
+                "land_export": MagicMock(return_value=0),
             },
         ),
-        patch.object(globals_["Variable"], "get", return_value="x"),
+        patch.dict(
+            globals_,
+            {
+                "Variable": MagicMock(get=Mock(return_value="x")),
+                "get_current_context": Mock(return_value={"params": {}}),
+            },
+        ),
     ):
-        load_day({"day": "2026-11-04", "bucket": "b", "prefix": "p"})
+        load()
 
-    # `connect_from_conn_id` resolves the Variable itself; handing it a resolved value makes it
-    # look up a connection id as if it were a Variable name and fail before the DDL.
     connect.assert_called_once_with()
 
 
-@pytest.mark.parametrize("code", ["404", "NoSuchKey", "NotFound"])
-def test_a_missing_marker_skips_the_day(code):
-    from botocore.exceptions import ClientError
+def test_dry_run_builds_the_statement_and_touches_nothing():
+    """A dry run must not open a connection: it exists to show what would run."""
+    connect = MagicMock()
+    load = _callable("load")
+    globals_ = load.__globals__
 
-    s3 = MagicMock()
-    s3.get_paginator.return_value.paginate.return_value = [
-        {"CommonPrefixes": [{"Prefix": "bifrost/logs/dt=2026-11-04/"}]}
-    ]
-    s3.head_object.side_effect = ClientError({"Error": {"Code": code}}, "HeadObject")
+    with (
+        patch.dict(globals_, {"connect_from_conn_id": connect}),
+        patch.dict(
+            globals_,
+            {
+                "Variable": MagicMock(get=Mock(side_effect=lambda name, **kw: _VARIABLES[name])),
+                "get_current_context": Mock(return_value={"params": {"dry_run": True}}),
+            },
+        ),
+    ):
+        loaded = load()
 
-    assert _callable("list_days").__globals__["discover_complete_days"](s3, "bucket", "bifrost/logs") == []
-
-
-@pytest.mark.parametrize("code", ["403", "AccessDenied", "SlowDown", "500"])
-def test_a_marker_read_that_failed_for_another_reason_raises(code):
-    """Treating these as "not complete" would skip every day, land nothing, and end green: the
-    exact silent understatement this loader exists to avoid."""
-    from botocore.exceptions import ClientError
-
-    s3 = MagicMock()
-    s3.get_paginator.return_value.paginate.return_value = [
-        {"CommonPrefixes": [{"Prefix": "bifrost/logs/dt=2026-11-04/"}]}
-    ]
-    s3.head_object.side_effect = ClientError({"Error": {"Code": code}}, "HeadObject")
-
-    with pytest.raises(ClientError):
-        _callable("list_days").__globals__["discover_complete_days"](s3, "bucket", "bifrost/logs")
-
-
-def test_a_marked_day_is_returned():
-    s3 = MagicMock()
-    s3.get_paginator.return_value.paginate.return_value = [
-        {"CommonPrefixes": [{"Prefix": "bifrost/logs/dt=2026-11-04/"}]},
-        {"CommonPrefixes": [{"Prefix": "bifrost/logs/dt=2026-11-03/"}]},
-    ]
-    s3.head_object.return_value = {}
-
-    assert _callable("list_days").__globals__["discover_complete_days"](s3, "bucket", "bifrost/logs") == [
-        ("2026-11-03", "bifrost/logs/dt=2026-11-03/"),
-        ("2026-11-04", "bifrost/logs/dt=2026-11-04/"),
-    ]
+    connect.assert_not_called()
+    assert loaded == 0
