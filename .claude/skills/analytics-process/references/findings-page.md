@@ -2,8 +2,8 @@
 
 An optional deliverable: a single HTML page that reports an executed analysis to people who will
 not open the notebook (product leads, PMs, colleagues). It is published as a private Claude
-artifact and shared from there. Choose it at framing (`execution_notes.preferred_format`), alone
-or with a notebook or script.
+artifact and shared from there. Choose it at framing (`execution_notes.preferred_format`), always
+in addition to a notebook or script, which the results checkpoint and the reviewers read.
 
 Worked example: `analytics/projects/win_pro_votes_needed/build_page.py` (DATA-2809).
 

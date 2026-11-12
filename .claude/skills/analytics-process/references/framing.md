@@ -89,8 +89,9 @@ Before producing the final brief, verify the following against the actual codeba
 3. Propose a framing, including population, eligibility, target, comparison, and cohorts. Flag concerns explicitly.
 4. User pushes back or approves. Iterate.
 5. Before finalizing the brief, settle two execution parameters with the user:
-   a. **Deliverable format.** Ask whether they want a notebook, a Python script, a findings page
-      for readers outside the data team ([findings-page.md](findings-page.md)), or a combination. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
+   a. **Deliverable format.** Ask whether they want a notebook, a Python script, or both, and
+      whether to add a findings page for readers outside the data team ([findings-page.md](findings-page.md)).
+      The page is never the only format: the checkpoint and reviewers read the notebook or script. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
    b. **Save location.** Auto-classify and state your pick for the user to override: a single one-off question, one notebook, no reusable inventory goes to `analytics/ad_hoc/`; multi-week work with reusable inventory that will be revisited goes to `analytics/projects/<name>/` (see the decision rule in [methodology.md](methodology.md)). If the target directory does not exist in the repo, do NOT silently create it: ask the user to confirm creating it first.
 6. Once approved, state the remaining path and where the run will pause — e.g. "From here:
    execute → results checkpoint (I stop for you there) → two-reviewer check → calibration close
