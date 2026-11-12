@@ -120,6 +120,21 @@ on it.
 candidacies, and **0% on the 2025 archive**, which is HubSpot-only with no election-stage structure.
 A 2025-vs-2026 comparison on either field is not available, not merely thin.
 
+**Votes needed to win is not stored; rebuild gp-api's live rule.** gp-api computes it on request
+(`CampaignsService.fetchLiveRaceTargetMetrics`), taking the first route that gives a number:
+
+1. The organization's `override_district_id` (`mart_civics.organizations`): `ceil(turnout * 0.5) + 1`.
+   No fallback: an override district with no turnout gives no number.
+2. The campaign's race (`mart_civics.campaigns.ballotready_race_id` = `m_election_api__race.br_database_id`):
+   the race's own `win_number` if set (8 races in the table), else `floor(projected_turnout / 2) + 1`.
+3. The position's district (`m_election_api__position.district_id`): `ceil(turnout * 0.5) + 1`.
+
+Turnout comes from `m_election_api__projected_turnout` for the election year (general election
+code preferred). The `win_number` columns on `users_win_candidacy` and `user_journey` are
+BallotReady-only and empty for 2026, and `gp_api_db_path_to_victory` stops in April 2026. Coverage:
+767 of 783 paying 2026 Pro users (98%, 2026-11-12). Worked example:
+`analytics/projects/win_pro_votes_needed/build_working_set.py`.
+
 ## Event-lifecycle assets (omni repo)
 
 For when an event was added or retired in code, its current lifecycle status, or what
