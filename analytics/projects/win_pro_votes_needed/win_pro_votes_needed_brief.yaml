@@ -136,7 +136,7 @@ cohorts:
   - dimension: activated
     values: |
       All Pro 2026 and activated only (users_win_base.is_activated, the governed
-      win_activated_users definition: reached voters through the product at least once, any
+      win_activated_users definition: reached voters at least once (outreach logged by the candidate counts), any
       channel, lifetime). Amended 2026-11-11.
   - dimension: votes_needed_band
     values: the five bands above

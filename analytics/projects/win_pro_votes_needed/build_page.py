@@ -708,7 +708,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
     <li>Phone banking is used about evenly across sizes; robocalls and door knocking peak in the middle bands. Door knocking is free today and {int(ws.used_door_knocking.sum())} of {N} used it. <a href="#channels">Section 3: channels</a></li>
     <li>Volume and spend hold without the early races, the races not yet held, or the people who canceled after their election. One statewide race is {top / tot_usd:.0%} of all outreach dollars, so the report uses medians. <a href="#robustness">Section 5: robustness</a></li>
   </ul>
-  <p class="note terms"><b>Terms.</b> <b>Activated</b>, the company-wide definition: reached voters through Win at least once, on any channel, at any time,
+  <p class="note terms"><b>Terms.</b> <b>Activated</b>, the company-wide definition (the activation OKR): reached voters at least once, on any channel, at any time, counting outreach they logged in Win themselves ({int(ws.activated.sum() - (ws.activated & (ws.sends_total > 0)).sum())} activated people had no recorded send in the window),
   so every activated user did some outreach ({len(act)} of {N}). <b>Texter</b>: sent at least one text in the window. <b>Votes needed</b>: half the projected turnout, plus one.
   <b>Window</b>: the six months before the election, election day included.</p>
   <nav class="toc" aria-label="Sections"><a href="#recommendations">Recommendations</a><a href="#votes-needed">1 Votes needed</a><a href="#features">2 Features</a><a href="#channels">3 Channels</a><a href="#volume">4 Volume and spend</a><a href="#robustness">5 Robustness</a><a href="#rerun">Rerun</a><a href="#appendix">Appendix: question and framing</a><a href="#assumptions">Assumptions</a></nav>
@@ -765,7 +765,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
   <div class="sub"><h3>Signed up before July 2026 {SEP} {len(fm_before)}</h3>{feat_before}</div>
   <div class="sub"><h3>Signed up from July 2026 {SEP} {len(fm_after)}</h3>{feat_after}</div>
   <h3 class="group">Activated users only</h3>
-  <p class="note">Activated, the company-wide definition: reached voters through Win at least once, on any channel. {len(fm_act)} of {len(fm)}.</p>
+  <p class="note">Activated, the company-wide definition: reached voters at least once, on any channel, counting outreach they logged themselves. {len(fm_act)} of {len(fm)}.</p>
   <div class="sub"><h3>Activated {SEP} {len(fm_act)}</h3>{feat_act}</div>
   <div class="sub"><h3>Activated, signed up before July 2026 {SEP} {len(fm_act_before)}</h3>{feat_act_before}</div>
   <div class="sub"><h3>Activated, signed up from July 2026 {SEP} {len(fm_act_after)}</h3>{feat_act_after}</div>
