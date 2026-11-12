@@ -194,6 +194,46 @@ def who_row(label, d):
     return [esc(label), f"{n}"] + [f"{int(k)} {SEP} {k / n:.0%}" for k in parts]
 
 
+_other = (
+    ws.sends_robocall
+    + ws.sends_social
+    + ws.sends_door_knocking
+    + ws.sends_phone_banking
+    + ws.sends_unattributed
+) > 0
+_gap = ws[ws.activated & ~ws.texted]
+gap_n, gap_other, gap_unk = len(_gap), int(_other[_gap.index].sum()), int((_gap.sends_unattributed > 0).sum())
+tex_not_act = int((~ws.activated & ws.texted).sum())
+
+
+def _cell(mask):
+    return f"{int(mask.sum())}"
+
+
+act_tex_tbl = table(
+    ["", "Texted in window", "No text in window", "Total"],
+    [
+        [
+            "Activated",
+            _cell(ws.activated & ws.texted),
+            _cell(ws.activated & ~ws.texted),
+            f"{int(ws.activated.sum())} {SEP} {ws.activated.mean():.0%}",
+        ],
+        [
+            "Not activated",
+            _cell(~ws.activated & ws.texted),
+            _cell(~ws.activated & ~ws.texted),
+            f"{int((~ws.activated).sum())}",
+        ],
+        [
+            "Total",
+            f"{int(ws.texted.sum())} {SEP} {ws.texted.mean():.0%}",
+            f"{int((~ws.texted).sum())} {SEP} {(~ws.texted).mean():.0%}",
+            f"{N}",
+        ],
+    ],
+    total_last=True,
+)
 WHO_H = [
     "Votes needed",
     "Users",
@@ -794,7 +834,12 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
   Texting is the only paid channel. Spend follows the Revenue dashboard's rule: outreach purchases minus refunds, on each user's main Stripe customer record.</p>
   <div class="sub" id="who-texts"><h3>Who texts at all (all Pro users)</h3>{who_tbl}
   <p class="note">Started a text, never sent: a text campaign created in the window but never sent, {int((ws.tried_text_only & (ws.p2p_pending_payment > 0)).sum())} of them stopped at payment.
-  Other channels only: phone banking, door knocking, robocalls or social, no texts.</p></div>
+  Other channels only: phone banking, door knocking, robocalls or social, no texts.</p>
+  <h3>Activated is not the same as texted</h3>{act_tex_tbl}
+  <p class="note">{gap_n} people are activated but sent no text in the window: {gap_other} reached voters on another channel in the window
+  (mostly phone banking, door knocking, or sends with no recorded channel), and {gap_n - gap_other} activated outside the window or only logged their own outreach.
+  {tex_not_act} texted without counting as activated (their sends don't meet the activation rules). {gap_unk} of the {gap_n} have sends with no recorded channel,
+  some probably older texts, so "never sent a text" is an upper bound.</p></div>
   <div class="sub"><h3>How many texts</h3>{vol_fig}</div>
   <div class="sub"><h3>Who outgrows a 5,000-text bundle</h3>{over_fig}
   <p class="note">Upper bound, counting every texter with no known count as over: {", ".join(f"{over_up[b][1]} of {over_up[b][2]}" for b in BANDS)} from smallest to largest band.
