@@ -1153,7 +1153,7 @@ models:
 
       - name: win_number
         description: >
-          Votes needed to win, from the 2023-2025 HubSpot archive only. Empty
+          Votes needed to win, from the 2022-2025 HubSpot archive only. Empty
           for every 2026 and later election (measured 2026-11-12): gp-api stores no win
           number and computes it live from election-api projected turnout.
           Rebuild it that way (win-analytics-knowledge sources.md, "Votes
@@ -1306,7 +1306,7 @@ models:
 
       - name: win_number
         description: >
-          Votes needed to win, from the 2023-2025 HubSpot archive only. Empty
+          Votes needed to win, from the 2022-2025 HubSpot archive only. Empty
           for every 2026 and later election (measured 2026-11-12): gp-api stores no win
           number and computes it live from election-api projected turnout.
           Rebuild it that way (win-analytics-knowledge sources.md, "Votes
