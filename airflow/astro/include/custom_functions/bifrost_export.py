@@ -215,8 +215,19 @@ def build_insert_sql(catalog: str, schema: str, source_path: str) -> str:
 
     `read_files` is given an explicit schema so a Parquet type that widens upstream (or a file
     written by a different writer version) fails at this statement with a readable message
-    instead of landing a column of nulls. It is also given the file list rather than a directory
-    so the loader never picks up a `_SUCCESS` marker as data.
+    instead of landing a column of nulls.
+
+    The path is the day's directory rather than a file list. Spark ignores files whose names
+    start with `_` or `.`, so the `_SUCCESS` marker is skipped without needing a glob, and
+    listing the files first would be a second S3 call that can disagree with what the next one
+    reads.
+
+    The anti-join compares against the **current observation per id**, not against every row
+    already landed. Comparing against all history looks equivalent and is not: a cost that goes
+    A -> B -> A would find its final observation in the table from the first time round and never
+    be appended, so the mart would keep B for a request that ended at A. Selecting the current
+    row with the same terminal-first ordering the staging model uses makes the comparison
+    "has this changed since we last looked", which is the question being asked.
     """
     _validate_identifier("catalog", catalog)
     _validate_identifier("schema", schema)
@@ -229,18 +240,32 @@ def build_insert_sql(catalog: str, schema: str, source_path: str) -> str:
         else:
             select_list.append(f"cast(source.`{name}` as {column_type}) as `{name}`")
 
-    schema_clause = ", ".join(f"`{name}` {column_type}" for name, column_type in LANDING_COLUMNS)
+    # Server-set columns are not in the files, so declaring them here would read a column the
+    # Parquet does not have. The read schema is the exported projection, exactly.
+    schema_clause = ", ".join(
+        f"`{name}` {column_type}" for name, column_type in LANDING_COLUMNS if name not in _SERVER_SET_COLUMNS
+    )
+    columns = ", ".join(f"`{name}`" for name, _ in LANDING_COLUMNS)
     match = " and ".join(
         ["landed.`id` = source.`id`"] + [f"landed.`{column}` <=> source.`{column}`" for column in _DEDUPE_KEY]
     )
-    columns = ", ".join(f"`{name}`" for name in INSERT_COLUMNS)
 
+    # Must match the staging model's ordering, or "current" means two different things on the
+    # two sides of the comparison and a row can be dropped here that staging would have used.
     return (
         f"insert into {table} ({columns})\n"
         f"select {', '.join(select_list)}\n"
         f"from read_files(:path, format => 'parquet', schema => '{schema_clause}') as source\n"
         f"where not exists (\n"
-        f"    select 1 from {table} as landed where {match}\n"
+        f"    select 1 from (\n"
+        f"        select {', '.join(f'`{c}`' for c in ('id', *_DEDUPE_KEY))}\n"
+        f"        from {table}\n"
+        f"        qualify row_number() over (\n"
+        f"            partition by `id`\n"
+        f"            order by case when `status` = 'processing' then 1 else 0 end,\n"
+        f"                     `loaded_at` desc, `id`\n"
+        f"        ) = 1\n"
+        f"    ) as landed where {match}\n"
         f")"
     )
 

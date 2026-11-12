@@ -71,6 +71,7 @@ from datetime import UTC
 from datetime import datetime as dt
 
 from airflow.sdk import Param, Variable, dag, get_current_context, task
+from botocore.exceptions import ClientError
 from include.custom_functions.bifrost_export import (
     days_in_window,
     ensure_landing_table,
@@ -81,6 +82,11 @@ from include.custom_functions.databricks_utils import connect_from_conn_id
 from pendulum import datetime, duration
 
 t_log = logging.getLogger("airflow.task")
+
+# The S3 codes that mean "the marker is not there yet", and nothing else. A blanket except here
+# would turn a denied or throttled read into "every day is still being written", which lands no
+# rows and still ends the run green.
+_MARKER_ABSENT_CODES = {"404", "NoSuchKey", "NotFound"}
 
 LOOKBACK_VARIABLE = "bifrost_lookback_days"
 DEFAULT_LOOKBACK_DAYS = 7
@@ -120,8 +126,14 @@ def discover_complete_days(s3_client, bucket: str, prefix: str) -> list[tuple[st
             marker = success_marker_path(bucket, prefix, day)
             try:
                 s3_client.head_object(Bucket=bucket, Key=marker.removeprefix(f"s3://{bucket}/"))
-            except Exception:
-                continue
+            except ClientError as error:
+                # Only a missing marker means "this day is still being written". Denied,
+                # throttled or unreachable must propagate: treating them as "not complete"
+                # would skip every day, land nothing, and still end the run green.
+                code = str(error.response.get("Error", {}).get("Code"))
+                if code in _MARKER_ABSENT_CODES:
+                    continue
+                raise
             complete[day] = day_prefix
     return sorted(complete.items())
 
@@ -173,12 +185,16 @@ def load_bifrost_usage():
             return []
         return [{"day": day, "bucket": bucket, "prefix": prefix} for day in days]
 
-    @task
+    # One at a time: every mapped instance appends to the same unpartitioned Delta table, and
+    # each one both creates the table (idempotent) and reads it to check what has changed. In
+    # parallel those read-modify-write cycles can raise ConcurrentAppendException, and the
+    # anti-join's comparison would be against a table another instance is mutating.
+    @task(max_active_tis_per_dagrun=1)
     def load_day(plan: dict) -> int:
         catalog = Variable.get("databricks_catalog").strip()
         schema = Variable.get("bifrost_landing_schema").strip()
 
-        with connect_from_conn_id(Variable.get("databricks_conn_id")) as connection:
+        with connect_from_conn_id() as connection:
             ensure_landing_table(connection, catalog, schema)
             return insert_day(
                 connection,
@@ -189,7 +205,7 @@ def load_bifrost_usage():
                 partition_day=plan["day"],
             )
 
-    @task(trigger_rule="all_done")
+    @task
     def summarize(inserted: list[int]) -> None:
         total = sum(value or 0 for value in inserted)
         t_log.info("bifrost: %d new row(s) across %d day(s)", total, len(inserted))

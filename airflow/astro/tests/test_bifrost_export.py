@@ -146,15 +146,48 @@ def test_insert_is_guarded_by_a_null_safe_anti_join():
     assert "landed.`status` <=> source.`status`" in sql
     assert "landed.`cost` <=> source.`cost`" in sql
     assert "landed.`cost` = source.`cost`" not in sql
+    # Compares against the CURRENT observation per id, not all history: a cost that goes
+    # A -> B -> A would otherwise match the first time round and never be appended.
+    assert "qualify row_number() over (" in sql
+    assert "partition by `id`" in sql
+
+
+def _insert_arity(sql):
+    """The INSERT target's column count and the SELECT's expression count, top-level only.
+
+    They must be equal or the statement fails on every single run, which is exactly what the
+    first version of this module did: 29 targets against 30 expressions, because `loaded_at` was
+    dropped from the target and kept in the projection.
+    """
+    target = sql.split("(", 1)[1].split(")", 1)[0]
+    n_target = len([part for part in target.split(",") if part.strip()])
+
+    projection = sql.split("select ", 1)[1].split("\nfrom read_files")[0]
+    depth, n_select = 0, 1
+    for char in projection:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            n_select += 1
+    return n_target, n_select
+
+
+def test_insert_target_and_projection_have_the_same_arity():
+    """The bug this catches fails every load, so it is worth an explicit count rather than
+    trusting the two string joins to stay in step."""
+    target, projected = _insert_arity(build_insert_sql("catalog", "airflow_source", "s3://b/p"))
+
+    assert target == projected == len(LANDING_COLUMNS)
 
 
 def test_insert_names_every_column_and_stamps_loaded_at_server_side():
     sql = build_insert_sql("catalog", "airflow_source", "s3://b/p/dt=2026-11-04")
 
-    insert_columns = sql.split("(", 1)[1].split(")", 1)[0]
-    for column in INSERT_COLUMNS:
-        assert f"`{column}`" in insert_columns
-    assert "`loaded_at`" not in insert_columns
+    target = sql.split("(", 1)[1].split(")", 1)[0]
+    for column, _ in LANDING_COLUMNS:
+        assert f"`{column}`" in target
     assert "current_timestamp() as `loaded_at`" in sql
 
 
@@ -272,72 +305,5 @@ def test_window_rejects_a_nonsense_lookback():
         days_in_window([], lookback_days=0, today="2026-11-04")
 
 
-# ---------------------------------------------------------------------------
-# The DAG's own structure
-# ---------------------------------------------------------------------------
-
-
-def _load_dag_module():
-    """Load the DAG file directly, the way test_gold_match_daily_dag.py does: CI does not
-    point dags_folder at astro/dags.
-
-    The DAG module imports `airflow.sdk` for real (dag/task/Variable/Param), so this test only
-    runs where the Astro runtime or the airflow uv env is installed. Where the stubs above are
-    in force it is skipped rather than failing on a MagicMock dag decorator.
-    """
-    from pathlib import Path
-
-    dag_file = Path(__file__).resolve().parents[1] / "dags" / "load_bifrost_usage.py"
-    source = dag_file.read_text()
-    return dag_file, source
-
-
-def test_dag_file_declares_the_structure_the_plan_relies_on():
-    """Asserted from the source rather than by importing, so it runs under the stubs."""
-    dag_file, source = _load_dag_module()
-
-    assert dag_file.is_file()
-    # Serialised writers: the repo's uniform guard against two runs colliding.
-    assert "max_active_runs=1" in source
-    # BUILD must not schedule anything; unpausing is the owner-gated activation step.
-    assert "is_paused_upon_creation=True" in source
-    # The landing table has to exist before the first insert runs.
-    assert "ensure_landing_table(connection, catalog, schema)" in source
-    assert source.index("ensure_landing_table(") < source.index("insert_day(")
-    # Nothing here deletes: pruning would make the mart's history for a day diverge.
-    assert ".delete(" not in source.lower()
-    assert "delete from" not in source.lower()
-
-
-def test_dag_creates_the_landing_table_from_the_loader_constant():
-    """The DDL and the INSERT read one source of truth, so they cannot drift apart."""
-    _, source = _load_dag_module()
-    assert "from include.custom_functions.bifrost_export import" in source
-    assert "ensure_landing_table" in source
-    # No second spelling of the table name or its columns in the DAG.
-    assert "bifrost_request_log" not in source.split('"""', 2)[2]
-
-
-def test_ensure_landing_table_matches_the_one_time_ddl_in_the_ticket_notes():
-    """The ticket's one-time DDL is the same schema, hand-run before the models merge. If the
-    constant moves and the notes do not, whichever landed second wins silently and the two
-    disagree about a column's type. Cheap to pin, and it caught the projection being 29 columns
-    rather than 28."""
-    from pathlib import Path
-
-    notes = Path("/work/tickets/gp-data-platform/DATA-2808/plan.md")
-    if not notes.is_file():
-        pytest.skip("ticket notes are outside the repo; only present in the working sandbox")
-
-    text = notes.read_text()
-    marker = "CREATE TABLE IF NOT EXISTS goodparty_data_catalog.airflow_source.bifrost_request_log ("
-    assert marker in text, "the one-time DDL is missing from the plan"
-    block = text.split(marker, 1)[1].split(") CLUSTER BY AUTO;", 1)[0]
-
-    columns = []
-    for line in block.strip().split("\n"):
-        line = line.strip().rstrip(",")
-        name, _, column_type = line.partition(" ")
-        columns.append((name.strip("`"), column_type.strip()))
-
-    assert columns == list(LANDING_COLUMNS)
+# The DAG's own behaviour is tested in tests/dags/test_load_bifrost_usage_dag.py, where real
+# Airflow is importable: grepping the file's source would also pass if the DAG did nothing.
