@@ -41,7 +41,7 @@ data_provenance:
   coverage_start: |
     Actual MIN of the time column in the source table, verified by query
     (not the brief's assumed floor). E.g., MIN(week_start_date) from
-    int__amplitude_win_activity_weekly.
+    int__user_win_activity_weekly.
   coverage_end: |
     Actual MAX of the time column.
   post_merge_swap: |
