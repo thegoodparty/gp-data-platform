@@ -36,8 +36,9 @@ run prints its timestamp. Quote it beside any number.
 ## Definitions that are easy to get wrong
 
 - **Votes needed to win.** gp-api stores no win number. It computes it on request
-  (`CampaignsService.fetchLiveRaceTargetMetrics` in omni gp-api) as half the projected turnout plus
-  one, from the first of: the organization's override district (`mart_civics.organizations`), the
+  (`CampaignsService.fetchLiveRaceTargetMetrics` in omni gp-api) as about half the projected turnout
+  plus one (`ceil(t * 0.5) + 1` on the district routes, the race's own `win_number` or
+  `floor(t / 2) + 1` on the race route), from the first of: the organization's override district (`mart_civics.organizations`), the
   campaign's race (`mart_civics.campaigns.ballotready_race_id` = `m_election_api__race.br_database_id`,
   the same race gp-api reads from `campaign.details.raceId`), the organization's position's district.
   `build_working_set.py` repeats that rule. Do not use `win_number` on `users_win_candidacy` or

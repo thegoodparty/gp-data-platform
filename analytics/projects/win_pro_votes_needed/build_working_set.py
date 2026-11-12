@@ -71,8 +71,10 @@ pop as (
 
 def working_set_sql(run_ts: str) -> str:
     # Votes needed follows gp-api's live rule (CampaignsService.fetchLiveRaceTargetMetrics):
-    # override district, then the picked race, then the organization's position. The election-api
-    # mirrors (dbt.m_election_api__*) have no mart equivalent.
+    # override district, then the picked race, then the organization's position. The race route
+    # takes the race's own win_number first (CampaignStrategyContextService, almost always null),
+    # then floor(turnout / 2) + 1; the district routes use ElectionsService's ceil(turnout * 0.5) + 1.
+    # The election-api mirrors (dbt.m_election_api__*) have no mart equivalent.
     return f"""
 with {population_sql()},
 org as (select organization_slug, position_id, override_district_id from {CAT}.mart_civics.organizations),
@@ -84,9 +86,9 @@ pt as (
 ),
 wn as (
   select p.user_id,
-    case when o.override_district_id is not null and pto.turnout > 0 then floor(pto.turnout / 2) + 1 end as wn_override,
+    case when o.override_district_id is not null and pto.turnout > 0 then ceil(pto.turnout * 0.5) + 1 end as wn_override,
     o.override_district_id is not null as has_override,
-    case when r.projected_turnout > 0 then floor(r.projected_turnout / 2) + 1 end as wn_race,
+    coalesce(r.win_number, case when r.projected_turnout > 0 then floor(r.projected_turnout / 2) + 1 end) as wn_race,
     case when ptp.turnout > 0 then ceil(ptp.turnout * 0.5) + 1 end as wn_position
   from pop p
   left join org o on o.organization_slug = p.organization_slug

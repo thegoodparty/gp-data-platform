@@ -66,12 +66,15 @@ votes_needed:
   definition: |
     Rebuilt with the rule gp-api serves live (CampaignsService.fetchLiveRaceTargetMetrics,
     omni origin/main bcb7861eb7):
-      1. Organization has override_district_id: floor(turnout / 2) + 1 from
+      1. Organization has override_district_id: ceil(turnout * 0.5) + 1 from
          m_election_api__projected_turnout for that district and the election year
          (general election code preferred).
       2. Else the campaign's race (mart_civics.campaigns.ballotready_race_id =
          m_election_api__race.br_database_id, the same race gp-api reads from
-         campaign.details.raceId) with projected_turnout > 0: floor(projected_turnout / 2) + 1.
+         campaign.details.raceId): the race's own win_number if set (8 races in the whole
+         table, none in this population), else floor(projected_turnout / 2) + 1. Corrected
+         2026-11-12 after the PR review: the override route had used floor instead of
+         gp-api's ceil (one vote lower on odd turnouts, 56 users).
       3. Else organization position_id -> m_election_api__position.district_id -> projected
          turnout for the election year: ceil(turnout * 0.5) + 1.
     The source used is recorded per user. The onboarding-event and path-to-victory fallbacks
