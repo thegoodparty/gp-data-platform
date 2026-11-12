@@ -39,6 +39,7 @@ Those are requirements on the export, recorded in the spec's ask list.
 
 import contextlib
 import logging
+import re
 from typing import NamedTuple
 
 from include.custom_functions.databricks_utils import execute_with_retry
@@ -46,6 +47,12 @@ from include.custom_functions.databricks_utils import execute_with_retry
 logger = logging.getLogger("airflow.task")
 
 TABLE_NAME = "bifrost_request_log"
+
+# The characters an s3 location may contain, restricted to the set that cannot close a SQL string
+# literal or start a second statement. Deliberately a character-class allowlist rather than a
+# reimplementation of S3's bucket-naming rules: those are a service detail that would go stale, and
+# the property that matters here is only "this cannot escape the quotes".
+_EXPORT_PATH_RE = re.compile(r"^s3://[A-Za-z0-9._\-]+/[A-Za-z0-9._/\-]+(?<![/])\Z")
 
 # The export's projection and this table's schema, in table order. One constant so the DDL, the
 # COPY INTO column list and the cross-subproject drift test cannot disagree; a column added to
@@ -200,8 +207,13 @@ def build_copy_sql(catalog: str, schema: str, path: str) -> str:
 
     Three choices worth stating, because each one is a failure mode:
 
-    - **The path is bound, not interpolated.** `read_files`-style string interpolation into a
-      statement that reaches cloud storage is how a prefix becomes a second statement.
+    - **The path is validated, then quoted as a literal.** It cannot be a bound parameter here: the
+      COPY INTO source position takes a location, and while Databricks does have parameter markers
+      (`:path` raises `UNBOUND_SQL_PARAMETER` when unbound, so the feature exists) nothing
+      establishes that COPY INTO resolves one as a source location rather than a table reference.
+      Rather than ship a statement whose most dangerous position depends on that, the path is
+      checked against a strict shape and then interpolated as a single-quoted literal. The
+      validation is the guard the binding would have been.
     - **The projection is explicit, cast to the declared types.** A Parquet type that widens
       upstream then fails here with a readable message rather than landing a column of nulls.
     - **No `COPY_OPTIONS ('force' = 'true')`.** That flag turns idempotency off and would reload
@@ -217,15 +229,34 @@ def build_copy_sql(catalog: str, schema: str, path: str) -> str:
         if name in _SERVER_SET_COLUMNS:
             select_list.append(f"{_SERVER_SET_COLUMNS[name]} as `{name}`")
         else:
-            select_list.append(f"cast(source.`{name}` as {column_type}) as `{name}`")
+            select_list.append(f"cast(`{name}` as {column_type}) as `{name}`")
 
     target = ", ".join(f"`{name}`" for name, _ in LANDING_COLUMNS)
 
+    # No `source.` qualifier on the projection: the subquery has no alias, and `source.id` against
+    # an unaliased subquery is a hard `UNRESOLVED_COLUMN` in this warehouse (verified).
     return (
         f"copy into {table} ({target})\n"
-        f"from (select {', '.join(select_list)} from :path)\n"
+        f"from (select {', '.join(select_list)} from '{_quote_path(path)}')\n"
         f"fileformat = parquet"
     )
+
+
+def _quote_path(path: str) -> str:
+    """Validate an export path and render it as a single-quoted SQL literal.
+
+    This is the one place a string reaches a statement as more than a bound value, so the shape is
+    pinned to exactly what `export_prefix` produces: `s3://<bucket>/<key...>`, with no quote,
+    whitespace, backslash or control character anywhere. A bucket name cannot contain those, and a
+    key that did would be a bug on the export side worth failing on rather than quoting around.
+
+    The path comes from Airflow Variables, which is a trusted-enough source for the catalog and
+    schema names this module already interpolates; this is the same treatment, applied to the one
+    value that points at cloud storage.
+    """
+    if not _EXPORT_PATH_RE.match(path):
+        raise ValueError(f"export path is not a well-formed s3 URI: {path!r}")
+    return path
 
 
 def land_export(connection, catalog: str, schema: str, bucket: str, prefix: str) -> int:
@@ -238,7 +269,7 @@ def land_export(connection, catalog: str, schema: str, bucket: str, prefix: str)
     path = export_prefix(bucket, prefix)
     sql = build_copy_sql(catalog, schema, path)
     with contextlib.closing(connection.cursor()) as cursor:
-        execute_with_retry(cursor, sql, parameters={"path": path})
+        execute_with_retry(cursor, sql)
         rows = cursor.fetchall() or []
         columns = [description[0] for description in (cursor.description or [])]
 
@@ -250,14 +281,14 @@ def land_export(connection, catalog: str, schema: str, bucket: str, prefix: str)
 def rows_inserted(rows, columns) -> int:
     """Total rows loaded from a COPY INTO result set.
 
-    COPY INTO returns one row per source file, with a per-file count. The column is named
-    `rows_inserted`, but the set also carries `num_skipped_corrupt_files` and friends, and the
-    positions are not something to hard-code against a service that may reorder them. So: find the
-    count column by name, and fall back to summing whatever numeric column is there rather than
-    returning a confident zero.
+    The count column is read by name, never by position: the result also carries
+    `num_skipped_corrupt_files` and friends, and positions are not something to hard-code against a
+    service that may reorder them.
 
-    A re-run that skips every file returns `rows_inserted = 0` per file, and that is the normal
-    steady state rather than a failure, so zero is a legitimate answer here.
+    Whether COPY INTO returns one row per file or a single summary row is not something I could
+    confirm without a real export, so this sums across whatever rows come back rather than assuming
+    either. A re-run that skips every file reports zero, and that is the normal steady state rather
+    than a failure, so zero is a legitimate answer — but a *missing* count column is not, and raises.
     """
     if not rows:
         return 0
@@ -267,9 +298,7 @@ def rows_inserted(rows, columns) -> int:
             index = position
             break
     if index is None:
-        logger.warning(
-            "bifrost: COPY INTO returned columns %s with no rows_inserted; not reporting a count",
-            columns,
-        )
-        return 0
+        # Not a zero. A result shape we do not recognise is a change to the statement's contract,
+        # and reporting it as "no new rows" is how a broken load stays green.
+        raise ValueError(f"COPY INTO returned columns {columns} with no rows_inserted; cannot report a count")
     return sum(int(row[index] or 0) for row in rows)

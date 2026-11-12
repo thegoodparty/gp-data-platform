@@ -181,12 +181,42 @@ def test_copy_into_target_and_projection_have_the_same_arity():
     assert n_target == n_select == len(LANDING_COLUMNS)
 
 
-def test_copy_into_reads_the_prefix_through_a_bound_parameter():
-    """The path reaches cloud storage; binding it is what keeps a prefix from becoming a second
-    statement."""
+def test_copy_into_quotes_the_prefix_as_a_validated_literal():
+    """The COPY INTO source position takes a location, not a bound parameter, so the path is
+    validated and then quoted. The validation is the guard: it is what stops a prefix ending the
+    literal or starting a second statement."""
     sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
-    assert "from :path" in sql
-    assert "s3://" not in sql
+    assert "from 's3://b/p'" in sql
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "s3://b/p'",
+        "s3://b/p; drop table x",
+        "s3://b/p\n",
+        "s3://b/p\r\n",
+        's3://b/p"',
+        "s3://b/p\x00",
+        "http://bucket/key",
+        "s3://bucket",
+        "s3://bucket/",
+        "",
+    ],
+)
+def test_copy_into_refuses_a_prefix_that_could_escape_the_literal(path):
+    with pytest.raises(ValueError):
+        build_copy_sql("catalog", "airflow_source", path)
+
+
+def test_copy_into_does_not_qualify_the_projection_with_an_aliased_table():
+    """The subquery has no alias, and `source.id` against an unaliased subquery is a hard
+    UNRESOLVED_COLUMN in this warehouse (verified against it). Every one of the 30 cast
+    expressions would fail, so nothing would ever land."""
+    sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
+
+    assert "source." not in sql
+    assert "as source" not in sql
 
 
 def test_copy_into_never_selects_star():
@@ -217,8 +247,10 @@ def test_land_export_binds_the_prefix_and_returns_the_row_count():
     )
 
     assert loaded == 12
+    # `execute_with_retry` always passes the parameters argument, even as None.
     statement, parameters = cursor.execute.call_args.args
-    assert parameters == {"path": "s3://bucket/bifrost/logs"}
+    assert parameters is None
+    assert "s3://bucket/bifrost/logs" in statement
     assert "copy into" in statement.lower()
 
 
@@ -235,14 +267,18 @@ def test_land_export_binds_the_prefix_and_returns_the_row_count():
         (["num_inserted_rows"], [(3,)], 3),
         # A null count is not a crash.
         (["rows_inserted"], [(None,), (4,)], 4),
-        # Unknown shape: report zero rather than a confident wrong number.
-        (["file", "status"], [("a", "S")], 0),
+        # Unknown shape: a changed contract, so it raises rather than reporting "no new rows".
+        (["file", "status"], [("a", "S")], None),
     ],
 )
 def test_rows_inserted_reads_the_count_by_name_not_by_position(columns, rows, expected):
     """COPY INTO's result set carries `num_skipped_corrupt_files` and others besides the count, so
     hard-coding a position against a service that may reorder them is not safe."""
-    assert rows_inserted(rows, columns) == expected
+    if expected is None:
+        with pytest.raises(ValueError):
+            rows_inserted(rows, columns)
+    else:
+        assert rows_inserted(rows, columns) == expected
 
 
 # ---------------------------------------------------------------------------
