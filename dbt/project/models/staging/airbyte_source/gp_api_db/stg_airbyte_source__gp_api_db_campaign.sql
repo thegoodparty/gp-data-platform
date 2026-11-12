@@ -16,7 +16,6 @@ with
             {{ adapter.quote("is_demo") }},
             {{ adapter.quote("user_id") }},
             {{ adapter.quote("is_active") }},
-            {{ adapter.quote("ai_content") }},
             {{ adapter.quote("created_at") }},
             {{ adapter.quote("updated_at") }},
             {{ adapter.quote("is_verified") }},

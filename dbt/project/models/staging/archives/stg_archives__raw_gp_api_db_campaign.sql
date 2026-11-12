@@ -29,7 +29,6 @@ with
             _airbyte_data:is_demo::boolean as is_demo,
             _airbyte_data:user_id::bigint as user_id,
             _airbyte_data:is_active::boolean as is_active,
-            _airbyte_data:ai_content::string as ai_content,
             _airbyte_data:created_at::timestamp as created_at,
             _airbyte_data:updated_at::timestamp as updated_at,
             _airbyte_data:is_verified::boolean as is_verified,
