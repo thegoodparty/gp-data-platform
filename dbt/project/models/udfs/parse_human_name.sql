@@ -1,5 +1,7 @@
 {{ config(materialized="sql") }}
 
+-- Pinned exactly: dependencies install fresh on each execution, so an unpinned
+-- release reaches prod untested (3.0 removed HumanName), and parsed names feed ER.
 create or replace function {{ this }} (full_name string)
 returns
     struct<
@@ -11,7 +13,9 @@ returns
         nickname:string
     >
 language
-    python environment(dependencies = '["nameparser"]', environment_version = 'None')
+    python environment(
+        dependencies = '["nameparser==2.8.2"]', environment_version = 'None'
+    )
 as $$
 if not full_name:
     return None
