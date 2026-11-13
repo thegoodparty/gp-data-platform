@@ -54,9 +54,16 @@ TABLE_NAME = "bifrost_request_log"
 # the property that matters here is only "this cannot escape the quotes".
 _EXPORT_PATH_RE = re.compile(r"^s3://[A-Za-z0-9._\-]+/[A-Za-z0-9._/\-]+(?<![/])\Z")
 
-# The export's projection and this table's schema, in table order. One constant so the DDL, the
-# COPY INTO column list and the cross-subproject drift test cannot disagree; a column added to
-# one and not the others silently shifts every later value by a position.
+# The table's schema, in order, and the contract with the export. 31 columns, from three places:
+# the 29 the export reads out of the gateway's `logs` table, `exported_at` which the export stamps
+# onto every row it writes, and `loaded_at` which this loader stamps.
+#
+# That split matters at the grant: the export's read-only Postgres role holds a column-level SELECT
+# over the 29 only, because `exported_at` does not exist in that table and a GRANT naming it would
+# be rejected.
+#
+# One constant so the DDL, the COPY INTO column list and the cross-subproject drift test cannot
+# disagree; a column added to one and not the others silently shifts every later value by a position.
 #
 # Types are Databricks SQL types. Money columns are DECIMAL, never DOUBLE: these are summed
 # across hundreds of thousands of rows in the mart, and binary floating point accumulates an
