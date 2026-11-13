@@ -123,6 +123,12 @@ models:
       gp_api:
         +schema: mart_gp_api
         +materialized: view
+      case_scout:
+        # A view, never a table: it reads chat transcripts live from gp-api
+        # Postgres, and a table would copy them into the catalog. Read access
+        # is scoped to mart_case_scout_readers, not all data users.
+        +schema: mart_case_scout
+        +materialized: view
       finance:
         # The staging layer below is ephemeral, so this mart holds the first
         # materialized copy of the ledger; read access is scoped to

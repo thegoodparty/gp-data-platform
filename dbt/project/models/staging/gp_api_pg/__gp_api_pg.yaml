@@ -2,28 +2,71 @@ version: 2
 
 # gp-api Postgres read live through Lakehouse Federation (foreign catalogs
 # managed in gp-terraform-dataplatform). Every query runs against Postgres, so
-# read these only from views that filter by organization.
+# read these only from views their readers filter (by organization, or by
+# message time for the case scout).
 sources:
   - name: gp_api_pg
     database: gp_api_pg
     schema: public
     description: gp-api prod Postgres (gpdb), read live and read-only.
     tables:
+      - name: campaign
+        description: One row per Win campaign, keyed to its organization.
+      - name: chat_conversation
+        description: >
+          One row per assistant conversation, with its scope (which assistant)
+          and owner. deleted_at is set when the user deletes it.
+      - name: chat_message
+        description: One row per message in a conversation.
+      - name: chat_message_segment
+        description: >
+          The ordered text, tool-call and citation blocks of an assistant turn
+          that used tools. A tool row holds the tool's name and arguments
+          (payload), never its result.
       - name: contact_upload
         description: One row per contact CSV a Serve organization uploaded.
       - name: contact_upload_match
         description: >
           One row per CSV row of a contact upload, with the person it matched
           (person_id) once matching has decided.
+      - name: organization
+        description: >
+          One row per organization (a Win campaign or a Serve office), with its
+          owner and election-api position and district ids.
+      - name: user
+        description: >
+          One row per gp-api user. Name columns when reading it: the federation
+          role cannot read the password columns, so a select * fails.
 
   - name: gp_api_pg_dev
     database: gp_api_pg_dev
     schema: public
     description: gp-api dev Postgres (gpdb), read live and read-only.
     tables:
+      - name: campaign
+        description: One row per Win campaign, keyed to its organization.
+      - name: chat_conversation
+        description: >
+          One row per assistant conversation, with its scope (which assistant)
+          and owner. deleted_at is set when the user deletes it.
+      - name: chat_message
+        description: One row per message in a conversation.
+      - name: chat_message_segment
+        description: >
+          The ordered text, tool-call and citation blocks of an assistant turn
+          that used tools. A tool row holds the tool's name and arguments
+          (payload), never its result.
       - name: contact_upload
         description: One row per contact CSV a Serve organization uploaded.
       - name: contact_upload_match
         description: >
           One row per CSV row of a contact upload, with the person it matched
           (person_id) once matching has decided.
+      - name: organization
+        description: >
+          One row per organization (a Win campaign or a Serve office), with its
+          owner and election-api position and district ids.
+      - name: user
+        description: >
+          One row per gp-api user. Name columns when reading it: the federation
+          role cannot read the password columns, so a select * fails.
