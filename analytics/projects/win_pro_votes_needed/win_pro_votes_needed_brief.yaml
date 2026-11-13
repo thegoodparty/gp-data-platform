@@ -1,0 +1,235 @@
+brief_id: win-pro-votes-needed-2026
+created: 2026-11-11
+author: framing routine (refined with Tristan)
+ticket: DATA-2809 (https://app.clickup.com/t/17tnw2bf29v)
+
+decision:
+  what_action: |
+    Decide whether the Win Pro bundle (sales proposal: $249 including 5K texts and unlimited
+    door knocking, instead of $99 per campaign) should be one flat package or scale with race
+    size, and whether feature emphasis in packaging (for example opposition research) should
+    differ for larger races.
+  who_acts: |
+    Product (Bryan) in the Win pricing and packaging work; sales uses the result for the bundle.
+
+question:
+  one_sentence: |
+    Among Win Pro users with a 2026 general election, do feature use and outreach volume and
+    spend per channel change with the votes needed to win their race?
+  type: descriptive
+  underlying_hypothesis: |
+    Larger races (more votes needed) buy more texts and lean on different features (for
+    example opposition research), so one fixed bundle would over-serve small races and
+    under-serve large ones.
+
+population:
+  included: |
+    Users whose candidacy election is in 2026 (user_journey: year(coalesce(
+    candidacy_general_election_date, candidacy_election_date)) = 2026) and who were paying Pro
+    customers through their election: Pro today (is_pro), or a subscription that ended on or
+    after election day (subscription_ended_at >= that date). Re-framed 2026-11-12.
+    783 users as of 2026-11-12 17:41 UTC: 652 Pro today, 131 canceled after their election.
+    Timing: 602 on 2026-11-03, 154 before 2026-07-15, 18 between, 9 after 2026-11-03.
+  excluded: |
+    Staff (user_journey.is_internal), demo campaigns (mart_civics.campaigns.is_demo), comped Pro
+    (never made a subscription payment: first_subscription_payment_at is null; 35 users, all Pro
+    today), and anyone whose Pro ended before their election day.
+  source_model: |
+    Marts first, upstream only where no mart carries the field:
+      mart_analytics.user_journey: population, Pro status, subscription end, activation
+        (governed is_activated), election dates, office level, voter_count, signup date.
+      mart_civics.campaigns (latest version): organization_slug, ballotready_race_id, is_demo.
+      mart_civics.organizations: position_id, override_district_id.
+      mart_analytics.user_journey_events: Outreach send rows (channel in event_label, text
+        count in event_value) and Payment/Refund rows (dashboard revenue rule).
+    Upstream, with the reason:
+      dbt.m_election_api__race / __position / __projected_turnout: projected turnout, which
+        no mart carries.
+      dbt.stg_airbyte_source__amplitude_api_events + gp_api_db_outreach / voter_file_filter /
+        chat tables: the DATA-2690 feature-area definitions, kept so "acted in an area" means
+        the same thing as in DATA-2690 (mart_analytics.user_feature_use has no per-window
+        action-days).
+      airbyte_source.gp_api_db_outreach: text campaigns started but never sent; no mart keeps
+        unsent campaigns.
+
+data_provenance:
+  schema_status: prod
+  coverage_start: |
+    Amplitude events usable well before the window (raw MIN is a junk 1978 timestamp; floor
+    applied explicitly). gp_api_db_outreach from 2025-06-26. Chat tables from 2026-06-19 and
+    experiment_run (opponent research) from 2026-05-28: AI assistant and opponent research
+    did not exist for most of the window of the 48 races before 2026-07-15.
+  coverage_end: Current to the run date (2026-11-11).
+  post_merge_swap: N/A, all sources are prod.
+
+votes_needed:
+  definition: |
+    Rebuilt with the rule gp-api serves live (CampaignsService.fetchLiveRaceTargetMetrics,
+    omni origin/main bcb7861eb7):
+      1. Organization has override_district_id: ceil(turnout * 0.5) + 1 from
+         m_election_api__projected_turnout for that district and the election year
+         (general election code preferred).
+      2. Else the campaign's race (mart_civics.campaigns.ballotready_race_id =
+         m_election_api__race.br_database_id, the same race gp-api reads from
+         campaign.details.raceId): the race's own win_number if set (8 races in the whole
+         table, none in this population), else floor(projected_turnout / 2) + 1. Corrected
+         2026-11-12 after the PR review: the override route had used floor instead of
+         gp-api's ceil (one vote lower on odd turnouts, 56 users).
+      3. Else organization position_id -> m_election_api__position.district_id -> projected
+         turnout for the election year: ceil(turnout * 0.5) + 1.
+    The source used is recorded per user. The onboarding-event and path-to-victory fallbacks
+    of the first run were dropped in the re-frame (they covered 3 users).
+  coverage: |
+    767 of 783 (98%): 672 picked race, 56 override district, 39 position, 16 none. 7 users have
+    votes needed above their district's voter_count. In the first run the rebuilt value was
+    within 10% of the onboarding-event value for 300 of 319 users.
+  bands: under 1,000 / 1,000 to 2,499 / 2,500 to 9,999 / 10,000 and over / unknown (own row).
+
+eligibility:
+  tenure_requirement: None beyond the population rule; window length is reported per band.
+  reference_event: General election date.
+  rationale: |
+    Pricing applies to every Pro customer, so no one is dropped for a short window.
+    Window length is shown instead, so a band that is short on time is visible.
+
+target:
+  definition: |
+    Per user, over the window:
+      Feature use, the five DATA-2690 areas (outreach, voter data, AI assistant, story and
+      issues, opponent research): acted in the area (yes/no) and action-days.
+      Outreach, per channel (texting, robocall, social, door knocking, phone banking,
+      unattributed): user_journey_events Outreach send rows (committed sends, DATA-2477), text
+      count from event_value. Checked 2026-11-12 against int__user_outreach_sends for the same
+      users and windows: identical (3,470 sends, 365 texters, 8,101,096 texts).
+      Spend: outreach purchase dollars net of refunds, as the Revenue dashboard counts them
+      (user_journey_events, event in Payment/Refund, event_label = 'outreach_purchase',
+      primary Stripe customer row only). Other channels are free and reported as counts.
+      Relative to race size: billable texts per vote needed, and the share of each band that
+      bought more than 5,000 texts (the proposed bundle's allowance).
+  censoring: |
+    7 users whose election is after the run date are still sending. Kept, flagged, and the
+    main tables are re-checked without them.
+  absorbing_states: |
+    Observation stops at the end of election day. Users who canceled Pro after their election
+    are in; users who canceled before it are out (their window is not a Pro window).
+
+comparison:
+  type: descriptive_cut
+  comparison_group: Votes-needed bands against each other and against all Pro 2026 users.
+  notes: |
+    Association only. Larger races may differ in office level, signup era and experience, so
+    each headline difference is checked within office level and signup era (before vs from
+    2026-07-01) before it is reported.
+
+observation_window:
+  start: Six months before the general election date (DATA-2477 window, measured not assumed).
+  end: The end of the general election day (election day included; amended 2026-11-11).
+  anchored_to: General election date.
+  boundary_semantics: |
+    event_time >= add_months(general_election_date, -6) at 00:00 UTC and
+    event_time < general_election_date + 1 day at 00:00 UTC (timestamp comparisons), so
+    election-day sends count. Spend uses the
+    same window on event_at. The outreach intensity columns keep their own window, which is
+    the same rule.
+
+cohorts:
+  - dimension: activated
+    values: |
+      All Pro 2026 and activated only (users_win_base.is_activated, the governed
+      win_activated_users definition: reached voters at least once (outreach logged by the candidate counts), any
+      channel, lifetime). Amended 2026-11-11.
+  - dimension: votes_needed_band
+    values: the five bands above
+  - dimension: pro_status
+    values: Pro today, canceled after election (a check; added in the 2026-11-12 re-frame)
+  - dimension: context (checks, not headline cuts)
+    values: office level, signup era, election timing, votes-needed source
+
+sample_size:
+  expected_n_total: 783 (767 with votes needed). First run 692.
+  expected_n_per_cohort: |
+    Roughly 30 to 50 under 1,000, about 180 at 1,000 to 2,499, and the rest split across the
+    two larger bands (sized on the older source; final counts at execution).
+  power_concern: |
+    The smallest band may sit near 30. Below 30 is counts only, no rates. Wilson intervals on
+    any rate difference that is claimed.
+
+falsification:
+  what_would_change_belief: |
+    Flat billable texts, spend and share over 5,000 texts across bands means one bundle fits.
+    Rising spend with flat texts per vote needed means volume scales with race size, and the
+    bundle should too. Area use that does not move across bands means feature packaging
+    need not differ by race size.
+
+known_concerns:
+  - |
+    Votes needed is today's projection, not the number shown at onboarding (94% within 10%).
+  - |
+    About 75% of all-history sends could not be attributed to a channel; the share in this
+    population is measured and shown beside every channel table.
+  - |
+    The 154 races before 2026-07-15 (115 of them canceled after the election) had little or no
+    access to the AI assistant and opponent research, so feature tables are shown with and
+    without them.
+  - |
+    Dollar spend exists for paid outreach only. Door knocking and phone banking are free, so
+    their counts measure use, not willingness to pay.
+
+execution_notes:
+  preferred_format: notebook
+  output_location: |
+    analytics/projects/win_pro_votes_needed/: build_working_set.py (one query per source,
+    run once, parquet in datasets/), analyze.py (pandas cuts), notebook built from them.
+    Readout for Bryan as a ClickUp page under DATA-2809 after the reviewers land.
+  steps: |
+    1. Pin and print current_timestamp() with every number.
+    2. Rebuild votes needed per the rule above; print coverage by source.
+    3. Flag votes needed above the district's voter_count and report how many.
+    4. Check the journey-event sends against int__user_outreach_sends for the same windows.
+    5. Report the unattributed share of sends per band.
+    6. Check each headline band difference within office level, signup era and Pro status.
+    7. Re-run headline tables without the future elections and without the early ones.
+  reruns: One-off.
+
+amendments:
+  - date: 2026-11-11
+    kind: amend (adds a split; population, target and comparison unchanged)
+    changes: |
+      1. Texter = at least one committed texting send. The first run required a known billable
+         text count and missed 66 texters (238 vs 305). Text volume is still measured only where
+         the count is known; the rest are reported as "count unknown".
+      2. Activated users added as a second view throughout, using the governed is_activated.
+         Activation requires outreach on any channel, so "who did outreach" among activated
+         users is high by construction; volume and spend across bands are still comparable.
+      3. Window end moved to include election day (get-out-the-vote texts).
+      4. Text campaigns started but never sent (any status, incl. pending_payment) counted
+         separately, to split "never tried" from "tried, never sent".
+    requested_by: Tristan, after questioning "most Pro users send no texts".
+  - date: 2026-11-12
+    kind: re-frame (population and sources changed; approved by Tristan)
+    changes: |
+      1. Population: Pro today or canceled on or after election day, instead of Pro today only.
+         The first run dropped everyone who canceled after their election (131 here).
+      2. Comped Pro (never paid, 35 users) excluded. Including them moves rates 1 to 2 points.
+      3. Sources moved to the marts (user_journey, user_journey_events, mart_civics) with
+         upstream reads only where no mart has the field (see source_model).
+      4. Votes needed: onboarding-event and path-to-victory fallbacks dropped.
+      5. Candidacies with a 2026 election date but no separate general date (104 users, mostly
+         unmatched to outside data) kept, as in the first run's coalesce rule.
+    requested_by: Tristan.
+  - date: 2026-11-12
+    kind: amend (after the methodology and product reviews; population unchanged)
+    changes: |
+      1. Feature use measured on races from 2026-07-15 only (629 of 783). Before then the DATA-2690
+         action events record nothing in outreach, story or opponent research (older event names),
+         though 47 of those 154 people texted. Volume and spend keep everyone.
+      2. Bundle shares lead with all paying Pro customers; activated is the second view
+         (activation requires outreach, so activated-only shares overstate demand).
+      3. Over 5,000 texts reported as a range: known counts (lower bound) and every texter with no
+         known count counted as over (upper bound).
+      4. Added: texts that cover 50/75/90% of each band (all Pro and texters), Wilson intervals on
+         the claimed differences, text cost as a range (3.1 to 3.5 cents), never-texted (418) beside
+         no-outreach (284), door knocking use, text campaigns stopped at payment.
+      5. Canceled-before-election stays excluded (Tristan: reads as not serious about the race).
+         "Activated" kept as the company-wide term and defined at first use.
+    requested_by: Tristan, approving the review findings.

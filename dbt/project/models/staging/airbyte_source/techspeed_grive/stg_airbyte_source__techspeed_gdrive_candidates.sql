@@ -210,13 +210,40 @@ with
     invalid as (
         select _airbyte_raw_id
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates_invalid") }}
+    ),
+
+    -- A delivery keeps the race id from when the candidate was researched, but
+    -- BallotReady sometimes deletes a race and re-creates it. Every consumer reads
+    -- the deduped race staging, so a deleted copy would leave the row with no race.
+    superseded_race as (
+        select
+            cast(database_id as string) as superseded_race_id,
+            cast(superseded_by_database_id as string) as kept_race_id
+        from {{ ref("stg_airbyte_source__ballotready_api_race_with_superseded") }}
+        where is_superseded
+    ),
+
+    race_resolved as (
+        select
+            renamed.* except (br_race_id),
+            coalesce(superseded_race.kept_race_id, renamed.br_race_id) as br_race_id,
+            renamed.br_race_id as delivered_br_race_id
+        from renamed
+        left join
+            superseded_race on renamed.br_race_id = superseded_race.superseded_race_id
     )
 
-select *
-from renamed
+select * except (delivered_br_race_id)
+from race_resolved
 where
     _airbyte_raw_id
     not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)
-    -- No person id here; resolves through BallotReady race and name.
+    -- No person id here; resolves through BallotReady race and name. Checked on
+    -- both race ids, since a suppressed candidacy can still sit on a deleted copy.
     and
     {{ dsar_not_suppressed_via_br_candidacy("br_race_id", "first_name", "last_name") }}
+    and {{
+        dsar_not_suppressed_via_br_candidacy(
+            "delivered_br_race_id", "first_name", "last_name"
+        )
+    }}

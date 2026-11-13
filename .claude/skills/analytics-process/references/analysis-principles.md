@@ -20,7 +20,7 @@ This is the shared copy of the analytics owner's personal `data-analysis-princip
 ## 3. Check what a group is made of before crediting the difference
 - A gap between two groups is often just a gap in who is in them.
 - Before saying X drives Y, split by the obvious variables (signup channel, activation, incumbency, election date) and see if the gap survives.
-- Pick the denominator that leaves out people who never had the chance. Stages after onboarding divide by the onboarded; a rate over all signups moves with who signed up, not with the product.
+- Pick the denominator the decision applies to, minus people who never had the chance. Stages after onboarding divide by the onboarded; a rate over all signups moves with who signed up, not with the product. A view narrowed by the outcome itself (activated users when the question is outreach) comes second, never as the headline: a price paid by every customer is sized on every customer.
 - Before crediting a change over time, list what else changed in the same window (new flows, launches, sales motions) and name any that could share the credit.
 - Break a composite headline metric into its parts before quoting it. Most of the 2026 "outreach" gain over 2025 was the 10DLC texting-registration form, not more outreach.
 - Example: what moved Pro users on Win only made sense once channel and activation were in view. The challenger depth gap disappeared once we accounted for composition.
