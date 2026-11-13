@@ -54,6 +54,13 @@ TABLE_NAME = "bifrost_request_log"
 # the property that matters here is only "this cannot escape the quotes".
 _EXPORT_PATH_RE = re.compile(r"^s3://[A-Za-z0-9._\-]+/[A-Za-z0-9._/\-]+(?<![/])\Z")
 
+# Path segments that mean something other than a literal key. They cannot escape the quoted literal
+# (the character class above already forbids a quote, a semicolon and control characters), but `..`
+# and an empty segment would silently point COPY INTO somewhere other than the prefix the Variable
+# names, which is a different way to be wrong. Rejected rather than normalised: the export writes a
+# plain prefix, so anything else is a configuration error worth failing on.
+_EXPORT_PATH_REJECTED_SEGMENTS = frozenset({"..", "."})
+
 # The table's schema, in order, and the contract with the export. 31 columns, from three places:
 # the 29 the export reads out of the gateway's `logs` table, `exported_at` which the export stamps
 # onto every row it writes, and `loaded_at` which this loader stamps.
@@ -263,6 +270,11 @@ def _quote_path(path: str) -> str:
     """
     if not _EXPORT_PATH_RE.match(path):
         raise ValueError(f"export path is not a well-formed s3 URI: {path!r}")
+
+    key = path.split("://", 1)[1]
+    segments = key.split("/")[1:]
+    if any(segment in _EXPORT_PATH_REJECTED_SEGMENTS or not segment for segment in segments):
+        raise ValueError(f"export path has a relative or empty segment: {path!r}")
     return path
 
 

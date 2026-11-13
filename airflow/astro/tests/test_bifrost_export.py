@@ -201,6 +201,11 @@ def test_copy_into_quotes_the_prefix_as_a_validated_literal():
         "http://bucket/key",
         "s3://bucket",
         "s3://bucket/",
+        # Cannot escape the literal, but would point COPY INTO somewhere other than the prefix the
+        # Variable names. Rejected rather than normalised.
+        "s3://bucket/a/../etc",
+        "s3://bucket/a//b",
+        "s3://bucket/./x",
         "",
     ],
 )
