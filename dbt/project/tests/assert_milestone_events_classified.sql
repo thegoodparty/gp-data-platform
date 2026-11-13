@@ -26,13 +26,16 @@ with
             ('Dashboard - Candidate Dashboard Viewed'),
             ('Dashboard - Campaign Plan Viewed'),
             ('Campaign Plan - Campaign Tracker Viewed'),
+            ('Serve Onboarding - Term Dates Viewed'),
             ('Serve Onboarding - Getting Started Viewed'),
             ('Serve Onboarding - Constituency Profile Viewed'),
             ('Serve Onboarding - Poll Value Props Viewed'),
             ('Serve Onboarding - Poll Strategy Viewed'),
             ('Serve Onboarding - Add Image Viewed'),
             ('Serve Onboarding - Poll Preview Viewed'),
-            ('Serve Onboarding - SMS Poll Sent')
+            ('Serve Onboarding - SMS Poll Sent'),
+            ('Serve Onboarding - Welcome Viewed'),
+            ('Serve Onboarding - Pledge Completed')
     )
 
 select event_type, {{ amplitude_event_family("event_type") }} as family

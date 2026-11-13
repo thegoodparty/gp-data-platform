@@ -93,6 +93,7 @@ with
                     'Onboarding - Registration Completed',
                     'onboarding_complete',
                     'pro_upgrade_complete',
+                    'Serve Onboarding - Term Dates Viewed',
                     'Serve Onboarding - Getting Started Viewed',
                     'Serve Onboarding - Constituency Profile Viewed',
                     'Serve Onboarding - Poll Value Props Viewed',
@@ -360,11 +361,14 @@ with
             ) as serve_poll_preview_at,
 
             -- Start and end of onboarding across both flows. The flow launched
-            -- 2026-06-24 opens on Welcome and ends on the pledge, with no poll.
+            -- 2026-06-24 ends on the pledge, with no poll. It opened on Welcome
+            -- until its entry screen moved to Term Dates in the week of
+            -- 2026-11-02; earlier users still start on Welcome.
             min(
                 case
                     when
                         event_type in (
+                            'Serve Onboarding - Term Dates Viewed',
                             'Serve Onboarding - Getting Started Viewed',
                             'Serve Onboarding - Welcome Viewed'
                         )

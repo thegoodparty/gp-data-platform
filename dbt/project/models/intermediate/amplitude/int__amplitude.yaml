@@ -184,7 +184,9 @@ models:
       - name: serve_onboarding_started_at
         description: >
           First Serve onboarding screen across both flows: 'Getting Started
-          Viewed' (the poll flow) or 'Welcome Viewed' (the flow from 2026-06-24).
+          Viewed' (the poll flow), or 'Term Dates Viewed' or 'Welcome Viewed'
+          for the flow from 2026-06-24, which opened on Welcome until its entry
+          screen moved to Term Dates in the week of 2026-11-02.
 
       - name: serve_onboarding_completed_at
         description: >
