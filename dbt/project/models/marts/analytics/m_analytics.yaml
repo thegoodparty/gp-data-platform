@@ -793,8 +793,9 @@ models:
 
       - name: has_started_serve_onboarding
         description: >
-          TRUE if the user opened Serve onboarding in either flow: Getting
-          Started (the poll flow) or Welcome (the flow from 2026-06-24).
+          TRUE if the user opened Serve onboarding in either flow: Term Dates
+          (where the flow from 2026-06-24 opens now), Welcome (where it opened
+          before the entry screen moved) or Getting Started (the poll flow).
         data_tests:
           - not_null
 
