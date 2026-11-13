@@ -795,7 +795,8 @@ models:
         description: >
           TRUE if the user opened Serve onboarding in either flow: Term Dates
           (where the flow from 2026-06-24 opens now), Welcome (where it opened
-          before the entry screen moved) or Getting Started (the poll flow).
+          before the entry screen moved in the week of 2026-11-02) or Getting
+          Started (the poll flow).
         data_tests:
           - not_null
 
@@ -3529,7 +3530,9 @@ models:
       - name: serve_onboarding_started_at
         description: >
           First Serve onboarding screen, across both flows: Getting Started
-          (to 2026-06) or Welcome (from 2026-06-24).
+          (to 2026-06), or Term Dates or Welcome for the flow from 2026-06-24,
+          which opened on Welcome until its entry screen moved to Term Dates in
+          the week of 2026-11-02.
       - name: serve_onboarding_completed_at
         description: >
           End of Serve onboarding, across both flows: the onboarding poll sent
