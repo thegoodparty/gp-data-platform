@@ -38,12 +38,12 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 ```
 users_win_candidacy.campaign_id = candidacy.product_campaign_id
 ```
-Use `users_win_candidacy` if you only need outcomes + segmentation that's already denormalized. Its `candidacy_result` is already the settled outcome. Join out to `candidacy` for `latest_stage_reached` (funnel position), `is_incumbent`, `is_open_seat`, `is_partisan`.
+Use `users_win_candidacy` if you only need outcomes + segmentation that's already denormalized. Its `candidacy_result` is already the settled outcome. Join out to `candidacy` for `latest_stage_reached` (funnel position), `is_open_seat`, `is_partisan`.
 
 **Win user → engagement (Amplitude weekly):**
 ```
 users_win_candidacy.user_id = int__amplitude_win_activity.user_id  (both BIGINT)
--- Weekly variant: int__amplitude_win_activity_weekly (same join key). Coverage and caveats owned by engagement.md (modeling layers).
+-- Weekly: int__user_win_activity_weekly (mart_analytics.user_win_activity_weekly), not int__amplitude_win_activity_weekly, whose allowlist reads fewer active weeks. Caveats owned by engagement.md (modeling layers).
 ```
 
 **Win user → lifecycle milestones:**

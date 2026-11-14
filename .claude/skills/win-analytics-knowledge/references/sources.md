@@ -31,6 +31,9 @@ Part of the **win-analytics-knowledge** skill. Where Win-product data lives and 
 | **L2 voter data** | `goodparty_data_catalog.dbt.int__l2_*` | district-grain (aggregations); voter-grain (uniform/Haystaq) | Electorate context (voter counts, demographics). **Voter-grain is PII-adjacent — restricted to lawful use cases. Default to district-grain.** Already surfaced into `users_win_candidacy` as `voter_count`, `l2_district_name`, `l2_district_type`. |
 | **AI assistant chats** | `goodparty_data_catalog.airbyte_source.gp_api_db_chat_conversation` (join `owner_user_id` to the user; `scope = 'campaign_assistant'`) and `gp_api_db_chat_message` (`conversation_id`, `role = 'user'` for the candidate's messages) | conversation / message | What candidates ask the AI assistant. Raw only, not modeled in dbt; rows from 2026-06-19. Message text is candidate-written: label it inside the warehouse and export counts only. |
 
+**`airbyte_source.gp_api_db_campaign_position` has received no rows since 2026-09-09**, so issue
+counts read from it go flat after that date (state · 2026-11).
+
 ## Key tables
 
 For most Win analyses, start with one of these:
