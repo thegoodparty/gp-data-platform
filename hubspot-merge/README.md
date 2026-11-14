@@ -14,7 +14,9 @@ a batch read and a merge, over an injectable transport. It paces calls at
 `MERGE_MAX_RPS`, honours `Retry-After` on 429, retries 5xx with backoff, and lets any
 other 4xx through as HubSpot's answer about that pair. The read returns records keyed by
 the id each one resolved to, because a merged-away id reads as its survivor and the
-response carries no echo of the ids requested.
+response carries no echo of the ids requested. `ReadResult.resolved` folds each record's
+own id and the ids it absorbed into the one map classification reads, so nothing outside
+the client parses a read body.
 
 ## Local
 
