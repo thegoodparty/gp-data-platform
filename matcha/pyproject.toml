@@ -5,7 +5,9 @@ description = "Entity resolution pipeline for multi-source candidacy matching"
 requires-python = ">=3.14"
 dependencies = [
     "click",
-    "duckdb",
+    # Splink 4 drives this DuckDB connection and its own requirement carries no
+    # upper bound, so the cap here is what holds off duckdb 2.0 (ENG-11616).
+    "duckdb>=1.5.4,<2.0.0",
     "nameparser",
     "pandas>=2.3.1,<4.0.0",
     "pyarrow",
