@@ -247,9 +247,8 @@ models:
       - name: Voters_BirthYearMonth
         description: >
           Year and month of birth, derived from Voters_BirthDate. Open by design.
-        config:
-          databricks_tags:
-            open: "true"
+        databricks_tags:
+          open: "true"
 
   - name: int__voter_turnout_inference
     description: >
