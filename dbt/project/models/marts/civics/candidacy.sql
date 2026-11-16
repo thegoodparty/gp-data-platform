@@ -159,7 +159,8 @@ with
             -- No 2026+ provider computes viability (TS's MLflow gap-filler was
             -- removed with the fuzzy-dedupe pipeline); only 2025-archive rows
             -- carry values. The broad score lives on candidacy_scored.
-            -- win_number / win_number_model remain BR-only.
+            -- win_number / win_number_model: BallotReady leaves them null, so this
+            -- side is empty; only the 2025-archive rows above carry values.
             coalesce(br.viability_score, ts.viability_score) as viability_score,
             br.win_number,
             br.win_number_model,
