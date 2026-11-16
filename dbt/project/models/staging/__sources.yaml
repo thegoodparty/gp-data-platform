@@ -218,6 +218,13 @@ sources:
           freshness: null
       - name: gp_api_db_contact_interaction_phone_banking
         description: raw data load from gp_api_db postgres db from table `contact_interaction_phone_banking`
+      - name: gp_api_db_contact_interaction_text
+        columns:
+          - name: note
+            config:
+              meta:
+                sensitive: confidential
+        description: raw data load from gp_api_db postgres db from table `contact_interaction_text`
       - name: gp_api_db_contact_status_event
         description: raw data load from gp_api_db postgres db from table `contact_status_event`
       - name: gp_api_db_door_knocking_turf
