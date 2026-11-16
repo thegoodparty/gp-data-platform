@@ -1384,7 +1384,16 @@ models:
       - name: estimatedCompletionDate
         description: "Estimated date when the poll will be completed"
   - name: stg_airbyte_source__gp_api_db_poll_individual_message
-    description: raw data load from gp_api_db postgres db from table `poll_individual_message`
+    description: >
+      One row per inbound SMS reply, and nothing else. Outbound sends are not
+      here: a row is written from a reply the constituent sent, so a send that
+      nobody answered has no rows at all. For the send population behind these
+      replies use stg_airbyte_source__gp_api_db_contact_interaction_text, which
+      is written per recipient at hand-off. Join on (outreach_id, person_id).
+
+      A row belongs to a poll or to a text outreach, never both: exactly one of
+      poll_id and outreach_id is set, which the app's own CHECK constraint
+      enforces at the source.
     columns:
       - name: _airbyte_raw_id
         description: "Airbyte internal unique identifier for the raw record"
@@ -1404,18 +1413,24 @@ models:
         tests:
           - not_null
       - name: id
-        description: "Unique identifier for the poll individual message"
+        description: "Unique identifier for the reply"
         tests:
           - not_null
           - unique
       - name: poll_id
-        description: "Foreign key reference to the poll"
+        description: >
+          The poll this reply answers. Null on every reply to a text outreach,
+          so it is not a required field; see outreach_id for those.
         tests:
-          - not_null
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_poll')
                 field: id
+      - name: outreach_id
+        description: >
+          The text outreach this reply answers. Null on every reply to a poll.
+          With person_id it joins to the contact_interaction_text row for the
+          send itself.
       - name: sent_at
         description: "Timestamp when the message was sent"
       - name: content
@@ -1950,6 +1965,76 @@ models:
         description: >
           The frozen call list this outcome came from, and the clean join to the
           targeted universe. Null for calls logged manually outside a list.
+
+  - name: stg_airbyte_source__gp_api_db_contact_interaction_text
+    description: >
+      One row per person per text send, and the denominator behind every SMS
+      reply count. A row is written for every recipient when a send is handed
+      to fulfilment (whether or not they ever answer), then stamped with
+      responded_at and/or opted_out_at as inbound replies land. Reply BODIES are
+      not here: those live on
+      stg_airbyte_source__gp_api_db_poll_individual_message. Join the two on
+      (outreach_id, person_id) for replies over sends.
+
+      Modelled on (outreach_id, person_id), so a manual log of a text
+      conversation (outreach_id null) is a separate shape and does not collide.
+      Not every row is reachable from a reply: a send whose recipients never
+      answered has rows here and nothing in poll_individual_message at all.
+    columns:
+      - name: id
+        description: "Primary key - app-generated UUIDv7 for the interaction"
+        data_tests:
+          - not_null
+          - unique
+      - name: note
+        description: >
+          Free-text note typed by a user logging a text conversation by hand.
+          Unstructured text about an identifiable voter. Null on every row in
+          production today: only the manual-log path writes it, and no manual
+          text interactions have been written yet.
+      - name: manual
+        description: >
+          True when logged by hand in the CRM rather than captured from a send.
+          False on every row in production today, because only the manual-log
+          path sets it and that path has not been used.
+        data_tests:
+          - not_null
+      - name: person_id
+        description: "The voter texted, as a people-api person id derived from the voter file"
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp the row was first written"
+      - name: occurred_at
+        description: >
+          The send's launch time, NOT the time of any reply, and identical
+          across every recipient of one send. Read responded_at and
+          opted_out_at for reply timing; on a manual log it is the time the
+          user said the conversation happened.
+        data_tests:
+          - not_null
+      - name: outreach_id
+        description: >
+          The send this interaction belongs to, and the join to the outreach
+          spine. Null only on manual logs.
+      - name: opted_out_at
+        description: >
+          When the person opted out. Set by the inbound sweep from Peerly events
+          and by the reply ingest, so the same person can hold both this and
+          responded_at on one row.
+      - name: responded_at
+        description: "When the person replied. Null when they were sent a text and never answered"
+      - name: source_event_id
+        description: >
+          The vendor event id a reply or opt-out was written from, for
+          idempotency. Unique per organization, and null on rows nothing inbound
+          has landed on yet. A row holds at most one event id, so a person who
+          both replied and opted out has the second event re-screened on later
+          sweeps rather than stamped.
+      - name: organization_slug
+        description: "The organization that owns the interaction. The only owner column; there is no campaign id"
+        data_tests:
+          - not_null
 
   - name: stg_airbyte_source__gp_api_db_contact_status_event
     description: >
