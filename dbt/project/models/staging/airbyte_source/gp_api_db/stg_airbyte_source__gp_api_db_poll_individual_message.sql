@@ -17,6 +17,7 @@ with
             {{ adapter.quote("person_cell_phone") }},
             {{ adapter.quote("person_id") }},
             {{ adapter.quote("poll_id") }},
+            {{ adapter.quote("outreach_id") }},
             {{ adapter.quote("sender") }},
             {{ adapter.quote("sent_at") }},
             {{ adapter.quote("updated_at") }}

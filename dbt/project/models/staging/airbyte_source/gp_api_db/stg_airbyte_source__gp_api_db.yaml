@@ -1384,7 +1384,16 @@ models:
       - name: estimatedCompletionDate
         description: "Estimated date when the poll will be completed"
   - name: stg_airbyte_source__gp_api_db_poll_individual_message
-    description: raw data load from gp_api_db postgres db from table `poll_individual_message`
+    description: >
+      One row per inbound SMS reply, and nothing else. Outbound sends are not
+      here: a row is written from a reply the constituent sent, so a send that
+      nobody answered has no rows at all. For the send population behind these
+      replies use stg_airbyte_source__gp_api_db_contact_interaction_text, which
+      is written per recipient at hand-off. Join on (outreach_id, person_id).
+
+      A row belongs to a poll or to a text outreach, never both: exactly one of
+      poll_id and outreach_id is set, which the app's own CHECK constraint
+      enforces at the source.
     columns:
       - name: _airbyte_raw_id
         description: "Airbyte internal unique identifier for the raw record"
@@ -1404,18 +1413,24 @@ models:
         tests:
           - not_null
       - name: id
-        description: "Unique identifier for the poll individual message"
+        description: "Unique identifier for the reply"
         tests:
           - not_null
           - unique
       - name: poll_id
-        description: "Foreign key reference to the poll"
+        description: >
+          The poll this reply answers. Null on every reply to a text outreach,
+          so it is not a required field; see outreach_id for those.
         tests:
-          - not_null
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_poll')
                 field: id
+      - name: outreach_id
+        description: >
+          The text outreach this reply answers. Null on every reply to a poll.
+          With person_id it joins to the contact_interaction_text row for the
+          send itself.
       - name: sent_at
         description: "Timestamp when the message was sent"
       - name: content
