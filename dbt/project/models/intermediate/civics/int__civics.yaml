@@ -4659,6 +4659,9 @@ models:
       downstream candidacy_scored mart, never back onto candidacy (acyclic).
       Models load by latest registered version from model_predictions (no @prod
       alias). Grain: one row per gp_candidacy_id.
+    config:
+      databricks_tags:
+        classified: "true"
     columns:
       - name: gp_candidacy_id
         description: Primary key — foreign key to the candidacy mart.

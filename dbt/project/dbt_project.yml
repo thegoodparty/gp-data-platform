@@ -146,6 +146,16 @@ models:
       l2_commercial:
         +materialized: table
 
+# Seed tables are read by analyst, and a table the row filter does not see as
+# classified reads as empty to it. dbt writes no databricks_tags for seeds (the
+# documented YAML key and the project-level key both leave
+# information_schema.column_tags and table_tags untouched), so the tag goes on
+# with a post-hook after the seed loads.
+seeds:
+  goodparty_data_catalog:
+    +post-hook:
+      - "alter table {{ this }} set tags ('classified' = 'true')"
+
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
 flags:

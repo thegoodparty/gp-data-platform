@@ -36,6 +36,8 @@ models:
 
   - name: m_people_api__districtvoter
     config:
+      databricks_tags:
+        classified: "true"
       tags: ["monthly"]
     description: >
       This model creates the district voter table in the mart layer using the voter table.
@@ -63,6 +65,12 @@ models:
         data_type: string
         tests:
           - not_null
+      - name: name
+        description: >
+          The district's name as L2 reports it (a county, a judicial circuit, a
+          fire district). Not a person's name, so it stays readable.
+        databricks_tags:
+          open: "true"
     data_tests:
       - unique_combination_sampled:
           arguments:

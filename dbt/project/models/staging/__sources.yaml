@@ -1081,58 +1081,259 @@ sources:
     tables:
       - name: candidacy_ddhq_matches_20250826
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: candidacy_ddhq_matches_20250909
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: candidacy_ddhq_matches_20250916
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: candidacy_ddhq_matches_20251016
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: candidacy_ddhq_matches_20251112
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_prompt
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_response
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: candidacy_ddhq_matches_20251202
         description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_prompt
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_response
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+      - name: candidacy_ddhq_matches_20251201
+        description: output of gemini string matching between DDHQ election results and candidacies
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: embedding_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_prompt
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_response
+            config:
+              meta:
+                sensitive: confidential
+          - name: llm_reasoning
+            config:
+              meta:
+                sensitive: confidential
+          - name: top_10_candidates
+            config:
+              meta:
+                sensitive: confidential
+
       - name: llm_l2_br_match_results
         description: >
           One row per attempt and office, append-only. A populated district
           means matched; an empty one means the attempt found nothing. The
           matcher creates and writes this table; dbt only reads it.
-        columns:
-          # The schema of record now lives with the matcher, so the two columns
-          # nothing downstream can work without are pinned from this side.
-          - name: br_database_id
-            description: BallotReady office database id.
-            data_tests:
-              - not_null
-          - name: attempted_at
-            description: >
-              When the attempt was made, and the run key: one run stamps one
-              value across every row it writes.
-            data_tests:
-              - not_null
+
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
+
       - name: turnout_projections_model2odd
         description: raw data load from voter turnout projections for odd years
+
       - name: viability_scores
         description: raw data load from model predictions
+
       - name: ballots_projected_2026_v2
         description: raw data load from voter turnout projections for 2026 (v2)
+
       - name: ballots_projected_2027
         description: raw data load from voter turnout projections for 2027
+
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+
       - name: win_candidate_scores_latest
         description: >
           Corroboration-model scores for Win campaigns, one row per scored campaign.
           Written outside dbt by the legitimacy predictor; a single scoring run on
           2026-08-14 so far.
+
       - name: web_verify_verdicts_20260813
         description: >
           Web verification of uncorroborated Win signups against official election sources,
           as of 2026-08-13. Label evidence, not model input: every verdict was established
           by looking up what happened at or after the election. The four waves are separate
           sampling frames and must not be pooled into a rate.
-
   - name: segment_storage_source
     database: segment_storage
     schema: gp_api
@@ -1141,29 +1342,1452 @@ sources:
     tables:
       - name: account_password_reset_requested
         description: Segment event fired when a user requests a password reset
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: campaign_verify_token_status_update
         description: Segment event for campaign verification token status changes
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_generation_completed
         description: Segment event fired when AI content generation completes
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_generation_started
         description: Segment event fired when AI content generation starts
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: identifies
         description: Segment identify calls linking anonymous IDs to known users
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_user_created
         description: Segment event fired when a new user completes onboarding
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: peerly_identity_id_created
         description: Segment event fired when a Peerly identity ID is created for 10DLC compliance
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: poll_results_synthesis_complete
         description: Segment event fired when poll results synthesis completes
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: tracks
         description: Segment track calls capturing user actions and events
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
       - name: users
         description: Segment user profiles with traits and properties
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_outreach_10dlc_compliance_completed
         description: Segment event fired when 10DLC compliance is completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_outreach_10dlc_compliance_pin_submitted
         description: Segment event fired when a user submits their 10DLC compliance PIN
-
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: account_pro_subscription_confirmed
+        description: Segment event - account pro subscription confirmed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: account_user_deleted
+        description: Segment event - account user deleted
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: accounts
+        description: Segment event - accounts
+      - name: ai_assistant_response_completed
+        description: Segment event - ai assistant response completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_response_failed
+        description: Segment event - ai assistant response failed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: briefing_assistant_agenda_created
+        description: Segment event - briefing assistant agenda created
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: briefing_assistant_agenda_not_created
+        description: Segment event - briefing assistant agenda not created
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: briefing_assistant_dispatch_skipped
+        description: Segment event - briefing assistant dispatch skipped
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: briefing_assistant_list_viewed
+        description: Segment event - briefing assistant list viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_follow_on_blocked
+        description: Segment event - campaign follow on blocked
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_follow_on_created
+        description: Segment event - campaign follow on created
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_community_events_generation_completed
+        description: Segment event - campaign plan v2 community events generation completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_community_events_generation_started
+        description: Segment event - campaign plan v2 community events generation started
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_media_generation_completed
+        description: Segment event - campaign plan v2 media generation completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_media_generation_started
+        description: Segment event - campaign plan v2 media generation started
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_opportunities_challenges_generation_completed
+        description: Segment event - campaign plan v2 opportunities challenges generation completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_opportunities_challenges_generation_started
+        description: Segment event - campaign plan v2 opportunities challenges generation started
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_opposition_research_generation_completed
+        description: Segment event - campaign plan v2 opposition research generation completed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_opposition_research_generation_started
+        description: Segment event - campaign plan v2 opposition research generation started
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_v2_strategy_race_changed
+        description: Segment event - campaign plan v2 strategy race changed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: campaign_plan_weekly_tasks_digest
+        description: Segment event - campaign plan weekly tasks digest
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: candidacy_did_you_win_modal_completed
+        description: Segment event - candidacy did you win modal completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: candidacy_did_you_win_modal_viewed
+        description: Segment event - candidacy did you win modal viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+      - name: candidate_website_published
+        description: Segment event - candidate website published
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: candidate_website_purchased_domain
+        description: Segment event - candidate website purchased domain
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_high_priority_trending_issue_created
+        description: Segment event - community issues high priority trending issue created
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_initial_issues_generated
+        description: Segment event - community issues initial issues generated
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_top_issue_priority_changed
+        description: Segment event - community issues top issue priority changed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_top_issues_dispatch_skipped
+        description: Segment event - community issues top issues dispatch skipped
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_top_issues_refreshed
+        description: Segment event - community issues top issues refreshed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_trending_issues_dispatch_skipped
+        description: Segment event - community issues trending issues dispatch skipped
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: community_issues_trending_issues_refreshed
+        description: Segment event - community issues trending issues refreshed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: dashboard_campaign_plan_generation_completed
+        description: Segment event - dashboard campaign plan generation completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: dashboard_campaign_plan_viewed
+        description: Segment event - dashboard campaign plan viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: door_knocking_canvassing_totals_updated
+        description: Segment event - door knocking canvassing totals updated
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: door_knocking_door_logged
+        description: Segment event - door knocking door logged
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: door_knocking_list_created
+        description: Segment event - door knocking list created
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: door_knocking_session_abandoned
+        description: Segment event - door knocking session abandoned
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: door_knocking_session_started
+        description: Segment event - door knocking session started
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: exposure
+        description: Segment event - exposure
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+      - name: groups
+        description: Segment event - groups
+      - name: navigation_dashboard_click_briefings
+        description: Segment event - navigation dashboard click briefings
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: navigation_dashboard_click_contacts
+        description: Segment event - navigation dashboard click contacts
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: navigation_dashboard_click_my_profile
+        description: Segment event - navigation dashboard click my profile
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: navigation_dashboard_click_polls
+        description: Segment event - navigation dashboard click polls
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: navigation_dashboard_click_voter_outreach
+        description: Segment event - navigation dashboard click voter outreach
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_candidate_office_searched
+        description: Segment event - onboarding candidate office searched
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_magic_link_clicked
+        description: Segment event - onboarding magic link clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+      - name: onboarding_magic_link_sent
+        description: Segment event - onboarding magic link sent
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_office_step_click_next
+        description: Segment event - onboarding office step click next
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_office_step_office_selected
+        description: Segment event - onboarding office step office selected
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_ballot_status_completed
+        description: Segment event - onboarding v2 ballot status completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_ballot_status_viewed
+        description: Segment event - onboarding v2 ballot status viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_campaign_manager_clicked
+        description: Segment event - onboarding v2 campaign manager clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_community_events_requested
+        description: Segment event - onboarding v2 community events requested
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_media_displayed
+        description: Segment event - onboarding v2 media displayed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_media_requested
+        description: Segment event - onboarding v2 media requested
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_media_results_received
+        description: Segment event - onboarding v2 media results received
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_office_completed
+        description: Segment event - onboarding v2 office completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_office_next_clicked
+        description: Segment event - onboarding v2 office next clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_office_viewed
+        description: Segment event - onboarding v2 office viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_party_designation_completed
+        description: Segment event - onboarding v2 party designation completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_party_designation_viewed
+        description: Segment event - onboarding v2 party designation viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_pledge_completed
+        description: Segment event - onboarding v2 pledge completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_pledge_submit_clicked
+        description: Segment event - onboarding v2 pledge submit clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_pledge_viewed
+        description: Segment event - onboarding v2 pledge viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_strategic_landscape_requested
+        description: Segment event - onboarding v2 strategic landscape requested
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_voter_insights_completed
+        description: Segment event - onboarding v2 voter insights completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_voter_insights_viewed
+        description: Segment event - onboarding v2 voter insights viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_votes_needed_calculated
+        description: Segment event - onboarding v2 votes needed calculated
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_votes_needed_completed
+        description: Segment event - onboarding v2 votes needed completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_votes_needed_failed
+        description: Segment event - onboarding v2 votes needed failed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_votes_needed_viewed
+        description: Segment event - onboarding v2 votes needed viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_welcome_completed
+        description: Segment event - onboarding v2 welcome completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: onboarding_v2_welcome_viewed
+        description: Segment event - onboarding v2 welcome viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: org_switcher_organization_switched
+        description: Segment event - org switcher organization switched
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: outreach_click_create
+        description: Segment event - outreach click create
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: outreach_view_accessed
+        description: Segment event - outreach view accessed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pages
+        description: Segment event - pages
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+      - name: person_profile_completion_requested
+        description: Segment event - person profile completion requested
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_banner_viewed
+        description: Segment event - pro upgrade banner viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_complete
+        description: Segment event - pro upgrade complete
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_modal_modal_shown
+        description: Segment event - pro upgrade modal modal shown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_texting_setup_banner_viewed
+        description: Segment event - pro upgrade texting setup banner viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_campaign_details_click_save
+        description: Segment event - profile campaign details click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_office_details_click_edit
+        description: Segment event - profile office details click edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_office_details_click_save
+        description: Segment event - profile office details click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_policy_priorities_click_add
+        description: Segment event - profile policy priorities click add
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_policy_priorities_submit_add
+        description: Segment event - profile policy priorities submit add
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: robocall_hold_failed
+        description: Segment event - robocall hold failed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: robocall_hold_placed
+        description: Segment event - robocall hold placed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: robocall_receipt
+        description: Segment event - robocall receipt
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: robocall_scheduled
+        description: Segment event - robocall scheduled
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: robocall_send_failed
+        description: Segment event - robocall send failed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_br_suggestion_changed
+        description: Segment event - serve onboarding br suggestion changed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_confirm_viewed
+        description: Segment event - serve onboarding confirm viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_know_your_constituents_completed
+        description: Segment event - serve onboarding know your constituents completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_know_your_constituents_viewed
+        description: Segment event - serve onboarding know your constituents viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_magic_link_activated
+        description: Segment event - serve onboarding magic link activated
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_magic_link_sent
+        description: Segment event - serve onboarding magic link sent
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_net_new_completed
+        description: Segment event - serve onboarding net new completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_office_status_viewed
+        description: Segment event - serve onboarding office status viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_party_designation_blocked
+        description: Segment event - serve onboarding party designation blocked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_party_designation_viewed
+        description: Segment event - serve onboarding party designation viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_pledge_completed
+        description: Segment event - serve onboarding pledge completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_pledge_viewed
+        description: Segment event - serve onboarding pledge viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_term_dates_viewed
+        description: Segment event - serve onboarding term dates viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_welcome_viewed
+        description: Segment event - serve onboarding welcome viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+      - name: team_invite_accepted
+        description: Segment event - team invite accepted
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: team_member_invited
+        description: Segment event - team member invited
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: team_outreach_assigned
+        description: Segment event - team outreach assigned
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: team_outreach_assignment_removed
+        description: Segment event - team outreach assignment removed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_candidate_profile_submitted
+        description: Segment event - voter outreach 10dlc compliance candidate profile submitted
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_form_submitted
+        description: Segment event - voter outreach 10dlc compliance form submitted
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_pin_resent
+        description: Segment event - voter outreach 10dlc compliance pin resent
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_pin_sent
+        description: Segment event - voter outreach 10dlc compliance pin sent
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_rejected
+        description: Segment event - voter outreach 10dlc compliance rejected
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_started
+        description: Segment event - voter outreach 10dlc compliance started
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_campaign_approved
+        description: Segment event - voter outreach campaign approved
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_campaign_scheduled
+        description: Segment event - voter outreach campaign scheduled
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_free_texts_offer_redeemed
+        description: Segment event - voter outreach free texts offer redeemed
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: win_onboarding_magic_link_sent
+        description: Segment event - win onboarding magic link sent
+        columns:
+          - name: context_traits_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
   - name: segment_storage_source_web_app
     database: segment_storage
     schema: web_app
@@ -1172,325 +2796,2506 @@ sources:
     tables:
       - name: _10_dlc_compliance_pin_verification_completed
         description: Segment web app event - 10 dlc compliance pin verification completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: _10_dlc_compliance_registration_submitted
         description: Segment web app event -  10 dlc compliance registration submitted
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: account_password_reset_completed
         description: Segment web app event - account password reset completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
       - name: ai_assistant_ask_a_question
         description: Segment web app event - ai assistant ask a question
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: ai_assistant_click_new_chat
         description: Segment web app event - ai assistant click new chat
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: ai_assistant_click_view_chat_history
         description: Segment web app event - ai assistant click view chat history
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: ai_content_generation_start
         description: Segment web app event - ai content generation start
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: campaign_assistant_chatbot_input
         description: Segment web app event - campaign assistant chatbot input
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidacy_did_you_win_modal_completed
         description: Segment web app event - candidacy did you win modal completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidacy_did_you_win_modal_viewed
         description: Segment web app event - candidacy did you win modal viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_continued
         description: Segment web app event - candidate website continued
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_edited
         description: Segment web app event - candidate website edited
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_published
         description: Segment web app event - candidate website published
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_purchased_domain
         description: Segment web app event - candidate website purchased domain
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_selected_domain
         description: Segment web app event - candidate website selected domain
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_started
         description: Segment web app event - candidate website started
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: candidate_website_started_domain_selection
         description: Segment web app event - candidate website started domain selection
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_click_content
         description: Segment web app event - content builder click content
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_click_continue_questions
         description: Segment web app event - content builder click continue questions
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_click_generate
         description: Segment web app event - content builder click generate
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_close_additional_inputs
         description: Segment web app event - content builder close additional inputs
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_editor_click_regenerate
         description: Segment web app event - content builder editor click regenerate
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_editor_open_version_picker
         description: Segment web app event - content builder editor open version picker
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_editor_submit_regenerate
         description: Segment web app event - content builder editor submit regenerate
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_select_template
         description: Segment web app event - content builder select template
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: content_builder_submit_additional_inputs
         description: Segment web app event - content builder submit additional inputs
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: custom_voter_file_created
         description: Segment web app event - custom voter file created
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: dashboard_candidate_dashboard_viewed
         description: Segment web app event - dashboard candidate dashboard viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: dashboard_path_to_victory_exit_understand_path_to_victory
         description: Segment web app event - dashboard path to victory exit understand path to victory
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: download_voter_file_attempt
         description: Segment web app event - download voter file attempt
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: download_voter_file_failure
         description: Segment web app event - download voter file failure
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: download_voter_file_success
         description: Segment web app event - download voter file success
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: exposure
         description: Segment exposure events for experiment tracking
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
       - name: identifies
         description: Segment identify calls linking anonymous IDs to known users
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
       - name: invalid_party
         description: Segment web app event - invalid party
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_ai_assistant
         description: Segment web app event - navigation dashboard click ai assistant
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_community
         description: Segment web app event - navigation dashboard click community
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_contacts
         description: Segment web app event - navigation dashboard click contacts
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_content_builder
         description: Segment web app event - navigation dashboard click content builder
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_dashboard
         description: Segment web app event - navigation dashboard click dashboard
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_door_knocking
         description: Segment web app event - navigation dashboard click door knocking
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_my_profile
         description: Segment web app event - navigation dashboard click my profile
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_polls
         description: Segment web app event - navigation dashboard click polls
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_resources
         description: Segment web app event - navigation dashboard click resources
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_voter_data
         description: Segment web app event - navigation dashboard click voter data
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_voter_outreach
         description: Segment web app event - navigation dashboard click voter outreach
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_dashboard_click_website
         description: Segment web app event - navigation dashboard click website
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_top_avatar_dropdown_click_logout
         description: Segment web app event - navigation top avatar dropdown click logout
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_top_avatar_dropdown_click_settings
         description: Segment web app event - navigation top avatar dropdown click settings
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_top_avatar_dropdown_close_dropdown
         description: Segment web app event - navigation top avatar dropdown close dropdown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_top_click_avatar_dropdown
         description: Segment web app event - navigation top click avatar dropdown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: navigation_top_click_logo
         description: Segment web app event - navigation top click logo
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_candidate_affiliation_completed
         description: Segment web app event - onboarding candidate affiliation completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_candidate_office_completed
         description: Segment web app event - onboarding candidate office completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_candidate_office_searched
         description: Segment web app event - onboarding candidate office searched
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_candidate_pledge_completed
         description: Segment web app event - onboarding candidate pledge completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_click_finish_later
         description: Segment web app event - onboarding click finish later
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_complete
         description: Segment web app event - onboarding complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_complete_step_click_go_to_dashboard
         description: Segment web app event - onboarding complete step click go to dashboard
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_office_step_click_can_t_see_office
         description: Segment web app event - onboarding office step click can t see office
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_office_step_click_next
         description: Segment web app event - onboarding office step click next
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_office_step_office_selected
         description: Segment web app event - onboarding office step office selected
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_party_step_click_submit
         description: Segment web app event - onboarding party step click submit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_pledge_step_click_submit
         description: Segment web app event - onboarding pledge step click submit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: onboarding_registration_completed
         description: Segment web app event - onboarding registration completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: outreach_action_clicked
         description: Segment web app event - outreach action clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: outreach_click_create
         description: Segment web app event - outreach click create
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: outreach_door_knocking_complete
         description: Segment web app event - outreach door knocking complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: outreach_phone_banking_complete
         description: Segment web app event - outreach phone banking complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: outreach_view_accessed
         description: Segment web app event - outreach view accessed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: p2p_upgrade_modal_click_button
         description: Segment web app event - p2p upgrade modal click button
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: p2p_upgrade_modal_exit
         description: Segment web app event - p2p upgrade modal exit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: p2p_upgrade_modal_modal_shown
         description: Segment web app event - p2p upgrade modal modal shown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pages
         description: Segment page view events tracking user navigation
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
       - name: polls_create_poll_clicked
         description: Segment web app event - polls create poll clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: polls_poll_question_viewed
         description: Segment web app event - polls poll question viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: polls_poll_results_issue_details_viewed
         description: Segment web app event - polls poll results issue details viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: polls_poll_results_overview_viewed
         description: Segment web app event - polls poll results overview viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_click_exit_top_nav
         description: Segment web app event - pro upgrade click exit top nav
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_click_go_to_stripe
         description: Segment web app event - pro upgrade click go to stripe
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_click_next
         description: Segment web app event - pro upgrade committee check page click next
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_click_upload
         description: Segment web app event - pro upgrade committee check page click upload
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_hover_ein_number_help
         description: Segment web app event - pro upgrade committee check page hover ein number help
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_hover_name_of_campaign_committee_help
         description: Segment web app event - pro upgrade committee check page hover name of campaign committee help
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_hover_upload_help
         description: Segment web app event - pro upgrade committee check page hover upload help
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_committee_check_page_toggle_ein_requirement
         description: Segment web app event - pro upgrade committee check page toggle ein requirement
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_complete
         description: Segment web app event - pro upgrade complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_confirm_office
         description: Segment web app event - pro upgrade confirm office
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_edit_office
         description: Segment web app event - pro upgrade edit office
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_modal_click_button
         description: Segment web app event - pro upgrade modal click button
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_modal_exit
         description: Segment web app event - pro upgrade modal exit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_modal_modal_shown
         description: Segment web app event - pro upgrade modal modal shown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_service_agreement_page_click_finish
         description: Segment web app event - pro upgrade service agreement page click finish
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_splash_page_click_upgrade
         description: Segment web app event - pro upgrade splash page click upgrade
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_splash_page_exit
         description: Segment web app event - pro upgrade splash page exit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: pro_upgrade_submit_edit_office
         description: Segment web app event - pro upgrade submit edit office
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_campaign_details_click_save
         description: Segment web app event - profile campaign details click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_fun_fact_click_save
         description: Segment web app event - profile fun fact click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_office_details_click_edit
         description: Segment web app event - profile office details click edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_cancel_add_new
         description: Segment web app event - profile running against cancel add new
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_click_add_new
         description: Segment web app event - profile running against click add new
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_click_edit
         description: Segment web app event - profile running against click edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_click_save
         description: Segment web app event - profile running against click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_submit_add_new
         description: Segment web app event - profile running against submit add new
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_running_against_submit_edit
         description: Segment web app event - profile running against submit edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_top_issues_click_finish_entering_issues
         description: Segment web app event - profile top issues click finish entering issues
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: profile_why_section_click_save
         description: Segment web app event - profile why section click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: question_complete
         description: Segment web app event - question complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: resources_resource_clicked
         description: Segment web app event - resources resource clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_audience_check_age
         description: Segment web app event - schedule text campaign audience check age
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_audience_check_audience
         description: Segment web app event - schedule text campaign audience check audience
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_audience_check_gender
         description: Segment web app event - schedule text campaign audience check gender
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_audience_check_political_party
         description: Segment web app event - schedule text campaign audience check political party
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_audience_enter_audience_request
         description: Segment web app event - schedule text campaign audience enter audience request
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_back
         description: Segment web app event - schedule text campaign back
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_exit
         description: Segment web app event - schedule text campaign exit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_next
         description: Segment web app event - schedule text campaign next
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_script_click_add_your_own_script
         description: Segment web app event - schedule text campaign script click add your own script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_script_click_generate_a_new_script
         description: Segment web app event - schedule text campaign script click generate a new script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_script_click_use_a_saved_script
         description: Segment web app event - schedule text campaign script click use a saved script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_script_select_saved_script
         description: Segment web app event - schedule text campaign script select saved script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: schedule_text_campaign_script_submit_added_script
         description: Segment web app event - schedule text campaign script submit added script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_add_image_viewed
         description: Segment web app event - serve onboarding add image viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_constituency_profile_viewed
         description: Segment web app event - serve onboarding constituency profile viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_getting_started_viewed
         description: Segment web app event - serve onboarding getting started viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_meet_your_constituents_viewed
         description: Segment web app event - serve onboarding meet your constituents viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_poll_preview_viewed
         description: Segment web app event - serve onboarding poll preview viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_poll_strategy_viewed
         description: Segment web app event - serve onboarding poll strategy viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_poll_value_props_viewed
         description: Segment web app event - serve onboarding poll value props viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_sms_poll_sent
         description: Segment web app event - serve onboarding sms poll sent
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_success_page_viewed
         description: Segment web app event - serve onboarding success page viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_sworn_in_completed
         description: Segment web app event - serve onboarding sworn in completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: serve_onboarding_sworn_in_viewed
         description: Segment web app event - serve onboarding sworn in viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: set_password_click_set_password
         description: Segment web app event - set password click set password
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_account_settings_click_upgrade
         description: Segment web app event - settings account settings click upgrade
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_delete_account_click_delete
         description: Segment web app event - settings delete account click delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_delete_account_submit_delete
         description: Segment web app event - settings delete account submit delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_notifications_toggle_email
         description: Segment web app event - settings notifications toggle email
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_personal_info_click_save
         description: Segment web app event - settings personal info click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: settings_personal_info_click_upload
         description: Segment web app event - settings personal info click upload
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: sign_in_click_create_account
         description: Segment web app event - sign in click create account
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: sign_in_click_forgot_password
         description: Segment web app event - sign in click forgot password
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: sign_up_click_login
         description: Segment web app event - sign up click login
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: tracks
         description: Segment track calls capturing user actions and events
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
       - name: users
         description: Segment user profiles with traits and properties
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: name
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
       - name: usersnap_submission
         description: Segment web app event - usersnap submission
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_click_create_custom_voter_file
         description: Segment web app event - voter data click create custom voter file
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_click_detail_view
         description: Segment web app event - voter data click detail view
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_custom_voter_file_click_create
         description: Segment web app event - voter data custom voter file click create
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_custom_voter_file_click_next
         description: Segment web app event - voter data custom voter file click next
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_custom_voter_file_exit_modal
         description: Segment web app event - voter data custom voter file exit modal
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_custom_voter_file_select_channel
         description: Segment web app event - voter data custom voter file select channel
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_custom_voter_file_select_purpose
         description: Segment web app event - voter data custom voter file select purpose
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_file_detail_click_back
         description: Segment web app event - voter data file detail click back
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_file_detail_click_custom_file_info_icon
         description: Segment web app event - voter data file detail click custom file info icon
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_file_detail_click_download_csv
         description: Segment web app event - voter data file detail click download csv
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_data_file_detail_click_view_audience_filters
         description: Segment web app event - voter data file detail click view audience filters
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_outreach_10dlc_compliance_form_submitted
         description: Segment web app event - voter outreach 10dlc compliance form submitted
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_outreach_10dlc_compliance_started
         description: Segment web app event - voter outreach 10dlc compliance started
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: voter_outreach_campaign_completed
         description: Segment web app event - voter outreach campaign completed
-
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: account_password_set_completed
+        description: Segment web app event - account password set completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: account_pro_subscription_canceled
+        description: Segment web app event - account pro subscription canceled
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_chat_click_copy
+        description: Segment web app event - ai assistant chat click copy
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_chat_click_regenerate
+        description: Segment web app event - ai assistant chat click regenerate
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_chat_click_thumbs_up
+        description: Segment web app event - ai assistant chat click thumbs up
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_chat_history_click_delete
+        description: Segment web app event - ai assistant chat history click delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: ai_assistant_chat_history_click_menu
+        description: Segment web app event - ai assistant chat history click menu
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: candidacy_campaign_completed
+        description: Segment web app event - candidacy campaign completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: candidate_website_unpublished
+        description: Segment web app event - candidate website unpublished
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: contacts_download
+        description: Segment web app event - contacts download
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: contacts_segment_created
+        description: Segment web app event - contacts segment created
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: contacts_segment_viewed
+        description: Segment web app event - contacts segment viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: content_builder_editor_click_copy
+        description: Segment web app event - content builder editor click copy
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: content_builder_editor_click_delete
+        description: Segment web app event - content builder editor click delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: content_builder_editor_click_rename
+        description: Segment web app event - content builder editor click rename
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: content_builder_editor_click_translate
+        description: Segment web app event - content builder editor click translate
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: content_builder_editor_select_version
+        description: Segment web app event - content builder editor select version
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: outreach_social_media_complete
+        description: Segment web app event - outreach social media complete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: payment_completed
+        description: Segment web app event - payment completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: payment_review_and_pay_screen_viewed
+        description: Segment web app event - payment review and pay screen viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: payment_schedule_and_pay_viewed
+        description: Segment web app event - payment schedule and pay viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_add_image_completed
+        description: Segment web app event - polls add image completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_add_image_viewed
+        description: Segment web app event - polls add image viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_audience_selection_completed
+        description: Segment web app event - polls audience selection completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_audience_selection_viewed
+        description: Segment web app event - polls audience selection viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_expand_poll_recommendations_completed
+        description: Segment web app event - polls expand poll recommendations completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_expand_poll_recommendations_viewed
+        description: Segment web app event - polls expand poll recommendations viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_expand_poll_review_viewed
+        description: Segment web app event - polls expand poll review viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_low_confidence_modal_clicked
+        description: Segment web app event - polls low confidence modal clicked
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_poll_bias_detection_shown
+        description: Segment web app event - polls poll bias detection shown
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_poll_preview_completed
+        description: Segment web app event - polls poll preview completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_poll_preview_viewed
+        description: Segment web app event - polls poll preview viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_poll_question_completed
+        description: Segment web app event - polls poll question completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_schedule_poll_completed
+        description: Segment web app event - polls schedule poll completed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: polls_schedule_poll_viewed
+        description: Segment web app event - polls schedule poll viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_committee_check_page_click_back
+        description: Segment web app event - pro upgrade committee check page click back
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_exit_edit_office
+        description: Segment web app event - pro upgrade exit edit office
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_upgrade_service_agreement_page_click_back
+        description: Segment web app event - pro upgrade service agreement page click back
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: pro_user_can_not_download_voter_file_page
+        description: Segment web app event - pro user can not download voter file page
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_office_details_click_save
+        description: Segment web app event - profile office details click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_running_against_cancel_edit
+        description: Segment web app event - profile running against cancel edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_running_against_click_delete
+        description: Segment web app event - profile running against click delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_top_issues_cancel_edit
+        description: Segment web app event - profile top issues cancel edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_top_issues_click_delete
+        description: Segment web app event - profile top issues click delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_top_issues_click_edit
+        description: Segment web app event - profile top issues click edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_top_issues_submit_delete
+        description: Segment web app event - profile top issues submit delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: profile_top_issues_submit_edit
+        description: Segment web app event - profile top issues submit edit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: schedule_campaign_image_too_large
+        description: Segment web app event - schedule campaign image too large
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_poll_image_uploaded
+        description: Segment web app event - serve onboarding poll image uploaded
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: serve_onboarding_sms_poll_creation_failed
+        description: Segment web app event - serve onboarding sms poll creation failed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: settings_account_settings_click_manage_pro_subscription
+        description: Segment web app event - settings account settings click manage pro subscription
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: settings_account_settings_click_send_email
+        description: Segment web app event - settings account settings click send email
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: settings_delete_account_cancel_delete
+        description: Segment web app event - settings delete account cancel delete
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: settings_password_click_save
+        description: Segment web app event - settings password click save
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_click_need_help
+        description: Segment web app event - voter data click need help
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_custom_voter_file_audience_click_back
+        description: Segment web app event - voter data custom voter file audience click back
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_file_detail_learn_take_action_click_read_more
+        description: Segment web app event - voter data file detail learn take action click read more
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_file_detail_learn_take_action_click_schedule
+        description: Segment web app event - voter data file detail learn take action click schedule
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_file_detail_learn_take_action_click_write_script
+        description: Segment web app event - voter data file detail learn take action click write script
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_file_detail_recommended_partners_click_read_more
+        description: Segment web app event - voter data file detail recommended partners click read more
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_need_help_exit_modal
+        description: Segment web app event - voter data need help exit modal
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_need_help_select_voter_file_type
+        description: Segment web app event - voter data need help select voter file type
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_data_need_help_submit
+        description: Segment web app event - voter data need help submit
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_modal_viewed
+        description: Segment web app event - voter outreach 10dlc compliance modal viewed
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_10dlc_compliance_pin_submitted
+        description: Segment web app event - voter outreach 10dlc compliance pin submitted
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+      - name: voter_outreach_payment_started
+        description: Segment web app event - voter outreach payment started
+        columns:
+          - name: context_ip
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
   - name: archives
     schema: archives
     description: >
@@ -1521,6 +5326,35 @@ sources:
           records believed to represent the same real-world candidacy-stage. Clusters that
           span both sources form the BR↔TS crosswalk; single-record clusters indicate
           unmatched records.
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_variants
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
 
       - name: clustered_people
         # Jinja so a dated vintage can be built and audited in dev before the
@@ -1533,11 +5367,133 @@ sources:
           deterministic links and the scored pairs at 0.95) and identity_id
           (the components over the links alone); no cluster holds two
           BallotReady people. Canonical person identity.
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_tokens
+            config:
+              meta:
+                sensitive: confidential
+          - name: suffix_token
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_surname_groups
+            config:
+              meta:
+                sensitive: confidential
+          - name: birth_date
+            config:
+              meta:
+                sensitive: confidential
 
       - name: pairwise_people
         description: >
           Scored person pairs from Splink prediction (threshold: 0.01 match
           probability), after the post-prediction filters. Audit input.
+        columns:
+          - name: last_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: email_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: email_r
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_r
+            config:
+              meta:
+                sensitive: identifier
+          - name: birth_date_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: birth_date_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_tokens_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_tokens_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: suffix_token_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: suffix_token_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone_surname_groups_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: phone_surname_groups_r
+            config:
+              meta:
+                sensitive: confidential
 
       - name: pairwise_candidacy_stages
         description: >
@@ -1547,6 +5503,63 @@ sources:
           match weights, match probabilities, per-comparison gamma levels, Bayes factors,
           and term-frequency adjustments. Useful for auditing match quality and investigating
           edge cases.
+        columns:
+          - name: last_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_variants_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_variants_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: email_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: email_r
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_r
+            config:
+              meta:
+                sensitive: identifier
 
       - name: clustered_elected_officials
         description: >
@@ -1559,6 +5572,31 @@ sources:
           official's own winning votes) and use election_date as term_start_date so the
           date comparison links them to the right cycle. Uses 0.95 match probability
           threshold with post-prediction filters for office compatibility.
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
 
       - name: pairwise_elected_officials
         description: >
@@ -1570,6 +5608,55 @@ sources:
           Bayes factors. Includes 12 comparisons vs 9 for candidacy stages (adds
           office_type, office_level, ballotready_position_id, and a term_start_date date
           comparison that links DDHQ winners to the correct office cycle).
+        columns:
+          - name: last_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_aliases_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_l
+            config:
+              meta:
+                sensitive: confidential
+          - name: first_name_tokens_r
+            config:
+              meta:
+                sensitive: confidential
+          - name: email_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: email_r
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_l
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone_r
+            config:
+              meta:
+                sensitive: identifier
 
       - name: clustered_election_stages
         description: >
@@ -1587,7 +5674,6 @@ sources:
           after post-prediction filters. Each row is a pair of election-stage records with
           match weights, match probabilities, and per-comparison gamma levels. For auditing
           election-stage match quality.
-
   - name: nhgis
     schema: sandbox
     description: >

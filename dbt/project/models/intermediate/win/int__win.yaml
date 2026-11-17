@@ -47,11 +47,23 @@ models:
         description: BallotReady position declared by that campaign, where one resolved.
       - name: email_domain_class
         description: goodparty / free / custom / missing.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values: ["goodparty", "free", "custom", "missing"]
+      - name: usr_phone_present
+        description: Whether the signup carried a phone number at all.
+        databricks_tags:
+          open: "true"
+      - name: usr_phone_area_code_matches_state
+        description: >
+          Whether the phone's NANP area code is one that serves the campaign's
+          state.
+        databricks_tags:
+          open: "true"
       - name: det_n_selfreport_keys
         description: How many of the seven free-text profile fields the user filled in.
         data_tests:
