@@ -30,6 +30,13 @@
     delivery, so int__l2.yaml's canonicalization test on the universe reds
     until every state redelivers.
 
+    Removing a type needs the same refresh for the mirror reason: the merge
+    never deletes, so the retired type's rows stay in the aggregation and keep
+    naming a column the voter file no longer has. int__zip_code_to_l2_district
+    reads its district types from int__model_prediction_voter_turnout, so it
+    intersects that list with the columns L2 actually ships rather than
+    trusting it, but the stale rows still have to be cleared.
+
     Args:
         scope (str): 'all' or 'allocated'.
 
