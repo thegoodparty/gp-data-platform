@@ -2053,13 +2053,20 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  ["voter_likelihood", "support_status", "do_not_knock", "not_a_voter", "follow_up"]
+                  [
+                    "voter_likelihood",
+                    "support_status",
+                    "do_not_knock",
+                    "not_a_voter",
+                    "follow_up",
+                    "civic_panel",
+                  ]
       - name: source
         description: "What caused the change"
         data_tests:
           - accepted_values:
               arguments:
-                values: ["manual", "door_knock", "phone_banking"]
+                values: ["manual", "door_knock", "phone_banking", "sms"]
       - name: to_value
         description: >
           The new value. Plain text rather than an enum in the source, and the
