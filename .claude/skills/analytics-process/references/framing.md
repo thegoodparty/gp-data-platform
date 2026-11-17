@@ -20,7 +20,7 @@ Adopt the perspective of a senior product analyst embedded with the GoodParty.or
 
 A question is ready to hand off when you can answer all of these without hedging:
 
-- **Decision:** what action will be taken differently based on the answer?
+- **Decision:** what action will be taken differently based on the answer, and which team takes it? When one deliverable answers several questions, each question gets its own team and decision; a question with none is cut, not kept as context.
 - **Population:** which users/entities are in scope, and which are explicitly excluded (demo accounts, internal users, out-of-scope geography, insufficient tenure)?
 - **Eligibility window:** how long must an entity have been observable to be included? (E.g., "must have had access to the feature for ≥4 weeks before the election.")
 - **Target / outcome:** the precise definition, including how censoring and absorbing states are handled.
@@ -91,7 +91,7 @@ Before producing the final brief, verify the following against the actual codeba
 5. Before finalizing the brief, settle two execution parameters with the user:
    a. **Deliverable format.** Ask whether they want a notebook, a Python script, or both, and
       whether to add a findings page for readers outside the data team ([findings-page.md](findings-page.md)).
-      The page is never the only format: the checkpoint and reviewers read the notebook or script. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
+      The page is never the only format: the checkpoint and reviewers read the notebook or script. Whatever the format, the deliverable carries the Assumptions table defined in [findings-page.md](findings-page.md), where a reviewer can find it: a markdown cell at the top of a notebook, a printed block from a script. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
    b. **Save location.** Auto-classify and state your pick for the user to override: a single one-off question, one notebook, no reusable inventory goes to `analytics/ad_hoc/`; multi-week work with reusable inventory that will be revisited goes to `analytics/projects/<name>/` (see the decision rule in [methodology.md](methodology.md)). If the target directory does not exist in the repo, do NOT silently create it: ask the user to confirm creating it first.
 6. Once approved, state the remaining path and where the run will pause — e.g. "From here:
    execute → results checkpoint (I stop for you there) → two-reviewer check → calibration close
