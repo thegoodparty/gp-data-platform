@@ -438,6 +438,13 @@ sources:
             config:
               meta:
                 sensitive: confidential
+          # The Peerly brand submission key is a credential, the same kind as
+          # the ecanvasser api_key. Null on every row today; tagged so the
+          # column is closed before the product starts writing to it.
+          - name: peerly_10dlc_brand_submission_key
+            config:
+              meta:
+                sensitive: confidential
         description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
         description: raw data load from gp_api_db postgres db from table `outreach`
@@ -846,6 +853,22 @@ sources:
             warn_after: { count: 180, period: day }
             error_after: { count: 365, period: day }
         columns:
+          # Contact details and the home street address, on the same rule as the
+          # rest of the file. Names and birth dates stay as they are: this feed
+          # is state candidate filings and county clerk directories, so the
+          # names are public record, and it carries no birth date column.
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: street_address
+            config:
+              meta:
+                sensitive: confidential
           - name: is_incumbent
             data_tests:
               - accepted_values:
