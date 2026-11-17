@@ -364,16 +364,27 @@ with
             -- 2026-06-24 ends on the pledge, with no poll. It opened on Welcome
             -- until its entry screen moved to Term Dates in the week of
             -- 2026-11-02; earlier users still start on Welcome.
-            min(
-                case
-                    when
-                        event_type in (
-                            'Serve Onboarding - Term Dates Viewed',
-                            'Serve Onboarding - Getting Started Viewed',
-                            'Serve Onboarding - Welcome Viewed'
-                        )
-                    then event_time
-                end
+            --
+            -- A user whose first tracked onboarding event is a later screen (a
+            -- flow that opened mid-funnel, or a session whose first screen went
+            -- untracked) starts at that first onboarding event instead, so an
+            -- onboarding user always has a start. The fallback only applies when
+            -- no start event exists at all, so an existing start never moves.
+            coalesce(
+                min(
+                    case
+                        when
+                            event_type in (
+                                'Serve Onboarding - Term Dates Viewed',
+                                'Serve Onboarding - Getting Started Viewed',
+                                'Serve Onboarding - Welcome Viewed'
+                            )
+                        then event_time
+                    end
+                ),
+                min(
+                    case when event_type like 'Serve Onboarding - %' then event_time end
+                )
             ) as serve_onboarding_started_at,
             min(
                 case

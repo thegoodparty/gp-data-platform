@@ -187,5 +187,12 @@ select
     {{ clean_l2_phone_number("adopted.`VoterTelephones_CellPhoneFormatted`") }}
     as `VoterTelephones_CellPhoneFormatted`,
     {{ clean_l2_phone_number("adopted.`VoterTelephones_LandlineFormatted`") }}
-    as `VoterTelephones_LandlineFormatted`
+    as `VoterTelephones_LandlineFormatted`,
+    -- Year and month of birth, open, so analysts keep age-at-election to the
+    -- month without the day. 9999 is L2's placeholder for an unknown birth
+    -- date, so those rows stay null rather than reading as 9999-01.
+    case
+        when year(adopted.`Voters_BirthDate`) < 9999
+        then date_format(adopted.`Voters_BirthDate`, 'yyyy-MM')
+    end as `Voters_BirthYearMonth`
 from adopted
