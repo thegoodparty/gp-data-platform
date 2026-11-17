@@ -1769,10 +1769,6 @@ Democratic Convention Member
 Democratic Zone
 {% enddocs %}
 
-{% docs l2col_Designated_Market_Area_DMA %}
-Designated Market Area DMA
-{% enddocs %}
-
 {% docs l2col_District_Attorney %}
 District Attorney
 {% enddocs %}
