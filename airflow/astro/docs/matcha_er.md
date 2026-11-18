@@ -49,13 +49,15 @@ Set on the Astro deployment as **Airflow Variables**:
 the other DAGs.
 
 **Nothing to provision.** The DAG sets `max_active_tasks=1`, so exactly one task runs at a time. Each pod
-requests 48Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
-a deploy. DuckDB reads both limits from the cgroup and takes 80% of memory, so it gets ~38 GiB of the 48Gi
-and one thread per CPU, and logs both at launch as `DuckDB budget: ...`. The remaining ~10Gi is for the
+requests 64Gi memory / 4 CPU / 50Gi disk, hardcoded in `_pod_resources`, so resizing is a code change and
+a deploy. DuckDB reads both limits from the cgroup and takes 80% of memory, so it gets ~51 GiB of the 64Gi
+and one thread per CPU, and logs both at launch as `DuckDB budget: ...`. The remaining ~13Gi is for the
 Python side. That headroom is what 32Gi lacked: `election_stage` was OOM-killed (exit 137) 33 minutes in,
-while writing and filtering ~20M predicted pairs, after EM training had already finished. Smaller sizes
-fail earlier: OOM-killed at 8Gi, and evicted at 10Gi of disk. 16 CPU was tried and reverted, making
-`election_stage` no faster and buying candidacy only ~17%, while pods bill on the configured limit.
+while writing and filtering ~20M predicted pairs, after EM training had already finished. 48Gi then
+OOM-killed `election_stage` on 2026-11-17, so the limit is now 64Gi. Smaller sizes fail earlier:
+OOM-killed at 8Gi, and evicted at 10Gi of disk. 16 CPU was tried and reverted, making `election_stage` no
+faster and buying candidacy only ~17%, while pods bill on the configured limit.
+`MATCHA_DUCKDB_MEMORY_LIMIT` would cap DuckDB's share, but it is not wired to the pod yet.
 Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way.
 
 The match tasks set `retries=0`. A match failure is deterministic, so the default 2 retries turned one
