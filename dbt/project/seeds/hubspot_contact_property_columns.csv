@@ -353,3 +353,6 @@ hs_merged_object_ids,Merged Contact IDs,enumeration,contactinformation,generated
 team_role,Team Role,enumeration,contactinformation,generated,team_role,string,352,,,,
 serve_priority_segment,Serve Priority Segment,bool,contactinformation,generated,serve_priority_segment,boolean,353,,,,
 final_first_conversion_source,Final First Conversion Source,string,contactinformation,generated,final_first_conversion_source,string,354,Final first conversion source recorded for the contact,,,
+n2026_sales_first_touch,2026 Sales First Touch,date,2026_sales_properties,generated,n2026_sales_first_touch,date,355,,,,
+first_connect_date,First Connect Date,date,contact_activity,generated,first_connect_date,date,356,,,,
+first_connect_rep,First Connect Rep,enumeration,contact_activity,generated,first_connect_rep,string,357,,,,
