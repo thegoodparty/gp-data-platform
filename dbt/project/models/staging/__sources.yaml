@@ -2,6 +2,7 @@ version: 2
 
 sources:
   - name: airbyte_source
+    database: raw
     schema: airbyte_source
     description: Raw data loaded from Airbyte
     config:
@@ -888,6 +889,7 @@ sources:
           freshness: null
 
   - name: dbt_source
+    database: raw
     schema: dbt_source
     description: Raw data staged in S3 and loaded into Databricks by the load_l2_voter_files DAG
 
@@ -1304,6 +1306,7 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
   - name: dbt_source_haystaq
+    database: raw
     schema: dbt_source
     description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
@@ -1514,6 +1517,7 @@ sources:
         description: raw data load for Wyoming Haystaq DNA scores
 
   - name: airflow_source
+    database: raw
     schema: airflow_source
     description: Raw tables landed by the extract_ballotready DAG
     config:
@@ -1571,7 +1575,11 @@ sources:
 
   - name: model_predictions
     schema: model_predictions
-    description: Raw data loaded from model predictions
+    description: >
+      Prediction outputs, read from the prod catalog rather than raw. The
+      masking function's salt lives beside it there, and the MLflow registry
+      records these tables by their prod-catalog path, so neither follows the
+      schema into raw.
     tables:
       - name: candidacy_ddhq_matches_20250826
         description: output of gemini string matching between DDHQ election results and candidacies
@@ -1986,6 +1994,7 @@ sources:
         description: Segment web app event - voter outreach campaign completed
 
   - name: archives
+    database: raw
     schema: archives
     description: >
       Point-in-time copies of tables that are no longer written, kept under a
@@ -2004,6 +2013,7 @@ sources:
           campaign versions the product later overwrote in place.
 
   - name: er_source
+    database: raw
     schema: er_source
     description: >
       Output tables from the Splink-based entity resolution pipeline (gp-data-matcha).
@@ -2249,6 +2259,7 @@ sources:
               - unique
 
   - name: airbyte_source_finance
+    database: raw
     schema: airbyte_source_finance
     description: >
       Raw QuickBooks Online and Stripe data landed by Airbyte for the finance mart.
