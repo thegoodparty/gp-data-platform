@@ -64,6 +64,9 @@ class EntitySpec:
     # dbt model of deterministic pairs the lane clusters with the scored ones,
     # passed to matcha as --links. Only the person entity has one.
     links_model: str | None = None
+    # MATCHA_DUCKDB_MEMORY_LIMIT for this entity's pod. None leaves DuckDB at its
+    # default of 80% of the cgroup limit.
+    duckdb_memory_limit: str | None = None
 
     @property
     def cluster_table(self) -> str:
@@ -137,6 +140,10 @@ ENTITIES: tuple[EntitySpec, ...] = (
             min_prior_ratio=0.5,
             not_null_columns=_PAIRWISE_NOT_NULL,
         ),
+        # The one entity whose Python side outgrew what DuckDB's 80% share leaves it:
+        # at 32Gi DuckDB held ~26 GiB and predict still finished, so a fixed cap there
+        # is enough for DuckDB and gives the pandas steps the rest of a 64Gi pod.
+        duckdb_memory_limit="24GiB",
     ),
     EntitySpec(
         entity_type="person",

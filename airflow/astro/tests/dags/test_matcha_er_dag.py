@@ -356,6 +356,29 @@ def test_a_sha_pinned_tag_logs_the_image_without_warning():
         assert mock_log.info.call_args.args[1] == image
 
 
+def test_only_election_stage_caps_duckdb_in_the_pod():
+    """Only election_stage's spec carries a DuckDB cap, and it reaches the pod env.
+
+    Compared against each spec's own field, not a literal size: the cap is a tuning
+    value, and what must not drift here is whether it reaches the pod at all. The
+    entity set is named because a cap landing on the wrong spec would still satisfy
+    the per-spec comparison.
+    """
+    module = _dag_module()
+    capped = set()
+    for spec in _ENTITY_SPECS:
+        op = module._match_pod(spec)
+        with _pod_runtime(module):
+            op.pre_execute({})
+        env = {var.name: var.value for var in op.env_vars}
+        if spec.duckdb_memory_limit is None:
+            assert "MATCHA_DUCKDB_MEMORY_LIMIT" not in env, spec.entity_type
+        else:
+            assert env["MATCHA_DUCKDB_MEMORY_LIMIT"] == spec.duckdb_memory_limit, spec.entity_type
+            capped.add(spec.entity_type)
+    assert capped == {"election_stage"}
+
+
 def _run_cleanup(module, *, swap_on: bool):
     """Invoke the cleanup callable with its Databricks calls mocked out."""
     assert _DAG is not None

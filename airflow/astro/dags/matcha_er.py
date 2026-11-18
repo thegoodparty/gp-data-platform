@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator
@@ -90,9 +91,18 @@ class _MatchaPodOperator(KubernetesPodOperator):
     spec this operator submits. The GHCR package is public, so no pull secret.
     """
 
+    def __init__(self, *args: Any, duckdb_memory_limit: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Kept for pre_execute, which rebuilds env_vars from scratch on every attempt.
+        self.duckdb_memory_limit = duckdb_memory_limit
+
     def pre_execute(self, context) -> None:
         # Replaces rather than extends: pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
+        if self.duckdb_memory_limit:
+            self.env_vars.append(
+                k8s.V1EnvVar(name="MATCHA_DUCKDB_MEMORY_LIMIT", value=self.duckdb_memory_limit)
+            )
         # KPO prints the pod spec only on failure, so a passing run would otherwise
         # record nothing about its sizing.
         resources = self.container_resources
@@ -172,9 +182,12 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
         # DuckDB takes 80% of the memory limit and one thread per CPU, so 64Gi gives it
         # ~51 GiB and leaves ~13Gi for the Python side -- which is what 32Gi ran out of,
         # OOM-killing election_stage while writing ~20M pairs. 16 CPU made no difference.
-        # 48Gi then OOM-killed election_stage on 2026-11-17, so the limit is now 64Gi.
+        # 48Gi then OOM-killed election_stage on 2026-11-17, and 64Gi on 2026-11-18: the
+        # increase mostly fed DuckDB's 80% share, so election_stage caps DuckDB at a fixed
+        # size instead and leaves the rest of the pod to Python.
         # ephemeral-storage is declared because Astro's namespace default is 256Mi.
         container_resources=_pod_resources(),
+        duckdb_memory_limit=entity.duckdb_memory_limit,
         # A match fails deterministically and each attempt burns a four-hour pod.
         retries=0,
         in_cluster=True,
