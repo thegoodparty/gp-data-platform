@@ -1,17 +1,17 @@
 {{ config(materialized="ephemeral") }}
 
--- Ephemeral, not a view: this carries per-person model usage, and the `dbt` schema grants
--- SELECT to every data user. As a CTE the person column never materializes outside
--- mart_finance, which is the only schema the per-person grain is meant to reach.
+-- Ephemeral, not a view: this carries per-person usage, and the `dbt` schema
+-- grants SELECT to every data user. As a CTE the person column never
+-- materializes outside mart_finance, the only schema this grain may reach.
 --
--- One row per request id. The landing table is append-only and each export re-emits a trailing
--- window, so the same request arrives more than once: first as `processing`, later as its
--- terminal self with the cost the gateway computed. The status key has to come first: with the
--- clock first, a `processing` row exported later than the terminal one would win, and the
--- request would contribute no cost at all.
+-- One row per request id. The landing table is append-only and each export
+-- re-emits a trailing window, so a request arrives more than once: first as
+-- `processing`, later as its terminal self with the cost. The status key has
+-- to come first: with the clock first, a `processing` row exported later than
+-- the terminal one wins, and the request contributes no cost at all.
 --
--- `exported_at`, not `loaded_at`, orders the two: `loaded_at` is identical for every row in one
--- file, so it cannot separate two observations that arrived in different files.
+-- `exported_at`, not `loaded_at`, orders the two: `loaded_at` is identical for
+-- every row of one file, so it cannot separate observations from two files.
 with
 
     current_rows as (
@@ -55,12 +55,16 @@ with
             user_id,
             user_name,
 
-            -- Person = the gateway identity if there is one, else the email the key name
-            -- carries. Extract rather than match whole: a key name can carry a suffix, and a
+            -- Person = the gateway identity if there is one, else the email the key
+            -- name
+            -- carries. Extract rather than match whole: a key name can carry a
+            -- suffix, and a
             -- second key or a re-minted one has to resolve to the same person.
             --
-            -- regexp_extract returns '' on no match, not null, so the outer nullif is what
-            -- keeps an unparseable key name from becoming an empty-string person and slipping
+            -- regexp_extract returns '' on no match, not null, so the outer nullif is
+            -- what
+            -- keeps an unparseable key name from becoming an empty-string person and
+            -- slipping
             -- past every null check downstream.
             coalesce(
                 nullif(lower(trim(user_name)), ''),
