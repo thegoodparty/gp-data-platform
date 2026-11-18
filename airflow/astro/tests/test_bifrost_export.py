@@ -175,11 +175,11 @@ def test_copy_into_projection_aliases_every_landing_column_and_stamps_loaded_at(
         assert f"as `{column}`" in sql
 
 
-def test_copy_into_projection_has_one_expression_per_landing_column():
-    """The projection and LANDING_COLUMNS must stay the same length and the same order, which is
-    what an earlier version of this module got wrong: 29 expressions against 30 targets, because
-    `loaded_at` was dropped from the target and kept in the projection. With no target list the
-    arity check is against the table's own column list."""
+def test_copy_into_projection_carries_every_alias_exactly_once():
+    """One expression per column, and each one aliased to its own name. What an earlier version of
+    this module got wrong was arity: 29 expressions against 30 targets, because `loaded_at` was
+    dropped from the target and kept in the projection. With no target list, each alias appears once
+    and there are as many expressions as columns."""
     sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
 
     projection = sql.split("from (select ", 1)[1].split("\nfileformat", 1)[0]
@@ -194,7 +194,10 @@ def test_copy_into_projection_has_one_expression_per_landing_column():
 
     aliases = [f"as `{name}`" for name, _ in LANDING_COLUMNS]
     assert n_select == len(LANDING_COLUMNS)
+    # Membership and count, not order: the mapping is by name, so position does not matter here.
     assert [alias for alias in aliases if alias in projection] == aliases
+    for alias in aliases:
+        assert projection.count(alias) == 1, f"{alias} appears {projection.count(alias)} times"
 
 
 def test_copy_into_quotes_the_prefix_as_a_validated_literal():
