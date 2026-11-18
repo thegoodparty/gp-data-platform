@@ -1,17 +1,12 @@
 {{ config(materialized="ephemeral") }}
 
--- Ephemeral, not a view: this carries per-person usage, and the `dbt` schema
--- grants SELECT to every data user. As a CTE the person column never
--- materializes outside mart_finance, the only schema this grain may reach.
+-- Ephemeral: this carries per-person usage, and the `dbt` schema grants
+-- SELECT to every data user.
 --
--- One row per request id. The landing table is append-only and each export
--- re-emits a trailing window, so a request arrives more than once: first as
--- `processing`, later as its terminal self with the cost. The status key has
--- to come first: with the clock first, a `processing` row exported later than
--- the terminal one wins, and the request contributes no cost at all.
---
--- `exported_at`, not `loaded_at`, orders the two: `loaded_at` is identical for
--- every row of one file, so it cannot separate observations from two files.
+-- One row per request id, the newest observation of it, since each export
+-- re-emits a trailing window. Status sorts before `exported_at` because with
+-- the clock first a later in-flight row wins and the request loses its cost.
+-- `loaded_at` cannot order the two: it is the same for every row of one file.
 with
 
     current_rows as (
@@ -36,8 +31,8 @@ with
             created_at,
             exported_at,
             provider,
-            -- A model-list call lands an empty string here, never null, so an unguarded
-            -- `not null` test would pass while the mart grouped the blank as a model.
+            -- A model-list call lands a blank model, which a not-null test
+            -- would pass while the mart grouped it as a real one.
             nullif(model, '') as model,
             canonical_model_name,
             `alias`,
@@ -55,17 +50,10 @@ with
             user_id,
             user_name,
 
-            -- Person = the gateway identity if there is one, else the email the key
-            -- name
-            -- carries. Extract rather than match whole: a key name can carry a
-            -- suffix, and a
-            -- second key or a re-minted one has to resolve to the same person.
-            --
-            -- regexp_extract returns '' on no match, not null, so the outer nullif is
-            -- what
-            -- keeps an unparseable key name from becoming an empty-string person and
-            -- slipping
-            -- past every null check downstream.
+            -- The gateway user wins, so it takes over with no re-export; else
+            -- the key name's email, extracted so a suffixed or re-minted key is
+            -- still one person. nullif wraps the extract because it returns ''
+            -- on no match, which would pass every null check as a person.
             coalesce(
                 nullif(lower(trim(user_name)), ''),
                 nullif(

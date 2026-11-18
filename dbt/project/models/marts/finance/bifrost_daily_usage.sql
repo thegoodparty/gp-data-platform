@@ -1,11 +1,9 @@
--- Gateway-computed usage per person per day. The reader caveats (not invoiced
--- cost, the overlap with the Anthropic reports, the partial newest day) are in
--- _finance__models.yml.
+-- Reader caveats live in _finance__models.yml: the cost is the gateway's own,
+-- and the newest day is partial.
 --
--- Model-list calls are left out. They are metadata calls, not inference: no
--- tokens and no cost, and keeping them would put a blank-model row in every
--- group. Excluding one object type rather than listing the inference ones means
--- a type the gateway adds later is counted by default.
+-- Model-list calls are excluded by type, not by an inclusion list, so a new
+-- inference type counts by default. They carry no tokens or cost and would add
+-- a blank-model row to every group.
 with
 
     usage as (
@@ -14,9 +12,8 @@ with
             to_date(request_at) as usage_date,
             provider,
             model,
-            -- A request with neither a key nor a gateway user still happened and
-            -- still cost money, so it gets a visible bucket rather than being
-            -- dropped.
+            -- Key-less requests still cost money, so they get a bucket rather
+            -- than a null that fails the not-null test.
             coalesce(person_email, 'unattributed') as person_email,
             status,
             prompt_tokens,
@@ -44,9 +41,9 @@ with
             person_email,
             count(*) as request_count,
             count_if(status = 'error') as error_count,
-            -- Requests that used tokens with no gateway cost, usually a model
-            -- missing from the gateway's pricing catalog. Cost is a zero there,
-            -- not a null, so nothing else would show the gap.
+            -- Tokens with no gateway cost, usually a model missing from the
+            -- pricing catalog. Cost is 0 there, not null, so nothing else
+            -- surfaces it.
             count_if(
                 total_tokens > 0 and coalesce(cost_usd, 0) = 0
             ) as unpriced_request_count,
@@ -54,9 +51,8 @@ with
             sum(completion_tokens) as completion_tokens,
             sum(total_tokens) as total_tokens,
             sum(cached_read_tokens) as cached_read_tokens,
-            -- A failed request carries a null cost and zero tokens, so zero is its
-            -- true value; coalescing keeps this non-null for a group that is only
-            -- failures.
+            -- A null cost always comes with zero tokens, so 0 is the true
+            -- value and this stays non-null for a group of only failures.
             coalesce(sum(cost_usd), 0) as cost_usd,
             coalesce(sum(input_cost_usd), 0) as input_cost_usd,
             coalesce(sum(output_cost_usd), 0) as output_cost_usd,
