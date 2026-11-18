@@ -1,8 +1,14 @@
 """Loads and validates the checked-in pipeline list.
 
-Read at DAG parse time, so it must not touch the network or the metastore: this
-module parses YAML and nothing else. The real check on the list is the test that
-loads the checked-in file, which fails `pytest` and so the airflow workflow.
+Read at task time, so it must not touch the network or the metastore: this module
+parses YAML and nothing else. The real check on the list is the test that loads the
+checked-in file, which fails `pytest` and so the airflow workflow.
+
+PyYAML is imported here at DAG run time, so it has to exist on the Astro image and
+not only in the dev group. It does, transitively: apache-airflow-core declares
+pyyaml>=6.0.3 as a hard requirement, and both the image and `airflow/pyproject.toml`
+pin apache-airflow==3.3.2. It is deliberately not duplicated into requirements.txt,
+where a second pin could drift from Airflow's own.
 """
 
 from pathlib import Path
