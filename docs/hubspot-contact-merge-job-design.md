@@ -606,8 +606,11 @@ cannot change production HubSpot.
    `hubspot-merge/tests/test_sandbox.py`, and give every contact a first name that starts
    with `hsm-dag-` so you can find and archive them later. Make three pairs:
    - pair A: two new live contacts (expected status `merged`);
-   - pair B: two new contacts that you merge yourself with the HubSpot API first
-     (expected `already_merged`);
+   - pair B: two new contacts that you merge yourself with the HubSpot API first. Merge
+     the secondary into the primary, so the primary survives: `POST
+     /crm/v3/objects/contacts/merge` with `primaryObjectId` set to B's primary and
+     `objectIdToMerge` set to B's secondary (expected `already_merged`). Merged the other
+     way, the pair logs `primary_merged_away` instead;
    - pair C: a new primary, and a secondary that you archive first (expected
      `secondary_missing`).
 
@@ -892,7 +895,9 @@ and approve each next step. Before you start, check every item here:
    Check that it has 5 rows.
 3. **Dry run** on astro-prod:
    `{"command": "dry_run", "pair_relation": "goodparty_data_catalog.dbt_<you>.hsm_prod_batch_01", "max_pairs": 5}`.
-   Expect `would_merge=5`. Stop if anything else appears.
+   Expect `would_merge=5`. Stop if anything else appears. If the task fails with a permission error on
+   the pair table, the astro-prod service principal cannot read your schema. Stop and
+   ask a person.
 4. **Run**, triggered by the person, with the same params and `"command": "run"`. Copy
    the `run_id` from the last log line.
 5. **Verify** with `{"command": "verify", "run_id": "<run_id>"}`. Expect
