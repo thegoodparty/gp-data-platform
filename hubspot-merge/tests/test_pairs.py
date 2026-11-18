@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hsmerge.pairs import read_pairs
+import pytest
+
+from hsmerge.pairs import PairConflictError, check_pairs, read_pairs
 from hsmerge.types import Pair
 
 RELATION = "goodparty_data_catalog.dbt_staging.hubspot_contact_merge_queue"
@@ -128,3 +130,20 @@ def _executed_sql() -> str:
     connection = _FakeConnection()
     read_pairs(connection, RELATION, 50)
     return connection.executed_sql
+
+
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [Pair("p1", "s1"), Pair("p2", "s1")],
+        [Pair("p1", "s1"), Pair("t1", "p1")],
+    ],
+    ids=["repeated secondary", "chain"],
+)
+def test_pairs_that_depend_on_each_other_are_refused(pairs: list[Pair]) -> None:
+    with pytest.raises(PairConflictError):
+        check_pairs(pairs)
+
+
+def test_a_primary_with_several_secondaries_is_allowed() -> None:
+    check_pairs([Pair("p1", "s1"), Pair("p1", "s2")])

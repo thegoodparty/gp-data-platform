@@ -7,16 +7,30 @@ The job merges every row of its input relation up to a cap and applies no filter
 eligibility, survivor ranking and every guardrail live in the `hubspot_contact_merge_queue`
 view. What happened comes from the log, which dbt reads.
 
-The `hsm` console script is a stub that exits non-zero; the commands are a later step.
+## Commands
 
-`hsmerge/client.py` wraps the three HubSpot calls the job makes: portal confirmation,
-a batch read and a merge, over an injectable transport. It paces calls at
-`MERGE_MAX_RPS`, honours `Retry-After` on 429, retries 5xx with backoff, and lets any
-other 4xx through as HubSpot's answer about that pair. The read returns records keyed by
-the id each one resolved to, because a merged-away id reads as its survivor and the
-response carries no echo of the ids requested. `ReadResult.resolved` folds each record's
-own id and the ids it absorbed into the one map classification reads, so nothing outside
-the client parses a read body.
+```bash
+hsm init-log              # create MERGE_LOG_TABLE if it does not exist
+hsm run --dry-run         # read and classify the pairs; merge and log nothing
+hsm run                   # merge, and log one row per pair
+hsm verify --run-id ID    # check a run's merged pairs against HubSpot
+```
+
+Every command except `init-log` first confirms the key opens `HUBSPOT_EXPECTED_PORTAL_ID`.
+`run` exits 1 if any merge returned an id other than the primary's.
+
+## Modules
+
+| module | job |
+|---|---|
+| `config.py` | reads and checks the environment |
+| `client.py` | the three HubSpot calls, paced and retried |
+| `classify.py` | turns a read or a merge into a status |
+| `pairs.py` | reads pairs from the queue, or from the log for `verify` |
+| `execute.py` | per chunk: read, classify, merge, log |
+| `log.py` | the log table's DDL and its INSERT |
+| `databricks.py` | the warehouse connection |
+| `cli.py` | wires the parts together |
 
 ## Local
 
