@@ -29,6 +29,10 @@ for **Viability Score 2.0** defined in [canonical_metrics.md](canonical_metrics.
   concentrates unevenly across bands.
 - IF coverage looks low in your population → check the seats gate below before assuming the
   score is missing at random. Missingness is structural, not random.
+- IF you need expected wins (actual vs expected) → use `viability_score / 5` per contested
+  candidate, with uncontested = 1. For contested 2026 Win users it predicts 24.6% against 24.2%
+  actual (2026-11-18). Don't use seats ÷ candidates (`baseline_win_chance`): it predicts 43% for
+  Win users.
 
 ## What it is
 
