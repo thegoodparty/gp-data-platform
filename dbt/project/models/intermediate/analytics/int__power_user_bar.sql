@@ -1,3 +1,7 @@
+-- Power user definition v1, the definition through mid-2026: superseded for the
+-- 2026 cycle on by int__power_user_bar_v2 (action days). Kept unchanged so
+-- earlier reports reproduce.
+--
 -- The power-user viewing bar at each distance from the election, 0 to 365 days
 -- out. One row per days_out.
 --

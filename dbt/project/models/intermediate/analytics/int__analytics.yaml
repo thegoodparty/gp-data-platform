@@ -2107,8 +2107,15 @@ models:
             combination_of_columns: [user_id, activity_date]
 
   - name: int__power_user_bar
+    config:
+      meta:
+        definition_version: 1
+        definition_period: through mid-2026
+        superseded_by: int__power_user_bar_v2
     description: >
-      The power-user viewing bar at each distance from the election, 0 to 365
+      Power user definition v1, the definition through mid-2026, kept unchanged
+      so earlier reports reproduce; int__power_user_bar_v2 is the definition for
+      the 2026 cycle on. The power-user viewing bar at each distance from the election, 0 to 365
       days out, measured on completed races from six months after telemetry
       began. At each distance the raw bar is the power-user report's rule: the
       85th percentile of view-days among users who had viewed by then, rounded
@@ -2135,8 +2142,15 @@ models:
           - not_null
 
   - name: int__user_power_user
+    config:
+      meta:
+        definition_version: 1
+        definition_period: through mid-2026
+        superseded_by: int__user_power_user_v2
     description: >
-      Whether each candidate is a power user: reached voters through the
+      Power user definition v1, the definition through mid-2026, kept unchanged
+      so earlier reports reproduce; int__user_power_user_v2 is the definition
+      for the 2026 cycle on. Whether each candidate is a power user: reached voters through the
       product at least once, and viewed their dashboard on at least as many
       days as the bar for their distance from the election. Both counts run up
       to the build date, capped at the election. One row per user with a
@@ -2165,6 +2179,143 @@ models:
           - not_null
       - name: is_power_user
         description: power_user_has_sent and power_user_view_days at or above the bar.
+        data_tests:
+          - not_null
+
+  - name: int__user_action_days
+    description: >
+      One row per user per day with at least one real action in Win, and the
+      features used that day. A real action is a user action in the
+      win_feature_events seed that is not an onboarding step, or a send from
+      the is_activated legs (feature outreach_send). Dashboard views are not
+      actions. The daily grain power user v2 counts.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, activity_date]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: activity_date
+        description: The day, from the event time as Amplitude records it.
+        data_tests:
+          - not_null
+      - name: action_features
+        description: >
+          Sorted feature keys used that day: win_feature_events features plus
+          outreach_send.
+        data_tests:
+          - not_null
+      - name: action_feature_count
+        description: How many distinct features were used that day.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: has_send
+        description: Did something that counts toward is_activated that day.
+        data_tests:
+          - not_null
+
+  - name: int__power_user_bar_v2
+    config:
+      meta:
+        definition_version: 2
+        definition_period: 2026 cycle on
+        supersedes: int__power_user_bar
+    description: >
+      Power user definition v2, the definition for the 2026 cycle on: the
+      action-day bar per election cycle (the election's calendar year) at each
+      distance from the election, 0 to 365 days out. Each cycle is measured on
+      its own completed races from six months after telemetry began, with v1's
+      method: the 85th percentile of action days among users who had acted by
+      then, rounded up, never stricter further out, and days with fewer than
+      500 actors carrying the last bar measured on enough. A cycle with fewer
+      than 500 actors by election day borrows the latest measured cycle before
+      it (bar_source_cycle), counts included. int__power_user_bar (v1) stays as
+      the definition through mid-2026.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [cycle, days_out]
+    columns:
+      - name: cycle
+        description: Calendar year of the election.
+        data_tests:
+          - not_null
+      - name: days_out
+        description: Days before the election, 0 to 365.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 365
+      - name: bar_source_cycle
+        description: >
+          The cycle whose completed races the bar is measured on: this cycle
+          once it has 500 actors by election day, else the latest measured
+          cycle before it.
+        data_tests:
+          - not_null
+      - name: reference_user_count
+        description: Completed-race candidates in bar_source_cycle.
+      - name: actor_count
+        description: Of those, how many had taken a real action by this distance.
+      - name: raw_action_day_bar
+        description: The rounded-up 85th percentile before smoothing.
+      - name: is_measured
+        description: At least 500 actors, so this day's own percentile is used.
+      - name: action_day_bar
+        description: The bar the flag compares against.
+        data_tests:
+          - not_null
+
+  - name: int__user_power_user_v2
+    config:
+      meta:
+        definition_version: 2
+        definition_period: 2026 cycle on
+        supersedes: int__user_power_user
+    description: >
+      Power user definition v2, the definition for the 2026 cycle on: took a
+      real action in Win (int__user_action_days) on at least as many days as
+      the bar for their cycle and distance from the election. No send is
+      required; dashboard views and onboarding steps do not count. Action days
+      count from first use, in any year, up to the build date capped at the
+      election. One row per user with a candidacy. Moves with the build date.
+      int__user_power_user (v1) stays as the definition through mid-2026.
+    columns:
+      - name: user_id
+        description: gp-api user id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: power_user_cycle
+        description: Calendar year of the anchor election.
+        data_tests:
+          - not_null
+      - name: power_user_days_out
+        description: Days from the build date to the anchor election, 0 once it has passed.
+        data_tests:
+          - not_null
+      - name: power_user_action_days
+        description: Days with a real action, from first use up to the build date or the election, whichever is first.
+        data_tests:
+          - not_null
+      - name: power_user_action_areas
+        description: Distinct features used over those days, sends included.
+        data_tests:
+          - not_null
+      - name: power_user_action_day_bar
+        description: >
+          The bar for power_user_cycle at power_user_days_out, or at 365 when
+          further out. Null for elections before telemetry began.
+      - name: is_power_user
+        description: power_user_action_days at or above the bar; false where there is no bar.
         data_tests:
           - not_null
 

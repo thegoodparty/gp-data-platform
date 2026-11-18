@@ -1,3 +1,7 @@
+-- Power user definition v1, the definition through mid-2026: superseded for the
+-- 2026 cycle on by int__user_power_user_v2 (action days). Kept unchanged so
+-- earlier reports reproduce.
+--
 -- Whether each candidate is a power user: reached voters through the product at
 -- least once, and viewed their dashboard on at least as many days as the bar
 -- for their distance from the election. One row per user with a candidacy.
