@@ -69,7 +69,7 @@ _EXPORT_PATH_REJECTED_SEGMENTS = frozenset({"..", "."})
 # over the 29 only, because `exported_at` does not exist in that table and a GRANT naming it would
 # be rejected.
 #
-# One constant so the DDL, the COPY INTO column list and the cross-subproject drift test cannot
+# One constant so the DDL, the COPY INTO projection and the cross-subproject drift test cannot
 # disagree; a column added to one and not the others silently shifts every later value by a position.
 #
 # Types are Databricks SQL types. Money columns are DECIMAL, never DOUBLE: these are summed
@@ -219,7 +219,19 @@ def _validate_identifier(name: str, value: str) -> str:
 def build_copy_sql(catalog: str, schema: str, path: str) -> str:
     """The COPY INTO that lands whatever the prefix holds and has not landed before.
 
-    Three choices worth stating, because each one is a failure mode:
+    Four choices worth stating, because each one is a failure mode:
+
+    - **No target column list, and that is not an oversight.** `COPY INTO ... (<columns>)` is
+      rejected outright for `fileformat = parquet`:
+      `[COPY_INTO_FEATURE_INCOMPATIBLE_SETTING] The COPY INTO feature 'COPY INTO ...
+      ( column_name [, ...] )' is not compatible with 'parquet'`. That is what failed the first
+      production load. Without the list, Databricks maps the query's output columns to the table
+      **by name**, not by position: verified against the warehouse on 2026-11-18 with a Parquet file
+      written with this module's own `EXPORTED_COLUMNS` and then reloaded with its columns in
+      reverse order, which landed every value in its own column. So each expression below has to
+      keep its `as <alias>` clause naming its column: the alias is now the whole mapping, where
+      before it was a second copy of the target list. `loaded_at` is included for the same reason:
+      it is not in the file, and only the alias binding it to `current_timestamp()` makes it land.
 
     - **The path is validated, then quoted as a literal.** It cannot be a bound parameter here: the
       COPY INTO source position takes a location, and while Databricks does have parameter markers
@@ -245,12 +257,10 @@ def build_copy_sql(catalog: str, schema: str, path: str) -> str:
         else:
             select_list.append(f"cast(`{name}` as {column_type}) as `{name}`")
 
-    target = ", ".join(f"`{name}`" for name, _ in LANDING_COLUMNS)
-
     # No `source.` qualifier on the projection: the subquery has no alias, and `source.id` against
     # an unaliased subquery is a hard `UNRESOLVED_COLUMN` in this warehouse (verified).
     return (
-        f"copy into {table} ({target})\n"
+        f"copy into {table}\n"
         f"from (select {', '.join(select_list)} from '{_quote_path(path)}')\n"
         f"fileformat = parquet"
     )
