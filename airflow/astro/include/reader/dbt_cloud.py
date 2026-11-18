@@ -21,7 +21,7 @@ returns the LAST step's artifact, which for a multi-step job is often
 """
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from airflow.providers.dbt.cloud.hooks.dbt import DbtCloudHook
@@ -34,6 +34,11 @@ PAGE_LIMIT = 100
 # A hard stop on paging, so a server that keeps returning a full page cannot
 # spin forever. 20 pages is 2,000 runs, far beyond a windowed read.
 MAX_PAGES = 20
+# Paging stops once a run was created this long before the cutoff. The listing is
+# id-descending, so every later page is older still; the span has to exceed the
+# longest run or a long build would be dropped for having been created before the
+# window it finished in. The nightly takes 95-105 minutes, so 12h is a wide margin.
+MAX_RUN_SPAN = timedelta(hours=12)
 
 
 class ArtifactUnavailable(Exception):
@@ -54,6 +59,19 @@ def _parse_ts(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _to_run(raw: dict[str, Any], job_id: int) -> Run:
+    return Run(
+        run_id=int(raw["id"]),
+        job_id=int(raw.get("job_definition_id") or job_id),
+        status=int(raw["status"]),
+        created_at=_parse_ts(raw.get("created_at")),
+        started_at=_parse_ts(raw.get("started_at")),
+        finished_at=_parse_ts(raw.get("finished_at")),
+        scheduled=_in_trigger_cause(raw, "schedul"),
+        href=str(raw.get("href") or ""),
+    )
 
 
 def _in_trigger_cause(run: dict[str, Any], stem: str) -> bool:
@@ -118,47 +136,42 @@ class DbtCloudClient:
     def list_runs(self, job_id: int, finished_after: datetime | None = None) -> list[Run]:
         """Every run of the job that finished after `finished_after`.
 
-        Runs are listed newest first and filtered on finish time, not creation
-        time, so a long run that finishes after a later-created one is still
-        seen. A run still running has no finish time and is dropped here; the
-        collector asks for those separately because a started run still counts as
-        started for the due time.
+        Runs are listed newest first and filtered on finish time, not creation time,
+        so a long run that finishes after a later-created one is still seen. A run
+        still running has no finish time and is dropped here; the collector asks for
+        those separately because a started run still counts as started for the due
+        time.
+
+        Paging stops once a run was created more than MAX_RUN_SPAN before the
+        cutoff: the listing is id-descending, so every later page is older still.
+        Without that stop a cold start would walk the job's whole history.
         """
-        cutoff = finished_after
         collected: list[Run] = []
         for raw in self._iter_raw_runs(job_id):
-            run = Run(
-                run_id=int(raw["id"]),
-                job_id=int(raw.get("job_definition_id") or job_id),
-                status=int(raw["status"]),
-                created_at=_parse_ts(raw.get("created_at")),
-                started_at=_parse_ts(raw.get("started_at")),
-                finished_at=_parse_ts(raw.get("finished_at")),
-                scheduled=_in_trigger_cause(raw, "schedul"),
-                href=str(raw.get("href") or ""),
-            )
+            run = _to_run(raw, job_id)
+            if (
+                finished_after is not None
+                and run.created_at is not None
+                and run.created_at < finished_after - MAX_RUN_SPAN
+            ):
+                break
             if run.finished_at is None:
                 continue
-            if cutoff is not None and run.finished_at <= cutoff:
+            if finished_after is not None and run.finished_at <= finished_after:
                 continue
             collected.append(run)
         return collected
 
     def first_unfinished(self, job_id: int) -> Run | None:
-        """The newest run with no finish time, if one exists."""
-        for raw in self._iter_raw_runs(job_id):
-            if raw.get("finished_at"):
-                continue
-            return Run(
-                run_id=int(raw["id"]),
-                job_id=int(raw.get("job_definition_id") or job_id),
-                status=int(raw["status"]),
-                created_at=_parse_ts(raw.get("created_at")),
-                started_at=_parse_ts(raw.get("started_at")),
-                finished_at=None,
-                scheduled=_in_trigger_cause(raw, "schedul"),
-                href=str(raw.get("href") or ""),
-            )
+        """The newest run with no finish time, if one exists.
+
+        Only the newest page is examined: the listing is id-descending, so an
+        unfinished run can only be near the top, and paging further would cost
+        requests on every reader run to answer a question the first page settles.
+        """
+        for raw in self._page(job_id, 0):
+            if not raw.get("finished_at"):
+                return _to_run(raw, job_id)
         return None
 
     def list_steps(self, run_id: int) -> list[Step]:

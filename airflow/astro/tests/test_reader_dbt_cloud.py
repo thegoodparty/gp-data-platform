@@ -174,3 +174,39 @@ def test_a_trigger_cause_is_matched_on_its_stem():
     ):
         run = DbtCloudClient(_hook([[_run(9, cause=cause)]])).list_runs(70471823431462)[0]
         assert run.scheduled is scheduled, cause
+
+
+def test_paging_stops_once_creation_is_well_before_the_cutoff():
+    """Without a stop a cold start walks the job's whole history, one request per
+    hundred runs; the stop has to allow for a run created before the window that
+    finished inside it, which is why it is a span and not the cutoff itself."""
+    old = [
+        _run(1000 - i, created="2026-11-01T00:02:00Z", finished="2026-11-01T02:00:00Z")
+        for i in range(PAGE_LIMIT)
+    ]
+    new = [_run(50, created="2026-11-18T00:02:00Z", finished="2026-11-18T02:00:00Z")]
+    # A full first page is what makes the client ask for a second one at all.
+    new += [
+        _run(40 - i, created="2026-11-18T00:02:00Z", finished="2026-11-18T02:00:00Z")
+        for i in range(PAGE_LIMIT - 1)
+    ]
+    client = DbtCloudClient(_hook([new, old]))
+    cutoff = datetime(2026, 11, 18, 1, 0, tzinfo=UTC)
+    runs = client.list_runs(70471823431462, cutoff)
+    assert len(runs) == PAGE_LIMIT
+    assert 1000 - 0 not in [r.run_id for r in runs]
+    # Two requests: the full first page, then the page that stopped it.
+    assert len(client._hook.get_job_runs.calls) == 2
+
+
+def test_a_long_run_created_before_the_window_is_still_collected():
+    long_run = _run(7, created="2026-11-17T20:02:00Z", finished="2026-11-18T02:00:00Z")
+    client = DbtCloudClient(_hook([[long_run]]))
+    cutoff = datetime(2026, 11, 18, 1, 0, tzinfo=UTC)
+    assert [r.run_id for r in client.list_runs(70471823431462, cutoff)] == [7]
+
+
+def test_first_unfinished_reads_only_the_first_page():
+    client = DbtCloudClient(_hook([[_run(9), _run(8, status=3, finished=None)]]))
+    assert client.first_unfinished(70471823431462).run_id == 8
+    assert len(client._hook.get_job_runs.calls) == 1
