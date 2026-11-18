@@ -2281,10 +2281,11 @@ models:
         definition_period: 2026 cycle on
         supersedes: int__user_power_user
     description: >
-      Power user definition v2, the definition for the 2026 cycle on: took a
-      real action in Win (int__user_action_days) on at least as many days as
-      the bar for their cycle and distance from the election. No send is
-      required; dashboard views and onboarding steps do not count. Action days
+      Power user definition v2, the definition for the 2026 cycle on: reached
+      voters through the product on or before the election (the is_activated
+      legs), and took a real action in Win (int__user_action_days) on at least
+      as many days as the bar for their cycle and distance from the election.
+      Dashboard views and onboarding steps do not count. Action days
       count from first use, in any year, up to the build date capped at the
       election. One row per user with a candidacy. Moves with the build date.
       int__user_power_user (v1) stays as the definition through mid-2026.
@@ -2314,8 +2315,16 @@ models:
         description: >
           The bar for power_user_cycle at power_user_days_out, or at 365 when
           further out. Null for elections before telemetry began.
+      - name: power_user_has_sent
+        description: >
+          Reached voters through the product on or before the build date or the
+          election, whichever is first: a send day in int__user_action_days.
+        data_tests:
+          - not_null
       - name: is_power_user
-        description: power_user_action_days at or above the bar; false where there is no bar.
+        description: >
+          power_user_has_sent and power_user_action_days at or above the bar;
+          false where there is no bar.
         data_tests:
           - not_null
 
