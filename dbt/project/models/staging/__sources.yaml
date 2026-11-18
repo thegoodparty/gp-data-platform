@@ -871,14 +871,20 @@ sources:
                 sensitive: confidential
           - name: is_incumbent
             data_tests:
+              # Techspeed adds values and staging already nulls unknowns, so a new
+              # one is not a defect worth failing the build over.
               - accepted_values:
                   arguments:
                     values: ["", "FALSE", "False", "TRUE", "True"]
+                  config:
+                    severity: warn
           - name: is_uncontested
             data_tests:
               - accepted_values:
                   arguments:
                     values: ["", "No", "Yes"]
+                  config:
+                    severity: warn
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
         # Last loaded 2025-12-02; the feed is no longer syncing and has no
@@ -6357,6 +6363,9 @@ sources:
         error_after: { count: 31, period: day }
 
     tables:
+      # The three QuickBooks streams below have never landed a row, so the block's
+      # freshness would report them STALE on every run. Freshness stays on for
+      # every QuickBooks table that does sync.
       - name: quickbooks_accounts
         description: Raw QuickBooks Online chart of accounts; one row per account.
       - name: quickbooks_bills
@@ -6365,6 +6374,8 @@ sources:
         description: Raw QuickBooks Online classes, used for allocation.
       - name: quickbooks_credit_memos
         description: Raw QuickBooks Online customer credit memos.
+        config:
+          freshness: null
       - name: quickbooks_customers
         description: Raw QuickBooks Online customers; carries contact PII (email, phone, billing and shipping address).
       - name: quickbooks_departments
@@ -6383,8 +6394,12 @@ sources:
         description: Raw QuickBooks Online purchases (expenses).
       - name: quickbooks_time_activities
         description: Raw QuickBooks Online time activities.
+        config:
+          freshness: null
       - name: quickbooks_transfers
         description: Raw QuickBooks Online transfers between accounts.
+        config:
+          freshness: null
       - name: quickbooks_vendor_credits
         description: Raw QuickBooks Online vendor credits.
       - name: quickbooks_vendors

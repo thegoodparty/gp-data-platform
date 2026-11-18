@@ -19,20 +19,32 @@ with
             ) as principal
     ),
 
+    -- The governance roles hold catalog-level MODIFY, which inherits onto this
+    -- table. They are exempted for that inheritance only, so a write granted
+    -- directly on mart_analytics or on user_journey still fails this test. Both
+    -- come off when the raw catalog exists.
+    allowed_catalog_groups as (
+        select explode(array('transformer', 'ingestor')) as principal
+    ),
+
     write_grants as (
-        select 'catalog' as granted_on, grantee as principal, privilege_type
+        select
+            'catalog' as granted_on,
+            grantee as principal,
+            privilege_type,
+            null as inherited_from
         from goodparty_data_catalog.information_schema.catalog_privileges
         where catalog_name = 'goodparty_data_catalog'
 
         union all
 
-        select 'schema', grantee, privilege_type
+        select 'schema', grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.schema_privileges
         where schema_name = 'mart_analytics'
 
         union all
 
-        select 'table', grantee, privilege_type
+        select 'table', grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.table_privileges
         where table_schema = 'mart_analytics' and table_name = 'user_journey'
     ),
@@ -50,16 +62,27 @@ with
     ),
 
     writers as (
-        select granted_on, principal
+        select
+            granted_on,
+            principal,
+            -- A catalog-level grant sits at catalog scope already; a schema or table
+            -- grant counts only when it inherits from the catalog. coalesce keeps
+            -- this out of NULL, which the filter below would otherwise drop.
+            coalesce(inherited_from = 'CATALOG', false)
+            or granted_on = 'catalog' as from_catalog
         from write_grants
         where privilege_type in ('MODIFY', 'ALL_PRIVILEGES')
 
         union all
 
-        select granted_on, principal
+        select granted_on, principal, false
         from owners
     )
 
 select granted_on, principal
 from writers
-where principal not in (select principal from allowed where principal is not null)
+where
+    principal not in (select principal from allowed where principal is not null)
+    and not (
+        from_catalog and principal in (select principal from allowed_catalog_groups)
+    )

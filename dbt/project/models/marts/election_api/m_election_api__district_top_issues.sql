@@ -37,6 +37,16 @@
     Downstream consumers (election-api) filter by jurisdictional flag and
     re-rank within the filtered set. The mart emits the overall `issue_rank`
     only.
+
+    district_id comes from l2_district_spelling_resolution, the same map
+    m_election_api__position uses, never from hashing l2_district_name. A
+    district row's id is the hash of its own name, so hashing the voter-side
+    name only landed on a real district when the two sides agreed on the
+    spelling. L2 renames districts between snapshots (HEFFERNAN HOS became
+    HEFFERNAN HOSPITAL), and a disagreement left every row for that district
+    pointing at an id no district carries. Districts whose name the map cannot
+    place emit no rows at all, which the relationships test would otherwise
+    report as orphans rather than as the missing mapping it is.
 -#}
 {%- set issue_columns = [
     "hs_abortion_pro_choice",
@@ -192,6 +202,7 @@ with
             d.l2_state,
             d.l2_district_type,
             d.l2_district_name,
+            r.district_id,
             d.l2_voter_count,
             d.issue,
             d.score,
@@ -201,6 +212,11 @@ with
             t.is_state,
             t.is_federal
         from district_issue_long as d
+        inner join
+            resolved_districts as r
+            on r.state = d.l2_state
+            and r.l2_district_type = d.l2_district_type
+            and r.l2_district_name = d.l2_district_name
         left join {{ ref("haystaq_issue_tags") }} as t on t.issue = d.issue
     )
 
@@ -215,15 +231,14 @@ select
             ]
         )
     }} as id,
-    {{
-        generate_salted_uuid(
-            fields=[
-                "l2_state",
-                "l2_district_type",
-                "l2_district_name",
-            ]
-        )
-    }} as district_id,
+    -- Carried from the spelling-resolution map rather than re-hashed from the
+    -- name. Hashing the name minted an id that only matched a district row when
+    -- the voter table and the district table happened to agree on that name;
+    -- L2 renames districts between snapshots (HEFFERNAN HOS vs HEFFERNAN
+    -- HOSPITAL), and any disagreement produced rows pointing at an id no
+    -- district row carries. The map is the one thing that knows which spelling
+    -- actually has voters, so it supplies the id.
+    district_id,
     current_timestamp() as created_at,
     current_timestamp() as updated_at,
     l2_state,
