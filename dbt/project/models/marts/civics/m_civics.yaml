@@ -692,6 +692,7 @@ models:
                   ]
               config:
                 where: "candidacy_result is not null"
+                severity: warn
 
       - name: general_election_result
         description: >

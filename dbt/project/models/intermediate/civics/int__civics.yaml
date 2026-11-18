@@ -149,6 +149,9 @@ models:
           is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
           Write In, Ended Pro.
         data_tests:
+          # The vendor's reason list grows on its own schedule and a new reason
+          # passes through unchanged, so this warns rather than skipping the
+          # 2025 candidacy chain.
           - accepted_values:
               arguments:
                 values:
@@ -158,6 +161,8 @@ models:
                   - "Partisan Candidate"
                   - "Write In"
                   - "Ended Pro"
+              config:
+                severity: warn
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -318,6 +323,8 @@ models:
           Raw verification status from HubSpot contacts. Empty strings allowed
           and converted to nulls in downstream int__hubspot_companies_w_contacts_2025.
         data_tests:
+          # Same vendor-value shape as verification_status_reason: a new status
+          # passes through, and downstream reads only "Yes".
           - accepted_values:
               arguments:
                 values:
@@ -328,6 +335,8 @@ models:
                   - "Partisan Candidate"
                   - "Write In"
                   - ""
+              config:
+                severity: warn
 
   - name: int__hubspot_companies_w_contacts_2025
     description: >
@@ -1545,6 +1554,8 @@ models:
           (initcap normalization only, no value collapsing).
           See https://developers.civicengine.com/docs/api/graphql/reference/enums/position-level
         data_tests:
+          # BallotReady adds PositionLevel values, and the mart copies of this
+          # check already warn, so failing here would skip downstream first.
           - accepted_values:
               arguments:
                 values:
@@ -1555,6 +1566,8 @@ models:
                   - State
                   - Regional
                   - Federal
+              config:
+                severity: warn
 
       - name: party_affiliation
         description: Normalized party affiliation from the first BallotReady party value
