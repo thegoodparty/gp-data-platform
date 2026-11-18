@@ -20,6 +20,8 @@ decision:
     What will be done differently based on the result.
   who_acts: |
     Which team or role takes that action.
+  # A deliverable answering several questions lists one entry per question instead:
+  # per_question: [{question: ..., what_action: ..., who_acts: ...}]
 
 question:
   one_sentence: |

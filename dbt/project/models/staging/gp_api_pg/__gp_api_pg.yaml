@@ -12,6 +12,31 @@ sources:
       - name: contact_upload
         description: One row per contact CSV a Serve organization uploaded.
       - name: contact_upload_match
+        columns:
+          - name: first_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: last_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: cell_phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: landline
+            config:
+              meta:
+                sensitive: identifier
+          - name: address_line
+            config:
+              meta:
+                sensitive: confidential
         description: >
           One row per CSV row of a contact upload, with the person it matched
           (person_id) once matching has decided.

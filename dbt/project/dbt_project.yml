@@ -90,6 +90,14 @@ models:
       # every reader re-executes the full join.
       win:
         +materialized: table
+    # Applies to all files under models/governance/
+    governance:
+      # The functions behind the mask and row-filter policies. Prod builds them
+      # into the Terraform-owned governance schema. Other targets route to
+      # target.schema like everything else, which is deliberate: a CI or dev
+      # copy of a function is a different object in a personal schema, and the
+      # prod body is the only one a policy may name.
+      +schema: governance
     # Applies to all files under models/marts/
     marts:
       +materialized: table

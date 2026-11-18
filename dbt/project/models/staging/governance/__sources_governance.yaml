@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  # Terraform owns this schema and its table, not dbt. Declared as a source
+  # rather than a model so no build can ever recreate the salt: a full refresh
+  # over a dbt-built salt table would drop the row and null every pseudonym.
+  - name: governance
+    database: goodparty_data_catalog
+    schema: governance
+    description: >
+      Objects created and owned by Terraform. Read only: nothing here is built
+      by dbt, and the pseudonym salt below must never be rewritten by a build.
+    tables:
+      - name: pseudonym_salt
+        description: >
+          Versioned salt for the identifier mask, one row per rotation. The
+          value is generated in the warehouse and is never printed. Checks read
+          counts only.
+        columns:
+          - name: version
+            description: Rotation number. The mask function names the version it uses.
+          - name: salt
+            description: >
+              Never select this column. It exists so a leaked export cannot be
+              reversed offline, so reading it into a result set or a log
+              undoes the point of it.

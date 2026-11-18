@@ -24,15 +24,17 @@ it from a variable.
    (population, count, window, run timestamp, exclusions), and a status line: draft or reviewed,
    which reviews are pending, owner.
 2. **TL;DR.** The one-sentence answer in bold, then four to seven supporting points, each ending
-   with a link to its section. Then a row of links to every section.
+   with a link to its section. Then a row of links to every section, including the Assumptions
+   table, so a reviewer reaches it in one click.
 3. **Recommendations.** "What should product do with this?" Three or four numbered items, each
    opening with a bold action, then the evidence in one or two sentences, then a link to its
    section. Until the reviews land, say they are the analyst's read. The last item says where to
    look next (often a follow-up ticket). Merge items that make the same point rather than listing
    every implication.
 4. **Sections**, one per part of the question, each with: an eyebrow number, a heading phrased as
-   a question, a one-paragraph takeaway that answers it with live numbers, the figures, and the
-   SQL and Python behind them in collapsed `<details>` blocks.
+   a question, the team it serves and the decision it informs (from the brief), a one-paragraph
+   takeaway that answers it with live numbers, the figures, and the SQL and Python behind them in
+   collapsed `<details>` blocks.
 5. **Robustness.** The checks from the brief (composition, sensitivity, excluded groups), each
    stating whether the answer held.
 6. **Rerun.** The commands that reproduce the page, and a note that numbers move between runs, so

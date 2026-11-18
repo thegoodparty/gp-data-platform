@@ -174,7 +174,15 @@ Fallback: override catalog with --vars '{"preflight_metadata_catalog":"<catalog>
             {% do expected_primary_columns.append(source_column_name) %}
         {% endif %}
     {% endfor %}
-    {% for derived_column_name in ["state_postal_code", "state_from_lalvoterid"] %}
+    {#- Derived columns are listed in lower case: the names read back from a
+        relation are lower-cased by _l2_uniform_preflight_get_column_names, and
+        the diff below compares case-sensitively, so a mixed-case entry here
+        would report its own column as target_minus_src drift. -#}
+    {% for derived_column_name in [
+        "state_postal_code",
+        "state_from_lalvoterid",
+        "voters_birthyearmonth",
+    ] %}
         {% if derived_column_name not in expected_primary_columns %}
             {% do expected_primary_columns.append(derived_column_name) %}
         {% endif %}
