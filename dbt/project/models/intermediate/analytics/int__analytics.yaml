@@ -2508,9 +2508,46 @@ models:
                 where: "run_at >= current_date() - interval 2 days"
       - name: output_tokens_est
         description: Estimated summary tokens for the run.
+  - name: int__user_feature_days
+    description: >
+      One row per user per Win feature per day used: the single place events
+      are matched to win_feature_events, read by int__user_feature_use and the
+      power user action count. Impersonated and machine-emitted events are
+      dropped; win_only rows count only their Win use.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, feature, activity_date]
+    columns:
+      - name: user_id
+        description: gp-api user id.
+        data_tests:
+          - not_null
+      - name: feature
+        description: Feature key from win_feature_events.
+        data_tests:
+          - not_null
+      - name: activity_date
+        description: The day, from the event time as Amplitude records it.
+        data_tests:
+          - not_null
+      - name: is_user_action
+        description: From the seed; constant per feature.
+        data_tests:
+          - not_null
+      - name: is_onboarding
+        description: From the seed; constant per feature.
+        data_tests:
+          - not_null
+      - name: first_event_at
+        description: First matching event that day.
+      - name: last_event_at
+        description: Last matching event that day.
+
   - name: int__user_feature_use
     description: >
-      First use, last use and use days per user per Win feature, from the
+      First use, last use and use days per user per Win feature, rolled up
+      from int__user_feature_days, where events are matched to the
       win_feature_events seed. Impersonated and machine-emitted events are
       dropped.
     columns:
