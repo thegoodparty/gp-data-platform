@@ -16,6 +16,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
+from include.pipelines.models import Pipeline
 from include.reader.models import Streak
 
 STATE_VARIABLE = "data_pipeline_reader_state"
@@ -181,3 +182,26 @@ def save_state(variable_set: VariableAccessor, state: ReaderState) -> None:
 def streak_for(state: ReaderState, pipeline: str) -> Streak | None:
     """The saved streak, or None so the caller rebuilds it from history."""
     return state.streaks.get(pipeline)
+
+
+def apply_collector_payload(
+    state: ReaderState, pipeline: "Pipeline", payload: dict[str, Any] | None, now: datetime
+) -> None:
+    """Fold one collector's payload for one pipeline into the state.
+
+    Only a pipeline whose read succeeded advances anything. A failed read leaves the
+    cursor and `last_read_at` exactly where they were, so the next run replays the
+    window and rule 4 sees the staleness rather than a refreshed attempt.
+    """
+    if not payload or not payload.get("read_ok"):
+        return
+    tool = pipeline.tool
+    state.advance_cursor(tool, _parse(payload.get("cursor")))
+    state.remember(tool, [r["run_id"] for r in payload.get("records") or [] if "run_id" in r])
+    streak = payload.get("streak")
+    if streak:
+        state.streaks[pipeline.pipeline] = Streak(
+            failed_since_last_success=bool(streak.get("failed_since_last_success")),
+            last_real_success_at=_parse(streak.get("last_real_success_at")),
+        )
+    state.record_read(tool, read_ok=True, now=now)

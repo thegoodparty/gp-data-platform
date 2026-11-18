@@ -255,7 +255,10 @@ def assemble_report(
                 streak or Streak(True, None),
                 now=now,
                 due_at=due_at,
-                last_read_at=state.last_read_at.get(pipeline.tool),
+                # A successful read IS a read at now; a failed one carries the last
+                # GOOD read forward, so rule 4 sees the staleness rather than a
+                # refreshed attempt.
+                last_read_at=now if read_ok else state.last_read_at.get(pipeline.tool),
                 last_read_ok=read_ok,
                 warning=warning,
             )

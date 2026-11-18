@@ -300,6 +300,20 @@ def test_a_cold_start_with_a_failed_read_does_not_claim_healthy():
     assert statuses[0]["last_real_success_at"] is None
 
 
+def test_a_successful_read_stamps_last_read_at_and_a_failed_one_does_not():
+    later = T0 + timedelta(hours=1)
+    good = {
+        "tool": "dbt_cloud",
+        "read_ok": True,
+        "pipelines": {"dbt_nightly_build": {"read_ok": True, "records": []}},
+    }
+    _, statuses = assemble_report([NIGHTLY], {"dbt_cloud": good}, ReaderState(), later)
+    assert statuses[0]["last_read_at"] == int(later.timestamp())
+    state = ReaderState(last_read_at={"dbt_cloud": T0})
+    _, statuses = assemble_report([NIGHTLY], {"dbt_cloud": None}, state, later)
+    assert statuses[0]["last_read_at"] == int(T0.timestamp())
+
+
 def test_a_successful_read_passes_records_and_the_streak_through():
     payload = {
         "tool": "dbt_cloud",

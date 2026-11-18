@@ -6,10 +6,12 @@ can reach the metastore.
 
 from datetime import UTC, datetime, timedelta
 
+from include.pipelines.models import Pipeline, RealSuccess
 from include.reader.models import Streak
 from include.reader.state import (
     RECENT_IDS_CAP,
     ReaderState,
+    apply_collector_payload,
     load_state,
     save_state,
     streak_for,
@@ -137,3 +139,62 @@ def test_streak_for_returns_none_so_the_caller_rebuilds():
     assert streak_for(ReaderState(), "dbt_nightly_build") is None
     saved = ReaderState(streaks={"dbt_nightly_build": Streak(False, T0)})
     assert streak_for(saved, "dbt_nightly_build") == Streak(False, T0)
+
+
+# --- folding a collector's payload in ---------------------------------------
+
+
+_P = Pipeline(
+    pipeline="dbt_nightly_build",
+    tool="dbt_cloud",
+    display_name="dbt Cloud nightly production build",
+    owner="data-engineering",
+    schedule="2 */12 * * *",
+    allowed_age_seconds=26 * 3600,
+    real_success=RealSuccess(status="run_status_success", trigger="scheduled"),
+    runbook="https://example.invalid/runbook",
+)
+
+
+def test_a_good_read_advances_the_cursor_dedupe_streak_and_read_time():
+    state = ReaderState()
+    payload = {
+        "read_ok": True,
+        "cursor": T0.isoformat(),
+        "records": [{"run_id": 11, "status": "error"}],
+        "streak": {"failed_since_last_success": True, "last_real_success_at": None},
+    }
+    apply_collector_payload(state, _P, payload, T0)
+    assert state.cursor["dbt_cloud"] == T0
+    assert state.recent_run_ids["dbt_cloud"] == ["11"]
+    assert state.streaks["dbt_nightly_build"] == Streak(True, None)
+    assert state.last_read_at["dbt_cloud"] == T0
+
+
+def test_a_failed_read_touches_nothing():
+    """The cursor, the dedupe set, the streak and last_read_at all stay put, so the
+    next run replays the window and rule 4 can see the staleness."""
+    state = ReaderState(
+        cursor={"dbt_cloud": T0},
+        recent_run_ids={"dbt_cloud": ["1"]},
+        streaks={"dbt_nightly_build": Streak(True, T0)},
+        last_read_at={"dbt_cloud": T0},
+    )
+    before = ReaderState(state.cursor, state.recent_run_ids, state.streaks, state.last_read_at)
+    apply_collector_payload(state, _P, {"read_ok": False, "cursor": (T0 + timedelta(days=1)).isoformat()}, T0)
+    apply_collector_payload(state, _P, None, T0)
+    assert state == before
+
+
+def test_a_failed_read_does_not_advance_through_the_round_trip():
+    get, set_ = _fake_variable()
+    state = ReaderState(cursor={"dbt_cloud": T0}, last_read_at={"dbt_cloud": T0})
+    save_state(set_, state)
+    for _ in range(3):
+        state = load_state(get)
+        failed = {"read_ok": False, "cursor": (T0 + timedelta(days=1)).isoformat()}
+        apply_collector_payload(state, _P, failed, T0 + timedelta(minutes=5))
+        save_state(set_, state)
+    reloaded = load_state(get)
+    assert reloaded.cursor["dbt_cloud"] == T0
+    assert reloaded.last_read_at["dbt_cloud"] == T0

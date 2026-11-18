@@ -57,8 +57,8 @@ from include.pipelines.registry import load_pipelines_from
 from include.reader.collect_dbt import collect_tool
 from include.reader.dbt_cloud import DbtCloudClient
 from include.reader.grafana import SendFailed, send_logs
-from include.reader.records import assemble_report, parse_iso, streak_from_payload
-from include.reader.state import load_state
+from include.reader.records import assemble_report
+from include.reader.state import apply_collector_payload, load_state
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -167,16 +167,7 @@ def data_pipeline_reader():
         tool_payload = collector or {}
         per_pipeline = tool_payload.get("pipelines") or {}
         for pipeline in _pipeline_list():
-            payload = per_pipeline.get(pipeline.pipeline) or {}
-            if not (tool_payload.get("read_ok") and payload.get("read_ok")):
-                continue
-            state.advance_cursor(pipeline.tool, parse_iso(payload.get("cursor")))
-            state.remember(pipeline.tool, [r["run_id"] for r in payload.get("records") or []])
-            streak = streak_from_payload(payload.get("streak"))
-            if streak is not None:
-                state.streaks[pipeline.pipeline] = streak
-        if tool_payload.get("read_ok"):
-            state.record_read("dbt_cloud", read_ok=True, now=now)
+            apply_collector_payload(state, pipeline, per_pipeline.get(pipeline.pipeline), now)
         save_state(Variable.set, state)
         t_log.info("reader: state saved after sending %d line(s)", sent)
 
