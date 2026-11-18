@@ -189,10 +189,21 @@ select
     {{ clean_l2_phone_number("adopted.`VoterTelephones_LandlineFormatted`") }}
     as `VoterTelephones_LandlineFormatted`,
     -- Year and month of birth, open, so analysts keep age-at-election to the
-    -- month without the day. 9999 is L2's placeholder for an unknown birth
-    -- date, so those rows stay null rather than reading as 9999-01.
-    case
-        when year(adopted.`Voters_BirthDate`) < 9999
-        then date_format(adopted.`Voters_BirthDate`, 'yyyy-MM')
-    end as `Voters_BirthYearMonth`
+    -- month without the day.
+    --
+    -- Voters_BirthDate reaches this model as a STRING in 'MM/DD/YYYY' (the
+    -- vendor's own format, and the one the classification seed's description
+    -- names), not a DATE, so it has to be parsed rather than cast. try_to_date,
+    -- not to_date: one malformed value would fail the whole model, and this
+    -- view is what every L2 reader selects from. Values that do not parse come
+    -- back null instead.
+    --
+    -- 9999 is L2's placeholder for an unknown birth date. It has two spellings
+    -- in the file, '1/1/9999' (which fails the strict parse and lands as null
+    -- anyway) and a zero-padded one that parses to 9999-01-01, so nullif
+    -- removes that instead of letting it read as a real month.
+    nullif(
+        date_format(try_to_date(adopted.`Voters_BirthDate`, 'MM/dd/yyyy'), 'yyyy-MM'),
+        '9999-01'
+    ) as `Voters_BirthYearMonth`
 from adopted
