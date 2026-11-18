@@ -59,6 +59,7 @@ from include.reader.dbt_cloud import DbtCloudClient
 from include.reader.grafana import SendFailed, send_logs
 from include.reader.records import assemble_report
 from include.reader.state import apply_collector_payload, load_state
+from include.reader.state import save_state as write_state
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -168,7 +169,7 @@ def data_pipeline_reader():
         per_pipeline = tool_payload.get("pipelines") or {}
         for pipeline in _pipeline_list():
             apply_collector_payload(state, pipeline, per_pipeline.get(pipeline.pipeline), now)
-        save_state(Variable.set, state)
+        write_state(Variable.set, state)
         t_log.info("reader: state saved after sending %d line(s)", sent)
 
     loaded = load_pipelines()

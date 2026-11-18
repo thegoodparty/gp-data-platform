@@ -101,3 +101,25 @@ def test_every_rule_matches_its_own_shape(pattern, replacement, sample):
     assert pattern.sub(replacement, sample) != sample, sample
     # Every rule is in the applied set, so none is defined and then forgotten.
     assert pattern in [p for p, _ in redact._REPLACEMENTS], sample
+
+
+def test_an_apostrophe_before_the_value_does_not_shift_the_pairing():
+    """A bare `'[^']*'` pairs an apostrophe in "Couldn't" with the opening quote of
+    the echoed value, so the value survives between the real quotes. The
+    lookarounds keep a word-internal apostrophe out of the pairing."""
+    out = redact_error("Couldn't cast 'John Smith' to INT")
+    assert "John Smith" not in out
+    assert "couldn't cast" in out.lower()
+
+
+def test_a_value_containing_an_apostrophe_is_redacted_whole():
+    out = redact_error("Cast failed: input 'O'Brien' is not valid for INT64")
+    assert "Brien" not in out
+    assert "not valid for INT64" in out
+
+
+def test_apostrophes_in_prose_are_not_treated_as_quotes():
+    """Over-redaction would gut ordinary messages, so two unpaired apostrophes must
+    leave the line alone."""
+    raw = "Two quotes: dont and cant are not quoted here"
+    assert redact_error(raw) == raw

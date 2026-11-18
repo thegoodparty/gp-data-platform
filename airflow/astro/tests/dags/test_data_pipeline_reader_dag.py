@@ -139,3 +139,19 @@ def test_the_grafana_endpoint_accepts_a_host_with_or_without_a_scheme():
 
 def test_the_task_count_is_four_today():
     assert len(_DAG.task_ids) == 4
+
+
+def test_the_state_write_goes_through_the_library_not_the_task():
+    """`save_state` is both a task name and a library function. If the library one
+    is not imported under another name, the name inside the DAG body resolves to the
+    task, so the task calls itself and the Variable is never written. A structure
+    test cannot see that, so this pins the alias and that the body uses it."""
+    module = _dag_module()
+    # The alias is the library function, not the decorated task of the same name.
+    assert callable(module.write_state)
+    assert not hasattr(module.write_state, "operator_class"), "write_state is the task, not the writer"
+    source = inspect.getsource(module)
+    body = source[source.index("def save_state") :]
+    assert "write_state(Variable.set, state)" in body
+    # The task's own name must never be called with the writer's arguments.
+    assert "save_state(Variable.set" not in source

@@ -22,8 +22,11 @@ _PHONE = re.compile(r"(?<!\d)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.
 _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9]{20,}\b")
 # `user:pass@` inside a URL, before the host.
 _URL_CREDENTIALS = re.compile(r"(?<=//)[^/\s:@]+:[^/\s@]+@")
-# A quoted literal, either quote style, on one line.
-_QUOTED_LITERAL = re.compile(r"'[^'\n]*'|\"[^\"\n]*\"")
+# A quoted literal, either quote style, on one line. The lookarounds keep a
+# word-internal apostrophe ("Couldn't", "O'Brien") out of the pairing: without
+# them the apostrophe opens a match and shifts every later quote, so the echoed
+# value between the real quotes survives. Non-greedy so `'O'Brien'` redacts whole.
+_QUOTED_LITERAL = re.compile(r"(?<!\w)'[^\n]*?'(?!\w)|\"[^\"\n]*\"")
 # Five or more digits: a voter id, a report id, a stripped-then-echoed count.
 _DIGIT_RUN = re.compile(r"\b\d{5,}\b")
 
