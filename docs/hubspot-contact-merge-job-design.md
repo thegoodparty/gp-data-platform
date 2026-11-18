@@ -427,7 +427,9 @@ rest stay in "backlog" until what they wait on is done.
 20. **Add `hubspot_contact_merge_queue`.** A view over the candidates mart: secondary rows
     only, `exact_match`, no unique key conflict, `live_contact_count` under an agreed cap,
     not in the exclusion seed, and the secondary not in the log with a status the queue
-    excludes. Add `latest_election_date` from the person's candidacies in `mart_civics`.
+    excludes. The queue is empty while the log holds an `id_changed` row that nobody has
+    reviewed, so a scheduled run cannot merge after the ID preservation beta stops
+    working. Add `latest_election_date` from the person's candidacies in `mart_civics`.
     Document every rule in the model YAML. Test that it has no duplicate secondaries and
     that no secondary equals its primary. Done when its row count, by election year, is
     recorded on the ticket.
