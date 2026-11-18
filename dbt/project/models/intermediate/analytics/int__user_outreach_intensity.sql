@@ -88,6 +88,7 @@ with
             count_if(
                 basis = 'committed' and channel = 'social'
             ) as outreach_social_count,
+            count_if(basis = 'committed' and channel = 'email') as outreach_email_count,
             count_if(
                 basis = 'committed' and channel = 'door_knocking'
             ) as outreach_door_knocking_count,
@@ -168,6 +169,10 @@ select
         when a.election_date_status in ('upcoming', 'past')
         then coalesce(w.outreach_social_count, 0)
     end as outreach_social_count,
+    case
+        when a.election_date_status in ('upcoming', 'past')
+        then coalesce(w.outreach_email_count, 0)
+    end as outreach_email_count,
     case
         when a.election_date_status in ('upcoming', 'past')
         then coalesce(w.outreach_door_knocking_count, 0)
