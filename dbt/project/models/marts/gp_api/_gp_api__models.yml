@@ -638,6 +638,12 @@ models:
         description: When the latest upload naming this person was created.
 
   - name: gp_api_haystaq_issue_scores
+    config:
+      # Monthly for the same reason as gp_api_voters: the tests are a group-by
+      # over the 219M-row voter file, so they ride the monthly L2 build rather
+      # than the routine test run. The model is a view, so reading it is always
+      # current regardless of when it was last created.
+      tags: ["monthly"]
     description: >
       The modeled constituent-priority (Haystaq) scores for an organization's
       district, one row per LALVOTERID, read by gp-api's agents. Those agents
@@ -659,6 +665,9 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: "{{ get_us_states_list(include_DC=true, include_territories=true) | list + ['AA', 'AE', 'AP'] }}"
+                # set/do rather than `| list + [...]`, which is the shape that
+                # drops the macro from dbt Cloud's native-kwarg renderer; see
+                # the same workaround in m_civics.yaml.
+                values: "{% set l = get_us_states_list(include_DC=true, include_territories=true) | list %}{% do l.extend(['AA', 'AE', 'AP']) %}{{ l }}"
       - name: Voters_Active
         description: A = Active, I = Inactive.

@@ -9,7 +9,10 @@
 -- deliberately, rather than appearing inside a granted schema unannounced.
 select
     `LALVOTERID`,
-    `Residence_Addresses_State`,
+    -- L2 has loaded blank strings rather than null for some fields, and a blank
+    -- state is not a value the agent can scope on. gp_api_voters nulls its strings
+    -- for the same reason.
+    nullif(`Residence_Addresses_State`, '') as `Residence_Addresses_State`,
     -- Precinct sits outside get_l2_district_columns() but is a district an office can
     -- hold and the agent filters on, and gp_api_voters exposes it for the same reason.
     {{ get_l2_district_columns() }},
