@@ -158,14 +158,24 @@ models:
       survivor), but Airbyte never re-extracts it, so its last extract stays in
       stg_airbyte_source__hubspot_api_contacts looking live. Join here to tell a
       live contact from an alias.
+
+      Two sources: the survivors' merged_object_ids, which reach dbt after
+      Airbyte's next sync, and the hubspot-merge job's log, which knows about a
+      merge within minutes but only for pairs the job ran. HubSpot's own record
+      wins where both name a survivor, since it also reflects merges that
+      happened outside this job.
     columns:
       - name: merged_contact_id
         description: HubSpot id of the contact that was merged away.
+        data_tests:
+          - not_null
+          - unique
       - name: surviving_contact_id
         description: >
           The live contact that absorbed it. Null when every contact that lists
           it was itself merged away later and the final survivor's list did not
-          carry it forward.
+          carry it forward, and when the job logged the merge but HubSpot
+          returned no survivor.
 
   - name: int__hubspot_contacts_w_companies
     description: >
@@ -307,3 +317,28 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_call_at >= first_call_at"
+
+unit_tests:
+  - name: int__hubspot_contact_merges_unions_the_log_with_hubspots_own_record
+    model: int__hubspot_contact_merges
+    given:
+      - input: ref('stg_airbyte_source__hubspot_api_contacts')
+        rows:
+          # Lists one merged id, and itself, which is not a merge.
+          - {id: 1, merged_object_ids: "1;41"}
+      - input: ref('stg_airflow_source__hubspot_contact_merge_log')
+        rows:
+          # Only the log knows about this one: the job merged it before Airbyte
+          # next synced.
+          - {status: "merged", secondary_id: "42", survivor_id: "2", attempted_at: "2026-11-18 15:00:00"}
+          # Not a merge, so the secondary stays live.
+          - {status: "failed", secondary_id: "43", survivor_id: null, attempted_at: "2026-11-18 15:00:00"}
+          # Both know it, with different survivors. HubSpot's own record wins.
+          - {status: "merged", secondary_id: "44", survivor_id: "3", attempted_at: "2026-11-18 15:00:00"}
+          # The latest of two log rows for the same secondary.
+          - {status: "already_merged", secondary_id: "42", survivor_id: "9", attempted_at: "2026-11-19 15:00:00"}
+    expect:
+      rows:
+        - {merged_contact_id: "41", surviving_contact_id: "1"}
+        - {merged_contact_id: "42", surviving_contact_id: "9"}
+        - {merged_contact_id: "44", surviving_contact_id: "3"}

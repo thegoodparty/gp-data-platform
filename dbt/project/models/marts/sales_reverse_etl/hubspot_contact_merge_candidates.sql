@@ -6,13 +6,13 @@
 with
     contacts as (select * from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}),
 
-    -- A contact merged away in HubSpot keeps its last extract in the source, and
-    -- the survivor names it in merged_object_ids. There is nothing left to merge.
+    -- A contact merged away in HubSpot keeps its last extract in the source, so
+    -- joining the merge record is what tells it apart from a live one. It reads the
+    -- merge log too, so a merge the job just ran drops the contact before Airbyte's
+    -- next sync would have.
     merged_away as (
-        select distinct merged_id
-        from contacts
-        lateral view explode(split(merged_object_ids, ';')) t as merged_id
-        where merged_object_ids is not null and merged_id != cast(id as string)
+        select merged_contact_id as merged_id
+        from {{ ref("int__hubspot_contact_merges") }}
     ),
 
     person_contacts as (
