@@ -160,3 +160,17 @@ def test_list_steps_carries_the_index():
     client = DbtCloudClient(_hook(steps=[{"index": 1, "name": "Invoke dbt with `dbt build`", "status": 10}]))
     steps = client.list_steps(900)
     assert [(s.index, s.name) for s in steps] == [(1, "Invoke dbt with `dbt build`")]
+
+
+def test_a_trigger_cause_is_matched_on_its_stem():
+    """The exact string varies by how a run was started, so equality would classify
+    the nightly as manual and it could never count as recovery."""
+    for cause, scheduled in (
+        ("Scheduled", True),
+        ("Scheduled by timer", True),
+        ("Manual", False),
+        ("Kicked off from the UI", False),
+        ("", False),
+    ):
+        run = DbtCloudClient(_hook([[_run(9, cause=cause)]])).list_runs(70471823431462)[0]
+        assert run.scheduled is scheduled, cause

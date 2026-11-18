@@ -56,9 +56,16 @@ def _parse_ts(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def _in_trigger_cause(run: dict[str, Any], cause: str) -> bool:
+def _in_trigger_cause(run: dict[str, Any], stem: str) -> bool:
+    """Whether the run's trigger cause mentions `stem`.
+
+    Substring, not equality: dbt Cloud's cause strings vary by how a run was
+    started ("Scheduled" is the timer, and the same helper in gold_match_utils
+    matches on the stem for this reason). Equality would silently classify the
+    nightly as manual and it could never count as recovery.
+    """
     trigger = run.get("trigger") or {}
-    return str(trigger.get("cause") or "").lower() == cause.lower()
+    return stem in str(trigger.get("cause") or "").lower()
 
 
 class DbtCloudClient:
@@ -127,7 +134,7 @@ class DbtCloudClient:
                 created_at=_parse_ts(raw.get("created_at")),
                 started_at=_parse_ts(raw.get("started_at")),
                 finished_at=_parse_ts(raw.get("finished_at")),
-                scheduled=_in_trigger_cause(raw, "scheduled"),
+                scheduled=_in_trigger_cause(raw, "schedul"),
                 href=str(raw.get("href") or ""),
             )
             if run.finished_at is None:
@@ -149,7 +156,7 @@ class DbtCloudClient:
                 created_at=_parse_ts(raw.get("created_at")),
                 started_at=_parse_ts(raw.get("started_at")),
                 finished_at=None,
-                scheduled=_in_trigger_cause(raw, "scheduled"),
+                scheduled=_in_trigger_cause(raw, "schedul"),
                 href=str(raw.get("href") or ""),
             )
         return None
