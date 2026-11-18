@@ -19,6 +19,7 @@ from include.reader.records import (
     build_run_record,
     next_run_due,
     next_streak,
+    streak_to_payload,
     watched_warning,
 )
 from include.reader.state import ReaderState
@@ -143,3 +144,32 @@ def collect(pipeline: Pipeline, client: DbtCloudClient, state: ReaderState, now:
         read_ok=True,
         watched_warning=warning,
     )
+
+
+def payload_for(result: CollectResult) -> dict[str, Any]:
+    """The collector's result as XCom-safe JSON: datetimes become ISO strings."""
+    return {
+        "records": result.records,
+        "streak": streak_to_payload(result.streak),
+        "cursor": result.cursor.isoformat() if result.cursor else None,
+        "due_at": result.due_at.isoformat() if result.due_at else None,
+        "read_ok": result.read_ok,
+        "watched_warning": result.watched_warning,
+    }
+
+
+def collect_tool(
+    pipelines: list[Pipeline], client: DbtCloudClient, state: ReaderState, now: datetime
+) -> dict[str, Any]:
+    """Every dbt Cloud pipeline's records in one payload, which is one DAG task.
+
+    A pipeline whose read failed sets read_ok = False for the tool, so the status
+    update says last_read_ok = 0 for it and the cursor does not move.
+    """
+    per_pipeline: dict[str, Any] = {}
+    read_ok = True
+    for pipeline in pipelines:
+        result = collect(pipeline, client, state, now)
+        per_pipeline[pipeline.pipeline] = payload_for(result)
+        read_ok = read_ok and result.read_ok
+    return {"tool": "dbt_cloud", "read_ok": read_ok, "pipelines": per_pipeline}

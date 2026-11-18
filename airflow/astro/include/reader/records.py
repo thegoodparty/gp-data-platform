@@ -185,6 +185,84 @@ def next_run_due(schedule: str | None, last_started_at: datetime | None) -> date
     return datetime.fromisoformat(info.run_after.isoformat()) if info is not None else None
 
 
+def parse_iso(value: str | None) -> datetime | None:
+    """A timestamp from XCom or from the state Variable, tolerant of both Z and +00:00."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def streak_from_payload(payload: dict[str, Any] | None) -> Streak | None:
+    if not payload:
+        return None
+    return Streak(
+        failed_since_last_success=bool(payload.get("failed_since_last_success")),
+        last_real_success_at=parse_iso(payload.get("last_real_success_at")),
+    )
+
+
+def streak_to_payload(streak: Streak | None) -> dict[str, Any] | None:
+    if streak is None:
+        return None
+    return {
+        "failed_since_last_success": bool(streak.failed_since_last_success),
+        "last_real_success_at": streak.last_real_success_at.isoformat()
+        if streak.last_real_success_at
+        else None,
+    }
+
+
+def assemble_report(
+    pipelines: list[Pipeline],
+    tool_payloads: dict[str, dict[str, Any] | None],
+    state: Any,
+    now: datetime,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The records and the per-pipeline status updates for one reader run.
+
+    `tool_payloads` is what each collector task returned, keyed by tool, or None
+    when that task failed outright: an all_done send, so an unexpected exception
+    still produces a status update. A tool with no successful read still gets one,
+    because silence is the one thing rule 4 cannot tell from a healthy platform.
+    """
+    records: list[dict[str, Any]] = []
+    statuses: list[dict[str, Any]] = []
+    for pipeline in pipelines:
+        tool_payload = tool_payloads.get(pipeline.tool) or {}
+        payload = (tool_payload.get("pipelines") or {}).get(pipeline.pipeline) or {}
+        read_ok = bool(tool_payload.get("read_ok")) and bool(payload.get("read_ok"))
+        saved = state.streaks.get(pipeline.pipeline)
+        if read_ok:
+            records.extend(payload.get("records") or [])
+            streak = streak_from_payload(payload.get("streak")) or saved
+            due_at = parse_iso(payload.get("due_at")) or next_run_due(pipeline.schedule, None)
+            warning = payload.get("watched_warning")
+        else:
+            # Never report recovery on a failed read. With no saved streak either,
+            # the honest answer is "failed, as far as anyone knows": a null success
+            # time with a 0 flag reads as healthy to rule 1, which is the one claim
+            # this must not make.
+            streak = saved if saved is not None else Streak(True, None)
+            due_at = next_run_due(pipeline.schedule, saved.last_real_success_at if saved else None)
+            warning = None
+        statuses.append(
+            build_status_update(
+                pipeline,
+                streak or Streak(True, None),
+                now=now,
+                due_at=due_at,
+                last_read_at=state.last_read_at.get(pipeline.tool),
+                last_read_ok=read_ok,
+                warning=warning,
+            )
+        )
+    return records, statuses
+
+
 def _epoch(value: datetime | None) -> int | None:
     return int(value.timestamp()) if value is not None else None
 
@@ -193,7 +271,7 @@ def build_status_update(
     pipeline: Pipeline,
     streak: Streak,
     now: datetime,
-    due_at: datetime,
+    due_at: datetime | None,
     last_read_at: datetime | None,
     last_read_ok: bool,
     warning: dict[str, Any] | None = None,

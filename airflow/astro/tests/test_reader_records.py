@@ -11,6 +11,7 @@ import include.reader.records as records
 from include.pipelines.models import Pipeline, RealSuccess, ToolIds
 from include.reader.models import Run, Streak
 from include.reader.records import (
+    assemble_report,
     build_run_record,
     build_status_update,
     is_real_success,
@@ -18,6 +19,7 @@ from include.reader.records import (
     rebuild_streak_from_history,
     watched_warning,
 )
+from include.reader.state import ReaderState
 
 NIGHTLY = Pipeline(
     pipeline="dbt_nightly_build",
@@ -261,3 +263,59 @@ def test_status_update_carries_a_stale_read_time_when_the_read_failed():
     assert update["last_read_ok"] == 0
     # Rule 4 reads this, so it must be the last GOOD read, not this attempt.
     assert update["last_read_at"] == int(T0.timestamp())
+
+
+# --- the all_done send -----------------------------------------------------
+
+
+def test_a_raising_collector_still_yields_a_status_update_with_last_read_ok_zero():
+    """The contract change 1 rests on: an unexpected exception anywhere upstream
+    still produces a status update, built from the last saved state, with
+    last_read_ok = 0. Silence is the one thing rule 4 cannot tell from health."""
+    state = ReaderState(streaks={"dbt_nightly_build": Streak(True, T0)}, last_read_at={"dbt_cloud": T0})
+    records, statuses = assemble_report([NIGHTLY], {"dbt_cloud": None}, state, T0)
+    assert records == []
+    assert len(statuses) == 1
+    update = statuses[0]
+    assert update["last_read_ok"] == 0
+    assert update["failed_since_last_success"] == 1
+    assert update["last_read_at"] == int(T0.timestamp())  # the last GOOD read, not this attempt
+
+
+def test_a_failed_read_never_reports_recovery():
+    state = ReaderState(streaks={"dbt_nightly_build": Streak(False, T0)})
+    _, statuses = assemble_report(
+        [NIGHTLY], {"dbt_cloud": {"tool": "dbt_cloud", "read_ok": False}}, state, T0
+    )
+    assert statuses[0]["last_read_ok"] == 0
+    # It does not flip the flag either way: the read said nothing about the pipeline.
+    assert statuses[0]["failed_since_last_success"] == 0
+
+
+def test_a_cold_start_with_a_failed_read_does_not_claim_healthy():
+    """A first deploy that lost the Variable while the nightly is red must not
+    report "not failed": a null success time with a 0 flag reads as healthy."""
+    _, statuses = assemble_report([NIGHTLY], {"dbt_cloud": None}, ReaderState(), T0)
+    assert statuses[0]["failed_since_last_success"] == 1
+    assert statuses[0]["last_real_success_at"] is None
+
+
+def test_a_successful_read_passes_records_and_the_streak_through():
+    payload = {
+        "tool": "dbt_cloud",
+        "read_ok": True,
+        "pipelines": {
+            "dbt_nightly_build": {
+                "read_ok": True,
+                "records": [{"record_type": "run_record", "run_id": 4}],
+                "streak": {"failed_since_last_success": False, "last_real_success_at": T0.isoformat()},
+                "due_at": T0.isoformat(),
+                "watched_warning": None,
+            }
+        },
+    }
+    records, statuses = assemble_report([NIGHTLY], {"dbt_cloud": payload}, ReaderState(), T0)
+    assert [r["run_id"] for r in records] == [4]
+    assert statuses[0]["last_read_ok"] == 1
+    assert statuses[0]["failed_since_last_success"] == 0
+    assert statuses[0]["last_real_success_at"] == int(T0.timestamp())
