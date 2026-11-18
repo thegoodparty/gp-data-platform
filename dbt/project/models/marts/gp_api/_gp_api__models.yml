@@ -10,8 +10,13 @@ models:
       tags: ["monthly"]
     description: >
       The L2 voter file served to gp-api, one row per LALVOTERID, with
-      turnout and independent-affinity scores. Holds the full L2 record,
-      including PII, so read access is limited to mart_gp_api_readers.
+      turnout and independent-affinity scores. Carries every Haystaq score as an
+      `hs_*` column under its source name: continuous 0-100 within-state
+      percentiles, higher meaning more aligned with the stance the name
+      describes, null where the model did not score the voter. gp-api reads them
+      as aggregates only (a district's average, or the share of voters above a
+      threshold), never as a per-person fact about a constituent. Holds the full
+      L2 record, including PII, so read access is limited to mart_gp_api_readers.
     columns:
       - name: id
         description: Unique identifier for a voter
@@ -338,7 +343,9 @@ models:
       elsewhere, so the total exceeds the state's adult population.
       ids do not collide across the two halves, which
       assert_gp_api_consumer_only_people_ids_not_voter_ids checks on the table
-      rather than on this large view.
+      rather than on this large view. Every `hs_*` score is null on consumer-only
+      rows: they come from the voter file and the commercial file carries none. A
+      score of 0 is a scored voter at the bottom of the state, not a missing one.
     columns:
       - name: Registered_Voter
         description: True when the row comes from the voter file.
