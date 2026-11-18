@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__hubspot_contact_merge_log
+    description: >
+      One row per pair the hubspot-merge job tried to merge, as the job wrote it.
+      Append-only: the job inserts a row per attempt and never updates or deletes,
+      so a pair can appear more than once across runs and the current state of a
+      pair is derived from its rows. The two snapshot columns are parsed from the
+      JSON text the job writes.
+    columns:
+      - name: run_id
+        description: >
+          Identifies one run of the job. Every row the run wrote carries the same
+          value, so a run's outcome is one group by on this column.
+        data_tests:
+          - not_null
+      - name: object_type
+        description: >
+          HubSpot object type of the pair. Only `contacts` today; the column exists
+          so a later increment can add companies without a schema change.
+      - name: primary_id
+        description: HubSpot id of the contact the pair was merged into.
+        data_tests:
+          - not_null
+      - name: secondary_id
+        description: HubSpot id of the contact the pair absorbed.
+        data_tests:
+          - not_null
+      - name: status
+        description: >
+          What happened to the pair. `merged` is a merge that returned the primary's
+          id; `already_merged` and `merged_elsewhere` are a secondary that had
+          already been absorbed, by the primary or by a third contact; `secondary_missing`
+          and `primary_missing` are an id the pre-merge read did not resolve;
+          `primary_merged_away` is a primary absorbed into another contact, so the
+          mart re-ranks it after the next sync; `id_changed` is a merge that returned
+          an id other than the primary, which breaks the assumption the survivor
+          ranking and the queue are built on; `failed` is a merge HubSpot refused or
+          one whose retries ran out, and it is retried on the next run.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - merged
+                  - already_merged
+                  - merged_elsewhere
+                  - secondary_missing
+                  - primary_merged_away
+                  - primary_missing
+                  - id_changed
+                  - failed
+      - name: survivor_id
+        description: >
+          The id the merge returned, or the contact the secondary resolved to.
+          Null when the pair did not resolve to a live contact.
+      - name: gp_person_id
+        description: >
+          The person both contacts resolved to, carried through from the pair table
+          for audit. The job does not read it.
+      - name: match_evidence
+        description: >
+          What the secondary shares with the primary, from the candidates mart,
+          carried through for audit.
+      - name: error
+        description: >
+          HubSpot's refusal or the exception that ended the attempt. Null when the
+          pair reached a status without one.
+      - name: primary_snapshot
+        description: >
+          The primary's HubSpot properties as the job read them just before the
+          merge. A map of property name to value, kept so a wrong merge can be
+          reconstructed by hand.
+        config:
+          meta:
+            sensitive: confidential
+      - name: secondary_snapshot
+        description: >
+          The secondary's HubSpot properties as the job read them just before the
+          merge. A map of property name to value, kept so a wrong merge can be
+          reconstructed by hand.
+        config:
+          meta:
+            sensitive: confidential
+      - name: attempted_at
+        description: When the job wrote the row, in UTC.
+        data_tests:
+          - not_null

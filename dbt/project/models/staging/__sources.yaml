@@ -1568,6 +1568,23 @@ sources:
       - name: ballotready_stance_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
         columns: *ballotready_raw_columns
+      - name: hubspot_contact_merge_log
+        description: >
+          Append-only log written by the hubspot-merge job: one row per pair it
+          tried to merge. Written by the job only, never by dbt.
+        config:
+          loaded_at_field: attempted_at
+          # The log grows only when the job runs. Step 27 sets a real threshold.
+          freshness: null
+        columns:
+          - name: primary_snapshot
+            config:
+              meta:
+                sensitive: confidential
+          - name: secondary_snapshot
+            config:
+              meta:
+                sensitive: confidential
 
   - name: model_predictions
     schema: model_predictions
