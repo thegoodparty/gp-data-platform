@@ -228,8 +228,8 @@ repo's ingest convention:
   `airflow_dev` in `airflow_source_dev`.
 
 The job creates the table only in an explicit `init-log` command, never during a run, as
-`retl --init-log` does. A table created by a person is then transferred to the service
-principal (steps 16 and 17). The full name is configuration. The DAG sets it from a
+`retl --init-log` does. The DAG's `init_log` command runs it as the deployment's service
+principal, so that principal owns the table from the start (steps 16 and 17). The full name is configuration. The DAG sets it from a
 Variable, so astro-dev points at `airflow_source_dev`, and astro-prod points at
 `airflow_source`.
 
@@ -272,7 +272,7 @@ below.
 
 | Steps | Ticket | Waits on |
 |---|---|---|
-| 1 | DATA-2779 | nothing |
+| 1 | DATA-2801 | nothing |
 | 2 | DATA-2780 | nothing |
 | 3 | DATA-2781 | nothing |
 | 4-5 | DATA-2782 | nothing |
@@ -285,13 +285,13 @@ below.
 | 13 | DATA-2789 | 9, 10, 11 |
 | 14 | DATA-2790 | 12, 13 |
 | 15 | DATA-2791 | 2, 13 |
-| 16 | DATA-2792 | 14, 15 |
-| 17 | DATA-2793 | 14 |
+| 16 | DATA-2792 | 14, 15, 26 |
+| 17 | DATA-2793 | 14, 26 |
 | 18 | DATA-2794 | 17 |
 | 19 | DATA-2795 | 18 |
 | 20 | DATA-2796 | 4-5, 6, 19 |
 | 21 | DATA-2797 | 18 |
-| 22-23 | DATA-2521 | 1, 3, 16, 20, 21 |
+| 22-23 | DATA-2521 | 1, 3, 16, 17, 20, 21 |
 | 24 | DATA-2798 | 14 |
 | 25 | DATA-2799 | 20 |
 | 26 | DATA-2800 | 24 |
@@ -394,22 +394,23 @@ rest stay in "backlog" until what they wait on is done.
     read-back checks, and archives what it created. A workflow check enrolls one primary
     in a throwaway delay workflow built for the purpose and asserts it stays enrolled.
     Done when it passes twice in a row against the sandbox.
-16. **Run the CLI against the sandbox through Databricks.** Run `hsm init-log` against
-    `airflow_source_dev.hubspot_contact_merge_log`, transfer its ownership to the
-    `airflow_dev` service principal, and grant yourself `MODIFY` on that table. Hand-build
-    a pair table of sandbox IDs in your dev schema (it is input, not a log). Run `hsm run
-    --dry-run`, then `hsm run`, then `hsm verify`. Done when the log rows match what
+16. **Run the job against the sandbox through Databricks.** On astro-dev, set the DAG's
+    Variables for the sandbox (see `airflow/astro/docs/hubspot_contact_merge.md`) and
+    trigger `init_log`, which creates `airflow_source_dev.hubspot_contact_merge_log`
+    owned by `airflow_dev`. Hand-build a pair table of sandbox IDs in your dev schema (it
+    is input, not a log). Trigger `dry_run`, then `run`, then `verify`, with
+    `pair_relation` set to that table. Done when the log rows match what
     HubSpot shows, and the results are written to
     `docs/hubspot-contact-merge-job-verification.md`.
 
 ### Phase 4: dbt, queue and log
 
-17. **Create the production log table.** Run `hsm init-log` against
-    `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log`, then transfer its
-    ownership to the `airflow` service principal (`alter table ... owner to`, which a
-    data-engineers member can do through the catalog-level `MANAGE`). Grant `MODIFY` on
-    that one table to the people who will run the manual batches in steps 22 and 23, and
-    revoke it after step 23. The dbt principals already read the schema through
+17. **Create the production log table.** On astro-prod, set the DAG's Variables for the
+    production portal, leaving the pair relation and the cap unset, and trigger
+    `init_log`. It creates
+    `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log` owned by the
+    `airflow` service principal. Steps 22 and 23 run through the same DAG, so nobody needs
+    a personal `MODIFY` grant. The dbt principals already read the schema through
     catalog-level grants. Done when the table is owned by the service principal and each
     identity can do what it needs.
 18. **Declare the log as a dbt source.** Add the table to the existing `airflow_source`
@@ -444,11 +445,10 @@ is in production, and the sandbox runs in step 16 were clean.
 
 22. **Run five hand-checked pairs in production.** Pick five low-risk pairs from the queue
     (same phone, same name, no owner conflict, no app account) and check each in the
-    HubSpot UI. Point `MERGE_PAIR_RELATION` at a scratch view selecting only those five,
-    set the production key and portal, and run `hsm run --dry-run`, then `hsm run`, then
-    `hsm verify`. Check the survivors in the UI, including any workflow enrollment. Done
+    HubSpot UI. Build a scratch table of only those five, and trigger the astro-prod DAG's
+    `dry_run`, then `run`, then `verify`, with `pair_relation` set to that table. Check the survivors in the UI, including any workflow enrollment. Done
     when the results are on the ticket and the five secondaries have left the queue.
-23. **Run a batch of 100 from the queue.** Same procedure, with the scratch view taking
+23. **Run a batch of 100 from the queue.** Same procedure, with the scratch table taking
     100 rows from the queue across a mix of `match_evidence` values. Spot-check ten in the
     UI. Done when there is no `failed` or `id_changed` row, or each one is explained.
 
