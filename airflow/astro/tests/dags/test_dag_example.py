@@ -88,11 +88,19 @@ def test_dag_tags(dag_id, dag, fileloc):
         assert not set(dag.tags) - APPROVED_TAGS
 
 
+# A failed merge run must stop for a person to look, not rerun on its own and merge the
+# next slice of the queue.
+NO_RETRY_DAGS = {"hubspot_contact_merge"}
+
+
 @pytest.mark.parametrize("dag_id,dag, fileloc", _ALL_DAGS, ids=[x[2] for x in _ALL_DAGS])
 def test_dag_retries(dag_id, dag, fileloc):
     """
     Test if a DAG has retries set
     """
+    if dag_id in NO_RETRY_DAGS:
+        assert dag.default_args.get("retries") == 0
+        return
     assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."
 
 

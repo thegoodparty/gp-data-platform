@@ -29,6 +29,7 @@ Different analyses call for different cohorts. The full Win-product registered p
 | Outreach intensity vs outcome | Activated cohort (sent ≥1 outreach) | `is_activated = TRUE` |
 | Funnel / dropoff analyses | Full registered population | `users_win_candidacy` filtered to `is_latest_version AND NOT is_demo` |
 | Active candidates OKR reporting | Active candidates (trailing 30d) | `is_active_candidate_30d = TRUE` (or recompute anchored to a target date) |
+| Power-user or depth-of-use analyses | Power users, v2 for 2026-cycle elections on; v1 only to reproduce a report from before the switch, and say which | `int__user_power_user_v2.is_power_user` (v1: `int__user_power_user.is_power_user`); compare cycles on their own bars, never one pooled bar |
 
 Always name the cohort in the analysis title and headline so consumers know which population is being characterized. "Among onboarded Win candidates..." not "Among Win candidates..."
 

@@ -123,7 +123,7 @@ class _MatchaPodOperator(KubernetesPodOperator):
         )
 
 
-POD_MEMORY = "48Gi"
+POD_MEMORY = "64Gi"
 POD_CPU = "4"
 POD_EPHEMERAL_STORAGE = "50Gi"
 
@@ -169,9 +169,10 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
             # into the pod filesystem and die with it.
             "--no-audit",
         ],
-        # DuckDB takes 80% of the memory limit and one thread per CPU, so 48Gi gives it
-        # ~38 GiB and leaves ~10Gi for the Python side -- which is what 32Gi ran out of,
+        # DuckDB takes 80% of the memory limit and one thread per CPU, so 64Gi gives it
+        # ~51 GiB and leaves ~13Gi for the Python side -- which is what 32Gi ran out of,
         # OOM-killing election_stage while writing ~20M pairs. 16 CPU made no difference.
+        # 48Gi then OOM-killed election_stage on 2026-11-17, so the limit is now 64Gi.
         # ephemeral-storage is declared because Astro's namespace default is 256Mi.
         container_resources=_pod_resources(),
         # A match fails deterministically and each attempt burns a four-hour pod.
@@ -193,7 +194,7 @@ def _match_pod(entity: EntitySpec) -> _MatchaPodOperator:
     is_paused_upon_creation=True,
     default_args={"retries": 2, "retry_delay": duration(minutes=10)},
     tags=["matcha", "er"],
-    # One 48Gi match pod at a time, against a 96Gi deployment quota. Deliberately not an
+    # One 64Gi match pod at a time, against a 96Gi deployment quota. Deliberately not an
     # Airflow pool: a pool must exist on each deployment out of band, and a missing one parks
     # tasks in `scheduled` forever. The cost is a finished entity's gate/swap waiting behind
     # the next entity's match -- seconds of SQL behind hours of Splink.

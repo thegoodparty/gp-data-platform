@@ -150,23 +150,37 @@ def test_copy_into_leaves_idempotency_switched_on():
     assert "copy_options" not in sql.lower()
 
 
-def test_copy_into_names_every_column_and_stamps_loaded_at_server_side():
+def test_copy_into_rejects_the_target_column_list_parquet_cannot_take():
+    """`COPY INTO ... (<column_name>, ...)` is incompatible with `fileformat = parquet`, so this
+    statement must not carry one. Databricks fails the whole load with
+    COPY_INTO_FEATURE_INCOMPATIBLE_SETTING, which is what broke the first production run. The table
+    name is the last thing before the newline that starts `from`, and no parenthesis may follow it
+    on that line."""
     sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
 
-    target = sql.split("(", 1)[1].split(")", 1)[0]
-    for column, _ in LANDING_COLUMNS:
-        assert f"`{column}`" in target
+    first_line = sql.split("\n", 1)[0]
+    assert first_line.lower().startswith("copy into ")
+    assert "(" not in first_line and ")" not in first_line
+    assert first_line.rstrip() == "copy into `catalog`.`airflow_source`.`bifrost_request_log`"
+
+
+def test_copy_into_projection_aliases_every_landing_column_and_stamps_loaded_at():
+    """With no target list the mapping is by name, so every expression's alias decides which
+    column it fills: an expression that lost its `as <alias>` clause would leave that column null.
+    `loaded_at` has no source column at all and is mapped only by its alias."""
+    sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
+
     assert "current_timestamp() as `loaded_at`" in sql
+    for column, _ in EXPORTED_COLUMNS:
+        assert f"as `{column}`" in sql
 
 
-def test_copy_into_target_and_projection_have_the_same_arity():
-    """They must be equal or the statement fails on every run, which is exactly what an earlier
-    version of this module did: 29 targets against 30 expressions, because `loaded_at` was dropped
-    from the target and kept in the projection."""
+def test_copy_into_projection_carries_every_alias_exactly_once():
+    """One expression per column, and each one aliased to its own name. What an earlier version of
+    this module got wrong was arity: 29 expressions against 30 targets, because `loaded_at` was
+    dropped from the target and kept in the projection. With no target list, each alias appears once
+    and there are as many expressions as columns."""
     sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
-
-    target = sql.split("(", 1)[1].split(")", 1)[0]
-    n_target = len([part for part in target.split(",") if part.strip()])
 
     projection = sql.split("from (select ", 1)[1].split("\nfileformat", 1)[0]
     depth, n_select = 0, 1
@@ -178,7 +192,12 @@ def test_copy_into_target_and_projection_have_the_same_arity():
         elif char == "," and depth == 0:
             n_select += 1
 
-    assert n_target == n_select == len(LANDING_COLUMNS)
+    aliases = [f"as `{name}`" for name, _ in LANDING_COLUMNS]
+    assert n_select == len(LANDING_COLUMNS)
+    # Membership and count, not order: the mapping is by name, so position does not matter here.
+    assert [alias for alias in aliases if alias in projection] == aliases
+    for alias in aliases:
+        assert projection.count(alias) == 1, f"{alias} appears {projection.count(alias)} times"
 
 
 def test_copy_into_quotes_the_prefix_as_a_validated_literal():

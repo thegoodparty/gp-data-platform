@@ -1355,15 +1355,25 @@ seeds:
       so "did they use AI help" reads the same in every analysis. match_type
       prefix matches every event name starting with event_type. Add a row when
       a feature ships a new event; a renamed event that is missing here
-      silently reads as non-use. plan_task leaves out "Campaign Plan - Task
-      Action Taken": it mostly fires when a candidate dismisses a task
-      ("not for me", "put off"), not when they complete one.
+      silently reads as non-use. Every row of a feature carries the same
+      is_user_action and is_onboarding, so a feature is wholly an action or
+      not. plan_task leaves out "Campaign Plan - Task Action Taken": it mostly
+      fires when a candidate dismisses a task ("not for me", "put off"), not
+      when they complete one. Also left out on purpose: button clicks into a
+      flow (Outreach - Click Create, Voter Data - Send Outreach Clicked), since
+      the completed step is tracked; self-reported outreach (door and social
+      "Complete", canvassing totals), which activation also excludes; profile
+      saves, a setup step; and Campaign Story - Rewrite Requested, which fires
+      with Rewrite Accepted. Retired events stay, since they are accurate
+      history.
     config:
       column_types:
         feature: string
         event_type: string
         match_type: string
         is_user_action: boolean
+        is_onboarding: boolean
+        win_only: boolean
         feature_label: string
     columns:
       - name: feature
@@ -1379,6 +1389,19 @@ seeds:
                 values: ["exact", "prefix"]
       - name: is_user_action
         description: False where the event fires without the candidate choosing it.
+      - name: is_onboarding
+        description: >
+          A setup step every new candidate is walked through, so it says they
+          signed up rather than that they campaigned, so a count of campaign
+          activity can leave it out.
+        data_tests:
+          - not_null
+      - name: win_only
+        description: >
+          Counts only when the event was used from Win. For agent chat events
+          that Serve shares; the rest of the seed is Win-only by name.
+        data_tests:
+          - not_null
 
   - name: hubspot_contact_merge_exclusions
     description: >
