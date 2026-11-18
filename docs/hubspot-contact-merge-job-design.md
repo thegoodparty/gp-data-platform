@@ -373,6 +373,10 @@ DAG", and enter the params as JSON. Examples:
 A manual `dry_run` or `run` must set both `pair_relation` and `max_pairs` until step 27
 sets the Variables. With either missing, the task fails before it starts a pod.
 
+Unpausing the DAG can start one scheduled run straight away. Until step 27 it fails
+before it starts a pod, because the two Variables are unset. That failure is expected;
+ignore it.
+
 To set a Variable, use the Astro UI (the deployment, then Admin, then Variables in its
 Airflow UI) or the CLI:
 
@@ -776,7 +780,9 @@ Before you write it, ask the human two questions and put the answers in the mode
 - **How a reviewed `id_changed` row is recorded.** The proposal is a seed,
   `seeds/hubspot_contact_merge_reviewed_runs.csv`, with columns `run_id`, `reason` and
   `reviewed_by` (a role, not a person's name). It starts empty, and a row is added in a
-  reviewed PR after someone has looked at that run.
+  reviewed PR after someone has looked at that run. Declare it in
+  `seeds/seeds_schema.yaml` with all three columns typed `STRING`, as
+  `hubspot_contact_merge_exclusions` is.
 
 Build `models/marts/sales_reverse_etl/hubspot_contact_merge_queue.sql`. Start the file
 with `{{ config(materialized="view", tblproperties={}) }}`, as
