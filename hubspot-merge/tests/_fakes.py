@@ -9,7 +9,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from hsmerge.client import HttpResponse
+from hsmerge.client import HttpResponse, ReadResult, Record
+from hsmerge.types import LogEntry
 
 # A contact as `batch/read` returns it: the record carries its own id, and the merged ids
 # of anything absorbed into it. Trimmed to the keys the client reads.
@@ -157,3 +158,62 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.now += seconds
+
+
+@dataclass
+class FakeHubSpot:
+    """Contacts that are live or absorbed into another, read and merged the way HubSpot does."""
+
+    live: set[str]
+    absorbed: dict[str, str] = field(default_factory=dict)
+    refuse: set[str] = field(default_factory=set)
+    fail_read_after: int | None = None
+    # Merges return a new record, as they would without ID preservation.
+    new_ids: bool = False
+    reads: int = 0
+    merges: list[tuple[str, str]] = field(default_factory=list)
+
+    def verify_portal(self) -> None:
+        pass
+
+    def batch_read(self, ids: Sequence[str], properties: Sequence[str]) -> ReadResult:
+        self.reads += 1
+        if self.fail_read_after is not None and self.reads > self.fail_read_after:
+            raise TimeoutError("read timed out")
+        records = {}
+        missing = []
+        for contact_id in ids:
+            survivor = self.absorbed.get(contact_id, contact_id)
+            if survivor not in self.live:
+                missing.append(contact_id)
+                continue
+            merged = tuple(i for i, s in self.absorbed.items() if s == survivor)
+            records[survivor] = Record(survivor, merged, {"email": f"{survivor}@example.test"})
+        return ReadResult(records, tuple(missing))
+
+    def merge(self, primary_id: str, secondary_id: str) -> Record:
+        self.merges.append((primary_id, secondary_id))
+        if secondary_id in self.refuse:
+            raise TimeoutError("merge timed out")
+        survivor = f"new-{primary_id}" if self.new_ids else primary_id
+        self.live -= {primary_id, secondary_id}
+        self.live.add(survivor)
+        self.absorbed[secondary_id] = survivor
+        if survivor != primary_id:
+            self.absorbed[primary_id] = survivor
+        return Record(survivor, (secondary_id,), {})
+
+
+@dataclass
+class FakeLog:
+    writes: list[list[LogEntry]] = field(default_factory=list)
+
+    def check(self) -> None:
+        pass
+
+    def write(self, entries: Sequence[LogEntry]) -> None:
+        self.writes.append(list(entries))
+
+    @property
+    def rows(self) -> list[LogEntry]:
+        return [entry for write in self.writes for entry in write]
