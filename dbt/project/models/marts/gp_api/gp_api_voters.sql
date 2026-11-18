@@ -12,6 +12,21 @@ source; reading the current L2 keeps the mart in sync. created_at/updated_at com
     )
 }}
 
+{%- set haystaq_source_columns = adapter.get_columns_in_relation(
+    ref("int__l2_nationwide_uniform_w_haystaq")
+) -%}
+{#- Take the Haystaq scores from the relation rather than listing them: they are
+    upstream's to add, and a new one should reach gp-api on the monthly L2 build
+    instead of waiting on a change here. They are continuous 0-100 within-state
+    percentiles, so they keep their source names and double type as-is. -#}
+{%- set haystaq_score_columns = [] -%}
+{%- for column in haystaq_source_columns -%}
+    {%- if (column.name | lower).startswith("hs_") -%}
+        {%- do haystaq_score_columns.append(column.name) -%}
+    {%- endif -%}
+{%- endfor -%}
+{%- do haystaq_score_columns.sort() -%}
+
 with
     -- Defensive: L2 files for some states have loaded blank fields as '' rather than
     -- null in the past. Normalize every string column to null once, before the casts
@@ -19,9 +34,7 @@ with
     -- state's source represents blanks.
     source_nulled as (
         select
-            {%- for c in adapter.get_columns_in_relation(
-                ref("int__l2_nationwide_uniform_w_haystaq")
-            ) %}
+            {%- for c in haystaq_source_columns %}
                 {%- if c.is_string() %} nullif(`{{ c.name }}`, '') as `{{ c.name }}`
                 {%- else %} `{{ c.name }}`
                 {%- endif %}
@@ -324,9 +337,9 @@ with
             `Vote_By_Mail_Area`,
             `hf_ideology_general`,
             `hf_most_important_policy_item`,
-            -- Input to Indep_Openness_Haystaq below; final selects by name, so it does
-            -- not reach the output.
-            `hs_partisanship_moderate_third_party_support`,
+            -- Read here as well as by gp-api: the early-vote, independent-affinity
+            -- and openness columns above all derive from these.
+            {%- for column in haystaq_score_columns %} `{{ column }}`, {%- endfor %}
             loaded_at
         from source_nulled
     ),
@@ -564,6 +577,10 @@ with
             tbl_updated.`Vote_By_Mail_Area`,
             tbl_updated.`hf_ideology_general`,
             tbl_updated.`hf_most_important_policy_item`,
+            -- Haystaq scores, under their source names.
+            {%- for column in haystaq_score_columns %}
+                tbl_updated.`{{ column }}`,
+            {%- endfor %}
             -- No first-seen history without the snapshot: both timestamps are the L2
             -- load time.
             tbl_updated.`loaded_at` as created_at,
