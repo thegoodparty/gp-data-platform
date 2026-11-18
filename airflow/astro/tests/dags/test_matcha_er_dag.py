@@ -64,7 +64,7 @@ def test_every_entity_has_the_three_step_chain():
 
 
 def test_one_task_at_a_time_without_an_airflow_pool():
-    """One 48Gi match pod against a 96Gi deployment quota, so the DAG caps
+    """One 64Gi match pod against a 96Gi deployment quota, so the DAG caps
     itself at one running task.
 
     Asserts no custom pool either: a pool does the same job but must exist on
