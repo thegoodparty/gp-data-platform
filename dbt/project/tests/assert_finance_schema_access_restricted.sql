@@ -14,7 +14,15 @@ with
             explode(
                 array(
                     'data-engineers',  -- data engineering
-                    'mart_finance_readers'  -- business and finance ops
+                    'mart_finance_readers',  -- business and finance ops
+                    -- The governance role groups (DATA-2760) hold catalog-level
+                    -- SELECT, MODIFY or MANAGE, which inherits here. All four come
+                    -- off this list when finance gets its own catalog: that split
+                    -- is what actually keeps them out.
+                    'analyst',  -- masked reads; the row filter closes finance
+                    'ingestor',
+                    'transformer',
+                    'admin'
                 )
             ) as grantee
     ),

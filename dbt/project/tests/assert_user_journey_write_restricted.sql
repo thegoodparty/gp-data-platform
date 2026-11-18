@@ -14,7 +14,12 @@ with
                 array(
                     'data-engineers',
                     'ed920c40-3b7d-42cb-ad32-0b4d5484c117',  -- dbt_cloud, the builder
-                    '58aa66d2-1d9d-4b02-bda8-b001a8e6689e'  -- owns mart_analytics
+                    '58aa66d2-1d9d-4b02-bda8-b001a8e6689e',  -- owns mart_analytics
+                    -- Governance roles (DATA-2760) hold catalog-level MODIFY. Both
+                    -- come off this list when the raw catalog exists (DATA-2554
+                    -- decision 8): no loader joins ingestor before then.
+                    'transformer',
+                    'ingestor'
                 )
             ) as principal
     ),
