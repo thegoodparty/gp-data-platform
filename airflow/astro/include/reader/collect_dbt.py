@@ -17,6 +17,7 @@ from include.reader.dbt_cloud import ArtifactUnavailable, DbtCloudClient
 from include.reader.models import RUN_ERROR, RUN_SUCCESS, Run, Step, Streak
 from include.reader.records import (
     build_run_record,
+    last_due_before,
     next_run_due,
     next_streak,
     streak_to_payload,
@@ -94,7 +95,9 @@ def collect(pipeline: Pipeline, client: DbtCloudClient, state: ReaderState, now:
     # With no read this run, the due time has to come from state. The last real
     # success is the only start-like time state holds, and anchoring there errs
     # later, which is the direction that does not page a run that was not missed.
-    due_at_fallback = next_run_due(pipeline.schedule, saved.last_real_success_at if saved else None)
+    due_at_fallback = next_run_due(pipeline.schedule, saved.last_real_success_at if saved else None) or (
+        last_due_before(pipeline.schedule, now)
+    )
 
     job_id = pipeline.tool_ids.job_id
     if job_id is None:
@@ -134,7 +137,13 @@ def collect(pipeline: Pipeline, client: DbtCloudClient, state: ReaderState, now:
         # A started-but-unfinished run counts as started, or a long nightly looks
         # like a missed run while it is still running.
         last_start = max(filter(None, [last_start, unfinished.started_at]), default=None)
-    due_at = next_run_due(pipeline.schedule, last_start) or due_at_fallback
+    # With no observed start at all, the due time is the last cron occurrence: the
+    # schedule says a run was due then and none is on record, so rule 2 fires.
+    due_at = (
+        next_run_due(pipeline.schedule, last_start)
+        or due_at_fallback
+        or last_due_before(pipeline.schedule, now)
+    )
     newest_finish = max((r.finished_at for r in runs if r.finished_at), default=None)
     return CollectResult(
         records=records,

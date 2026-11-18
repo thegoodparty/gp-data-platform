@@ -214,3 +214,21 @@ def test_long_running_nightly_keeps_due_at_ahead():
     result = collect(NIGHTLY, client(runs=[], unfinished=in_flight), ReaderState(), NOW + timedelta(hours=7))
     assert result.due_at is not None
     assert result.due_at > NOW + timedelta(hours=7)
+
+
+def test_a_nightly_that_never_ran_leaves_due_at_in_the_past():
+    """The case rule 2 exists for: the schedule says a run was due and nothing ever
+    started. A null due time would mean the rule could never fire."""
+    result = collect(NIGHTLY, client(runs=[]), ReaderState(), NOW)
+    assert result.due_at is not None
+    assert result.due_at < NOW
+
+
+def test_the_last_cron_occurrence_is_the_due_time_with_no_history():
+    from include.reader.records import last_due_before
+
+    assert last_due_before("2 */12 * * *", NOW) == datetime(2026, 11, 18, 0, 2, tzinfo=UTC)
+    assert last_due_before("2 */12 * * *", datetime(2026, 11, 18, 0, 1, tzinfo=UTC)) == datetime(
+        2026, 11, 17, 12, 2, tzinfo=UTC
+    )
+    assert last_due_before(None, NOW) is None

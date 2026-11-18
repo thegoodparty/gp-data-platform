@@ -12,15 +12,13 @@ Two things this module is careful about:
   `adapter_response` can carry row values and nothing here needs them.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
-from airflow.timetables.base import TimeRestriction
-from airflow.timetables.trigger import CronTriggerTimetable
+from croniter import croniter
 from include.pipelines.models import Pipeline
 from include.reader.models import Run, Streak
 from include.reader.redact import redact_error
-from pendulum import instance as pendulum_instance
 
 STATUS_UPDATE = "status_update"
 RUN_RECORD = "run_record"
@@ -167,22 +165,25 @@ def next_run_due(schedule: str | None, last_started_at: datetime | None) -> date
     """The next cron occurrence after the last observed run start.
 
     Computed from the last start rather than from now, because from now it is
-    always in the future and rule 2 could never fire. Airflow's own timetable is
-    used so the answer matches when Airflow will actually schedule the run; the
-    one-second nudge makes `earliest` exclusive, which yields the next occurrence
-    even when the anchor sits exactly on a cron time.
+    always in the future and rule 2 could never fire. croniter is Airflow's own
+    scheduling dependency, so this adds nothing to the image.
     """
     if not schedule or last_started_at is None:
         return None
-    timetable = CronTriggerTimetable(schedule, timezone="UTC")
-    # TimeRestriction takes pendulum DateTimes, so the anchor is converted rather
-    # than passed as a plain datetime.
-    anchor = pendulum_instance(last_started_at.astimezone(UTC) + timedelta(seconds=1))
-    info = timetable.next_dagrun_info(
-        last_automated_data_interval=None,
-        restriction=TimeRestriction(earliest=anchor, latest=None, catchup=True),
-    )
-    return datetime.fromisoformat(info.run_after.isoformat()) if info is not None else None
+    return croniter(schedule, last_started_at.astimezone(UTC)).get_next(datetime).replace(tzinfo=UTC)
+
+
+def last_due_before(schedule: str | None, now: datetime) -> datetime | None:
+    """The most recent cron occurrence at or before `now`.
+
+    The fallback when no run start has ever been observed: the schedule says a run
+    was due then and there is no record of one, so the due time has to be in the
+    past or rule 2 could never fire for a pipeline that stopped entirely, which is
+    the one case it exists for.
+    """
+    if not schedule:
+        return None
+    return croniter(schedule, now.astimezone(UTC)).get_prev(datetime).replace(tzinfo=UTC)
 
 
 def parse_iso(value: str | None) -> datetime | None:
