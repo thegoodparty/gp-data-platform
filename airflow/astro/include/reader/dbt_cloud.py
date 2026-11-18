@@ -18,6 +18,19 @@ does paginate, by reading `extra.pagination.total_count`, but it takes no
 The step parameter is the fragile part: `get_job_run_artifact` without `step`
 returns the LAST step's artifact, which for a multi-step job is often
 `docs generate` and looks green. `fetch_run_results` therefore requires a step.
+
+Two response shapes, and they differ:
+
+- The artifact endpoint returns the FILE ITSELF, not a `data` wrapper. Evidence in
+  the provider source at 4.9.3: `DbtCloudGetJobRunArtifactOperator.execute` dumps
+  `response.json()` straight to the output file, and
+  `get_job_run_artifacts_concurrently` is used by the OpenLineage util as
+  `artifacts["manifest.json"]` with no unwrapping. So `run_results.json` parses as
+  a top-level `results` list.
+- The run endpoint wraps its object in `data`: `get_job_run(...).json()["data"]`,
+  which is also how the provider's own OpenLineage util reads `run_steps`.
+
+`fetch_run_results` therefore reads the body directly and `list_steps` unwraps.
 """
 
 from collections.abc import Iterator
@@ -187,13 +200,23 @@ class DbtCloudClient:
         ]
 
     def fetch_run_results(self, run_id: int, step: int) -> dict[str, Any]:
-        """`run_results.json` for one step. A step is required: see the module docstring."""
+        """`run_results.json` for one step, as the file itself. A step is required.
+
+        The body is read directly, not unwrapped: see the module docstring on the two
+        response shapes. A body with no `results` list is rejected rather than
+        treated as an empty artifact, because an empty artifact reads exactly like a
+        run where nothing failed.
+        """
         if not isinstance(step, int) or step < 1:
             raise ValueError("fetch_run_results needs a step index (the first step is 1)")
         try:
-            response = self._hook.get_job_run_artifact(run_id, path="run_results.json", step=step)
-            return dict(response.json()["data"])
+            body = self._hook.get_job_run_artifact(run_id, path="run_results.json", step=step).json()
         except Exception as exc:
             raise ArtifactUnavailable(
                 f"run_results.json unavailable for step {step}: {exc.__class__.__name__}"
             ) from exc
+        if not isinstance(body, dict) or not isinstance(body.get("results"), list):
+            raise ArtifactUnavailable(
+                f"run_results.json for step {step} is not a dbt artifact (no results list)"
+            )
+        return body

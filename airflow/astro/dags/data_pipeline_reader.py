@@ -38,6 +38,11 @@ of never letting a partial rerun read as recovery.
 - `astro_api_reader`: the Airflow API. Unused in this PR; created now so PR 2 does
   not wait on it.
 
+### Activation
+Deploys paused. Sanjay unpauses it once the `dbt_cloud_reader` and `grafana_otlp`
+connections exist in the environment: before then every cycle fails to read and, with
+no saved state, reports the nightly as failed.
+
 ### Variable
 - `data_pipeline_reader_state`: the cursors, the bounded dedupe set, the per-pipeline
   streak and the last good read time. Written at the end of a successful run.
@@ -92,6 +97,10 @@ def grafana_endpoint(host: str) -> str:
     schedule=CronTriggerTimetable("*/5 * * * *", timezone="UTC"),
     start_date=pendulum_datetime(2026, 11, 18, tz="UTC"),
     catchup=False,
+    # Deploys paused, like every scheduled DAG here; unpausing is the owner's
+    # activation step. Without it the reader starts on deploy, before its connections
+    # exist, and a failed read with no saved state reports the nightly as failed.
+    is_paused_upon_creation=True,
     # The state write assumes no overlap, so two reader runs must never share it.
     max_active_runs=1,
     default_args={"retries": 2, "retry_delay": duration(minutes=1)},
@@ -167,8 +176,12 @@ def data_pipeline_reader():
         state = load_state(Variable.get)
         tool_payload = collector or {}
         per_pipeline = tool_payload.get("pipelines") or {}
+        # The tool flag as well as each pipeline's own: the cursor and last_read_at
+        # are per tool, and a partial failure suppresses that pipeline's records from
+        # the send, so advancing the shared cursor would mark them seen unreported.
+        tool_read_ok = bool(tool_payload.get("read_ok"))
         for pipeline in _pipeline_list():
-            apply_collector_payload(state, pipeline, per_pipeline.get(pipeline.pipeline), now)
+            apply_collector_payload(state, pipeline, per_pipeline.get(pipeline.pipeline), now, tool_read_ok)
         write_state(Variable.set, state)
         t_log.info("reader: state saved after sending %d line(s)", sent)
 

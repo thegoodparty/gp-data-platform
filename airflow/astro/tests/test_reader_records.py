@@ -333,3 +333,13 @@ def test_a_successful_read_passes_records_and_the_streak_through():
     assert statuses[0]["last_read_ok"] == 1
     assert statuses[0]["failed_since_last_success"] == 0
     assert statuses[0]["last_real_success_at"] == int(T0.timestamp())
+
+
+def test_a_failed_read_carries_the_watched_warning_forward():
+    """The status update still says 1 on a failed read: clearing it would resolve an
+    alert the reader simply could not check."""
+    state = ReaderState(warnings={"dbt_nightly_build": {"test": "assert_x", "count": 2}})
+    _, statuses = assemble_report([NIGHTLY], {"dbt_cloud": None}, state, T0)
+    assert statuses[0]["watched_warning"] == 1
+    assert statuses[0]["watched_warning_test"] == "assert_x"
+    assert statuses[0]["last_read_ok"] == 0

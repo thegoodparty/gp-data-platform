@@ -63,23 +63,72 @@ def _hook(
     hook.get_job_run.return_value = run_response
     if artifact is not None:
         artifact_response = MagicMock()
-        artifact_response.json.return_value = {"data": artifact}
+        # No `data` wrapper: the artifact endpoint returns the file itself. See
+        # _artifact() below for the shape this stands in for.
+        artifact_response.json.return_value = artifact
         hook.get_job_run_artifact.return_value = artifact_response
     else:
         hook.get_job_run_artifact.side_effect = RuntimeError("404")
     return hook
 
 
+def _artifact(*results: dict) -> dict:
+    """`run_results.json` in its documented shape: a top-level `results` list, each
+    result carrying unique_id, status and message. Shaped from the documented dbt
+    artifact format, not from a live call, and carrying no production text."""
+    return {
+        "metadata": {"dbt_schema_version": "https://schemas.getdbt.com/dbt/run-results/v6.json"},
+        "args": {},
+        "elapsed_time": 0.0,
+        "results": list(results),
+    }
+
+
+ARTIFACT_WITH_A_FAILURE = _artifact(
+    {"unique_id": "model.pkg.stg_x", "status": "success", "message": ""},
+    {
+        "unique_id": "test.pkg.assert_x",
+        "status": "fail",
+        "message": "Got 1 result, configured to fail if != 0",
+    },
+)
+
+
+def test_fetch_run_results_reads_the_artifact_file_not_a_data_wrapper():
+    """The artifact endpoint returns the file itself. A `data` wrapper would raise
+    KeyError here, which the collector swallows, so every record would be
+    status-only and this is the test that keeps that from being silent."""
+    client = DbtCloudClient(_hook(artifact=ARTIFACT_WITH_A_FAILURE))
+    body = client.fetch_run_results(900, step=2)
+    assert body["results"][1]["unique_id"] == "test.pkg.assert_x"
+    assert body["results"][1]["message"]
+
+
+def test_a_wrapped_body_is_rejected_rather_than_read_as_empty():
+    """A payload with a top-level `data` key and no `results` must not become an
+    empty artifact: an empty artifact reads exactly like a run where nothing failed."""
+    client = DbtCloudClient(_hook(artifact={"data": ARTIFACT_WITH_A_FAILURE}))
+    with pytest.raises(ArtifactUnavailable):
+        client.fetch_run_results(900, step=2)
+
+
+def test_a_body_with_no_results_list_is_rejected():
+    for body in ({"metadata": {}}, [], "not json", {}):
+        client = DbtCloudClient(_hook(artifact=body))
+        with pytest.raises(ArtifactUnavailable):
+            client.fetch_run_results(900, step=2)
+
+
 def test_run_results_url_carries_the_step_parameter():
     """Without the step, the artifact is the LAST step's: for a multi-step job
     that is often docs generate, which is green while the build is red."""
-    client = DbtCloudClient(_hook(artifact={"results": []}))
+    client = DbtCloudClient(_hook(artifact=_artifact()))
     client.fetch_run_results(900, step=3)
     assert client._hook.get_job_run_artifact.call_args.kwargs["step"] == 3
 
 
 def test_a_call_without_a_step_is_impossible():
-    client = DbtCloudClient(_hook(artifact={"results": []}))
+    client = DbtCloudClient(_hook(artifact=_artifact()))
     with pytest.raises(TypeError):
         client.fetch_run_results(900)  # type: ignore[call-arg]
     with pytest.raises(ValueError):
@@ -160,6 +209,24 @@ def test_list_steps_carries_the_index():
     client = DbtCloudClient(_hook(steps=[{"index": 1, "name": "Invoke dbt with `dbt build`", "status": 10}]))
     steps = client.list_steps(900)
     assert [(s.index, s.name) for s in steps] == [(1, "Invoke dbt with `dbt build`")]
+
+
+def test_the_run_endpoint_wraps_its_object_in_data():
+    """The other shape: the run endpoint (unlike the artifact one) returns
+    `{"data": {...}}`, which is how the provider's own OpenLineage util reads
+    run_steps. A GET of the run is asked for with run_steps related."""
+    client = DbtCloudClient(_hook(steps=[{"index": 2, "name": "x", "status": 10}]))
+    client.list_steps(900)
+    assert client._hook.get_job_run.call_args.kwargs["include_related"] == ["run_steps"]
+
+
+def test_a_run_response_without_the_data_wrapper_yields_no_steps():
+    """If the run endpoint ever stopped wrapping, list_steps returns nothing rather
+    than inventing a step; the collector then degrades to a status-only record."""
+    hook = _hook()
+    hook.get_job_run.return_value.json.return_value = {"run_steps": [{"index": 1, "name": "x", "status": 10}]}
+    with pytest.raises(KeyError):
+        DbtCloudClient(hook).list_steps(900)
 
 
 def test_a_trigger_cause_is_matched_on_its_stem():

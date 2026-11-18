@@ -115,15 +115,25 @@ def collect(pipeline: Pipeline, client: DbtCloudClient, state: ReaderState, now:
     fresh.sort(key=lambda r: r.finished_at or now)
 
     records: list[dict[str, Any]] = []
-    warning: dict[str, Any] | None = None
+    # Per fresh run, the watched warning its own artifact shows (None when it shows
+    # none). Kept so the newest finished run's own answer can be the authority.
+    found_by_run: dict[int, dict[str, Any] | None] = {}
     for run in fresh:
         artifact = _artifact(client, run)
         records.append(build_run_record(pipeline, run, artifact))
         # A watched warning only exists on a green run, which is why the artifact
         # is read on every finished run and not only on failures.
-        found = watched_warning(pipeline, artifact)
-        if found is not None:
-            warning = found
+        found_by_run[run.run_id] = watched_warning(pipeline, artifact)
+
+    # The newest finished run decides, and carries forward when it was already sent:
+    # a cycle with no new runs must still report a warning the latest nightly showed,
+    # or a recording rule would resolve an alert that is still true. A newer run that
+    # shows none clears it, which is what stops a fixed check alerting forever.
+    newest = max((r for r in runs if r.finished_at is not None), key=lambda r: r.finished_at, default=None)
+    if newest is None or newest.run_id not in found_by_run:
+        warning = state.warnings.get(pipeline.pipeline)
+    else:
+        warning = found_by_run[newest.run_id]
 
     # The streak folds the whole window, not only the new runs: on a cold start the
     # window is the history, and folding it again is idempotent because a run's

@@ -155,3 +155,16 @@ def test_the_state_write_goes_through_the_library_not_the_task():
     assert "write_state(Variable.set, state)" in body
     # The task's own name must never be called with the writer's arguments.
     assert "save_state(Variable.set" not in source
+
+
+def test_deploys_paused_so_it_cannot_run_before_its_connections_exist():
+    """Unpausing is the owner's activation step, as for every scheduled DAG here.
+    Unpaused, the reader would start on deploy, fail its read every cycle, and with
+    no saved state report the nightly as failed."""
+    assert _DAG.is_paused_upon_creation is True
+
+
+def test_the_docstring_names_the_activation_step():
+    source = inspect.getsource(_dag_module())
+    assert "unpauses" in source
+    assert "dbt_cloud_reader" in source and "grafana_otlp" in source

@@ -198,3 +198,43 @@ def test_a_failed_read_does_not_advance_through_the_round_trip():
     reloaded = load_state(get)
     assert reloaded.cursor["dbt_cloud"] == T0
     assert reloaded.last_read_at["dbt_cloud"] == T0
+
+
+# --- the watched warning ---------------------------------------------------
+
+
+WARNED = {"test": "assert_x", "count": 2}
+
+
+def test_a_warning_is_stored_by_a_successful_read_and_survives_the_round_trip():
+    get, set_ = _fake_variable()
+    state = ReaderState()
+    apply_collector_payload(state, _P, {"read_ok": True, "watched_warning": WARNED}, T0)
+    save_state(set_, state)
+    assert load_state(get).warnings == {"dbt_nightly_build": WARNED}
+
+
+def test_a_successful_read_showing_no_warning_clears_it():
+    state = ReaderState(warnings={"dbt_nightly_build": WARNED})
+    apply_collector_payload(state, _P, {"read_ok": True, "watched_warning": None}, T0)
+    assert state.warnings == {}
+
+
+def test_a_failed_read_carries_the_warning_forward():
+    """A failed read is evidence about the reader, not the pipeline: a warning that
+    is still true must not clear because the reader could not look."""
+    state = ReaderState(warnings={"dbt_nightly_build": WARNED})
+    apply_collector_payload(state, _P, {"read_ok": False, "watched_warning": None}, T0)
+    assert state.warnings == {"dbt_nightly_build": WARNED}
+
+
+def test_a_partial_tool_failure_advances_nothing():
+    """The cursor and last_read_at are per tool but the send is gated on the tool
+    flag, so one failed pipeline suppresses the other's records. Advancing the
+    shared cursor anyway would mark those runs seen and never reported."""
+    state = ReaderState(cursor={"dbt_cloud": T0}, last_read_at={"dbt_cloud": T0})
+    payload = {"read_ok": True, "cursor": (T0 + timedelta(days=1)).isoformat(), "records": [{"run_id": 5}]}
+    apply_collector_payload(state, _P, payload, T0 + timedelta(minutes=5), tool_read_ok=False)
+    assert state.cursor["dbt_cloud"] == T0
+    assert state.last_read_at["dbt_cloud"] == T0
+    assert state.recent_run_ids == {}

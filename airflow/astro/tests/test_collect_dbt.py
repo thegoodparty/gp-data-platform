@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from include.pipelines.models import Pipeline, RealSuccess, ToolIds
-from include.reader.collect_dbt import collect, pick_step
+from include.reader.collect_dbt import collect, payload_for, pick_step
 from include.reader.dbt_cloud import ArtifactUnavailable
 from include.reader.models import Run, Step, Streak
 from include.reader.state import ReaderState
@@ -232,3 +232,86 @@ def test_the_last_cron_occurrence_is_the_due_time_with_no_history():
         2026, 11, 17, 12, 2, tzinfo=UTC
     )
     assert last_due_before(None, NOW) is None
+
+
+GREEN_WITH_WARNING = {
+    "results": [
+        {
+            "unique_id": "test.pkg.assert_stripe_pro_subscriptions_match_campaigns",
+            "status": "warn",
+            "message": "a warning",
+        }
+    ]
+}
+GREEN_AND_CLEAN = {"results": [{"unique_id": "test.pkg.assert_x", "status": "pass", "message": ""}]}
+
+WARNED = {"test": "assert_stripe_pro_subscriptions_match_campaigns", "count": 1}
+
+
+def test_a_warning_survives_a_cycle_with_no_new_runs():
+    """The next 5-minute cycle has no fresh runs. Re-deriving the warning from that
+    window would report none and a recording rule would resolve an alert that is
+    still true, which is why it is stored in state."""
+    finished = T0 + timedelta(minutes=40)
+    state = ReaderState(
+        recent_run_ids={"dbt_cloud": ["1"]},
+        streaks={NIGHTLY.pipeline: Streak(False, finished)},
+        warnings={NIGHTLY.pipeline: WARNED},
+    )
+    already_sent = run(run_id=1, status=10, finished=finished)
+    result = collect(NIGHTLY, client(runs=[already_sent], artifact=GREEN_WITH_WARNING), state, NOW)
+    assert result.records == []
+    assert result.watched_warning == WARNED
+
+
+def test_a_newer_clean_run_clears_the_warning():
+    finished = T0 + timedelta(minutes=40)
+    state = ReaderState(
+        recent_run_ids={"dbt_cloud": ["1"]},
+        streaks={NIGHTLY.pipeline: Streak(False, finished)},
+        warnings={NIGHTLY.pipeline: WARNED},
+    )
+    newer = run(run_id=2, status=10, started=T0 + timedelta(hours=12), finished=T0 + timedelta(hours=13))
+    result = collect(NIGHTLY, client(runs=[newer], artifact=GREEN_AND_CLEAN), state, NOW)
+    assert result.watched_warning is None
+
+
+def test_an_older_run_finishing_late_does_not_resurrect_an_older_warning():
+    """The newest finish decides, not the newest record sent: an old run finishing
+    after a clean one must not put its warning back."""
+    newer_clean = run(
+        run_id=2, status=10, started=T0 + timedelta(hours=12), finished=T0 + timedelta(hours=13)
+    )
+    older_warned = run(
+        run_id=1, status=10, started=T0 + timedelta(hours=-12), finished=T0 + timedelta(hours=-11)
+    )
+    result = collect(
+        NIGHTLY, client(runs=[newer_clean, older_warned], artifact=GREEN_AND_CLEAN), ReaderState(), NOW
+    )
+    assert result.watched_warning is None
+
+
+def test_a_warning_seen_in_one_cycle_is_reported_in_the_next():
+    """End to end through the state helpers: cycle one sees the warning, cycle two
+    has no new runs, and the status update still says 1."""
+    finished = T0 + timedelta(minutes=40)
+    state = ReaderState()
+    first = collect(
+        NIGHTLY,
+        client(runs=[run(run_id=1, status=10, finished=finished)], artifact=GREEN_WITH_WARNING),
+        state,
+        NOW,
+    )
+    assert first.watched_warning == WARNED
+    from include.reader.state import apply_collector_payload
+
+    apply_collector_payload(state, NIGHTLY, payload_for(first), NOW)
+
+    second = collect(
+        NIGHTLY,
+        client(runs=[run(run_id=1, status=10, finished=finished)], artifact=GREEN_WITH_WARNING),
+        state,
+        NOW,
+    )
+    assert second.records == []
+    assert second.watched_warning == WARNED

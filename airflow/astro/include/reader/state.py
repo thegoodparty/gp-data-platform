@@ -1,5 +1,5 @@
-"""The reader's cross-run state: one cursor per tool, a bounded dedupe set, and the
-per-pipeline streak.
+"""The reader's cross-run state: one cursor per tool, a bounded dedupe set, the
+per-pipeline streak, and the newest watched warning per pipeline.
 
 It lives in a single Airflow Variable as JSON. A Variable and not a file because
 Astro gives a task no durable local disk between runs, and a Variable is already
@@ -10,6 +10,9 @@ Two rules the rest of the reader depends on:
 - `last_read_at` is carried forward, not refreshed, by a failed read. Rule 4 reads
   it, so a refreshed-on-attempt time would mean a revoked credential never fires.
 - A failed tool's cursor does not move, so the next run replays the window.
+- The watched warning is carried forward until a newer finished run shows none. It
+  is not re-derived per cycle: a cycle with no new runs would report no warning and
+  a recording rule would resolve an alert that is still true.
 """
 
 import json
@@ -57,11 +60,13 @@ class ReaderState:
         recent_run_ids: dict[str, list[str]] | None = None,
         streaks: dict[str, Streak] | None = None,
         last_read_at: dict[str, datetime] | None = None,
+        warnings: dict[str, dict[str, Any]] | None = None,
     ):
         self.cursor = dict(cursor or {})
         self.recent_run_ids = {k: list(v) for k, v in (recent_run_ids or {}).items()}
         self.streaks = dict(streaks or {})
         self.last_read_at = dict(last_read_at or {})
+        self.warnings = {k: dict(v) for k, v in (warnings or {}).items()}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReaderState):
@@ -71,6 +76,7 @@ class ReaderState:
             and self.recent_run_ids == other.recent_run_ids
             and self.streaks == other.streaks
             and self.last_read_at == other.last_read_at
+            and self.warnings == other.warnings
         )
 
     def __repr__(self) -> str:
@@ -126,6 +132,7 @@ class ReaderState:
                     for name, streak in self.streaks.items()
                 },
                 "last_read_at": {k: _format(v) for k, v in self.last_read_at.items()},
+                "warnings": self.warnings,
             },
             sort_keys=True,
         )
@@ -161,6 +168,7 @@ class ReaderState:
                 for k, v in ((k, _parse(v)) for k, v in (document.get("last_read_at") or {}).items())
                 if v
             },
+            warnings={k: dict(v) for k, v in (document.get("warnings") or {}).items() if isinstance(v, dict)},
         )
 
 
@@ -185,15 +193,25 @@ def streak_for(state: ReaderState, pipeline: str) -> Streak | None:
 
 
 def apply_collector_payload(
-    state: ReaderState, pipeline: "Pipeline", payload: dict[str, Any] | None, now: datetime
+    state: ReaderState,
+    pipeline: "Pipeline",
+    payload: dict[str, Any] | None,
+    now: datetime,
+    tool_read_ok: bool = True,
 ) -> None:
     """Fold one collector's payload for one pipeline into the state.
 
-    Only a pipeline whose read succeeded advances anything. A failed read leaves the
-    cursor and `last_read_at` exactly where they were, so the next run replays the
-    window and rule 4 sees the staleness rather than a refreshed attempt.
+    Advances nothing unless BOTH this pipeline's read and its tool's read succeeded.
+    The tool flag matters because the cursor and `last_read_at` are per tool and the
+    status update reports `last_read_ok` per tool: a partial failure suppresses one
+    pipeline's records from the send, so advancing the shared cursor would mark runs
+    seen that were never reported.
+
+    A failed read leaves the cursor and `last_read_at` exactly where they were, so the
+    next run replays the window and rule 4 sees the staleness rather than a refreshed
+    attempt.
     """
-    if not payload or not payload.get("read_ok"):
+    if not payload or not payload.get("read_ok") or not tool_read_ok:
         return
     tool = pipeline.tool
     state.advance_cursor(tool, _parse(payload.get("cursor")))
@@ -204,4 +222,12 @@ def apply_collector_payload(
             failed_since_last_success=bool(streak.get("failed_since_last_success")),
             last_real_success_at=_parse(streak.get("last_real_success_at")),
         )
+    # A successful read is the only thing that may set or clear the warning, so the
+    # newest finished run's own answer is what is stored. Carrying it here rather
+    # than re-deriving it next cycle is what keeps a still-true warning reported.
+    warning = payload.get("watched_warning")
+    if warning:
+        state.warnings[pipeline.pipeline] = dict(warning)
+    else:
+        state.warnings.pop(pipeline.pipeline, None)
     state.record_read(tool, read_ok=True, now=now)

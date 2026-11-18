@@ -249,7 +249,10 @@ def assemble_report(
             # this must not make.
             streak = saved if saved is not None else Streak(True, None)
             due_at = next_run_due(pipeline.schedule, saved.last_real_success_at if saved else None)
-            warning = None
+            # Carried forward, not cleared: a failed read is evidence about the
+            # reader, not about the pipeline, and a warning that is still true must
+            # not resolve because the reader could not look.
+            warning = state.warnings.get(pipeline.pipeline)
         statuses.append(
             build_status_update(
                 pipeline,
