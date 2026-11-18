@@ -1,7 +1,12 @@
 -- Power user definition v2, the definition for the 2026 cycle on: a candidate
--- who took real actions in Win on at least as many days as the bar for their
--- cycle and distance from the election. No send is required, and dashboard
--- views and onboarding steps do not count. One row per user with a candidacy.
+-- who has reached voters through the product (the is_activated legs) and took
+-- real actions in Win on at least as many days as the bar for their cycle and
+-- distance from the election. Dashboard views and onboarding steps do not
+-- count. One row per user with a candidacy.
+--
+-- The send must fall on or before the election: without it, a candidate who
+-- explores every tool but never does the core action reads as a power user.
+-- The bar is still measured on all actors, so adding the gate does not move it.
 --
 -- v1 (int__user_power_user: sent, plus dashboard view-days) stays as the
 -- definition through mid-2026, so earlier reports reproduce. v1 rewarded a
@@ -30,7 +35,7 @@ with
     ),
 
     counted_days as (
-        select c.user_id, d.activity_date, d.action_features
+        select c.user_id, d.activity_date, d.action_features, d.has_send
         from candidates as c
         inner join
             {{ ref("int__user_action_days") }} as d
@@ -39,7 +44,9 @@ with
     ),
 
     day_counts as (
-        select user_id, count(*) as action_days from counted_days group by user_id
+        select user_id, count(*) as action_days, bool_or(has_send) as has_sent
+        from counted_days
+        group by user_id
     ),
 
     area_counts as (
@@ -60,7 +67,11 @@ select
     coalesce(dc.action_days, 0) as power_user_action_days,
     coalesce(ac.action_areas, 0) as power_user_action_areas,
     b.action_day_bar as power_user_action_day_bar,
-    coalesce(coalesce(dc.action_days, 0) >= b.action_day_bar, false) as is_power_user
+    coalesce(dc.has_sent, false) as power_user_has_sent,
+    coalesce(dc.has_sent, false)
+    and coalesce(
+        coalesce(dc.action_days, 0) >= b.action_day_bar, false
+    ) as is_power_user
 from candidates as c
 left join day_counts as dc using (user_id)
 left join area_counts as ac using (user_id)
