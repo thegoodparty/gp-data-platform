@@ -16,6 +16,11 @@ PROJECT = Path(__file__).resolve().parents[1] / "project"
 # Sources that resolve out of the catalog dbt builds in. Everything a loader
 # writes belongs here; a new loader that lands in the prod catalog fails
 # test_no_loader_source_lands_in_the_prod_catalog below.
+#
+# These name the catalog through the source_catalog var rather than a literal,
+# because the loader side is a cutover rather than a flip: pointing them at raw
+# before the source schemas are copied there would rebuild every mart from
+# nothing. The var is what makes the cutover one value.
 SOURCES_IN_RAW = {
     "airbyte_source",
     "dbt_source",
@@ -64,15 +69,29 @@ def _sources_by_name() -> dict[str, dict]:
     return {source["name"]: source for source in config["sources"]}
 
 
-def test_every_loader_source_declares_the_raw_catalog():
+def test_every_loader_source_declares_the_source_catalog_var():
     sources = _sources_by_name()
 
-    missing = sorted(name for name in SOURCES_IN_RAW if sources[name].get("database") != "raw")
+    missing = sorted(
+        name for name in SOURCES_IN_RAW if "source_catalog" not in str(sources[name].get("database"))
+    )
 
     assert not missing, (
-        "These sources resolve into whatever catalog dbt writes to, so a build "
-        f"would read them from there instead of from raw: {missing}"
+        "These sources must name the source catalog through the var, so the "
+        f"cutover is one value rather than seven edits: {missing}"
     )
+
+
+def test_the_source_catalog_var_starts_where_the_loaders_write():
+    """The var must start on the catalog the loaders actually write to.
+
+    Pointing it at raw before the copy has run is the failure this guards: the
+    build succeeds, reads empty sources, and rebuilds every mart from nothing.
+    It moves to raw in the same change that moves the loaders.
+    """
+    project = yaml.safe_load((PROJECT / "dbt_project.yml").read_text())
+
+    assert project["vars"]["source_catalog"] == "goodparty_data_catalog"
 
 
 def test_sources_in_other_catalogs_keep_their_own_database():
@@ -91,11 +110,16 @@ def test_governed_sources_stay_in_the_prod_catalog():
     """These read from prod objects that name their own catalog.
 
     Moving them to raw would point a policy or an MLflow model path at a catalog
-    that has neither the function nor the registered model.
+    that has neither the function nor the registered model, and the source_catalog
+    var must not sweep them along when it flips.
     """
     sources = _sources_by_name()
 
-    moved = sorted(name for name in SOURCES_STAYING_IN_PROD if sources[name].get("database") == "raw")
+    moved = sorted(
+        name
+        for name in SOURCES_STAYING_IN_PROD
+        if "source_catalog" in str(sources[name].get("database")) or sources[name].get("database") == "raw"
+    )
 
     assert not moved, (
         "These sources are read through a prod-catalog object that names its own "

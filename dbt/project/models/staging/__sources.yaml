@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: airbyte_source
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: airbyte_source
     description: Raw data loaded from Airbyte
     config:
@@ -889,7 +889,7 @@ sources:
           freshness: null
 
   - name: dbt_source
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: dbt_source
     description: Raw data staged in S3 and loaded into Databricks by the load_l2_voter_files DAG
 
@@ -1306,7 +1306,7 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
   - name: dbt_source_haystaq
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: dbt_source
     description: Raw Haystaq issue model tables loaded from S3 by the load_l2_voter_files DAG
 
@@ -1517,7 +1517,7 @@ sources:
         description: raw data load for Wyoming Haystaq DNA scores
 
   - name: airflow_source
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: airflow_source
     description: Raw tables landed by the extract_ballotready DAG
     config:
@@ -1994,7 +1994,7 @@ sources:
         description: Segment web app event - voter outreach campaign completed
 
   - name: archives
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: archives
     description: >
       Point-in-time copies of tables that are no longer written, kept under a
@@ -2013,7 +2013,7 @@ sources:
           campaign versions the product later overwrote in place.
 
   - name: er_source
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: er_source
     description: >
       Output tables from the Splink-based entity resolution pipeline (gp-data-matcha).
@@ -2259,7 +2259,7 @@ sources:
               - unique
 
   - name: airbyte_source_finance
-    database: raw
+    database: "{{ var('source_catalog') }}"
     schema: airbyte_source_finance
     description: >
       Raw QuickBooks Online and Stripe data landed by Airbyte for the finance mart.
