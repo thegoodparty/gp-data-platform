@@ -5869,15 +5869,6 @@ sources:
                 sensitive: identifier
 
       - name: clustered_people
-        columns:
-          - name: phone_surname_groups
-            config:
-              meta:
-                sensitive: confidential
-          - name: birth_date
-            config:
-              meta:
-                sensitive: confidential
         # Jinja so a dated vintage can be built and audited in dev before the
         # matcha_er DAG swaps it live:
         #   dbt build --vars '{clustered_people_identifier: clustered_people_20261007}'
