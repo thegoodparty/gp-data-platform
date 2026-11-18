@@ -14,30 +14,37 @@ with
                 array(
                     'data-engineers',
                     'ed920c40-3b7d-42cb-ad32-0b4d5484c117',  -- dbt_cloud, the builder
-                    '58aa66d2-1d9d-4b02-bda8-b001a8e6689e',  -- owns mart_analytics
-                    -- Governance roles hold catalog-level MODIFY. Both come off this
-                    -- list when the raw catalog exists: no loader joins ingestor
-                    -- before then.
-                    'transformer',
-                    'ingestor'
+                    '58aa66d2-1d9d-4b02-bda8-b001a8e6689e'  -- owns mart_analytics
                 )
             ) as principal
     ),
 
+    -- The governance roles hold catalog-level MODIFY, which inherits onto this
+    -- table. They are exempted for that inheritance only, so a write granted
+    -- directly on mart_analytics or on user_journey still fails this test. Both
+    -- come off when the raw catalog exists.
+    allowed_catalog_groups as (
+        select explode(array('transformer', 'ingestor')) as principal
+    ),
+
     write_grants as (
-        select 'catalog' as granted_on, grantee as principal, privilege_type
+        select
+            'catalog' as granted_on,
+            grantee as principal,
+            privilege_type,
+            null as inherited_from
         from goodparty_data_catalog.information_schema.catalog_privileges
         where catalog_name = 'goodparty_data_catalog'
 
         union all
 
-        select 'schema', grantee, privilege_type
+        select 'schema', grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.schema_privileges
         where schema_name = 'mart_analytics'
 
         union all
 
-        select 'table', grantee, privilege_type
+        select 'table', grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.table_privileges
         where table_schema = 'mart_analytics' and table_name = 'user_journey'
     ),
@@ -55,16 +62,21 @@ with
     ),
 
     writers as (
-        select granted_on, principal
+        select granted_on, principal, inherited_from
         from write_grants
         where privilege_type in ('MODIFY', 'ALL_PRIVILEGES')
 
         union all
 
-        select granted_on, principal
+        select granted_on, principal, null as inherited_from
         from owners
     )
 
 select granted_on, principal
 from writers
-where principal not in (select principal from allowed where principal is not null)
+where
+    principal not in (select principal from allowed where principal is not null)
+    and not (
+        inherited_from = 'CATALOG'
+        and principal in (select principal from allowed_catalog_groups)
+    )

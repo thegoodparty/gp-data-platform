@@ -14,17 +14,18 @@ with
             explode(
                 array(
                     'data-engineers',  -- data engineering
-                    'mart_finance_readers',  -- business and finance ops
-                    -- The governance role groups hold catalog-level SELECT,
-                    -- MODIFY or MANAGE, which inherits here. All four come off this
-                    -- list when finance gets its own catalog: that split is what
-                    -- actually keeps them out.
-                    'analyst',  -- masked reads; the row filter closes finance
-                    'ingestor',
-                    'transformer',
-                    'admin'
+                    'mart_finance_readers'  -- business and finance ops
                 )
             ) as grantee
+    ),
+
+    -- The governance role groups hold catalog-level SELECT, MODIFY or MANAGE,
+    -- which inherits into every schema and cannot be scoped per schema. They are
+    -- exempted for inherited privileges only, so a grant made directly on one of
+    -- these schemas or tables still fails this test. All four come off this list
+    -- when finance gets its own catalog.
+    allowed_catalog_groups as (
+        select explode(array('analyst', 'ingestor', 'transformer', 'admin')) as grantee
     ),
 
     allowed_principals as (
@@ -46,13 +47,13 @@ with
     ),
 
     granted as (
-        select schema_name, grantee, privilege_type
+        select schema_name, grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.schema_privileges
         where schema_name in ('airbyte_source_finance', 'mart_finance')
 
         union all
 
-        select table_schema as schema_name, grantee, privilege_type
+        select table_schema as schema_name, grantee, privilege_type, inherited_from
         from goodparty_data_catalog.information_schema.table_privileges
         where table_schema in ('airbyte_source_finance', 'mart_finance')
     )
@@ -62,4 +63,8 @@ from granted
 where
     grantee not in (select grantee from allowed_names)
     and grantee not in (select grantee from allowed_principals)
+    and not (
+        inherited_from = 'CATALOG'
+        and grantee in (select grantee from allowed_catalog_groups)
+    )
 group by schema_name, grantee
