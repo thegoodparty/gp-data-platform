@@ -636,3 +636,29 @@ models:
         description: The latest non-null uploaded value, by upload time then row.
       - name: last_uploaded_at
         description: When the latest upload naming this person was created.
+
+  - name: gp_api_haystaq_issue_scores
+    description: >
+      The modeled constituent-priority (Haystaq) scores for an organization's
+      district, one row per LALVOTERID, read by gp-api's agents. Those agents
+      reach voter-derived scores only through mart_gp_api, which is granted to
+      gp-api's principal by schema; a table in dbt's own schema would need a
+      per-table grant that a rebuild drops. A view, so it also picks up the
+      monthly L2 reload without a separate build.
+    columns:
+      - name: LALVOTERID
+        description: L2 voter identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: Residence_Addresses_State
+        description: >-
+          Two-letter state of the voter's residence: the states and DC, the
+          territories, and the armed-forces codes AA, AE and AP that L2 files
+          those voters under.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_territories=true) | list + ['AA', 'AE', 'AP'] }}"
+      - name: Voters_Active
+        description: A = Active, I = Inactive.
