@@ -570,54 +570,34 @@ models:
         description: '{{ doc("l2col_ConsumerData_MAID_Available") }}'
       - name: "ConsumerData_MAID_IP1"
         description: '{{ doc("l2col_ConsumerData_MAID_IP1") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_IP2"
         description: '{{ doc("l2col_ConsumerData_MAID_IP2") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_IP3"
         description: '{{ doc("l2col_ConsumerData_MAID_IP3") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_IP4"
         description: '{{ doc("l2col_ConsumerData_MAID_IP4") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_IP5"
         description: '{{ doc("l2col_ConsumerData_MAID_IP5") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_IP_Available"
         description: '{{ doc("l2col_ConsumerData_MAID_IP_Available") }}'
       - name: "ConsumerData_MAID_MAID1"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID1") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_MAID1_Cell_Phone_System"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID1_Cell_Phone_System") }}'
       - name: "ConsumerData_MAID_MAID2"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID2") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_MAID2_Cell_Phone_System"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID2_Cell_Phone_System") }}'
       - name: "ConsumerData_MAID_MAID3"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID3") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_MAID3_Cell_Phone_System"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID3_Cell_Phone_System") }}'
       - name: "ConsumerData_MAID_MAID4"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID4") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_MAID4_Cell_Phone_System"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID4_Cell_Phone_System") }}'
       - name: "ConsumerData_MAID_MAID5"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID5") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "ConsumerData_MAID_MAID5_Cell_Phone_System"
         description: '{{ doc("l2col_ConsumerData_MAID_MAID5_Cell_Phone_System") }}'
       - name: "ConsumerData_Mail_Order_Buyer"
@@ -2286,12 +2266,8 @@ models:
         description: '{{ doc("l2col_Local_Park_District") }}'
       - name: "Mailing_Addresses_AddressLine"
         description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Mailing_Addresses_ApartmentNum"
         description: '{{ doc("l2col_Mailing_Addresses_ApartmentNum") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Mailing_Addresses_ApartmentType"
         description: '{{ doc("l2col_Mailing_Addresses_ApartmentType") }}'
       - name: "Mailing_Addresses_CassErrStatCode"
@@ -2304,16 +2280,10 @@ models:
         description: '{{ doc("l2col_Mailing_Addresses_Designator") }}'
       - name: "Mailing_Addresses_DPBC"
         description: '{{ doc("l2col_Mailing_Addresses_DPBC") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Mailing_Addresses_ExtraAddressLine"
         description: '{{ doc("l2col_Mailing_Addresses_ExtraAddressLine") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Mailing_Addresses_HouseNumber"
         description: '{{ doc("l2col_Mailing_Addresses_HouseNumber") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Mailing_Addresses_PrefixDirection"
         description: '{{ doc("l2col_Mailing_Addresses_PrefixDirection") }}'
       - name: "Mailing_Addresses_State"
@@ -2578,12 +2548,8 @@ models:
         description: '{{ doc("l2col_Republican_Convention_Member") }}'
       - name: "Residence_Addresses_AddressLine"
         description: '{{ doc("l2col_Residence_Addresses_AddressLine") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_ApartmentNum"
         description: '{{ doc("l2col_Residence_Addresses_ApartmentNum") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_ApartmentType"
         description: '{{ doc("l2col_Residence_Addresses_ApartmentType") }}'
       - name: "Residence_Addresses_CassErrStatCode"
@@ -2606,26 +2572,16 @@ models:
         description: '{{ doc("l2col_Residence_Addresses_Designator") }}'
       - name: "Residence_Addresses_DPBC"
         description: '{{ doc("l2col_Residence_Addresses_DPBC") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_ExtraAddressLine"
         description: '{{ doc("l2col_Residence_Addresses_ExtraAddressLine") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_HouseNumber"
         description: '{{ doc("l2col_Residence_Addresses_HouseNumber") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_Latitude"
         description: '{{ doc("l2col_Residence_Addresses_Latitude") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_LatLongAccuracy"
         description: '{{ doc("l2col_Residence_Addresses_LatLongAccuracy") }}'
       - name: "Residence_Addresses_Longitude"
         description: '{{ doc("l2col_Residence_Addresses_Longitude") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Residence_Addresses_PrefixDirection"
         description: '{{ doc("l2col_Residence_Addresses_PrefixDirection") }}'
       - name: "Residence_Addresses_Property_Home_Square_Footage"
@@ -2762,30 +2718,20 @@ models:
         description: '{{ doc("l2col_Voters_Age") }}'
       - name: "Voters_BirthDate"
         description: '{{ doc("l2col_Voters_BirthDate") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Voters_CalculatedRegDate"
         description: '{{ doc("l2col_Voters_CalculatedRegDate") }}'
       - name: "Voters_CountyVoterID"
         description: '{{ doc("l2col_Voters_CountyVoterID") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "Voters_FIPS"
         description: '{{ doc("l2col_Voters_FIPS") }}'
       - name: "Voters_FirstName"
         description: '{{ doc("l2col_Voters_FirstName") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Voters_Gender"
         description: '{{ doc("l2col_Voters_Gender") }}'
       - name: "Voters_LastName"
         description: '{{ doc("l2col_Voters_LastName") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Voters_MiddleName"
         description: '{{ doc("l2col_Voters_MiddleName") }}'
-        databricks_tags:
-          sensitive: confidential
       - name: "Voters_MovedFrom_Date"
         description: '{{ doc("l2col_Voters_MovedFrom_Date") }}'
       - name: "Voters_MovedFrom_Party_Description"
@@ -2812,8 +2758,6 @@ models:
         description: '{{ doc("l2col_Voters_SequenceZigZag") }}'
       - name: "Voters_StateVoterID"
         description: '{{ doc("l2col_Voters_StateVoterID") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "Voters_VotingPerformanceEvenYearGeneral"
         description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearGeneral") }}'
       - name: "Voters_VotingPerformanceEvenYearGeneralAndPrimary"
@@ -2826,30 +2770,20 @@ models:
         description: '{{ doc("l2col_VoterTelephones_CellConfidenceCode") }}'
       - name: "VoterTelephones_CellPhoneFormatted"
         description: '{{ doc("l2col_VoterTelephones_CellPhoneFormatted") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "VoterTelephones_CellPhoneOnly"
         description: '{{ doc("l2col_VoterTelephones_CellPhoneOnly") }}'
       - name: "VoterTelephones_CellPhoneUnformatted"
         description: '{{ doc("l2col_VoterTelephones_CellPhoneUnformatted") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "VoterTelephones_Landline7Digit"
         description: '{{ doc("l2col_VoterTelephones_Landline7Digit") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "VoterTelephones_LandlineAreaCode"
         description: '{{ doc("l2col_VoterTelephones_LandlineAreaCode") }}'
       - name: "VoterTelephones_LandlineConfidenceCode"
         description: '{{ doc("l2col_VoterTelephones_LandlineConfidenceCode") }}'
       - name: "VoterTelephones_LandlineFormatted"
         description: '{{ doc("l2col_VoterTelephones_LandlineFormatted") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "VoterTelephones_LandlineUnformatted"
         description: '{{ doc("l2col_VoterTelephones_LandlineUnformatted") }}'
-        databricks_tags:
-          sensitive: identifier
       - name: "Wastewater_District"
         description: '{{ doc("l2col_Wastewater_District") }}'
       - name: "Water_Agency"
