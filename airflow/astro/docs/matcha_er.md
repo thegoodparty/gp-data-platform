@@ -57,11 +57,13 @@ while writing and filtering ~20M predicted pairs, after EM training had already 
 OOM-killed `election_stage` on 2026-11-17, so the limit went to 64Gi; that OOM-killed it again on
 2026-11-18, because the extra memory mostly went to DuckDB's 80% share rather than to the Python side.
 `election_stage` therefore sets `duckdb_memory_limit` on its `EntitySpec`, which the DAG passes to the pod
-as `MATCHA_DUCKDB_MEMORY_LIMIT` at 24GiB: DuckDB spills to disk at the cap instead of claiming 80% of the
-pod, leaving the rest to the pandas steps that were being killed. That is close to the ~26 GiB DuckDB had
-on the 32Gi pod that got through `predict`, so its working set is about what already fit, and anything past
-the cap spills rather than competing with Python. The other three
-entities did not hit that wall and keep DuckDB's default. Smaller sizes fail earlier:
+as `MATCHA_DUCKDB_MEMORY_LIMIT` at 24GiB. That bounds DuckDB's buffer manager rather than the whole
+process, and the point is to stop it claiming 80% of the pod so the pandas steps that were being killed
+have room. It is close to the ~26 GiB DuckDB had on the 32Gi pod that got through `predict`, so its working
+set is about what already fit; anything past the cap spills to the pod's disk instead of competing with
+Python. The budget line in a run's log therefore reports the configured limit, not peak memory, so it
+confirms the cap reached the pod and nothing more. The other three entities did not hit that wall and keep
+DuckDB's default. Smaller sizes fail earlier:
 OOM-killed at 8Gi, and evicted at 10Gi of disk. 16 CPU was tried and reverted, making `election_stage` no
 faster and buying candidacy only ~17%, while pods bill on the configured limit.
 Requests equal limits, keeping the pod Guaranteed; Astro bills task pods on the limit either way.

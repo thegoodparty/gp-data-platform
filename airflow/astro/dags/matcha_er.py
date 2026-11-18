@@ -93,15 +93,13 @@ class _MatchaPodOperator(KubernetesPodOperator):
 
     def __init__(self, *args: Any, duckdb_memory_limit: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        # Held for pre_execute rather than set on env_vars here, which pre_execute replaces.
+        # Kept for pre_execute, which rebuilds env_vars from scratch on every attempt.
         self.duckdb_memory_limit = duckdb_memory_limit
 
     def pre_execute(self, context) -> None:
         # Replaces rather than extends: pre_execute runs again on every retry.
         self.env_vars = [k8s.V1EnvVar(name=name, value=value) for name, value in pod_databricks_env().items()]
         if self.duckdb_memory_limit:
-            # Caps DuckDB's share of the pod so the pandas steps get the rest; DuckDB
-            # otherwise claims 80% and the bigger pod mostly feeds it.
             self.env_vars.append(
                 k8s.V1EnvVar(name="MATCHA_DUCKDB_MEMORY_LIMIT", value=self.duckdb_memory_limit)
             )
