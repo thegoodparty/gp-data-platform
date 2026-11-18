@@ -64,7 +64,7 @@ where
     grantee not in (select grantee from allowed_names)
     and grantee not in (select grantee from allowed_principals)
     and not (
-        inherited_from = 'CATALOG'
+        coalesce(inherited_from = 'CATALOG', false)
         and grantee in (select grantee from allowed_catalog_groups)
     )
 group by schema_name, grantee
