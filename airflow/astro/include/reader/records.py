@@ -12,12 +12,15 @@ Two things this module is careful about:
   `adapter_response` can carry row values and nothing here needs them.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from airflow.timetables.base import TimeRestriction
+from airflow.timetables.trigger import CronTriggerTimetable
 from include.pipelines.models import Pipeline
 from include.reader.models import Run, Streak
 from include.reader.redact import redact_error
+from pendulum import instance as pendulum_instance
 
 STATUS_UPDATE = "status_update"
 RUN_RECORD = "run_record"
@@ -158,6 +161,28 @@ def build_run_record(pipeline: Pipeline, run: Run, artifact: dict[str, Any] | No
         "link": run.href,
         "runbook": pipeline.runbook,
     }
+
+
+def next_run_due(schedule: str | None, last_started_at: datetime | None) -> datetime | None:
+    """The next cron occurrence after the last observed run start.
+
+    Computed from the last start rather than from now, because from now it is
+    always in the future and rule 2 could never fire. Airflow's own timetable is
+    used so the answer matches when Airflow will actually schedule the run; the
+    one-second nudge makes `earliest` exclusive, which yields the next occurrence
+    even when the anchor sits exactly on a cron time.
+    """
+    if not schedule or last_started_at is None:
+        return None
+    timetable = CronTriggerTimetable(schedule, timezone="UTC")
+    # TimeRestriction takes pendulum DateTimes, so the anchor is converted rather
+    # than passed as a plain datetime.
+    anchor = pendulum_instance(last_started_at.astimezone(UTC) + timedelta(seconds=1))
+    info = timetable.next_dagrun_info(
+        last_automated_data_interval=None,
+        restriction=TimeRestriction(earliest=anchor, latest=None, catchup=True),
+    )
+    return datetime.fromisoformat(info.run_after.isoformat()) if info is not None else None
 
 
 def _epoch(value: datetime | None) -> int | None:

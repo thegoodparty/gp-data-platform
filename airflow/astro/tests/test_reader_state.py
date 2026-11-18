@@ -18,18 +18,19 @@ from include.reader.state import (
 T0 = datetime(2026, 11, 18, 2, 40, tzinfo=UTC)
 
 
+class _Store(dict):
+    """A fake Variable store: get takes a default, set overwrites, like Airflow's."""
+
+    def get(self, key, default_var=None):
+        return dict.get(self, key, default_var)
+
+    def set(self, key, value):
+        self[key] = value
+
+
 def _fake_variable(initial: dict[str, str] | None = None):
-    store = dict(initial or {})
-
-    def get(key, default_var=None):
-        return store.get(key, default_var)
-
-    def set_(key, value):
-        store[key] = value
-
-    get.store = store
-    set_.store = store
-    return get, set_
+    store = _Store(initial or {})
+    return store.get, store.set
 
 
 def test_state_round_trips():
