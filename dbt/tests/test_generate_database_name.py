@@ -12,7 +12,9 @@ layer into the target's schema, so a marts model resolves to `dev.dbt_<user>`
 rather than `dev.mart_civics`. That is why none of these tests assert a schema.
 """
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import jinja2
 
@@ -34,7 +36,11 @@ def _render(target_name: str, custom_database_name: str | None = None) -> str:
     env = jinja2.Environment(undefined=jinja2.StrictUndefined)
     env.globals["target"] = {"name": target_name}
     rendered = TEMPLATE.replace("__BODY__", inner)
-    return env.from_string(rendered).module.generate_database_name(custom_database_name)
+    # The macro only exists after rendering, so mypy cannot see it on the template
+    # module, and the whole point of this test is that it is reachable.
+    module = env.from_string(rendered).module
+    generate = cast("Callable[[str | None], str]", module.generate_database_name)  # type: ignore[attr-defined]
+    return generate(custom_database_name)
 
 
 def test_prod_writes_to_the_prod_catalog():
