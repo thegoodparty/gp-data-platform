@@ -62,13 +62,20 @@ with
     ),
 
     writers as (
-        select granted_on, principal, inherited_from
+        select
+            granted_on,
+            principal,
+            -- A catalog-level grant sits at catalog scope already; a schema or table
+            -- grant counts only when it inherits from the catalog. coalesce keeps
+            -- this out of NULL, which the filter below would otherwise drop.
+            coalesce(inherited_from = 'CATALOG', false)
+            or granted_on = 'catalog' as from_catalog
         from write_grants
         where privilege_type in ('MODIFY', 'ALL_PRIVILEGES')
 
         union all
 
-        select granted_on, principal, null as inherited_from
+        select granted_on, principal, false
         from owners
     )
 
@@ -77,6 +84,5 @@ from writers
 where
     principal not in (select principal from allowed where principal is not null)
     and not (
-        inherited_from = 'CATALOG'
-        and principal in (select principal from allowed_catalog_groups)
+        from_catalog and principal in (select principal from allowed_catalog_groups)
     )
