@@ -165,9 +165,9 @@ def test_copy_into_rejects_the_target_column_list_parquet_cannot_take():
 
 
 def test_copy_into_projection_aliases_every_landing_column_and_stamps_loaded_at():
-    """With no target list the mapping is by name, so every expression's alias is load-bearing:
-    an expression that lost its `as <alias>` clause would leave that column null. `loaded_at` has no
-    source column at all and is mapped only by its alias."""
+    """With no target list the mapping is by name, so every expression's alias decides which
+    column it fills: an expression that lost its `as <alias>` clause would leave that column null.
+    `loaded_at` has no source column at all and is mapped only by its alias."""
     sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
 
     assert "current_timestamp() as `loaded_at`" in sql
