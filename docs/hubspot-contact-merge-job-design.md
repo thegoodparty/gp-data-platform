@@ -1,11 +1,66 @@
-# HubSpot contact merge job: design
+# HubSpot contact merge job: design and plan
+
+This is the source of truth for the HubSpot contact merge job: its design, its plan and
+where the work stands. Anyone who picks up a step, person or agent, should be able to do
+it from this document, the code, and the step's ticket in the
+[DATA-2328](https://app.clickup.com/t/86ak1txhk) epic. If they disagree, the code wins,
+then the ticket. When you finish a step, update "Status" and the "Order" table here in
+the same PR.
+
+## Status, 2026-11-18
+
+The goal of this work is one HubSpot contact for each person. Today many people have two
+or more contacts. The plan is to merge these duplicates with an automatic job that runs
+every night. We split the work into 29 steps, and each step has its own ticket in the
+DATA-2328 epic.
+
+Much of the work is done. In dbt, the candidates table now picks the right contact to
+keep: the one linked to the most recently active app account. It also marks the pairs
+that are safe to merge without a person checking them first. A list of contacts that must
+never be merged exists, but it is empty for now. We also wrote the merge program,
+`hubspot-merge`. It reads pairs of contacts, checks each pair in HubSpot, merges the pairs
+that are safe, and writes one log row for each pair it tries. It is tested with fake data
+and against the HubSpot sandbox. The program is built into an image, and an Airflow job
+that runs it is on astro-prod. The job is paused, so it does not merge anything yet. We
+also moved the reverse-ETL logs to their own ingest schema.
+
+One plan change came from the code we built. The Airflow job can now create its own log
+table, and we can run the first test batches through it. So nobody needs to change table
+owners by hand or get special write access. Steps 16, 17, 22 and 23 below say this.
+
+The next steps, in order:
+
+1. **Get the sign-offs (step 1).** Record the changed decisions in the TDD. Get Sales to
+   agree that the kept contact's owner wins, and get the rule for which contact we keep
+   confirmed again. This can start now, and no production merge can happen until it is
+   done.
+2. **Test in the sandbox through Airflow (step 16).** Set up the job on astro-dev, create
+   the dev log table, and run a small batch of sandbox contacts. Write the results in a
+   short doc. This can start now.
+3. **Create the production log table (step 17).** Set the job's settings on astro-prod
+   and run the command that creates the table. This can start now.
+4. **Connect the log to dbt (steps 18 to 21).** Add the log as a dbt source. Use it so
+   merged contacts drop out of other models at once. Build the queue view that lists the
+   pairs the job may merge, and add tests that warn us when a merge goes wrong.
+5. **Run the first production merges by hand (steps 22 and 23).** First merge five pairs
+   that a person has checked one by one, then a batch of 100.
+6. **Measure one known risk (step 25).** Count the pairs where the two contacts belong to
+   different companies.
+7. **Turn on the nightly job (steps 27 and 28).** Start with 100 merges a night, then
+   raise the limit step by step. Two other teams must finish their work before the limit
+   goes above 100: Engineering must check that the app still works with merged contacts,
+   and Product must decide how merged contacts affect campaign checks.
+
+The "Order" table under "Steps" lists every step with its status and PRs. "Running the
+job" has the settings and commands. "Not yet checked" and "Working notes" at the end
+list what nobody has confirmed and how we work on this.
 
 ## Why
 
 The HubSpot Data Flow TDD commits Data Platform to an automated nightly job that merges
 duplicate HubSpot Contacts (Workstream B, item 8). The merge candidates already exist as a
 dbt mart (`hubspot_contact_merge_candidates`), which ranks a person's live contacts and
-names one primary. Nothing consumes it yet. Today a human reads reviewed pairs and runs
+names one primary. Before this job, a human read reviewed pairs and ran
 `reverse-etl/probes/merge_pairs.py` by hand.
 
 This document covers the job that consumes those pairs, and the dbt changes around it. It
@@ -229,9 +284,9 @@ repo's ingest convention:
 
 The job creates the table only in an explicit `init-log` command, never during a run, as
 `retl --init-log` does. The DAG's `init_log` command runs it as the deployment's service
-principal, so that principal owns the table from the start (steps 16 and 17). The full name is configuration. The DAG sets it from a
-Variable, so astro-dev points at `airflow_source_dev`, and astro-prod points at
-`airflow_source`.
+principal, so that principal owns the table from the start (steps 16 and 17). The full
+name is configuration. The DAG sets it from a Variable, so astro-dev points at
+`airflow_source_dev`, and astro-prod points at `airflow_source`.
 
 ### 4. The runner
 
@@ -240,6 +295,51 @@ job's image, the image tag pinned by an Airflow Variable with no mutable default
 token, relation, log table, cap and expected portal passed through the environment,
 deployed paused. Unpausing is the explicit enable step. The log table Variable has no
 default, so a dev deployment cannot write to the production log by omission.
+
+### 5. Running the job
+
+The built job matches the parts above. These are the facts you need to run it. The full
+procedure is in `airflow/astro/docs/hubspot_contact_merge.md`, and the environment is in
+`hubspot-merge/.env.example`.
+
+**Code.** `hubspot-merge/src/hsmerge/`: `config.py`, `client.py`, `classify.py`,
+`pairs.py`, `execute.py`, `log.py`, `databricks.py`, `cli.py`. The DAG is
+`airflow/astro/dags/hubspot_contact_merge.py`. The image is
+`ghcr.io/thegoodparty/gp-data-platform/hubspot-merge`, tagged with each main commit's sha.
+
+**Commands.** `hsm init-log`, `hsm run --dry-run`, `hsm run`, `hsm verify --run-id ID`.
+Every command except `init-log` checks the portal first. `run` exits 1 on any
+`id_changed`.
+
+**Rules the built job adds.** The run stops after the first chunk with an `id_changed`
+row, and after a failed batch read; the chunks already logged stay logged. Before the
+first merge, it checks that it can write to the log, so a missing table or grant stops the
+run early. It refuses a pair relation that lists a secondary twice, or one ID as both a
+primary and a secondary. Table names must have the form `catalog.schema.table`.
+`MERGE_PAIR_RELATION` and `MERGE_MAX_PAIRS` are read by `run` only.
+
+**DAG.** Scheduled at 15:00 UTC. The `command` trigger param is `dry_run`, `run`,
+`verify` or `init_log`, and defaults to `dry_run`. A scheduled run always runs `run`. The
+`pair_relation` and `max_pairs` params override their Variables for one run, and
+`run_id` is for `verify`. Airflow does not start manual runs on a paused DAG, so a manual
+trigger needs the DAG unpaused for a short time.
+
+**Variables**, per deployment:
+
+| Variable | astro-dev | astro-prod |
+|---|---|---|
+| `hubspot_merge_image_tag` | a sha from the main image build | same |
+| `hubspot_merge_image_pull_secret` | `ghcr-pull` | `ghcr-pull` |
+| `hubspot_merge_hubspot_token` | sandbox merge key | production merge key |
+| `hubspot_merge_expected_portal_id` | `51780263` | `21589597` |
+| `hubspot_merge_log_table` | `goodparty_data_catalog.airflow_source_dev.hubspot_contact_merge_log` | `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log` |
+| `hubspot_merge_pair_relation` | unset until needed | the queue view, at step 27 |
+| `hubspot_merge_max_pairs` | unset until needed | `100` at step 27 |
+| `hubspot_merge_max_rps` | defaults to 5 | defaults to 5 |
+
+While `hubspot_merge_pair_relation` or `hubspot_merge_max_pairs` is unset, a scheduled
+run fails before it starts the pod. That keeps a briefly unpaused DAG from merging before
+step 27. Neither log table existed on 2026-11-18. Steps 16 and 17 create them.
 
 ## Verification
 
@@ -252,8 +352,9 @@ throwaway contacts in the sandbox, builds pairs for every reachable status, runs
 executor against them, and asserts the outcome by reading HubSpot back: the primary still
 exists with its ID, the secondary resolves to the primary, the survivor's
 `hs_merged_object_ids` names the secondary, and a contact enrolled in a throwaway workflow
-stays enrolled. The same run is then repeated through the CLI against a hand-built pair
-table, with the log in `airflow_source_dev`, to exercise the real reader and log writer.
+stays enrolled. The same run is then repeated through the DAG on astro-dev against a
+hand-built pair table, with the log in `airflow_source_dev`, to exercise the real reader,
+log writer, image and DAG.
 
 **Production, narrowed.** The CLI's `verify --run-id` command reads a run's log rows and
 re-checks the first three assertions against HubSpot for each `merged` pair. It is used
@@ -270,38 +371,38 @@ below.
 
 ### Order
 
-| Steps | Ticket | Waits on |
-|---|---|---|
-| 1 | DATA-2801 | nothing |
-| 2 | DATA-2780 | nothing |
-| 3 | DATA-2781 | nothing |
-| 4-5 | DATA-2782 | nothing |
-| 6 | DATA-2783 | nothing |
-| 7-8 | DATA-2784 | nothing |
-| 9 | DATA-2785 | 7-8 |
-| 10 | DATA-2786 | 2, 7-8 |
-| 11 | DATA-2787 | 7-8 |
-| 12 | DATA-2788 | 7-8 |
-| 13 | DATA-2789 | 9, 10, 11 |
-| 14 | DATA-2790 | 12, 13 |
-| 15 | DATA-2791 | 2, 13 |
-| 16 | DATA-2792 | 14, 15, 26 |
-| 17 | DATA-2793 | 14, 26 |
-| 18 | DATA-2794 | 17 |
-| 19 | DATA-2795 | 18 |
-| 20 | DATA-2796 | 4-5, 6, 19 |
-| 21 | DATA-2797 | 18 |
-| 22-23 | DATA-2521 | 1, 3, 16, 17, 20, 21 |
-| 24 | DATA-2798 | 14 |
-| 25 | DATA-2799 | 20 |
-| 26 | DATA-2800 | 24 |
-| 27-28 | DATA-2562 | 22-23, 25, 26, and the two gates under "Related work outside this job" |
-| 29 | DATA-2757 | nothing; must finish before the reverse-ETL HubSpot sync is first enabled |
+| Steps | Ticket | Waits on | Status |
+|---|---|---|---|
+| 1 | DATA-2801 | nothing | to do |
+| 2 | DATA-2780 | nothing | done, #1316 |
+| 3 | DATA-2781 | nothing | done, #1315 (follow-up #1335 open) |
+| 4-5 | DATA-2782 | nothing | done, #1317, #1328 |
+| 6 | DATA-2783 | nothing | done, #1333 |
+| 7-8 | DATA-2784 | nothing | done, #1314 |
+| 9 | DATA-2785 | 7-8 | done, #1327, #1332 |
+| 10 | DATA-2786 | 2, 7-8 | done, #1329, #1332 |
+| 11 | DATA-2787 | 7-8 | done, #1336 |
+| 12 | DATA-2788 | 7-8 | done, #1330 |
+| 13 | DATA-2789 | 9, 10, 11 | done, #1337 |
+| 14 | DATA-2790 | 12, 13 | done, #1338 |
+| 15 | DATA-2791 | 2, 13 | done, #1339 |
+| 16 | DATA-2792 | 14, 15, 26 | to do |
+| 17 | DATA-2793 | 14, 26 | to do |
+| 18 | DATA-2794 | 17 | backlog |
+| 19 | DATA-2795 | 18 | backlog |
+| 20 | DATA-2796 | 4-5, 6, 19 | backlog |
+| 21 | DATA-2797 | 18 | backlog |
+| 22-23 | DATA-2521 | 1, 3, 16, 17, 20, 21 | waiting |
+| 24 | DATA-2798 | 14 | done, #1340 |
+| 25 | DATA-2799 | 20 | backlog |
+| 26 | DATA-2800 | 24 | done, #1341; deployed paused to astro-prod on 2026-11-18 |
+| 27-28 | DATA-2562 | 22-23, 25, 26, and the two gates under "Related work outside this job" | backlog |
+| 29 | DATA-2757 | nothing; must finish before the reverse-ETL HubSpot sync is first enabled | done, #1331 |
 
-Steps 1 to 6 and 7 to 14 can run in parallel. The critical path is 7 and 8, then 9 to 11,
-13, 14, then 17 to 20, then 22 and 23. Steps 24 to 26 can be built while 22 and 23 run;
-only enabling (27) waits on the first production merges. Some tickets cover two steps that
-ship together.
+The critical path from here is 17, then 18 to 20, then 22 and 23, then 27 and 28. Steps 1
+and 16 can run beside it, and both must be done before 22. Some tickets cover two steps
+that ship together. PR #1338 also records a CLI run against the sandbox, with scratch
+tables in `dbt_dball`. That run is evidence for step 16, but it does not replace it.
 
 Ticket names carry the zero-padded step number ("Merge step 07-08: ..."), so sorting the
 epic's subtasks by name gives this order. Tickets that can start now are in "to do"; the
@@ -394,20 +495,21 @@ rest stay in "backlog" until what they wait on is done.
     read-back checks, and archives what it created. A workflow check enrolls one primary
     in a throwaway delay workflow built for the purpose and asserts it stays enrolled.
     Done when it passes twice in a row against the sandbox.
-16. **Run the job against the sandbox through Databricks.** On astro-dev, set the DAG's
-    Variables for the sandbox (see `airflow/astro/docs/hubspot_contact_merge.md`) and
-    trigger `init_log`, which creates `airflow_source_dev.hubspot_contact_merge_log`
-    owned by `airflow_dev`. Hand-build a pair table of sandbox IDs in your dev schema (it
-    is input, not a log). Trigger `dry_run`, then `run`, then `verify`, with
-    `pair_relation` set to that table. Done when the log rows match what
-    HubSpot shows, and the results are written to
-    `docs/hubspot-contact-merge-job-verification.md`.
+16. **Run the job against the sandbox through Databricks.** Check that the DAG is on
+    astro-dev; its last image deploy was on 2026-09-10. Set the astro-dev Variables (see
+    "Running the job") and trigger `init_log`, which creates
+    `airflow_source_dev.hubspot_contact_merge_log` owned by `airflow_dev`. Hand-build a
+    pair table of sandbox IDs in your dev schema, with the five queue columns (it is
+    input, not a log). Cover at least a live pair, an already-merged pair and a missing
+    secondary. Trigger `dry_run`, then `run`, then `verify`, with `pair_relation` set to
+    that table. Done when the log rows match what HubSpot shows, and the results are
+    written to `docs/hubspot-contact-merge-job-verification.md`.
 
 ### Phase 4: dbt, queue and log
 
 17. **Create the production log table.** On astro-prod, set the DAG's Variables for the
-    production portal, leaving the pair relation and the cap unset, and trigger
-    `init_log`. It creates
+    production portal, leaving the pair relation and the cap unset. Unpause the DAG,
+    trigger `init_log`, and pause it again. It creates
     `goodparty_data_catalog.airflow_source.hubspot_contact_merge_log` owned by the
     `airflow` service principal. Steps 22 and 23 run through the same DAG, so nobody needs
     a personal `MODIFY` grant. The dbt principals already read the schema through
@@ -415,7 +517,9 @@ rest stay in "backlog" until what they wait on is done.
     identity can do what it needs.
 18. **Declare the log as a dbt source.** Add the table to the existing `airflow_source`
     source in `models/staging/__sources.yaml`, with its own freshness setting (`null`
-    until step 27, since the log only grows when the job runs), and a staging model
+    until step 27, since the log only grows when the job runs) and
+    `loaded_at_field: attempted_at`, since the source's default `loaded_at` is not a log
+    column. Add a staging model
     `stg_airflow_source__hubspot_contact_merge_log` that types the columns and parses the
     snapshots. Done when `dbt build` passes on the empty table.
 19. **Union the log into `int__hubspot_contact_merges`.** Rows with status `merged`,
@@ -430,9 +534,13 @@ rest stay in "backlog" until what they wait on is done.
     not in the exclusion seed, and the secondary not in the log with a status the queue
     excludes. The queue is empty while the log holds an `id_changed` row that nobody has
     reviewed, so a scheduled run cannot merge after the ID preservation beta stops
-    working. Add `latest_election_date` from the person's candidacies in `mart_civics`.
+    working. Nothing yet records that a row was reviewed, so decide how (for example a
+    seed of reviewed run IDs) and document it. Add `latest_election_date`, cast to a date,
+    from the person's candidacies in `mart_civics` (`models/marts/civics/candidacy.sql`
+    has `gp_person_id` and the election dates). Return exactly the five queue columns.
     Document every rule in the model YAML. Test that it has no duplicate secondaries and
-    that no secondary equals its primary. Done when its row count, by election year, is
+    that no secondary equals its primary; `hsm run` refuses to run if either happens.
+    Done when its row count, by election year, is
     recorded on the ticket.
 21. **Add log health tests.** dbt tests on the log source: error on any `id_changed` row,
     warn when a pair has failed in three or more runs, warn on any `merged_elsewhere`.
@@ -446,8 +554,8 @@ is in production, and the sandbox runs in step 16 were clean.
 22. **Run five hand-checked pairs in production.** Pick five low-risk pairs from the queue
     (same phone, same name, no owner conflict, no app account) and check each in the
     HubSpot UI. Build a scratch table of only those five, and trigger the astro-prod DAG's
-    `dry_run`, then `run`, then `verify`, with `pair_relation` set to that table. Check the survivors in the UI, including any workflow enrollment. Done
-    when the results are on the ticket and the five secondaries have left the queue.
+    `dry_run`, then `run`, then `verify`, with `pair_relation` set to that table. Check
+    the survivors in the UI, including any workflow enrollment. Done when the results are on the ticket and the five secondaries have left the queue.
 23. **Run a batch of 100 from the queue.** Same procedure, with the scratch table taking
     100 rows from the queue across a mix of `match_evidence` values. Spot-check ten in the
     UI. Done when there is no `failed` or `id_changed` row, or each one is explained.
@@ -469,8 +577,10 @@ is in production, and the sandbox runs in step 16 were clean.
     send, `is_paused_upon_creation=True`, plus a DAG test of the env surface and the pinned-tag
     rule. Document it in `airflow/astro/docs/hubspot_contact_merge.md`. Done when the DAG
     tests pass and the DAG is deployed paused.
-27. **Enable with a small cap.** Set the Variables with the cap at 100 and unpause. Done
-    when three scheduled runs complete with clean logs.
+27. **Enable with a small cap.** On astro-prod, set `hubspot_merge_pair_relation` to the
+    queue view and `hubspot_merge_max_pairs` to `100`, then unpause. Give the log source
+    from step 18 a real freshness threshold. Done when three scheduled runs complete with
+    clean logs.
 28. **Raise the cap in agreed steps.** For example 500, then 2,000, then the full queue,
     each after a clean week of runs. Watch the log tests and confirm the candidates count
     falls. Before the cap passes 100, the gp-api lookup audit and the merged-away
@@ -527,11 +637,35 @@ Waiting on this plan:
 
 - **Make `gp_person_id` unique on Contacts** (DATA-2522). Proposed: stamp it only on each person's
   ranked primary contact, leaving the others null. That makes the property unique without
-  waiting for every merge, and a later merge keeps the primary's value. If agreed, it can
-  start once step 3 is in production. The reverse-ETL HubSpot sync's enable (DATA-2412) waits on it.
+  waiting for every merge, and a later merge keeps the primary's value. Step 3 is in
+  production, so it can start once the proposal is agreed. The reverse-ETL HubSpot sync's enable (DATA-2412) waits on it.
 - **The Office Holder work** (DATA-2683, DATA-2645, DATA-2684). Its first production writes wait on the first merges (steps 22 and 23).
 
 ### After this job
 
 Widening the queue past `exact_match` (for example probabilistic pairs with a human review
 round) is a change to the queue view and the exclusion seed, not to the job.
+
+## Not yet checked
+
+- Whether the `reverse_etl_hubspot_log_table` Variable is set on both deployments, and
+  whether the `reverse_etl` schema is dropped (the operational part of step 29).
+- Whether the installed `databricks-sql-connector` accepts the CLI's
+  `credentials_provider` shape when it runs from the image. Only a laptop run has used
+  the real connection.
+- Whether the astro-prod principal can read pair tables in personal dev schemas.
+- Whether the GitHub token can delete `pr-N` image versions in the image cleanup job.
+
+## Working notes
+
+- Branch from a fresh `origin/main`. Name branches `data-NNNN/short-name` and PR titles
+  `[DATA-NNNN] ...`.
+- Ask for review by commenting `delegate review` on the PR. Reply to comments, push, and
+  comment again until it is approved.
+- When a step is done, set its ticket to "done" and add it to the current sprint list
+  while its home stays in Data Backlog. Move the tickets it blocks to "to do" if nothing
+  else blocks them. Adding a task to a list through the ClickUp API needs the internal ID
+  (such as `17tnw2bcp8v`). The custom ID (`DATA-2792`) fails with "must be in the same
+  workspace".
+- Databricks CLI logins expire. Run `databricks auth login` before you query tables.
+- Open clean-up: merge #1335 (approved), and close #1334, an old copy of #1336.
