@@ -20,6 +20,7 @@ sys.path.insert(0, str(PROJ))
 sys.path.insert(0, str(PROJ.parents[1] / "lib"))
 import analyze as A  # noqa: E402
 import build_working_set as B  # noqa: E402
+import figures as F  # noqa: E402
 
 ws = A.load()
 RUN = ws["run_ts"].iloc[0]
@@ -283,11 +284,32 @@ over_up = {
 }
 big = ws[ws.band.isin(["2,500-9,999", "10,000+"])]
 big_act = big[big.activated]
+# Over the allowance among texters: across all Pro, non-texters count as "covered" (DATA-2810 amendment 3).
+tex = ws[ws.texted]
+big_tex = big[big.texted]
+over_tex = {
+    b: (int(d.over_bundle.sum()), int(d.over_bundle_upper.sum()), len(d))
+    for b in BANDS
+    for d in [tex[tex.band == b]]
+}
+
+
+rng = A.over_range
+
+
 over_fig = fig(
-    "".join(panel(n, d, "over_bundle") for n, d in COH4),
+    "".join(
+        panel(n, d, "over_bundle")
+        for n, d in [
+            ("All Pro", ws),
+            ("Texted", tex),
+            ("Texted, signed up before Jul", tex[tex.signup_era != "from Jul 2026"]),
+            ("Texted, signed up from Jul", tex[tex.signup_era == "from Jul 2026"]),
+        ]
+    ),
     4,
-    "Share of users who sent more than 5,000 texts (the proposed bundle) in the six months up to and including election day. "
-    "A lower bound: texters with no known count are counted as not over.",
+    "Share who sent more than 5,000 texts (the proposed bundle) in the six months up to and including election day, across all Pro customers and among those who texted. "
+    "Bars show the floor (known counts only); the text gives the range up to counting every texter with no count as over.",
 )
 paid_fig = fig(
     "".join(panel(n, d, "paid") for n, d in COH4),
@@ -341,7 +363,13 @@ def mini(d):
     ]
 
 
-ROB_H = ["Votes needed", "Users", "Median texts (texters)", "Over 5,000 texts", "Median $ (payers)"]
+ROB_H = [
+    "Votes needed",
+    "Users",
+    "Median texts (texters)",
+    "Over 5,000 texts (at least)",
+    "Median $ (payers)",
+]
 rob_early = table(ROB_H, mini(ws[~ws.early_election]), total_last=True)
 rob_future = table(ROB_H, mini(ws[~ws.future_election]), total_last=True)
 b10 = ws[ws.band == "10,000+"]
@@ -352,7 +380,7 @@ lvl = b10.groupby("office_level").agg(
     over=("over_bundle", "sum"),
 )
 lvl_tbl = table(
-    ["Office level", "Users", "Median votes needed", "Texted", "Over 5,000 texts"],
+    ["Office level", "Users", "Median votes needed", "Texted", "Over 5,000 texts (at least)"],
     [
         [esc(i), f"{int(r.users)}", f"{r.med:,.0f}", f"{int(r.texted)}", f"{int(r.over)}"]
         for i, r in lvl.iterrows()
@@ -380,7 +408,7 @@ status_tbl = table(
         "Users",
         "Election before Jul 15",
         "Sent texts",
-        "Over 5,000 texts",
+        "Over 5,000 texts (at least)",
         "Activated",
         "No outreach",
     ],
@@ -401,8 +429,8 @@ def ci_cell(d, flag):
 ci_tbl = table(
     [
         "Votes needed",
-        "Over 5,000 texts, all Pro",
-        "Over 5,000 texts, activated",
+        "Over 5,000 texts (at least), all Pro",
+        "Over 5,000 texts (at least), activated",
         "Acted in outreach (races from Jul 15)",
         "No outreach at all, all Pro",
     ],
@@ -541,9 +569,15 @@ ASSUMPTIONS = [
         "Review, amendment",
     ),
     (
-        "Headline bundle shares use all paying Pro customers; activated is shown second.",
+        "The share over 5,000 texts leads with texters; all paying Pro customers are shown beside it.",
+        "Tristan, 2026-11-16: across all Pro, non-texters count as covered, so the allowance read as big enough. Both shares answer real questions: who outgrows it among people who text, and among everyone a bundle would charge.",
+        f"Over 5,000 texts at 2,500+ votes: {rng(big_tex)} of texters; {rng(big)} of all Pro.",
+        "Revision after close",
+    ),
+    (
+        "Headline bundle shares used all paying Pro customers; activated was shown second (superseded by the row above).",
         "Both reviews: the bundle price applies to every customer, and activation requires outreach, so activated-only shares overstate demand.",
-        f"Over 5,000 texts at 2,500+ votes: {big.over_bundle.mean():.0%} of all Pro, {big_act.over_bundle.mean():.0%} of activated.",
+        f"Over 5,000 texts at 2,500+ votes: at least {big.over_bundle.mean():.0%} of all Pro, at least {big_act.over_bundle.mean():.0%} of activated.",
         "Review, amendment",
     ),
     (
@@ -551,6 +585,18 @@ ASSUMPTIONS = [
         "Texters with no known count are counted as not over.",
         "An upper bound counting them all as over is shown beside it; the gap is widest under 1,000 votes.",
         "Review, amendment",
+    ),
+    (
+        'Over 5,000 texts is written "at least X%, up to Y%" everywhere, and Amplitude fills missing gp-api counts.',
+        "Tristan, 2026-11-18: the bare all-Pro figure was the floor shown as a fixed number, and gp-api's null or 0 counts dropped recipient counts Amplitude holds for the same send.",
+        f"Texters with no count fell from 105 to {int(tex.texts_unknown.sum())}; at 2,500+ votes, {rng(big_tex)} of texters.",
+        "Revision after close",
+    ),
+    (
+        'The "up to" end also counts texters who have a known count plus sends with no count in any source.',
+        "DATA-2810 methodology review, 2026-11-19: those texters could be over too.",
+        f"At 2,500+ votes: {rng(big_tex)} of texters.",
+        "Revision after close",
     ),
     (
         "A text costs about 3.1 to 3.5 cents.",
@@ -622,7 +668,7 @@ med_pay = {b: p[p.band == b].outreach_usd.median() for b in BANDS}
 opp_after = {b: fm_after[fm_after.band == b].acted_opponents.mean() for b in BANDS}
 out_fm = {b: fm[fm.band == b].acted_outreach.mean() for b in BANDS}
 tex75 = {b: al.loc[b, "texters 75%"] for b in BANDS}
-all75 = {b: al.loc[b, "all Pro 75%"] for b in BANDS}
+med_tex = ws[ws.texts_known].groupby("band", observed=True)["texts_sent"].median()
 no_out_big = ws[ws.band == "10,000+"].no_outreach
 ob_mid = f"{act[act.band == '2,500-9,999'].over_bundle.mean():.0%}"
 ob_big = f"{act[act.band == '10,000+'].over_bundle.mean():.0%}"
@@ -633,6 +679,32 @@ ob_small_k, ob_small_n = (
 small_med = p[p.band == "under 1,000"].outreach_usd.median()
 big_med = p[p.band == "10,000+"].outreach_usd.median()
 known = N - int((ws.wn_source == "none").sum())
+
+# ---------- headline charts (CPO view: one chart per finding) ----------
+SEG_URL = "https://claude.ai/artifact/SPLJG1QJtEY7VyHizCDvHj"
+vol_hero = F.volume_chart(ws)
+feat_hero = (
+    '<h3 class="ctitle">Share of customers who used each feature area, by votes needed to win</h3>'
+    + fig(
+        "".join(panel(A.AREA_NAMES[a], fm, f"acted_{a}") for a in A.AREAS),
+        len(A.AREAS),
+        "Each dot is one race-size band; the dashed line is everyone. A band to the right of the line uses that area more.",
+        f"Races from July 15 ({len(fm)} customers), when feature tracking works. Faded: under 100 people. Hover for counts.",
+    )
+)
+wd = ws.assign(did_outreach=~ws.no_outreach.astype(bool))
+texted_hero = (
+    '<h3 class="ctitle">Share of customers who texted, and who did any outreach, by votes needed to win</h3>'
+    + fig(
+        panel("Sent at least one text", wd, "texted")
+        + panel("Did any outreach, any channel", wd, "did_outreach"),
+        2,
+        "Each dot is one race-size band; the dashed line is everyone.",
+        f"All {N} paying Pro customers, six months up to election day. Faded: under 100 people. Hover for counts.",
+    )
+)
+big_t = tex[tex.band.isin(["2,500-9,999", "10,000+"])]
+
 
 page = f"""<title>Pro Usage by Race Size</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -722,6 +794,10 @@ blockquote.ask footer {{ font-size: 12.5px; color: var(--muted); }}
 dl.framing {{ display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px 24px; margin: 0; font-size: 14px; }}
 dl.framing dt {{ font-weight: 600; }}
 dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }}
+{F.CSS}
+ul.plainlist {{ list-style: none; padding: 0; gap: 8px; font-size: 14px; color: var(--fg); }}
+section.divider {{ border-top: 3px solid var(--fg); padding-top: 28px; margin-top: 24px; }}
+h1.appendix-title {{ font: 600 clamp(24px, 3vw, 30px)/1.2 var(--sans); }}
 @media (max-width: 560px) {{ dl.framing {{ grid-template-columns: 1fr; gap: 2px; }} dl.framing dd {{ margin-bottom: 12px; }} }}
 </style>
 <main>
@@ -730,53 +806,70 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
   <h1>Does race size change how Pro users use Win?</h1>
   <p class="meta">Paying Win Pro customers with a 2026 election (Pro today, or canceled after their election) {SEP} {N} people {SEP} six months up to and including election day {SEP}
   run {esc(RUN)} UTC {SEP} staff, demo and comped Pro excluded</p>
-  <p class="meta status"><b>Status: reviewed draft.</b> Rebuilt 2026-11-12 on the marts with the revised population; results reviewed by Tristan; independent methodology and product reviews done and applied 2026-11-12. Owner: Tristan (product analytics).</p>
+  <p class="meta status"><b>Status: reviewed draft.</b> Rebuilt 2026-11-12 on the marts with the revised population; results reviewed by Tristan; independent methodology and product reviews done and applied 2026-11-12. Revised 2026-11-16: the share over 5,000 texts now leads with people who texted, since counting non-texters made the allowance look big enough. Revised 2026-11-18: written as "at least, up to" everywhere, with Amplitude filling text counts gp-api left empty or at 0. Restructured 2026-11-18 for a non-analyst reader: three findings up front, the detail in an analyst appendix. Revised 2026-11-20: the "up to" end also counts texters with a known count plus sends no source counted. Owner: Tristan (product analytics).</p>
 </header>
 
 <section id="tldr">
-  <span class="eyebrow">TL;DR</span>
-  <p class="answer">No feature is used more by bigger races, so race size is no basis for feature packaging. What race size changes is texting:
-  bigger races send more texts, though fewer per vote needed. Among all paying Pro customers in races needing 2,500 or more votes,
-  {big.over_bundle.mean():.0%} sent more than 5,000 texts ({big_act.over_bundle.mean():.0%} of activated ones). And {int((~ws.texted).sum())} of {N} never sent a text,
-  so a text bundle priced into the fee charges most customers for texts they do not send today.</p>
-  <ul class="support">
-    <li>No feature area rises with race size. On races from July 15 (when feature tracking works), the 10,000+ band is lower on every area, for example outreach {out_fm["10,000+"]:.0%} against {min(out_fm[b] for b in BANDS[:3]):.0%} to {max(out_fm[b] for b in BANDS[:3]):.0%}. Among July-on signups the bands are flat: opponent research {", ".join(f"{opp_after[b]:.0%}" for b in BANDS)}. <a href="#features">Section 2: features</a></li>
-    <li>Bigger races send more texts (median {mt_small:,.0f} to {mt_big:,.0f} among texters) but fewer per vote needed (about {tv_small:.0f}, from only {int(kt[kt.band == "under 1,000"].shape[0])} texters, down to {tv_big:.1f}). <a href="#volume">Section 4: volume and spend</a></li>
-    <li>Over 5,000 texts, all Pro customers: {", ".join(f"{over_up[b][0]} of {over_up[b][2]}" for b in BANDS)} from smallest to largest band. Counting every texter with no known count as over gives an upper bound of {", ".join(str(over_up[b][1]) for b in BANDS)}. <a href="#volume">Section 4: volume and spend</a></li>
-    <li>{int(ws.texted.sum())} of {N} ({ws.texted.mean():.0%}) sent a text; {int(ws.tried_text_only.sum())} more started one and never sent it. {int(ws.no_outreach.sum())} ({ws.no_outreach.mean():.0%}) did no outreach on any channel, and {no_out_big.mean():.0%} in the 10,000+ band. <a href="#who-texts">Section 4: who texts</a></li>
-    <li>Median outreach spend per payer rises from ${small_med:,.0f} to ${big_med:,.0f}. Texts cost about {per_text_lo * 100:.1f} to {per_text * 100:.1f} cents each, so 5,000 texts are about {cost_5k}. <a href="#volume">Section 4: volume and spend</a></li>
-    <li>Phone banking is used about evenly across sizes; robocalls and door knocking peak in the middle bands. Door knocking is free today and {int(ws.used_door_knocking.sum())} of {N} used it. <a href="#channels">Section 3: channels</a></li>
-    <li>Volume and spend hold without the early races, the races not yet held, or the people who canceled after their election. One statewide race is {top / tot_usd:.0%} of all outreach dollars, so the report uses medians. <a href="#robustness">Section 5: robustness</a></li>
+  <span class="eyebrow">The answer</span>
+  <p class="answer">Size any text allowance by race size, and do not package features by it. Bigger races send more texts but use no feature more, and fewer than half of Pro customers text at all.</p>
+  <nav class="toc" aria-label="Sections"><a href="#f-features">1 Features</a><a href="#f-texts">2 Texts</a><a href="#f-nontexters">3 Who texts</a><a href="#unknowns">What we don't know</a><a href="#recommendations">Recommendations</a><a href="#analyst">Appendix for analysts</a></nav>
+</section>
+
+<section id="f-features">
+  <span class="eyebrow">1 {SEP} Features</span>
+  <h2>Do bigger races use different features?</h2>
+  <p class="takeaway">No. No feature area is used more in bigger races; the 10,000+ band uses every area less, for example outreach {out_fm["10,000+"]:.0%} against {min(out_fm[b] for b in BANDS[:3]):.0%} to {max(out_fm[b] for b in BANDS[:3]):.0%} in smaller races.</p>
+  {feat_hero}
+  <p class="takeaway"><b>For pricing:</b> tiers built on "bigger races get opponent research" would charge for something big races use no more.</p>
+</section>
+
+<section id="f-texts">
+  <span class="eyebrow">2 {SEP} Texts</span>
+  <h2>Do bigger races send more texts?</h2>
+  <p class="takeaway">Yes. The median texter sent {mt_small:,.0f} texts under 1,000 votes and {mt_big:,.0f} at 10,000 or more, though fewer per vote needed as races grow.</p>
+  {vol_hero}
+  <p class="takeaway"><b>For pricing:</b> a flat 5,000-text allowance runs out for most texters in bigger races: {rng(big_t)}, of texters in races needing 2,500 votes or more went past it. 5,000 texts cost customers about {cost_5k} at current prices.</p>
+  <p class="note">{esc(A.why_range(ws))}</p>
+</section>
+
+<section id="f-nontexters">
+  <span class="eyebrow">3 {SEP} Who texts</span>
+  <h2>How many Pro customers text at all?</h2>
+  <p class="takeaway">Fewer than half: {int(ws.texted.sum())} of {N} ({ws.texted.mean():.0%}) sent a text, and {int(ws.no_outreach.sum())} ({ws.no_outreach.mean():.0%}) did no outreach on any channel. The biggest races text least: {ws[ws.band == "10,000+"].texted.mean():.0%} at 10,000 votes or more.</p>
+  {texted_hero}
+  <p class="takeaway"><b>For pricing:</b> a text bundle priced into the fee charges most customers for texts they do not send today. <a href="{SEG_URL}">DATA-2810</a> suggests whether customers do outreach goes with whether CaS reached them far more than with any customer segment, though it cannot yet say CaS causes it.</p>
+</section>
+
+<section id="unknowns">
+  <span class="eyebrow">Limits</span>
+  <h2>What we don't know</h2>
+  <ul class="note plainlist">
+    <li><b>How a bundle changes behavior.</b> Customers paid per text here; inside a bundle extra texts are free, so expect them to send more.</li>
+    <li><b>Why most customers don't text.</b> Price friction is small ({int((ws.tried_text_only & (ws.p2p_pending_payment > 0)).sum())} text campaigns stopped at payment). DATA-2810 points to support, but customers choose to take the CaS call, so cause is not settled.</li>
+    <li><b>Exact text counts for some customers.</b> That is why the share over 5,000 is a range.</li>
   </ul>
-  <p class="note terms"><b>Terms.</b> <b>Activated</b>, the company-wide definition (the activation OKR): reached voters at least once, on any channel, at any time, counting outreach they logged in Win themselves ({int(ws.activated.sum() - (ws.activated & (ws.sends_total > 0)).sum())} activated people had no recorded send in the window),
-  so every activated user did some outreach ({len(act)} of {N}). <b>Texter</b>: sent at least one text in the window. <b>Votes needed</b>: half the projected turnout, plus one.
-  <b>Window</b>: the six months before the election, election day included.</p>
-  <nav class="toc" aria-label="Sections"><a href="#recommendations">Recommendations</a><a href="#votes-needed">1 Votes needed</a><a href="#features">2 Features</a><a href="#channels">3 Channels</a><a href="#volume">4 Volume and spend</a><a href="#robustness">5 Robustness</a><a href="#rerun">Rerun</a><a href="#appendix">Appendix: question and framing</a><a href="#assumptions">Assumptions</a></nav>
 </section>
 
 <section id="recommendations">
   <span class="eyebrow">Recommendations</span>
   <h2>What should product do with this?</h2>
-  <p class="takeaway">The analyst's read for the pricing work, revised after the methodology and product reviews. Each item names the evidence behind it.</p>
+  <p class="takeaway">The analyst's read for the pricing work, revised after the methodology and product reviews.</p>
   <ol class="plain recs">
-    <li><b>Do not package features by race size.</b> No feature area is used more in bigger races. The largest races use every area less,
-    mostly among people who signed up before July, so tiers built on "bigger races get opponent research" would charge for something big races use no more. <a href="#features">Section 2</a></li>
-    <li><b>If outreach is bundled, size the text allowance by race, and price it against what people spend today.</b> Among texters, 75% are covered by
-    {tex75["1,000-2,499"]} texts at 1,000 to 2,499 votes, {tex75["2,500-9,999"]} at 2,500 to 9,999 and {tex75["10,000+"]} at 10,000+. Across all Pro customers,
-    5,000 texts already covers three in four of every band except 2,500 to 9,999 ({all75["2,500-9,999"]}). Texts per vote needed fall as races grow, so the allowance should grow
-    less than in proportion: a base allowance with paid top-ups fits the spread better than one fixed number. 5,000 texts cost about {cost_5k},
-    while the median payer spends ${med_pay["under 1,000"]:,.0f} under 1,000 votes and ${med_pay["1,000-2,499"]:,.0f} at 1,000 to 2,499, so for small races
-    a $249 bundle charges for texts most would not send. People paid per text here; inside a bundle extra texts are free, so expect them to send more. <a href="#allowance">Section 4</a></li>
-    <li><b>Treat the people who do not text as their own question.</b> {int((~ws.texted).sum())} of {N} paying Pro customers never sent a text, and {int(ws.no_outreach.sum())} did no outreach at all,
-    {no_out_big.mean():.0%} in the 10,000+ band. {int((ws.tried_text_only & (ws.p2p_pending_payment > 0)).sum())} text campaigns stopped at payment, a small sign of price friction.
-    A bundle raises their price for something they do not use; whether that is a pricing problem or an onboarding problem is not answered here. <a href="#who-texts">Section 4</a></li>
-    <li><b>Look beyond race size for other ways to segment.</b> Race size explains text volume and little else. DATA-2810 tests other
-    cuts (office level, timing of the upgrade, incumbency, usage groups) for differences in use and willingness to pay.</li>
+    <li><b>Do not package features by race size.</b> No feature area is used more in bigger races. <a href="#f-features">Section 1</a></li>
+    <li><b>If texts are bundled, size the allowance by race size, and price it against what people spend today.</b> Three in four texters are covered by {tex75["1,000-2,499"]} texts at 1,000 to 2,499 votes, {tex75["2,500-9,999"]} at 2,500 to 9,999 and {tex75["10,000+"]} at 10,000+. A base allowance with paid top-ups fits the spread better than one fixed number. For small races a $249 bundle charges for texts most would not send: the median payer under 1,000 votes spends ${med_pay["under 1,000"]:,.0f}. <a href="#f-texts">Section 2</a></li>
+    <li><b>Treat customers who do not text as their own question.</b> A bundle raises their price for something they do not use. <a href="{SEG_URL}">DATA-2810</a> suggests support, not price, is what moves them. <a href="#f-nontexters">Section 3</a></li>
   </ol>
+  <p class="note"><b>Terms.</b> <b>Votes needed</b>: half the projected turnout, plus one. <b>Texter</b>: sent at least one text in the six months up to election day. <b>Activated</b>, the company definition: reached voters at least once, on any channel.</p>
+</section>
+
+<section id="analyst" class="divider">
+  <h1 class="appendix-title">Appendix for analysts</h1>
+  <p class="takeaway"><b>The detail behind the answer.</b> Where the votes-needed number comes from, every cut by signup era and activation, channels, volume and spend, robustness, and how to rerun it.</p>
+  <nav class="toc" aria-label="Appendix sections"><a href="#votes-needed">A1 Votes needed</a><a href="#features">A2 Features</a><a href="#channels">A3 Channels</a><a href="#volume">A4 Volume and spend</a><a href="#robustness">A5 Robustness</a><a href="#rerun">Rerun</a><a href="#appendix">Question and framing</a><a href="#assumptions">Assumptions</a></nav>
 </section>
 
 <section id="votes-needed">
-  <span class="eyebrow">1 {SEP} Input</span>
+  <span class="eyebrow">A1 {SEP} Input</span>
   <h2>Can we trust the votes-needed number?</h2>
   <p class="takeaway">Yes, for {known} of {N} users. gp-api stores no win number; it computes half the projected turnout plus one,
   from the override district, else the race picked in onboarding, else the organization's position. We repeat that rule.</p>
@@ -792,8 +885,8 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
 </section>
 
 <section id="features">
-  <span class="eyebrow">2 {SEP} Features</span>
-  <h2>Do bigger races use different features?</h2>
+  <span class="eyebrow">A2 {SEP} Features</span>
+  <h2>Features by race size, in every cut</h2>
   <p class="takeaway">No area is used more by bigger races. Among people who signed up from July the bands sit on the everyone line.
   Among earlier signups the 10,000+ band is lower on every area, and {(fm[fm.band == "10,000+"].signup_era == "before Jul 2026").mean():.0%} of that band signed up before July.
   So big races are less engaged across the board, not drawn to a particular feature. Every chart shares one layout: read straight down to compare.</p>
@@ -817,7 +910,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
 </section>
 
 <section id="channels">
-  <span class="eyebrow">3 {SEP} Channels</span>
+  <span class="eyebrow">A3 {SEP} Channels</span>
   <h2>Do bigger races use different outreach channels?</h2>
   <p class="takeaway">Texting is the main channel at every size; among activated users it falls off only above 10,000 votes.
   Phone banking is about even across sizes. Robocalls and door knocking are mostly a middle-band habit. Door knocking is free today and {int(ws.used_door_knocking.sum())} of {N} used it, so "unlimited" in a bundle costs nothing and changes little. Only {un:,} of {tot:,} sends have an unknown channel.</p>
@@ -827,7 +920,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
 </section>
 
 <section id="volume">
-  <span class="eyebrow">4 {SEP} Volume and spend</span>
+  <span class="eyebrow">A4 {SEP} Volume and spend</span>
   <h2>Do bigger races send and spend more?</h2>
   <p class="takeaway">Fewer than half of Pro customers text at all ({int(ws.texted.sum())} of {N}; {int((~ws.texted).sum())} never did). Those who do send more texts in bigger races but far fewer per vote needed,
   and that holds among activated users and within each signup era.
@@ -842,7 +935,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
   some probably older texts, so "never sent a text" is an upper bound.</p></div>
   <div class="sub"><h3>How many texts</h3>{vol_fig}</div>
   <div class="sub"><h3>Who outgrows a 5,000-text bundle</h3>{over_fig}
-  <p class="note">Upper bound, counting every texter with no known count as over: {", ".join(f"{over_up[b][1]} of {over_up[b][2]}" for b in BANDS)} from smallest to largest band.
+  <p class="note">Among texters: {"; ".join(f"{b}, {rng(tex[tex.band == b])}" for b in BANDS[:4])}. {esc(A.why_range(ws))}
   The gap is widest under 1,000 votes, where many texters (mostly spring races) have no count. Their known-count neighbors sent a median of {mt_small:,.0f}, so most of them are probably under.</p></div>
   <div class="sub" id="allowance"><h3>What allowance would cover most people</h3>{allow_tbl}
   <p class="note">Texts that cover 50%, 75% and 90% of each band. "All Pro" counts non-texters at zero, so its median is 0 everywhere. Texters with no known count are left out,
@@ -858,7 +951,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
 </section>
 
 <section id="robustness">
-  <span class="eyebrow">5 {SEP} Robustness</span>
+  <span class="eyebrow">A5 {SEP} Robustness</span>
   <h2>Does it hold?</h2>
   <p class="takeaway">For volume and spend, yes: dropping the {n_early} races before July 15 or the {n_future} not yet held leaves the medians unchanged.
   Features are already measured on races from July 15 only (Section 2). The 10,000+ band mixes city races with federal ones (see below), so treat it as "big races" and no finer.</p>
@@ -872,7 +965,7 @@ dl.framing dd {{ margin: 0; display: flex; flex-direction: column; gap: 6px; min
   <p class="note">People who canceled after their election use less, but {int(canc.early_election.sum())} of {len(canc)} had spring races, before the AI assistant
   and opponent research existed, so this is not an independent check of the feature findings. They pull rates down most in the under-1,000 band, where they are
   {int((canc.band == "under 1,000").sum())} of {int((ws.band == "under 1,000").sum())} people, but the pattern across bands is the same with Pro today only:
-  over 5,000 texts {", ".join(f"{(pt := ws[(ws.pro_status == 'Pro today') & (ws.band == b)]).over_bundle.mean():.0%}" for b in BANDS)} from smallest to largest band.</p></div>
+  over 5,000 texts (at least) {", ".join(f"{(pt := ws[(ws.pro_status == 'Pro today') & (ws.band == b)]).over_bundle.mean():.0%}" for b in BANDS)} from smallest to largest band.</p></div>
   <div class="sub"><h3>The 10,000+ band by office level</h3>{lvl_tbl}</div>
 </section>
 

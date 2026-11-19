@@ -30,6 +30,25 @@ BUNDLE_TEXTS = 5000
 MIN_N = 30  # below this a band shows counts only
 
 
+def over_range(d: pd.DataFrame) -> str:
+    """Share over the bundle: known counts as the floor; for the ceiling, every texter with any uncounted send as over."""
+    return f"at least {d['over_bundle'].mean():.0%}, up to {d['over_bundle_upper'].mean():.0%}"
+
+
+def why_range(ws: pd.DataFrame) -> str:
+    """One shared note for both pages on why the over-5,000 share is a range."""
+    t = ws[ws["texted"]]
+    return (
+        f"Why a range: {int(t['texts_unknown'].sum())} of {len(t)} texters have no text count in any source. "
+        f"For {int(t['unknown_null'].sum())}, gp-api never recorded one, mostly on sends from February to June 2026, "
+        f"before texting events reached Amplitude. For {int(t['unknown_zero'].sum())}, gp-api recorded 0 and Amplitude has no event. "
+        f"Another {int((t['texts_partial'] & ~t['over_bundle']).sum())} have a count under 5,000 plus sends with none. "
+        f'"At least" counts only known counts over 5,000; "up to" also counts all of these as over. '
+        f"Where gp-api holds 0 or no count but Amplitude has the send's recipient count, Amplitude's count is used "
+        f"({int((t['amp_fill_texts'] > 0).sum())} texters)."
+    )
+
+
 def load() -> pd.DataFrame:
     ws = pd.read_parquet(DATA / "working_set.parquet")
     ad = pd.read_parquet(DATA / "area_days.parquet")
@@ -39,6 +58,15 @@ def load() -> pd.DataFrame:
     for c in ["outreach_usd", "wn_override", "wn_race", "wn_position", "voter_count"]:
         ws[c] = pd.to_numeric(ws[c], errors="coerce").astype(float)
     run_ts = pd.Timestamp(ws["run_ts"].iloc[0])
+
+    # gp-api sends with a null or 0 count whose Amplitude terminal event carries one (DATA-2810
+    # amendment 4). gp-api counted 0 for those sends, so adding the Amplitude count replaces it.
+    fill = pd.read_parquet(DATA / "amp_text_fill.parquet")
+    assert (fill["run_ts"] == ws["run_ts"].iloc[0]).all(), "amp_text_fill is from a different run"
+    fill_cols = ["amp_fill_texts", "gap_null_sends", "gap_zero_sends"]
+    ws = ws.merge(fill[["user_id", *fill_cols]], on="user_id", how="left", validate="one_to_one")
+    ws[fill_cols] = ws[fill_cols].fillna(0)
+    ws["texts_sent"] = ws["texts_sent"] + ws["amp_fill_texts"]
 
     # gp-api's order: override district, then the picked race, then the position.
     live = np.where(
@@ -68,8 +96,8 @@ def load() -> pd.DataFrame:
     ws["signup_era"] = np.where(ws["user_created_at"] >= "2026-07-01", "from Jul 2026", "before Jul 2026")
     ws["early_election"] = ws["ged"] < "2026-07-15"
     ws["future_election"] = ws["ged"] > run_ts
-    # A texter is anyone with a sent text. Some sends carry no billable count (Amplitude legs, a few p2p rows),
-    # so volume is measured only where the count is known; counting texters by known volume missed 66 people.
+    # A texter is anyone with a sent text. Some p2p sends carry no count in gp-api or Amplitude,
+    # so volume is measured only where the count is known; counting texters by known volume missed them.
     ws["texted"] = ws["sends_texting"] > 0
     ws["texts_known"] = ws["texts_sent"] > 0
     ws["texts_unknown"] = ws["texted"] & ~ws["texts_known"]
@@ -78,8 +106,13 @@ def load() -> pd.DataFrame:
     ws["activated"] = ws["is_activated"].fillna(False).astype(bool)
     ws["texts_per_vote"] = ws["texts_sent"].where(ws["texts_known"]) / ws["votes_needed"]
     ws["over_bundle"] = ws["texts_sent"] > BUNDLE_TEXTS
-    # Texters with no known count could be over too: the upper bound counts them all as over.
-    ws["over_bundle_upper"] = ws["over_bundle"] | ws["texts_unknown"]
+    # Texters with no known count, or a known count plus sends no source counted, could be over too:
+    # the upper bound counts them all as over.
+    ws["texts_partial"] = ws["texts_known"] & ((ws["gap_null_sends"] + ws["gap_zero_sends"]) > 0)
+    ws["over_bundle_upper"] = ws["over_bundle"] | ws["texts_unknown"] | ws["texts_partial"]
+    # Why a texter has no count: gp-api never recorded one (before texting reached Amplitude), or recorded 0.
+    ws["unknown_null"] = ws["texts_unknown"] & (ws["gap_null_sends"] > 0)
+    ws["unknown_zero"] = ws["texts_unknown"] & ~ws["unknown_null"]
     # Before Jul 15 the DATA-2690 action events record nothing in outreach, story or opponent
     # research (older event names), though 47 of those users texted. Feature cuts skip them.
     ws["feature_measured"] = ~ws["early_election"]
