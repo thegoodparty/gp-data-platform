@@ -113,3 +113,20 @@ sources:
             config:
               meta:
                 sensitive: confidential
+          # The street-address parts the gp_api mart publishes as
+          # HouseNumber, ApartmentNum and DPBC. Tagged here to match the voter
+          # file, whose l2_sensitive_tags seed carries the equivalent
+          # Residence_Addresses_* and Mailing_Addresses_* columns as
+          # confidential. Source-level, so both address prefixes inherit it.
+          - name: House_Number
+            config:
+              meta:
+                sensitive: confidential
+          - name: Unit_Designator_Number
+            config:
+              meta:
+                sensitive: confidential
+          - name: Delivery_Point_Check_Digit
+            config:
+              meta:
+                sensitive: confidential

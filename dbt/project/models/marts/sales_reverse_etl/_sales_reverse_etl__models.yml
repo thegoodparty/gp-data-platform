@@ -313,7 +313,16 @@ models:
         description: >
           Two of the person's contacts carry the same email. HubSpot does not allow
           that on live contacts, so one was likely deleted or merged without the
-          survivor showing it; confirm both exist before merging.
+          survivor showing it; confirm both exist before merging. A flag, not the
+          address, so it stays readable: propagation would otherwise copy the
+          email's identifier tag onto a boolean.
+        databricks_tags:
+          open: "true"
+      - name: has_last_name_mismatch
+        description: >
+          The person's contacts disagree on surname. A flag, not the surname.
+        databricks_tags:
+          open: "true"
       - name: matched_on
         description: >
           On a secondary, native_ids when it shares the primary's deterministic

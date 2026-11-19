@@ -187,6 +187,20 @@ models:
         description: "Indicates whether the candidate has been verified"
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
+      - name: email_match
+        description: >
+          1 when the contact's email equals the matched company's candidate
+          email, else 0. A comparison outcome, not the address, so it stays
+          readable: propagation would otherwise copy the email's identifier tag
+          onto an integer, which the hash mask cannot cast.
+        databricks_tags:
+          open: "true"
+      - name: name_match
+        description: >
+          1 when the contact's full name equals the matched company's candidate
+          name, else 0. A comparison outcome, not the name itself.
+        databricks_tags:
+          open: "true"
 
   - name: int__hubspot_companies_archive_2025
     description: >
