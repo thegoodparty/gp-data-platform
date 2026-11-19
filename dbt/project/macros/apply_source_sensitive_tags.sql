@@ -20,6 +20,10 @@
     The seed is located through graph.nodes rather than ref(), because a ref()
     reached only from a hook leaves dbt unable to infer the operation's
     dependencies and parsing fails.
+
+    The two candidate sets -- source declarations and L2 seed columns -- are
+    built first, checked together, and only then written, so a failure on either
+    one leaves nothing applied.
 -#}
 {% macro apply_source_sensitive_tags() %}
 
@@ -27,8 +31,39 @@
         {{ return("") }}
     {%- endif -%}
 
-    {{ apply_sensitive_tags_to_sources() }}
-    {{ apply_sensitive_tags_to_l2() }}
+    {%- set source_pairs = declared_source_sensitive_tags() -%}
+    {%- set l2_pairs = declared_l2_sensitive_tags() -%}
+    {%- set expected = {} -%}
+    {%- for pairs in [source_pairs, l2_pairs] -%}
+        {%- for key, declared in pairs.items() -%}
+            {%- do expected.update({key: declared}) -%}
+        {%- endfor -%}
+    {%- endfor -%}
+    {%- if not expected -%} {{ return("") }} {%- endif -%}
+
+    {#- Every check runs before any ALTER, so a stale declaration writes nothing
+        and the failure message is true on both paths. -#}
+    {{ assert_sensitive_tag_targets_exist(expected, existing_source_columns()) }}
+
+    {%- set current = current_sensitive_tags() -%}
+    {%- set written = [] -%}
+    {%- for key, declared in expected.items() -%}
+        {%- if current.get(key) != declared["value"] -%}
+            {{ set_sensitive_tag(key[0], key[1], key[2], key[3], declared["value"]) }}
+            {%- do written.append(key) -%}
+        {%- endif -%}
+    {%- endfor -%}
+
+    {{
+        log(
+            "sensitive tag apply: " ~ written
+            | length ~ " written of " ~ expected
+            | length ~ " declared pairs (" ~ source_pairs
+            | length ~ " source, " ~ l2_pairs
+            | length ~ " L2)",
+            info=True,
+        )
+    }}
 
     {{ return("") }}
 {% endmacro %}
@@ -71,8 +106,18 @@
 
 {#-
     Raises with the exact pair, the file that declares it and the value, so the
-    fix is a one-line YAML edit without a second query. Fails before any ALTER
-    runs, so a stale declaration writes nothing.
+    fix is a one-line YAML edit without a second query.
+
+    Failing the whole build is deliberate. The alternative -- warn and skip the
+    missing pairs -- would apply the rest and leave a declaration silently
+    unapplied, so a column could read unmasked while the source still says it is
+    sensitive. A build that stops leaves yesterday's data in place, which is
+    recoverable; a mask that is quietly missing is not. A missing column is a
+    declaration that has drifted from the loader, and that is a change worth
+    stopping for.
+
+    Both candidate sets are checked together before the first ALTER, so this
+    message is true whichever pair is missing.
 -#}
 {% macro assert_sensitive_tag_targets_exist(expected, existing) %}
     {%- for key, declared in expected.items() -%}
@@ -190,33 +235,6 @@
 {% endmacro %}
 
 
-{% macro apply_sensitive_tags_to_sources() %}
-    {%- set expected = declared_source_sensitive_tags() -%}
-    {%- if not expected -%} {{ return("") }} {%- endif -%}
-
-    {{ assert_sensitive_tag_targets_exist(expected, existing_source_columns()) }}
-
-    {%- set current = current_sensitive_tags() -%}
-    {%- set written = [] -%}
-    {%- for key, declared in expected.items() -%}
-        {%- if current.get(key) != declared["value"] -%}
-            {{ set_sensitive_tag(key[0], key[1], key[2], key[3], declared["value"]) }}
-            {%- do written.append(key) -%}
-        {%- endif -%}
-    {%- endfor -%}
-
-    {{
-        log(
-            "sensitive tag apply: " ~ written
-            | length ~ " written of " ~ expected
-            | length ~ " declared source columns",
-            info=True,
-        )
-    }}
-    {{ return("") }}
-{% endmacro %}
-
-
 {#-
     The L2 seed's columns on the raw voter-file tables. Only the `_uniform`
     tables carry them: the `_vote_history` tables have none of the 33 columns,
@@ -249,9 +267,9 @@
 {% endmacro %}
 
 
-{% macro apply_sensitive_tags_to_l2() %}
+{% macro declared_l2_sensitive_tags() %}
     {%- set seed_relation = l2_sensitive_tags_relation() -%}
-    {%- if seed_relation is none -%} {{ return("") }} {%- endif -%}
+    {%- if seed_relation is none -%} {{ return({}) }} {%- endif -%}
     {%- set seed_tags = {} -%}
     {%- if execute -%}
         {%- set results = run_query(
@@ -263,7 +281,7 @@
             {%- do seed_tags.update({row[0]: row[1]}) -%}
         {%- endfor -%}
     {%- endif -%}
-    {%- if not seed_tags -%} {{ return("") }} {%- endif -%}
+    {%- if not seed_tags -%} {{ return({}) }} {%- endif -%}
 
     {%- set expected = {} -%}
     {%- for node in graph.sources.values() -%}
@@ -289,26 +307,5 @@
             {%- endfor -%}
         {%- endif -%}
     {%- endfor -%}
-    {%- if not expected -%} {{ return("") }} {%- endif -%}
-
-    {{ assert_sensitive_tag_targets_exist(expected, existing_source_columns()) }}
-
-    {%- set current = current_sensitive_tags() -%}
-    {%- set written = [] -%}
-    {%- for key, declared in expected.items() -%}
-        {%- if current.get(key) != declared["value"] -%}
-            {{ set_sensitive_tag(key[0], key[1], key[2], key[3], declared["value"]) }}
-            {%- do written.append(key) -%}
-        {%- endif -%}
-    {%- endfor -%}
-
-    {{
-        log(
-            "sensitive tag apply: " ~ written
-            | length ~ " written of " ~ expected
-            | length ~ " L2 seed column pairs",
-            info=True,
-        )
-    }}
-    {{ return("") }}
+    {{ return(expected) }}
 {% endmacro %}
