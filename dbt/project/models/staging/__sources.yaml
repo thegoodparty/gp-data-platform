@@ -872,14 +872,20 @@ sources:
                 sensitive: confidential
           - name: is_incumbent
             data_tests:
+              # Techspeed adds values and staging already nulls unknowns, so a new
+              # one is not a defect worth failing the build over.
               - accepted_values:
                   arguments:
                     values: ["", "FALSE", "False", "TRUE", "True"]
+                  config:
+                    severity: warn
           - name: is_uncontested
             data_tests:
               - accepted_values:
                   arguments:
                     values: ["", "No", "Yes"]
+                  config:
+                    severity: warn
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
         # Last loaded 2025-12-02; the feed is no longer syncing and has no
@@ -1519,7 +1525,7 @@ sources:
   - name: airflow_source
     database: "{{ var('source_catalog') }}"
     schema: airflow_source
-    description: Raw tables landed by the extract_ballotready DAG
+    description: Raw tables landed by the Airflow DAGs owned by the data platform
     config:
       loaded_at_field: loaded_at
       # These tables only gain rows when something changes upstream at BallotReady;
@@ -1572,6 +1578,19 @@ sources:
       - name: ballotready_stance_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
         columns: *ballotready_raw_columns
+      - name: bifrost_request_log
+        description: >
+          One row per Bifrost gateway request, landed from the workbench
+          account's daily Parquet export of the gateway's own `logs` table. Cost
+          columns are the gateway's own computed cost, not invoiced provider
+          cost. Append-only: each export re-emits a trailing window, so a request
+          appears once per export that covered it.
+        # The only table here that a daily job appends to, so the source-level
+        # 14/30-day backstop would hide a dead loader for a fortnight.
+        config:
+          freshness:
+            warn_after: { count: 1, period: day }
+            error_after: { count: 3, period: day }
 
   - name: model_predictions
     schema: model_predictions
@@ -2278,6 +2297,9 @@ sources:
         error_after: { count: 31, period: day }
 
     tables:
+      # The three QuickBooks streams below have never landed a row, so the block's
+      # freshness would report them STALE on every run. Freshness stays on for
+      # every QuickBooks table that does sync.
       - name: quickbooks_accounts
         description: Raw QuickBooks Online chart of accounts; one row per account.
       - name: quickbooks_bills
@@ -2286,6 +2308,8 @@ sources:
         description: Raw QuickBooks Online classes, used for allocation.
       - name: quickbooks_credit_memos
         description: Raw QuickBooks Online customer credit memos.
+        config:
+          freshness: null
       - name: quickbooks_customers
         description: Raw QuickBooks Online customers; carries contact PII (email, phone, billing and shipping address).
       - name: quickbooks_departments
@@ -2304,8 +2328,12 @@ sources:
         description: Raw QuickBooks Online purchases (expenses).
       - name: quickbooks_time_activities
         description: Raw QuickBooks Online time activities.
+        config:
+          freshness: null
       - name: quickbooks_transfers
         description: Raw QuickBooks Online transfers between accounts.
+        config:
+          freshness: null
       - name: quickbooks_vendor_credits
         description: Raw QuickBooks Online vendor credits.
       - name: quickbooks_vendors

@@ -1,6 +1,123 @@
 version: 2
 
 models:
+  - name: bifrost_daily_usage
+    description: >
+      Bifrost gateway model usage and cost, one row per UTC day, provider, model and person.
+      Read the caveats below before comparing these numbers to anything else.
+
+      1. **This is not invoiced cost.** It is the gateway's own computed number from its pricing
+      catalog, which is what the gateway shows its own operators, not what a provider bills.
+
+      2. **It overlaps `anthropic_analytics_*`.** Claude traffic reaches both, so summing this
+      with those reports double counts it. Read one or the other, not both.
+
+      3. **The newest `usage_date` is partial.** A request is re-exported for a week, so a day's
+      newest export moves past that day only once an export after its midnight has covered it.
+      A row is therefore complete when `usage_date < to_date(source_exported_at)`. Do not
+      compare against `current_date()`: between midnight and the next export that passes
+      yesterday, which is still partial.
+
+      4. **History starts at the first export's window.** The monthly full export backfills the
+      days before it, so an early day can be present and still be missing traffic that no
+      export has re-emitted.
+
+      5. **Inference requests only.** `request_count` counts model inference requests and
+      excludes the gateway's model-list calls, which carry no tokens and no cost, so that a
+      comparison against the gateway's own request counts compares like with like.
+
+      6. **`unattributed` is a bucket, not a person.** A request that carried neither a gateway
+      user nor a key becomes one `unattributed` row per day, provider and model, so those
+      requests stay visible and the totals still reconcile.
+
+      7. **`unpriced_request_count`** counts the requests that used tokens while carrying no
+      gateway cost, usually because the model is missing from the gateway's pricing catalog.
+      The cost columns understate by whatever those requests would have cost.
+
+      8. **Person.** A row's `person_email` is the gateway user when the request named one,
+      otherwise the email the gateway key name carries. No key, user or team id is exposed
+      here.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - usage_date
+              - provider
+              - model
+              - person_email
+      # Model-level, because a column-level expression_is_true prepends the column name.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              person_email = 'unattributed'
+              or person_email rlike '^[a-z0-9._%+-]+@goodparty[.]org$'
+    columns:
+      - name: usage_date
+        description: UTC date of the request, not the local date of the person who made it.
+        data_tests:
+          - not_null
+      - name: provider
+        description: The provider the gateway routed the requests to.
+        data_tests:
+          - not_null
+      - name: model
+        description: The model the requests named. Never blank here.
+        data_tests:
+          - not_null
+      - name: person_email
+        description: >
+          The person the requests belong to, or `unattributed` for requests that carried no
+          identity at all.
+        data_tests:
+          - not_null
+      - name: request_count
+        description: Inference requests in the group; model-list calls are excluded.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: error_count
+        description: Requests in the group whose status is `error`.
+      - name: unpriced_request_count
+        description: >
+          Requests that used tokens while carrying no gateway cost, usually a model missing
+          from the gateway's pricing catalog. The cost columns understate by their share.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: prompt_tokens
+        description: Input tokens across the group.
+      - name: completion_tokens
+        description: Output tokens across the group.
+      - name: total_tokens
+        description: Input plus output tokens across the group, as the gateway counted them.
+      - name: cached_read_tokens
+        description: Input tokens served from a provider-side prompt cache.
+      - name: cost_usd
+        description: >
+          The gateway's own computed cost across the group. Not invoiced cost, and it overlaps
+          `anthropic_analytics_*`. Zero, not null, for a group of requests that were never
+          priced.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: input_cost_usd
+        description: The input-token component of `cost_usd`.
+      - name: output_cost_usd
+        description: The output-token component of `cost_usd`.
+      - name: additional_cost_usd
+        description: >
+          Any further component of `cost_usd` the gateway adds, such as cached reads. Zero, not
+          null, for a group where the gateway reported none.
+      - name: source_exported_at
+        description: >
+          The newest export that observed any request in the group. Compare a day against it to
+          tell a complete day from a partial one.
+
   - name: quickbooks_accounts
     description: >
       Pass-through of the QuickBooks accounts stream for the first cut of the finance mart. The
@@ -452,3 +569,71 @@ models:
         data_tests:
           - not_null
           - unique
+
+unit_tests:
+  # The population rule and the two buckets that keep the totals reconcilable. Staging is
+  # mocked with SQL rather than rows because it is ephemeral, so this exercises the mart's own
+  # filter and aggregation, not the dedupe underneath it.
+  - name: bifrost_daily_usage_excludes_model_lists_and_buckets_the_rest
+    model: bifrost_daily_usage
+    given:
+      - input: ref('stg_airflow_source__bifrost_request_log')
+        format: sql
+        rows: |
+          select
+              'r1' as request_id,
+              timestamp '2026-11-17 10:00:00' as request_at,
+              timestamp '2026-11-18 09:00:00' as exported_at,
+              'bedrock' as provider,
+              cast(null as string) as model,
+              'list_models' as object_type,
+              'success' as status,
+              cast(0 as bigint) as prompt_tokens,
+              cast(0 as bigint) as completion_tokens,
+              cast(0 as bigint) as total_tokens,
+              cast(0 as bigint) as cached_read_tokens,
+              cast(null as decimal(20, 6)) as cost_usd,
+              cast(null as decimal(20, 6)) as input_cost_usd,
+              cast(null as decimal(20, 6)) as output_cost_usd,
+              cast(null as decimal(20, 6)) as additional_cost_usd,
+              'test.user@goodparty.org' as person_email
+          union all
+          select
+              'r2', timestamp '2026-11-17 11:00:00', timestamp '2026-11-18 09:00:00',
+              'bedrock', 'model-a', 'chat_completion_stream', 'success',
+              cast(40 as bigint), cast(60 as bigint), cast(100 as bigint), cast(0 as bigint),
+              cast(0 as decimal(20, 6)), cast(0 as decimal(20, 6)),
+              cast(0 as decimal(20, 6)), cast(0 as decimal(20, 6)),
+              'test.user@goodparty.org'
+          union all
+          select
+              'r3', timestamp '2026-11-17 12:00:00', timestamp '2026-11-18 09:00:00',
+              'bedrock', 'model-b', 'chat_completion_stream', 'error',
+              cast(0 as bigint), cast(0 as bigint), cast(0 as bigint), cast(0 as bigint),
+              cast(null as decimal(20, 6)), cast(null as decimal(20, 6)),
+              cast(null as decimal(20, 6)), cast(null as decimal(20, 6)),
+              'test.user@goodparty.org'
+          union all
+          select
+              'r4', timestamp '2026-11-17 12:30:00', timestamp '2026-11-18 09:00:00',
+              'bedrock', 'model-b', 'responses_stream', 'error',
+              cast(0 as bigint), cast(0 as bigint), cast(0 as bigint), cast(0 as bigint),
+              cast(null as decimal(20, 6)), cast(null as decimal(20, 6)),
+              cast(null as decimal(20, 6)), cast(null as decimal(20, 6)),
+              'test.user@goodparty.org'
+          union all
+          select
+              'r5', timestamp '2026-11-17 13:00:00', timestamp '2026-11-18 09:00:00',
+              'bedrock', 'model-c', 'chat_completion_stream', 'success',
+              cast(4 as bigint), cast(6 as bigint), cast(10 as bigint), cast(0 as bigint),
+              cast(0.5 as decimal(20, 6)), cast(0.25 as decimal(20, 6)),
+              cast(0.25 as decimal(20, 6)), cast(0 as decimal(20, 6)),
+              cast(null as string)
+    expect:
+      rows:
+        # The model-list call is gone, so no blank-model group exists.
+        - {usage_date: "2026-11-17", model: model-a, person_email: "test.user@goodparty.org", request_count: 1, error_count: 0, unpriced_request_count: 1, total_tokens: 100, cost_usd: 0}
+        # Zero-token failures sum to zero cost rather than to null.
+        - {usage_date: "2026-11-17", model: model-b, person_email: "test.user@goodparty.org", request_count: 2, error_count: 2, unpriced_request_count: 0, total_tokens: 0, cost_usd: 0}
+        # A request with no identity at all lands here instead of being dropped.
+        - {usage_date: "2026-11-17", model: model-c, person_email: unattributed, request_count: 1, error_count: 0, unpriced_request_count: 0, total_tokens: 10, cost_usd: 0.5}

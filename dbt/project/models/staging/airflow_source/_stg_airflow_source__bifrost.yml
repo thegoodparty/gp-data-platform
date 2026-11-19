@@ -1,0 +1,255 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__bifrost_request_log
+    description: >
+      One row per Bifrost gateway request, the newest export's observation of it. All renaming
+      and the person rule happen here. Ephemeral: this carries per-person usage, so it exists
+      only as a CTE inside the mart that reads it.
+    columns:
+      - name: request_id
+        description: The gateway's request id, and the dedupe key.
+      - name: request_at
+        description: >
+          When the request was made, in UTC. The mart's `usage_date` is the UTC date of this.
+      - name: created_at
+        description: When the gateway wrote the log row, which can be after the request itself.
+      - name: exported_at
+        description: >
+          Which export run observed this row. Stamped by the export, identical across one
+          file, and what orders two observations of the same request.
+      - name: provider
+        description: The provider the gateway routed the request to.
+      - name: model
+        description: >
+          The model the request named, with a blank normalised to null so a request that named
+          no model cannot pass as a named one.
+      - name: canonical_model_name
+        description: The model name after the gateway's own alias resolution.
+      - name: alias
+        description: The alias the request used, if it named one.
+      - name: object_type
+        description: >
+          What the request was, such as a chat completion or an embedding. `list_models` marks
+          a metadata call, which the mart excludes.
+      - name: status
+        description: Terminal state of the request, or `processing` while it is in flight.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["success", "error", "cancelled", "processing"]
+      - name: is_passthrough
+        description: Whether the gateway passed the request through without transforming it.
+      - name: fallback_index
+        description: Position in the gateway's fallback chain; 0 for a first-choice provider.
+      - name: parent_request_id
+        description: The request this one retried or replaced, when there was one.
+      - name: app
+        description: The application the gateway attributes the call to.
+      - name: user_agent
+        description: The client the request came from.
+      - name: virtual_key_id
+        description: The gateway key's id. Key, user and team ids stop here; no mart carries them.
+      - name: virtual_key_name
+        description: >
+          The gateway key's name, which today is the owning person's email. Read only by the
+          person rule below, never exposed downstream.
+      - name: team_id
+        description: The gateway team's id, when the request was made under one.
+      - name: team_name
+        description: The gateway team's name, when the request was made under one.
+      - name: user_id
+        description: The gateway user's id, when the request carried one.
+      - name: user_name
+        description: >
+          The gateway user's name. Takes precedence over the key name in the person rule, so
+          populating it in the gateway takes over with no re-export.
+      - name: person_email
+        description: >
+          Who the request belongs to: the gateway user if it names one, otherwise the
+          `@goodparty.org` email the key name carries. Null when the request carries no
+          identity at all; the mart buckets those separately.
+      - name: cost_usd
+        description: >
+          The gateway's own computed cost for the request, from its pricing catalog. Null on a
+          request that never reached a provider, or one it could not price.
+      - name: input_cost_usd
+        description: The input-token component of `cost_usd`.
+      - name: output_cost_usd
+        description: The output-token component of `cost_usd`.
+      - name: additional_cost_usd
+        description: Any further component the gateway adds to `cost_usd`, such as cached reads.
+      - name: prompt_tokens
+        description: Input tokens the request used.
+      - name: completion_tokens
+        description: Output tokens the request used.
+      - name: total_tokens
+        description: Input plus output tokens as the gateway counted them.
+      - name: cached_read_tokens
+        description: Input tokens served from a provider-side prompt cache.
+      - name: latency_ms
+        description: The request's latency in milliseconds.
+      - name: loaded_at
+        description: >
+          When the loader read the file this row arrived in. Identical for every row of one
+          file, which is why it cannot order two observations and `exported_at` does.
+
+unit_tests:
+  # The dedupe. A `processing` observation exported later must not beat the terminal one: with
+  # the clock ordered ahead of the status, the request contributes no cost at all.
+  - name: bifrost_request_log_processing_never_beats_terminal
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - &landing_row
+            {
+              id: r1,
+              timestamp: "2026-11-17 10:00:00",
+              created_at: "2026-11-17 10:00:01",
+              exported_at: "2026-11-18 11:00:00",
+              provider: bedrock,
+              model: model-a,
+              canonical_model_name: model-a,
+              alias: null,
+              object_type: chat_completion_stream,
+              status: success,
+              is_passthrough: false,
+              fallback_index: 0,
+              parent_request_id: null,
+              app: null,
+              user_agent: null,
+              virtual_key_id: "key-1",
+              virtual_key_name: "test.user@goodparty.org",
+              team_id: null,
+              team_name: null,
+              user_id: null,
+              user_name: null,
+              cost: 1,
+              input_cost: 0.5,
+              output_cost: 0.5,
+              additional_cost: 0,
+              prompt_tokens: 100,
+              completion_tokens: 50,
+              total_tokens: 150,
+              cached_read_tokens: 0,
+              latency: 250.0,
+              loaded_at: "2026-11-18 18:00:00",
+            }
+          - <<: *landing_row
+            exported_at: "2026-11-18 12:00:00"
+            status: processing
+            cost: null
+            input_cost: null
+            output_cost: null
+            additional_cost: null
+            prompt_tokens: 0
+            completion_tokens: 0
+            total_tokens: 0
+            latency: null
+    expect:
+      rows:
+        - {request_id: r1, status: success, cost_usd: 1}
+
+  # A later export's terminal observation wins over an earlier terminal one, so a request that
+  # failed and was retried settles on the retry's numbers.
+  - name: bifrost_request_log_latest_export_wins
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            id: r2
+            exported_at: "2026-11-18 13:00:00"
+            cost: 2
+          - <<: *landing_row
+            id: r2
+            exported_at: "2026-11-18 11:00:00"
+            status: error
+            cost: null
+            total_tokens: 0
+    expect:
+      rows:
+        - {request_id: r2, status: success, cost_usd: 2}
+
+  # An in-flight request has no cost yet, and null is the honest value rather than zero.
+  - name: bifrost_request_log_processing_keeps_null_cost
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            id: r3
+            status: processing
+            cost: null
+            total_tokens: 0
+    expect:
+      rows:
+        - {request_id: r3, status: processing, cost_usd: null}
+
+  # A key name can carry a suffix, and a re-minted key has to resolve to the same person, so the
+  # rule extracts the address rather than matching the name whole.
+  - name: bifrost_request_log_key_name_suffix_resolves_to_person
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            virtual_key_name: "test.user@goodparty.org-claude-code"
+    expect:
+      rows:
+        - {person_email: "test.user@goodparty.org"}
+
+  # Casing drifts in the gateway's key names; one person must not split into two buckets.
+  - name: bifrost_request_log_key_name_is_case_insensitive
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            virtual_key_name: "Test.User@GoodParty.org"
+    expect:
+      rows:
+        - {person_email: "test.user@goodparty.org"}
+
+  # regexp_extract returns '' on no match, so without the nullif an unparseable key name becomes
+  # an empty-string person and passes every null check downstream.
+  - name: bifrost_request_log_unparseable_key_name_has_no_person
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            virtual_key_name: "legacy-key-with-no-address"
+    expect:
+      rows:
+        - {person_email: null}
+
+  # A gateway user is the stronger identity, so populating it takes over from the key name with
+  # no re-export.
+  - name: bifrost_request_log_user_name_wins
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            user_name: "Test.User@GoodParty.org"
+            virtual_key_name: "someone.else@goodparty.org"
+    expect:
+      rows:
+        - {person_email: "test.user@goodparty.org"}
+
+  # A model-list call lands an empty model, not a null one, so the blank has to be normalised or
+  # a not-null test would pass while the mart grouped the blank as a model.
+  - name: bifrost_request_log_blank_model_is_null
+    model: stg_airflow_source__bifrost_request_log
+    given:
+      - input: source('airflow_source', 'bifrost_request_log')
+        rows:
+          - <<: *landing_row
+            object_type: list_models
+            model: ""
+    expect:
+      rows:
+        - {request_id: r1, model: null}

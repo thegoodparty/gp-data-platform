@@ -339,7 +339,7 @@ with
             `hf_most_important_policy_item`,
             -- Read here as well as by gp-api: the early-vote, independent-affinity
             -- and openness columns above all derive from these.
-            {%- for column in haystaq_score_columns %} `{{ column }}`, {%- endfor %}
+            {% for column in haystaq_score_columns %} `{{ column }}`, {% endfor %}
             loaded_at
         from source_nulled
     ),
