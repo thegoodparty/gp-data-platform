@@ -767,107 +767,13 @@ models:
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
     columns:
-      # Tagged by hand, not inherited: Python model, no SQL lineage. Same 33
-      # columns and values as int__l2_nationwide_uniform_raw_districts.
-      - name: Voters_FirstName
-        databricks_tags:
-          sensitive: confidential
-      - name: Voters_MiddleName
-        databricks_tags:
-          sensitive: confidential
-      - name: Voters_LastName
-        databricks_tags:
-          sensitive: confidential
-      - name: Voters_StateVoterID
-        databricks_tags:
-          sensitive: identifier
-      - name: Voters_CountyVoterID
-        databricks_tags:
-          sensitive: identifier
-      - name: Voters_BirthDate
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_AddressLine
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_ExtraAddressLine
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_HouseNumber
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_ApartmentNum
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_DPBC
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_Latitude
-        databricks_tags:
-          sensitive: confidential
-      - name: Residence_Addresses_Longitude
-        databricks_tags:
-          sensitive: confidential
-      - name: Mailing_Addresses_AddressLine
-        databricks_tags:
-          sensitive: confidential
-      - name: Mailing_Addresses_ExtraAddressLine
-        databricks_tags:
-          sensitive: confidential
-      - name: Mailing_Addresses_HouseNumber
-        databricks_tags:
-          sensitive: confidential
-      - name: Mailing_Addresses_ApartmentNum
-        databricks_tags:
-          sensitive: confidential
-      - name: Mailing_Addresses_DPBC
-        databricks_tags:
-          sensitive: confidential
-      - name: VoterTelephones_LandlineFormatted
-        databricks_tags:
-          sensitive: identifier
-      - name: VoterTelephones_LandlineUnformatted
-        databricks_tags:
-          sensitive: identifier
-      - name: VoterTelephones_Landline7Digit
-        databricks_tags:
-          sensitive: identifier
-      - name: VoterTelephones_CellPhoneFormatted
-        databricks_tags:
-          sensitive: identifier
-      - name: VoterTelephones_CellPhoneUnformatted
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_MAID1
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_MAID2
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_MAID3
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_MAID4
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_MAID5
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_IP1
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_IP2
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_IP3
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_IP4
-        databricks_tags:
-          sensitive: identifier
-      - name: ConsumerData_MAID_IP5
-        databricks_tags:
-          sensitive: identifier
+      # No column-level tags. This model selects LALVOTERID, loaded_at and the
+      # per-state hf_* Haystaq flag columns, and nothing else: the voter
+      # identity columns the uniform models carry do not exist here. The flags
+      # are modeled issue attributes, which rule 5 of the classification
+      # leaves open once the row no longer points at a person. The model-level
+      # classified tag above is still required, because a Python model has no
+      # SQL lineage to inherit it from.
       - name: LALVOTERID
         description: "The ID of the voter"
         tests:
