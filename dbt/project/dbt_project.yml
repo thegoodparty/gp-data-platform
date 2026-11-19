@@ -22,11 +22,6 @@ clean-targets: # directories to be removed by `dbt clean`
   - "dbt_packages"
 
 vars:
-  # The catalog the loader sources are read from. It moves to raw at cutover, once
-  # the source schemas have been copied there: pointing the sources at an empty
-  # raw before then would rebuild every mart from nothing. Flipping this one value
-  # is the cutover; a build that must pin the old location can override it.
-  source_catalog: "goodparty_data_catalog"
   # int__l2_br_match_served withholds matches that fit a known wrong-answer shape for attempts
   # on or after this date: the daily loop's cutover. Earlier matches came from other matchers and
   # stay served until the guards are extended to them by moving this date.
