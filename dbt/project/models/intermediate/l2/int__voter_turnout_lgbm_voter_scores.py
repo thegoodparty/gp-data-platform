@@ -486,8 +486,8 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
                     "_TURNED_OFF_FEATURE if scoring without it is intended."
                 )
             x = pd.DataFrame(index=pdf.index)
-            for feat in missing:
-                x[feat] = np.nan
+            for feat in feat_names:
+                x[feat] = pdf[feat] if feat in pdf.columns else np.nan
             # Integer-encode categoricals via the saved cat_map; unseen -> NaN.
             for feat, categories in cat_map.items():
                 if feat in x.columns:
