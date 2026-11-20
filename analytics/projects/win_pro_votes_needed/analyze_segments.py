@@ -155,6 +155,9 @@ def cas_support(ws: pd.DataFrame) -> pd.Series:
     marks customers who engaged with it, which is partly their own intent."""
     met = (ws["cas_calls"] >= 1) | (ws["cas_msgs"] >= 2) | (ws["cas_meetings"] >= 1)
     first_cas = pd.to_datetime(ws["cas_qualified_at"], utc=True)
+    # The counts and the dates come from separate queries; a touch dated after run_ts or edited in
+    # HubSpot between them would put a customer in the wrong bucket.
+    assert (met == first_cas.notna()).all(), "CaS counts and cas_qualified_at disagree; rerun both"
     first_send = pd.to_datetime(ws["first_send_at"], utc=True)
     before = first_send.isna() | (first_cas < first_send)
     return pd.Series(
