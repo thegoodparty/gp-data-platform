@@ -741,9 +741,11 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "jinja2" },
     { name = "mypy" },
     { name = "pyarrow" },
     { name = "pytest" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -762,9 +764,11 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "jinja2", specifier = ">=3.1.6,<4.0.0" },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pytest", specifier = ">=9.1.1,<10.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.3,<7.0.0" },
 ]
 
 [[package]]

@@ -23,6 +23,12 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1,<10.0.0",
+    # The catalog split is asserted by reading the source YAML and rendering the
+    # macro that decides which catalog a build writes to. Both arrive through
+    # pandas today; naming them keeps those tests from breaking on an unrelated
+    # dependency bump.
+    "pyyaml>=6.0.3,<7.0.0",
+    "jinja2>=3.1.6,<4.0.0",
     "mypy>=2.3.0",
     # The serialization layer pandas UDFs actually cross. Lets tests assert that a
     # normalized record survives the conversion to its declared Spark schema.
