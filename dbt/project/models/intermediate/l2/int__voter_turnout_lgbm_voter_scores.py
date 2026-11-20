@@ -58,7 +58,15 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
-    "MMA_Zone",
+    # Deliberately the trained name, not L2's MMA_Zone. This list builds
+    # the feature frame handed to a PROMOTED booster, and those boosters
+    # name their features Designated_Market_Area_DMA. Renaming here makes
+    # the frame lack that name, so the scorer NaN-fills it for every row
+    # and the market feature silently drops out of scoring while the
+    # models keep "working" (unseen categorical values map to NaN too).
+    # Held at the old name until both boosters are retrained on MMA_Zone
+    # and their categorical maps rebuilt from the new strings.
+    "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
     "ConsumerData_Credit_Rating",
@@ -432,6 +440,9 @@ def _file_digest(path, chunk_size=1 << 20):
     return h.hexdigest()[:16]
 
 
+_TURNED_OFF_FEATURE = re.compile(r"^_turned_off_")
+
+
 def _make_scorer(model_file, cat_map, feat_names, booster_digest):
     """Build the mapInPandas closure. Carries only the Volume path (tiny) plus
     cat_map / feat_names; each executor reads the booster from the Volume once per
@@ -460,9 +471,23 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
         for pdf in iterator:
             if len(pdf) == 0:
                 continue
+            # Refuse rather than silently NaN-fill a feature the booster was
+            # trained on. A renamed or dropped L2 column lands here, and filling
+            # it would leave the predictions finite and in range, so nothing else
+            # notices that the model stopped using a feature it relies on.
+            missing = [feat for feat in feat_names if feat not in pdf.columns]
+            unexcused = [feat for feat in missing if not _TURNED_OFF_FEATURE.match(feat)]
+            if unexcused:
+                raise ValueError(
+                    f"booster expects {len(unexcused)} feature(s) absent from the "
+                    f"input, so they would be NaN on every row: {unexcused}. A "
+                    "renamed or dropped L2 column looks like this. Retrain the "
+                    "booster on the current name, or list the feature in "
+                    "_TURNED_OFF_FEATURE if scoring without it is intended."
+                )
             x = pd.DataFrame(index=pdf.index)
-            for feat in feat_names:
-                x[feat] = pdf[feat] if feat in pdf.columns else np.nan
+            for feat in missing:
+                x[feat] = np.nan
             # Integer-encode categoricals via the saved cat_map; unseen -> NaN.
             for feat, categories in cat_map.items():
                 if feat in x.columns:

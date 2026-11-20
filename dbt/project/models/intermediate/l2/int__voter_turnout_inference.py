@@ -57,7 +57,15 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
-    "MMA_Zone",
+    # Deliberately the trained name, not L2's MMA_Zone. This list builds
+    # the feature frame handed to a PROMOTED booster, and those boosters
+    # name their features Designated_Market_Area_DMA. Renaming here makes
+    # the frame lack that name, so the scorer NaN-fills it for every row
+    # and the market feature silently drops out of scoring while the
+    # models keep "working" (unseen categorical values map to NaN too).
+    # Held at the old name until both boosters are retrained on MMA_Zone
+    # and their categorical maps rebuilt from the new strings.
+    "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
     "ConsumerData_Credit_Rating",
@@ -606,13 +614,34 @@ def _check_lgbm_version(registered_model_name, tags):
         )
 
 
+_TURNED_OFF_FEATURE = re.compile(r"^_turned_off_")
+
+
 def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inference_year):
     feat_names = booster.feature_name_
 
     # Add NaN placeholders for any features the model expects but L2 lacks.
-    for feat in feat_names:
-        if feat not in pdf.columns:
-            pdf[feat] = np.nan
+    #
+    # Loud, not silent. A booster trained on a column L2 has since renamed or
+    # dropped would otherwise score with that feature NaN on every row: the
+    # predictions stay finite and in range, so the guards below pass, and the
+    # model quietly stops using something it was trained to rely on. Weigh that
+    # against losing the whole table. A *renamed* feature is invisible from here
+    # -- the name simply is not in the frame -- so the failure mode is bounded by
+    # refusing to run until someone either retrains on the new name or parks the
+    # old name in _TURNED_OFF_FEATURE.
+    missing = [feat for feat in feat_names if feat not in pdf.columns]
+    unexcused = [feat for feat in missing if not _TURNED_OFF_FEATURE.match(feat)]
+    if unexcused:
+        raise ValueError(
+            f"{model_slug}: booster expects {len(unexcused)} feature(s) absent "
+            f"from the input, so they would be NaN on every row: {unexcused}. "
+            "A renamed or dropped L2 column looks like this. Retrain the booster "
+            "on the current name, or list the feature in _TURNED_OFF_FEATURE if "
+            "scoring without it is intended."
+        )
+    for feat in missing:
+        pdf[feat] = np.nan
 
     x = pdf[feat_names].copy()
 

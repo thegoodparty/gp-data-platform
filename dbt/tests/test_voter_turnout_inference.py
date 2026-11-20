@@ -227,6 +227,44 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
     assert {"State", "County", "Precinct", "n_voters"}.issubset(out.columns)
 
 
+def test_predict_precinct_refuses_to_nan_fill_a_trained_feature():
+    """A booster trained on a column L2 has since renamed must fail, not score.
+
+    The market-area column was renamed Designated_Market_Area_DMA -> MMA_Zone.
+    Filling the trained name with NaN keeps every prediction finite and in range,
+    so the finiteness guards pass and the model silently drops a feature it was
+    trained on. Refusing turns that into a build failure instead.
+    """
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "MMA_Zone": ["MONTGOMERY MMA (AL)"],
+        }
+    )
+    booster = _FakeBooster(["MMA_Zone", "Designated_Market_Area_DMA"])
+    with pytest.raises(ValueError, match="Designated_Market_Area_DMA"):
+        _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+
+
+def test_predict_precinct_allows_a_feature_explicitly_turned_off():
+    """The no-op escape hatch: a feature parked as _turned_off_* still fills NaN."""
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "_turned_off_some_retired_column"])
+    out = _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+    assert list(out["p_hat"]) == [0.5]
+
+
 def test_predict_precinct_rejects_non_finite_predictions_and_checks_shape():
     """A NaN prediction must fail loudly at the source: Spark GREATEST skips
     NULLs, so a NULL/NaN prediction downstream would launder into a
