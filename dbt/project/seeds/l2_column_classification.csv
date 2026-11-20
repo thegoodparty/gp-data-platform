@@ -443,7 +443,7 @@ Voters_MovedFrom_VotingPerformanceEvenYearGeneral,STRING,identity_pii,Percentage
 Voters_MovedFrom_VotingPerformanceEvenYearPrimary,STRING,identity_pii,Percentage of Even Year Primary Elections voted among those for which voter was eligible to vote in the state from which he moved; percentage value from 0% to 100% or 'Not Eligible',false,"Direct identifier / PII (name, address, phone, DOB, device, family) - removed."
 Voters_MovedFrom_VotingPerformanceMinorElection,STRING,identity_pii,Percentage of Minor Elections voted by voter in state from which he moved; percentage value from 0% to 100% or 'Not Eligible',false,"Direct identifier / PII (name, address, phone, DOB, device, family) - removed."
 Residence_Addresses_Density,INT,demographic,Population-density code for the voter's residence area.,true,"Demographic attribute - non-PII, non-partisan; included."
-Designated_Market_Area_DMA,STRING,demographic,Designated Market Area DMA,true,"Demographic attribute - non-PII, non-partisan; included."
+MMA_Zone,STRING,demographic,Nielsen media market (Metro Market Area),true,"Demographic attribute - non-PII, non-partisan; included."
 ConsumerData_AreaPcntHHWithChildren,STRING,commercial,Census data for this census block,false,Commercial / consumer-lifestyle attribute - excluded (civic-only set).
 ConsumerData_AreaPcntHHMarriedCoupleWithChild,STRING,commercial,Census data for this census block,false,Commercial / consumer-lifestyle attribute - excluded (civic-only set).
 ConsumerData_AreaPcntHHMarriedCoupleNoChild,STRING,commercial,Census data for this census block,false,Commercial / consumer-lifestyle attribute - excluded (civic-only set).

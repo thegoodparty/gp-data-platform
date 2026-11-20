@@ -35,6 +35,14 @@
 
     Returns:
         list: bare column names, no backticks.
+
+    MMA_Zone is L2's rename of Designated_Market_Area_DMA, arriving in the
+    delivery that landed 2026-11-17; the values were tightened to the official
+    Nielsen form at the same time, so "LOS ANGELES DMA" became
+    "LOS ANGELES MMA (CA/NV)". Nothing keys on the values, so the name is the
+    whole of the change. It went unnoticed because a merge with
+    append_new_columns keeps a retired column forever: only a build that
+    recreated these views from the source could see the old name was gone.
     -#}
     {%- set all_types = [
         "4H_Livestock_District",
@@ -100,7 +108,6 @@
         "County_Water_District",
         "County_Water_Landowner_District",
         "County_Water_SubDistrict",
-        "Designated_Market_Area_DMA",
         "District_Attorney",
         "Drainage_District",
         "Education_Commission_District",
@@ -173,6 +180,7 @@
         "Metro_Transit_District",
         "Metropolitan_Water_District",
         "Middle_School_District",
+        "MMA_Zone",
         "Mosquito_Abatement_District",
         "Mountain_Water_District",
         "Multi_township_Assessor",
