@@ -614,7 +614,19 @@ def _check_lgbm_version(registered_model_name, tags):
         )
 
 
-_TURNED_OFF_FEATURE = re.compile(r"^_turned_off_")
+# Features the promoted boosters were trained on that no L2 column can supply
+# any more. L2 renamed the media-market column Designated_Market_Area_DMA to
+# MMA_Zone on 2026-11-17 and changed its values ("LOS ANGELES DMA" ->
+# "LOS ANGELES MMA (CA/NV)"), so the trained categorical map no longer matches
+# even under the new name. Scoring keeps running with this feature absent, which
+# is what it was already doing silently: the encoder maps any unseen string to
+# NaN, so the old values would have been NaN regardless.
+#
+# Listed by name, on purpose, so the omission is a decision in the diff rather
+# than an effect of a rename. Drop an entry once the boosters are retrained on
+# the current column, which is the real fix; the categorical map has to be
+# rebuilt from the new strings at the same time.
+_TURNED_OFF_FEATURES = {"Designated_Market_Area_DMA"}
 
 
 def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inference_year):
@@ -629,15 +641,15 @@ def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inferenc
     # against losing the whole table. A *renamed* feature is invisible from here
     # -- the name simply is not in the frame -- so the failure mode is bounded by
     # refusing to run until someone either retrains on the new name or parks the
-    # old name in _TURNED_OFF_FEATURE.
+    # old name in _TURNED_OFF_FEATURES.
     missing = [feat for feat in feat_names if feat not in pdf.columns]
-    unexcused = [feat for feat in missing if not _TURNED_OFF_FEATURE.match(feat)]
+    unexcused = [feat for feat in missing if feat not in _TURNED_OFF_FEATURES]
     if unexcused:
         raise ValueError(
             f"{model_slug}: booster expects {len(unexcused)} feature(s) absent "
             f"from the input, so they would be NaN on every row: {unexcused}. "
             "A renamed or dropped L2 column looks like this. Retrain the booster "
-            "on the current name, or list the feature in _TURNED_OFF_FEATURE if "
+            "on the current name, or list the feature in _TURNED_OFF_FEATURES if "
             "scoring without it is intended."
         )
     for feat in missing:

@@ -227,30 +227,13 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
     assert {"State", "County", "Precinct", "n_voters"}.issubset(out.columns)
 
 
-def test_predict_precinct_refuses_to_nan_fill_a_trained_feature():
-    """A booster trained on a column L2 has since renamed must fail, not score.
+def test_predict_precinct_refuses_to_nan_fill_an_unaccounted_feature():
+    """A booster feature that silently vanished must fail, not score.
 
-    The market-area column was renamed Designated_Market_Area_DMA -> MMA_Zone.
-    Filling the trained name with NaN keeps every prediction finite and in range,
-    so the finiteness guards pass and the model silently drops a feature it was
-    trained on. Refusing turns that into a build failure instead.
+    Filling it with NaN keeps every prediction finite and in range, so the
+    finiteness guards pass and the model drops a feature it was trained on with
+    nothing said. Refusing turns that into a build failure.
     """
-    pdf = pd.DataFrame(
-        {
-            "State": ["AL"],
-            "County": ["X"],
-            "Precinct": ["1"],
-            "n_voters": [10.0],
-            "MMA_Zone": ["MONTGOMERY MMA (AL)"],
-        }
-    )
-    booster = _FakeBooster(["MMA_Zone", "Designated_Market_Area_DMA"])
-    with pytest.raises(ValueError, match="Designated_Market_Area_DMA"):
-        _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
-
-
-def test_predict_precinct_allows_a_feature_explicitly_turned_off():
-    """The no-op escape hatch: a feature parked as _turned_off_* still fills NaN."""
     pdf = pd.DataFrame(
         {
             "State": ["AL"],
@@ -260,7 +243,27 @@ def test_predict_precinct_allows_a_feature_explicitly_turned_off():
             "age": [40.0],
         }
     )
-    booster = _FakeBooster(["age", "_turned_off_some_retired_column"])
+    booster = _FakeBooster(["age", "Some_Retired_Column"])
+    with pytest.raises(ValueError, match="Some_Retired_Column"):
+        _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+
+
+def test_predict_precinct_allows_a_declared_off_feature():
+    """A feature in _TURNED_OFF_FEATURES still scores, with that column NaN.
+
+    Designated_Market_Area_DMA is there because L2 renamed the column and
+    changed its values, so no current column can supply the trained categorical.
+    """
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "Designated_Market_Area_DMA"])
     out = _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
     assert list(out["p_hat"]) == [0.5]
 

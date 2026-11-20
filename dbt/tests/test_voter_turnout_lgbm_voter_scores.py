@@ -251,14 +251,9 @@ def test_make_scorer_passes_present_features_through(monkeypatch):
     assert list(out[0]["prob_vote"]) == [0.5, 0.5]
 
 
-def test_make_scorer_refuses_a_missing_trained_feature(monkeypatch):
+def test_make_scorer_refuses_a_missing_unaccounted_feature(monkeypatch):
     import pandas as pd
 
-    pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "MMA_Zone": ["MONTGOMERY MMA (AL)"]})
-    with pytest.raises(ValueError, match="Designated_Market_Area_DMA"):
-        _run_partition(
-            monkeypatch,
-            pdf,
-            ["MMA_Zone", "Designated_Market_Area_DMA"],
-            {},
-        )
+    pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "age": [40.0]})
+    with pytest.raises(ValueError, match="Some_Retired_Column"):
+        _run_partition(monkeypatch, pdf, ["age", "Some_Retired_Column"], {})

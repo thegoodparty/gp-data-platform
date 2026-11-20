@@ -440,7 +440,19 @@ def _file_digest(path, chunk_size=1 << 20):
     return h.hexdigest()[:16]
 
 
-_TURNED_OFF_FEATURE = re.compile(r"^_turned_off_")
+# Features the promoted boosters were trained on that no L2 column can supply
+# any more. L2 renamed the media-market column Designated_Market_Area_DMA to
+# MMA_Zone on 2026-11-17 and changed its values ("LOS ANGELES DMA" ->
+# "LOS ANGELES MMA (CA/NV)"), so the trained categorical map no longer matches
+# even under the new name. Scoring keeps running with this feature absent, which
+# is what it was already doing silently: the encoder maps any unseen string to
+# NaN, so the old values would have been NaN regardless.
+#
+# Listed by name, on purpose, so the omission is a decision in the diff rather
+# than an effect of a rename. Drop an entry once the boosters are retrained on
+# the current column, which is the real fix; the categorical map has to be
+# rebuilt from the new strings at the same time.
+_TURNED_OFF_FEATURES = {"Designated_Market_Area_DMA"}
 
 
 def _make_scorer(model_file, cat_map, feat_names, booster_digest):
@@ -476,14 +488,14 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
             # it would leave the predictions finite and in range, so nothing else
             # notices that the model stopped using a feature it relies on.
             missing = [feat for feat in feat_names if feat not in pdf.columns]
-            unexcused = [feat for feat in missing if not _TURNED_OFF_FEATURE.match(feat)]
+            unexcused = [feat for feat in missing if feat not in _TURNED_OFF_FEATURES]
             if unexcused:
                 raise ValueError(
                     f"booster expects {len(unexcused)} feature(s) absent from the "
                     f"input, so they would be NaN on every row: {unexcused}. A "
                     "renamed or dropped L2 column looks like this. Retrain the "
                     "booster on the current name, or list the feature in "
-                    "_TURNED_OFF_FEATURE if scoring without it is intended."
+                    "_TURNED_OFF_FEATURES if scoring without it is intended."
                 )
             x = pd.DataFrame(index=pdf.index)
             for feat in feat_names:
