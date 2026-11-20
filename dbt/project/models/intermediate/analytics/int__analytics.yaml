@@ -1497,6 +1497,7 @@ models:
                     "texting",
                     "robocall",
                     "social",
+                    "email",
                     "door_knocking",
                     "phone_banking",
                     "unattributed",
@@ -1673,6 +1674,8 @@ models:
         description: Committed robocall sends inside the window.
       - name: outreach_social_count
         description: Committed social sends inside the window.
+      - name: outreach_email_count
+        description: Committed email sends inside the window.
       - name: outreach_door_knocking_count
         description: Completed door-knocking walks inside the window.
       - name: outreach_phone_banking_count
@@ -1719,6 +1722,7 @@ models:
                 and outreach_texting_count is not null
                 and outreach_robocall_count is not null
                 and outreach_social_count is not null
+                and outreach_email_count is not null
                 and outreach_door_knocking_count is not null
                 and outreach_phone_banking_count is not null
                 and outreach_unattributed_count is not null
@@ -1731,7 +1735,8 @@ models:
           arguments:
             expression: >
               outreach_sent_count = outreach_texting_count + outreach_robocall_count
-              + outreach_social_count + outreach_door_knocking_count
+              + outreach_social_count + outreach_email_count
+              + outreach_door_knocking_count
               + outreach_phone_banking_count + outreach_unattributed_count
           config:
             where: outreach_sent_count is not null

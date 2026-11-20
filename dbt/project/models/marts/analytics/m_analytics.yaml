@@ -3488,7 +3488,7 @@ models:
           first_campaign_sent_at. Null when not activated.
       - name: first_activation_channel
         description: >
-          The channel of the activating send (texting, robocall, social,
+          The channel of the activating send (texting, robocall, social, email,
           door_knocking, phone_banking, events, unattributed), from
           users_win_base. Null when not activated.
       - name: first_activation_is_self_reported
@@ -3854,8 +3854,8 @@ models:
         description: >
           The result for an election (Won, Lost, Runoff and so on), the channel
           for a touch (call, email, meeting, sms) or a send (texting, robocall,
-          door_knocking, phone_banking, social, unattributed, and poll for Serve
-          outreach), the numbered step for a flow step ("3. Party"), what a
+          social, email, door_knocking, phone_banking, unattributed, and poll for
+          Serve outreach), the numbered step for a flow step ("3. Party"), what a
           Payment or Refund was for (outreach_purchase, domain_registration or
           poll for a product purchase, otherwise subscription, sales_led or
           unclassified), or the plan interval for a subscription start or end;
