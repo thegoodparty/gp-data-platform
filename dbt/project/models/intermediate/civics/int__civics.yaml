@@ -3583,6 +3583,31 @@ models:
       Each phone also carries its count of unrelated surname groups, which
       the matcher uses to refuse a phone-only pair across unrelated surnames
       on a shared line the cap lets through.
+    config:
+      # Deliberately unclassified. The three name-token columns are
+      # ARRAY<STRING> and carry sensitive=confidential, but the confidential
+      # mask is governance.redact(value string) returns string, so on a list it
+      # fails at plan time with COLUMN_MASKS_INCOMPATIBLE_RETURN_TYPE and every
+      # analyst query on the table dies, count(*) included. The table inherits
+      # classified by propagation from the nicknames and clean_states seeds, so
+      # the tag has to be taken back off rather than never applied.
+      #
+      # Dropping the tag closes the table to analyst instead of opening it: the
+      # closed_until_classified row filter returns no rows for an unclassified
+      # table, which is the safe failure. No analyst reads this table, and
+      # matcha, its only reader, is a service principal outside every masked
+      # group.
+      #
+      # A post-hook because dbt has no way to declare an absent tag, and
+      # unset works where set tags ('classified' = 'false') does not: the
+      # classified tag only accepts the value true.
+      #
+      # Fragile against any later writer: a tag job that runs set tags after
+      # this build wins. If that happens the symptom is a plan-time error on the
+      # next CI run, not silent exposure. The durable fix is a delimited STRING
+      # encoding of the three tokens, tracked separately.
+      post_hook:
+        - "alter table {{ this }} unset tags ('classified')"
     data_tests:
       # Model level so the expression can name the column without the
       # column-test macro prepending it. Guards the tokenizer silently
