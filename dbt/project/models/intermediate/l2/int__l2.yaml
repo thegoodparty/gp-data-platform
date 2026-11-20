@@ -230,6 +230,20 @@ models:
 
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
+    config:
+      # Delta collects stats on at most 32 columns and takes them from this
+      # property, so a clustering column not named in it gets none and the write
+      # fails with DELTA_CLUSTERING_COLUMN_MISSING_STATS. Prod's table carries a
+      # stale 36-column property whose first 32 are ConsumerData columns; a
+      # rebuild inherits it onto a table whose clustering columns then fall
+      # outside the window. Reset it before every write so the clustering
+      # columns always carry stats. A hook, not the tblproperties config: the
+      # Python materialization does not apply that config to the table it
+      # writes.
+      pre_hook: >-
+        alter table {{ this }} set tblproperties
+        ('delta.dataSkippingStatsColumns' =
+        'state_postal_code,Residence_Addresses_Zip,LALVOTERID')
     columns:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
