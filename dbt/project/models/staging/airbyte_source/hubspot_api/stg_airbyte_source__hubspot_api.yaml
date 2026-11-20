@@ -626,6 +626,8 @@ models:
           HubSpot contact property `clean_phone` (Clean Phone). This is a clean
           phone number field that should not contain anything other than digits. No
           parentheses, dashes, spaces, etc.
+        databricks_tags:
+          sensitive: identifier
       - name: closed_post_enrichment
         description: >
           HubSpot contact property `closed_post_enrichment` (Closed Post
@@ -1373,23 +1375,35 @@ models:
         description: >
           HubSpot contact property `full_name` (full name). HubSpot property group:
           contactinformation.
+        databricks_tags:
+          sensitive: confidential
       - name: first_name
         description: >
           HubSpot contact property `firstname` (First Name). A contact's first name
+        databricks_tags:
+          sensitive: confidential
       - name: last_name
         description: >
           HubSpot contact property `lastname` (Last Name). A contact's last name
+        databricks_tags:
+          sensitive: confidential
       - name: birth_date
         description: >
           HubSpot contact property `birth_date` (Birth Date). HubSpot property
           group: contactinformation.
+        databricks_tags:
+          sensitive: confidential
       - name: email
         description: >
           HubSpot contact property `email` (Email). A contact's email address
+        databricks_tags:
+          sensitive: identifier
       - name: phone
         description: >
           HubSpot contact property `phone` (Phone Number). A contact's primary phone
           number
+        databricks_tags:
+          sensitive: identifier
       - name: website
         description: >
           HubSpot contact property `website` (Website URL). Associated company
@@ -1414,6 +1428,8 @@ models:
         description: >
           HubSpot contact property `address` (Street Address). Contact's street
           address, including apartment or unit number.
+        databricks_tags:
+          sensitive: confidential
       - name: candidate_id_source
         description: >
           HubSpot contact property `candidate_id_source` (Candidate ID Source).
@@ -1648,6 +1664,21 @@ models:
         description: Channel through which the survey was delivered
         data_tests:
           - not_null
+      - name: contact_email
+        description: >
+          Email copied onto the submission from its HubSpot contact. Tagged
+          here because this model extracts it from the properties blob rather
+          than selecting a tagged source column.
+        databricks_tags:
+          sensitive: identifier
+      - name: contact_first_name
+        description: Contact's first name, copied onto the submission.
+        databricks_tags:
+          sensitive: confidential
+      - name: contact_last_name
+        description: Contact's last name, copied onto the submission.
+        databricks_tags:
+          sensitive: confidential
       - name: pmf_response
         description: >
           Raw PMF survey option value. Populated for PMF surveys (e.g. survey_id 8, 12).

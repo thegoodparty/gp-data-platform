@@ -107,6 +107,8 @@ models:
           - not_null
       - name: user_email
         description: Null once the vendor has deleted the account.
+        databricks_tags:
+          sensitive: identifier
       - name: is_user_deleted
         description: True when the account is deleted or no longer a member of the org.
       - name: amount
@@ -137,6 +139,12 @@ models:
         description: Vendor user id.
         data_tests:
           - not_null
+      - name: user_email
+        description: >
+          Seat user's email, flattened out of the user block. The email is
+          what identifies the person; the vendor user id does not.
+        databricks_tags:
+          sensitive: identifier
 
   - name: stg_airbyte_source__anthropic_api_summaries
     description: >
