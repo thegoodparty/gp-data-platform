@@ -923,7 +923,9 @@ models:
       scorer (int__civics_viability_scoring) wins where it scored the row, the
       old candidacy value gap-fills the rest (2025-archive rows only since the
       TechSpeed fuzzy-dedupe removal). The scorer reads candidacy + election as
-      leaves, so this downstream layer is acyclic.
+      leaves, so this downstream layer is acyclic. Democrat and Republican
+      candidacies are published without a score: the scorer's model is trained
+      on independent, nonpartisan and third-party candidacies only.
     columns:
       - name: gp_candidacy_id
         description: Primary key - inherited from candidacy (one row per candidacy).
@@ -936,7 +938,11 @@ models:
           Numeric viability rating (0..5): the broad civics score
           (int__civics_viability_scoring.viability_rating_2_0) where available,
           else the prior candidacy value (2025-archive rows only since the
-          TechSpeed fuzzy-dedupe removal). NULL only where neither could score.
+          TechSpeed fuzzy-dedupe removal). NULL where neither could score, and
+          always NULL for Democrat and Republican candidacies: the model behind
+          the scorer is trained on independent, nonpartisan and third-party
+          candidacies, so a major-party score would be out of sample (it would
+          only say how that candidate would do running as an independent).
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -947,7 +953,8 @@ models:
           String category, always consistent with viability_score (same source
           for a given row). Values: "No Chance" (<1), "Unlikely to Win" (1..2),
           "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner" (4..5).
-          NULL where viability_score is NULL.
+          NULL where viability_score is NULL, including every Democrat and
+          Republican candidacy (see viability_score above).
         data_tests:
           - accepted_values:
               arguments:
@@ -972,6 +979,18 @@ models:
               or (viability_score >= 2 and viability_score < 3 and score_viability_automated = 'Has a Chance')
               or (viability_score >= 3 and viability_score < 4 and score_viability_automated = 'Likely to Win')
               or (viability_score >= 4 and score_viability_automated = 'Frontrunner')
+      - dbt_utils.expression_is_true:
+          name: candidacy_scored_major_party_unscored
+          arguments:
+            # Model-level, not column-level: a column-level expression_is_true
+            # prepends the column name to the expression and names the party
+            # column, not the score. Independents and third parties must keep
+            # their scores, so only the major parties are asserted unscored.
+            expression: >
+              not({{ parse_party_affiliation("party_affiliation") }}
+              in ('Democrat', 'Republican'))
+              or (viability_score is null
+              and score_viability_automated is null)
 
   - name: candidate
     description: >
