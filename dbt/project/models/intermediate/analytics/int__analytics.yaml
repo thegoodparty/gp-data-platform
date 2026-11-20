@@ -2235,10 +2235,13 @@ models:
       Power user definition v2, the definition for the 2026 cycle on: the
       action-day bar per election cycle (the election's calendar year) at each
       distance from the election, 0 to 365 days out. Each cycle is measured on
-      its own completed races from six months after telemetry began, with v1's
-      method: the 85th percentile of action days among users who had acted by
-      then, rounded up, never stricter further out, and days with fewer than
-      500 actors carrying the last bar measured on enough. A cycle with fewer
+      its own completed races from six months after telemetry began, among
+      candidates who reached voters (a send day on or before the election), with
+      v1's method: the 85th percentile of action days among those who had acted
+      by then, rounded up, never stricter further out, and days with fewer than
+      500 actors carrying the last bar measured on enough. Measured among senders
+      since 2026-11-20: measured on everyone who acted, about half of
+      senders cleared it; election-day bar 7 became 9 (2025) and 13 (2026). A cycle with fewer
       than 500 actors by election day borrows the latest measured cycle before
       it (bar_source_cycle), counts included. int__power_user_bar (v1) stays as
       the definition through mid-2026.
@@ -2267,7 +2270,7 @@ models:
         data_tests:
           - not_null
       - name: reference_user_count
-        description: Completed-race candidates in bar_source_cycle.
+        description: Completed-race candidates in bar_source_cycle who reached voters by their election.
       - name: actor_count
         description: Of those, how many had taken a real action by this distance.
       - name: raw_action_day_bar
@@ -2290,7 +2293,8 @@ models:
       voters through the product on or before the election (the is_activated
       legs), and took a real action in Win (int__user_action_days) on at least
       as many days as the bar for their cycle and distance from the election.
-      Dashboard views and onboarding steps do not count. Action days
+      The bar is the top 15% of senders in the cycle's completed races
+      (int__power_user_bar_v2). Dashboard views and onboarding steps do not count. Action days
       count from first use, in any year, up to the build date capped at the
       election. One row per user with a candidacy. Moves with the build date.
       int__user_power_user (v1) stays as the definition through mid-2026.
