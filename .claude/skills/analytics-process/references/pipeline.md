@@ -47,7 +47,7 @@ Use the stock why-clauses below rather than improvising new ones each run:
 | 2 | Find sources | resolve every concept to its governed definition — docs drift, the catalog is ground truth |
 | 3 | Brief | freeze the framing as a spec so execution can't quietly reinterpret it |
 | 4 | Execute | build the working set once so every cut is a free re-slice |
-| 5 | Review | two independent reviewers check methodology and usefulness before results are trusted |
+| 5 | Review | two independent reviewers check methodology and usefulness before results are trusted; a plain-reader review checks the page before it is published |
 | 6 | Close | route what we learned back into the docs so the next run starts smarter |
 
 **Gate receipts.** When a checkpoint clears, say so explicitly instead of silently moving on —
@@ -86,7 +86,7 @@ Build each reviewer's invocation prompt from this template — and nothing more:
 
 **Model note.** The reviewers inherit the session model (their frontmatter deliberately carries no pin — intent recorded 2026-07: "strong model" was the goal and a literal pin lags model generations). Run substantive reviews in a session on a strong model tier.
 
-**On reviewer conflict:** when the two reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
+**On reviewer conflict:** when the methodology and usefulness reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
 
 ## Plain-reader review
 
