@@ -483,17 +483,18 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
         for pdf in iterator:
             if len(pdf) == 0:
                 continue
-            # Refuse rather than silently NaN-fill a feature the booster was
-            # trained on. A renamed or dropped L2 column lands here, and filling
-            # it would leave the predictions finite and in range, so nothing else
-            # notices that the model stopped using a feature it relies on.
-            missing = [feat for feat in feat_names if feat not in pdf.columns]
-            unexcused = [feat for feat in missing if feat not in _TURNED_OFF_FEATURES]
+            # Refuse to silently NaN-fill a trained categorical whose column is
+            # gone. Scoped to cat_map's keys: the lag features are legitimately
+            # absent for years L2 has not delivered, and filling those is the
+            # design, while a categorical key IS a source column name, so its
+            # absence means that column was renamed or dropped.
+            missing_categoricals = [feat for feat in cat_map if feat not in pdf.columns]
+            unexcused = [feat for feat in missing_categoricals if feat not in _TURNED_OFF_FEATURES]
             if unexcused:
                 raise ValueError(
-                    f"booster expects {len(unexcused)} feature(s) absent from the "
-                    f"input, so they would be NaN on every row: {unexcused}. A "
-                    "renamed or dropped L2 column looks like this. Retrain the "
+                    f"booster was trained on categorical feature(s) absent from "
+                    f"the input, so they would be NaN on every row: {unexcused}. "
+                    "A renamed or dropped L2 column looks like this. Retrain the "
                     "booster on the current name, or list the feature in "
                     "_TURNED_OFF_FEATURES if scoring without it is intended."
                 )

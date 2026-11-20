@@ -256,4 +256,9 @@ def test_make_scorer_refuses_a_missing_unaccounted_feature(monkeypatch):
 
     pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "age": [40.0]})
     with pytest.raises(ValueError, match="Some_Retired_Column"):
-        _run_partition(monkeypatch, pdf, ["age", "Some_Retired_Column"], {})
+        _run_partition(
+            monkeypatch,
+            pdf,
+            ["age", "Some_Retired_Column"],
+            {"Some_Retired_Column": ["a", "b"]},
+        )

@@ -632,28 +632,30 @@ _TURNED_OFF_FEATURES = {"Designated_Market_Area_DMA"}
 def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inference_year):
     feat_names = booster.feature_name_
 
-    # Add NaN placeholders for any features the model expects but L2 lacks.
+    # Refuse to silently NaN-fill a trained CATEGORICAL whose column is gone.
     #
-    # Loud, not silent. A booster trained on a column L2 has since renamed or
-    # dropped would otherwise score with that feature NaN on every row: the
-    # predictions stay finite and in range, so the guards below pass, and the
-    # model quietly stops using something it was trained to rely on. Weigh that
-    # against losing the whole table. A *renamed* feature is invisible from here
-    # -- the name simply is not in the frame -- so the failure mode is bounded by
-    # refusing to run until someone either retrains on the new name or parks the
-    # old name in _TURNED_OFF_FEATURES.
-    missing = [feat for feat in feat_names if feat not in pdf.columns]
-    unexcused = [feat for feat in missing if feat not in _TURNED_OFF_FEATURES]
+    # Scoped to cat_map's keys, not every feature. The lag features
+    # (AnyElection_Minus1 and friends) are expected to be absent for years L2 has
+    # not delivered or has rolled out of its window, and the SQL already omits
+    # them; filling those is the design. A categorical is different: its key is a
+    # source column name, so the key being absent means that column was renamed
+    # or dropped. Filling then makes the feature NaN on every row while the
+    # predictions stay finite and in range, so the guards below pass and the model
+    # quietly stops using something it was trained to rely on. Refuse instead,
+    # unless the feature is named in _TURNED_OFF_FEATURES.
+    missing_categoricals = [feat for feat in cat_map if feat not in pdf.columns]
+    unexcused = [feat for feat in missing_categoricals if feat not in _TURNED_OFF_FEATURES]
     if unexcused:
         raise ValueError(
-            f"{model_slug}: booster expects {len(unexcused)} feature(s) absent "
-            f"from the input, so they would be NaN on every row: {unexcused}. "
-            "A renamed or dropped L2 column looks like this. Retrain the booster "
-            "on the current name, or list the feature in _TURNED_OFF_FEATURES if "
+            f"{model_slug}: booster was trained on categorical feature(s) absent "
+            f"from the input, so they would be NaN on every row: {unexcused}. A "
+            "renamed or dropped L2 column looks like this. Retrain the booster on "
+            "the current name, or list the feature in _TURNED_OFF_FEATURES if "
             "scoring without it is intended."
         )
-    for feat in missing:
-        pdf[feat] = np.nan
+    for feat in feat_names:
+        if feat not in pdf.columns:
+            pdf[feat] = np.nan
 
     x = pdf[feat_names].copy()
 

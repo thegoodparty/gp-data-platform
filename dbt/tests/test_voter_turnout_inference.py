@@ -244,8 +244,26 @@ def test_predict_precinct_refuses_to_nan_fill_an_unaccounted_feature():
         }
     )
     booster = _FakeBooster(["age", "Some_Retired_Column"])
+    # The retired column is a trained CATEGORICAL (a cat_map key), which is what
+    # makes its absence a source rename rather than a lag year L2 never shipped.
     with pytest.raises(ValueError, match="Some_Retired_Column"):
-        _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+        _predict_precinct(pdf, booster, {"Some_Retired_Column": ["a", "b"]}, "midterm", "FamX", 2026)
+
+
+def test_predict_precinct_fills_a_lag_feature_that_is_legitimately_absent():
+    """A lag year L2 never delivered is expected, not a rename, so it fills NaN."""
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "AnyElection_Minus1"])
+    out = _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+    assert list(out["p_hat"]) == [0.5]
 
 
 def test_predict_precinct_allows_a_declared_off_feature():
