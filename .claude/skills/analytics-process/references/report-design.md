@@ -32,8 +32,8 @@ review ([pipeline.md](pipeline.md#plain-reader-review)).
 
 ## Where review findings go
 
-Reviewers check rigor; the page has to be understood. Each finding from the data scientist or
-product manager review gets one of two homes:
+Reviewers check rigor; the page has to be understood. Each finding from any of the three reviews
+(data scientist, product manager, plain reader) gets one of two homes:
 
 - **The page**, only if it changes the answer a reader takes away.
 - **The appendix or methods**, otherwise. This is the default.

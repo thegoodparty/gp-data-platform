@@ -51,7 +51,9 @@ results, and who decided it.
 ## Design
 
 How the content is written and cut for its readers (one question, answer and chart per section,
-the plain-reader test, where review findings go) is in [report-design.md](report-design.md).
+the plain-reader test, where review findings go) is in [report-design.md](report-design.md). A draft
+published before the reviews still gets the plain-reader test and the plain-reader review
+([pipeline.md](pipeline.md#plain-reader-review)) first.
 
 The page follows the GoodParty dashboard rules. The ones that matter for a findings page:
 
