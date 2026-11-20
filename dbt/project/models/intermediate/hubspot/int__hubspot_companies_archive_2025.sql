@@ -33,25 +33,36 @@ with
             = 1
     )
 
-select
-    -- fmt: off
-    * except (dbt_scd_id, dbt_updated_at, dbt_valid_from, dbt_valid_to)
-    -- Recovered from the properties JSON. The HubSpot companies stream no longer
-    -- narrows this property into its own raw column, so a snapshot taken after
-    -- that change has no properties_win_number and this model -- a select * -- had
-    -- no column to pass downstream. The value still arrives inside properties,
-    -- so restore it under the name the models built on this one expect. Guarded
-    -- on the snapshot's own columns so a snapshot that still carries the column
-    -- keeps it, and cast to that column's decimal type so this is a restore and
-    -- not a retype. The comma lives inside the guard: outside it, a snapshot
-    -- that already has the column renders a trailing comma before FROM.
-    {% if "properties_win_number" not in snapshot_column_names %}
-        ,
+    {%- set recovered_win_number -%}
         try_cast(
             nullif(get_json_object(properties, '$.win_number'), '')
             as decimal(38, 10)
-        ) as properties_win_number
-    {% endif %}
+        )
+    {%- endset -%}
+
+select
+    -- fmt: off
+    * except (
+        dbt_scd_id, dbt_updated_at, dbt_valid_from, dbt_valid_to
+        {%- if "properties_win_number" in snapshot_column_names %}, properties_win_number{% endif %}
+    ),
+    -- Recovered from the properties JSON, and recovered on both shapes of
+    -- snapshot. The HubSpot companies stream stopped narrowing this property
+    -- into its own raw column, so a snapshot taken after that change has no
+    -- properties_win_number; one taken before still has the column, but its
+    -- later versions leave it NULL while the JSON carries the value. A dbt
+    -- snapshot adds columns and never drops them, so prod is the second shape:
+    -- the column exists and is nearly empty (497 populated of 70,640 rows, last
+    -- written 2026-03-19). Recovering only when the column is absent repaired
+    -- fresh schemas and left prod broken, which is backwards. Coalesce keeps
+    -- whichever value each version actually has; the cast matches the column's
+    -- own decimal type so this is a restore, not a retype.
+    coalesce(
+        {%- if "properties_win_number" in snapshot_column_names %}
+        properties_win_number,
+        {% endif %}
+        {{ recovered_win_number }}
+    ) as properties_win_number
     -- fmt: on
 from current_version
 where {{ dsar_not_suppressed("properties_candidate_email", "email") }}
