@@ -35,7 +35,7 @@ with
 
 select
     -- fmt: off
-    * except (dbt_scd_id, dbt_updated_at, dbt_valid_from, dbt_valid_to),
+    * except (dbt_scd_id, dbt_updated_at, dbt_valid_from, dbt_valid_to)
     -- Recovered from the properties JSON. The HubSpot companies stream no longer
     -- narrows this property into its own raw column, so a snapshot taken after
     -- that change has no properties_win_number and this model -- a select * -- had
@@ -43,8 +43,10 @@ select
     -- so restore it under the name the models built on this one expect. Guarded
     -- on the snapshot's own columns so a snapshot that still carries the column
     -- keeps it, and cast to that column's decimal type so this is a restore and
-    -- not a retype.
+    -- not a retype. The comma lives inside the guard: outside it, a snapshot
+    -- that already has the column renders a trailing comma before FROM.
     {% if "properties_win_number" not in snapshot_column_names %}
+        ,
         try_cast(
             nullif(get_json_object(properties, '$.win_number'), '')
             as decimal(38, 10)
