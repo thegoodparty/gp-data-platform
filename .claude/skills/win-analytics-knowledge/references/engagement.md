@@ -58,7 +58,7 @@ Both are recomputed from durable raw events (era-resolved where needed), not the
 
 ### Point-in-time caveat for retrospective cohorts
 
-`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (Name the denominator when citing an activation rate: scoped onboarded-type cohorts run ~17-21%, all accounts ~5% (2026-07).)
+`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. For a per-cycle report, also require a send in the election's calendar year by election day: in the 2026 Win engagement report, 124 of 701 "activated" 2026 candidates had sent only in 2025, for an earlier race. Use the window to narrow the governed flag, never to widen it: `int__user_outreach_sends` also holds sends the flag leaves out on purpose (in-progress door knocking, unconfirmed p2p), and widening added 77 people. *Measured 2026-11-20.* (Name the denominator when citing an activation rate: scoped onboarded-type cohorts run ~17-21%, all accounts ~5% (2026-07).)
 
 ### "Any evidence" vs "engaged beyond account creation"
 
@@ -85,6 +85,10 @@ Two versions, both kept. **v2 (`int__user_power_user_v2`) is the definition for 
 ### Counting sends
 
 Neither Amplitude nor the product DB (`gp_api_db_outreach`) records every send. Amplitude holds the legacy in-product sends and phone-banking completions; gp-api holds the texting volume. Use `int__user_outreach_intensity` (in `user_journey`), which routes each channel to the source that records it and dedupes the overlap; it is anchored on the six months before the user's own election. About 75% of in-window sends cannot be tied to a channel (legacy events carry none), so it publishes an `unattributed` bucket rather than a channel split that looks complete. Two traps: a gp-api p2p row with status `completed` only means the Peerly start day passed, not that anyone was contacted; and never coalesce `recipientCount` with `voterContacts` (the audience selected, not people reached), which once produced 4.7M phantom recipients. `user_journey_events` carries the same committed sends as rows (`event = 'Outreach send'`, channel in `event_label`, text count in `event_value`), identical to `int__user_outreach_sends` on a 2026-11-12 check. About 1 in 5 texting sends has no text count, so "texted" means at least one texting send: measure volume only where the count is known and report the unknowns (requiring a count missed 66 of 305 Pro texters, DATA-2809). *Measured 2026-09-30; journey-event check 2026-11-12.*
+
+### Replies and opt-outs
+
+Text replies are stamped per recipient in `stg_airbyte_source__gp_api_db_contact_interaction_text` from 2026-07-22. gp-api stamps `responded_at` on a STOP reply too, so a real reply is `responded_at is not null and opted_out_at is null`; counting `responded_at` alone reads about 5% of recipients, of which about 6 in 7 are STOPs. Opt-outs also arrive from the vendor's opt-out flag without a reply. Reply bodies, each flagged `is_opt_out`, are in `airbyte_source.gp_api_db_poll_individual_message` (Win rows have an `outreach_id`) from 2026-08-16; they put real replies at about 0.6% to 0.75% of recipients, with opt-outs about 8 times as common. *Measured 2026-11-20.*
 
 ## Amplitude event landscape
 

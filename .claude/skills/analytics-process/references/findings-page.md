@@ -50,6 +50,9 @@ results, and who decided it.
 
 ## Design
 
+How the content is written and cut for its readers (one question, answer and chart per section,
+the plain-reader test, where review findings go) is in [report-design.md](report-design.md).
+
 The page follows the GoodParty dashboard rules. The ones that matter for a findings page:
 
 - Ink goes to data. No cards, boxes or shadows; whitespace and a hairline rule separate sections.
