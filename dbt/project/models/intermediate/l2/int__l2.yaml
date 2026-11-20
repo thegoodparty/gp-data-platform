@@ -241,13 +241,19 @@ models:
       #
       # skip_optimize turns off the OPTIMIZE the materialization runs, which is
       # the statement that fails, and the post_hook runs the same OPTIMIZE itself
-      # after naming the clustering columns. Both statements are needed: the
-      # property has to be set for the OPTIMIZE to succeed, and the OPTIMIZE has
-      # to still happen because it is what maintains the clustering on a
-      # 219M-row table. A post_hook alone is not enough -- dbt runs the
-      # materialization's own OPTIMIZE before it reaches post_hooks -- and the
-      # tblproperties config does not apply to a Python model's table at all.
+      # after naming the clustering columns. The OPTIMIZE has to still happen: it
+      # is what maintains the clustering on a 219M-row table. A post_hook alone
+      # is not enough, because dbt runs the materialization's own OPTIMIZE before
+      # it reaches post_hooks, and the tblproperties config does not apply to a
+      # Python model's table at all.
+      #
+      # The pre_hook covers the other half. On an existing table carrying a bad
+      # property, the write itself can fail before the post_hook is reached, so
+      # heal it up front too. Guarded, because a first build has no table to
+      # alter yet -- and there the post_hook is what fixes it.
       skip_optimize: true
+      pre_hook:
+        - "{% if load_relation(this) %}alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID'){% endif %}"
       post_hook:
         - "alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID')"
         - "optimize {{ this }}"
