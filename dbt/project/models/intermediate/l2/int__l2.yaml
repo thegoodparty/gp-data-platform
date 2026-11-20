@@ -231,21 +231,26 @@ models:
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
     config:
-      # Delta keeps stats on at most 32 columns and takes them from this
-      # property, so a clustering column that falls outside that window gets no
-      # stats and the build fails with DELTA_CLUSTERING_COLUMN_MISSING_STATS.
-      # Prod's table carries a stale 36-column property whose first 32 are
-      # ConsumerData columns, which is exactly that. Reset the property before
-      # every write so the clustering columns always carry stats.
+      # Delta keeps stats on at most 32 columns and takes them from
+      # delta.dataSkippingStatsColumns. When that property does not name the
+      # clustering columns, they get no stats and the OPTIMIZE dbt runs after
+      # every write fails with DELTA_CLUSTERING_COLUMN_MISSING_STATS. Two ways to
+      # get there: prod's table carries a stale 36-column property whose first 32
+      # are ConsumerData columns, and a brand-new table lets Delta auto-select 32
+      # columns that miss the clustering ones the same way.
       #
-      # A hook, not the tblproperties config: the Python materialization does
-      # not apply that config to the table it writes, and a post_hook is too
-      # late because the failing statement is the write itself. Guarded on the
-      # relation existing, the way the haystaq models guard theirs, because a
-      # first build into a fresh schema has no table to alter yet -- there a
-      # fresh CREATE ... CLUSTER BY already collects the right stats.
-      pre_hook:
-        - "{% if load_relation(this) %}alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID'){% endif %}"
+      # skip_optimize turns off the OPTIMIZE the materialization runs, which is
+      # the statement that fails, and the post_hook runs the same OPTIMIZE itself
+      # after naming the clustering columns. Both statements are needed: the
+      # property has to be set for the OPTIMIZE to succeed, and the OPTIMIZE has
+      # to still happen because it is what maintains the clustering on a
+      # 219M-row table. A post_hook alone is not enough -- dbt runs the
+      # materialization's own OPTIMIZE before it reaches post_hooks -- and the
+      # tblproperties config does not apply to a Python model's table at all.
+      skip_optimize: true
+      post_hook:
+        - "alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID')"
+        - "optimize {{ this }}"
     columns:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
