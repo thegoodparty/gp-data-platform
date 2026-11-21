@@ -269,8 +269,10 @@ def test_predict_precinct_fills_a_lag_feature_that_is_legitimately_absent():
 def test_predict_precinct_allows_a_declared_off_feature():
     """A feature in _TURNED_OFF_FEATURES still scores, with that column NaN.
 
-    Designated_Market_Area_DMA is there because L2 renamed the column and
+    Designated_Market_Area_DMA is listed there because L2 renamed the column and
     changed its values, so no current column can supply the trained categorical.
+    The name has to be a cat_map key for the guard to look at it at all, so it is
+    passed as one: without the exemption this raises.
     """
     pdf = pd.DataFrame(
         {
@@ -282,7 +284,14 @@ def test_predict_precinct_allows_a_declared_off_feature():
         }
     )
     booster = _FakeBooster(["age", "Designated_Market_Area_DMA"])
-    out = _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+    out = _predict_precinct(
+        pdf,
+        booster,
+        {"Designated_Market_Area_DMA": ["LOS ANGELES DMA"]},
+        "midterm",
+        "FamX",
+        2026,
+    )
     assert list(out["p_hat"]) == [0.5]
 
 

@@ -262,3 +262,17 @@ def test_make_scorer_refuses_a_missing_unaccounted_feature(monkeypatch):
             ["age", "Some_Retired_Column"],
             {"Some_Retired_Column": ["a", "b"]},
         )
+
+
+def test_make_scorer_allows_a_declared_off_feature(monkeypatch):
+    """The exemption works in the voter scorer too, for a cat_map key."""
+    import pandas as pd
+
+    pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "age": [40.0]})
+    out = _run_partition(
+        monkeypatch,
+        pdf,
+        ["age", "Designated_Market_Area_DMA"],
+        {"Designated_Market_Area_DMA": ["LOS ANGELES DMA"]},
+    )
+    assert list(out[0]["prob_vote"]) == [0.5]
