@@ -57,6 +57,14 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
+    # Deliberately the trained name, not L2's MMA_Zone. This list builds
+    # the feature frame handed to a PROMOTED booster, and those boosters
+    # name their features Designated_Market_Area_DMA. Renaming here makes
+    # the frame lack that name, so the scorer NaN-fills it for every row
+    # and the market feature silently drops out of scoring while the
+    # models keep "working" (unseen categorical values map to NaN too).
+    # Held at the old name until both boosters are retrained on MMA_Zone
+    # and their categorical maps rebuilt from the new strings.
     "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
@@ -606,10 +614,45 @@ def _check_lgbm_version(registered_model_name, tags):
         )
 
 
+# Features the promoted boosters were trained on that no L2 column can supply
+# any more. L2 renamed the media-market column Designated_Market_Area_DMA to
+# MMA_Zone on 2026-11-17 and changed its values ("LOS ANGELES DMA" ->
+# "LOS ANGELES MMA (CA/NV)"), so the trained categorical map no longer matches
+# even under the new name. Scoring keeps running with this feature absent, which
+# is what it was already doing silently: the encoder maps any unseen string to
+# NaN, so the old values would have been NaN regardless.
+#
+# Listed by name, on purpose, so the omission is a decision in the diff rather
+# than an effect of a rename. Drop an entry once the boosters are retrained on
+# the current column, which is the real fix; the categorical map has to be
+# rebuilt from the new strings at the same time.
+_TURNED_OFF_FEATURES = {"Designated_Market_Area_DMA"}
+
+
 def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inference_year):
     feat_names = booster.feature_name_
 
-    # Add NaN placeholders for any features the model expects but L2 lacks.
+    # Refuse to silently NaN-fill a trained CATEGORICAL whose column is gone.
+    #
+    # Scoped to cat_map's keys, not every feature. The lag features
+    # (AnyElection_Minus1 and friends) are expected to be absent for years L2 has
+    # not delivered or has rolled out of its window, and the SQL already omits
+    # them; filling those is the design. A categorical is different: its key is a
+    # source column name, so the key being absent means that column was renamed
+    # or dropped. Filling then makes the feature NaN on every row while the
+    # predictions stay finite and in range, so the guards below pass and the model
+    # quietly stops using something it was trained to rely on. Refuse instead,
+    # unless the feature is named in _TURNED_OFF_FEATURES.
+    missing_categoricals = [feat for feat in cat_map if feat not in pdf.columns]
+    unexcused = [feat for feat in missing_categoricals if feat not in _TURNED_OFF_FEATURES]
+    if unexcused:
+        raise ValueError(
+            f"{model_slug}: booster was trained on categorical feature(s) absent "
+            f"from the input, so they would be NaN on every row: {unexcused}. A "
+            "renamed or dropped L2 column looks like this. Retrain the booster on "
+            "the current name, or list the feature in _TURNED_OFF_FEATURES if "
+            "scoring without it is intended."
+        )
     for feat in feat_names:
         if feat not in pdf.columns:
             pdf[feat] = np.nan

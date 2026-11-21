@@ -14,6 +14,7 @@ from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_voter_scores imp
     _build_voter_features_sql,
     _detect_election_cols,
     _file_digest,
+    _make_scorer,
     _november_model_for_year,
     _op_years,
     _opp_view_sql,
@@ -193,3 +194,85 @@ def test_file_digest_spans_chunk_boundaries(tmp_path):
     p = tmp_path / "big.txt"
     p.write_bytes(b"x" * 5000)
     assert _file_digest(str(p), chunk_size=16) == _file_digest(str(p))
+
+
+class _RecordingBooster:
+    """Stand-in for lgb.Booster: records the frame it was asked to predict."""
+
+    def __init__(self, model_file=None):
+        self.seen = None
+
+    def predict(self, arr):
+        self.seen = arr
+        return [0.5] * len(arr)
+
+
+def _run_partition(monkeypatch, pdf, feat_names, cat_map):
+    """Drive _make_scorer's partition loop with a stubbed lightgbm module."""
+    import sys
+    import types
+
+    fake_lgb = types.ModuleType("lightgbm")
+    fake_lgb.Booster = _RecordingBooster
+    monkeypatch.setitem(sys.modules, "lightgbm", fake_lgb)
+    import builtins
+
+    if hasattr(builtins, "_GP_VOTER_BOOSTER_CACHE"):
+        delattr(builtins, "_GP_VOTER_BOOSTER_CACHE")
+
+    scorer = _make_scorer("/tmp/unused", cat_map, feat_names, "digest")
+    return list(scorer(iter([pdf])))
+
+
+def test_make_scorer_passes_present_features_through(monkeypatch):
+    """The features the booster wants must reach predict, not just the NaN-filled ones.
+
+    Regression guard: a version of this loop that only assigned the *missing*
+    features left x with no columns in the normal case, so predict got an empty
+    frame and every KeyError-free path silently scored nothing.
+    """
+    import pandas as pd
+
+    pdf = pd.DataFrame(
+        {
+            "LALVOTERID": ["A", "B"],
+            "state": ["AL", "AL"],
+            "age": [40.0, 50.0],
+            "Parties_Description": ["Democratic", "Republican"],
+        }
+    )
+    out = _run_partition(
+        monkeypatch,
+        pdf,
+        ["age", "Parties_Description"],
+        {"Parties_Description": ["Democratic", "Republican"]},
+    )
+    assert len(out) == 1  # one yielded partition
+    assert list(out[0]["prob_vote"]) == [0.5, 0.5]
+
+
+def test_make_scorer_refuses_a_missing_unaccounted_feature(monkeypatch):
+    import pandas as pd
+
+    pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "age": [40.0]})
+    with pytest.raises(ValueError, match="Some_Retired_Column"):
+        _run_partition(
+            monkeypatch,
+            pdf,
+            ["age", "Some_Retired_Column"],
+            {"Some_Retired_Column": ["a", "b"]},
+        )
+
+
+def test_make_scorer_allows_a_declared_off_feature(monkeypatch):
+    """The exemption works in the voter scorer too, for a cat_map key."""
+    import pandas as pd
+
+    pdf = pd.DataFrame({"LALVOTERID": ["A"], "state": ["AL"], "age": [40.0]})
+    out = _run_partition(
+        monkeypatch,
+        pdf,
+        ["age", "Designated_Market_Area_DMA"],
+        {"Designated_Market_Area_DMA": ["LOS ANGELES DMA"]},
+    )
+    assert list(out[0]["prob_vote"]) == [0.5]

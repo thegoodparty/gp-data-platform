@@ -1769,10 +1769,6 @@ Democratic Convention Member
 Democratic Zone
 {% enddocs %}
 
-{% docs l2col_Designated_Market_Area_DMA %}
-Designated Market Area DMA
-{% enddocs %}
-
 {% docs l2col_District_Attorney %}
 District Attorney
 {% enddocs %}
@@ -4495,6 +4491,11 @@ Local Hospital District
 
 {% docs l2col_Local_Park_District %}
 Local Park District
+{% enddocs %}
+
+{% docs l2col_MMA_Zone %}
+Nielsen media market (Metro Market Area), as "CITY MMA (STATES)". L2 renamed
+this from Designated_Market_Area_DMA, which held the same geography as "CITY DMA".
 {% enddocs %}
 
 {% docs l2col_Mailing_Addresses_AddressLine %}

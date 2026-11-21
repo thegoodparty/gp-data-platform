@@ -227,6 +227,74 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
     assert {"State", "County", "Precinct", "n_voters"}.issubset(out.columns)
 
 
+def test_predict_precinct_refuses_to_nan_fill_an_unaccounted_feature():
+    """A booster feature that silently vanished must fail, not score.
+
+    Filling it with NaN keeps every prediction finite and in range, so the
+    finiteness guards pass and the model drops a feature it was trained on with
+    nothing said. Refusing turns that into a build failure.
+    """
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "Some_Retired_Column"])
+    # The retired column is a trained CATEGORICAL (a cat_map key), which is what
+    # makes its absence a source rename rather than a lag year L2 never shipped.
+    with pytest.raises(ValueError, match="Some_Retired_Column"):
+        _predict_precinct(pdf, booster, {"Some_Retired_Column": ["a", "b"]}, "midterm", "FamX", 2026)
+
+
+def test_predict_precinct_fills_a_lag_feature_that_is_legitimately_absent():
+    """A lag year L2 never delivered is expected, not a rename, so it fills NaN."""
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "AnyElection_Minus1"])
+    out = _predict_precinct(pdf, booster, {}, "midterm", "FamX", 2026)
+    assert list(out["p_hat"]) == [0.5]
+
+
+def test_predict_precinct_allows_a_declared_off_feature():
+    """A feature in _TURNED_OFF_FEATURES still scores, with that column NaN.
+
+    Designated_Market_Area_DMA is listed there because L2 renamed the column and
+    changed its values, so no current column can supply the trained categorical.
+    The name has to be a cat_map key for the guard to look at it at all, so it is
+    passed as one: without the exemption this raises.
+    """
+    pdf = pd.DataFrame(
+        {
+            "State": ["AL"],
+            "County": ["X"],
+            "Precinct": ["1"],
+            "n_voters": [10.0],
+            "age": [40.0],
+        }
+    )
+    booster = _FakeBooster(["age", "Designated_Market_Area_DMA"])
+    out = _predict_precinct(
+        pdf,
+        booster,
+        {"Designated_Market_Area_DMA": ["LOS ANGELES DMA"]},
+        "midterm",
+        "FamX",
+        2026,
+    )
+    assert list(out["p_hat"]) == [0.5]
+
+
 def test_predict_precinct_rejects_non_finite_predictions_and_checks_shape():
     """A NaN prediction must fail loudly at the source: Spark GREATEST skips
     NULLs, so a NULL/NaN prediction downstream would launder into a

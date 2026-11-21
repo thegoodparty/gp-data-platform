@@ -900,8 +900,6 @@ models:
         description: '{{ doc("l2col_Democratic_Convention_Member") }}'
       - name: "Democratic_Zone"
         description: '{{ doc("l2col_Democratic_Zone") }}'
-      - name: "Designated_Market_Area_DMA"
-        description: '{{ doc("l2col_Designated_Market_Area_DMA") }}'
       - name: "District_Attorney"
         description: '{{ doc("l2col_District_Attorney") }}'
       - name: "Drainage_District"
@@ -2264,6 +2262,8 @@ models:
         description: '{{ doc("l2col_Local_Hospital_District") }}'
       - name: "Local_Park_District"
         description: '{{ doc("l2col_Local_Park_District") }}'
+      - name: "MMA_Zone"
+        description: '{{ doc("l2col_MMA_Zone") }}'
       - name: "Mailing_Addresses_AddressLine"
         description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
       - name: "Mailing_Addresses_ApartmentNum"
