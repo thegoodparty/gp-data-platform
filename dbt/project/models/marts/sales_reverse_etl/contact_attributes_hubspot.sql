@@ -19,6 +19,39 @@
 -- current values, and both inputs are already materialized. Empty tblproperties:
 -- the schema's Delta column mapping is meaningless on a view.
 with
+    -- HubSpot has no primary-company field and the association array is unordered,
+    -- so take the newest associated company by HubSpot createdate, then highest
+    -- numeric id (ids are monotonic) as the tie-break and for companies absent
+    -- from the ingest. Null when the contact has no associated company. A fallback
+    -- import match key for when the contact id fails to match.
+    -- a lateral view cannot be followed by a join, so explode in its own CTE
+    contact_companies as (
+        select ours.id as contact_id, try_cast(cid as bigint) as company_id
+        from {{ ref("int__hubspot_contacts") }} as ours
+        lateral view explode(ours.companies) as cid
+    ),
+
+    ranked_companies as (
+        select
+            cc.contact_id,
+            cc.company_id,
+            row_number() over (
+                partition by cc.contact_id
+                order by co.created_at desc nulls last, cc.company_id desc
+            ) as rn
+        from contact_companies as cc
+        left join
+            {{ ref("stg_airbyte_source__hubspot_api_companies") }} as co
+            on cc.company_id = co.id
+        where cc.company_id is not null
+    ),
+
+    newest_company as (
+        select contact_id, cast(company_id as string) as hubspot_company_id
+        from ranked_companies
+        where rn = 1
+    ),
+
     compared as (
         select
             ours.id,
@@ -28,8 +61,10 @@ with
                 when theirs.serve_priority_segment
                 then false
             end as serve_priority_segment,
-            theirs.serve_priority_segment as hs_serve_priority_segment
+            theirs.serve_priority_segment as hs_serve_priority_segment,
+            newest_company.hubspot_company_id
         from {{ ref("int__hubspot_contacts") }} as ours
+        left join newest_company on ours.id = newest_company.contact_id
         -- INNER join: a contact missing from the ingest no longer exists in
         -- HubSpot and would only error on import.
         join
@@ -46,6 +81,7 @@ with
 
 select
     id as hubspot_contact_id,
+    hubspot_company_id,
     serve_priority_segment,
     hs_serve_priority_segment as hubspot_current_serve_priority_segment
 from compared
