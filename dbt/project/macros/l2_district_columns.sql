@@ -31,13 +31,11 @@
     so int__l2.yaml's canonicalization test on the universe reds until every
     state redelivers.
 
-    A rename is the same problem wearing a friendlier face, and it is the case
-    that actually happened: Designated_Market_Area_DMA became MMA_Zone in the
-    2026-11-17 delivery, which had already been loaded, so the incremental ran
-    with nothing new to read and kept no MMA_Zone rows at all -- the universe
-    showed 532 and the aggregation zero. Measured in dev: an ordinary run left
-    the aggregation with 2 MMA_Zone rows, a --full-refresh produced 532, exactly
-    the universe's count.
+    A rename counts: Designated_Market_Area_DMA became MMA_Zone in the
+    2026-11-17 delivery, which had already loaded, so an ordinary incremental
+    run kept 2 MMA_Zone rows where the universe had 532; a --full-refresh
+    produced 532. The on-merge job's --full-refresh of state:modified covers
+    this, since editing this macro marks every model that calls it modified.
 
     Args:
         scope (str): 'all' or 'allocated'.
