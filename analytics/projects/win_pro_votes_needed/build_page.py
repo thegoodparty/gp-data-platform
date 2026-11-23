@@ -589,7 +589,7 @@ ASSUMPTIONS = [
     (
         'Over 5,000 texts is written "at least X%, up to Y%" everywhere, and Amplitude fills missing gp-api counts.',
         "Tristan, 2026-11-18: the bare all-Pro figure was the floor shown as a fixed number, and gp-api's null or 0 counts dropped recipient counts Amplitude holds for the same send.",
-        f"Texters with no count fell from 105 to {int(tex.texts_unknown.sum())}; at 2,500+ votes, {rng(big_tex)} of texters.",
+        f"Texters with no count fell from {int((tex.texts_sent - tex.amp_fill_texts <= 0).sum())} to {int(tex.texts_unknown.sum())}; at 2,500+ votes, {rng(big_tex)} of texters.",
         "Revision after close",
     ),
     (
