@@ -12,3 +12,121 @@ sources:
     tables:
       - name: l2_commercial_20260912_mi
         description: Michigan, September 2026 release. One row per individual.
+        columns:
+          - name: Landline_Phone_Number
+            config:
+              meta:
+                sensitive: identifier
+          - name: Cell_Phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: MAID1
+            config:
+              meta:
+                sensitive: identifier
+          - name: MAID2
+            config:
+              meta:
+                sensitive: identifier
+          - name: MAID3
+            config:
+              meta:
+                sensitive: identifier
+          - name: MAID4
+            config:
+              meta:
+                sensitive: identifier
+          - name: MAID5
+            config:
+              meta:
+                sensitive: identifier
+          - name: IP1
+            config:
+              meta:
+                sensitive: identifier
+          - name: IP2
+            config:
+              meta:
+                sensitive: identifier
+          - name: IP3
+            config:
+              meta:
+                sensitive: identifier
+          - name: IP4
+            config:
+              meta:
+                sensitive: identifier
+          - name: IP5
+            config:
+              meta:
+                sensitive: identifier
+          - name: LikelyRecentEmployment_Email
+            config:
+              meta:
+                sensitive: identifier
+          - name: Fname
+            config:
+              meta:
+                sensitive: confidential
+          - name: Mname
+            config:
+              meta:
+                sensitive: confidential
+          - name: Lname
+            config:
+              meta:
+                sensitive: confidential
+          - name: Primary_Address
+            config:
+              meta:
+                sensitive: confidential
+          - name: Secondary_Address
+            config:
+              meta:
+                sensitive: confidential
+          - name: Latitude
+            config:
+              meta:
+                sensitive: confidential
+          - name: Longitude
+            config:
+              meta:
+                sensitive: confidential
+          - name: BirthDate
+            config:
+              meta:
+                sensitive: confidential
+          - name: DOB_Day
+            config:
+              meta:
+                sensitive: confidential
+          - name: PreviousAddress_PrimaryAddress
+            config:
+              meta:
+                sensitive: confidential
+          - name: PreviousAddress_SecondaryAddress
+            config:
+              meta:
+                sensitive: confidential
+          - name: Legal_BriefDescription
+            config:
+              meta:
+                sensitive: confidential
+          # The street-address parts the gp_api mart publishes as
+          # HouseNumber, ApartmentNum and DPBC. Tagged here to match the voter
+          # file, whose l2_sensitive_tags seed carries the equivalent
+          # Residence_Addresses_* and Mailing_Addresses_* columns as
+          # confidential. Source-level, so both address prefixes inherit it.
+          - name: House_Number
+            config:
+              meta:
+                sensitive: confidential
+          - name: Unit_Designator_Number
+            config:
+              meta:
+                sensitive: confidential
+          - name: Delivery_Point_Check_Digit
+            config:
+              meta:
+                sensitive: confidential

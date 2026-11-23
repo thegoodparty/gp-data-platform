@@ -58,7 +58,6 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
-    "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
     "ConsumerData_Credit_Rating",

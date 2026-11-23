@@ -349,7 +349,10 @@ models:
           An exact email edge would reach a live contact for this unmatched
           user, which is true for about 4,100 of them. Null for users who
           already resolve. Closing the gap is entity resolution work, not this
-          model's.
+          model's. A flag, not the address, so it stays readable: propagation
+          from user_email would otherwise put an identifier tag on a boolean.
+        databricks_tags:
+          open: "true"
       - name: hubspot_contact_count
         description: Live HubSpot contacts in the user's person group.
       - name: hs_owner_id

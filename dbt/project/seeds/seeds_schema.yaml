@@ -165,6 +165,15 @@ seeds:
       assignment reaches the people DB without waiting for an L2 load.
       Pair each new district with an l2_br_match_overrides row so the BR
       position resolves to it.
+      Spell l2_district_name the way L2 spells it in the current file, not the
+      way the source document does. L2 adopts a district and then starts
+      carrying it itself, and the two spellings need not agree: Montebello's
+      trustee areas came from LA County as "MONTEBELLO USD TA 1" and L2 ships
+      "MONTEBELLO USD TA1". A row whose spelling L2 never emits matches no
+      voter, so the coalesce never fires and the district exists only as a
+      name nobody points at. Check the spelling against
+      int__l2_nationwide_uniform_raw_districts before adding a row for a
+      district L2 already carries.
     config:
       column_types:
         precinct: string
