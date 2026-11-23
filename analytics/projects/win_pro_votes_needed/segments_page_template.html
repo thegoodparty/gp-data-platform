@@ -1,0 +1,331 @@
+<title>Pro Pricing Segments</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one padded reading column; hairline rules group sections, no boxes. GoodParty dashboard look, same as the DATA-2809 page. */
+:root {
+  --bg: #ffffff; --fg: #0B1529; --muted: #5a6478; --faint: #e3e8f0; --rule: #cfd6e2;
+  --blue: #0048C2; --sky: #A4C2F5; --ref: #8a93a5; --code-bg: #f4f6fa;
+  --sans: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0B1529; --fg: #e8edf6; --muted: #9aa6bb; --faint: #1e2a42; --rule: #2c3a55;
+  --blue: #7FA8F0; --sky: #2a4a80; --ref: #8390a8; --code-bg: #08101f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0B1529; --fg: #e8edf6; --muted: #9aa6bb; --faint: #1e2a42; --rule: #2c3a55;
+  --blue: #7FA8F0; --sky: #2a4a80; --ref: #8390a8; --code-bg: #08101f; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+main { max-width: 1080px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 44px; }
+.eyebrow { font: 500 12px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 600 clamp(26px, 3.6vw, 36px)/1.15 var(--sans); margin: 0; text-wrap: balance; }
+h2 { font: 600 22px/1.25 var(--sans); margin: 0; text-wrap: balance; }
+h3 { font: 600 16px/1.3 var(--sans); margin: 0; }
+p { margin: 0; }
+header { display: flex; flex-direction: column; gap: 10px; }
+.meta { font-size: 13px; color: var(--muted); }
+.sep { color: var(--muted); opacity: .6; margin: 0 .3em; font-weight: 400; }
+section { display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--rule); padding-top: 18px; }
+section[id], [id] { scroll-margin-top: 16px; }
+.takeaway { font-size: .88rem; }
+.sub { display: flex; flex-direction: column; gap: 10px; }
+.answer { font: 600 clamp(18px, 2.3vw, 21px)/1.4 var(--sans); text-wrap: pretty; }
+ul.support { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 36px; }
+ul.support li { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; }
+ul.support a, nav.toc a { color: var(--blue); text-decoration: none; font-weight: 500; }
+ul.support a { font-size: 12px; }
+ul.support a:hover, nav.toc a:hover { text-decoration: underline; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+a:focus-visible, summary:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+figure.dots { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+figcaption, .axis-note { font-size: 12.5px; color: var(--muted); }
+.scroll { overflow-x: auto; min-width: 0; }
+.panels { display: grid; grid-template-columns: repeat(var(--cols), minmax(170px, 1fr)); gap: 18px 28px; min-width: calc(var(--cols) * 185px); }
+.panels.wrapgrid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); min-width: 0; }
+.panel { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ptitle { font: 600 13px/1.3 var(--sans); }
+.pref { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.rows { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; row-gap: 9px; column-gap: 8px; }
+.rows.wide-lab { grid-template-columns: 150px 1fr 40px; }
+.rows .lab { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rows .val { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.rows .val.small { color: var(--muted); }
+.track { position: relative; height: 14px; }
+.track::before { content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 2px; background: var(--faint); border-radius: 1px; }
+.track .ref { position: absolute; top: 0; bottom: 0; border-left: 1.5px dashed var(--ref); }
+.track .dot { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 2px var(--bg); }
+.track .dot.clear { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--blue); }
+.track .dot.clear.tagged { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ref); }
+.dot.faded { opacity: .45; }
+.faded-t { color: var(--muted); }
+.key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); align-items: center; }
+.key i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); margin-right: 6px; vertical-align: -1px; }
+.key i.c { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--blue); }
+.key i.t { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ref); }
+.key i.r { width: 0; height: 12px; border-radius: 0; background: none; border-left: 1.5px dashed var(--ref); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; font-size: 14px; }
+.controls label { color: var(--muted); }
+select { font: 500 14px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 8px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.seg button { font: 500 13px var(--sans); color: var(--fg); background: transparent; border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--sky); border-color: var(--sky); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--faint); text-align: left; white-space: nowrap; }
+thead th { font-weight: 500; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--rule); white-space: normal; vertical-align: bottom; }
+.num { text-align: right; }
+table.wrap td { white-space: normal; vertical-align: top; min-width: 140px; }
+{{FIG_CSS}}
+.hero-dots { display: flex; flex-direction: column; gap: 8px; min-width: 420px; }
+.hero-dots .rows.wide-lab { grid-template-columns: 300px 1fr 40px; }
+.hero-dots .rows .lab { white-space: normal; }
+ul.plainlist { list-style: none; padding: 0; gap: 8px; font-size: 14px; color: var(--fg); }
+section.divider { border-top: 3px solid var(--fg); padding-top: 28px; margin-top: 24px; }
+h1.appendix-title { font: 600 clamp(24px, 3vw, 30px)/1.2 var(--sans); }
+.status b { color: var(--fg); }
+.note { font-size: 13px; color: var(--muted); }
+ol.recs { gap: 12px; font-size: 14.5px; }
+ol.recs a { color: var(--blue); text-decoration: none; font-size: 12px; font-weight: 500; }
+ul.note, ol.plain { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+details.code { border-top: 1px solid var(--faint); }
+details.code summary, details.more summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--blue); }
+details.code pre { margin: 0 0 8px; padding: 12px 14px; overflow-x: auto; font: 12px/1.5 var(--mono); background: var(--code-bg); color: var(--fg); }
+.codes { display: flex; flex-direction: column; }
+code { font-family: var(--mono); font-size: .9em; }
+blockquote.ask { margin: 0; border-left: 2px solid var(--rule); padding: 2px 0 2px 16px; display: flex; flex-direction: column; gap: 8px; }
+blockquote.ask footer { font-size: 12.5px; color: var(--muted); }
+dl.framing { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 12px 24px; margin: 0; font-size: 14px; }
+dl.framing dt { font-weight: 600; }
+dl.framing dd { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 560px) { dl.framing { grid-template-columns: 1fr; gap: 2px; } dl.framing dd { margin-bottom: 12px; } .rows.wide-lab { grid-template-columns: 120px 1fr 40px; } }
+</style>
+<main>
+<header>
+  <span class="eyebrow">DATA-2810 {{SEP}} Win pricing and packaging input {{SEP}} internal</span>
+  <h1>Which Pro customers use Win differently?</h1>
+  <p class="meta">Paying Win Pro customers with a 2026 election (Pro today, or canceled after their election) {{SEP}} {{N}} people {{SEP}} six months up to and including election day {{SEP}}
+  run {{RUN}} UTC {{SEP}} staff, demo and comped Pro excluded</p>
+  <p class="meta status"><b>Status: reviewed.</b> Results checked by Tristan in two rounds; methodology and product reviews ran 2026-11-19 and their changes are applied. Owner: Tristan (product analytics).</p>
+</header>
+
+<section id="tldr">
+  <span class="eyebrow">The answer</span>
+  <p class="answer">If texts are bundled, size the allowance by race size, not by customer segment: race size is what changes how many texts a customer sends. Customers CaS reached did outreach far more often than any segment differs, but we can't yet tell whether CaS causes it.</p>
+  <nav class="toc" aria-label="Sections"><a href="#race-size">1 Race size and texts</a><a href="#support">2 Support vs segments</a><a href="#unknowns">What we don't know</a><a href="#recommendations">Recommendations</a><a href="#analyst">Appendix for analysts</a></nav>
+</section>
+
+<section id="race-size">
+  <span class="eyebrow">1 {{SEP}} Race size and texts</span>
+  <h2>What decides how many texts a customer sends?</h2>
+  <p class="takeaway">Race size. The median texter in a race needing under 1,000 votes sent {{BAND_LO}} texts; at 10,000 votes or more, {{BAND_HI}}. No segment we could check changes this once race size is accounted for, though with these group sizes only a difference of about {{POWER_X}} times or more would show. {{UNRESOLVED}}</p>
+  {{VOL_HERO}}
+  <p class="takeaway"><b>For pricing:</b> a flat 5,000-text allowance runs out for most texters in races needing 2,500 votes or more: {{O5_BIG}}, of them went past it. Even under 1,000 votes, {{O5_SMALL}}, did.</p>
+  <p class="note">{{WHY_RANGE}}</p>
+</section>
+
+<section id="support">
+  <span class="eyebrow">2 {{SEP}} Support vs segments</span>
+  <h2>What decides whether a customer does outreach at all?</h2>
+  <p class="takeaway">Whether CaS reached them goes with it far more than any segment does. CaS reached {{PRE_N}} of {{N}} customers before they started any outreach, and {{OUT_PRE}} of them did outreach, {{CAS_PRE_ABOVE}} points above everyone ({{OUT_ALL}}). Of the {{NOCAS_N}} CaS never reached, {{OUT_NO}} did, {{CAS_NO_BELOW}} points below. The biggest segment difference is {{SEG_GAP_MAX}} points {{SEG_GAP_NAME}}. {{EXCL_NOTE}}
+  ICP offices look like a segment, but only among customers CaS reached: with no CaS contact, ICP and non-ICP customers texted at the same rate ({{ICP_NO}}).</p>
+  {{OUT_HERO}}
+  <p class="takeaway">Those CaS reached may also send more texts. Among activated customers who texted, the median was {{ACT_TX_ENG}} texts with CaS contact against {{ACT_TX_NO}} without. But the group without is {{ACT_TX_NO_N}} people, and their median could be anywhere from {{ACT_TX_CI}} of the others' (95% range), so this could be noise.</p>
+  {{TX_HERO}}
+  <p class="takeaway"><b>For pricing:</b> segments are not a basis for tiers. Support may be the bigger lever, but test it before pricing it.</p>
+</section>
+
+<section id="unknowns">
+  <span class="eyebrow">Limits</span>
+  <h2>What we don't know</h2>
+  <ul class="note plainlist">
+    <li><b>Whether CaS causes the difference.</b> Customers choose to take the call, so some would have done outreach, and sent more texts, anyway. The order fits: CaS contact came before the first text for {{CAS_FIRST}} texters with both.</li>
+    <li><b>Smaller segment effects, and small groups.</b> Differences in texts under about {{POWER_X}} times would not show here, and groups like federal races are too small to check across signup eras.</li>
+    <li><b>Exact text counts for some customers.</b> That is why the share over 5,000 is a range.</li>
+  </ul>
+</section>
+
+<section id="recommendations">
+  <span class="eyebrow">Recommendations</span>
+  <h2>What should product do with this?</h2>
+  <p class="takeaway">The analyst's read, revised after the methodology and product reviews.</p>
+  <ol class="plain recs">
+    <li><b>If texts are bundled, scale the allowance with votes needed to win.</b> A single 5,000-text allowance is too small for most texters in races needing 2,500 votes or more. <a href="#race-size">Section 1</a></li>
+    <li><b>Don't build tiers on customer segments.</b> No segment we could check changes how much customers send, and none moves whether they do outreach by more than {{SEG_GAP_MAX}} points. <a href="#support">Section 2</a></li>
+    <li><b>Test support as a packaging lever before pricing it.</b> Customers CaS reached did more outreach, but they chose to take the call. A randomized change to the upgrade call, such as booking it for half of new upgrades, would show whether CaS causes it. <a href="#support">Section 2</a></li>
+  </ol>
+  <p class="note"><b>Terms.</b> <b>CaS</b>: the candidate success team. Every upgrade is offered a CaS call; <b>reached by CaS</b> means at least one call or meeting, or two emails or texts, by election day. <b>Self-serve</b>: no CaS contact. <b>Texter</b>: sent at least one text in the six months up to election day.</p>
+</section>
+
+<section id="analyst" class="divider">
+  <h1 class="appendix-title">Appendix for analysts</h1>
+  <p class="takeaway"><b>The detail behind the answer.</b></p>
+  <p class="takeaway">Everything below supports the two findings above: the full comparison grid, the checks, and how to rerun it. <b>Clear</b> means a result holds after correcting for the number of comparisons and points the same way for customers who signed up before and from July 2026. A significant result that flips between the two is <b>differs by era</b>; one where an era is too small to check is <b>era not checkable</b>. State is background only: nobody would price by it. {{STATE_NOTE}}</p>
+  <nav class="toc" aria-label="Appendix sections"><a href="#cas">A1 CaS engagement</a><a href="#volume">A2 Volume</a><a href="#icp">A3 ICP and CaS</a><a href="#segments">A4 Segments</a><a href="#explorer">A5 Explorer</a><a href="#robustness">A6 Robustness</a><a href="#rerun">Rerun</a><a href="#appendix">Question and framing</a><a href="#assumptions">Assumptions</a></nav>
+</section>
+
+<section id="cas">
+  <span class="eyebrow">A1 {{SEP}} CaS engagement</span>
+  <h2>Does engaging with CaS change what Pro customers do?</h2>
+  <p class="takeaway">Yes, more than any segment. {{NOCAS_N}} customers had no CaS contact, {{PRE_N}} heard from CaS before any outreach and {{POST_N}} only after their outreach began.
+  Customers CaS never reached mostly did nothing: {{NOCAS_TEXT}} texted and {{NOCAS_NOOUT}} did no outreach on any channel. CaS contact, dated when it met the rule in the Terms, came before the first text for {{CAS_FIRST}} texters who had both, a median of {{LEAD_MED}} days earlier.</p>
+  <p class="note">This is engagement with an offered call, so it is partly the customer's own intent. It shows where usage happens, not that CaS caused it.</p>
+  <div class="sub"><h3>Outreach and spend {{SEP}} {{N}} customers</h3>{{CAS_FIG}}</div>
+  <div class="sub"><h3>Among activated customers</h3>
+  <p class="takeaway">The gap is not only about getting started. {{ACT_PRE}} of customers CaS reached before outreach activated, against {{ACT_NOCAS}} with no CaS contact. Among those who did activate, {{ACT_PRE_TEXT}} vs {{ACT_NOCAS_TEXT}} texted and {{ACT_PRE_PAID}} vs {{ACT_NOCAS_PAID}} paid for outreach.</p>
+  <p class="note">Activated means reached voters at least once, which needs outreach, so this view filters partly on the outcome. All Pro stays the base for the charts above; this is a stress test.</p>
+  {{ACT_CAS_TBL}}</div>
+  <div class="sub"><h3>Features {{SEP}} {{N_FEAT}} customers with races from July 15</h3>{{CAS_FEAT_FIG}}</div>
+  <div class="codes">{{CODE_CAS}}</div>
+</section>
+
+<section id="volume">
+  <span class="eyebrow">A2 {{SEP}} Volume</span>
+  <h2>Does CaS or race size change how much people text and spend?</h2>
+  <p class="takeaway">Race size does, clearly. CaS possibly does for texts, not for spend. Texters with no CaS contact sent a median of {{MED_TX_NO}} texts against {{MED_TX_ENG}} for those with it, and race size does not explain the gap: at 2,500 votes or more it is {{BIG_TX_NO}} against {{BIG_TX_ENG}}. It rests on {{NOCAS_TX_K}} self-serve texters with a known count, and their median is {{NOCAS_TX_CI}} of everyone else's at 95% confidence, so no difference is still possible. Median outreach spend per payer is {{MED_USD_NO}} and {{MED_USD_ENG}}, within noise.
+  By race size the median texter goes from {{BAND_LO}} texts under 1,000 votes to {{BAND_HI}} at 10,000+.
+  A 5,000-text allowance covers at least half of texters in small races but not most in bigger ones: {{O5_SMALL}}, of texters under 1,000 votes went past it, against {{O5_BIG}}, at 2,500 votes or more.</p>
+  <p class="note">"Over 5,000" counts texters only. Counted across all Pro customers it reads {{O5_ALL}}, because about half never text, which makes the allowance look roomier than it is for anyone who uses it. {{WHY_RANGE}}</p>
+  <div class="sub"><h3>By CaS group</h3>{{VOL_TBL}}</div>
+  <div class="sub"><h3>By votes needed to win</h3>{{BAND_TBL}}
+  <p class="note">Texters with a known text count. Under 30 people: count only. Spend follows the Revenue dashboard rule: outreach purchases minus refunds.</p></div>
+</section>
+
+<section id="icp">
+  <span class="eyebrow">A3 {{SEP}} ICP and CaS</span>
+  <h2>Why does ICP office look like a segment?</h2>
+  <p class="takeaway">ICP is our own label, and CaS works ICP customers harder, so this cannot say whether ICP is a customer type. What it shows: customers CaS never reached text at the same rate whatever their office ({{ICP_NO}}). The ICP gap appears only among engaged customers ({{ICP_PRE}} when CaS came first), so ICP is not a self-serve customer type.
+  CaS help seems to turn into outreach more readily for ICP races, which fits Win supporting those offices best.</p>
+  {{ICP_TBL}}
+</section>
+
+<section id="segments">
+  <span class="eyebrow">A4 {{SEP}} Segments</span>
+  <h2>Which segments separate usage beyond race size?</h2>
+  <p class="takeaway">{{N_CLEAR}} of {{N_TESTS}} comparisons are Clear, and most disappear among self-serve customers or are explained by race size. {{N_SURV_OUT}} outreach results remain, all about whether people do outreach rather than how much.
+  Read them with care: the self-serve group is {{NOCAS_N}} people, so many sit near the half-way cutoff, "contested" mostly means "has civics data", and the state results are channel quirks. Feature use is different: {{N_SURV_FEAT}} feature results hold for self-serve customers too, mostly by office type.</p>
+  <div class="sub"><h3>Clear results per dimension</h3>{{SUMM_TBL}}
+  <p class="note">"Not explained by race size": the gap averaged within votes-needed bands is at least half the raw gap. "Also present among self-serve": the gap among customers with no CaS contact is at least half the raw gap. "Self-serve too few to check": too few customers without CaS contact to run that check, so the result is unresolved, not failed. Left out of these tables, but kept in the full list below: unknown values, which mark races with missing civics data rather than a group anyone can buy as; and Pro lead time, which reads high on every feature at 45 to 89 days but mostly disappears within each signup month, so it is timing rather than a segment.</p></div>
+  <div class="sub"><h3>Outreach and spend results that survive both checks</h3>{{SURV_OUT_TBL}}</div>
+  <div class="sub"><h3>Feature results that survive both checks</h3>{{SURV_FEAT_TBL}}
+  <p class="note">Races from July 15 only.</p></div>
+  <div class="sub"><h3>How much of the office results is ICP?</h3>{{ICP_OFFICE_TBL}}
+  <p class="note">ICP is assigned from the office, so the two overlap. Office category (City Council, Congressional) is mostly ICP; office level (city, county, state) mostly is not.</p></div>
+  <details class="more"><summary>Every Clear result ({{N_CLEAR}}) with its checks</summary>{{CLEAR_TBL}}</details>
+  <div class="codes">{{CODE_DIMS}}{{CODE_GRID}}{{CODE_SQL}}</div>
+</section>
+
+<section id="explorer">
+  <span class="eyebrow">A5 {{SEP}} Explorer</span>
+  <h2>How does each segment look, with and without CaS?</h2>
+  <p class="takeaway">Pick a dimension and a CaS group. Each dot is one value of the dimension against everyone in that CaS group (dashed line). On "All Pro customers", a ring marks a Clear result; a grey ring means it is explained by race size or absent among self-serve customers.</p>
+  <div class="controls">
+    <label for="dimSel">Dimension</label>
+    <select id="dimSel">{{DIM_OPTIONS}}</select>
+    <span class="seg" id="stratSeg" role="group" aria-label="CaS group"></span>
+  </div>
+  <div class="key"><span><i class="c"></i>Clear</span><span><i class="t"></i>Clear, but explained by race size or absent among self-serve</span><span><i class="r"></i>everyone in this CaS group</span><span>Faded: under 100 people. Under 30: count only.</span></div>
+  <div class="sub"><h3>Outreach and spend</h3><div class="scroll"><div class="panels wrapgrid" id="exOut"></div></div></div>
+  <div class="sub"><h3>Features <span class="note">(races from July 15)</span></h3><div class="scroll"><div class="panels wrapgrid" id="exFeat"></div></div></div>
+  <div class="sub"><h3>Volume</h3><div id="exVol"></div></div>
+</section>
+
+<section id="robustness">
+  <span class="eyebrow">A6 {{SEP}} Robustness</span>
+  <h2>Does it hold, and what could we have missed?</h2>
+  <p class="takeaway">The surviving outreach results hold without the races not yet held. Group sizes limit what we can see: about {{DET_60}} points for a group of 60 and {{DET_EVEN}} for an even split, so "no difference" means no gap bigger than that.</p>
+  <div class="sub"><h3>Surviving outreach results, re-run</h3>{{ROB_TBL}}
+  <p class="note">Activated is the company definition (reached voters at least once), which requires outreach, so texting gaps shrink there by construction.</p></div>
+  <div class="sub"><h3>Smallest gap we could reliably see, in a rate near 47%</h3>{{DET_TBL}}</div>
+  <details class="more"><summary>How much the dimensions overlap (Cramér's V: 0 unrelated, 1 the same thing)</summary>{{OV_TBL}}</details>
+  <ul class="note">
+    <li>Team use: {{TEAM}} Pro-today customers invited a teammate (launched 2026-09-10), so it is too new to be a segment.</li>
+    <li>Significant results that are not Clear: {{N_DIFFERS}} differ by signup era and {{N_NOTCHECK}} could not be checked because an era was too small. They are in the full data, not on this page; most are small groups such as federal and congressional races, or Pro lead time, which is timing.</li>
+    <li>The CaS gap in outreach holds within each signup era, each votes-needed band and each quarter of Pro lead time: {{CAS_STRAT}}.</li>
+  </ul>
+</section>
+
+<section id="rerun">
+  <span class="eyebrow">Rerun</span>
+  <h2>How do I reproduce this?</h2>
+  <ol class="plain note">
+    <li>From <code>analytics/</code> with Databricks auth set up: <code>uv run --with pyarrow python projects/win_pro_votes_needed/build_segments.py</code> rebuilds the DATA-2809 working set and the segment and CaS columns (per-user parquet in <code>datasets/</code>, gitignored).</li>
+    <li><code>uv run --with pyarrow --with scipy python projects/win_pro_votes_needed/analyze_segments.py</code> prints every table and writes <code>segments_results.json</code>.</li>
+    <li><code>uv run --with pyarrow --with scipy --with pyyaml python projects/win_pro_votes_needed/build_segments_page.py out.html</code> rebuilds this page.</li>
+  </ol>
+  <p class="note">Numbers move between runs as candidacies, HubSpot activity and turnout projections update. Quote the run time beside any number.</p>
+</section>
+
+<section id="appendix">
+  <span class="eyebrow">Appendix</span>
+  <h2>What was asked, and how we framed it</h2>
+  <h3>The question as asked</h3>
+  <blockquote class="ask">
+    <p>If product is looking for ways to differentiate Win Pro users to inform pricing strategy, which cuts actually separate them? We tested one hypothesis in DATA-2809, race size (votes needed to win), and mostly answered it. I can't make recommendations to product from one cut. I want to know which dimensions produce meaningfully different usage, in text volume, outreach spend, channel mix, or the features people use, so pricing could be built on them (tiers, bundles, add-ons). "Nothing separates them beyond race size" is a valid answer.</p>
+    <footer>Product analytics, 2026-11-11, for the Win pricing and packaging work</footer>
+  </blockquote>
+  <h3>Framing, from the approved brief</h3>
+  <dl class="framing">{{FRAMING}}</dl>
+  <h3 id="assumptions">Assumptions</h3>
+  <p class="note">Every decision that shaped these numbers, in the order it was made.</p>
+  {{ASSUMP_TBL}}
+  <div class="codes">{{BRIEF}}</div>
+</section>
+</main>
+<script id="exData" type="application/json">{{DATA}}</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById("exData").textContent);
+  const OUT = ["texted", "over_5000", "paid", "no_outreach", "robocall", "social", "door_knocking", "phone_banking"];
+  const FEAT = ["area_outreach", "area_voter_data", "area_ai", "area_story", "area_opponents"];
+  const MIN_N = 30, FADE_N = 100;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const pct = x => Math.round(x * 100) + "%";
+  let strat = "all";
+  try { strat = localStorage.getItem("seg-strat") || "all"; } catch (e) {}
+  if (!D.strata.includes(strat)) strat = "all";
+  const sel = document.getElementById("dimSel");
+  try { const d = localStorage.getItem("seg-dim"); if (d && D.dims[d]) sel.value = d; } catch (e) {}
+  const segEl = document.getElementById("stratSeg");
+  segEl.innerHTML = D.strata.map(s => `<button type="button" data-s="${esc(s)}">${esc(D.strataLabel[s])}</button>`).join("");
+
+  function row(label, k, n, ref, bin) {
+    const refl = `<i class="ref" style="left:${(ref * 100).toFixed(1)}%"></i>`;
+    if (n < MIN_N) return `<div class="lab" title="${esc(label)}">${esc(label)}</div><div class="track" title="${esc(label)}: ${k} of ${n}, under 30 people">${refl}</div><div class="val small">${k} of ${n}</div>`;
+    const p = k / n, faded = n < FADE_N;
+    let tip = `${label}: ${pct(p)} | ${k} of ${n}` + (faded ? " | under 100 people" : "");
+    let cls = "dot" + (faded ? " faded" : "");
+    if (bin && bin.bin === "Clear") {
+      cls += " clear" + (bin.tags.length ? " tagged" : "");
+      tip += ` | Clear (q ${bin.q.toFixed(3)})` + (bin.tags.length ? " | " + bin.tags.join(", ") : "");
+    }
+    return `<div class="lab" title="${esc(label)}">${esc(label)}</div><div class="track" title="${esc(tip)}">${refl}<i class="${cls}" style="left:${(p * 100).toFixed(1)}%"></i></div><div class="val${faded ? " faded-t" : ""}" title="${esc(tip)}">${pct(p)}</div>`;
+  }
+  function panels(keys, dim) {
+    const e = D.dims[dim], cells = e.cells[strat], ref = D.ref[strat];
+    return keys.map(k => {
+      const [rk, rn] = ref[k], r = rn ? rk / rn : 0;
+      const rows = e.values.map(v => { const [kk, nn] = cells[v][k]; return row(v, kk, nn, r, strat === "all" ? (e.bins[v] || {})[k] : null); }).join("");
+      return `<div class="panel"><div class="ptitle">${esc(D.outcomes[k].label)}</div><div class="pref">everyone ${pct(r)} | ${rk} of ${rn}</div><div class="rows">${rows}</div></div>`;
+    }).join("");
+  }
+  function vol(dim) {
+    const e = D.dims[dim], cells = e.cells[strat], ref = D.ref[strat];
+    const f = (c, money) => c[1] < MIN_N || c[0] === null ? `n=${c[1]}` : (money ? "$" : "") + Math.round(c[0]).toLocaleString("en-US") + ` <span class="sep">|</span> ${c[1]}`;
+    const body = e.values.map(v => `<tr><td>${esc(v)}</td><td class="num">${f(cells[v].median_texts)}</td><td class="num">${f(cells[v].median_usd, true)}</td></tr>`).join("");
+    return `<div class="scroll"><table><thead><tr><th>${esc(dim)}</th><th class="num">Median texts per texter | texters</th><th class="num">Median outreach $ per payer | payers</th></tr></thead><tbody>${body}<tr><td>Everyone in this group</td><td class="num">${f(ref.median_texts)}</td><td class="num">${f(ref.median_usd, true)}</td></tr></tbody></table></div>`;
+  }
+  function render() {
+    const dim = sel.value;
+    segEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === strat)));
+    document.getElementById("exOut").innerHTML = panels(OUT, dim);
+    document.getElementById("exFeat").innerHTML = panels(FEAT, dim);
+    document.getElementById("exVol").innerHTML = vol(dim);
+    try { localStorage.setItem("seg-dim", dim); localStorage.setItem("seg-strat", strat); } catch (e) {}
+  }
+  sel.addEventListener("change", render);
+  segEl.addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) { strat = b.dataset.s; render(); } });
+  render();
+})();
+</script>

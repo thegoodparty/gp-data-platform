@@ -1521,7 +1521,7 @@ sources:
 
   - name: airflow_source
     schema: airflow_source
-    description: Raw tables landed by the extract_ballotready DAG
+    description: Raw tables landed by the Airflow DAGs owned by the data platform
     config:
       loaded_at_field: loaded_at
       # These tables only gain rows when something changes upstream at BallotReady;
@@ -1574,6 +1574,19 @@ sources:
       - name: ballotready_stance_raw
         description: Raw CivicEngine GraphQL Candidacy nodes landed by the extract_ballotready DAG, selected for the nested `stances` array on each Candidacy (there is no standalone Stance node)
         columns: *ballotready_raw_columns
+      - name: bifrost_request_log
+        description: >
+          One row per Bifrost gateway request, landed from the workbench
+          account's daily Parquet export of the gateway's own `logs` table. Cost
+          columns are the gateway's own computed cost, not invoiced provider
+          cost. Append-only: each export re-emits a trailing window, so a request
+          appears once per export that covered it.
+        # The only table here that a daily job appends to, so the source-level
+        # 14/30-day backstop would hide a dead loader for a fortnight.
+        config:
+          freshness:
+            warn_after: { count: 1, period: day }
+            error_after: { count: 3, period: day }
 
   - name: model_predictions
     schema: model_predictions

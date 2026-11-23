@@ -67,6 +67,7 @@ models:
                     "texting",
                     "robocall",
                     "social",
+                    "email",
                     "door_knocking",
                     "phone_banking",
                     "events",

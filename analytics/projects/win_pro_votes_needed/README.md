@@ -1,18 +1,26 @@
-# Win Pro usage by votes needed to win (DATA-2809)
+# Win Pro usage by votes needed to win (DATA-2809) and pricing segments (DATA-2810)
 
 Input to Win pricing and packaging. For paying Win Pro customers with a 2026 election (Pro today, or
 canceled on or after election day), it shows
 feature use, outreach channels, and texting volume and spend by votes-needed-to-win band.
+DATA-2810 reuses the same population and run to test which purchase-time segments (office, ICP,
+state, incumbency, CaS support and others) separate usage beyond race size.
 
 ## Files
 
 | File | What it is |
 |---|---|
 | `win_pro_votes_needed_brief.yaml` | The approved framing: population, window, definitions, checks. Read this first. |
-| `build_working_set.py` | Two warehouse queries. Writes `datasets/working_set.parquet` (one row per user) and `datasets/area_days.parquet`. |
+| `build_working_set.py` | Three warehouse queries. Writes `datasets/working_set.parquet` (one row per user), `datasets/area_days.parquet` and `datasets/amp_text_fill.parquet` (text counts from Amplitude where gp-api's are empty). `--amp-fill-only` refreshes the fill pinned to the existing run. |
 | `analyze.py` | Every cut, in pandas. Runs no queries. `python analyze.py` prints all tables. |
 | `build_notebook.py` | Builds and runs `notebooks/win_pro_votes_needed.ipynb` from `analyze.py`. |
 | `notebooks/win_pro_votes_needed.ipynb` | The results, with outputs saved. |
+| `build_page.py` | Renders the DATA-2809 findings page. |
+| `win_pro_pricing_segments_brief.yaml` | DATA-2810 framing. |
+| `build_segments.py` | Rebuilds the working set, then writes `datasets/segments.parquet` (segment columns and CaS contact) and `datasets/cas_dates.parquet` (when CaS contact met the rule, and the first text). `--cas-dates-only` refreshes the latter pinned to the existing run. |
+| `analyze_segments.py` | DATA-2810 cuts in pandas: one-vs-rest gaps, false-discovery correction, race-size and CaS checks. Prints tables and writes `segments_results.json` (gitignored). |
+| `build_segments_page.py`, `segments_page_template.html` | Render the DATA-2810 findings page. |
+| `figures.py` | Charts both pages share, so the same finding draws the same way. |
 
 `datasets/` is gitignored because it holds per-user rows. Rebuild it locally.
 
@@ -28,6 +36,12 @@ uv run --with pyarrow python projects/win_pro_votes_needed/build_working_set.py
 uv run --with pyarrow python projects/win_pro_votes_needed/analyze.py          # tables to stdout
 uv run --with pyarrow --with nbformat --with nbclient --with ipykernel \
     python projects/win_pro_votes_needed/build_notebook.py                     # refresh the notebook
+uv run --with pyarrow --with pyyaml python projects/win_pro_votes_needed/build_page.py <out.html>
+
+# DATA-2810 (build_segments.py rebuilds the working set too, so both pages share one run)
+uv run --with pyarrow python projects/win_pro_votes_needed/build_segments.py
+uv run --with pyarrow --with scipy python projects/win_pro_votes_needed/analyze_segments.py
+uv run --with pyarrow --with scipy --with pyyaml python projects/win_pro_votes_needed/build_segments_page.py <out.html>
 ```
 
 Numbers move between runs because `user_journey` and the turnout projections update. Each
@@ -49,7 +63,10 @@ run prints its timestamp. Quote it beside any number.
   paid, so other channels are counts.
 - **Sends.** `user_journey_events` Outreach send rows (committed sends, DATA-2477), channel in
   `event_label`, text count in `event_value`. Identical to `int__user_outreach_sends` for this population.
-  A texter is anyone with a texting send; volume is measured only where the count is known.
+  A texter is anyone with a texting send. Where gp-api's count is empty or 0, Amplitude's
+  `recipientCount` for the same outreach fills it (they agree exactly on 85% of sends). Texters
+  still without a count make volume a range: write "at least X%, up to Y%" over an allowance,
+  the floor counting known counts only, the ceiling counting unknowns as over.
 - **Feature areas.** Same action events and area mapping as DATA-2690
   (`projects/win_usage_archetypes/build_working_set.py`), machine-emitted events dropped.
 - **Window.** From six months before the election date through the end of election day.

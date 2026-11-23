@@ -2111,6 +2111,12 @@ def test_make_session_pool_covers_every_worker():
     assert adapter._pool_maxsize >= 8
 
 
+# airflow_source tables landed by some other DAG, listed one by one rather than tolerated: the
+# assertion below is an equality, so a table added there without a decision here fails instead of
+# quietly widening what the extractor is expected to have produced.
+NON_BALLOTREADY_AIRFLOW_TABLES = {"bifrost_request_log"}
+
+
 def test_dbt_declares_a_source_for_every_registered_entity():
     """The registry names the landing tables; dbt's sources must list exactly those.
 
@@ -2125,7 +2131,9 @@ def test_dbt_declares_a_source_for_every_registered_entity():
     airflow_source = next(s for s in sources if s["name"] == "airflow_source")
     declared = {table["name"] for table in airflow_source["tables"]}
 
-    assert declared == {f"ballotready_{entity}_raw" for entity in ENTITY_SPECS}
+    assert (
+        declared == {f"ballotready_{entity}_raw" for entity in ENTITY_SPECS} | NON_BALLOTREADY_AIRFLOW_TABLES
+    )
 
 
 def _measure(i):

@@ -6,10 +6,13 @@
 -- A cycle is the calendar year of the election. Each cycle is measured on its
 -- own completed races, because what Win offers changes between cycles (plan
 -- tasks only tracked from late 2026, features retired mid-2026) and a 2026
--- candidate had a longer lead-in than a 2025 one. Within a cycle the method is
--- v1's: the 85th percentile of action days among users who had acted by that
--- point, rounded up, the bar never stricter further out, and days with fewer
--- than 500 actors carrying the last bar measured on enough.
+-- candidate had a longer lead-in than a 2025 one. The bar is measured among
+-- candidates who reached voters (a send day by the election), the group the
+-- power-user flag is gated on: measured on everyone who acted, most of whom never
+-- sent, about half of senders cleared it. Within a cycle the method is v1's: the
+-- 85th percentile of action days among those who had acted by that point,
+-- rounded up, the bar never stricter further out, and days with fewer than 500
+-- actors carrying the last bar measured on enough.
 --
 -- A cycle whose completed races number fewer than 500 actors by election day
 -- has no reliable bar of its own yet, so it borrows the latest measured cycle
@@ -36,7 +39,7 @@ with
 
     -- Races start six months after telemetry, so a campaign that began before
     -- tracking does not read as idle.
-    reference_users as (
+    completed_races as (
         select
             c.user_id,
             c.candidacy_election_date as election_date,
@@ -49,6 +52,20 @@ with
             and c.candidacy_election_date
             >= add_months(date('{{ var("product_telemetry_start") }}'), 6)
             and c.candidacy_election_date < current_date()
+    ),
+
+    reference_users as (
+        select r.user_id, r.election_date, r.cycle
+        from completed_races as r
+        where
+            exists (
+                select 1
+                from {{ ref("int__user_action_days") }} as d
+                where
+                    d.user_id = r.user_id
+                    and d.has_send
+                    and d.activity_date <= r.election_date
+            )
     ),
 
     action_days as (

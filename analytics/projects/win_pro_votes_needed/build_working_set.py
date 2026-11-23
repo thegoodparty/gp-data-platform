@@ -13,6 +13,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pandas as pd
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1] / "lib"))
 
@@ -204,8 +206,55 @@ from allx group by 1, 2
 """
 
 
+def amp_text_fill_sql(run_ts: str) -> str:
+    # gp-api wins when both systems hold the same send (int__user_outreach_sends), even when its
+    # billable count is null or 0 and Amplitude's terminal event carries recipientCount. Recover
+    # that count per send, preferring the completion event, with the model's 0-100,000 sanity range.
+    return f"""
+with {population_sql()},
+gaps as (
+  select p.user_id, split_part(e.event_key, '|', 2) as outreach_id, e.event_value is null as count_null
+  from pop p
+  join {CAT}.mart_analytics.user_journey_events e
+    on e.user_id = p.user_id and e.event = 'Outreach send' and e.event_label = 'texting'
+   and e.event_key like 'send:gp_api_outreach|%' and coalesce(e.event_value, 0) = 0
+   and e.event_at >= p.ws and e.event_at < p.we and e.event_at <= timestamp'{run_ts}'
+),
+amp as (
+  select coalesce(event_properties:outreachid::string, event_properties:outreachcampaignid::string) as outreach_id,
+    coalesce(
+      max(case when event_type like '%Campaign Completed' then try_cast(event_properties:recipientcount as bigint) end),
+      max(try_cast(event_properties:recipientcount as bigint))
+    ) as recipient_count
+  from {CAT}.dbt.stg_airbyte_source__amplitude_api_events
+  where event_type in ('Voter Outreach - Campaign Completed', 'Outreach - Campaign Completed',
+                       'Voter Outreach - Campaign Scheduled')
+  group by 1
+)
+select g.user_id,
+  count_if(a.recipient_count is not null) as amp_fill_sends,
+  coalesce(sum(a.recipient_count), 0) as amp_fill_texts,
+  -- Gaps no source fills, split by what gp-api holds: no count at all, or 0.
+  count_if(a.recipient_count is null and g.count_null) as gap_null_sends,
+  count_if(a.recipient_count is null and not g.count_null) as gap_zero_sends
+from gaps g
+left join amp a on a.outreach_id = g.outreach_id and a.recipient_count between 1 and 100000
+group by 1"""
+
+
+def write_amp_fill(run_ts: str) -> None:
+    fill = dbc.run_query(amp_text_fill_sql(run_ts))
+    fill["run_ts"] = run_ts
+    fill.to_parquet(OUT / "amp_text_fill.parquet", index=False)
+    print(f"amplitude text fill: {len(fill):,} users")
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
+    if "--amp-fill-only" in sys.argv:
+        # Pinned to the existing working set's run so no other number moves.
+        write_amp_fill(str(pd.read_parquet(OUT / "working_set.parquet")["run_ts"].iloc[0]))
+        return
     run_ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
     print(f"run timestamp (UTC): {run_ts}")
     ws = dbc.run_query(working_set_sql(run_ts))
@@ -216,6 +265,7 @@ def main() -> None:
     ad["run_ts"] = run_ts
     ad.to_parquet(OUT / "area_days.parquet", index=False)
     print(f"area days: {len(ad):,} user-area rows")
+    write_amp_fill(run_ts)
 
 
 if __name__ == "__main__":
