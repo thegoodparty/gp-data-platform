@@ -206,6 +206,14 @@ EO_POST_PREDICTION_FILTER = f"""
 # mostly surnames holding an office title. Removing the wrong pairs also
 # spares their clusters from the cannot-link dissolve, which otherwise strands
 # the correct matches around them.
+#
+# The product-record clause refuses a gp_api or HubSpot record paired with a
+# BallotReady person on name, state and party alone. Those records are sparse,
+# so a shared common name plus Nonpartisan cannot tell two people apart; a
+# score-only merge put a pledge badge on the wrong public profile. The pair
+# needs an email, phone, city or zip5 in common. Native-id links bypass this
+# filter, so real identities are unaffected. The prematch carries no office,
+# so an office match is not available as a corroborating key.
 PERSON_POST_PREDICTION_FILTER = """
     gamma_first_name > 0
       AND NOT (
@@ -219,6 +227,16 @@ PERSON_POST_PREDICTION_FILTER = """
         OR first_name_l = first_name_r
         OR contains(first_name_l, first_name_r)
         OR contains(first_name_r, first_name_l)
+      )
+      AND (
+        NOT (
+          (source_name_l = 'ballotready' AND source_name_r IN ('gp_api', 'hubspot'))
+          OR (source_name_r = 'ballotready' AND source_name_l IN ('gp_api', 'hubspot'))
+        )
+        OR (email_l IS NOT NULL AND email_l = email_r)
+        OR (phone_l IS NOT NULL AND phone_l = phone_r)
+        OR (city_l IS NOT NULL AND city_l = city_r)
+        OR (zip5_l IS NOT NULL AND zip5_l = zip5_r)
       )
       AND NOT coalesce(
         gamma_last_name = 0

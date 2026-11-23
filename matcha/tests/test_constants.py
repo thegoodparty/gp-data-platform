@@ -100,6 +100,12 @@ def _person_row(**overrides):
         "last_name_tokens_l": ["carter"],
         "last_name_tokens_r": ["dunn"],
         "phone_surname_groups_l": "4",
+        "source_name_l": "hubspot",
+        "source_name_r": "hubspot",
+        "city_l": None,
+        "city_r": None,
+        "zip5_l": None,
+        "zip5_r": None,
     }
     base.update(overrides)
     return base
@@ -128,3 +134,49 @@ def test_person_filter_keeps_a_shared_line_pair_with_a_matching_email():
 def test_person_filter_keeps_a_pair_when_the_surname_groups_are_unknown():
     """A prematch without the column must not start dropping pairs."""
     assert _eval_filter(PERSON_POST_PREDICTION_FILTER, _person_row(phone_surname_groups_l=None)) is True
+
+
+def _product_vs_br(**overrides):
+    """A gp_api user against a BallotReady person that agree on name only."""
+    base = _person_row(
+        gamma_phone=-1,
+        phone_l=None,
+        phone_r=None,
+        email_l=None,
+        phone_surname_groups_l=None,
+        first_name_l="josh",
+        first_name_r="josh",
+        source_name_l="gp_api",
+        source_name_r="ballotready",
+    )
+    base.update(overrides)
+    return base
+
+
+def test_person_filter_drops_a_product_record_matched_to_br_on_name_alone():
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, _product_vs_br()) is False
+
+
+def test_person_filter_drops_a_br_record_matched_to_hubspot_on_name_alone():
+    row = _product_vs_br(source_name_l="ballotready", source_name_r="hubspot")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is False
+
+
+def test_person_filter_keeps_a_product_record_matched_to_br_on_a_shared_city():
+    row = _product_vs_br(city_l="fate", city_r="fate")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
+
+
+def test_person_filter_keeps_a_product_record_matched_to_br_on_a_shared_zip():
+    row = _product_vs_br(zip5_l="75189", zip5_r="75189")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
+
+
+def test_person_filter_keeps_a_product_record_matched_to_br_on_a_shared_email():
+    row = _product_vs_br(email_l="a@b.example", email_r="a@b.example")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True
+
+
+def test_person_filter_leaves_other_source_pairs_alone():
+    row = _product_vs_br(source_name_l="techspeed")
+    assert _eval_filter(PERSON_POST_PREDICTION_FILTER, row) is True

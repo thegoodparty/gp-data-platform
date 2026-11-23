@@ -102,6 +102,9 @@ with
     person_ids as (
         select record_key, gp_person_id
         from {{ ref("int__civics_person_canonical_ids") }}
+        -- A user that joined a BallotReady person on a score alone is not that
+        -- person, so its pledge must not reach the profile.
+        where not is_score_only_merge
     ),
 
     -- The pledge is taken on a product record, so read it from the two records
