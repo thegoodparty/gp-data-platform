@@ -187,6 +187,10 @@ lead_med = float(lead_days[lead_days > 0].median())
 
 counts = seg["bin"].value_counts()
 n_tests = len(seg)
+n_canceled = int((ws["pro_status"] == "canceled after election").sum())
+n_uncontested = int((ws["is_uncontested"] == True).sum())  # noqa: E712
+n_sales = int((ws["acquisition_motion"] == "sales_sourced").sum())
+assert n_sales == int((ws["hs_analytics_source"] == "OFFLINE").sum()), "offline is no longer exactly sales"
 clear = seg[seg["bin"] == "Clear"]
 # Unknown values mark missing civics data and Pro lead time is timing, not a group anyone buys as;
 # both stay in the full Clear list but leave the summary tables (explained in the A4 note).
@@ -727,7 +731,7 @@ ASSUMPTIONS = [
     ),
     (
         "Clear means a false-discovery-corrected q under 0.10 across the grid and the same direction in both signup eras.",
-        "About 200 one-vs-rest tests; some would look real by chance.",
+        f"{n_tests} one-vs-rest tests; some would look real by chance.",
         "A Possible bin (same direction, not significant) was dropped: a null result points the same way in both eras about half the time.",
         "Analyst, framing; Possible dropped by Tristan after review",
     ),
@@ -739,19 +743,19 @@ ASSUMPTIONS = [
     ),
     (
         "Pro lead time reads the first subscription payment, not pro_since.",
-        "pro_since is blank for exactly the 131 customers who canceled after their election, so its unknown bucket would have been the canceled group.",
+        f"pro_since is blank for exactly the {n_canceled} customers who canceled after their election, so its unknown bucket would have been the canceled group.",
         "Lead time known for everyone.",
         "Analyst, execution",
     ),
     (
         "Number of opponents counts opponents (0 = uncontested); contested vs uncontested shown as counts only.",
-        "Only 15 customers are uncontested.",
+        f"Only {n_uncontested} customers are uncontested.",
         "Contested cannot be tested.",
         "Analyst, execution",
     ),
     (
         "Offline acquisition source labelled as sales.",
-        "It is exactly the 273 sales-sourced customers.",
+        f"It is exactly the {n_sales} sales-sourced customers.",
         "Repeats sales vs marketing on one value.",
         "Analyst, execution",
     ),
@@ -818,7 +822,7 @@ def code(title, text, lang="sql"):
     )
 
 
-seg_sql = BS.segments_sql()
+seg_sql = BS.segments_sql(str(ws["run_ts"].iloc[0]))
 
 # ---------- page ----------
 TEMPLATE = (PROJ / "segments_page_template.html").read_text()

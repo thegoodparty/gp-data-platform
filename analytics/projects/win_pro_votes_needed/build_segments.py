@@ -18,7 +18,7 @@ from build_working_set import CAT, OUT, dbc, population_sql
 from build_working_set import main as build_working_set
 
 
-def segments_sql() -> str:
+def segments_sql(run_ts: str) -> str:
     return f"""
 with {population_sql()},
 team as (
@@ -33,7 +33,8 @@ owners as (
   select cast(id as string), teams from {CAT}.dbt.stg_airbyte_source__hubspot_api_owners_archived
 ),
 -- CaS ("Campaign Success" in HubSpot). Every upgrade is offered a CaS call, so contact, not ownership,
--- is what separates customers. Counted up to the end of election day.
+-- is what separates customers. Counted up to the end of election day, and up to the run, matching
+-- cas_dates_sql so the counts and the qualifying dates agree.
 cas as (
   select p.user_id,
     count_if(t.channel = 'call') as cas_calls,
@@ -43,7 +44,7 @@ cas as (
   from pop p
   join {CAT}.dbt.int__user_hubspot_touches t
     on t.user_id = p.user_id and t.is_outbound_touch and t.channel in ('call', 'email', 'sms', 'meeting')
-   and t.touch_at < p.we
+   and t.touch_at < p.we and t.touch_at <= timestamp'{run_ts}'
   where t.hubspot_owner_id in (
     select owner_id from owners where exists(teams, x -> x.name = 'Campaign Success'))
   group by 1
@@ -52,7 +53,7 @@ first_send as (
   select p.user_id, min(s.send_at) as first_send_at
   from pop p join {CAT}.dbt.int__user_outreach_sends s
     on s.user_id = p.user_id and s.product = 'win' and s.basis = 'committed'
-   and s.send_at >= p.ws and s.send_at < p.we
+   and s.send_at >= p.ws and s.send_at < p.we and s.send_at <= timestamp'{run_ts}'
   group by 1
 )
 select p.user_id,
@@ -148,7 +149,7 @@ def main() -> None:
         return
     build_working_set()
     run_ts = pd.read_parquet(OUT / "working_set.parquet")["run_ts"].iloc[0]
-    seg = dbc.run_query(segments_sql())
+    seg = dbc.run_query(segments_sql(str(run_ts)))
     seg["run_ts"] = run_ts
     seg.to_parquet(OUT / "segments.parquet", index=False)
     print(f"segments: {len(seg):,} rows, {seg['user_id'].nunique():,} distinct users")
