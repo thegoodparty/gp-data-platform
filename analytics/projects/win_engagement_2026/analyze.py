@@ -915,7 +915,14 @@ def return_actions(
     j = j[(j["local_date_y"] - j["local_date_x"]).dt.days.between(0, RETURN_WINDOW_DAYS)].sort_values(
         "hour_utc"
     )
-    went = j.groupby(["user_id", "local_date_x"])["product_area"].first().map(AREA).fillna("somewhere else")
+    # groupby.first() skips nulls, so an uncatalogued first event would credit the next named area.
+    went = (
+        j.assign(product_area=j["product_area"].fillna("uncatalogued"))
+        .groupby(["user_id", "local_date_x"])["product_area"]
+        .first()
+        .map(AREA)
+        .fillna("somewhere else")
+    )
     wc = went.value_counts()
     show(
         "5h. Where 2026 returns go first after the dashboard, within the window",
@@ -1312,6 +1319,7 @@ def main() -> None:
     send_volume(u, ds["sends_in_window"])
     section6(u, o)
     data = json.dumps(PAGE, default=lambda v: None if pd.isna(v) else str(v))
+    PAGE_DATA.parent.mkdir(exist_ok=True)  # review/ is git-ignored, so a fresh checkout lacks it
     PAGE_DATA.write_text(data)
     # The draft page is the template with this run's numbers inlined (NaN is valid JS).
     tpl = (HERE / "page_template.html").read_text()
