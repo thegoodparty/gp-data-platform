@@ -1,0 +1,246 @@
+brief_id: win-engagement-2026-cycle
+created: 2026-11-17
+author: framing routine (refined with Tristan)
+approved: 2026-11-17 (Tristan, in session)
+revised: "2026-11-23 (Tristan: a recommendation per section, signup timing in weeks before the election, where returns go after the dashboard)"
+
+decision:
+  per_question:
+    - question: "1. When do candidates sign up?"
+      what_action: Time acquisition and sales pushes against the election calendar.
+      who_acts: Go-to-market, sales
+    - question: "2. Getting started: where do people get stuck?"
+      what_action: Pick the onboarding step to fix first.
+      who_acts: Product (onboarding)
+    - question: "3. Which features bring value, and for whom?"
+      what_action: Decide what to invest in, promote or price.
+      who_acts: Product, pricing
+    - question: "4. What do power users look like?"
+      what_action: Decide who to build for and what to build.
+      who_acts: Product
+    - question: "5. Coming back: when do users return?"
+      what_action: Set when and how often to prompt users to come back.
+      who_acts: Go-to-market, lifecycle messaging
+    - question: "6. Outreach: volume and personalization"
+      what_action: Decide whether to push the targeting features.
+      who_acts: Product
+
+question:
+  one_sentence: |
+    Over the 2026 cycle, how did Win candidates find, start, use and come back to the
+    product, and how do activated users, ICP activated users and power users differ?
+  type: descriptive
+  underlying_hypothesis: |
+    A small group of engaged candidates drives most product use. Where they came from,
+    when they signed up and which features they repeat point to where product and
+    go-to-market should focus. No claim about winning.
+
+population:
+  included: |
+    Non-staff Win users (user_journey product in ('win','both'), not is_internal,
+    not is_demo_only).
+    Cycle is set by user_journey.candidacy_election_date:
+      2025 = 2025-09-01..2025-12-31
+      2026 = 2026-01-01..2026-11-03
+    Four cuts per cycle:
+      - all activated (is_activated)
+      - ICP activated (plus candidacy_is_win_icp)
+      - corroborated activated (DATA-2202: a BallotReady, TechSpeed or DDHQ record for the
+        candidacy, via mart_civics.candidacy / candidacy_stage). Side by side, not a filter.
+      - power users (int__user_power_user_v2.is_power_user, which requires a send; 2025 filtered to our window)
+    Sections 1 and 5 also report all signups registered 2025-09-01..2026-11-16, since
+    they cover people with no race.
+  excluded: |
+    Staff, demo accounts, users with no election date or one outside both windows
+    (except in the all-signups views).
+  source_model: |
+    mart_analytics.user_journey (population, cycle, activation, ICP, channel)
+    mart_analytics.user_win_activity_weekly
+    mart_analytics.user_product_area_activity_monthly
+    mart_analytics.user_feature_use
+    mart_analytics.user_hubspot_touches + hubspot_owner_teams
+    dbt.int__outreach_purpose, dbt.int__user_outreach_audiences
+    dbt.int__user_outreach_sends (send counts and basis: committed vs requested)
+    dbt.int__user_candidacy_profile (viability score)
+    mart_civics.candidacy, mart_civics.candidacy_stage (corroborated)
+    datasets/early_voting_by_state.csv (NCSL, Aug 2026)
+    dbt.int__user_revenue_profile
+    Upstream, each with a stated reason:
+      - airbyte_source.gp_api_db_contact_interaction_text: replies and opt-outs, not modeled
+      - airbyte_source.hubspot_api_engagements.metadata_meetingOutcome: meeting held or
+        not, not modeled
+
+data_provenance:
+  schema_status: prod (power user v2, bar measured among senders)
+  coverage_start: |
+    Activity, areas and features: 2025-05-26 / 2025-05 / 2025-05-28.
+    Outreach audiences and purpose: 2025-06-26.
+    Replies and opt-outs: 2026-07-22.
+  coverage_end: 2026-11-16 (outreach 2026-11-17)
+
+eligibility:
+  tenure_requirement: |
+    None for counts. Per-user rates use only the time between signup and election.
+  reference_event: Election date (sections 2 to 6), signup date (section 1).
+  rationale: |
+    Behavior is measured up to the election, so cycles and cuts are compared on the
+    same footing.
+
+target:
+  definition: |
+    Per section:
+      1. Days from signup to election, and signup channel.
+      1. Signups per month by channel; share of each month's signups who sent within 30
+         days; days from signup to election.
+      2. Funnel from signups on or after 2025-05-26: signed up, logged in, started and
+         finished onboarding, sent. Days from Pro to first send by first-send channel.
+         Furthest step toward a send for onboarded non-senders.
+      3. Feature use and repeat use (2 or more days), each feature's share counted only
+         among people who signed up before its cutoff. Pro vs free with Pro-gated features
+         marked. "Came back within 14 days" dropped (85 to 97% for every feature).
+      4. One-sentence answer, then the power-user rate in each group over the overall rate
+         for traits outside the definition (Pro, ICP, channel, office level, district size,
+         incumbency, contested, viability band, corroborated). Existing profile tables kept.
+         CaS or sales reach before crossing the bar and before first send, with other
+         activated users as the comparison; 2026 only; labeled an estimate.
+      5. Weekly active share on an at-risk denominator (signed up by that week, week
+         passed); cells under 100 blank; 2026 after-election weeks blank until December.
+         Weekly curve by the state's early voting (all-mail / in-person early / neither).
+         Days from creating a send to its scheduled day. Quiet-spell returns against other
+         active days as the baseline. Day of week and local hour dropped.
+      6. Sends per sender from the send model; targeting share and a within-sender
+         reply and opt-out comparison on real replies (STOPs excluded); pooled table to
+         the appendix.
+  censoring: |
+    2026 races after 2026-11-03 are excluded. Return after the race is shown only
+    for races at least 4 weeks past.
+  absorbing_states: Deleted accounts drop out of user_journey; not recovered.
+
+comparison:
+  type: descriptive_cut
+  comparison_group: |
+    Default view: the three cuts within 2026.
+    Toggle views: 2026 against 2025, and self-signup against sales-created.
+  notes: |
+    No claims that one thing causes another.
+    2026 against 2025 compares two different approaches, not one product over time.
+    That view follows the standing comparison rule (analysis-principles.md, set in
+    DATA-2803): records compare as is; changed features compare at the level of the job
+    they do (AI assistant, AI chat and Dictation are all "got AI help"; old and new
+    voter-data events are both "pulled voter data"); other behavior compares as active
+    days over events tracked in both years; a feature with no 2025 equivalent is shown
+    for 2026 only, with the reason in the subtitle.
+    In section 4, power users are split by whether CaS or sales reached them before they
+    became power users. Every Pro upgrade gets a CaS call scheduled automatically, so
+    contact is classed three ways:
+      - held: a meeting logged COMPLETED or "CAS - MEETING COMPLETED", or a connected call;
+      - outcome unknown: any meeting label on neither the held nor the not-held list;
+      - call or meeting not held; email or text only;
+      - none.
+    2025 is dropped from this view (CaS outcomes not logged then).
+
+observation_window:
+  start: 2025-09-01 (2025 cycle), 2026-01-01 (2026 cycle) by election date
+  end: 2026-11-03 by election date; behavior through the election, or 2026-11-16 for return after the race
+  anchored_to: Election date per user (candidacy_election_date)
+  boundary_semantics: |
+    Election-date windows are inclusive on both ends; they compare date columns.
+    "Before the election" means event_time < election_date 00:00 local.
+    Weeks are Monday-anchored UTC, as in user_win_activity_weekly.
+    Local hour = event_time converted with the candidate's state's main timezone
+    (analyze.py STATE_TZ approach, default America/Chicago).
+
+cohorts:
+  - dimension: cut
+    values: all activated, ICP activated, corroborated activated, power users
+  - dimension: cycle
+    values: 2025, 2026
+  - dimension: signup channel
+    values: self-signup, sales-created
+  - dimension: Pro
+    values: Pro, free (section 3)
+  - dimension: office level / district size
+    values: local, county, state (bins fixed before looking)
+
+sample_size:
+  expected_n_total: |
+    2026: 12,188 users, 701 activated, 457 ICP activated.
+    2025: 13,341 users, 722 activated, 477 ICP activated.
+    Signups in the window: 17,842, of whom 849 activated.
+  expected_n_per_cohort: |
+    Power users (v2 with the send gate, 2026-11-18): 305 in 2026 (210 ICP); 220 across all 2025
+    elections, fewer in our Sep to Dec window.
+    Corroborated activated: 526 in 2026, 578 in 2025.
+    Targeting: 207 of 442 2026 gp-api senders; 69 senders have both targeted and
+    untargeted texts with reply data.
+    Held CaS contact before crossing the bar: 52 of 303 2026 power users.
+  power_concern: |
+    Channel x cut x cycle cells will often fall under 100 (faded) or 30 (count only).
+    The power-user profile is a description of about 100 people, not a model.
+
+falsification:
+  what_would_change_belief: |
+    If power users don't differ from activated users on channel, timing or the
+    features they repeat, the "small engaged core" story is wrong. Product then
+    focuses on activation breadth, not depth.
+    If quiet spells end with no touch or deadline beforehand, lifecycle prompts are
+    not the lever the go-to-market team thinks they are.
+
+known_concerns:
+  - |
+    One anchor candidacy per user. Someone who ran in both cycles counts only in their anchor's cycle. (Accepted 2026-11-17.)
+    Checked 2026-11-20: 11 of 701 activated 2026 users may carry activity from an earlier 2025 race;
+    16 fall-2025 candidates sit in 2026. No cutoff applied; one assumptions line.
+  - |
+    Activation (2026-11-20, Tristan): governed is_activated is lifetime; 124 of 701 2026 activated users
+    sent only in 2025. Activated in a cycle = governed flag AND a send in the election's calendar year by
+    election day. Pro trait = Pro history (today / lapsed / never), since is_pro is measured after the race.
+  - |
+    Replies: gp-api stamps responded_at on STOP too. Real reply = responded and not opted out
+    (0.59% of recipients, against 5.29% counting STOPs).
+  - |
+    Sends: gp-api outreach rows of every status are not sends. Counts use the send model's basis.
+    2025 texts were ops-fulfilled and stay "requested"; 2025 committed sends are Amplitude events.
+  - |
+    Sales-created 2025 accounts were made in batches by staff (42% in hours with 10+ such accounts).
+  - |
+    Threshold chosen without a benchmark, listed as an assumption: a quiet spell is 14+
+    days with no Win activity. (Tristan 2026-11-17: no better basis known.) "Came back
+    after first use" was dropped 2026-11-20: it did not separate features.
+  - |
+    Feature checks (2026-11-18, after the DATA-2821 map fix): content builder was removed from the
+    product on 2026-09-10 (omni #1788); website publishing since July 2026 is done by staff acting
+    for the candidate (impersonation marker on nearly every publish, against 2 to 4% of all Win
+    events); AI help was untracked 2026-07-29 to 10-19. Section 3 counts each feature only while
+    candidates could use it, and 2026 AI help is a floor. The concern below is resolved by the
+    map fix except for these windows.
+  - |
+    Feature tracking breaks mid-2026. content_builder events stop 2026-09-13,
+    voter_file_download 2026-07-11 and website_publish 2026-09-24, probably renamed.
+    ai_help misses "AI Chat - Message Sent" and Dictation. Person Profile, Campaign
+    Manager and two Chief of Staff events are still in the catalog's "other" family.
+    Section 3 and the power-user definition (DATA-2821) depend on fixing the feature
+    map first.
+  - |
+    Pro start date is missing for 775 of 1,540 Pro users (50%, sales-granted or comped).
+    The time-to-Pro step uses dated users only and is labeled as such; the
+    reached-Pro count uses everyone.
+  - Replies and opt-outs exist only from 2026-07-22. No 2025 view; early-2026 sends are not covered.
+  - |
+    Meeting outcome lives only in raw HubSpot engagements. "SCHEDULED" is often never
+    updated, so it is not evidence that a meeting didn't happen. This report reads it raw;
+    a follow-up ticket models it in dbt (Tristan 2026-11-17).
+  - The 2026 Amplitude volume is mostly Voter Guide profile views. Every activity measure uses Win-only events.
+
+execution_notes:
+  preferred_format: script, findings_page
+  output_location: analytics/projects/win_engagement_2026/
+  reruns: |
+    One-off with a rerun command; the 2026 numbers move only until Nov 3 races
+    settle.
+  steps: |
+    1. Build sections 1, 2, 5 and 6 now. Sections 3 and 4 wait for the DATA-2821 thread to fix the feature map and land power user v2 (Tristan 2026-11-17).
+    2. Build one per-user working set (user x cycle x cut) from the sources above; slice every section from it in pandas.
+    3. Check composition: every cut difference is also shown within signup channel.
+    4. Wilson intervals only where a difference is claimed or N < 100.
+    5. Carry the assumptions table at the top of the script output and linked from the page TL;DR.

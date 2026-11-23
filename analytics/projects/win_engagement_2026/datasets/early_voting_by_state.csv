@@ -1,0 +1,52 @@
+state,all_mail,in_person_early_voting,no_excuse_absentee,earliest_start_days,source_url,notes
+AL,false,false,false,0,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),No early voting; mail and in-person absentee need an excuse. 0 = no no-excuse pre-election option (excused in-person absentee opens ~55 days out).
+AK,false,true,true,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+AZ,false,true,true,27,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+AR,false,true,false,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mail absentee needs excuse; early in-person is open to all.
+CA,true,true,true,29,https://www.ncsl.org/elections-and-campaigns/table-18-states-with-all-mail-elections (updated 2026-08-07),Ballots mailed and in-person voting both start 29 days out (Oct 5).
+CO,true,true,true,32,https://www.coloradopolitics.com/2026/10/02/colorado-voters-will-start-receiving-mail-ballots-in-the-coming-week-4/ (2026-10-02),"Clerks could mail from Oct 2 (32 days), must by Oct 9 (25); county-dependent. NCSL lists in-person at 15 days."
+CT,false,true,true,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),"No-excuse absentee enacted by HB 5001, signed May 2026, effective on passage (Ballotpedia 2026-06-23). Statutory 14-day early voting; Oct 19 start = 15 days."
+DE,false,true,false,10,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),"Mail absentee still needs excuse: no-excuse constitutional amendment passed first leg only (2026), second leg pending 2027."
+DC,true,true,true,25,https://www.dcboe.org/news (2026),"Mail-ballot mailing date not found; 25 = drop boxes opened Oct 9 (ballots were out by then, so true value may be higher). In-person early voting Oct 26 (8 days); NCSL says 12."
+FL,false,true,true,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mandatory 10 days; counties may start up to 15 days out. Earliest statewide-allowed value used.
+GA,false,true,true,22,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Fourth Monday before election = Oct 12.
+HI,true,true,true,18,https://www.ncsl.org/elections-and-campaigns/table-18-states-with-all-mail-elections (updated 2026-08-07),"Ballots mailed ~18 days out; voter service centers open 10 business days out (~14 days). Mailing date from statute, not confirmed for 2026."
+ID,false,true,true,22,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),NCSL: fourth Monday (Oct 12 = 22). Idaho Capital Sun says early voting could begin Oct 13 (21) and varies by county.
+IL,false,true,true,40,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Temporary/clerk sites may open 40 days out; permanent sites 15 days.
+IN,false,true,false,28,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mail absentee needs excuse; in-person absentee (early voting) open to all from 28 days.
+IA,false,true,true,20,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+KS,false,true,true,20,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),"Up to 20 days, varies by county (some only from the Tuesday before)."
+KY,false,true,false,5,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),No-excuse early voting is Thu-Sat before election only; excused in-person absentee opens earlier.
+LA,false,true,false,14,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mail absentee needs excuse.
+ME,false,true,true,30,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),In-person absentee.
+MD,false,true,true,12,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Second Thursday before = Oct 22.
+MA,false,true,true,17,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+MI,false,true,true,40,https://www.michiganpublic.org/politics-government/2026-09-24/absentee-voting-starts-in-michigan (2026-09-24),"Absentee ballots available in person at clerk 40 days out (Sep 24, constitutional). Formal early voting Oct 24 (10 days); NCSL lists only the latter."
+MN,false,true,true,46,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),In-person absentee 46 days; early voting proper 18 days.
+MS,false,false,false,0,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),No early voting; absentee needs excuse. 0 = no no-excuse pre-election option.
+MO,false,true,false,14,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),No-excuse in-person absentee from 2nd Tuesday before; mail and earlier in-person absentee need excuse (from ~6 weeks).
+MT,false,true,true,30,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+NE,false,true,true,30,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),"Counties under 10,000 may run all-mail; not statewide."
+NV,true,true,true,29,https://www.fox5vegas.com/2026/10/16/nevada-voting-rights-groups-share-early-voting-deadlines-election-protection-resources/ (2026-10),"Ballots mailed Oct 5-12 (29-22 days), county-dependent; early in-person from Oct 17 (17 days)."
+NH,false,false,false,0,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),No early voting; absentee needs excuse. 0 = no no-excuse pre-election option.
+NJ,false,true,true,10,https://www.nj.gov/state/elections/vote-early-voting.shtml (2026),"Early voting Oct 24 (10 days). Voters can also get and cast a mail ballot in person at the county clerk once ballots are printed (~45 days), which NCSL does not count as early voting."
+NM,false,true,true,28,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),28 days at clerk's office; other sites later.
+NY,false,true,true,10,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+NC,false,true,true,19,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Third Thursday before = Oct 15.
+ND,false,true,true,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Counties may run elections by mail (one polling place required); not statewide.
+OH,false,true,true,28,https://www.ohiosos.gov/elections/voting-schedule-text-only (2026),Ohio SOS: early voting began Oct 6 = 28 days. NCSL says 29; used SOS.
+OK,false,true,true,6,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Wednesday before = Oct 28.
+OR,true,false,true,20,https://multco.us/node/654395 (2026-10-14),Ballots mailed Oct 14 (20 days). No early-voting period; voters can get a ballot in person at the county elections office. in_person_early_voting set false for that reason.
+PA,false,true,true,50,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),"On-demand mail ballot at county office 'no earlier than 50 days', varies by county and ballot readiness; many counties start much later."
+RI,false,true,true,20,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+SC,false,true,false,15,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),NCSL says 'two weeks'; statute = second Monday before = Oct 19 (15 days). Mail absentee needs excuse.
+SD,false,true,true,46,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),In-person absentee.
+TN,false,true,false,20,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mail absentee needs excuse.
+TX,false,true,false,15,https://www.fox4news.com/election/texas-early-voting-begins-2026 (2026-10),"Early voting Oct 19-30 for 2026 (17th day fell on a weekend). SB 2753 (2025) moves to a 12-day-before start once implemented, not yet in effect for Nov 2026. Mail absentee needs excuse."
+UT,true,true,true,21,https://www.kuer.org/politics-government/2026-10-13/a-quick-utah-voters-guide-to-the-2026-election (2026-10-13),Ballots mailed Oct 13 (21 days). HB 300 (2025) ends universal mail ballots in 2029; still all-mail for 2026. In-person early voting 14 days.
+VT,true,true,true,45,https://www.ncsl.org/elections-and-campaigns/table-18-states-with-all-mail-elections (updated 2026-08-07),All-mail for general elections only; in-person early voting at town clerk 45 days out. Ballots mailed later.
+VA,false,true,true,45,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),
+WA,true,true,true,18,https://www.ncsl.org/elections-and-campaigns/table-18-states-with-all-mail-elections (updated 2026-08-07),Ballots mailed and voting centers open 18 days out.
+WV,false,true,false,13,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),Mail absentee needs excuse.
+WI,false,true,true,14,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),In-person absentee.
+WY,false,true,true,28,https://www.ncsl.org/elections-and-campaigns/early-in-person-voting (updated 2026-08-11),In-person absentee.
