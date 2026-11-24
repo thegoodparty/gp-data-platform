@@ -79,6 +79,8 @@ models:
         description: >
           The person the requests belong to, or `unattributed` for requests that carried no
           identity at all.
+        databricks_tags:
+          sensitive: identifier
         data_tests:
           - not_null
       - name: request_count
