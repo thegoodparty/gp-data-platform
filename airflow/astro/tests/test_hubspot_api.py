@@ -13,7 +13,7 @@ break silently, which is the three decisions the landing grain depends on:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -272,6 +272,37 @@ def test_a_paged_result_is_re_requested_until_it_stops_paging():
     assert len(session.requests) == 2
     # The continuation token travels with the same id, as the docs specify.
     assert session.requests[1] == {"inputs": [{"id": "301", "after": "302-cursor"}]}
+
+
+def test_each_paging_round_re_requests_only_the_ids_still_paging():
+    """An id that finished must not be sent again: its first page would restart it.
+
+    Two ids needing different page counts only both finish together if a finished one keeps
+    being re-sent, which multiplies the requests and never clears the bound.
+    """
+    seven = {
+        "results": [{"from": {"id": "a"}, "to": [{"toObjectId": 1}], "paging": {"next": {"after": "a1"}}}]
+    }
+    eleven = {
+        "results": [{"from": {"id": "b"}, "to": [{"toObjectId": 2}], "paging": {"next": {"after": "b1"}}}]
+    }
+    done_a = {"from": {"id": "a"}, "to": [{"toObjectId": 3}]}
+    b_still_paging = {"from": {"id": "b"}, "to": [{"toObjectId": 4}], "paging": {"next": {"after": "b2"}}}
+    done_b = {"results": [{"from": {"id": "b"}, "to": [{"toObjectId": 5}]}]}
+    session = FakeSession(
+        [
+            FakeResponse(body={"results": seven["results"] + eleven["results"]}),
+            FakeResponse(body={"results": [done_a, b_still_paging]}),
+            FakeResponse(body=done_b),
+        ]
+    )
+
+    associations = fetch_contact_associations(session, "calls", ["a", "b"], "tok")
+
+    assert associations == {"a": ["1", "3"], "b": ["2", "4", "5"]}
+    # The second round asks for both still-paging ids, and the third only for the one left.
+    assert session.requests[1]["inputs"] == [{"id": "a", "after": "a1"}, {"id": "b", "after": "b1"}]
+    assert session.requests[2]["inputs"] == [{"id": "b", "after": "b2"}]
 
 
 def test_a_continuation_token_that_never_stops_raises_rather_than_looping():
@@ -773,6 +804,50 @@ def test_extract_of_an_empty_worklist_writes_nothing_and_keeps_the_cursor():
     assert summary["cursor_source_changed_at"] is None
     # Nothing was read, so nothing is written: an empty INSERT would still commit a table.
     insert.assert_not_called()
+
+
+def test_extract_inserts_one_batch_at_a_time_in_worklist_order():
+    """The resume guarantee: a run that dies part way leaves a contiguous prefix landed.
+
+    Fetching every batch before inserting anything would break that and still pass a
+    two-activity test, so this drives three batches and makes the last fetch raise.
+    """
+    count = ASSOCIATION_BATCH_SIZE * 2 + 1
+    # Ascending ids and times, which is the order the worklist query returns. Rows land in
+    # that order, so a later batch's ids are always ahead of an earlier one's.
+    worklist = [(str(1000 + i), datetime(2026, 11, 1) + timedelta(seconds=i)) for i in range(count)]
+    connection = FakeConnection(worklist)
+    session = FakeSession(
+        [
+            FakeResponse(body={"results": []}),
+            FakeResponse(body={"results": []}),
+            RuntimeError("HubSpot request failed for the third batch"),
+        ]
+    )
+    inserted: list[list[str]] = []
+
+    def fake_insert(conn, catalog, schema, rows):
+        inserted.append([row.activity_id for row in rows])
+
+    config = AssociationExtractionConfig(
+        catalog="dev",
+        schema="hubspot",
+        source_prefix="raw.hubspot",
+        api_token="tok",
+        dag_run_id="run-1",
+        extracted_at="2026-11-24T00:00:00",
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("include.custom_functions.hubspot_api.insert_rows", fake_insert)
+        with pytest.raises(RuntimeError, match="third batch"):
+            extract_activity_associations(connection, config, "calls", "CALL", session=session)
+
+    # Two complete batches landed before the failing one, and nothing from the third.
+    assert [len(batch) for batch in inserted] == [ASSOCIATION_BATCH_SIZE, ASSOCIATION_BATCH_SIZE]
+    for index, batch in enumerate(inserted):
+        start = index * ASSOCIATION_BATCH_SIZE
+        assert batch == [activity_id for activity_id, _ in worklist[start : start + ASSOCIATION_BATCH_SIZE]]
 
 
 def test_a_full_sweep_does_not_read_a_cursor():

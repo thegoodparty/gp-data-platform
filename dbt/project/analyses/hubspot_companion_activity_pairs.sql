@@ -72,19 +72,20 @@ with
             sum(
                 case when size(f.contact_ids) > 0 then 1 else 0 end
             ) as frozen_linked_activities,
-            -- The sharpest signal: the frozen feed reached a person for this activity
-            -- and
-            -- the loader did not, which is the row the touch history would lose.
+            -- The sharpest signal: the frozen feed reached a person here and the loader
+            -- did not, which is the row the touch history would lose.
             sum(
                 case
                     when size(f.contact_ids) > 0 and size(l.contact_ids) = 0
                     then 1
                     else 0
                 end
-            ) as loader_lost_link_activities,
-            count(l.activity_id) as activities_loader_returned
+            ) as loader_lost_link_activities
         from frozen_pairs as f
-        left join
+        -- Inner, not left: an activity the frozen feed holds and HubSpot has since
+        -- deleted has no loader row by design, and counting it would show as a
+        -- shortfall.
+        inner join
             loader_latest as l
             on l.activity_type = f.activity_type
             and l.activity_id = f.activity_id
@@ -98,8 +99,7 @@ select
     loader_pairs,
     loader_pairs - frozen_pairs as pair_delta,
     frozen_linked_activities,
-    loader_lost_link_activities,
-    activities_loader_returned
+    loader_lost_link_activities
 from comparison
 -- A type with no loader rows yet reports a null pair count and a negative delta of the
 -- whole baseline, which reads as a failure rather than as "not run yet".

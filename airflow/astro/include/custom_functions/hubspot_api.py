@@ -413,15 +413,21 @@ def fetch_contact_associations(
     # strict=False: the final batch is expected to be short.
     for batch in batched(activity_ids, batch_size, strict=False):
         merged: dict[str, set[str]] = {}
+        # Only the ids still paging are re-requested. Sending the whole batch again would
+        # re-fetch page one for every id that had already finished, which restarts it: two
+        # ids needing 7 and 11 pages would then only both finish after 77 requests and never
+        # within the bound. It also wastes a full batch of reads per page.
+        to_read: Sequence[str] = list(batch)
         pending: dict[str, str] = {}
         for _ in range(max_pages):
-            body = read(batch, pending)
-            page_links = parse_association_batch(body, batch)
+            body = read(to_read, pending)
+            page_links = parse_association_batch(body, to_read)
             for activity_id, contact_ids in page_links.items():
                 merged.setdefault(activity_id, set()).update(contact_ids)
             pending = _paged_ids(body)
             if not pending:
                 break
+            to_read = [activity_id for activity_id in to_read if activity_id in pending]
         else:
             raise RuntimeError(
                 f"HubSpot kept returning a continuation token for {len(pending)} "
