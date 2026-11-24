@@ -17,7 +17,12 @@
 -- `unpriced_cost_usd` beside them so a reader can see the share that rests on
 -- pi's self-reported figure;
 -- - a session with a null `task_id` is excluded from this grain. It has no task
--- to roll up to, and it stays in the daily mart, so nothing is lost overall.
+-- to roll up to, and it stays in the daily mart, so nothing is lost overall;
+-- - a session whose `task_id` is set but which has no edge row is excluded too.
+-- The root model is built from the edge landing, so such a task has no root to
+-- roll up to. It also stays in the daily mart, where it counts in full. This is
+-- the edge window's residue: an ancestor older than the export's window is absent
+-- and so is everything under it, which heals as later runs accumulate.
 with
 
     task_roots as (

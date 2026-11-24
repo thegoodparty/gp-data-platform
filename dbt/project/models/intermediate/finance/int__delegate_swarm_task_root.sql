@@ -14,7 +14,11 @@
 -- level of rollup rather than a session's spend;
 -- - the depth bound, which keeps a parent cycle upstream from hanging the
 -- nightly build. A cycle resolves to a task inside the loop: arbitrary, but
--- deterministic, and the same answer on every run and for both readers;
+-- deterministic, and the same answer on every run and for both readers. A task
+-- that feeds *into* a cycle can settle on a different member of the loop than the
+-- loop's own tasks do, so one connected component can appear under two roots. It
+-- is bounded and it costs rollup, never spend, and it is the residue accepted for
+-- a state upstream should not produce;
 -- - a null parent, which is a root.
 with recursive
 
@@ -47,13 +51,9 @@ with recursive
 
         select task_id, ancestor_task_id as root_task_id, depth
         from walk
-        -- Breaking a cycle's tie on the id keeps the answer stable across runs,
-        -- where ordering by depth alone would leave it to the engine.
-        qualify
-            row_number() over (
-                partition by task_id order by depth desc, ancestor_task_id
-            )
-            = 1
+        -- One row per task per depth, because a task has one outgoing edge and each
+        -- step joins a deduped key, so the deepest row is already unique.
+        qualify row_number() over (partition by task_id order by depth desc) = 1
 
     )
 

@@ -82,6 +82,11 @@ with
     -- own session costs, so it carries `self_reported`. It has no person at all,
     -- so `attribution` is the agent's operator-set label and never a synthesised
     -- email. `not-null` on `attribution` therefore holds without a bucket row.
+    --
+    -- Re-aggregated here because the source mart is keyed on `agent_id` as well as
+    -- the label, and this model's grain is not: two agents sharing a label, which
+    -- `unknown_agent` makes likely whenever two agents are gone, would otherwise
+    -- land two rows on one key and break the grain test.
     delegate_swarm as (
 
         select
@@ -92,14 +97,15 @@ with
             model,
             'agent' as attribution_kind,
             agent_name as attribution,
-            cast(cost_usd as decimal(20, 6)) as cost_usd,
+            cast(sum(cost_usd) as decimal(20, 6)) as cost_usd,
             cast(null as bigint) as request_count,
-            cast(session_count as bigint) as session_count,
-            cast(total_tokens as bigint) as total_tokens,
+            cast(sum(session_count) as bigint) as session_count,
+            cast(sum(total_tokens) as bigint) as total_tokens,
             'self_reported' as cost_basis,
-            source_loaded_at,
-            source_complete_through
+            max(source_loaded_at) as source_loaded_at,
+            max(source_complete_through) as source_complete_through
         from {{ ref("delegate_swarm_daily_usage") }}
+        group by usage_date, model, agent_name
 
     )
 

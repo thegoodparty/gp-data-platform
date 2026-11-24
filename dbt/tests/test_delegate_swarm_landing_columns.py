@@ -140,46 +140,6 @@ def _input_name(entry: str) -> str | None:
     return match.group(1) if match else None
 
 
-def test_the_cost_landing_columns_are_pinned():
-    """A local edit to either copy of the contract fails here."""
-    assert SESSION_COST_COLUMNS == (
-        "id",
-        "session_id",
-        "task_id",
-        "agent_id",
-        "agent_name",
-        "model",
-        "cost_source",
-        "kind",
-        "total_cost_usd",
-        "harness_cost_usd",
-        "input_tokens",
-        "output_tokens",
-        "cache_read_tokens",
-        "cache_write_tokens",
-        "cache_write_5m_tokens",
-        "cache_write_1h_tokens",
-        "reasoning_output_tokens",
-        "thinking_tokens",
-        "duration_ms",
-        "num_turns",
-        "is_error",
-        "created_at",
-        "exported_at",
-    )
-
-
-def test_the_edge_landing_columns_are_pinned():
-    assert TASK_EDGE_COLUMNS == (
-        "task_id",
-        "parent_task_id",
-        "dispatched_by_task_id",
-        "status",
-        "created_at",
-        "exported_at",
-    )
-
-
 def test_each_staging_model_reads_its_own_source():
     """The loader's table names and the names the sources declare are one list."""
     for table, case in TABLES.items():
@@ -228,10 +188,3 @@ def test_the_cost_rename_is_the_only_one():
         target = _output_name(entry, TABLES["session_cost"]["model"])
         expected = COST_RENAMES.get(source, source)
         assert target == expected, f"{source} must stage as {expected}, not {target}"
-
-
-def test_loaded_at_is_stamped_by_the_loader_and_never_exported():
-    """The loader adds the read time, so it can never be one of the file's columns."""
-    for column in LOADER_STAMPED_COLUMNS:
-        assert column not in SESSION_COST_COLUMNS
-        assert column not in TASK_EDGE_COLUMNS

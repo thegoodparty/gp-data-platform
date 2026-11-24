@@ -66,24 +66,7 @@ with
     -- Freshness describes the feed, so it comes from one anchor over the whole
     -- history and is constant per row. A per-row max would be the day's own
     -- stamp and would say nothing about whether the exporter is still running.
-    anchor as (select max(source_exported_at) as source_loaded_at from aggregated),
-
-    -- The last day the feed has fully seen: the day before the newest export's
-    -- own UTC date. The exporter reads the whole ledger at 09:15, so its run on
-    -- day D has everything up to D's midnight and D itself is still partial.
-    -- Derived from the anchor rather than from the newest day that happens to
-    -- carry a row, because a quiet stretch has complete days with no sessions in
-    -- them. Never current_date(), which would drift from the feed.
-    --
-    -- This matches the Bifrost arm's rule, `usage_date < to_date(exported_at)`,
-    -- expressed as a day so that `ai_usage_daily` can compare the arms' values
-    -- directly.
-    complete_through as (
-
-        select date_sub(to_date(source_loaded_at), 1) as source_complete_through
-        from anchor
-
-    )
+    anchor as (select max(source_exported_at) as source_loaded_at from aggregated)
 
 select
     aggregated.usage_date,
@@ -99,7 +82,15 @@ select
     aggregated.unpriced_cost_usd,
     aggregated.source_exported_at,
     anchor.source_loaded_at,
-    complete_through.source_complete_through
+    -- The last day the feed has fully seen: the day before the anchor's own UTC
+    -- date. The exporter reads the whole ledger at 09:15, so its run on day D has
+    -- everything up to D's midnight and D itself is still partial. Derived from the
+    -- anchor rather than from the newest day carrying a row, because a quiet
+    -- stretch has complete days with no sessions in them.
+    --
+    -- This is the Bifrost arm's rule, `usage_date < to_date(exported_at)`,
+    -- expressed as a day so the two arms' values compare directly. Never
+    -- current_date(), which would drift from the feed.
+    date_sub(to_date(anchor.source_loaded_at), 1) as source_complete_through
 from aggregated
 cross join anchor
-cross join complete_through

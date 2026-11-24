@@ -1143,6 +1143,28 @@ unit_tests:
               to_date('2026-11-01'), 'unattributed', true,
               cast(3.000000 as decimal(20, 6)), cast(null as bigint),
               timestamp '2026-11-16 20:25:00', to_date('2026-11-15')
+      # Empty, but typed: this test is about the Bifrost boundary, so the swarm arm
+      # contributes no rows. Without the fixture the model cannot resolve its third
+      # input and the test fails before it checks anything.
+      - input: ref('delegate_swarm_daily_usage')
+        format: sql
+        rows: |
+          select
+              cast(null as date) as usage_date,
+              cast(null as string) as agent_name,
+              cast(null as string) as agent_id,
+              cast(null as string) as model,
+              cast(null as bigint) as session_count,
+              cast(null as bigint) as task_count,
+              cast(null as bigint) as error_session_count,
+              cast(null as bigint) as unpriced_session_count,
+              cast(null as bigint) as total_tokens,
+              cast(null as decimal(20, 6)) as cost_usd,
+              cast(null as decimal(20, 6)) as unpriced_cost_usd,
+              cast(null as timestamp) as source_exported_at,
+              cast(null as timestamp) as source_loaded_at,
+              cast(null as date) as source_complete_through
+          where false
     expect:
       rows:
         # Bifrost: cost basis, populated tokens, null sessions, and a completeness
@@ -1200,10 +1222,12 @@ unit_tests:
         # A child is not itself a rollup, so it has no row: the subtree hangs off
         # the root. Only tasks that are their own root appear.
 
-  # A rollup with no sessions of its own and none below it still gets a row, so
-  # the task list is the tree's rather than the traffic's. A failed attempt counts
-  # toward its task's spend, and a `system-one` row counts too.
-  - name: delegate_swarm_task_spend_counts_failures_and_system_rows
+  # A produced row for every rollup in the tree, including one with no sessions at
+  # all, so the task list is the tree's rather than the traffic's. Every session
+  # counts whatever its state, which is why the failing one below is included
+  # rather than filtered: the model never reads `is_error` or `kind`, so there is no
+  # clause that could exclude them.
+  - name: delegate_swarm_task_spend_keeps_a_rollup_with_no_sessions
     model: delegate_swarm_task_spend
     given:
       - input: ref('int__delegate_swarm_task_root')
@@ -1220,11 +1244,12 @@ unit_tests:
               cast(1.000000 as decimal(20, 6)) as cost_usd,
               timestamp '2026-11-17 10:00:00' as created_at
           union all
-          -- a failed attempt on the child: still real spend
+          -- a failed attempt on the child: still real spend, because nothing here
+          -- reads the flag
           select 'c1', 'harness', cast(2.000000 as decimal(20, 6)),
               timestamp '2026-11-17 11:00:00'
           union all
-          -- the swarm's own overhead
+          -- the swarm's own overhead, likewise counted
           select 'r1', 'harness', cast(0.500000 as decimal(20, 6)),
               timestamp '2026-11-17 12:00:00'
     expect:
@@ -1281,12 +1306,11 @@ unit_tests:
       rows:
         - {rollup_task_id: r1, session_count: 1, cost_usd: 1, unpriced_cost_usd: 0}
 
-  # The daily grain, and the partial publication delta item 12 asks to have tested
-  # rather than designed away: a cost file that lands without its edge file. The
-  # cost rows still count in full, and `task_count` is 0 for them until the next
-  # run's window brings the edges in. That is the mis-rooting the lead accepted, and
-  # this pins what a reader sees while it is happening rather than pretending the
-  # two objects are atomic.
+  # The daily grain, and the partial publication the contract accepts rather than
+  # designing away: a cost file that lands without its edge file. The cost rows
+  # still count in full, and `task_count` is 0 for them until the next run's window
+  # brings the edges in. This pins what a reader sees while it is happening rather
+  # than pretending the two objects are atomic.
   #
   # It also covers the `unknown_agent` placeholder surviving to the mart, which is
   # the only way the `not_null` test on `agent_name` can be honest.
@@ -1420,6 +1444,18 @@ unit_tests:
               timestamp '2026-11-18 09:15:00' as source_exported_at,
               timestamp '2026-11-18 09:15:00' as source_loaded_at,
               to_date('2026-11-17') as source_complete_through
+          union all
+          -- A second agent id under the same label. The source mart is keyed on
+          -- the id too, so this model has to fold the two or it lands two rows on
+          -- one grain key.
+          select
+              to_date('2026-11-17'), 'builder', 'a2', 'model-a',
+              cast(1 as bigint), cast(0 as bigint), cast(0 as bigint),
+              cast(1 as bigint), cast(50 as bigint),
+              cast(1.000000 as decimal(20, 6)),
+              cast(1.000000 as decimal(20, 6)),
+              timestamp '2026-11-18 09:15:00', timestamp '2026-11-18 09:15:00',
+              to_date('2026-11-17')
     expect:
       rows:
         # Bifrost: its completeness date is the newest day an export has passed,
@@ -1427,5 +1463,6 @@ unit_tests:
         - {usage_date: "2026-11-17", source: bifrost, provider: bedrock, model: model-a, attribution_kind: person, attribution: "test.user@goodparty.org", cost_usd: 1.5, request_count: 4, session_count: null, total_tokens: 100, cost_basis: gateway_computed, source_loaded_at: "2026-11-18 09:00:00", source_complete_through: "2026-11-17"}
         - {usage_date: "2026-11-17", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: person, attribution: "someone@goodparty.org", cost_usd: 2, request_count: 3, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
         # The agent is the attribution, there is no request count, and the tokens
-        # and sessions are populated.
-        - {usage_date: "2026-11-17", source: delegate_swarm, provider: fireworks, model: model-a, attribution_kind: agent, attribution: builder, cost_usd: 4, request_count: null, session_count: 2, total_tokens: 300, cost_basis: self_reported, source_loaded_at: "2026-11-18 09:15:00", source_complete_through: "2026-11-17"}
+        # and sessions are populated. The two agent ids under one label are folded
+        # into one row, because this model's grain is the label.
+        - {usage_date: "2026-11-17", source: delegate_swarm, provider: fireworks, model: model-a, attribution_kind: agent, attribution: builder, cost_usd: 5, request_count: null, session_count: 3, total_tokens: 350, cost_basis: self_reported, source_loaded_at: "2026-11-18 09:15:00", source_complete_through: "2026-11-17"}
