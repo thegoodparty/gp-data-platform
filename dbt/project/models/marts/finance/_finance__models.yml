@@ -927,3 +927,62 @@ unit_tests:
         - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 4, request_count: null, source_complete_through: "2026-11-16"}
         # No residual row for the day whose rounded difference is zero.
         - {usage_date: "2026-11-16", person_email: "carol@goodparty.org", is_unattributed: false, cost_usd: 1.001, request_count: 7, source_complete_through: "2026-11-16"}
+
+  # The arm mapping and the Bifrost completeness rule, which nothing else reaches.
+  # The point of the data is the partial newest day: the last export ran on the
+  # 20th, so the 20th itself is not complete and only earlier days are. `<=` in
+  # place of `<` here would publish a partial day as complete.
+  - name: ai_usage_daily_arm_mapping_and_bifrost_completeness
+    model: ai_usage_daily
+    given:
+      - input: ref('bifrost_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-18') as usage_date,
+              'bedrock' as provider,
+              'model-a' as model,
+              'test.user@goodparty.org' as person_email,
+              cast(1.500000 as decimal(20, 6)) as cost_usd,
+              cast(4 as bigint) as request_count,
+              cast(100 as bigint) as total_tokens,
+              timestamp '2026-11-20 09:00:00' as source_exported_at
+          union all
+          select
+              to_date('2026-11-19'), 'bedrock', 'model-a', 'unattributed',
+              cast(0.500000 as decimal(20, 6)), cast(1 as bigint),
+              cast(10 as bigint), timestamp '2026-11-20 09:00:00'
+          union all
+          select
+              to_date('2026-11-20'), 'fireworks', 'model-b', 'unattributed',
+              cast(2.500000 as decimal(20, 6)), cast(6 as bigint),
+              cast(200 as bigint), timestamp '2026-11-20 09:00:00'
+      - input: ref('anthropic_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-01') as usage_date,
+              'someone@goodparty.org' as person_email,
+              false as is_unattributed,
+              cast(7.000000 as decimal(20, 6)) as cost_usd,
+              cast(11 as bigint) as request_count,
+              timestamp '2026-11-16 20:25:00' as source_loaded_at,
+              to_date('2026-11-15') as source_complete_through
+          union all
+          select
+              to_date('2026-11-01'), 'unattributed', true,
+              cast(3.000000 as decimal(20, 6)), cast(null as bigint),
+              timestamp '2026-11-16 20:25:00', to_date('2026-11-15')
+    expect:
+      rows:
+        # Bifrost: cost basis, populated tokens, null sessions, and a completeness
+        # date one day back because the 20th is still partial.
+        - {usage_date: "2026-11-18", source: bifrost, provider: bedrock, model: model-a, attribution_kind: person, attribution: "test.user@goodparty.org", cost_usd: 1.5, request_count: 4, session_count: null, total_tokens: 100, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # The last complete day: the export ran on the 20th, so the 20th itself is
+        # not complete. `<=` in place of `<` would say 2026-11-20 here.
+        - {usage_date: "2026-11-19", source: bifrost, provider: bedrock, model: model-a, attribution_kind: unattributed, attribution: unattributed, cost_usd: 0.5, request_count: 1, session_count: null, total_tokens: 10, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # An identity-less request is its own kind, not a person.
+        - {usage_date: "2026-11-20", source: bifrost, provider: fireworks, model: model-b, attribution_kind: unattributed, attribution: unattributed, cost_usd: 2.5, request_count: 6, session_count: null, total_tokens: 200, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # Anthropic: the fixed model label, the vendor basis, and no tokens.
+        - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: person, attribution: "someone@goodparty.org", cost_usd: 7, request_count: 11, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
+        - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: unattributed, attribution: unattributed, cost_usd: 3, request_count: null, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
