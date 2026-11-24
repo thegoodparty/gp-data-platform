@@ -1550,6 +1550,24 @@ models:
       Every logged HubSpot engagement. One row per engagement: unlike the calls
       stream, this one carries no per-sync duplication.
 
+      Reads the frozen Airbyte engagement stream plus a v1-shaped projection of
+      the five Lakeflow activity tables (calls, emails, meetings, notes,
+      tasks). The name still says airbyte because renaming it would touch every
+      consumer; it reads two producers now.
+
+      Precedence defaults to the frozen feed for every activity type. The
+      Lakeflow activity tables carry no contact associations, and
+      int__user_hubspot_touches excludes unassociated activities, so a
+      Lakeflow-owned row would leave the touch history while the row count
+      stayed flat. Lakeflow supplies the rows Airbyte never had, and a row only
+      Lakeflow holds lands with NULL association columns until the activity
+      associations are loaded. Email is the one type that could switch first,
+      through hs_email_associated_contact_id, and the switch that would do it
+      defaults to frozen.
+
+      SMS, CONVERSATION_SESSION and CUSTOM_CHANNEL_CONVERSATION have no Lakeflow
+      table, so those rows come from the frozen feed only.
+
       Calls appear here too, without their disposition, so a consumer that
       wants calls reads stg_airbyte_source__hubspot_api_engagements_calls and
       excludes engagement_type CALL from this model rather than counting both.
@@ -1581,15 +1599,26 @@ models:
       - name: contact_ids
         description: >
           JSON array of associated contact ids, as a string. Empty arrays are
-          common and are not the same as null.
+          common and are not the same as null. NULL on rows only the Lakeflow
+          feed holds, because no Lakeflow activity table carries an
+          association.
       - name: company_ids
-        description: JSON array of associated company ids, as a string.
+        description: >
+          JSON array of associated company ids, as a string. NULL on rows only
+          the Lakeflow feed holds.
       - name: deal_ids
-        description: JSON array of associated deal ids, as a string.
+        description: >
+          JSON array of associated deal ids, as a string. NULL on rows only the
+          Lakeflow feed holds.
       - name: subject
-        description: Subject line or title, where the engagement type has one.
+        description: >
+          Subject line or title, where the engagement type has one. Carried for
+          emails and tasks on both feeds.
       - name: status
-        description: Engagement status, where the type has one.
+        description: >
+          Engagement status, where the type has one. On the Lakeflow side this
+          is hs_email_status for emails, hs_call_status for calls and
+          hs_task_status for tasks.
       - name: body
         description: >
           Free text on notes, meetings, tasks and SMS, often HTML. Can hold
@@ -1697,6 +1726,17 @@ models:
       `stg_airbyte_source__hubspot_api_contacts.id`); the
       `hs_call_callee_object_*` fields are sparsely populated and
       cover only ~2.6% of calls.
+
+      Reads the frozen stream plus the Lakeflow calls table. The frozen feed
+      wins on id for every call it holds, so `contacts` stays exactly as
+      Airbyte delivered it; the Lakeflow calls table carries no associate
+      column of any kind. Lakeflow supplies the calls Airbyte never had, which
+      land with NULL association columns until the activity associations are
+      loaded, and refreshes the call's own properties on a shared row.
+
+      `_airbyte_extracted_at` is the Lakeflow loader time on rows that came
+      from Lakeflow. int__hubspot_calls dedupes on that column and sorts
+      descending, so a NULL there would hand the stale row the dedupe.
     columns:
       - name: id
         description: HubSpot call engagement ID. Primary key.
@@ -1727,7 +1767,8 @@ models:
           Use this (rather than `hs_call_callee_object_id`) to join
           calls to contacts — the engagement->contact association
           covers all calls, while `hs_call_callee_object_id` is
-          populated for only ~2.6% of rows.
+          populated for only ~2.6% of rows. NULL on calls only the
+          Lakeflow feed holds, because that feed carries no associations.
       - name: companies
         description: JSON array of HubSpot company IDs associated with this call.
       - name: deals

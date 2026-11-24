@@ -224,6 +224,23 @@ models:
           - unique
           - not_null
 
+  - name: int__hubspot_lakeflow_activity_loaded_at
+    description: >
+      The Lakeflow loader time per activity, one row per activity id, used as
+      _airbyte_extracted_at on rows only Lakeflow holds. A table rather than a
+      view because Spark loses `_metadata.file_modification_time` once the
+      scanning block is inlined twice.
+    data_tests:
+      # Warn, not error: a failing error-test skips every downstream model, and
+      # a Lakeflow refresh can briefly empty the tables this reads. An empty
+      # table is the one failure the source check cannot catch, since the source
+      # still resolves.
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 1
+          config:
+            severity: warn
+
   - name: int__hubspot_prospect_contacts
     description: |
       One row per HubSpot contact, with lifecycle/stage/activation/pledge

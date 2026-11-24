@@ -57,6 +57,14 @@ vars:
   # The live Stripe product Pro is sold under. Mirrors LIVE_PRODUCT_ID in omni's
   # StripeService; move them together. The Stripe and Pro drift test scopes to it.
   stripe_pro_product_id: "prod_QCGFVVUhD6q2Jo"
+  # Engagement types whose Lakeflow activity row wins over the frozen feed on a
+  # shared id. Empty on purpose: the Lakeflow activity tables carry no contact
+  # associations, and the touch history drops unassociated activities, so
+  # flipping a type here before the activity associations are loaded empties
+  # most of the user journey while the staging row count stays flat. Populate it
+  # one type at a time, against measured attribution, once those associations
+  # exist.
+  lakeflow_authoritative_engagement_types: []
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
